@@ -11,19 +11,19 @@ type OsInstallActuateWorkflowStep
   | WorkflowBootOnceCd
   | WorkflowSolConsoleCapture
 
-data srv3_boot_once_cd_escalation: WorkflowEscalation = WorkflowEscalation {
-  escalation_id: "srv3-boot-once-cd" as NonEmptyStr,
-  rationale: "PATCH boot override to CD Once + ForceRestart is destructive and may interrupt srv3" as NonEmptyStr,
+data srv3_boot_once_cd_escalation: gunbc.workflow_escalation.WorkflowEscalation = gunbc.workflow_escalation.WorkflowEscalation {
+  escalation_id: "srv3-boot-once-cd" as std.types.NonEmptyStr,
+  rationale: "PATCH boot override to CD Once + ForceRestart is destructive and may interrupt srv3" as std.types.NonEmptyStr,
   destructive: true,
 }
 
-data srv3_boot_once_cd_default_approval: WorkflowApprovalState = PendingApproval {
+data srv3_boot_once_cd_default_approval: gunbc.workflow_escalation.WorkflowApprovalState = PendingApproval {
   escalation: srv3_boot_once_cd_escalation,
 }
 
-data srv3_boot_once_cd_operator_granted_approval: WorkflowApprovalState = ApprovalGranted {
+data srv3_boot_once_cd_operator_granted_approval: gunbc.workflow_escalation.WorkflowApprovalState = ApprovalGranted {
   escalation_id: srv3_boot_once_cd_escalation.escalation_id,
-  granted_by: "operator" as NonEmptyStr,
+  granted_by: "operator" as std.types.NonEmptyStr,
 }
 
 fn srv3_os_install_actuate_workflow_steps() -> List<OsInstallActuateWorkflowStep> {
@@ -43,14 +43,14 @@ fn srv3_os_install_actuate_workflow_step_count() -> Int {
   srv3_os_install_actuate_workflow_steps().length()
 }
 
-fn srv3_boot_once_cd_workflow_disposition(approval: WorkflowApprovalState) -> WorkflowStepDisposition {
+fn srv3_boot_once_cd_workflow_disposition(approval: gunbc.workflow_escalation.WorkflowApprovalState) -> gunbc.workflow_escalation.WorkflowStepDisposition {
   workflow_step_disposition_for_approval(
     escalation: srv3_boot_once_cd_escalation,
     approval: approval,
   )
 }
 
-fn srv3_boot_once_cd_is_runnable_with_approval(approval: WorkflowApprovalState) -> Bool {
+fn srv3_boot_once_cd_is_runnable_with_approval(approval: gunbc.workflow_escalation.WorkflowApprovalState) -> Bool {
   match srv3_boot_once_cd_workflow_disposition(approval: approval) {
     StepRunnable => true
     _ => false
@@ -72,7 +72,7 @@ fn srv3_os_install_actuate_workflow_includes_operator_approval_before_boot() -> 
 }
 
 fn srv3_os_install_actuate_workflow_credential_intent_is_declared() -> Bool {
-  srv3_os_install_actuate_credential_intent().rotated_secret_ref.secret == "bmc-srv3-admin" as NonEmptyStr
+  srv3_os_install_actuate_credential_intent().rotated_secret_ref.secret == "bmc-srv3-admin" as std.types.NonEmptyStr
 }
 
 fn srv3_os_install_actuator_plan_step_count_matches_workflow_tail() -> Bool {

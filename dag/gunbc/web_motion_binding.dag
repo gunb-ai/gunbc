@@ -221,7 +221,7 @@ data availability_runs_the_same_admission_note: String = "THE THIRD CONSUMER RAN
 
 It runs the check first now, and a contradicted observation lands on SensorAvailabilityUnknown. That is the correct arm rather than a convenient one: it is could-not-determine, not absent, and sensor_may_deliver_impulses admits only SensorPresent, so an incoherent record delivers nothing while staying visibly distinct from a machine with no sensor."
 
-fn project_sensor_availability(o: WebMotionObservation) -> SensorAvailability {
+fn project_sensor_availability(o: WebMotionObservation) -> gunbc.design.instrument_physical.SensorAvailability {
   if observation_contradictions(o: o).length() > 0 {
     SensorAvailabilityUnknown
   } else {
@@ -371,7 +371,7 @@ The projection is deliberately NOT total in the optimistic direction: the web ha
 
 data frequency_is_derived_not_invented_note: String = "Sample rate is DERIVED from the interval the observation actually carries, and stays unobserved when it does not. A reading whose sample interval is known gives a frequency by division; a reading with no interval gives FrequencyUnobserved, never zero. The noise floor and the observed axis count have no web source at all on this route today — the event carries neither — so both stay unobserved and a qualification needing them refuses on those dimensions rather than reading a fabricated zero as a pass."
 
-fn frequency_from_interval(sample_interval_ms: Milliseconds) -> FrequencyObservation {
+fn frequency_from_interval(sample_interval_ms: std.types.Milliseconds) -> gunbc.capability_binding.FrequencyObservation {
   if sample_interval_ms > 0 {
     FrequencyObserved { hz: 1000 / sample_interval_ms }
   } else {
@@ -381,8 +381,8 @@ fn frequency_from_interval(sample_interval_ms: Milliseconds) -> FrequencyObserva
 
 data latency_is_not_zero_note: String = "A WEB PROBE DOES NOT MEASURE DETECTION LATENCY, AND ZERO WAS THE WORST AVAILABLE ANSWER (review finding, 2026-08-06). Counting events over a window says nothing about how long after a physical knock the first sample carrying it arrived — that needs a known stimulus time, which no passive listener has. Writing zero did not merely omit the fact: zero is the BEST possible latency, so an unmeasured dimension was reported as a perfect score, and the requirement's latency budget passed on it every time. It joins the four dimensions already carrying an observed-or-not coproduct for exactly this reason."
 
-fn web_sample_receipt(count: Int, peak_milli: Int, sample_interval_ms: Milliseconds) -> SampleReceipt {
-  SampleReceipt {
+fn web_sample_receipt(count: Int, peak_milli: Int, sample_interval_ms: std.types.Milliseconds) -> gunbc.capability_binding.SampleReceipt {
+  gunbc.capability_binding.SampleReceipt {
     count: count,
     frequency: frequency_from_interval(sample_interval_ms: sample_interval_ms),
     noise_floor: NoiseFloorUnobserved,
@@ -394,7 +394,7 @@ fn web_sample_receipt(count: Int, peak_milli: Int, sample_interval_ms: Milliseco
   }
 }
 
-fn project_binding_stream(o: WebMotionObservation) -> BindingStreamState {
+fn project_binding_stream(o: WebMotionObservation) -> gunbc.capability_binding.BindingStreamState {
   if observation_contradictions(o: o).length() > 0 {
     BindingStreamUnobserved
   } else {
@@ -501,7 +501,7 @@ fn policy_contradiction(o: WebMotionObservation) -> List<ObservationContradictio
     })
 }
 
-fn permission_state_contradiction(state: PermissionState, s: MotionStreamState) -> List<ObservationContradiction> {
+fn permission_state_contradiction(state: extdeps.w3c.device_orientation_and_motion.PermissionState, s: MotionStreamState) -> List<ObservationContradiction> {
   match state {
     PermissionDenied =>
       contradiction_when(holds: stream_carries_readings(s: s), c: ReadingsUnderDeniedPermission)

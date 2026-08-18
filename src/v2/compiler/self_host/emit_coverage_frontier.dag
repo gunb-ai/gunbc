@@ -16,8 +16,8 @@ type EmitCoverageFrontierRow {
   disposition: EmitCoverageDisposition
 }
 
-fn coverage_subject(module_path: String, decl_name: String) -> DeclarationRef {
-  DeclarationRef {
+fn coverage_subject(module_path: String, decl_name: String) -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
     field: WholeDeclaration
@@ -25,7 +25,7 @@ fn coverage_subject(module_path: String, decl_name: String) -> DeclarationRef {
 }
 
 fn retained_via_eval_agreement(
-  subject: DeclarationRef,
+  subject: std.decl_ref.DeclarationRef,
   entry: String,
   f: String
 ) -> EmitCoverageFrontierRow {
@@ -208,11 +208,11 @@ fn interpreter_retained_rows() -> List<EmitCoverageFrontierRow> {
   )
 }
 
-fn coverage_subject_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
+fn coverage_subject_eq(a: std.decl_ref.DeclarationRef, b: std.decl_ref.DeclarationRef) -> Bool {
   (a.module_path == b.module_path) && (a.decl_name == b.decl_name)
 }
 
-fn coverage_frontier_row_for_subject(subject: DeclarationRef) -> List<EmitCoverageFrontierRow> {
+fn coverage_frontier_row_for_subject(subject: std.decl_ref.DeclarationRef) -> List<EmitCoverageFrontierRow> {
   fold(
     emit_coverage_frontier_roster,
     init: [],
@@ -228,7 +228,7 @@ fn coverage_frontier_row_for_subject(subject: DeclarationRef) -> List<EmitCovera
 
 data schedule_entry_matches_file_grain_note: String = "U3 file-grain enrollment uses function: \"\" to mean every test decl in the entry — the same sentinel admission expands. Exact-name match alone would refuse a backed SelfEmittedNative row whose wet roster flipped to file-grain (#7273)."
 
-fn schedule_entry_matches(entry: ScheduleWitnessEntry, backing_entry: String, backing_function: String) -> Bool {
+fn schedule_entry_matches(entry: std.realization_schedule.ScheduleWitnessEntry, backing_entry: String, backing_function: String) -> Bool {
   (entry.entry == backing_entry) && (
     (entry.function == backing_function) || (entry.function == "")
   )

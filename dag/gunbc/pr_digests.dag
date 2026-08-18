@@ -29,8 +29,8 @@ service gunbc.PrDigests {
   operation ExtractAttachedUrls {
     input {
       pr: extdeps.github.pulls.PullRequest
-      reviews: List<PullReview>
-      review_line_comments: List<ReviewComment>
+      reviews: List<extdeps.github.pulls.PullReview>
+      review_line_comments: List<extdeps.github.pulls.ReviewComment>
     }
     output {
       urls: List<AttachedUrl>
@@ -51,7 +51,7 @@ service gunbc.PrDigests {
   operation JudgeMergeReadiness {
     input {
       pr: extdeps.github.pulls.PullRequest
-      reviews: List<PullReview>
+      reviews: List<extdeps.github.pulls.PullReview>
     }
     output {
       verdict: MergeReadinessVerdict
@@ -61,7 +61,7 @@ service gunbc.PrDigests {
 
   operation ClassifyRestFallback {
     input {
-      error: GitHubErrorShape
+      error: extdeps.github.errors.GitHubErrorShape
     }
     output {
       reason: RestFallbackReason?

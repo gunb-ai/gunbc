@@ -21,14 +21,14 @@ type TargetSelectionPolicy
 type MultiplicityPolicy
   = UniqueOnly
   | TargetSelection { policy: TargetSelectionPolicy }
-fn preservation_rule_is_realized(rule: Symbol) -> Bool {
+fn preservation_rule_is_realized(rule: v2.std.node.Symbol) -> Bool {
   contains(
     xs: realized_preservation_rules(),
     item: rule,
     eq: fn(left, right) { left == right }
   )
 }
-fn realized_preservation_rules() -> List<Symbol> {
+fn realized_preservation_rules() -> List<v2.std.node.Symbol> {
   [
     ^preservation_rule_constraint_satisfaction,
     ^preservation_rule_exact_structural_equality_zip_fold,
@@ -36,29 +36,29 @@ fn realized_preservation_rules() -> List<Symbol> {
     ^preservation_rule_project_to_core
   ]
 }
-fn find_witness_no_candidate_diagnostic(source_facts: Node) -> Diagnostic {
-  Diagnostic {
+fn find_witness_no_candidate_diagnostic(source_facts: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_no_candidate,
     at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn find_witness_ambiguous_candidate_diagnostic(source_facts: Node) -> Diagnostic {
-  Diagnostic {
+fn find_witness_ambiguous_candidate_diagnostic(source_facts: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_ambiguous_candidate,
     at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
-  Diagnostic {
+fn find_witness_not_realized_diagnostic(source_facts: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_not_realized,
     at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> Diagnostic {
-  Diagnostic {
+fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_invalid_witness,
     at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -176,7 +176,7 @@ fn accepted_witness_result(
   Accepted {
     value: FindWitnessResult {
       candidate: candidate,
-      witness: StructuralPropertyWitness {
+      witness: v2.std.witness.StructuralPropertyWitness {
         property: predicate.preservation_rule,
         evidence: candidate
       },
@@ -226,7 +226,7 @@ fn find_witness(
 fn derivation_predicate_for_rule(
   source_facts: Node,
   derivation_algebra: Node,
-  rule: Symbol
+  rule: v2.std.node.Symbol
 ) -> PreservationPredicate {
   if rule == ^preservation_rule_project_to_core {
     PreservationPredicate {
@@ -241,7 +241,7 @@ fn derivation_predicate_for_rule(
   }
 }
 
-fn find_witness_rejection_priority(reason: Symbol) -> Int {
+fn find_witness_rejection_priority(reason: v2.std.node.Symbol) -> Int {
   if reason == ^find_witness_reason_invalid_witness {
     3
   } else if reason == ^find_witness_reason_ambiguous_candidate {
@@ -361,8 +361,8 @@ fn verify_witness(
   source_facts: Node,
   candidate: Node,
   predicate: PreservationPredicate,
-  witness: StructuralPropertyWitness
-) -> Outcome<StructuralPropertyWitness> {
+  witness: v2.std.witness.StructuralPropertyWitness
+) -> Outcome<v2.std.witness.StructuralPropertyWitness> {
   if preservation_rule_is_realized(rule: predicate.preservation_rule) {
     verify_witness_realized(
       source_facts: source_facts,
@@ -378,8 +378,8 @@ fn verify_witness_realized(
   source_facts: Node,
   candidate: Node,
   predicate: PreservationPredicate,
-  witness: StructuralPropertyWitness
-) -> Outcome<StructuralPropertyWitness> {
+  witness: v2.std.witness.StructuralPropertyWitness
+) -> Outcome<v2.std.witness.StructuralPropertyWitness> {
   if preservation_predicate_holds(
     source_facts: source_facts,
     candidate: candidate,

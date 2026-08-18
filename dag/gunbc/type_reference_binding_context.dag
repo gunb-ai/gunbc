@@ -16,26 +16,26 @@ data type_reference_binding_context_absent_note: String = "Absent TypeReferenceB
 
 data declaration_exposure_from_containment_tree_note: String = "Exposure derivation site (PR-A): reads containment prefix shape and module path only — never OccurrenceCategory, never symbol_index flat lookup, never hand-authored module rosters. Delegates to the single exposure authority std.occurrence_binding_candidates declaration_exposure_from_containment under NamespaceStructuralRootExposure grounding (N3-B0): empty ancestor chain => RootExposure (structural namespace root in the containment tree); single-ancestor chain => ModuleExposure for the declaring module; deeper nesting => LexicalExposure whose exposing_scope is the nearest ancestor containment prefix."
 
-fn authored_order_row_from_entry(entry: OccurrenceIndexEntry) -> AuthoredOrderRow {
-  AuthoredOrderRow {
+fn authored_order_row_from_entry(entry: std.occurrence_identity.OccurrenceIndexEntry) -> std.occurrence_binding_candidates.AuthoredOrderRow {
+  std.occurrence_binding_candidates.AuthoredOrderRow {
     occurrence: entry.projection.occurrence,
-    ordinal: AuthoredTokenOrdinal {
+    ordinal: std.occurrence_identity.AuthoredTokenOrdinal {
       value: entry.projection.diagnostic_span.start,
     },
   }
 }
 
 fn occurrence_binding_inputs_from_module_transport(
-  module_path: NonEmptyStr,
-  transport: OccurrenceTransport
-) -> OccurrenceBindingCandidateInputs {
-  OccurrenceBindingCandidateInputs {
+  module_path: std.types.NonEmptyStr,
+  transport: std.occurrence_identity.OccurrenceTransport
+) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
+  std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
     module_paths: reverse(fold(
       transport.index.entries,
       init: [],
       f: (acc, entry) =>
         concat([
-          OccurrenceModulePathRow {
+          std.occurrence_binding_candidates.OccurrenceModulePathRow {
             occurrence: entry.projection.occurrence,
             module_path: module_path,
           },
@@ -46,7 +46,7 @@ fn occurrence_binding_inputs_from_module_transport(
       init: [],
       f: (acc, declaration) =>
         concat([
-          DeclarationExposureRow {
+          std.occurrence_binding_candidates.DeclarationExposureRow {
             occurrence: declaration.occurrence,
             exposure: declaration_exposure_from_containment(
               module_path: module_path,
@@ -66,10 +66,10 @@ fn occurrence_binding_inputs_from_module_transport(
 }
 
 fn merge_occurrence_binding_input_rows(
-  left: OccurrenceBindingCandidateInputs,
-  right: OccurrenceBindingCandidateInputs
-) -> OccurrenceBindingCandidateInputs {
-  OccurrenceBindingCandidateInputs {
+  left: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
+  right: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs
+) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
+  std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
     module_paths: concat(left.module_paths, right.module_paths),
     exposure_rows: concat(left.exposure_rows, right.exposure_rows),
     authored_order_rows: concat(left.authored_order_rows, right.authored_order_rows),
@@ -83,10 +83,10 @@ type ModuleOccurrenceBindingSource {
 
 fn build_graph_type_reference_binding_inputs(
   sources: List<ModuleOccurrenceBindingSource>
-) -> OccurrenceBindingCandidateInputs {
+) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
   fold(
     sources,
-    init: OccurrenceBindingCandidateInputs {
+    init: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
       module_paths: [],
       exposure_rows: [],
       authored_order_rows: [],
@@ -103,7 +103,7 @@ fn build_graph_type_reference_binding_inputs(
 }
 
 fn build_type_reference_binding_context(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   sources: List<ModuleOccurrenceBindingSource>
 ) -> TypeReferenceBindingContext {
   TypeReferenceBindingContext {

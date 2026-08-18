@@ -52,7 +52,7 @@ fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
 }
 
 fn eval_program_via_kernel(
-  program: AcceleratorDemoProgram,
+  program: gunbc.accelerator_demo_program.AcceleratorDemoProgram,
   a: List<Int>,
   b: List<Int>,
   c: List<Int>
@@ -71,7 +71,7 @@ fn eval_program_via_kernel(
 }
 
 fn differential_harness_for_program(
-  program: AcceleratorDemoProgram,
+  program: gunbc.accelerator_demo_program.AcceleratorDemoProgram,
   a: List<Int>,
   b: List<Int>,
   c: List<Int>
@@ -86,7 +86,7 @@ fn differential_harness_for_program(
 }
 
 fn execute_accelerator_program(
-  program: AcceleratorDemoProgram,
+  program: gunbc.accelerator_demo_program.AcceleratorDemoProgram,
   a: List<Int>,
   b: List<Int>,
   c: List<Int>
@@ -243,11 +243,11 @@ fn float_fma_discriminating_c() -> List<Float> {
   [-1.0]
 }
 
-fn float_contract_refused() -> NumericalContract {
+fn float_contract_refused() -> std.numerical_contract.NumericalContract {
   std.numerical_contract.float_contract(rounding: std.approximate_field.ToNearestEven, fma: FmaContractionRefused)
 }
 
-fn float_contract_permitted() -> NumericalContract {
+fn float_contract_permitted() -> std.numerical_contract.NumericalContract {
   std.numerical_contract.float_contract(rounding: std.approximate_field.ToNearestEven, fma: FmaContractionPermitted)
 }
 
@@ -274,8 +274,8 @@ fn float_list_eq(left: List<Float>, right: List<Float>) -> Bool {
 }
 
 fn eval_float_program_via_kernel(
-  program: AcceleratorDemoProgram,
-  fma_contraction_policy: FmaContractionPolicy,
+  program: gunbc.accelerator_demo_program.AcceleratorDemoProgram,
+  fma_contraction_policy: std.numerical_contract.FmaContractionPolicy,
   a: List<Float>,
   b: List<Float>,
   c: List<Float>
@@ -295,8 +295,8 @@ fn eval_float_program_via_kernel(
 }
 
 fn float_differential_harness_for_program(
-  program: AcceleratorDemoProgram,
-  fma_contraction_policy: FmaContractionPolicy,
+  program: gunbc.accelerator_demo_program.AcceleratorDemoProgram,
+  fma_contraction_policy: std.numerical_contract.FmaContractionPolicy,
   a: List<Float>,
   b: List<Float>,
   c: List<Float>

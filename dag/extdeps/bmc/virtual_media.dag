@@ -1,8 +1,8 @@
 module extdeps.bmc.virtual_media
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "docs.kernel.org/usb/mass-storage.html",
   }
@@ -45,6 +45,6 @@ fn virtual_media_transport_kind(transport: VirtualMediaTransport) -> String {
   }
 }
 
-fn virtual_media_source_iso(intent: VirtualMediaIntent) -> NonEmptyStr {
+fn virtual_media_source_iso(intent: VirtualMediaIntent) -> std.types.NonEmptyStr {
   intent.source.iso_path
 }

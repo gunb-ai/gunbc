@@ -363,7 +363,7 @@ fn capability_verdict_key(v: TargetCapabilityVerdict) -> String {
   }
 }
 
-data synthetic_tap_provider: DeclarationRef = DeclarationRef {
+data synthetic_tap_provider: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.capability_binding",
   decl_name: "synthetic_tap_impulse",
   field: WholeDeclaration
@@ -460,7 +460,7 @@ fn synthetic_tap_magnitude_milli(t: SyntheticTapStrength) -> std.nat.Nat {
   }
 }
 
-fn synthetic_tap_impulse(t: SyntheticTapStrength, at_ms: Milliseconds) -> PhysicalImpulse {
+fn synthetic_tap_impulse(t: SyntheticTapStrength, at_ms: std.types.Milliseconds) -> PhysicalImpulse {
   PhysicalImpulse {
     source_provider: synthetic_tap_provider,
     magnitude_milli_m_per_s2: synthetic_tap_magnitude_milli(t: t),
@@ -565,7 +565,7 @@ data coverage_targets: List<BindingCoverageTarget> = [
     provider: ProviderModelled { declaration: synthetic_tap_provider },
     implementation: Implemented { implementation: synthetic_tap_provider },
     probe: ProbeObserved {
-      receipt: DeclarationRef {
+      receipt: std.decl_ref.DeclarationRef {
         module_path: "test.claim.instrument_bob_witness",
         decl_name: "instrument_bob_keystone_holds",
         field: WholeDeclaration
@@ -575,14 +575,14 @@ data coverage_targets: List<BindingCoverageTarget> = [
   BindingCoverageTarget {
     platform: "web",
     provider: ProviderModelled {
-      declaration: DeclarationRef {
+      declaration: std.decl_ref.DeclarationRef {
         module_path: "extdeps.w3c.device_orientation_and_motion",
         decl_name: "devicemotion_event_type",
         field: WholeDeclaration
       }
     },
     implementation: Implemented {
-      implementation: DeclarationRef {
+      implementation: std.decl_ref.DeclarationRef {
         module_path: "gunbc.roadmap_component",
         decl_name: "motion_devicemotion_probe_statement",
         field: WholeDeclaration
@@ -593,14 +593,14 @@ data coverage_targets: List<BindingCoverageTarget> = [
   BindingCoverageTarget {
     platform: "web",
     provider: ProviderModelled {
-      declaration: DeclarationRef {
+      declaration: std.decl_ref.DeclarationRef {
         module_path: "extdeps.w3c.accelerometer",
         decl_name: "LinearAccelerationSensor",
         field: WholeDeclaration
       }
     },
     implementation: Implemented {
-      implementation: DeclarationRef {
+      implementation: std.decl_ref.DeclarationRef {
         module_path: "gunbc.roadmap_component",
         decl_name: "motion_sensor_probe_statement",
         field: WholeDeclaration

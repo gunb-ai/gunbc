@@ -1,7 +1,7 @@
 module std.selected_witness_bundle
 
 
-data selected_witness_bundle_note: NonEmptyStr = "Selected-entry native execution authority (native-selected-witness-bundle, 2026-08-01). Selection and realization remain separate facts: SelectedWitnessPlan records the complete production-selected population; each member is either NativeSelected or a counted InterpreterFrontier row with a reason and dissolution trigger. A native bundle contains only NativeSelected members, runs them as direct calls in one process, and returns a typed receipt. InterpreterFrontier is coverage-preserving compatibility, never an uncounted skip. During cutover the interpreter is the equivalence oracle; a family enters native-consumed production only after every selected member has executed verdict equivalence and the family has a live discriminating RED. Native-vs-interpreter divergence is a hard refusal, never an auto-pick."
+data selected_witness_bundle_note: std.types.NonEmptyStr = "Selected-entry native execution authority (native-selected-witness-bundle, 2026-08-01). Selection and realization remain separate facts: SelectedWitnessPlan records the complete production-selected population; each member is either NativeSelected or a counted InterpreterFrontier row with a reason and dissolution trigger. A native bundle contains only NativeSelected members, runs them as direct calls in one process, and returns a typed receipt. InterpreterFrontier is coverage-preserving compatibility, never an uncounted skip. During cutover the interpreter is the equivalence oracle; a family enters native-consumed production only after every selected member has executed verdict equivalence and the family has a live discriminating RED. Native-vs-interpreter divergence is a hard refusal, never an auto-pick."
 
 type SelectedWitnessIdentity {
   entry: std.types.NonEmptyStr
@@ -55,7 +55,7 @@ type NativeWitnessBundle {
   members: List<NativeWitnessBundleMember>
 }
 
-fn selected_witness_identity_hash(witness: SelectedWitnessIdentity) -> Fnv1a64Structural {
+fn selected_witness_identity_hash(witness: SelectedWitnessIdentity) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(
     tag: "selected-witness-identity",
     payload: content_hash_combine_structural(
@@ -68,7 +68,7 @@ fn selected_witness_identity_hash(witness: SelectedWitnessIdentity) -> Fnv1a64St
   )
 }
 
-fn native_realization_identity_hash(realization: NativeRealizationIdentity) -> Fnv1a64Structural {
+fn native_realization_identity_hash(realization: NativeRealizationIdentity) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(
     tag: "selected-witness-native-realization",
     payload: content_hash_combine_structural(
@@ -78,7 +78,7 @@ fn native_realization_identity_hash(realization: NativeRealizationIdentity) -> F
   )
 }
 
-fn native_bundle_member_hash(member: NativeWitnessBundleMember) -> Fnv1a64Structural {
+fn native_bundle_member_hash(member: NativeWitnessBundleMember) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(
     tag: "selected-witness-native-member",
     payload: content_hash_combine_structural(
@@ -88,7 +88,7 @@ fn native_bundle_member_hash(member: NativeWitnessBundleMember) -> Fnv1a64Struct
   )
 }
 
-fn native_bundle_members_hash(members: List<NativeWitnessBundleMember>) -> Fnv1a64Structural {
+fn native_bundle_members_hash(members: List<NativeWitnessBundleMember>) -> std.content_hash.Fnv1a64Structural {
   fold(
     members,
     init: content_hash_atom(value: "selected-witness-native-members"),
@@ -176,7 +176,7 @@ fn selected_witness_plan_interpreter_frontier_count(plan: SelectedWitnessPlan) -
   )
 }
 
-fn native_bundle_shard_policy_hash(policy: NativeBundleShardPolicy) -> Fnv1a64Structural {
+fn native_bundle_shard_policy_hash(policy: NativeBundleShardPolicy) -> std.content_hash.Fnv1a64Structural {
   match policy {
     OneSelectedBundle { reason: _ } => content_hash_atom(value: "one-selected-bundle")
     StableBundleShards { shard_count: count, reason: _ } => content_hash_tagged_structural(
@@ -186,7 +186,7 @@ fn native_bundle_shard_policy_hash(policy: NativeBundleShardPolicy) -> Fnv1a64St
   }
 }
 
-fn native_bundle_shard_count_hash(count: Int) -> Fnv1a64Structural {
+fn native_bundle_shard_count_hash(count: Int) -> std.content_hash.Fnv1a64Structural {
   if count <= 0 {
     content_hash_atom(value: "selected-bundle-shard-count-zero")
   } else {
@@ -244,7 +244,7 @@ type NativeBundleAdmission
 fn native_witness_bundle_admit(
   plan: SelectedWitnessPlan,
   bundle: NativeWitnessBundle,
-  current_compiler_identity: Fnv1a64Structural
+  current_compiler_identity: std.content_hash.Fnv1a64Structural
 ) -> NativeBundleAdmission {
   let required = native_witness_bundle_identity(plan: plan)
   let required_members = selected_witness_plan_native_members(plan: plan)
@@ -304,7 +304,7 @@ type NativeWitnessBundleExecutionReceipt {
   interpreter_frontier_count: Int
 }
 
-data native_production_transition_no_fallback_note: NonEmptyStr = "CI-0 cutover (operator direction 2026-08-08): the Fallback verdict arm is DELETED, not deprecated — a counted interpreter fallback is the state the transition exists to leave, and with no constructor the state is unwritable (the §4b climb from mechanically-preventable to structurally-impossible). Every observed main run from first enrollment (30774223741, 2026-08-03) to the cutover reported the fallback verdict while the native cold build failed deterministically; the arm's zeroed failure frequency is why nobody knew. Native unavailability is now NativeProductionTransitionRefused, and the counted-fallback input shape survives as a permanent regression control in the executor's native_bundle_refuses_without_fallback unit plus the pr_native_batch_test population-law REDs."
+data native_production_transition_no_fallback_note: std.types.NonEmptyStr = "CI-0 cutover (operator direction 2026-08-08): the Fallback verdict arm is DELETED, not deprecated — a counted interpreter fallback is the state the transition exists to leave, and with no constructor the state is unwritable (the §4b climb from mechanically-preventable to structurally-impossible). Every observed main run from first enrollment (30774223741, 2026-08-03) to the cutover reported the fallback verdict while the native cold build failed deterministically; the arm's zeroed failure frequency is why nobody knew. Native unavailability is now NativeProductionTransitionRefused, and the counted-fallback input shape survives as a permanent regression control in the executor's native_bundle_refuses_without_fallback unit plus the pr_native_batch_test population-law REDs."
 
 type NativeProductionTransitionVerdict
   = NativeProductionTransitionAccepted
@@ -388,8 +388,8 @@ type NativeWitnessBundleExecutionVerdict
 
 fn native_bundle_execution_member_hash(
   witness: SelectedWitnessIdentity,
-  family: NonEmptyStr
-) -> Fnv1a64Structural {
+  family: std.types.NonEmptyStr
+) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(
     tag: "selected-witness-executed-member",
     payload: content_hash_combine_structural(
@@ -401,7 +401,7 @@ fn native_bundle_execution_member_hash(
 
 fn native_bundle_required_execution_roster_hash(
   members: List<NativeWitnessBundleMember>
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   fold(
     members,
     init: content_hash_atom(value: "selected-witness-execution-roster"),
@@ -417,7 +417,7 @@ fn native_bundle_required_execution_roster_hash(
 
 fn native_bundle_observed_execution_roster_hash(
   rows: List<NativeBundleMemberEquivalence>
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   fold(
     rows,
     init: content_hash_atom(value: "selected-witness-execution-roster"),
@@ -456,7 +456,7 @@ fn first_native_bundle_divergence(
 
 fn native_bundle_red_receipt_matches_plan(
   evidence: NativeBundleFamilyCutoverEvidence,
-  current_compiler_identity: Fnv1a64Structural
+  current_compiler_identity: std.content_hash.Fnv1a64Structural
 ) -> Bool {
   let planted_bundle = native_witness_bundle_from_plan(plan: evidence.planted_plan)
   let required_members = planted_bundle.members
@@ -486,7 +486,7 @@ fn native_bundle_red_receipt_matches_plan(
 
 fn planted_red_row_matches_production_member(
   row: NativeBundleMemberEquivalence,
-  family: NonEmptyStr,
+  family: std.types.NonEmptyStr,
   production_members: List<NativeWitnessBundleMember>
 ) -> Bool {
   fold(
@@ -508,9 +508,9 @@ fn planted_red_row_matches_production_member(
 }
 
 fn family_has_discriminating_red(
-  family: NonEmptyStr,
+  family: std.types.NonEmptyStr,
   production_plan: SelectedWitnessPlan,
-  current_compiler_identity: Fnv1a64Structural,
+  current_compiler_identity: std.content_hash.Fnv1a64Structural,
   evidence: List<NativeBundleFamilyCutoverEvidence>
 ) -> Bool {
   let production_members = selected_witness_plan_native_members(plan: production_plan)
@@ -541,7 +541,7 @@ type NativeBundleFamilyRedSearch
 fn first_native_bundle_family_without_red(
   rows: List<NativeBundleMemberEquivalence>,
   production_plan: SelectedWitnessPlan,
-  current_compiler_identity: Fnv1a64Structural,
+  current_compiler_identity: std.content_hash.Fnv1a64Structural,
   evidence: List<NativeBundleFamilyCutoverEvidence>
 ) -> NativeBundleFamilyRedSearch {
   fold(
@@ -567,7 +567,7 @@ fn first_native_bundle_family_without_red(
 
 fn native_witness_bundle_execution_admit(
   plan: SelectedWitnessPlan,
-  current_compiler_identity: Fnv1a64Structural,
+  current_compiler_identity: std.content_hash.Fnv1a64Structural,
   receipt: NativeWitnessBundleExecutionReceipt,
   family_evidence: List<NativeBundleFamilyCutoverEvidence>
 ) -> NativeWitnessBundleExecutionVerdict {

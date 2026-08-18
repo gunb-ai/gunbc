@@ -42,7 +42,7 @@ type VerificationExec
       reason: String,
     }
 
-fn verification_execution_host(instance: HostDashboardInstance) -> NonEmptyStr {
+fn verification_execution_host(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> std.types.NonEmptyStr {
   match instance.provision_transport {
     DashboardLocalProvision => instance.host_identity
     DashboardSshProvision { host } => host
@@ -50,9 +50,9 @@ fn verification_execution_host(instance: HostDashboardInstance) -> NonEmptyStr {
 }
 
 fn verification_exec(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   workdir: std.types.FilePath,
-  command: ModeledValidationCommand,
+  command: gunbc.roadmap_execution_contract.ModeledValidationCommand,
 ) -> VerificationExec {
   match instance.provision_transport {
     DashboardLocalProvision => {
@@ -90,9 +90,9 @@ fn verification_exec(
 
 fn verification_run_one(
   node_id: String,
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   workdir: std.types.FilePath,
-  validation: ValidationOperation,
+  validation: gunbc.roadmap_execution_contract.ValidationOperation,
 ) -> VerificationOutcome {
   match validation_operation_command(
     validation: validation,
@@ -101,7 +101,7 @@ fn verification_run_one(
     Absent =>
       VerificationRefused {
         node_id: node_id,
-        label: "unrealized-capability" as NonEmptyStr,
+        label: "unrealized-capability" as std.types.NonEmptyStr,
         reason: "the instance environment realizes no executable for this validation's capability",
       }
     Present { value: cmd } =>
@@ -141,9 +141,9 @@ fn verification_run_one(
 // The fold SHORT-CIRCUITS on the first non-passing outcome, mirroring belt_exec_all's sequencing rule. Continuing after a failure would run later validations against a tree the first one already reported broken, and the resulting outcome would name whichever check happened to be last rather than the one that actually decided. The count in the passed arm accumulates only across validations that genuinely ran and passed.
 fn verification_fold(
   node_id: String,
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   workdir: std.types.FilePath,
-  validations: List<ValidationOperation>,
+  validations: List<gunbc.roadmap_execution_contract.ValidationOperation>,
 ) -> VerificationOutcome {
   fold(
     validations,
@@ -169,9 +169,9 @@ fn verification_fold(
 
 fn verify_contract(
   node_id: String,
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   workdir: std.types.FilePath,
-  contract: WorkItemExecutionContract,
+  contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
 ) -> VerificationOutcome {
   match contract_closure(contract: contract) {
     ContractDeclaresNoValidation => VerificationUnbound { node_id: node_id }
@@ -188,8 +188,8 @@ fn verify_contract(
 
 // THE PRE-DISPATCH CHECK, and the base clone is the RIGHT subject for it. This asks whether the node's obligation already holds before any agent is spent, so the tree it should read is precisely the one the instance provisions from — instance.repo_root. What made the first cut wrong was not reading the base; it was reading the base while claiming to verify an attempt.\n\nVERIFY FIRST, DISPATCH ONLY ON FAILURE, and the ordering is the point rather than an optimization. A node's contract already names the validation that decides whether its obligation holds; running it is a pure host effect with a deterministic answer. Dispatching a provider to reach the same conclusion costs a turn, introduces nondeterminism into a question that has none, and produces prose where a verdict was available.\n\nSo an agent becomes conditional. Verification passing means the obligation is already satisfied and the correct next action is acceptance, not work — which is precisely the state most of the current board is in, since the roadmap's problem is missing receipts rather than missing implementations. Verification failing is what makes an agent worth spending.\n\nThis also inverts what a green result MEANS. Under agent-always, a completed turn says a provider believes it is done; under verify-first, a pass says the declared control actually held when executed. The second is evidence and the first is testimony.
 fn verify_base_before_dispatch(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
 ) -> VerificationOutcome {
   verify_contract(
     node_id: node.node as String,
@@ -200,14 +200,14 @@ fn verify_base_before_dispatch(
 }
 
 fn verify_base_node_id(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   node_id: String,
 ) -> VerificationOutcome {
   match belt_lookup_node(node_id: node_id) {
     AuthorityProjectionRefused { detail: detail } =>
       VerificationRefused {
         node_id: node_id,
-        label: "authority-projection" as NonEmptyStr,
+        label: "authority-projection" as std.types.NonEmptyStr,
         reason: detail,
       }
     NodeMissing => VerificationNodeNotFound { node_id: node_id }
@@ -277,8 +277,8 @@ type AttemptVerification
     }
 
 fn first_closing_validation(
-  contract: WorkItemExecutionContract,
-) -> ValidationOperation? {
+  contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
+) -> gunbc.roadmap_execution_contract.ValidationOperation? {
   match contract_closure(contract: contract) {
     ContractDeclaresNoValidation => none
     ContractClosesNothing => none
@@ -287,11 +287,11 @@ fn first_closing_validation(
 }
 
 fn verify_attempt(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
   attempt_key: String,
   worktree: std.types.FilePath,
-  revision: NonEmptyStr,
+  revision: std.types.NonEmptyStr,
 ) -> AttemptVerification {
   let node_id = node.node as String
   match first_closing_validation(contract: node.execution) {
@@ -309,7 +309,7 @@ fn verify_attempt(
           AttemptVerified {
             outcome: VerificationRefused {
               node_id: node_id,
-              label: "unrealized-capability" as NonEmptyStr,
+              label: "unrealized-capability" as std.types.NonEmptyStr,
               reason: "the instance environment realizes no executable for this validation's capability",
             },
             receipt: LegacySingleValidationVerificationReceipt {
@@ -318,7 +318,7 @@ fn verify_attempt(
               host: verification_execution_host(instance: instance),
               worktree: worktree,
               revision: revision,
-              validation_label: "unrealized-capability" as NonEmptyStr,
+              validation_label: "unrealized-capability" as std.types.NonEmptyStr,
               command_wire: "",
               exit: ExitNotObserved {
                 reason: "no host realization for the validation's capability, so no command was built",
@@ -398,8 +398,8 @@ type VerificationReceiptPersistence
   | ReceiptPersistRefused { reason: String }
 
 fn persist_verification_receipt(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
   receipt: LegacySingleValidationVerificationReceipt,
 ) -> VerificationReceiptPersistence {
   match instance.provision_transport {
@@ -471,7 +471,7 @@ fn verification_outcome_label(outcome: VerificationOutcome) -> String {
 }
 
 // A func RETURNS ProcessExit, and both wet entries returned VerificationOutcome. That is not a style point: a func is the boundary where a .dag value becomes a process result, and the runner reads an exit status there. Returning a domain coproduct means the boundary has no exit code to report, so every outcome — passed, failed, refused — leaves the process indistinguishable from every other.\n\nThe mapping is deliberate about which states are failures OF THE PROCESS. A passing validation exits success. A failing one exits failure, because the verifier's job is to report that the obligation does not hold and a caller scripting against it needs a nonzero status. A REFUSAL also exits failure, and carries its reason: nothing was learned, and exiting success on 'the check could not run' is the absorbing fallback in its purest form — a green process standing for an unanswered question.\n\nUnbound exits failure too. It is not a defect in the work, but it IS a defect in the request: the caller asked to verify a node that declares nothing to verify, and answering that with success would report a green verification of nothing.
-fn verification_process_exit(outcome: VerificationOutcome) -> ProcessExit {
+fn verification_process_exit(outcome: VerificationOutcome) -> std.process.ProcessExit {
   match outcome {
     VerificationPassed { node_id: _, validations_run: _ } => ExitSuccess
     VerificationFailed { node_id, label, detail } =>
@@ -493,7 +493,7 @@ fn verification_process_exit(outcome: VerificationOutcome) -> ProcessExit {
   }
 }
 
-func verify_srv2_lab_base_wet(node_id: String) -> ProcessExit {
+func verify_srv2_lab_base_wet(node_id: String) -> std.process.ProcessExit {
   verification_process_exit(
     outcome: verify_base_node_id(
       instance: srv2_lab_dashboard_instance(),
@@ -502,7 +502,7 @@ func verify_srv2_lab_base_wet(node_id: String) -> ProcessExit {
   )
 }
 
-func verify_srv1_lab_base_wet(node_id: String) -> ProcessExit {
+func verify_srv1_lab_base_wet(node_id: String) -> std.process.ProcessExit {
   verification_process_exit(
     outcome: verify_base_node_id(
       instance: srv1_lab_dashboard_instance(),

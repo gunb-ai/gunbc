@@ -7,18 +7,18 @@ type WiringRelation {
   dependence: List<v2.std.dependency.DependencyView>
 }
 
-fn wiring_reaches(dependence: List<DependencyView>, from: Node, to: Node) -> Bool {
+fn wiring_reaches(dependence: List<v2.std.dependency.DependencyView>, from: Node, to: Node) -> Bool {
   graph_reaches(dependence: dependence, from: from, to: to)
 }
 
-fn wiring_relation_projection(relation: WiringRelation) -> GraphReachProjection {
-  GraphReachProjection {
+fn wiring_relation_projection(relation: WiringRelation) -> v2.lens.common.graph_invariant.GraphReachProjection {
+  v2.lens.common.graph_invariant.GraphReachProjection {
     edges: relation.dependence,
     roots: [relation.output]
   }
 }
 
-fn wiring_relation_verdict(relation: WiringRelation) -> LensVerdict {
+fn wiring_relation_verdict(relation: WiringRelation) -> v2.std.lens_verdict.LensVerdict {
   graph_invariant_reach_verdict(
     reason: ^wiring_liveness_dead_wire,
     root: relation.output,
@@ -69,7 +69,7 @@ fn wiring_param_is_dead_wire(reachable: List<Node>, declared_input: Node) -> Boo
   )
 }
 
-fn wiring_param_violation_verdict(relation: WiringRelation, reachable: List<Node>) -> LensVerdict {
+fn wiring_param_violation_verdict(relation: WiringRelation, reachable: List<Node>) -> v2.std.lens_verdict.LensVerdict {
   if wiring_param_is_dead_wire(
     reachable: reachable,
     declared_input: relation.declared_input
@@ -80,7 +80,7 @@ fn wiring_param_violation_verdict(relation: WiringRelation, reachable: List<Node
   }
 }
 
-fn wiring_fn_dead_wires(decl: FnArrowDecl) -> List<WiringDeadWire> {
+fn wiring_fn_dead_wires(decl: v2.std.fn_index.FnArrowDecl) -> List<WiringDeadWire> {
   let reachable = wiring_output_reachable_nodes(output: decl.output)
   let dependence = dependency_lens(root: decl.output)
   fold(decl.params, init: [], f: fn(acc, p) {
@@ -102,13 +102,13 @@ fn wiring_fn_dead_wires(decl: FnArrowDecl) -> List<WiringDeadWire> {
   })
 }
 
-fn wiring_dead_wires_over(decls: List<FnArrowDecl>) -> List<WiringDeadWire> {
+fn wiring_dead_wires_over(decls: List<v2.std.fn_index.FnArrowDecl>) -> List<WiringDeadWire> {
   fold(decls, init: [], f: fn(acc, decl) {
     list_append(left: acc, right: wiring_fn_dead_wires(decl: decl))
   })
 }
 
-fn wiring_decl_verdict(decl: FnArrowDecl) -> LensVerdict {
+fn wiring_decl_verdict(decl: v2.std.fn_index.FnArrowDecl) -> v2.std.lens_verdict.LensVerdict {
   let reachable = wiring_output_reachable_nodes(output: decl.output)
   let dependence = dependency_lens(root: decl.output)
   fold(decl.params, init: Holds, f: fn(acc, p) {
@@ -127,7 +127,7 @@ fn wiring_decl_verdict(decl: FnArrowDecl) -> LensVerdict {
   })
 }
 
-fn wiring_liveness_corpus_verdict() -> LensVerdict {
+fn wiring_liveness_corpus_verdict() -> v2.std.lens_verdict.LensVerdict {
   fold(fn_arrow_decl_facts_live(), init: Holds, f: fn(acc, decl) {
     match acc {
       Violation { diagnostic: _ } => acc
@@ -151,6 +151,6 @@ fn wiring_liveness_corpus_is_clean() -> Bool {
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

@@ -28,16 +28,16 @@ fn verdict_is_faithful(v: FidelityVerdict) -> Bool {
   }
 }
 
-fn input_reachability_discrepancies(fact: UnusedParametersFact) -> List<FidelityDiscrepancy> {
+fn input_reachability_discrepancies(fact: v2.lens.unused_parameters.UnusedParametersFact) -> List<FidelityDiscrepancy> {
   fold(fact.unused, init: std.algebra.Empty, f: fn(acc, u) {
     list_snoc_item(xs: acc, item: UnreachedDeclaredInput { declaration: u.declaration })
   })
 }
 
-fn input_reachability_verdict(fact: UnusedParametersFact) -> FidelityVerdict {
+fn input_reachability_verdict(fact: v2.lens.unused_parameters.UnusedParametersFact) -> FidelityVerdict {
   verdict_from_discrepancies(findings: input_reachability_discrepancies(fact: fact))
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

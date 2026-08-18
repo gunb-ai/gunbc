@@ -32,7 +32,7 @@ type EmitHostRunReceipt {
   compile_skipped: Bool
 }
 
-fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: ByteString) -> Outcome<HostLogicalRun> {
+fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: v2.std.host_transport.ByteString) -> Outcome<HostLogicalRun> {
   match exit.outcome {
     Accepted { value: Holds { value: _ }, diagnostics: None } =>
       Accepted {

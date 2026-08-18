@@ -1,20 +1,20 @@
 module extdeps.audit.cloudevents
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md"
   }
 }
 
-type CloudEventId = NonEmptyStr where brand("CloudEventId")
-type CloudEventSource = NonEmptyStr where brand("CloudEventSource")
-type CloudEventSpecVersion = NonEmptyStr where brand("CloudEventSpecVersion")
-type CloudEventType = NonEmptyStr where brand("CloudEventType")
-type CloudEventSubject = NonEmptyStr where brand("CloudEventSubject")
-type CloudEventExtensionName = NonEmptyStr where brand("CloudEventExtensionName")
-type CloudEventExtensionValue = NonEmptyStr where brand("CloudEventExtensionValue")
+type CloudEventId = std.types.NonEmptyStr where brand("CloudEventId")
+type CloudEventSource = std.types.NonEmptyStr where brand("CloudEventSource")
+type CloudEventSpecVersion = std.types.NonEmptyStr where brand("CloudEventSpecVersion")
+type CloudEventType = std.types.NonEmptyStr where brand("CloudEventType")
+type CloudEventSubject = std.types.NonEmptyStr where brand("CloudEventSubject")
+type CloudEventExtensionName = std.types.NonEmptyStr where brand("CloudEventExtensionName")
+type CloudEventExtensionValue = std.types.NonEmptyStr where brand("CloudEventExtensionValue")
 
 type AuditActorKind
   = HumanActor

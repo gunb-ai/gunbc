@@ -56,7 +56,7 @@ type EcmascriptSingletonPrimitiveFacts {
 
 data ecmascript_source_text: String = "function add(x, y) { return x + y; }"
 
-fn ecmascript_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn ecmascript_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^ecmascript_token_kw_function },
     BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_fn_add },
@@ -142,25 +142,25 @@ data ecmascript_singleton_facts_catalog: List<EcmascriptSingletonPrimitiveFacts>
 
 data ecmascript_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
-fn ecmascript_inhabitant_atom(id: Symbol) -> Node {
-  Node {
+fn ecmascript_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn ecmascript_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn ecmascript_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
 fn ecmascript_primitive_facts_node(
-  surface_spelling: Symbol,
-  middle_field_name: Symbol,
-  middle_field_value: Symbol,
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol,
+  middle_field_name: v2.std.node.Symbol,
+  middle_field_value: v2.std.node.Symbol,
+  std_projection: v2.std.node.Symbol
 ) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(
@@ -181,9 +181,9 @@ fn ecmascript_primitive_facts_node(
 }
 
 fn ecmascript_primitive_spec_facts(
-  surface_spelling: Symbol,
-  encoding_value: Symbol
-) -> Map<Symbol, Node> {
+  surface_spelling: v2.std.node.Symbol,
+  encoding_value: v2.std.node.Symbol
+) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
@@ -198,13 +198,13 @@ fn ecmascript_primitive_spec_facts(
 }
 
 fn ecmascript_primitive_algebra_witness_node(
-  witness_field_name: Symbol,
-  witness_tag: Symbol,
-  middle_field_name: Symbol,
-  middle_field_value: Symbol,
-  std_projection: Symbol
+  witness_field_name: v2.std.node.Symbol,
+  witness_tag: v2.std.node.Symbol,
+  middle_field_name: v2.std.node.Symbol,
+  middle_field_value: v2.std.node.Symbol,
+  std_projection: v2.std.node.Symbol
 ) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(
@@ -225,7 +225,7 @@ fn ecmascript_primitive_algebra_witness_node(
 }
 
 fn ecmascript_catalog_surface_symbol_in_rows<T>(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   rows: List<T>,
   row_surface_spelling: fn(T) -> Symbol
 ) -> Bool {
@@ -241,7 +241,7 @@ fn ecmascript_catalog_surface_symbol_in_rows<T>(
 fn ecmascript_primitive_fact_bundles_from_catalog_rows<T>(
   rows: List<T>,
   row_to_bundle: fn(T) -> PrimitiveFactBundle
-) -> List<PrimitiveFactBundle> {
+) -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: rows,
     empty: Empty,
@@ -305,42 +305,42 @@ fn ecmascript_singleton_facts_node(facts: EcmascriptSingletonPrimitiveFacts) -> 
   )
 }
 
-fn ecmascript_number_spec_facts(facts: EcmascriptNumberPrimitiveFacts) -> Map<Symbol, Node> {
+fn ecmascript_number_spec_facts(facts: EcmascriptNumberPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   ecmascript_primitive_spec_facts(
     surface_spelling: facts.surface_spelling,
     encoding_value: facts.machine_representation
   )
 }
 
-fn ecmascript_bigint_spec_facts(facts: EcmascriptBigIntPrimitiveFacts) -> Map<Symbol, Node> {
+fn ecmascript_bigint_spec_facts(facts: EcmascriptBigIntPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   ecmascript_primitive_spec_facts(
     surface_spelling: facts.surface_spelling,
     encoding_value: facts.encoding
   )
 }
 
-fn ecmascript_boolean_spec_facts(facts: EcmascriptBooleanPrimitiveFacts) -> Map<Symbol, Node> {
+fn ecmascript_boolean_spec_facts(facts: EcmascriptBooleanPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   ecmascript_primitive_spec_facts(
     surface_spelling: facts.surface_spelling,
     encoding_value: facts.encoding
   )
 }
 
-fn ecmascript_symbol_spec_facts(facts: EcmascriptSymbolPrimitiveFacts) -> Map<Symbol, Node> {
+fn ecmascript_symbol_spec_facts(facts: EcmascriptSymbolPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   ecmascript_primitive_spec_facts(
     surface_spelling: facts.surface_spelling,
     encoding_value: facts.encoding
   )
 }
 
-fn ecmascript_string_spec_facts(facts: EcmascriptStringPrimitiveFacts) -> Map<Symbol, Node> {
+fn ecmascript_string_spec_facts(facts: EcmascriptStringPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   ecmascript_primitive_spec_facts(
     surface_spelling: facts.surface_spelling,
     encoding_value: facts.encoding
   )
 }
 
-fn ecmascript_singleton_spec_facts(facts: EcmascriptSingletonPrimitiveFacts) -> Map<Symbol, Node> {
+fn ecmascript_singleton_spec_facts(facts: EcmascriptSingletonPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   ecmascript_primitive_spec_facts(
     surface_spelling: facts.surface_spelling,
     encoding_value: ^ecmascript_repr_singleton_sole_inhabitant
@@ -349,8 +349,8 @@ fn ecmascript_singleton_spec_facts(facts: EcmascriptSingletonPrimitiveFacts) -> 
 
 fn ecmascript_primitive_bundle_from_number_facts(
   facts: EcmascriptNumberPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: ecmascript_number_facts_node(facts: facts),
     spec_facts: ecmascript_number_spec_facts(facts: facts)
   }
@@ -358,8 +358,8 @@ fn ecmascript_primitive_bundle_from_number_facts(
 
 fn ecmascript_primitive_bundle_from_bigint_facts(
   facts: EcmascriptBigIntPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: ecmascript_bigint_facts_node(facts: facts),
     spec_facts: ecmascript_bigint_spec_facts(facts: facts)
   }
@@ -367,8 +367,8 @@ fn ecmascript_primitive_bundle_from_bigint_facts(
 
 fn ecmascript_primitive_bundle_from_boolean_facts(
   facts: EcmascriptBooleanPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: ecmascript_boolean_facts_node(facts: facts),
     spec_facts: ecmascript_boolean_spec_facts(facts: facts)
   }
@@ -376,8 +376,8 @@ fn ecmascript_primitive_bundle_from_boolean_facts(
 
 fn ecmascript_primitive_bundle_from_symbol_facts(
   facts: EcmascriptSymbolPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: ecmascript_symbol_facts_node(facts: facts),
     spec_facts: ecmascript_symbol_spec_facts(facts: facts)
   }
@@ -385,8 +385,8 @@ fn ecmascript_primitive_bundle_from_symbol_facts(
 
 fn ecmascript_primitive_bundle_from_string_facts(
   facts: EcmascriptStringPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: ecmascript_string_facts_node(facts: facts),
     spec_facts: ecmascript_string_spec_facts(facts: facts)
   }
@@ -394,14 +394,14 @@ fn ecmascript_primitive_bundle_from_string_facts(
 
 fn ecmascript_primitive_bundle_from_singleton_facts(
   facts: EcmascriptSingletonPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: ecmascript_singleton_facts_node(facts: facts),
     spec_facts: ecmascript_singleton_spec_facts(facts: facts)
   }
 }
 
-fn ecmascript_primitive_bundles_from_number_catalog() -> List<PrimitiveFactBundle> {
+fn ecmascript_primitive_bundles_from_number_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   ecmascript_primitive_fact_bundles_from_catalog_rows(
     rows: ecmascript_number_facts_catalog,
     row_to_bundle: fn(facts) {
@@ -410,7 +410,7 @@ fn ecmascript_primitive_bundles_from_number_catalog() -> List<PrimitiveFactBundl
   )
 }
 
-fn ecmascript_primitive_bundles_from_bigint_catalog() -> List<PrimitiveFactBundle> {
+fn ecmascript_primitive_bundles_from_bigint_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   ecmascript_primitive_fact_bundles_from_catalog_rows(
     rows: ecmascript_bigint_facts_catalog,
     row_to_bundle: fn(facts) {
@@ -419,7 +419,7 @@ fn ecmascript_primitive_bundles_from_bigint_catalog() -> List<PrimitiveFactBundl
   )
 }
 
-fn ecmascript_primitive_bundles_from_boolean_catalog() -> List<PrimitiveFactBundle> {
+fn ecmascript_primitive_bundles_from_boolean_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   ecmascript_primitive_fact_bundles_from_catalog_rows(
     rows: ecmascript_boolean_facts_catalog,
     row_to_bundle: fn(facts) {
@@ -428,7 +428,7 @@ fn ecmascript_primitive_bundles_from_boolean_catalog() -> List<PrimitiveFactBund
   )
 }
 
-fn ecmascript_primitive_bundles_from_symbol_catalog() -> List<PrimitiveFactBundle> {
+fn ecmascript_primitive_bundles_from_symbol_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   ecmascript_primitive_fact_bundles_from_catalog_rows(
     rows: ecmascript_symbol_facts_catalog,
     row_to_bundle: fn(facts) {
@@ -437,7 +437,7 @@ fn ecmascript_primitive_bundles_from_symbol_catalog() -> List<PrimitiveFactBundl
   )
 }
 
-fn ecmascript_primitive_bundles_from_string_catalog() -> List<PrimitiveFactBundle> {
+fn ecmascript_primitive_bundles_from_string_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   ecmascript_primitive_fact_bundles_from_catalog_rows(
     rows: ecmascript_string_facts_catalog,
     row_to_bundle: fn(facts) {
@@ -446,7 +446,7 @@ fn ecmascript_primitive_bundles_from_string_catalog() -> List<PrimitiveFactBundl
   )
 }
 
-fn ecmascript_primitive_bundles_from_singleton_catalog() -> List<PrimitiveFactBundle> {
+fn ecmascript_primitive_bundles_from_singleton_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   ecmascript_primitive_fact_bundles_from_catalog_rows(
     rows: ecmascript_singleton_facts_catalog,
     row_to_bundle: fn(facts) {
@@ -455,7 +455,7 @@ fn ecmascript_primitive_bundles_from_singleton_catalog() -> List<PrimitiveFactBu
   )
 }
 
-fn ecmascript_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn ecmascript_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: list_append(
@@ -504,34 +504,34 @@ fn ecmascript_boolean_algebra_witness_node(facts: EcmascriptBooleanPrimitiveFact
   )
 }
 
-fn ecmascript_number_algebra_inhabitance(facts: EcmascriptNumberPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn ecmascript_number_algebra_inhabitance(facts: EcmascriptNumberPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = ecmascript_number_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: approximate_field_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: ecmascript_number_algebra_witness_node(facts: facts)
   }
 }
 
-fn ecmascript_bigint_algebra_inhabitance(facts: EcmascriptBigIntPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn ecmascript_bigint_algebra_inhabitance(facts: EcmascriptBigIntPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = ecmascript_bigint_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: ordered_ring_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: ecmascript_bigint_algebra_witness_node(facts: facts)
   }
 }
 
-fn ecmascript_boolean_algebra_inhabitance(facts: EcmascriptBooleanPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn ecmascript_boolean_algebra_inhabitance(facts: EcmascriptBooleanPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = ecmascript_boolean_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: boolean_algebra_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: ecmascript_boolean_algebra_witness_node(facts: facts)
   }
 }
 
-fn ecmascript_number_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn ecmascript_number_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: ecmascript_number_facts_catalog,
     empty: Empty,
@@ -541,7 +541,7 @@ fn ecmascript_number_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl>
   )
 }
 
-fn ecmascript_bigint_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn ecmascript_bigint_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: ecmascript_bigint_facts_catalog,
     empty: Empty,
@@ -551,7 +551,7 @@ fn ecmascript_bigint_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl>
   )
 }
 
-fn ecmascript_boolean_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn ecmascript_boolean_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: ecmascript_boolean_facts_catalog,
     empty: Empty,
@@ -561,7 +561,7 @@ fn ecmascript_boolean_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl
   )
 }
 
-fn ecmascript_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn ecmascript_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   list_append(
     left: list_append(
       left: ecmascript_number_algebra_inhabitance_decls(),
@@ -571,18 +571,18 @@ fn ecmascript_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn ecmascript_model_core() -> ModelCore {
-  ModelCore {
+fn ecmascript_model_core() -> v2.std.model_core.ModelCore {
+  v2.std.model_core.ModelCore {
     primitives: ecmascript_primitive_fact_bundles(),
     inhabitance: ecmascript_model_core_inhabitance_decls(),
     laws: [],
-    effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+    effects: v2.std.model_core.EffectSemanticsDecl { operations: [] },
+    partiality: v2.std.model_core.PartialitySemanticsDecl { operations: [] }
   }
 }
 
-fn ecmascript_inhabitant_node(id: Symbol, facts: Node) -> Node {
-  Node {
+fn ecmascript_inhabitant_node(id: v2.std.node.Symbol, facts: Node) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_atom, target: ecmascript_inhabitant_atom(id: id)),
@@ -607,7 +607,7 @@ fn ecmascript_bigint_inhabitant_node() -> Node {
 }
 
 fn ecmascript_declared_inhabitants_root() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_number, target: ecmascript_number_inhabitant_node()),
@@ -622,23 +622,23 @@ fn ecmascript_selection_policy_node() -> Node {
 }
 
 fn ecmascript_emitted_add_fn_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: ecmascript_number_inhabitant_node() },
-      Edge { label: Positional, target: ecmascript_number_inhabitant_node() },
-      Edge { label: Positional, target: ecmascript_number_inhabitant_node() }
+      v2.std.node.Edge { label: Positional, target: ecmascript_number_inhabitant_node() },
+      v2.std.node.Edge { label: Positional, target: ecmascript_number_inhabitant_node() },
+      v2.std.node.Edge { label: Positional, target: ecmascript_number_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn ecmascript_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+fn ecmascript_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> Node {
 
   concrete_syntax_token_to_node(token: token)
 }
 
-fn ecmascript_serialize_source_children() -> List<Edge> {
+fn ecmascript_serialize_source_children() -> List<v2.std.node.Edge> {
   list_append(
     left: [
       ecmascript_named_edge(name: ^serialize_source_field_source_text, target: ecmascript_inhabitant_atom(id: ^ecmascript_source_literal)),
@@ -657,14 +657,14 @@ fn ecmascript_serialize_source_children() -> List<Edge> {
 }
 
 fn ecmascript_serialize_source_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: ecmascript_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn ecmascript_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
+fn ecmascript_formal_rhs_from_token_classes() -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: ecmascript_concrete_tokens(),
     empty: Empty,
@@ -677,11 +677,11 @@ fn ecmascript_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   )
 }
 
-fn ecmascript_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
+fn ecmascript_formal_symbol_to_grammar_expr(sym: v2.std.grammar.FormalGrammarSymbol) -> v2.std.grammar.GrammarExpr {
   formal_grammar_symbol_to_grammar_expr(sym: sym)
 }
 
-fn ecmascript_formal_epsilon_grammar_expr() -> GrammarExpr {
+fn ecmascript_formal_epsilon_grammar_expr() -> v2.std.grammar.GrammarExpr {
   Optional {
     element: Terminal { token_class: ^ecmascript_formal_epsilon_shim_terminal, stamp: StampClass }
   }
@@ -691,7 +691,7 @@ type EcmascriptFormalRhsToExprState
   = EcmascriptFormalRhsToExprUninitialized
   | EcmascriptFormalRhsToExprReady { expr: v2.std.grammar.GrammarExpr }
 
-fn ecmascript_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> GrammarExpr {
+fn ecmascript_formal_rhs_to_grammar_expr(rhs: List<v2.std.grammar.FormalGrammarSymbol>) -> v2.std.grammar.GrammarExpr {
   match fold_list(
     xs: rhs,
     empty: EcmascriptFormalRhsToExprUninitialized,
@@ -716,7 +716,7 @@ type EcmascriptFormalAltChoiceState
   = EcmascriptFormalAltChoiceUninitialized
   | EcmascriptFormalAltChoiceReady { expr: v2.std.grammar.GrammarExpr }
 
-fn ecmascript_formal_alternatives_to_choice_expr(alts: List<List<FormalGrammarSymbol>>) -> GrammarExpr {
+fn ecmascript_formal_alternatives_to_choice_expr(alts: List<List<v2.std.grammar.FormalGrammarSymbol>>) -> v2.std.grammar.GrammarExpr {
   match fold_list(
     xs: alts,
     empty: EcmascriptFormalAltChoiceUninitialized,
@@ -737,20 +737,20 @@ fn ecmascript_formal_alternatives_to_choice_expr(alts: List<List<FormalGrammarSy
   }
 }
 
-fn ecmascript_formal_rhs_alternatives_accum_empty() -> List<List<FormalGrammarSymbol>> {
+fn ecmascript_formal_rhs_alternatives_accum_empty() -> List<List<v2.std.grammar.FormalGrammarSymbol>> {
   Empty
 }
 
 fn ecmascript_formal_collect_rhs_alternative(
-  acc: List<List<FormalGrammarSymbol>>,
-  prod: FormalProduction
-) -> List<List<FormalGrammarSymbol>> {
+  acc: List<List<v2.std.grammar.FormalGrammarSymbol>>,
+  prod: v2.std.grammar.FormalProduction
+) -> List<List<v2.std.grammar.FormalGrammarSymbol>> {
   list_snoc_item(xs: acc, item: prod.rhs)
 }
 
 fn ecmascript_formal_rhs_alternatives_from_productions(
-  prods: List<FormalProduction>
-) -> List<List<FormalGrammarSymbol>> {
+  prods: List<v2.std.grammar.FormalProduction>
+) -> List<List<v2.std.grammar.FormalGrammarSymbol>> {
   fold_list(
     xs: prods,
     empty: ecmascript_formal_rhs_alternatives_accum_empty(),
@@ -758,25 +758,25 @@ fn ecmascript_formal_rhs_alternatives_from_productions(
   )
 }
 
-fn ecmascript_formal_productions_to_grammar_expr(prods: List<FormalProduction>) -> GrammarExpr {
+fn ecmascript_formal_productions_to_grammar_expr(prods: List<v2.std.grammar.FormalProduction>) -> v2.std.grammar.GrammarExpr {
   ecmascript_formal_alternatives_to_choice_expr(
     alts: ecmascript_formal_rhs_alternatives_from_productions(prods: prods)
   )
 }
 
 fn ecmascript_formal_production_alts(
-  head: FormalProduction,
-  alts: List<FormalProduction>
-) -> List<FormalProduction> {
+  head: v2.std.grammar.FormalProduction,
+  alts: List<v2.std.grammar.FormalProduction>
+) -> List<v2.std.grammar.FormalProduction> {
   list_append(left: [head], right: alts)
 }
 
 fn ecmascript_formal_productions_to_grammar_production(
-  head: FormalProduction,
-  alts: List<FormalProduction>,
-  emitted: Symbol
-) -> GrammarProduction {
-  GrammarProduction {
+  head: v2.std.grammar.FormalProduction,
+  alts: List<v2.std.grammar.FormalProduction>,
+  emitted: v2.std.node.Symbol
+) -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: head.lhs.identity,
     expression: ecmascript_formal_productions_to_grammar_expr(
       prods: ecmascript_formal_production_alts(head: head, alts: alts)
@@ -785,19 +785,19 @@ fn ecmascript_formal_productions_to_grammar_production(
   }
 }
 
-fn ecmascript_formal_production_fn_add() -> FormalProduction {
+fn ecmascript_formal_production_fn_add() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^ecmascript_production_fn_add,
     rhs: ecmascript_formal_rhs_from_token_classes()
   )
 }
 
-fn ecmascript_formal_productions() -> List<FormalProduction> {
+fn ecmascript_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   [ecmascript_formal_production_fn_add()]
 }
 
-fn ecmascript_grammar_production_fn_add() -> GrammarProduction {
-  GrammarProduction {
+fn ecmascript_grammar_production_fn_add() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^ecmascript_production_fn_add,
     expression: ecmascript_formal_productions_to_grammar_expr(
       prods: [ecmascript_formal_production_fn_add()]
@@ -815,7 +815,7 @@ fn ecmascript_grammar_relation_row() -> EcmascriptGrammarRelationRow {
 }
 
 fn ecmascript_grammar_relation_row_node(row: EcmascriptGrammarRelationRow) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(name: ^grammar_relation_field_production, target: formal_production_to_node(production: row.production)),
@@ -833,7 +833,7 @@ fn ecmascript_grammar_relation_row_node(row: EcmascriptGrammarRelationRow) -> No
 }
 
 fn ecmascript_translation_rules_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(
@@ -846,7 +846,7 @@ fn ecmascript_translation_rules_node() -> Node {
 }
 
 fn ecmascript_target_model_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(name: ^target_model_edge_selection_policy, target: ecmascript_selection_policy_node()),
@@ -858,7 +858,7 @@ fn ecmascript_target_model_node() -> Node {
 }
 }
 
-fn ecmascript_binding_spellings() -> Map<Symbol, String> {
+fn ecmascript_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(
       map_insert(empty_map(), ^ecmascript_binding_fn_add, "add"),
@@ -870,8 +870,8 @@ fn ecmascript_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn ecmascript_target_model() -> TargetModel {
-  TargetModel {
+fn ecmascript_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: ecmascript_target_model_node(),
     lex: ecmascript_lex(),
@@ -882,25 +882,25 @@ fn ecmascript_target_model() -> TargetModel {
   }
 }
 
-fn ecmascript_lex_rule(token_class: Symbol, text: String) -> LexRule {
+fn ecmascript_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
   TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
-fn ecmascript_ident_lex_pattern() -> LexPattern {
+fn ecmascript_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
     right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
 
-fn ecmascript_ident_lex_rule() -> LexRule {
+fn ecmascript_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: ^ecmascript_token_ident,
     pattern: ecmascript_ident_lex_pattern()
   }
 }
 
-fn ecmascript_nonzero_digit_char_pattern() -> LexPattern {
+fn ecmascript_nonzero_digit_char_pattern() -> v2.std.compilers.lexing.LexPattern {
   ChoicePattern {
     left: CharPattern { char: 49 },
     right: ChoicePattern {
@@ -928,7 +928,7 @@ fn ecmascript_nonzero_digit_char_pattern() -> LexPattern {
   }
 }
 
-fn ecmascript_decimal_int_literal_pattern() -> LexPattern {
+fn ecmascript_decimal_int_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
   ChoicePattern {
     left: LiteralPattern { text: "0" },
     right: SequencePattern {
@@ -938,15 +938,15 @@ fn ecmascript_decimal_int_literal_pattern() -> LexPattern {
   }
 }
 
-fn ecmascript_int_literal_lex_rule() -> LexRule {
+fn ecmascript_int_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: ^ecmascript_token_int_literal,
     pattern: ecmascript_decimal_int_literal_pattern()
   }
 }
 
-fn ecmascript_lex_rules() -> LexRuleSet {
-  LexRuleSet {
+fn ecmascript_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
+  v2.std.compilers.lexing.LexRuleSet {
     rules: [
       ecmascript_lex_rule(token_class: ^ecmascript_token_rparen_lbrace_inner_open, text: ") {\n        "),
       ecmascript_lex_rule(token_class: ^ecmascript_token_rparen_lbrace_open, text: ") { "),
@@ -975,16 +975,16 @@ fn ecmascript_lex_rules() -> LexRuleSet {
   }
 }
 
-fn ecmascript_lex() -> LexRules {
+fn ecmascript_lex() -> v2.std.compilers.lexing.LexRules {
   ModeledLexRules { root: ecmascript_lex_rules() }
 }
 
-fn ecmascript_grammar_atom(id: Symbol) -> Node {
+fn ecmascript_grammar_atom(id: v2.std.node.Symbol) -> Node {
   ecmascript_inhabitant_atom(id: id)
 }
 
-fn ecmascript_grammar_root() -> GrammarRoot {
-  GrammarRoot {
+fn ecmascript_grammar_root() -> v2.std.grammar.GrammarRoot {
+  v2.std.grammar.GrammarRoot {
     start: ^ecmascript_production_fn_decl,
     productions: [
       ecmascript_grammar_production_fn_add(),
@@ -1161,18 +1161,18 @@ fn ecmascript_grammar_root() -> GrammarRoot {
   }
 }
 
-fn ecmascript_grammar() -> ParseGrammar {
+fn ecmascript_grammar() -> v2.std.grammar.ParseGrammar {
   ModeledGrammar { root: ecmascript_grammar_root() }
 }
 
-fn ecmascript_lex_token_symbol(sym: Symbol) -> Bool {
+fn ecmascript_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
   lex_rule_set_token_class_member(
     rules: ecmascript_lex_rules(),
     token_class: sym
   )
 }
 
-fn ecmascript_number_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn ecmascript_number_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   ecmascript_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: ecmascript_number_facts_catalog,
@@ -1180,7 +1180,7 @@ fn ecmascript_number_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn ecmascript_bigint_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn ecmascript_bigint_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   ecmascript_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: ecmascript_bigint_facts_catalog,
@@ -1188,7 +1188,7 @@ fn ecmascript_bigint_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn ecmascript_boolean_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn ecmascript_boolean_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   ecmascript_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: ecmascript_boolean_facts_catalog,
@@ -1196,7 +1196,7 @@ fn ecmascript_boolean_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn ecmascript_string_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn ecmascript_string_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   ecmascript_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: ecmascript_string_facts_catalog,
@@ -1204,7 +1204,7 @@ fn ecmascript_string_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn ecmascript_symbol_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn ecmascript_symbol_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   ecmascript_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: ecmascript_symbol_facts_catalog,
@@ -1212,7 +1212,7 @@ fn ecmascript_symbol_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn ecmascript_singleton_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn ecmascript_singleton_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   ecmascript_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: ecmascript_singleton_facts_catalog,
@@ -1220,7 +1220,7 @@ fn ecmascript_singleton_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn ecmascript_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn ecmascript_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   ecmascript_number_catalog_surface_symbol(sym: sym) ||
     ecmascript_bigint_catalog_surface_symbol(sym: sym) ||
     ecmascript_boolean_catalog_surface_symbol(sym: sym) ||
@@ -1229,7 +1229,7 @@ fn ecmascript_catalog_surface_symbol(sym: Symbol) -> Bool {
     ecmascript_singleton_catalog_surface_symbol(sym: sym)
 }
 
-fn ecmascript_language_model_canonical_symbols() -> Set<Symbol> {
+fn ecmascript_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
   Set {
     member: fn(sym) {
       ecmascript_catalog_surface_symbol(sym: sym) ||
@@ -1242,8 +1242,8 @@ fn ecmascript_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn ecmascript_language_model() -> LanguageModel {
-  LanguageModel {
+fn ecmascript_language_model() -> v2.std.language_model.LanguageModel {
+  v2.std.language_model.LanguageModel {
     lex: ecmascript_lex(),
     grammar: ecmascript_grammar(),
     language_identity: ^ecmascript_language_model_surface_id,

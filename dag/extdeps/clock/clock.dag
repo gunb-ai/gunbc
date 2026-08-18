@@ -2,8 +2,8 @@ module extdeps.clock
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/date.html"
   }
@@ -12,7 +12,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 service Clock {
   operation Now {
     input {}
-    output { timestamp: Timestamp from "stdout" }
+    output { timestamp: std.types.Timestamp from "stdout" }
     readonly
     transport shell { argv: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"] }
     exit {

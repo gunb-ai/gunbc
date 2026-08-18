@@ -245,9 +245,9 @@ fn spark_serving_frozen_linger_effect(row: gunbc.fleet_converge_plan.FleetConver
 // rendered as an empty observed population would plan every member as an addition against a host
 // nobody saw.
 fn spark_serving_full_membership_plan(
-  occurrence: SparkServingOccurrence,
-  serving_release: SparkServingRelease,
-  projection: SparkServingObservedMemberProjection,
+  occurrence: gunbc.spark_serving_release.SparkServingOccurrence,
+  serving_release: gunbc.spark_serving_release.SparkServingRelease,
+  projection: gunbc.spark_serving_observed_members.SparkServingObservedMemberProjection,
 ) -> SparkServingFullMembershipPlan {
   match projection {
     SparkServingObservedMembersRefused { cause: cause } =>

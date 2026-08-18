@@ -31,7 +31,7 @@ fn empty_session_publish_state() -> SessionPublishState {
   }
 }
 
-fn after_local_autosave(state: SessionPublishState, local_commit: CommitSha) -> SessionPublishState {
+fn after_local_autosave(state: SessionPublishState, local_commit: std.types.CommitSha) -> SessionPublishState {
   SessionPublishState {
     local: LocalCheckpointAt { local_commit: local_commit },
     remote_branch: state.remote_branch,
@@ -41,7 +41,7 @@ fn after_local_autosave(state: SessionPublishState, local_commit: CommitSha) -> 
 
 fn after_explicit_publish_push(
   state: SessionPublishState,
-  remote_head: CommitSha,
+  remote_head: std.types.CommitSha,
 ) -> SessionPublishState {
   SessionPublishState {
     local: state.local,
@@ -52,8 +52,8 @@ fn after_explicit_publish_push(
 
 fn after_worker_notification(
   state: SessionPublishState,
-  notified_head: CommitSha,
-  at: Timestamp,
+  notified_head: std.types.CommitSha,
+  at: std.types.Timestamp,
 ) -> SessionPublishState {
   SessionPublishState {
     local: state.local,
@@ -67,8 +67,8 @@ fn after_worker_notification(
 
 fn after_user_intent_publish(
   state: SessionPublishState,
-  published_head: CommitSha,
-  at: Timestamp,
+  published_head: std.types.CommitSha,
+  at: std.types.Timestamp,
 ) -> SessionPublishState {
   after_worker_notification(
     state: after_explicit_publish_push(state: state, remote_head: published_head),
@@ -79,8 +79,8 @@ fn after_user_intent_publish(
 
 fn after_drift_reminder_delivered(
   state: SessionPublishState,
-  current_head: CommitSha,
-  at: Timestamp,
+  current_head: std.types.CommitSha,
+  at: std.types.Timestamp,
 ) -> SessionPublishState {
   after_worker_notification(
     state: state,
@@ -95,21 +95,21 @@ fn observe_without_publishing(state: SessionPublishState) -> SessionPublishState
   state
 }
 
-fn local_checkpoint_commit(state: SessionPublishState) -> CommitSha? {
+fn local_checkpoint_commit(state: SessionPublishState) -> std.types.CommitSha? {
   match state.local {
     LocalCheckpointAbsent => none
     LocalCheckpointAt { local_commit: commit } => Present { value: commit }
   }
 }
 
-fn remote_branch_head(state: SessionPublishState) -> CommitSha? {
+fn remote_branch_head(state: SessionPublishState) -> std.types.CommitSha? {
   match state.remote_branch {
     RemoteBranchPublicationAbsent => none
     RemoteBranchPublicationAt { remote_head: head } => Present { value: head }
   }
 }
 
-fn worker_notification_head(state: SessionPublishState) -> CommitSha? {
+fn worker_notification_head(state: SessionPublishState) -> std.types.CommitSha? {
   match state.worker {
     WorkerNotificationAbsent => none
     WorkerNotificationStamped { notified_head: head, notified_at: _ } => Present { value: head }
@@ -118,7 +118,7 @@ fn worker_notification_head(state: SessionPublishState) -> CommitSha? {
 
 data conflated_checkpoint_note: String = "THE OLD FALLBACK pr_publish_head || pr_publish_notified_head, kept only as a discriminating RED in the harness. Prefers remote branch head over worker notification head. When poll wrongly advanced RemoteBranchPublication past the last WorkerNotification stamp, drift would start from the wrong baseline. Production must call worker_notification_baseline or resolve_drift_diff_start, never this."
 
-fn conflated_checkpoint_baseline(state: SessionPublishState) -> CommitSha? {
+fn conflated_checkpoint_baseline(state: SessionPublishState) -> std.types.CommitSha? {
   match remote_branch_head(state: state) {
     Present { value: remote } => Present { value: remote }
     Absent =>
@@ -133,16 +133,16 @@ fn conflated_checkpoint_baseline(state: SessionPublishState) -> CommitSha? {
   }
 }
 
-fn worker_notification_baseline(state: SessionPublishState) -> CommitSha? {
+fn worker_notification_baseline(state: SessionPublishState) -> std.types.CommitSha? {
   worker_notification_head(state: state)
 }
 
 fn resolve_drift_diff_start(
-  notified_baseline: CommitSha,
-  current_head: CommitSha,
-  merge_base_with_origin: CommitSha?,
+  notified_baseline: std.types.CommitSha,
+  current_head: std.types.CommitSha,
+  merge_base_with_origin: std.types.CommitSha?,
   baseline_is_ancestor_of_merge_base: Bool,
-) -> CommitSha {
+) -> std.types.CommitSha {
   match merge_base_with_origin {
     Absent => notified_baseline
     Present { value: merge_base } =>
@@ -255,7 +255,7 @@ fn publication_is_permitted(disposition: PublicationDisposition) -> Bool {
   }
 }
 
-fn publication_request_from_context(context: PublicationContext) -> PublicationRequest? {
+fn publication_request_from_context(context: PublicationContext) -> gunbc.session_auto_publish_ctrl_ingest.PublicationRequest? {
   match context {
     PublicationContextCtrlUserPublish { request: request } => Present { value: request }
     PublicationContextScratchProbe => Absent
@@ -399,7 +399,7 @@ type RemotePublishAttempt {
 }
 
 fn remote_head_conjunction_refusals(
-  request: PublicationRequest?,
+  request: gunbc.session_auto_publish_ctrl_ingest.PublicationRequest?,
   observed: ObservedRemoteHead,
   current: ObservedRemoteHead,
 ) -> List<PublicationRefusalCause> {
@@ -470,10 +470,10 @@ fn write_set_refusals(
 }
 
 fn post_write_validation_refusals(
-  request: PublicationRequest?,
+  request: gunbc.session_auto_publish_ctrl_ingest.PublicationRequest?,
   receipt: PostWriteValidationReceipt?,
-  declared_digest: Fnv1a64Structural,
-  actual_digest: Fnv1a64Structural,
+  declared_digest: std.content_hash.Fnv1a64Structural,
+  actual_digest: std.content_hash.Fnv1a64Structural,
 ) -> List<PublicationRefusalCause> {
   match request {
     Absent => []
@@ -499,8 +499,8 @@ fn post_write_validation_refusals(
 }
 
 fn local_head_validation_refusals(
-  request: PublicationRequest?,
-  current_local_head: CommitSha?,
+  request: gunbc.session_auto_publish_ctrl_ingest.PublicationRequest?,
+  current_local_head: std.types.CommitSha?,
 ) -> List<PublicationRefusalCause> {
   match request {
     Absent => []
@@ -530,11 +530,11 @@ fn remote_publish_conjunction_refusals(
 ) -> List<PublicationRefusalCause> {
   let request = publication_request_from_context(context: attempt.context)
   let declared_digest = match attempt.post_write_validation {
-    Absent => Fnv1a64Structural { digest: "0000000000000000" }
+    Absent => std.content_hash.Fnv1a64Structural { digest: "0000000000000000" }
     Present { value: receipt } => receipt.declared_write_set_digest
   }
   let actual_digest = match attempt.post_write_validation {
-    Absent => Fnv1a64Structural { digest: "0000000000000000" }
+    Absent => std.content_hash.Fnv1a64Structural { digest: "0000000000000000" }
     Present { value: receipt } => receipt.actual_write_set_digest
   }
   append(

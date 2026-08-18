@@ -14,7 +14,7 @@ type CursorSdkAuthProbeResult
   | CursorSdkAuthProbeUnclassified { reason: std.types.NonEmptyStr }
 
 fn cursor_sdk_auth_probe_from_reconcile(
-  reconcile: CursorSdkStreamTerminalReconcile,
+  reconcile: extdeps.llm.cursor_stream.CursorSdkStreamTerminalReconcile,
 ) -> CursorSdkAuthProbeResult {
   match reconcile {
     CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalFinished, error: _, raw: _ } =>
@@ -29,12 +29,12 @@ fn cursor_sdk_auth_probe_from_reconcile(
           }
         CursorSdkTerminalErrorAbsent =>
           CursorSdkAuthProbeUnclassified {
-            reason: "terminal error status without error object" as NonEmptyStr,
+            reason: "terminal error status without error object" as std.types.NonEmptyStr,
           }
       }
     CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } =>
       CursorSdkAuthProbeUnclassified {
-        reason: "non-error terminal status is not an auth probe" as NonEmptyStr,
+        reason: "non-error terminal status is not an auth probe" as std.types.NonEmptyStr,
       }
     CursorSdkStreamTerminalsUnclassified { reason: reason, raw: _ } =>
       CursorSdkAuthProbeUnclassified { reason: reason }

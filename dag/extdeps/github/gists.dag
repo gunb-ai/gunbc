@@ -2,8 +2,8 @@ module extdeps.github.gists
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/gists/gists"
   }
@@ -47,8 +47,8 @@ service github.Gist {
       auth_token: Secret
     }
     output {
-      id: GistId
-      html_url: NonEmptyStr
+      id: std.types.GistId
+      html_url: std.types.NonEmptyStr
     }
     transport rest {
       method: POST,

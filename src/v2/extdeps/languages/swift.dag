@@ -80,7 +80,7 @@ type SwiftGrammarRelationRow {
   emitted: Node
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
-fn swift_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn swift_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^swift_token_kw_func },
     BoundToken { token_class: ^swift_token_ident, binding: ^swift_binding_fn_add },
@@ -250,16 +250,16 @@ data swift_nonnumeric_facts_catalog: List<SwiftNonNumericPrimitiveFacts> = [
 
 data swift_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
-fn swift_atom(id: Symbol) -> Node {
-  Node {
+fn swift_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn swift_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn swift_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
 fn swift_signedness_node(signedness: SwiftIntSignedness) -> Node {
@@ -324,7 +324,7 @@ fn swift_nonnumeric_scalar_classifier_node(facts: SwiftNonNumericPrimitiveFacts)
 }
 
 fn swift_integer_facts_node(facts: SwiftIntegerPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
@@ -349,7 +349,7 @@ fn swift_integer_facts_node(facts: SwiftIntegerPrimitiveFacts) -> Node {
 }
 
 fn swift_float_facts_node(facts: SwiftFloatPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
@@ -369,7 +369,7 @@ fn swift_float_facts_node(facts: SwiftFloatPrimitiveFacts) -> Node {
 }
 }
 
-fn swift_nonnumeric_surface_spelling(facts: SwiftNonNumericPrimitiveFacts) -> Symbol {
+fn swift_nonnumeric_surface_spelling(facts: SwiftNonNumericPrimitiveFacts) -> v2.std.node.Symbol {
   match facts {
     SwiftBoolPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
     SwiftCharacterPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
@@ -379,7 +379,7 @@ fn swift_nonnumeric_surface_spelling(facts: SwiftNonNumericPrimitiveFacts) -> Sy
 }
 
 fn swift_nonnumeric_facts_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
@@ -399,8 +399,8 @@ fn swift_nonnumeric_facts_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
 }
 }
 
-fn swift_integer_inhabitant_node(id: Symbol, facts: SwiftIntegerPrimitiveFacts) -> Node {
-  Node {
+fn swift_integer_inhabitant_node(id: v2.std.node.Symbol, facts: SwiftIntegerPrimitiveFacts) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(name: ^swift_inhabitant_field_atom, target: swift_atom(id: id)),
@@ -418,7 +418,7 @@ fn swift_inhabitant_int32_node() -> Node {
 }
 
 fn swift_declared_inhabitants_root() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(name: ^swift_inhabitant_field_int32, target: swift_inhabitant_int32_node())
@@ -432,12 +432,12 @@ fn swift_selection_policy_node() -> Node {
 }
 
 fn swift_emitted_add_fn_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: swift_inhabitant_int32_node() },
-      Edge { label: Positional, target: swift_inhabitant_int32_node() },
-      Edge { label: Positional, target: swift_inhabitant_int32_node() }
+      v2.std.node.Edge { label: Positional, target: swift_inhabitant_int32_node() },
+      v2.std.node.Edge { label: Positional, target: swift_inhabitant_int32_node() },
+      v2.std.node.Edge { label: Positional, target: swift_inhabitant_int32_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -447,12 +447,12 @@ fn swift_source_text_authority() -> String {
   swift_source_text
 }
 
-fn swift_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+fn swift_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> Node {
 
   concrete_syntax_token_to_node(token: token)
 }
 
-fn swift_serialize_source_prefix_edges() -> List<Edge> {
+fn swift_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
   Cons {
     head: swift_named_edge(
       name: ^serialize_source_field_source_text,
@@ -468,7 +468,7 @@ fn swift_serialize_source_prefix_edges() -> List<Edge> {
   }
 }
 
-fn swift_serialize_source_children() -> List<Edge> {
+fn swift_serialize_source_children() -> List<v2.std.node.Edge> {
   list_append(
     left: swift_serialize_source_prefix_edges(),
     right: [
@@ -485,18 +485,18 @@ fn swift_serialize_source_children() -> List<Edge> {
 
 fn swift_serialize_source_node() -> Node {
   let _authority = swift_source_text_authority()
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: swift_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn swift_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+fn swift_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-fn swift_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken) -> GrammarExpr {
+fn swift_grammar_sequence_fold_step(acc: v2.std.grammar.GrammarExpr, token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.grammar.GrammarExpr {
   let token_class = concrete_syntax_token_class(token: token)
   if token_class == ^swift_token_kw_func {
     acc
@@ -508,7 +508,7 @@ fn swift_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken
   }
 }
 
-fn swift_grammar_sequence_from_token_classes() -> GrammarExpr {
+fn swift_grammar_sequence_from_token_classes() -> v2.std.grammar.GrammarExpr {
   fold_list(
     xs: swift_concrete_tokens(),
     empty: swift_grammar_terminal(token_class: ^swift_token_kw_func),
@@ -527,7 +527,7 @@ fn swift_grammar_relation_row() -> SwiftGrammarRelationRow {
 }
 
 fn swift_grammar_relation_row_node(row: SwiftGrammarRelationRow) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
@@ -548,7 +548,7 @@ fn swift_grammar_relation_row_node(row: SwiftGrammarRelationRow) -> Node {
 }
 
 fn swift_translation_rules_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
@@ -561,7 +561,7 @@ fn swift_translation_rules_node() -> Node {
 }
 
 fn swift_target_model_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
@@ -585,7 +585,7 @@ fn swift_target_model_node() -> Node {
 }
 }
 
-fn swift_binding_spellings() -> Map<Symbol, String> {
+fn swift_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(
       map_insert(
@@ -605,8 +605,8 @@ fn swift_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn swift_target_model() -> TargetModel {
-  TargetModel {
+fn swift_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: swift_target_model_node(),
     lex: swift_lex(),
@@ -617,48 +617,48 @@ fn swift_target_model() -> TargetModel {
   }
 }
 
-fn swift_lex_rule(token_class: Symbol, text: String) -> LexRule {
+fn swift_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: token_class,
     pattern: LiteralPattern { text: text }
   }
 }
 
-fn swift_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
+fn swift_keyword_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: token_class,
     pattern: KeywordPattern { text: text }
   }
 }
 
-fn swift_whitespace_trivia_rule() -> LexRule {
+fn swift_whitespace_trivia_rule() -> v2.std.compilers.lexing.LexRule {
   TriviaRule {
     pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
   }
 }
 
-fn swift_ident_lex_pattern() -> LexPattern {
+fn swift_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
     right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
 
-fn swift_ident_lex_rule() -> LexRule {
+fn swift_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: ^swift_token_ident,
     pattern: swift_ident_lex_pattern()
   }
 }
 
-fn swift_int_literal_lex_rule() -> LexRule {
+fn swift_int_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: ^swift_token_int_literal,
     pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
   }
 }
 
-fn swift_string_literal_lex_rule() -> LexRule {
+fn swift_string_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: ^swift_token_string_literal,
     pattern: DelimitedPattern {
@@ -669,7 +669,7 @@ fn swift_string_literal_lex_rule() -> LexRule {
   }
 }
 
-fn swift_infix_operator_lex_pattern() -> LexPattern {
+fn swift_infix_operator_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   ChoicePattern {
     left: LiteralPattern { text: "==" },
     right: ChoicePattern {
@@ -703,15 +703,15 @@ fn swift_infix_operator_lex_pattern() -> LexPattern {
   }
 }
 
-fn swift_infix_operator_lex_rule() -> LexRule {
+fn swift_infix_operator_lex_rule() -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: ^swift_token_operator,
     pattern: swift_infix_operator_lex_pattern()
   }
 }
 
-fn swift_lex_rules() -> LexRuleSet {
-  LexRuleSet {
+fn swift_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
+  v2.std.compilers.lexing.LexRuleSet {
     rules: [
       swift_whitespace_trivia_rule(),
       swift_string_literal_lex_rule(),
@@ -751,24 +751,24 @@ fn swift_lex_rules() -> LexRuleSet {
   }
 }
 
-fn swift_lex() -> LexRules {
+fn swift_lex() -> v2.std.compilers.lexing.LexRules {
   ModeledLexRules { root: swift_lex_rules() }
 }
 
-fn swift_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn swift_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   list_map(xs: tokens, f: fn(token) {
     grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
   })
 }
 
-fn swift_formal_production_fn_add() -> FormalProduction {
+fn swift_formal_production_fn_add() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^swift_production_fn_add,
     rhs: swift_formal_rhs_from_tokens(tokens: swift_concrete_tokens())
   )
 }
 
-fn swift_formal_productions() -> List<FormalProduction> {
+fn swift_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(lhs: ^swift_production_type_expr, rhs: [grammar_formal_terminal(identity: ^swift_token_ident)]),
     grammar_formal_production(
@@ -1093,35 +1093,35 @@ fn swift_formal_productions() -> List<FormalProduction> {
   ]
 }
 
-fn swift_grammar_atom(id: Symbol) -> Node {
+fn swift_grammar_atom(id: v2.std.node.Symbol) -> Node {
   swift_atom(id: id)
 }
 
-fn swift_grammar_nonterminal(production: Symbol) -> GrammarExpr {
+fn swift_grammar_nonterminal(production: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
   Nonterminal { production: production }
 }
 
-fn swift_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+fn swift_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
   Sequence { left: left, right: right }
 }
 
-fn swift_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+fn swift_grammar_choice(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
   Choice { left: left, right: right }
 }
 
-fn swift_grammar_optional(element: GrammarExpr) -> GrammarExpr {
+fn swift_grammar_optional(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
   Optional { element: element }
 }
 
-fn swift_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
+fn swift_grammar_repeat(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
   Repeat { element: element }
 }
 
-fn swift_grammar_type_expr() -> GrammarExpr {
+fn swift_grammar_type_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_terminal(token_class: ^swift_token_ident)
 }
 
-fn swift_grammar_typed_param_expr() -> GrammarExpr {
+fn swift_grammar_typed_param_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_sequence(
     left: swift_grammar_terminal(token_class: ^swift_token_ident),
     right: swift_grammar_sequence(
@@ -1131,7 +1131,7 @@ fn swift_grammar_typed_param_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_param_list_expr() -> GrammarExpr {
+fn swift_grammar_param_list_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_optional(
     element: swift_grammar_sequence(
       left: swift_grammar_nonterminal(production: ^swift_production_typed_param),
@@ -1145,11 +1145,11 @@ fn swift_grammar_param_list_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_binary_operator_expr() -> GrammarExpr {
+fn swift_grammar_binary_operator_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_terminal(token_class: ^swift_token_operator)
 }
 
-fn swift_grammar_expr_list_expr() -> GrammarExpr {
+fn swift_grammar_expr_list_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_optional(
     element: swift_grammar_sequence(
       left: swift_grammar_nonterminal(production: ^swift_production_expr),
@@ -1163,7 +1163,7 @@ fn swift_grammar_expr_list_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_primary_expr() -> GrammarExpr {
+fn swift_grammar_primary_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_choice(
     left: swift_grammar_terminal(token_class: ^swift_token_ident),
     right: swift_grammar_choice(
@@ -1188,7 +1188,7 @@ fn swift_grammar_primary_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_call_expr() -> GrammarExpr {
+fn swift_grammar_call_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_sequence(
     left: swift_grammar_nonterminal(production: ^swift_production_primary_expr),
     right: swift_grammar_repeat(
@@ -1203,7 +1203,7 @@ fn swift_grammar_call_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_binary_expr() -> GrammarExpr {
+fn swift_grammar_binary_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_sequence(
     left: swift_grammar_nonterminal(production: ^swift_production_call_expr),
     right: swift_grammar_repeat(
@@ -1215,11 +1215,11 @@ fn swift_grammar_binary_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_expr_expr() -> GrammarExpr {
+fn swift_grammar_expr_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_nonterminal(production: ^swift_production_binary_expr)
 }
 
-fn swift_grammar_return_stmt_expr() -> GrammarExpr {
+fn swift_grammar_return_stmt_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_sequence(
     left: swift_grammar_terminal(token_class: ^swift_token_kw_return),
     right: swift_grammar_optional(
@@ -1228,7 +1228,7 @@ fn swift_grammar_return_stmt_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_let_stmt_expr() -> GrammarExpr {
+fn swift_grammar_let_stmt_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_sequence(
     left: swift_grammar_choice(
       left: swift_grammar_terminal(token_class: ^swift_token_kw_let),
@@ -1254,7 +1254,7 @@ fn swift_grammar_let_stmt_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_if_stmt_expr() -> GrammarExpr {
+fn swift_grammar_if_stmt_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_sequence(
     left: swift_grammar_terminal(token_class: ^swift_token_kw_if),
     right: swift_grammar_sequence(
@@ -1275,7 +1275,7 @@ fn swift_grammar_if_stmt_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_while_stmt_expr() -> GrammarExpr {
+fn swift_grammar_while_stmt_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_sequence(
     left: swift_grammar_terminal(token_class: ^swift_token_kw_while),
     right: swift_grammar_sequence(
@@ -1285,7 +1285,7 @@ fn swift_grammar_while_stmt_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_stmt_expr() -> GrammarExpr {
+fn swift_grammar_stmt_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_choice(
     left: swift_grammar_nonterminal(production: ^swift_production_return_stmt),
     right: swift_grammar_choice(
@@ -1301,13 +1301,13 @@ fn swift_grammar_stmt_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_block_stmt_separator_expr() -> GrammarExpr {
+fn swift_grammar_block_stmt_separator_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_optional(
     element: swift_grammar_terminal(token_class: ^swift_token_semicolon)
   )
 }
 
-fn swift_grammar_block_expr() -> GrammarExpr {
+fn swift_grammar_block_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_sequence(
     left: swift_grammar_terminal(token_class: ^swift_token_lbrace),
     right: swift_grammar_sequence(
@@ -1322,7 +1322,7 @@ fn swift_grammar_block_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_fn_decl_expr() -> GrammarExpr {
+fn swift_grammar_fn_decl_expr() -> v2.std.grammar.GrammarExpr {
   swift_grammar_sequence(
     left: swift_grammar_terminal(token_class: ^swift_token_kw_func),
     right: swift_grammar_sequence(
@@ -1349,127 +1349,127 @@ fn swift_grammar_fn_decl_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_production_fn_add() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_fn_add() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_fn_add,
     expression: swift_grammar_sequence_from_token_classes(),
     emitted: swift_grammar_atom(id: ^swift_surface_fn_item)
   }
 }
 
-fn swift_grammar_production_fn_decl() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_fn_decl() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_fn_decl,
     expression: swift_grammar_fn_decl_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_fn_item)
   }
 }
 
-fn swift_grammar_production_typed_param() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_typed_param() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_typed_param,
     expression: swift_grammar_typed_param_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_typed_param)
   }
 }
 
-fn swift_grammar_production_param_list() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_param_list() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_param_list,
     expression: swift_grammar_param_list_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_param_list)
   }
 }
 
-fn swift_grammar_production_type_expr() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_type_expr() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_type_expr,
     expression: swift_grammar_type_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_type_expr)
   }
 }
 
-fn swift_grammar_production_block() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_block() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_block,
     expression: swift_grammar_block_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_block)
   }
 }
 
-fn swift_grammar_production_stmt() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_stmt() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_stmt,
     expression: swift_grammar_stmt_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_stmt)
   }
 }
 
-fn swift_grammar_production_return_stmt() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_return_stmt() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_return_stmt,
     expression: swift_grammar_return_stmt_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_return_stmt)
   }
 }
 
-fn swift_grammar_production_let_stmt() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_let_stmt() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_let_stmt,
     expression: swift_grammar_let_stmt_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_let_stmt)
   }
 }
 
-fn swift_grammar_production_if_stmt() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_if_stmt() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_if_stmt,
     expression: swift_grammar_if_stmt_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_if_stmt)
   }
 }
 
-fn swift_grammar_production_while_stmt() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_while_stmt() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_while_stmt,
     expression: swift_grammar_while_stmt_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_while_stmt)
   }
 }
 
-fn swift_grammar_production_expr() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_expr() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_expr,
     expression: swift_grammar_expr_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_expr)
   }
 }
 
-fn swift_grammar_production_binary_expr() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_binary_expr() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_binary_expr,
     expression: swift_grammar_binary_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_binary_expr)
   }
 }
 
-fn swift_grammar_production_call_expr() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_call_expr() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_call_expr,
     expression: swift_grammar_call_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_call_expr)
   }
 }
 
-fn swift_grammar_production_primary_expr() -> GrammarProduction {
-  GrammarProduction {
+fn swift_grammar_production_primary_expr() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^swift_production_primary_expr,
     expression: swift_grammar_primary_expr(),
     emitted: swift_grammar_atom(id: ^swift_surface_primary_expr)
   }
 }
 
-fn swift_grammar_root() -> GrammarRoot {
+fn swift_grammar_root() -> v2.std.grammar.GrammarRoot {
   let start = swift_grammar_production_fn_add()
   let fn_decl = swift_grammar_production_fn_decl()
   let typed_param = swift_grammar_production_typed_param()
@@ -1485,7 +1485,7 @@ fn swift_grammar_root() -> GrammarRoot {
   let binary_expr = swift_grammar_production_binary_expr()
   let call_expr = swift_grammar_production_call_expr()
   let primary_expr = swift_grammar_production_primary_expr()
-  GrammarRoot {
+  v2.std.grammar.GrammarRoot {
     start: ^swift_production_fn_decl,
     productions: [
       start,
@@ -1508,18 +1508,18 @@ fn swift_grammar_root() -> GrammarRoot {
   }
 }
 
-fn swift_grammar() -> ParseGrammar {
+fn swift_grammar() -> v2.std.grammar.ParseGrammar {
   ModeledGrammar { root: swift_grammar_root() }
 }
 
-fn swift_lex_token_symbol(sym: Symbol) -> Bool {
+fn swift_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
   lex_rule_set_token_class_member(
     rules: swift_lex_rules(),
     token_class: sym
   )
 }
 
-fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {
+fn swift_empty_primitive_spec_facts() -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
       v2.std.optional.Absent
@@ -1528,15 +1528,15 @@ fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {
 }
 
 fn swift_primitive_fact_map_4(
-  axis0: Symbol,
+  axis0: v2.std.node.Symbol,
   fact0: Node,
-  axis1: Symbol,
+  axis1: v2.std.node.Symbol,
   fact1: Node,
-  axis2: Symbol,
+  axis2: v2.std.node.Symbol,
   fact2: Node,
-  axis3: Symbol,
+  axis3: v2.std.node.Symbol,
   fact3: Node
-) -> Map<Symbol, Node> {
+) -> Map<v2.std.node.Symbol, Node> {
   map_insert(
     map_insert(
       map_insert(
@@ -1553,13 +1553,13 @@ fn swift_primitive_fact_map_4(
 }
 
 fn swift_primitive_fact_map_3(
-  axis0: Symbol,
+  axis0: v2.std.node.Symbol,
   fact0: Node,
-  axis1: Symbol,
+  axis1: v2.std.node.Symbol,
   fact1: Node,
-  axis2: Symbol,
+  axis2: v2.std.node.Symbol,
   fact2: Node
-) -> Map<Symbol, Node> {
+) -> Map<v2.std.node.Symbol, Node> {
   map_insert(
     map_insert(
       map_insert(swift_empty_primitive_spec_facts(), axis0, fact0),
@@ -1572,11 +1572,11 @@ fn swift_primitive_fact_map_3(
 }
 
 fn swift_primitive_fact_map_2(
-  axis0: Symbol,
+  axis0: v2.std.node.Symbol,
   fact0: Node,
-  axis1: Symbol,
+  axis1: v2.std.node.Symbol,
   fact1: Node
-) -> Map<Symbol, Node> {
+) -> Map<v2.std.node.Symbol, Node> {
   map_insert(
     map_insert(swift_empty_primitive_spec_facts(), axis0, fact0),
     axis1,
@@ -1584,8 +1584,8 @@ fn swift_primitive_fact_map_2(
   )
 }
 
-fn swift_primitive_bundle_from_integer_facts(facts: SwiftIntegerPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+fn swift_primitive_bundle_from_integer_facts(facts: SwiftIntegerPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: swift_integer_facts_node(facts: facts),
     spec_facts: swift_primitive_fact_map_4(
       axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
@@ -1600,8 +1600,8 @@ fn swift_primitive_bundle_from_integer_facts(facts: SwiftIntegerPrimitiveFacts) 
   }
 }
 
-fn swift_primitive_bundle_from_float_facts(facts: SwiftFloatPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+fn swift_primitive_bundle_from_float_facts(facts: SwiftFloatPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: swift_float_facts_node(facts: facts),
     spec_facts: swift_primitive_fact_map_3(
       axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
@@ -1616,8 +1616,8 @@ fn swift_primitive_bundle_from_float_facts(facts: SwiftFloatPrimitiveFacts) -> P
 
 fn swift_primitive_bundle_from_nonnumeric_facts(
   facts: SwiftNonNumericPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: swift_nonnumeric_facts_node(facts: facts),
     spec_facts: swift_primitive_fact_map_2(
       axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
@@ -1628,25 +1628,25 @@ fn swift_primitive_bundle_from_nonnumeric_facts(
   }
 }
 
-fn swift_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+fn swift_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   list_map(xs: swift_integer_facts_catalog, f: fn(facts) {
     swift_primitive_bundle_from_integer_facts(facts: facts)
   })
 }
 
-fn swift_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+fn swift_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   list_map(xs: swift_float_facts_catalog, f: fn(facts) {
     swift_primitive_bundle_from_float_facts(facts: facts)
   })
 }
 
-fn swift_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> {
+fn swift_primitive_bundles_from_nonnumeric_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   list_map(xs: swift_nonnumeric_facts_catalog, f: fn(facts) {
     swift_primitive_bundle_from_nonnumeric_facts(facts: facts)
   })
 }
 
-fn swift_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn swift_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: swift_primitive_bundles_from_integer_catalog(),
@@ -1657,7 +1657,7 @@ fn swift_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
 }
 
 fn swift_integer_catalog_surface_symbol_step(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   acc: Bool,
   facts: SwiftIntegerPrimitiveFacts
 ) -> Bool {
@@ -1665,7 +1665,7 @@ fn swift_integer_catalog_surface_symbol_step(
 }
 
 fn swift_float_catalog_surface_symbol_step(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   acc: Bool,
   facts: SwiftFloatPrimitiveFacts
 ) -> Bool {
@@ -1673,14 +1673,14 @@ fn swift_float_catalog_surface_symbol_step(
 }
 
 fn swift_nonnumeric_catalog_surface_symbol_step(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   acc: Bool,
   facts: SwiftNonNumericPrimitiveFacts
 ) -> Bool {
   acc || sym == swift_nonnumeric_surface_spelling(facts: facts)
 }
 
-fn swift_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn swift_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   fold_list(
     xs: swift_integer_facts_catalog,
     empty: false,
@@ -1690,7 +1690,7 @@ fn swift_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn swift_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn swift_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   fold_list(
     xs: swift_float_facts_catalog,
     empty: false,
@@ -1700,7 +1700,7 @@ fn swift_float_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn swift_nonnumeric_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn swift_nonnumeric_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   fold_list(
     xs: swift_nonnumeric_facts_catalog,
     empty: false,
@@ -1710,13 +1710,13 @@ fn swift_nonnumeric_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn swift_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn swift_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   swift_integer_catalog_surface_symbol(sym: sym) ||
     swift_float_catalog_surface_symbol(sym: sym) ||
     swift_nonnumeric_catalog_surface_symbol(sym: sym)
 }
 
-fn swift_language_model_canonical_symbols() -> Set<Symbol> {
+fn swift_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
   Set {
     member: fn(sym) {
       swift_catalog_surface_symbol(sym: sym) ||
@@ -1727,18 +1727,18 @@ fn swift_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn swift_primitive_model_core() -> ModelCore {
-  ModelCore {
+fn swift_primitive_model_core() -> v2.std.model_core.ModelCore {
+  v2.std.model_core.ModelCore {
     primitives: swift_primitive_fact_bundles(),
     inhabitance: [],
     laws: [],
-    effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+    effects: v2.std.model_core.EffectSemanticsDecl { operations: [] },
+    partiality: v2.std.model_core.PartialitySemanticsDecl { operations: [] }
   }
 }
 
-fn swift_primitive_language_model() -> LanguageModel {
-  LanguageModel {
+fn swift_primitive_language_model() -> v2.std.language_model.LanguageModel {
+  v2.std.language_model.LanguageModel {
     lex: VoidLexRules,
     grammar: VoidGrammar,
     language_identity: ^swift_language_model_surface_id,
@@ -1746,8 +1746,8 @@ fn swift_primitive_language_model() -> LanguageModel {
     core: swift_primitive_model_core()
   }
 }
-fn swift_float_inhabitant_node(id: Symbol, facts: SwiftFloatPrimitiveFacts) -> Node {
-  Node {
+fn swift_float_inhabitant_node(id: v2.std.node.Symbol, facts: SwiftFloatPrimitiveFacts) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(name: ^swift_inhabitant_field_atom, target: swift_atom(id: id)),
@@ -1761,7 +1761,7 @@ fn swift_float_inhabitant_node(id: Symbol, facts: SwiftFloatPrimitiveFacts) -> N
 }
 
 fn swift_signed_int_algebra_witness_node(facts: SwiftIntegerPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
@@ -1786,7 +1786,7 @@ fn swift_signed_int_algebra_witness_node(facts: SwiftIntegerPrimitiveFacts) -> N
 }
 
 fn swift_unsigned_int_algebra_witness_node(facts: SwiftIntegerPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
@@ -1811,7 +1811,7 @@ fn swift_unsigned_int_algebra_witness_node(facts: SwiftIntegerPrimitiveFacts) ->
 }
 
 fn swift_float_algebra_witness_node(facts: SwiftFloatPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
@@ -1832,7 +1832,7 @@ fn swift_float_algebra_witness_node(facts: SwiftFloatPrimitiveFacts) -> Node {
 }
 
 fn swift_bool_algebra_witness_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
@@ -1845,7 +1845,7 @@ fn swift_bool_algebra_witness_node() -> Node {
 }
 
 fn swift_string_algebra_witness_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
@@ -1861,15 +1861,15 @@ fn swift_string_algebra_witness_node() -> Node {
 }
 }
 
-fn swift_integer_algebra_inhabitance(facts: SwiftIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn swift_integer_algebra_inhabitance(facts: SwiftIntegerPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = swift_integer_inhabitant_node(id: facts.surface_spelling, facts: facts)
   match facts.signedness {
-    Signed => AlgebraInhabitanceDecl {
+    Signed => v2.std.model_core.AlgebraInhabitanceDecl {
       algebra: ordered_ring_type_node(inhabitant: inhabitant),
       inhabitant: inhabitant,
       witness: swift_signed_int_algebra_witness_node(facts: facts)
     }
-    Unsigned => AlgebraInhabitanceDecl {
+    Unsigned => v2.std.model_core.AlgebraInhabitanceDecl {
       algebra: commutative_semiring_type_node(inhabitant: inhabitant),
       inhabitant: inhabitant,
       witness: swift_unsigned_int_algebra_witness_node(facts: facts)
@@ -1877,47 +1877,47 @@ fn swift_integer_algebra_inhabitance(facts: SwiftIntegerPrimitiveFacts) -> Algeb
   }
 }
 
-fn swift_float_algebra_inhabitance(facts: SwiftFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn swift_float_algebra_inhabitance(facts: SwiftFloatPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = swift_float_inhabitant_node(id: facts.surface_spelling, facts: facts)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: approximate_field_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: swift_float_algebra_witness_node(facts: facts)
   }
 }
 
-fn swift_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+fn swift_bool_algebra_inhabitance() -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = swift_nonnumeric_facts_node(facts: swift_facts_bool)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: boolean_algebra_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: swift_bool_algebra_witness_node()
   }
 }
 
-fn swift_string_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+fn swift_string_algebra_inhabitance() -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = swift_nonnumeric_facts_node(facts: swift_facts_string)
   let code_unit = swift_atom(id: ^swift_inhabitant_unicode_scalar)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: free_monoid_type_node(inhabitant: code_unit),
     inhabitant: inhabitant,
     witness: swift_string_algebra_witness_node()
   }
 }
 
-fn swift_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn swift_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   list_map(xs: swift_integer_facts_catalog, f: fn(facts) {
     swift_integer_algebra_inhabitance(facts: facts)
   })
 }
 
-fn swift_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn swift_float_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   list_map(xs: swift_float_facts_catalog, f: fn(facts) {
     swift_float_algebra_inhabitance(facts: facts)
   })
 }
 
-fn swift_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn swift_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   list_append(
     left: list_append(
       left: list_append(
@@ -1951,7 +1951,7 @@ type SwiftModelCoreLawKey
   | SwiftLawStringConcatRightIdentity
 
 fn swift_model_core_law_node(witness: Node, algebra: Node, key: SwiftModelCoreLawKey) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(name: ^model_core_law_field_subject, target: witness),
@@ -1965,14 +1965,14 @@ fn swift_model_core_law_node(witness: Node, algebra: Node, key: SwiftModelCoreLa
 }
 }
 
-fn swift_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {
-  AlgebraLawObligation {
+fn swift_model_core_law_obligation(witness: Node, law: Node) -> v2.std.model_core.AlgebraLawObligation {
+  v2.std.model_core.AlgebraLawObligation {
     inhabitance_witness: witness,
     law: law
   }
 }
 
-fn swift_signed_int_law_obligations(facts: SwiftIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+fn swift_signed_int_law_obligations(facts: SwiftIntegerPrimitiveFacts) -> List<v2.std.model_core.AlgebraLawObligation> {
   let inhabitant = swift_integer_inhabitant_node(id: facts.surface_spelling, facts: facts)
   let algebra = ordered_ring_type_node(inhabitant: inhabitant)
   let witness = swift_signed_int_algebra_witness_node(facts: facts)
@@ -2004,7 +2004,7 @@ fn swift_signed_int_law_obligations(facts: SwiftIntegerPrimitiveFacts) -> List<A
   ]
 }
 
-fn swift_unsigned_int_law_obligations(facts: SwiftIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+fn swift_unsigned_int_law_obligations(facts: SwiftIntegerPrimitiveFacts) -> List<v2.std.model_core.AlgebraLawObligation> {
   let inhabitant = swift_integer_inhabitant_node(id: facts.surface_spelling, facts: facts)
   let algebra = commutative_semiring_type_node(inhabitant: inhabitant)
   let witness = swift_unsigned_int_algebra_witness_node(facts: facts)
@@ -2032,14 +2032,14 @@ fn swift_unsigned_int_law_obligations(facts: SwiftIntegerPrimitiveFacts) -> List
   ]
 }
 
-fn swift_integer_law_obligations(facts: SwiftIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+fn swift_integer_law_obligations(facts: SwiftIntegerPrimitiveFacts) -> List<v2.std.model_core.AlgebraLawObligation> {
   match facts.signedness {
     Signed => swift_signed_int_law_obligations(facts: facts)
     Unsigned => swift_unsigned_int_law_obligations(facts: facts)
   }
 }
 
-fn swift_float_law_obligations(facts: SwiftFloatPrimitiveFacts) -> List<AlgebraLawObligation> {
+fn swift_float_law_obligations(facts: SwiftFloatPrimitiveFacts) -> List<v2.std.model_core.AlgebraLawObligation> {
   let inhabitant = swift_float_inhabitant_node(id: facts.surface_spelling, facts: facts)
   let algebra = approximate_field_type_node(inhabitant: inhabitant)
   let witness = swift_float_algebra_witness_node(facts: facts)
@@ -2055,7 +2055,7 @@ fn swift_float_law_obligations(facts: SwiftFloatPrimitiveFacts) -> List<AlgebraL
   ]
 }
 
-fn swift_bool_law_obligations() -> List<AlgebraLawObligation> {
+fn swift_bool_law_obligations() -> List<v2.std.model_core.AlgebraLawObligation> {
   let inhabitant = swift_nonnumeric_facts_node(facts: swift_facts_bool)
   let algebra = boolean_algebra_type_node(inhabitant: inhabitant)
   let witness = swift_bool_algebra_witness_node()
@@ -2071,7 +2071,7 @@ fn swift_bool_law_obligations() -> List<AlgebraLawObligation> {
   ]
 }
 
-fn swift_string_law_obligations() -> List<AlgebraLawObligation> {
+fn swift_string_law_obligations() -> List<v2.std.model_core.AlgebraLawObligation> {
   let inhabitant = swift_nonnumeric_facts_node(facts: swift_facts_string)
   let code_unit = swift_atom(id: ^swift_inhabitant_unicode_scalar)
   let algebra = free_monoid_type_node(inhabitant: code_unit)
@@ -2092,19 +2092,19 @@ fn swift_string_law_obligations() -> List<AlgebraLawObligation> {
   ]
 }
 
-fn swift_integer_law_decls() -> List<AlgebraLawObligation> {
+fn swift_integer_law_decls() -> List<v2.std.model_core.AlgebraLawObligation> {
   list_flat_map(xs: swift_integer_facts_catalog, f: fn(facts) {
     swift_integer_law_obligations(facts: facts)
   })
 }
 
-fn swift_float_law_decls() -> List<AlgebraLawObligation> {
+fn swift_float_law_decls() -> List<v2.std.model_core.AlgebraLawObligation> {
   list_flat_map(xs: swift_float_facts_catalog, f: fn(facts) {
     swift_float_law_obligations(facts: facts)
   })
 }
 
-fn swift_model_core_law_obligations() -> List<AlgebraLawObligation> {
+fn swift_model_core_law_obligations() -> List<v2.std.model_core.AlgebraLawObligation> {
   list_append(
     left: list_append(
       left: list_append(
@@ -2116,17 +2116,17 @@ fn swift_model_core_law_obligations() -> List<AlgebraLawObligation> {
     right: swift_string_law_obligations()
   )
 }
-fn swift_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
-  PrimitiveOperationRef {
+fn swift_pure_operation(operation: v2.std.node.Symbol) -> v2.std.model_core.PrimitiveOperationRef {
+  v2.std.model_core.PrimitiveOperationRef {
     operation: swift_atom(id: operation),
-    effect_signature: EffectSignature {
+    effect_signature: v2.std.model_core.EffectSignature {
       signature: swift_atom(id: ^swift_effect_signature_pure_value)
     }
   }
 }
 
-fn swift_effect_semantics() -> EffectSemanticsDecl {
-  EffectSemanticsDecl {
+fn swift_effect_semantics() -> v2.std.model_core.EffectSemanticsDecl {
+  v2.std.model_core.EffectSemanticsDecl {
     operations: [
       swift_pure_operation(operation: ^swift_op_int_add),
       swift_pure_operation(operation: ^swift_op_int_sub),
@@ -2155,19 +2155,19 @@ fn swift_effect_semantics() -> EffectSemanticsDecl {
   }
 }
 fn swift_fail_closed_partial_operation(
-  operation: Symbol,
-  precondition: Symbol,
-  reason: Symbol
-) -> PartialOperationDecl {
-  PartialOperationDecl {
+  operation: v2.std.node.Symbol,
+  precondition: v2.std.node.Symbol,
+  reason: v2.std.node.Symbol
+) -> v2.std.model_core.PartialOperationDecl {
+  v2.std.model_core.PartialOperationDecl {
     operation: swift_atom(id: operation),
     precondition: swift_atom(id: precondition),
     discharge: FailClosedAtBoundary { reason: reason }
   }
 }
 
-fn swift_partiality_semantics() -> PartialitySemanticsDecl {
-  PartialitySemanticsDecl {
+fn swift_partiality_semantics() -> v2.std.model_core.PartialitySemanticsDecl {
+  v2.std.model_core.PartialitySemanticsDecl {
     operations: [
       swift_fail_closed_partial_operation(
         operation: ^swift_op_int_div,
@@ -2243,8 +2243,8 @@ fn swift_partiality_semantics() -> PartialitySemanticsDecl {
   }
 }
 
-fn swift_model_core() -> ModelCore {
-  ModelCore {
+fn swift_model_core() -> v2.std.model_core.ModelCore {
+  v2.std.model_core.ModelCore {
     primitives: swift_primitive_fact_bundles(),
     inhabitance: swift_model_core_inhabitance_decls(),
     laws: swift_model_core_law_obligations(),
@@ -2253,8 +2253,8 @@ fn swift_model_core() -> ModelCore {
   }
 }
 
-fn swift_language_model() -> LanguageModel {
-  LanguageModel {
+fn swift_language_model() -> v2.std.language_model.LanguageModel {
+  v2.std.language_model.LanguageModel {
     lex: VoidLexRules,
     grammar: VoidGrammar,
     language_identity: ^swift_language_model_surface_id,

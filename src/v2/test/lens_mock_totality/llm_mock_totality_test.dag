@@ -1,7 +1,7 @@
 module v2.test.lens_mock_totality.llm_mock_totality
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedLlmMock {
   tag: v2.std.node.Symbol
@@ -9,7 +9,7 @@ type MaterializedLlmMock {
 
 data llm_red_omit_keys: List<String> = ["llm.Gemini.CliPrompt"]
 
-fn materialize_llm_mock(case: PublishedMockCase) -> Outcome<MaterializedLlmMock> {
+fn materialize_llm_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedLlmMock> {
   if case.operation_key == "llm.OpenAI.ChatCompletion" {
     outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_openai_chat_completion })
   } else if case.operation_key == "llm.OpenAI.Responses" {
@@ -27,11 +27,11 @@ fn materialize_llm_mock(case: PublishedMockCase) -> Outcome<MaterializedLlmMock>
   }
 }
 
-fn llm_real_consumer_handles(case: PublishedMockCase) -> Bool {
+fn llm_real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   outcome_accepted_p(outcome: materialize_llm_mock(case: case))
 }
 
-fn llm_omits_gemini_cli_prompt_consumer_handles(case: PublishedMockCase) -> Bool {
+fn llm_omits_gemini_cli_prompt_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   omit_consumer_handles(
     case: case,
     omit_keys: llm_red_omit_keys,

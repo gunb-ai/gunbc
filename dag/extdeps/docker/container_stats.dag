@@ -1,8 +1,8 @@
 module extdeps.docker.container_stats
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.docker.com/engine/api/v1.47"
   }
@@ -105,7 +105,7 @@ service docker.ContainerStats {
   }
 }
 
-data cpu_percent_ratio_carrier_frontier_rows: List<FrontierRow> = [
+data cpu_percent_ratio_carrier_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_field_ref(
       module_path: "extdeps.docker.container_stats",
@@ -117,7 +117,7 @@ data cpu_percent_ratio_carrier_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-data container_stats_error_responses_frontier_rows: List<FrontierRow> = [
+data container_stats_error_responses_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.docker.container_stats", decl_name: "Stats"),
     reason: "Error responses (404 => String, 500 => String) collapse distinct error shapes (not-found vs server error) to opaque string, violating fail-closed (errors must be typed and located with structured diagnostics). Docker API returns JSON error objects with reason/message; should be modeled as ErrorDetail coproduct or structured record (NotFound | ServerError variants with message and optional retry info)",
@@ -125,15 +125,15 @@ data container_stats_error_responses_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-fn container_stats_error_closure_frontier_rows() -> List<FrontierRow> {
+fn container_stats_error_closure_frontier_rows() -> List<std.roster_frontier.FrontierRow> {
   container_stats_error_responses_frontier_rows
 }
 
-fn container_stats_memory_usage(stats: ContainerStats) -> ByteSize {
+fn container_stats_memory_usage(stats: ContainerStats) -> std.measure.ByteSize {
   stats.memory_stats.usage
 }
 
-fn container_stats_cpu_usage_total(stats: ContainerStats) -> Nanosecond {
+fn container_stats_cpu_usage_total(stats: ContainerStats) -> std.measure.Nanosecond {
   stats.cpu_stats.cpu_usage.total_usage
 }
 
@@ -141,7 +141,7 @@ fn container_stats_online_cpus(stats: ContainerStats) -> std.nat.Nat {
   stats.cpu_stats.online_cpus
 }
 
-data memory_stats_working_set_frontier_rows: List<FrontierRow> = [
+data memory_stats_working_set_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_field_ref(
       module_path: "extdeps.docker.container_stats",
@@ -153,7 +153,7 @@ data memory_stats_working_set_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-data blkio_value_unit_ambiguity_frontier_rows: List<FrontierRow> = [
+data blkio_value_unit_ambiguity_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.docker.container_stats", decl_name: "BlkioValue"),
     reason: "BlkioValue.value: Nat carries parent-dependent units (bytes under io_service_bytes_recursive, time under io_service_time_recursive, count under io_serviced_recursive); flat Nat smuggles unit invisible to type system (fail-closed unit-modeling); Docker wire format is the constraint; remedy = typed per-list accessors returning ByteSize|Nanosecond|Nat or parent-tagged union",

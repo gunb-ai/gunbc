@@ -9,11 +9,11 @@ type ModelCorePrimitiveFactAxis
   | ModelCoreFactAxisSurfaceSpelling {}
   | ModelCoreFactAxisOverflowDisposition {}
 
-fn model_core_primitive_fact_axis_is_surface(axis: Symbol) -> Bool {
+fn model_core_primitive_fact_axis_is_surface(axis: v2.std.node.Symbol) -> Bool {
   axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {})
 }
 
-fn model_core_primitive_fact_axis_is_core(axis: Symbol) -> Bool {
+fn model_core_primitive_fact_axis_is_core(axis: v2.std.node.Symbol) -> Bool {
   (axis == discriminant(v: ModelCoreFactAxisEncoding {}))
     || (axis == discriminant(v: ModelCoreFactAxisWidth {}))
     || (axis == discriminant(v: ModelCoreFactAxisSignedness {}))
@@ -26,8 +26,8 @@ type PrimitiveFactBundle {
   spec_facts: Map<v2.std.node.Symbol, Node>
 }
 
-fn primitive_fact_axis_unbound_diagnostic(axis: Symbol) -> Diagnostic {
-  Diagnostic {
+fn primitive_fact_axis_unbound_diagnostic(axis: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^primitive_fact_axis_unbound_reason,
     at: Textual { file: axis, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
@@ -102,15 +102,15 @@ type ModelCoreBoolLawKey
   | ModelCoreBoolComplementInvolution
   | ModelCoreBoolComplementBounds
 
-fn model_core_atom(id: Symbol) -> Node {
-  Node {
+fn model_core_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn model_core_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) -> Witness<Node> {
+fn model_core_bool_fact_lookup(facts: v2.std.logic.BoolPrimitiveFacts, axis: v2.std.node.Symbol) -> Witness<Node> {
   if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
     Holds { value: bool_width_fact_node(width: facts.width) }
   } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
@@ -122,7 +122,7 @@ fn model_core_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) -> Witne
   }
 }
 
-fn model_core_bool_spec_facts(facts: BoolPrimitiveFacts) -> Map<Symbol, Node> {
+fn model_core_bool_spec_facts(facts: v2.std.logic.BoolPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
       match model_core_bool_fact_lookup(facts: facts, axis: axis) {
@@ -158,18 +158,18 @@ fn model_core_bool_inhabitance() -> AlgebraInhabitanceDecl {
 }
 
 fn model_core_law_node(key: ModelCoreBoolLawKey) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^model_core_law_field_subject },
         target: model_core_bool_inhabitance_witness()
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^model_core_law_field_algebra },
         target: model_core_bool_algebra_node()
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^model_core_law_field_kind },
         target: model_core_atom(id: discriminant(v: key))
       },
@@ -210,7 +210,7 @@ type PrimitiveBundleSubstrateHead
   | PrimitiveBundleSubstrateHeadFound { substrate: Node }
 
 fn model_core_empty_conj_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence

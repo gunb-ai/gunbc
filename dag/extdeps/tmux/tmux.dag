@@ -2,15 +2,15 @@ module extdeps.tmux
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/tmux/tmux/wiki"
   }
 }
 
-data tmux_client_connect_error_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data tmux_client_connect_error_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/tmux/tmux/blob/master/client.c"
   }
@@ -468,7 +468,7 @@ fn tmux_captured_pane_rendering(
   captured: String,
 ) -> TmuxCaptureRendering {
   match fidelity {
-    CapturePlainText => TmuxPaneRendered { text: captured as RenderedTerminalText }
+    CapturePlainText => TmuxPaneRendered { text: captured as std.types.RenderedTerminalText }
     CaptureWithEscapes => TmuxCaptureRetainedEscapes { fidelity: CaptureWithEscapes }
   }
 }

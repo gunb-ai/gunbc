@@ -87,32 +87,32 @@ fn loop_bound_measure(bound: LoopBound) -> Node {
   bound.measure
 }
 
-fn loop_bound_undeclared_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn loop_bound_undeclared_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_undeclared,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn loop_bound_ambiguous_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn loop_bound_ambiguous_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_ambiguous,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn loop_bound_malformed_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn loop_bound_malformed_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_malformed,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn loop_bound_not_loop_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn loop_bound_not_loop_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_not_loop,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -166,7 +166,7 @@ fn multiplicity_termination_witness(n: Node, m: Multiplicity) -> Witness<Termina
   }
 }
 
-fn connective_multiplicity(c: Connective) -> Multiplicity {
+fn connective_multiplicity(c: v2.std.node.Connective) -> Multiplicity {
   match c {
     Atom { identity: _ } => Bounded
     Conj => Bounded
@@ -177,7 +177,7 @@ fn connective_multiplicity(c: Connective) -> Multiplicity {
   }
 }
 
-fn behavior_multiplicity(b: Behavior) -> Multiplicity {
+fn behavior_multiplicity(b: v2.std.node.Behavior) -> Multiplicity {
   match b {
     Value => Bounded
     Transform => Bounded
@@ -220,11 +220,11 @@ data measure_descent_fact_registry: List<MeasureDescentFact> = [
   measure_descent_fact_fold_iteration
 ]
 
-fn measure_descent_some(e: DescentEvidence) -> Optional<DescentEvidence> {
+fn measure_descent_some(e: std.termination.DescentEvidence) -> Optional<std.termination.DescentEvidence> {
   Present { value: e }
 }
 
-fn measure_descent_fact_for(registry: List<MeasureDescentFact>, s: Symbol) -> Optional<DescentEvidence> {
+fn measure_descent_fact_for(registry: List<MeasureDescentFact>, s: v2.std.node.Symbol) -> Optional<std.termination.DescentEvidence> {
   fold(registry, init: Absent, f: fn(acc, row) {
     match acc {
       Present { value: _ } => acc
@@ -238,7 +238,7 @@ fn measure_descent_fact_for(registry: List<MeasureDescentFact>, s: Symbol) -> Op
   })
 }
 
-fn measure_descent_evidence_for_symbol(registry: List<MeasureDescentFact>, s: Symbol) -> DescentEvidence {
+fn measure_descent_evidence_for_symbol(registry: List<MeasureDescentFact>, s: v2.std.node.Symbol) -> std.termination.DescentEvidence {
   match measure_descent_fact_for(registry: registry, s: s) {
     Present { value: e } => e
     Absent => DescentUnknown
@@ -285,7 +285,7 @@ fn measure_dimension_rows(registry: List<MeasureDescentFact>, measure: Node) -> 
   }
 }
 
-fn dimension_rows_meet(rows: List<MeasureDimensionEvidence>) -> DescentEvidence {
+fn dimension_rows_meet(rows: List<MeasureDimensionEvidence>) -> std.termination.DescentEvidence {
   fold(rows, init: Strict, f: fn(acc, row) {
     descent_evidence_lattice_meet(a: acc, b: row.evidence)
   })
@@ -385,8 +385,8 @@ fn node_multiplicity(n: Node) -> Multiplicity {
   }
 }
 
-fn cardinality_descent_not_proven_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn cardinality_descent_not_proven_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_descent_not_proven,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -399,7 +399,7 @@ fn local_termination_proof_witness(n: Node) -> Witness<TerminationProof> {
 
 fn termination_proof_fold_step(
   acc: Witness<TerminationProof>,
-  _: Edge,
+  _: v2.std.node.Edge,
   child: Witness<TerminationProof>
 ) -> Witness<TerminationProof> {
   match acc {
@@ -415,7 +415,7 @@ fn termination_proof_fold_step(
 fn termination_proof_witness_for_node(n: Node) -> Witness<TerminationProof> {
   fold_node(
     n: n,
-    algebra: NodeFold {
+    algebra: v2.std.node.NodeFold {
       init: fn(n0) {
         local_termination_proof_witness(n: n0)
       },

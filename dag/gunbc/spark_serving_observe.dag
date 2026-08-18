@@ -51,10 +51,10 @@ type SparkServingObservationReport
 // rather than collapsing to `none`, so an unreachable host and an unportable word list do not
 // arrive at the caller as the same value.
 fn spark_serving_probe_leg_via_locus(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
   raw_words: List<String>,
-) -> SshSessionExecResult? {
+) -> extdeps.ssh.session.SshSessionExecResult? {
   match run_typed_argv_transport(
     argv: raw_words,
     transport: spark_serving_slice_transport(context: context, host: host),
@@ -65,9 +65,9 @@ fn spark_serving_probe_leg_via_locus(
 }
 
 fn spark_serving_observe_host_via_locus(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
-) -> SparkServingObservation {
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
+) -> gunbc.spark_serving_release.SparkServingObservation {
   let readback = spark_serving_readback_from_probe_results(
     host: host,
     load_state: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_load_state_probe_words()),
@@ -81,18 +81,18 @@ fn spark_serving_observe_host_via_locus(
 }
 
 fn spark_serving_probe_leg(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
   raw_words: List<String>,
-) -> SshSessionExecResult? {
+) -> extdeps.ssh.session.SshSessionExecResult? {
   match portable_remote_words(raws: raw_words) {
     Absent => none
     Present { value: words } => Present {
       value: ssh_session_exec_portable_words(
         client_args: shape_fleet_ssh_exec(
           context: context,
-          target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+          target: gunbc.fleet_known_hosts_anchor.SshTarget {
+            endpoint: fleet_probe_endpoint_for(host: host as String) as std.types.NonEmptyStr,
             principal: spark_serving_automation_principal_login(),
           },
           words: words,
@@ -103,13 +103,13 @@ fn spark_serving_probe_leg(
 }
 
 fn spark_serving_unit_outcome_from_probe_results(
-  load_state: SshSessionExecResult?,
-  is_active: SshSessionExecResult?,
-) -> SparkServingUnitProbeOutcome {
+  load_state: extdeps.ssh.session.SshSessionExecResult?,
+  is_active: extdeps.ssh.session.SshSessionExecResult?,
+) -> gunbc.spark_serving_loaded_release.SparkServingUnitProbeOutcome {
   match load_state {
     Absent =>
       SparkServingUnitObservationRefused {
-        cause: "unit LoadState probe leg did not run" as NonEmptyStr,
+        cause: "unit LoadState probe leg did not run" as std.types.NonEmptyStr,
       }
     Present { value: load } =>
       if load.success == false {
@@ -118,7 +118,7 @@ fn spark_serving_unit_outcome_from_probe_results(
             "unit LoadState probe failed for ", spark_serving_unit_name,
             " exit=", to_string(load.exit_code),
             " stderr=", load.stderr,
-          ], "") as NonEmptyStr,
+          ], "") as std.types.NonEmptyStr,
         }
       } else if trim(s: load.stdout) == (systemd_unit_load_state_not_found_wire as String) {
         SparkServingUnitAbsent
@@ -126,7 +126,7 @@ fn spark_serving_unit_outcome_from_probe_results(
         match is_active {
           Absent =>
             SparkServingUnitObservationRefused {
-              cause: "unit is-active probe leg did not run after LoadState observation" as NonEmptyStr,
+              cause: "unit is-active probe leg did not run after LoadState observation" as std.types.NonEmptyStr,
             }
           Present { value: active } =>
             if active.success && trim(s: active.stdout) == "active" {
@@ -139,7 +139,7 @@ fn spark_serving_unit_outcome_from_probe_results(
                   "unit is-active probe failed for ", spark_serving_unit_name,
                   " exit=", to_string(active.exit_code),
                   " stderr=", active.stderr,
-                ], "") as NonEmptyStr,
+                ], "") as std.types.NonEmptyStr,
               }
             } else {
               SparkServingUnitInactive
@@ -149,11 +149,11 @@ fn spark_serving_unit_outcome_from_probe_results(
   }
 }
 
-fn spark_serving_version_field_from_probe(probe: SshSessionExecResult?) -> SparkServingReadbackField {
+fn spark_serving_version_field_from_probe(probe: extdeps.ssh.session.SshSessionExecResult?) -> gunbc.spark_serving_readback_parse.SparkServingReadbackField {
   match probe {
     Absent =>
       SparkServingReadbackRefused {
-        cause: "probe leg did not run" as NonEmptyStr,
+        cause: "probe leg did not run" as std.types.NonEmptyStr,
       }
     Present { value: r } =>
       if r.success {
@@ -162,52 +162,52 @@ fn spark_serving_version_field_from_probe(probe: SshSessionExecResult?) -> Spark
         SparkServingReadbackRefused {
           cause: join([
             "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
-          ], "") as NonEmptyStr,
+          ], "") as std.types.NonEmptyStr,
         }
       }
   }
 }
 
-fn spark_serving_tags_fields_from_probe(probe: SshSessionExecResult?) -> SparkServingTagsReadbackFields {
+fn spark_serving_tags_fields_from_probe(probe: extdeps.ssh.session.SshSessionExecResult?) -> gunbc.spark_serving_readback_parse.SparkServingTagsReadbackFields {
   match probe {
     Absent =>
-      SparkServingTagsReadbackFields {
+      gunbc.spark_serving_readback_parse.SparkServingTagsReadbackFields {
         model_name: SparkServingReadbackRefused {
-          cause: "probe leg did not run" as NonEmptyStr,
+          cause: "probe leg did not run" as std.types.NonEmptyStr,
         },
         model_tag: SparkServingReadbackRefused {
-          cause: "probe leg did not run" as NonEmptyStr,
+          cause: "probe leg did not run" as std.types.NonEmptyStr,
         },
         model_manifest_digest: SparkServingReadbackRefused {
-          cause: "probe leg did not run" as NonEmptyStr,
+          cause: "probe leg did not run" as std.types.NonEmptyStr,
         },
       }
     Present { value: r } =>
       if r.success {
         spark_serving_parse_tags_json(stdout: r.stdout)
       } else {
-        SparkServingTagsReadbackFields {
+        gunbc.spark_serving_readback_parse.SparkServingTagsReadbackFields {
           model_name: SparkServingReadbackRefused {
             cause: join([
               "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
-            ], "") as NonEmptyStr,
+            ], "") as std.types.NonEmptyStr,
           },
           model_tag: SparkServingReadbackRefused {
             cause: join([
               "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
-            ], "") as NonEmptyStr,
+            ], "") as std.types.NonEmptyStr,
           },
           model_manifest_digest: SparkServingReadbackRefused {
             cause: join([
               "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
-            ], "") as NonEmptyStr,
+            ], "") as std.types.NonEmptyStr,
           },
         }
       }
   }
 }
 
-fn spark_serving_unit_outcome_label(outcome: SparkServingUnitProbeOutcome) -> String {
+fn spark_serving_unit_outcome_label(outcome: gunbc.spark_serving_loaded_release.SparkServingUnitProbeOutcome) -> String {
   match outcome {
     SparkServingUnitActive => "active"
     SparkServingUnitInactive => "inactive"
@@ -216,11 +216,11 @@ fn spark_serving_unit_outcome_label(outcome: SparkServingUnitProbeOutcome) -> St
   }
 }
 
-fn spark_serving_nvidia_driver_field_from_probe(probe: SshSessionExecResult?) -> SparkServingReadbackField {
+fn spark_serving_nvidia_driver_field_from_probe(probe: extdeps.ssh.session.SshSessionExecResult?) -> gunbc.spark_serving_readback_parse.SparkServingReadbackField {
   match probe {
     Absent =>
       SparkServingReadbackRefused {
-        cause: "probe leg did not run" as NonEmptyStr,
+        cause: "probe leg did not run" as std.types.NonEmptyStr,
       }
     Present { value: r } =>
       if r.success {
@@ -229,23 +229,23 @@ fn spark_serving_nvidia_driver_field_from_probe(probe: SshSessionExecResult?) ->
         SparkServingReadbackRefused {
           cause: join([
             "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
-          ], "") as NonEmptyStr,
+          ], "") as std.types.NonEmptyStr,
         }
       }
   }
 }
 
 fn spark_serving_readback_from_probe_results(
-  host: HostIdentity,
-  load_state: SshSessionExecResult?,
-  is_active: SshSessionExecResult?,
-  version: SshSessionExecResult?,
-  tags: SshSessionExecResult?,
-  nvidia_driver: SshSessionExecResult?,
-  runtime_receipt: SshSessionExecResult?,
-) -> SparkServingReadback {
+  host: product.placement_supply.HostIdentity,
+  load_state: extdeps.ssh.session.SshSessionExecResult?,
+  is_active: extdeps.ssh.session.SshSessionExecResult?,
+  version: extdeps.ssh.session.SshSessionExecResult?,
+  tags: extdeps.ssh.session.SshSessionExecResult?,
+  nvidia_driver: extdeps.ssh.session.SshSessionExecResult?,
+  runtime_receipt: extdeps.ssh.session.SshSessionExecResult?,
+) -> gunbc.spark_serving_loaded_release.SparkServingReadback {
   let tags_fields = spark_serving_tags_fields_from_probe(probe: tags)
-  SparkServingReadback {
+  gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: host,
     unit_outcome: spark_serving_unit_outcome_from_probe_results(
       load_state: load_state,
@@ -261,7 +261,7 @@ fn spark_serving_readback_from_probe_results(
   }
 }
 
-fn spark_serving_readback_line(readback: SparkServingReadback) -> String {
+fn spark_serving_readback_line(readback: gunbc.spark_serving_loaded_release.SparkServingReadback) -> String {
   join([
     "observe host=", readback.host as String,
     " unit_outcome=", spark_serving_unit_outcome_label(outcome: readback.unit_outcome),
@@ -275,7 +275,7 @@ fn spark_serving_readback_line(readback: SparkServingReadback) -> String {
   ], "")
 }
 
-fn spark_serving_observation_line(observation: SparkServingObservation) -> String {
+fn spark_serving_observation_line(observation: gunbc.spark_serving_release.SparkServingObservation) -> String {
   match observation {
     SparkServingAbsent { host: h } => join(["observation host=", h as String, " state=absent\n"], "")
     SparkServingObservationRefused { host: h, cause: c } =>
@@ -289,9 +289,9 @@ fn spark_serving_observation_line(observation: SparkServingObservation) -> Strin
 }
 
 fn spark_serving_observe_host(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
-) -> SparkServingObservation {
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
+) -> gunbc.spark_serving_release.SparkServingObservation {
   let load_state = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_load_state_probe_words())
   let is_active = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_probe_words())
   let version = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_version_probe_words)
@@ -315,14 +315,14 @@ fn spark_serving_observe_host(
 }
 
 fn spark_serving_observations_from_hosts(
-  context: FleetSshExecutionContext,
-  hosts: List<HostIdentity>,
-) -> List<SparkServingObservation> {
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  hosts: List<product.placement_supply.HostIdentity>,
+) -> List<gunbc.spark_serving_release.SparkServingObservation> {
   map(hosts, h => spark_serving_observe_host(context: context, host: h))
 }
 
 fn spark_serving_observation_report_from_observations(
-  observations: List<SparkServingObservation>,
+  observations: List<gunbc.spark_serving_release.SparkServingObservation>,
 ) -> SparkServingObservationReport? {
   if observations.length() == 0 {
     none
@@ -337,15 +337,15 @@ fn spark_serving_observation_report_from_observations(
 }
 
 fn spark_serving_observe_with_context(
-  context: FleetSshExecutionContext,
-  hosts: List<HostIdentity>,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  hosts: List<product.placement_supply.HostIdentity>,
 ) -> SparkServingObservationReport {
   match spark_serving_observation_report_from_observations(
     observations: spark_serving_observations_from_hosts(context: context, hosts: hosts),
   ) {
     Absent =>
       SparkServingObservationReportRefused {
-        cause: "spark serving observation requires at least one host" as NonEmptyStr,
+        cause: "spark serving observation requires at least one host" as std.types.NonEmptyStr,
       }
     Present { value: report } => report
   }
@@ -374,7 +374,7 @@ fn spark_serving_observation_report_text(
   }
 }
 
-fn spark_serving_observation_succeeded(observation: SparkServingObservation) -> Bool {
+fn spark_serving_observation_succeeded(observation: gunbc.spark_serving_release.SparkServingObservation) -> Bool {
   match observation {
     SparkServingObserved { host: _, loaded_release: _ } => true
     SparkServingAbsent { host: _ } => false
@@ -382,7 +382,7 @@ fn spark_serving_observation_succeeded(observation: SparkServingObservation) -> 
   }
 }
 
-fn spark_serving_all_observations_succeeded(observations: List<SparkServingObservation>) -> Bool {
+fn spark_serving_all_observations_succeeded(observations: List<gunbc.spark_serving_release.SparkServingObservation>) -> Bool {
   fold_list(
     xs: observations,
     empty: true,
@@ -407,7 +407,7 @@ fn spark_serving_observation_report_succeeded(report: SparkServingObservationRep
 // SparkServingObservationRefused is the probe failing to answer at all, and refuses. This axis is
 // deliberately weaker than spark_serving_observation_succeeded, which the converge entries use
 // because there absence means the desired state was not reached.
-fn spark_serving_observation_was_made(observation: SparkServingObservation) -> Bool {
+fn spark_serving_observation_was_made(observation: gunbc.spark_serving_release.SparkServingObservation) -> Bool {
   match observation {
     SparkServingObserved { host: _, loaded_release: _ } => true
     SparkServingAbsent { host: _ } => true
@@ -415,7 +415,7 @@ fn spark_serving_observation_was_made(observation: SparkServingObservation) -> B
   }
 }
 
-fn spark_serving_all_observations_were_made(observations: List<SparkServingObservation>) -> Bool {
+fn spark_serving_all_observations_were_made(observations: List<gunbc.spark_serving_release.SparkServingObservation>) -> Bool {
   fold_list(
     xs: observations,
     empty: true,
@@ -435,7 +435,7 @@ fn spark_serving_report_observations_were_made(report: SparkServingObservationRe
 }
 
 
-func spark_serving_observe_wet() -> ProcessExit
+func spark_serving_observe_wet() -> std.process.ProcessExit
   uses net: Network
 {
   match fleet_ssh_attempt_raw_from_env() {
@@ -447,7 +447,7 @@ func spark_serving_observe_wet() -> ProcessExit
   }
 }
 
-func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
+func spark_serving_observe_with_attempt(attempt_raw: String) -> std.process.ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
@@ -458,14 +458,14 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
       let report = match fleet_ssh_attempt_identity(raw: attempt_raw) {
         Absent =>
           SparkServingObservationReportRefused {
-            cause: "attempt identity is not a safe path segment" as NonEmptyStr,
+            cause: "attempt identity is not a safe path segment" as std.types.NonEmptyStr,
           }
         Present { value: attempt } => {
           let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
           match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
             Absent =>
               SparkServingObservationReportRefused {
-                cause: known_hosts_materialization_receipt(outcome: materialization) as NonEmptyStr,
+                cause: known_hosts_materialization_receipt(outcome: materialization) as std.types.NonEmptyStr,
               }
             Present { value: context } =>
               spark_serving_observe_with_context(
@@ -508,7 +508,7 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
 // carries no gcloud and that fetch fails at runtime rather than degrading. This entry observes
 // through the in-run ssh-agent the job already materialized, so the same probe legs run where
 // the fleet actually is. It is READ-ONLY: every word list here is a query.
-func spark_serving_observe_ci_wet() -> ProcessExit {
+func spark_serving_observe_ci_wet() -> std.process.ProcessExit {
   match prepare_spark_serving_agent_context(attempt_raw: spark_serving_observe_ci_attempt_raw) {
     SparkServingContextRefused { cause: cause } => exit_failure(reason: cause)
     SparkServingContextReady { context: context, receipt: context_receipt } =>
@@ -521,9 +521,9 @@ func spark_serving_observe_ci_wet() -> ProcessExit {
 data spark_serving_observe_ci_attempt_raw: String = "spark-serving-observe-ci"
 
 func spark_serving_observe_ci_with_context(
-  context: FleetSshExecutionContext,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   context_receipt: String,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   let now = clock_now_probed_at()
   let observations = map(
     spark_serving_desired_hosts,
@@ -543,7 +543,7 @@ func spark_serving_observe_ci_with_context(
   let report = match spark_serving_observation_report_from_observations(observations: observations) {
     Absent =>
       SparkServingObservationReportRefused {
-        cause: "spark_serving_observe_ci_wet: no host was probed — an empty observation list is ignorance, not a clean fleet" as NonEmptyStr,
+        cause: "spark_serving_observe_ci_wet: no host was probed — an empty observation list is ignorance, not a clean fleet" as std.types.NonEmptyStr,
       }
     Present { value: r } => r
   }

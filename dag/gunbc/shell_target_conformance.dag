@@ -3,8 +3,8 @@ module gunbc.shell_target_conformance
 
 data shell_conformance_join_note: String = "THE CONFORMANCE JOIN, homed in the product layer because it is a claim THIS repository makes about two upstream subjects, not a fact either of them owns (DESIGN section 3, external upstream decomposition; review relayed through the operator, 2026-08-04). The worked example in that section has exactly this shape: extdeps.whatwg.html_navigation is the standard, extdeps.browser.chromium the implementation, and gunbc.served_surface_browser_support the support policy and evidence join. Here extdeps.posix.shell_command_language is the standard, extdeps.languages.bash.subject the implementation, and this module the join. Storing the relation in either upstream module would make one independently governed entity carry a property of the other — the failure the previous shape had, with POSIX sitting in Bash's citation list. OBSERVATIONS PRODUCED BY THIS REPOSITORY ARE RECEIPTS IN THE OBSERVING LAYER: that is the same section's rule, and it is why the degree below is a claim with its own citation rather than a property authored inside GNU Bash's module."
 
-data gnu_bash_posix_conformance_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data gnu_bash_posix_conformance_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.gnu.org/software/bash/manual/bash.html#Bash-POSIX-Mode"
   }
@@ -22,7 +22,7 @@ type ShellConformanceFact {
   citation: extdeps.external_authority.ExternalAuthority
 }
 
-data posix_shell_subject_ref: DeclarationRef = DeclarationRef {
+data posix_shell_subject_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "extdeps.posix.shell_command_language",
   decl_name: "posix_shell_command_language",
   field: WholeDeclaration
@@ -37,7 +37,7 @@ data shell_conformance_facts: List<ShellConformanceFact> = [
   }
 ]
 
-fn conformance_for_implementation(implementation: DeclarationRef) -> ShellConformanceFact? {
+fn conformance_for_implementation(implementation: std.decl_ref.DeclarationRef) -> ShellConformanceFact? {
   fold(shell_conformance_facts, init: none, f: fn(acc, c) {
     if declaration_ref_eq(a: c.implementation, b: implementation) { Present { value: c } } else { acc }
   })

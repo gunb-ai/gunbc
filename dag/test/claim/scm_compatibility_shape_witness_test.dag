@@ -9,9 +9,9 @@ type SyntheticFourthReceipt {
 
 fn synthetic_fourth_handler(
 ) -> CompatibilityProjectionHandler<SyntheticFourthReceipt> {
-  CompatibilityProjectionHandler {
+  gunbc.scm_compatibility_shape.CompatibilityProjectionHandler {
     project: fn(receipt) {
-      CompatibilityProjectionReceipt {
+      gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
         realization: "synthetic-fourth-r0",
         target: receipt.target,
         generation_evidence: receipt.generation,
@@ -20,7 +20,7 @@ fn synthetic_fourth_handler(
         advance: CompatibilityAdvanceUnavailable {
           cause: "synthetic R0 intentionally has no conditional advance",
         },
-        fidelity: CompatibilityFidelityProfile {
+        fidelity: gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
           endpoint_state: CompatibilityFidelityPreserved,
           upstream_change_evidence: CompatibilityFidelityUnavailable {
             cause: "synthetic fixture carries endpoint state only",
@@ -53,9 +53,9 @@ fn synthetic_fourth_handler(
 }
 
 fn synthetic_projection(
-  target: NonEmptyStr,
-  generation: NonEmptyStr,
-) -> CompatibilityProjectionReceipt {
+  target: std.types.NonEmptyStr,
+  generation: std.types.NonEmptyStr,
+) -> gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
   compatibility_projection_from_handler(
     handler: synthetic_fourth_handler(),
     receipt: SyntheticFourthReceipt {

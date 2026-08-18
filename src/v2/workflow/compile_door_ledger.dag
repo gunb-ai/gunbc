@@ -49,14 +49,14 @@ fn derive_module_admission(root: Node) -> AdmissionDerivation {
   }
 }
 
-fn source_root_for_path(path: String) -> SourceRootRef {
+fn source_root_for_path(path: String) -> v2.std.cross_tree.import_model.SourceRootRef {
   if starts_with(s: path, prefix: "src/v2") { V2Tree } else { DagTree }
 }
 
-fn ledger_read_witness(path: String) -> DagSourceReadWitness {
-  DagSourceReadWitness {
-    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
-    artifact: Artifact {
+fn ledger_read_witness(path: String) -> v2.compiler.source_authority.DagSourceReadWitness {
+  v2.compiler.source_authority.DagSourceReadWitness {
+    source: extdeps.communication.medium.Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
+    artifact: v2.std.artifact.Artifact {
       kind: SourceFile,
       id: symbol_intern_lexeme(lexeme: path),
       file_path: path
@@ -66,7 +66,7 @@ fn ledger_read_witness(path: String) -> DagSourceReadWitness {
   }
 }
 
-fn closure_ingest(closure_paths: FreeMonoid<String>) -> SourceRootIngest {
+fn closure_ingest(closure_paths: FreeMonoid<String>) -> v2.compiler.source_authority.SourceRootIngest {
   list_reverse(
     xs: fold_list(
       xs: closure_paths,
@@ -136,7 +136,7 @@ fn dag_module_paths(paths: List<String>) -> List<String> {
 }
 
 fn affected_ledger_from_diff(
-  diff: FloorNameStatusDiffResult,
+  diff: v2.workflow.floor_diff_observe.FloorNameStatusDiffResult,
   pool_roots: List<String>
 ) -> AffectedLedgerResult {
   match diff {
@@ -160,7 +160,7 @@ type CauseBumpState {
   found: Bool
 }
 
-fn cause_count_bump(counts: List<CauseCount>, reason: Symbol) -> List<CauseCount> {
+fn cause_count_bump(counts: List<CauseCount>, reason: v2.std.node.Symbol) -> List<CauseCount> {
   let walked = fold_list(
     xs: counts,
     empty: CauseBumpState { rows: Empty, found: false },
@@ -213,7 +213,7 @@ fn ledger_refused_count(rows: List<DoorLedgerRow>) -> Int {
   length(xs: rows) - ledger_compiled_count(rows: rows)
 }
 
-fn ledger_cause_count(rows: List<DoorLedgerRow>, reason: Symbol) -> Int {
+fn ledger_cause_count(rows: List<DoorLedgerRow>, reason: v2.std.node.Symbol) -> Int {
   fold_list(
     xs: ledger_cause_histogram(rows: rows),
     empty: 0,
@@ -277,11 +277,11 @@ fn list_find_first<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T
   }
 }
 
-fn cause_ownership_lookup(cause: Symbol) -> Optional<CauseOwnership> {
+fn cause_ownership_lookup(cause: v2.std.node.Symbol) -> Optional<CauseOwnership> {
   list_find_first(xs: known_frontier_causes, predicate: fn(row) { row.cause == cause })
 }
 
-fn cause_is_attributed(cause: Symbol) -> Bool {
+fn cause_is_attributed(cause: v2.std.node.Symbol) -> Bool {
   match cause_ownership_lookup(cause: cause) {
     Present { value: _ } => true
     Absent => false

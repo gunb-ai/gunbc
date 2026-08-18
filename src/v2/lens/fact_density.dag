@@ -1,7 +1,7 @@
 module v2.lens.fact_density
 
 
-fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
+fn symbol_is_kernel_ambient(s: v2.std.node.Symbol) -> Bool {
   s == ^fact_density_kernel_ambient_string ||
     s == ^fact_density_kernel_ambient_int ||
     s == ^fact_density_kernel_ambient_bool ||
@@ -16,7 +16,7 @@ type SourceSpecReadFact
   | NoFact
   | NotATypeCarrier
 
-fn named_fact_count(children: List<Edge>) -> v2.std.nat.Nat {
+fn named_fact_count(children: List<v2.std.node.Edge>) -> v2.std.nat.Nat {
   fold(children, init: v2.std.nat.Zero, f: fn(acc, e) {
     match e.label {
       Named { name: _ } => v2.std.nat.Succ { prev: acc }
@@ -28,18 +28,18 @@ fn named_fact_count(children: List<Edge>) -> v2.std.nat.Nat {
 fn density_fact(named_facts: v2.std.nat.Nat) -> SourceSpecReadFact {
   match named_facts {
     v2.std.nat.Zero => NoFact
-    v2.std.nat.Succ { prev: p } => NamedFieldFacts { density: NonZeroNat { prev: p } }
+    v2.std.nat.Succ { prev: p } => NamedFieldFacts { density: v2.std.cardinality.NonZeroNat { prev: p } }
   }
 }
 
-fn connective_is_kernel_ambient_atom(c: Connective) -> Bool {
+fn connective_is_kernel_ambient_atom(c: v2.std.node.Connective) -> Bool {
   match c {
     Atom { identity: id } => symbol_is_kernel_ambient(s: id)
     _ => false
   }
 }
 
-fn connective_spec_fact(c: Connective, named_facts: v2.std.nat.Nat) -> SourceSpecReadFact {
+fn connective_spec_fact(c: v2.std.node.Connective, named_facts: v2.std.nat.Nat) -> SourceSpecReadFact {
   if connective_is_kernel_ambient_atom(c: c) {
     KernelAmbientAtom
   } else {
@@ -60,7 +60,7 @@ fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
   match carrier_spec_fact(carrier: node) {
     NoFact =>
       outcome_rejected(
-        Diagnostic {
+        v2.std.diagnostic.Diagnostic {
           reason: ^fact_density_hollow_alias_locus,
           at: port_locus(port: ^fact_density_hollow_alias_locus),
           correction: Unavailable { reason: ExternalContractUnknown }
@@ -72,6 +72,6 @@ fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

@@ -10,7 +10,7 @@ type Report {
   at: v2.std.diagnostic.Locus
 }
 
-fn report_reason_to_diagnostic_reason(reason: ReportReason) -> Symbol {
+fn report_reason_to_diagnostic_reason(reason: ReportReason) -> v2.std.node.Symbol {
   discriminant(v: reason)
 }
 

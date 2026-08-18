@@ -2,10 +2,10 @@ module gunbc.oomd_install
 
 
 
-data gunbc_oomd_sessions_slice: NonEmptyStr = "sessions.slice"
+data gunbc_oomd_sessions_slice: std.types.NonEmptyStr = "sessions.slice"
 
 
-data gunbc_oomd_sessions_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
+data gunbc_oomd_sessions_policy: extdeps.systemd.oomd.UnitManagedOomPolicy = extdeps.systemd.oomd.UnitManagedOomPolicy {
   scope_unit: gunbc_oomd_sessions_slice,
   managed_oom_swap: ManagedOomKill,
   managed_oom_memory_pressure: ManagedOomKill,
@@ -34,7 +34,7 @@ type OomdInstallPlan {
 data gunbc_oomd_install_plan: OomdInstallPlan = OomdInstallPlan {
   install_package: package_systemd_oomd_defaults,
   global_config: oomd_default_global_config,
-  dropin: OomdDropIn {
+  dropin: extdeps.systemd.oomd.OomdDropIn {
     target_unit: gunbc_oomd_sessions_slice,
     policy: gunbc_oomd_sessions_policy,
   },
@@ -73,7 +73,7 @@ fn grounding_check(ok: Bool, reason: String) -> OomdGroundingCheck {
   if ok { GroundingPass } else { GroundingFail { reason: reason } }
 }
 
-fn unit_is_active(s: SystemdUnitActiveState) -> Bool {
+fn unit_is_active(s: extdeps.systemd.SystemdUnitActiveState) -> Bool {
   match s {
     Active => true
     Inactive => false
@@ -84,7 +84,7 @@ fn unit_is_active(s: SystemdUnitActiveState) -> Bool {
   }
 }
 
-fn unit_is_enabled(s: UnitFileState) -> Bool {
+fn unit_is_enabled(s: extdeps.systemd.systemctl.UnitFileState) -> Bool {
   match s {
     UnitEnabled => true
     UnitEnabledRuntime => false
@@ -99,21 +99,21 @@ fn unit_is_enabled(s: UnitFileState) -> Bool {
   }
 }
 
-fn pressure_is_kill(a: ManagedOomAction) -> Bool {
+fn pressure_is_kill(a: extdeps.systemd.oomd.ManagedOomAction) -> Bool {
   match a {
     ManagedOomKill => true
     ManagedOomAuto => false
   }
 }
 
-fn cap_equals(eff: RunnerSliceCapEffectiveness, target: ByteSize) -> Bool {
+fn cap_equals(eff: gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness, target: std.measure.ByteSize) -> Bool {
   match eff {
     CapUnbounded => false
     CapEffective { bytes } => byte_size_count(b: bytes) == byte_size_count(b: target)
   }
 }
 
-fn parent_slice_cap_ok(eff: RunnerSliceCapEffectiveness, agg: SessionAggregateReservation) -> Bool {
+fn parent_slice_cap_ok(eff: gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness, agg: gunbc.ci_floor_measurement.SessionAggregateReservation) -> Bool {
   match agg {
     SessionAggregateUnmeasured => false
     SessionAggregateMeasured { bytes } => cap_equals(eff: eff, target: bytes)
@@ -158,7 +158,7 @@ fn first_grounding_failure(checks: List<OomdGroundingCheck>) -> String? {
   })
 }
 
-fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> Grounding<OomdEnforcementEvidence> {
+fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> Grounding<gunbc.ci_floor_measurement.OomdEnforcementEvidence> {
   match first_grounding_failure(checks: grounding_checks(read: read, req: req)) {
     Absent => Grounds { evidence: OomdEnforced }
     Present { value: reason } => DoesNotGround { reason: reason }
@@ -182,7 +182,7 @@ fn reconcile_oomd(read: ShowEffectiveRead<OomdEffectiveRead>, req: OomdGrounding
   }
 }
 
-fn oomd_evidence_from_reconciliation(r: Reconciliation<OomdApplyEffect, OomdEnforcementEvidence>) -> OomdEnforcementEvidence {
+fn oomd_evidence_from_reconciliation(r: Reconciliation<OomdApplyEffect, OomdEnforcementEvidence>) -> gunbc.ci_floor_measurement.OomdEnforcementEvidence {
   match r {
     Converged { evidence: e, applied: _ } => e
     NotConverged { reason: _, applied: _ } => OomdUnverified
@@ -193,7 +193,7 @@ data gunbc_oomd_show_effective_read: ShowEffectiveRead<OomdEffectiveRead> = Read
   reason: "no live systemctl show-effective / oomctl read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"
 }
 
-fn gunbc_oomd_install_evidence() -> OomdEnforcementEvidence {
+fn gunbc_oomd_install_evidence() -> gunbc.ci_floor_measurement.OomdEnforcementEvidence {
   match gunbc_oomd_show_effective_read {
     ReadAbsent { reason: _ } => OomdUnverified
     ReadObserved { value: _ } => OomdUnverified
@@ -201,6 +201,6 @@ fn gunbc_oomd_install_evidence() -> OomdEnforcementEvidence {
 }
 
 
-fn gunbc_oomd_fleet_evidence(req: OomdGroundingThresholds) -> OomdEnforcementEvidence {
+fn gunbc_oomd_fleet_evidence(req: OomdGroundingThresholds) -> gunbc.ci_floor_measurement.OomdEnforcementEvidence {
   oomd_evidence_from_reconciliation(r: reconcile_oomd(read: gunbc_oomd_show_effective_read, req: req))
 }

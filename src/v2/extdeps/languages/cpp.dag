@@ -103,7 +103,7 @@ type CppGrammarRelationRow {
 }
 data cpp_source_text: String = "int add(int x, int y) { return x + y; }"
 
-fn cpp_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn cpp_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^cpp_token_ty_int },
     BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_fn_add },
@@ -123,16 +123,16 @@ fn cpp_concrete_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^cpp_token_rbrace }
   ]
 }
-fn cpp_atom(id: Symbol) -> Node {
-  Node {
+fn cpp_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn cpp_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn cpp_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
 fn cpp_signed_integer_spelling_node(spelling: CppSignedIntegerSurfaceSpelling) -> Node {
@@ -166,7 +166,7 @@ fn cpp_fixed_code_unit_spelling_node(
 }
 
 fn cpp_width_selection_node(spelling: Node, target_profile: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_width_selection, target: cpp_atom(id: ^cpp_tag_width_selection)),
@@ -180,8 +180,8 @@ fn cpp_width_selection_node(spelling: Node, target_profile: Node) -> Node {
 }
 }
 
-fn cpp_target_profile_selection_node(kind: Symbol, target_profile: Node) -> Node {
-  Node {
+fn cpp_target_profile_selection_node(kind: v2.std.node.Symbol, target_profile: Node) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_atom(id: kind)),
@@ -192,7 +192,7 @@ fn cpp_target_profile_selection_node(kind: Symbol, target_profile: Node) -> Node
 }
 
 fn cpp_integer_scalar_fact_node(facts: CppIntegerPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_scalar, target: facts.signedness_fact),
@@ -205,7 +205,7 @@ fn cpp_integer_scalar_fact_node(facts: CppIntegerPrimitiveFacts) -> Node {
 }
 
 fn cpp_character_scalar_fact_node(facts: CppCharacterPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_scalar, target: facts.signedness_fact),
@@ -217,7 +217,7 @@ fn cpp_character_scalar_fact_node(facts: CppCharacterPrimitiveFacts) -> Node {
 }
 
 fn cpp_integer_facts_node(facts: CppIntegerPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
@@ -228,7 +228,7 @@ fn cpp_integer_facts_node(facts: CppIntegerPrimitiveFacts) -> Node {
 }
 
 fn cpp_character_facts_node(facts: CppCharacterPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
@@ -239,7 +239,7 @@ fn cpp_character_facts_node(facts: CppCharacterPrimitiveFacts) -> Node {
 }
 
 fn cpp_bool_facts_node(facts: CppBoolPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
@@ -252,7 +252,7 @@ fn cpp_bool_facts_node(facts: CppBoolPrimitiveFacts) -> Node {
 
 fn cpp_signed_integer_facts(
   spelling: CppSignedIntegerSurfaceSpelling,
-  surface_spelling: Symbol,
+  surface_spelling: v2.std.node.Symbol,
   target_profile: Node
 ) -> CppIntegerPrimitiveFacts {
   let width_fact = cpp_width_selection_node(
@@ -270,7 +270,7 @@ fn cpp_signed_integer_facts(
 
 fn cpp_unsigned_integer_facts(
   spelling: CppUnsignedIntegerSurfaceSpelling,
-  surface_spelling: Symbol,
+  surface_spelling: v2.std.node.Symbol,
   target_profile: Node
 ) -> CppIntegerPrimitiveFacts {
   let width_fact = cpp_width_selection_node(
@@ -468,7 +468,7 @@ fn cpp_bool_facts_catalog() -> List<CppBoolPrimitiveFacts> {
 }
 
 fn cpp_integer_catalog_surface_symbol_step(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   acc: Bool,
   facts: CppIntegerPrimitiveFacts
 ) -> Bool {
@@ -476,7 +476,7 @@ fn cpp_integer_catalog_surface_symbol_step(
 }
 
 fn cpp_character_catalog_surface_symbol_step(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   acc: Bool,
   facts: CppCharacterPrimitiveFacts
 ) -> Bool {
@@ -484,14 +484,14 @@ fn cpp_character_catalog_surface_symbol_step(
 }
 
 fn cpp_bool_catalog_surface_symbol_step(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   acc: Bool,
   facts: CppBoolPrimitiveFacts
 ) -> Bool {
   acc || sym == facts.surface_spelling
 }
 
-fn cpp_integer_catalog_surface_symbol(sym: Symbol, target_profile: Node) -> Bool {
+fn cpp_integer_catalog_surface_symbol(sym: v2.std.node.Symbol, target_profile: Node) -> Bool {
   fold_list(
     xs: cpp_integer_facts_catalog(target_profile: target_profile),
     empty: false,
@@ -501,7 +501,7 @@ fn cpp_integer_catalog_surface_symbol(sym: Symbol, target_profile: Node) -> Bool
   )
 }
 
-fn cpp_character_catalog_surface_symbol(sym: Symbol, target_profile: Node) -> Bool {
+fn cpp_character_catalog_surface_symbol(sym: v2.std.node.Symbol, target_profile: Node) -> Bool {
   fold_list(
     xs: cpp_character_facts_catalog(target_profile: target_profile),
     empty: false,
@@ -511,7 +511,7 @@ fn cpp_character_catalog_surface_symbol(sym: Symbol, target_profile: Node) -> Bo
   )
 }
 
-fn cpp_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn cpp_bool_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   fold_list(
     xs: cpp_bool_facts_catalog(),
     empty: false,
@@ -521,13 +521,13 @@ fn cpp_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn cpp_catalog_surface_symbol(sym: Symbol, target_profile: Node) -> Bool {
+fn cpp_catalog_surface_symbol(sym: v2.std.node.Symbol, target_profile: Node) -> Bool {
   cpp_integer_catalog_surface_symbol(sym: sym, target_profile: target_profile) ||
     cpp_character_catalog_surface_symbol(sym: sym, target_profile: target_profile) ||
     cpp_bool_catalog_surface_symbol(sym: sym)
 }
 
-fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<Symbol> {
+fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<v2.std.node.Symbol> {
   Set {
     member: fn(sym) {
       cpp_catalog_surface_symbol(sym: sym, target_profile: target_profile)
@@ -535,7 +535,7 @@ fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<Symbol> {
   }
 }
 
-fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
@@ -555,7 +555,7 @@ fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<Symbol, Node> 
   }
 }
 
-fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<Symbol, Node> {
+fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
@@ -573,7 +573,7 @@ fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<Symbol, No
   }
 }
 
-fn cpp_bool_spec_facts(facts: CppBoolPrimitiveFacts) -> Map<Symbol, Node> {
+fn cpp_bool_spec_facts(facts: CppBoolPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
@@ -587,8 +587,8 @@ fn cpp_bool_spec_facts(facts: CppBoolPrimitiveFacts) -> Map<Symbol, Node> {
   }
 }
 
-fn cpp_primitive_bundle_from_integer_facts(facts: CppIntegerPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+fn cpp_primitive_bundle_from_integer_facts(facts: CppIntegerPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: cpp_integer_facts_node(facts: facts),
     spec_facts: cpp_integer_spec_facts(facts: facts)
   }
@@ -596,15 +596,15 @@ fn cpp_primitive_bundle_from_integer_facts(facts: CppIntegerPrimitiveFacts) -> P
 
 fn cpp_primitive_bundle_from_character_facts(
   facts: CppCharacterPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: cpp_character_facts_node(facts: facts),
     spec_facts: cpp_character_spec_facts(facts: facts)
   }
 }
 
-fn cpp_primitive_bundle_from_bool_facts(facts: CppBoolPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+fn cpp_primitive_bundle_from_bool_facts(facts: CppBoolPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: cpp_bool_facts_node(facts: facts),
     spec_facts: cpp_bool_spec_facts(facts: facts)
   }
@@ -612,7 +612,7 @@ fn cpp_primitive_bundle_from_bool_facts(facts: CppBoolPrimitiveFacts) -> Primiti
 
 fn cpp_primitive_bundles_from_integer_catalog(
   target_profile: Node
-) -> List<PrimitiveFactBundle> {
+) -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: cpp_integer_facts_catalog(target_profile: target_profile),
     empty: Empty,
@@ -627,7 +627,7 @@ fn cpp_primitive_bundles_from_integer_catalog(
 
 fn cpp_primitive_bundles_from_character_catalog(
   target_profile: Node
-) -> List<PrimitiveFactBundle> {
+) -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: cpp_character_facts_catalog(target_profile: target_profile),
     empty: Empty,
@@ -640,7 +640,7 @@ fn cpp_primitive_bundles_from_character_catalog(
   )
 }
 
-fn cpp_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
+fn cpp_primitive_bundles_from_bool_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: cpp_bool_facts_catalog(),
     empty: Empty,
@@ -655,7 +655,7 @@ fn cpp_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
 
 fn cpp_primitive_fact_bundles(
   target_profile: Node
-) -> List<PrimitiveFactBundle> {
+) -> List<v2.std.model_core.PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: cpp_primitive_bundles_from_integer_catalog(target_profile: target_profile),
@@ -665,8 +665,8 @@ fn cpp_primitive_fact_bundles(
   )
 }
 
-fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts, witness: Symbol) -> Node {
-  Node {
+fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts, witness: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: witness, target: cpp_atom(id: witness)),
@@ -681,7 +681,7 @@ fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts, witness: Sy
 }
 
 fn cpp_signed_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(
@@ -702,18 +702,18 @@ fn cpp_signed_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts) -> N
 }
 }
 
-fn cpp_signed_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn cpp_signed_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = cpp_integer_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: ordered_ring_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: cpp_signed_integer_algebra_witness_node(facts: facts)
   }
 }
 
-fn cpp_unsigned_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn cpp_unsigned_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = cpp_integer_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: commutative_semiring_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: cpp_integer_algebra_witness_node(
@@ -724,7 +724,7 @@ fn cpp_unsigned_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> 
 }
 
 fn cpp_bool_algebra_witness_node(facts: CppBoolPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_witness_bool_boolean_algebra, target: cpp_atom(id: ^cpp_witness_bool_boolean_algebra)),
@@ -735,16 +735,16 @@ fn cpp_bool_algebra_witness_node(facts: CppBoolPrimitiveFacts) -> Node {
 }
 }
 
-fn cpp_bool_algebra_inhabitance(facts: CppBoolPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn cpp_bool_algebra_inhabitance(facts: CppBoolPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = cpp_bool_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: boolean_algebra_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: cpp_bool_algebra_witness_node(facts: facts)
   }
 }
 
-fn cpp_signed_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+fn cpp_signed_integer_algebra_inhabitance_decls(target_profile: Node) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: cpp_signed_integer_algebra_inhabitance_facts_catalog(target_profile: target_profile),
     empty: Empty,
@@ -754,7 +754,7 @@ fn cpp_signed_integer_algebra_inhabitance_decls(target_profile: Node) -> List<Al
   )
 }
 
-fn cpp_unsigned_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+fn cpp_unsigned_integer_algebra_inhabitance_decls(target_profile: Node) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: cpp_unsigned_integer_algebra_inhabitance_facts_catalog(target_profile: target_profile),
     empty: Empty,
@@ -764,14 +764,14 @@ fn cpp_unsigned_integer_algebra_inhabitance_decls(target_profile: Node) -> List<
   )
 }
 
-fn cpp_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+fn cpp_integer_algebra_inhabitance_decls(target_profile: Node) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   list_append(
     left: cpp_signed_integer_algebra_inhabitance_decls(target_profile: target_profile),
     right: cpp_unsigned_integer_algebra_inhabitance_decls(target_profile: target_profile)
   )
 }
 
-fn cpp_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn cpp_bool_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: cpp_bool_facts_catalog(),
     empty: Empty,
@@ -781,31 +781,31 @@ fn cpp_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn cpp_model_core_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+fn cpp_model_core_inhabitance_decls(target_profile: Node) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   list_append(
     left: cpp_integer_algebra_inhabitance_decls(target_profile: target_profile),
     right: cpp_bool_algebra_inhabitance_decls()
   )
 }
 
-fn cpp_algebra_operation_node(operation: Symbol) -> Node {
+fn cpp_algebra_operation_node(operation: v2.std.node.Symbol) -> Node {
   cpp_atom(id: operation)
 }
 
 fn cpp_fail_closed_partial_operation(
   operation: Node,
-  precondition: Symbol,
-  reason: Symbol
-) -> PartialOperationDecl {
-  PartialOperationDecl {
+  precondition: v2.std.node.Symbol,
+  reason: v2.std.node.Symbol
+) -> v2.std.model_core.PartialOperationDecl {
+  v2.std.model_core.PartialOperationDecl {
     operation: operation,
     precondition: cpp_atom(id: precondition),
     discharge: FailClosedAtBoundary { reason: reason }
   }
 }
 
-fn cpp_partiality_semantics() -> PartialitySemanticsDecl {
-  PartialitySemanticsDecl {
+fn cpp_partiality_semantics() -> v2.std.model_core.PartialitySemanticsDecl {
+  v2.std.model_core.PartialitySemanticsDecl {
     operations: [
       cpp_fail_closed_partial_operation(
         operation: cpp_algebra_operation_node(operation: ^ring_field_add),
@@ -826,18 +826,18 @@ fn cpp_partiality_semantics() -> PartialitySemanticsDecl {
   }
 }
 
-fn cpp_model_core(target_profile: Node) -> ModelCore {
-  ModelCore {
+fn cpp_model_core(target_profile: Node) -> v2.std.model_core.ModelCore {
+  v2.std.model_core.ModelCore {
     primitives: cpp_primitive_fact_bundles(target_profile: target_profile),
     inhabitance: cpp_model_core_inhabitance_decls(target_profile: target_profile),
     laws: [],
-    effects: EffectSemanticsDecl { operations: [] },
+    effects: v2.std.model_core.EffectSemanticsDecl { operations: [] },
     partiality: cpp_partiality_semantics()
   }
 }
 
-fn cpp_language_model(target_profile: Node) -> LanguageModel {
-  LanguageModel {
+fn cpp_language_model(target_profile: Node) -> v2.std.language_model.LanguageModel {
+  v2.std.language_model.LanguageModel {
     lex: VoidLexRules,
     grammar: VoidGrammar,
     language_identity: ^cpp_language_model_surface_id,
@@ -847,7 +847,7 @@ fn cpp_language_model(target_profile: Node) -> LanguageModel {
 }
 
 fn cpp_int_inhabitant_node(target_profile: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_inhabitant_field_atom, target: cpp_atom(id: ^cpp_inhabitant_int)),
@@ -867,7 +867,7 @@ fn cpp_int_inhabitant_node(target_profile: Node) -> Node {
 }
 
 fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_inhabitant_field_int, target: cpp_int_inhabitant_node(target_profile: target_profile))
@@ -876,7 +876,7 @@ fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
 }
 }
 
-fn cpp_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
+fn cpp_int_zip_fold_closure_edges(target_profile: Node) -> List<v2.std.node.Edge> {
   let facts = cpp_signed_integer_facts(
     spelling: Int,
     surface_spelling: ^cpp_surface_spelling_int,
@@ -938,12 +938,12 @@ fn cpp_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
   ]
 }
 
-fn cpp_coercion_candidate_edges(target_profile: Node) -> List<Edge> {
+fn cpp_coercion_candidate_edges(target_profile: Node) -> List<v2.std.node.Edge> {
   cpp_int_zip_fold_closure_edges(target_profile: target_profile)
 }
 
 fn cpp_add_declared_inhabitants_root(target_profile: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: cpp_coercion_candidate_edges(target_profile: target_profile),
     occurrence_id: SyntheticOccurrence
@@ -955,23 +955,23 @@ fn cpp_selection_policy_node(target_profile: Node) -> Node {
 }
 
 fn cpp_emitted_add_fn_node(target_profile: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
-      Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
-      Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) }
+      v2.std.node.Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
+      v2.std.node.Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
+      v2.std.node.Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn cpp_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+fn cpp_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> Node {
 
   concrete_syntax_token_to_node(token: token)
 }
 
-fn cpp_serialize_source_children() -> List<Edge> {
+fn cpp_serialize_source_children() -> List<v2.std.node.Edge> {
   list_append(
     left: [
       cpp_named_edge(name: ^serialize_source_field_source_text, target: cpp_atom(id: ^cpp_source_literal)),
@@ -990,12 +990,12 @@ fn cpp_serialize_source_children() -> List<Edge> {
 }
 
 fn cpp_serialize_source_node() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: cpp_serialize_source_children(),
+  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: cpp_serialize_source_children(),
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn cpp_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn cpp_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -1008,18 +1008,18 @@ fn cpp_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalG
   )
 }
 
-fn cpp_formal_production_fn_add() -> FormalProduction {
+fn cpp_formal_production_fn_add() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^cpp_production_fn_add,
     rhs: cpp_formal_rhs_from_tokens(tokens: cpp_concrete_tokens())
   )
 }
 
-fn cpp_formal_productions() -> List<FormalProduction> {
+fn cpp_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   [cpp_formal_production_fn_add()]
 }
 
-fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+fn cpp_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
@@ -1027,7 +1027,7 @@ type CppGramBuild1State
   = CppGramBuild1StateInit
   | CppGramBuild1StateReady { expr: v2.std.grammar.GrammarExpr }
 
-fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
+fn cpp_grammar_sequence_from_token_classes() -> v2.std.grammar.GrammarExpr {
   match fold_list(
     xs: cpp_concrete_tokens(),
     empty: CppGramBuild1StateInit,
@@ -1053,8 +1053,8 @@ fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
   }
 }
 
-fn cpp_grammar_production_fn_add(target_profile: Node) -> GrammarProduction {
-  GrammarProduction {
+fn cpp_grammar_production_fn_add(target_profile: Node) -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^cpp_production_fn_add,
     expression: cpp_grammar_sequence_from_token_classes(),
     emitted: cpp_emitted_add_fn_node(target_profile: target_profile)
@@ -1070,7 +1070,7 @@ fn cpp_grammar_relation_row(target_profile: Node) -> CppGrammarRelationRow {
 }
 
 fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
@@ -1088,7 +1088,7 @@ fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
 }
 
 fn cpp_translation_rules_node(target_profile: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_relation_rule_fn_add, target: cpp_grammar_relation_row_node(row: cpp_grammar_relation_row(target_profile: target_profile)))
@@ -1098,7 +1098,7 @@ fn cpp_translation_rules_node(target_profile: Node) -> Node {
 }
 
 fn cpp_target_model_node(target_profile: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^target_model_edge_selection_policy, target: cpp_selection_policy_node(target_profile: target_profile)),
@@ -1110,7 +1110,7 @@ fn cpp_target_model_node(target_profile: Node) -> Node {
 }
 }
 
-fn cpp_binding_spellings() -> Map<Symbol, String> {
+fn cpp_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(
       map_insert(empty_map(), ^cpp_binding_fn_add, "add"),
@@ -1121,18 +1121,18 @@ fn cpp_binding_spellings() -> Map<Symbol, String> {
     "y"
   )
 }
-data cpp_target_profile: Node = Node {
+data cpp_target_profile: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^cpp_target_profile_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-fn cpp_target_model() -> TargetModel {
+fn cpp_target_model() -> v2.std.compilers.target_model.TargetModel {
   cpp_target_model_for_profile(target_profile: cpp_target_profile)
 }
 
-fn cpp_target_model_for_profile(target_profile: Node) -> TargetModel {
-  TargetModel {
+fn cpp_target_model_for_profile(target_profile: Node) -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: cpp_target_model_node(target_profile: target_profile),
     lex: cpp_lex(),
@@ -1143,11 +1143,11 @@ fn cpp_target_model_for_profile(target_profile: Node) -> TargetModel {
   }
 }
 
-fn cpp_lex_rule(token_class: Symbol, text: String) -> LexRule {
+fn cpp_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
   TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
-fn cpp_lex_rules() -> List<LexRule> {
+fn cpp_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
   [
     cpp_lex_rule(token_class: ^cpp_token_ty_int, text: "int "),
     cpp_lex_rule(token_class: ^cpp_token_lparen, text: "("),
@@ -1161,8 +1161,8 @@ fn cpp_lex_rules() -> List<LexRule> {
   ]
 }
 
-fn cpp_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: cpp_lex_rules() } }
+fn cpp_lex() -> v2.std.compilers.lexing.LexRules {
+  ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: cpp_lex_rules() } }
 }
 
 data cpp_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

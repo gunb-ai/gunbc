@@ -29,10 +29,10 @@ type CoercionWitness {
   homomorphism: v2.std.witness.HomomorphismWitness
 }
 fn coercion_not_realized_diagnostic(
-  source: CanonicalGrounding,
+  source: v2.std.constraints.CanonicalGrounding,
   kind: CoercionMismatchKind,
-) -> Diagnostic {
-  Diagnostic {
+) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: discriminant(v: kind),
     at: node_locus(node: source.node),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -44,15 +44,15 @@ fn declared_candidates_for_algebra(
 ) -> Outcome<CoercionCandidateSet> {
   outcome_rejected(
     coercion_not_realized_diagnostic(
-      source: CanonicalGrounding {
+      source: v2.std.constraints.CanonicalGrounding {
         node: algebra_instance,
-        witness: CanonicalGroundingWitness {
-          structural: StructuralPropertyWitness {
+        witness: v2.std.constraints.CanonicalGroundingWitness {
+          structural: v2.std.witness.StructuralPropertyWitness {
             property: ^coercion_property_closed_candidate_set,
             evidence: target_model
           },
 
-          closedness: StructuralPropertyWitness {
+          closedness: v2.std.witness.StructuralPropertyWitness {
             property: ^coercion_property_candidate_set_closedness,
             evidence: target_model
           }
@@ -65,8 +65,8 @@ fn declared_candidates_for_algebra(
 fn declared_inhabitant_candidates(inhabitants_root: Node) -> List<Node> {
   map(inhabitants_root.children, fn(e) { e.target })
 }
-fn coercion_candidate_set_not_closed_diagnostic(inhabitants_root: Node) -> Diagnostic {
-  Diagnostic {
+fn coercion_candidate_set_not_closed_diagnostic(inhabitants_root: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^coercion_mismatch_candidate_set_not_closed,
     at: node_locus(node: inhabitants_root),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -74,14 +74,14 @@ fn coercion_candidate_set_not_closed_diagnostic(inhabitants_root: Node) -> Diagn
 }
 fn coercion_candidate_set_from_declared_inhabitants(
   inhabitants_root: Node,
-  closedness_property: Symbol,
+  closedness_property: v2.std.node.Symbol,
 ) -> Outcome<CoercionCandidateSet> {
   if well_formed(n: inhabitants_root) {
     Accepted {
       value: CoercionCandidateSet {
-        set: CandidateSet {
+        set: v2.std.find_witness.CandidateSet {
           candidates: declared_inhabitant_candidates(inhabitants_root: inhabitants_root),
-          closedness: StructuralPropertyWitness {
+          closedness: v2.std.witness.StructuralPropertyWitness {
             property: closedness_property,
             evidence: inhabitants_root
           }
@@ -99,14 +99,14 @@ data identity_coercion_grounding_ruling: String = "Identity admission and semant
 
 fn coercion_homomorphism_evidence_for_node(
   source: Node,
-  fw: FindWitnessResult,
+  fw: v2.std.find_witness.FindWitnessResult,
 ) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_source }, target: source },
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
-      Edge {
+      v2.std.node.Edge { label: Named { name: ^coercion_homomorphism_evidence_source }, target: source },
+      v2.std.node.Edge { label: Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
+      v2.std.node.Edge {
         label: Named { name: ^coercion_homomorphism_evidence_find_witness },
         target: fw.witness.evidence
       }
@@ -117,7 +117,7 @@ fn coercion_homomorphism_evidence_for_node(
 
 fn coercion_identity_from_target_model(
   source: Node,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
 ) -> Outcome<CoercionResult> {
   bind_outcome(
     o: target_model_declared_inhabitants(target: target),
@@ -134,7 +134,7 @@ fn coercion_identity_from_target_model(
               match find_witness(
                 source_facts: source,
                 candidates: candidates.set,
-                predicate: PreservationPredicate {
+                predicate: v2.std.find_witness.PreservationPredicate {
                   algebra: source,
                   preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
                 },
@@ -148,7 +148,7 @@ fn coercion_identity_from_target_model(
                       target: fw.candidate,
                       quality: Identity,
                       witness: CoercionWitness {
-                        homomorphism: HomomorphismWitness {
+                        homomorphism: v2.std.witness.HomomorphismWitness {
                           rule: ^homomorphism_rule_exact_structural_equality,
                           evidence: coercion_homomorphism_evidence_for_node(
                             source: source,
@@ -169,8 +169,8 @@ fn coercion_identity_from_target_model(
   )
 }
 fn coercion_quality_for_witness(
-  source: CanonicalGrounding,
-  fw: FindWitnessResult,
+  source: v2.std.constraints.CanonicalGrounding,
+  fw: v2.std.find_witness.FindWitnessResult,
 ) -> CoercionQuality {
   if fw.candidate == source.node {
     Identity
@@ -179,17 +179,17 @@ fn coercion_quality_for_witness(
   }
 }
 fn coercion_find_witness_reason_unmapped_diagnostic(
-  source: CanonicalGrounding,
-) -> Diagnostic {
-  Diagnostic {
+  source: v2.std.constraints.CanonicalGrounding,
+) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^coercion_find_witness_reason_unmapped,
     at: node_locus(node: source.node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_rejection_kind_from_reason(
-  source: CanonicalGrounding,
-  reason: Symbol
+  source: v2.std.constraints.CanonicalGrounding,
+  reason: v2.std.node.Symbol
 ) -> Outcome<FindWitnessRejectionKind> {
   if reason == ^find_witness_reason_no_candidate {
     Accepted { value: FindWitnessNoCandidate, diagnostics: None }
@@ -216,16 +216,16 @@ fn coercion_mismatch_kind_for_find_witness_rejection_kind(
   }
 }
 fn coercion_wrap_find_witness_rejection(
-  source: CanonicalGrounding,
-  upstream: NonEmptyDiagnostics,
-) -> Outcome<NonEmptyDiagnostics> {
+  source: v2.std.constraints.CanonicalGrounding,
+  upstream: v2.std.diagnostic.NonEmptyDiagnostics,
+) -> Outcome<v2.std.diagnostic.NonEmptyDiagnostics> {
   match find_witness_rejection_kind_from_reason(
     source: source,
     reason: upstream.head.reason
   ) {
     Accepted { value: fw_kind, diagnostics: _ } =>
       Accepted {
-        value: NonEmptyDiagnostics {
+        value: v2.std.diagnostic.NonEmptyDiagnostics {
           head: coercion_not_realized_diagnostic(
             source: source,
             kind: coercion_mismatch_kind_for_find_witness_rejection_kind(kind: fw_kind)
@@ -244,13 +244,13 @@ fn coercion_wrap_find_witness_rejection(
   }
 }
 fn coercion_wrap_find_witness_rejection_with_refinement_algebra(
-  source: CanonicalGrounding,
-  upstream: NonEmptyDiagnostics,
+  source: v2.std.constraints.CanonicalGrounding,
+  upstream: v2.std.diagnostic.NonEmptyDiagnostics,
   refinement_algebra: Node,
-) -> Outcome<NonEmptyDiagnostics> {
+) -> Outcome<v2.std.diagnostic.NonEmptyDiagnostics> {
   if refinement_widening_is_strict_coarsening(algebra: refinement_algebra) {
     Accepted {
-      value: NonEmptyDiagnostics {
+      value: v2.std.diagnostic.NonEmptyDiagnostics {
         head: coercion_not_realized_diagnostic(source: source, kind: WouldLoseInformation),
         tail: list_append(
           left: list_snoc_item(xs: Empty, item: upstream.head),
@@ -264,20 +264,20 @@ fn coercion_wrap_find_witness_rejection_with_refinement_algebra(
   }
 }
 fn coercion_homomorphism_evidence(
-  source: CanonicalGrounding,
-  fw: FindWitnessResult,
+  source: v2.std.constraints.CanonicalGrounding,
+  fw: v2.std.find_witness.FindWitnessResult,
 ) -> Node {
   coercion_homomorphism_evidence_for_node(source: source.node, fw: fw)
 }
 fn coercion_fold_exact_structural(
-  source: CanonicalGrounding,
+  source: v2.std.constraints.CanonicalGrounding,
   candidates: CoercionCandidateSet,
-  policy: TargetSelectionPolicy,
+  policy: v2.std.find_witness.TargetSelectionPolicy,
 ) -> Outcome<CoercionResult> {
   match find_witness(
     source_facts: source.node,
     candidates: candidates.set,
-    predicate: PreservationPredicate {
+    predicate: v2.std.find_witness.PreservationPredicate {
       algebra: source.node,
       preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
     },
@@ -289,7 +289,7 @@ fn coercion_fold_exact_structural(
           target: fw.candidate,
           quality: coercion_quality_for_witness(source: source, fw: fw),
           witness: CoercionWitness {
-            homomorphism: HomomorphismWitness {
+            homomorphism: v2.std.witness.HomomorphismWitness {
               rule: ^homomorphism_rule_exact_structural_equality,
               evidence: coercion_homomorphism_evidence(source: source, fw: fw)
             }
@@ -306,9 +306,9 @@ fn coercion_fold_exact_structural(
   }
 }
 fn coercion_fold(
-  source: CanonicalGrounding,
+  source: v2.std.constraints.CanonicalGrounding,
   candidates: CoercionCandidateSet,
-  policy: TargetSelectionPolicy,
+  policy: v2.std.find_witness.TargetSelectionPolicy,
 ) -> Outcome<CoercionResult> {
   coercion_fold_exact_structural(
     source: source,
@@ -317,10 +317,10 @@ fn coercion_fold(
   )
 }
 fn coercion_fold_refinement_widening(
-  source: CanonicalGrounding,
+  source: v2.std.constraints.CanonicalGrounding,
   candidates: CoercionCandidateSet,
-  policy: TargetSelectionPolicy,
-  predicate: PreservationPredicate,
+  policy: v2.std.find_witness.TargetSelectionPolicy,
+  predicate: v2.std.find_witness.PreservationPredicate,
 ) -> Outcome<CoercionResult> {
   match find_witness(
     source_facts: source.node,
@@ -334,7 +334,7 @@ fn coercion_fold_refinement_widening(
           target: fw.candidate,
           quality: Widened,
           witness: CoercionWitness {
-            homomorphism: HomomorphismWitness {
+            homomorphism: v2.std.witness.HomomorphismWitness {
               rule: ^homomorphism_rule_refinement_widening,
               evidence: coercion_homomorphism_evidence(source: source, fw: fw)
             }
@@ -355,7 +355,7 @@ fn coercion_fold_refinement_widening(
   }
 }
 fn coercion_fold_with_declared_priority(
-  source: CanonicalGrounding,
+  source: v2.std.constraints.CanonicalGrounding,
   candidates: CoercionCandidateSet,
   priority: Node,
 ) -> Outcome<CoercionResult> {
@@ -366,10 +366,10 @@ fn coercion_fold_with_declared_priority(
   )
 }
 fn coercion_fold_refinement_widening_with_declared_priority(
-  source: CanonicalGrounding,
+  source: v2.std.constraints.CanonicalGrounding,
   candidates: CoercionCandidateSet,
   priority: Node,
-  predicate: PreservationPredicate,
+  predicate: v2.std.find_witness.PreservationPredicate,
 ) -> Outcome<CoercionResult> {
   coercion_fold_refinement_widening(
     source: source,

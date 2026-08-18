@@ -70,14 +70,14 @@ fn typed_argv_shell_safe_refusal_argv(argv: List<String>) -> String? {
   }
 }
 
-fn typed_argv_exec_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgvExecOutcome {
+fn typed_argv_exec_over_ssh(host: std.types.NonEmptyStr, argv: List<String>) -> TypedArgvExecOutcome {
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => TypedArgvExecRefused { reason: why }
     Absent => TypedArgvExecConverged { result: ssh_session_exec_argv(host: host, argv: argv) }
   }
 }
 
-fn typed_argv_probe_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgvExecOutcome {
+fn typed_argv_probe_over_ssh(host: std.types.NonEmptyStr, argv: List<String>) -> TypedArgvExecOutcome {
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => TypedArgvExecRefused { reason: why }
     Absent => {
@@ -111,8 +111,8 @@ fn typed_argv_probe_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgv
 // that fails has no PortableRemoteWord, so there is nothing to hand the shaper. Keeping both would
 // be two representations of one rule, and the typed one is strictly stronger.
 fn typed_argv_exec_over_fleet_ssh(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   argv: List<String>,
 ) -> TypedArgvExecOutcome {
   match portable_remote_words(raws: argv) {

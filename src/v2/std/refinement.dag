@@ -1,7 +1,7 @@
 module v2.std.refinement
 
 
-fn refinement_authoritative_locus() -> Locus {
+fn refinement_authoritative_locus() -> v2.std.diagnostic.Locus {
   port_locus(port: ^refinement_authoritative_locus)
 }
 
@@ -31,7 +31,7 @@ type Refined<B> {
   base: B
 }
 
-fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
+fn refine<B>(base: B, by: Validation<B>, at: v2.std.diagnostic.Locus) -> Outcome<Refined<B>> {
   let admits = by.admits
   if admits(base) {
     Accepted {
@@ -41,7 +41,7 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
   } else {
     Rejected {
       diagnostics: diagnostics_singleton(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: by.reason,
           at: at,
           correction: Unavailable { reason: UserInputBoundary }
@@ -55,7 +55,7 @@ fn refined_base<B>(r: Refined<B>) -> B {
   r.base
 }
 
-fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Outcome<Refined<B>> {
+fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: v2.std.diagnostic.Locus) -> Outcome<Refined<B>> {
   let validation = validation_from_vacuous(by: by)
   match refine(base: base, by: validation, at: at) {
     Accepted { value: refined, diagnostics: _ } => Accepted { value: refined, diagnostics: None }
@@ -63,7 +63,7 @@ fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Loc
   }
 }
 
-fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Refined<B> {
+fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: v2.std.diagnostic.Locus) -> Refined<B> {
   match refined_vacuous_oracle_terminal(base: base, by: by, at: at) {
     Accepted { value: refined, diagnostics: _ } => refined
     Rejected { diagnostics: _ } => Refined { base: base }
@@ -155,7 +155,7 @@ fn exact_one_int_value(p: ExactOneInt) -> Int {
   refined_base(r: p.refined)
 }
 
-fn make_positive_int(value: Int, at: Locus) -> Outcome<PositiveInt> {
+fn make_positive_int(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<PositiveInt> {
   match refine(base: value, by: positive_int_validation, at: at) {
     Accepted { value: refined, diagnostics: diagnostics } =>
       Accepted {
@@ -166,7 +166,7 @@ fn make_positive_int(value: Int, at: Locus) -> Outcome<PositiveInt> {
   }
 }
 
-fn make_non_negative_int(value: Int, at: Locus) -> Outcome<NonNegativeInt> {
+fn make_non_negative_int(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<NonNegativeInt> {
   match refine(base: value, by: non_negative_int_validation, at: at) {
     Accepted { value: refined, diagnostics: diagnostics } =>
       Accepted {
@@ -177,7 +177,7 @@ fn make_non_negative_int(value: Int, at: Locus) -> Outcome<NonNegativeInt> {
   }
 }
 
-fn make_at_least_minus_one_int(value: Int, at: Locus) -> Outcome<AtLeastMinusOneInt> {
+fn make_at_least_minus_one_int(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<AtLeastMinusOneInt> {
   match refine(base: value, by: at_least_minus_one_int_validation, at: at) {
     Accepted { value: refined, diagnostics: diagnostics } =>
       Accepted {
@@ -188,7 +188,7 @@ fn make_at_least_minus_one_int(value: Int, at: Locus) -> Outcome<AtLeastMinusOne
   }
 }
 
-fn make_at_least_minus_two_int(value: Int, at: Locus) -> Outcome<AtLeastMinusTwoInt> {
+fn make_at_least_minus_two_int(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<AtLeastMinusTwoInt> {
   match refine(base: value, by: at_least_minus_two_int_validation, at: at) {
     Accepted { value: refined, diagnostics: diagnostics } =>
       Accepted {
@@ -199,7 +199,7 @@ fn make_at_least_minus_two_int(value: Int, at: Locus) -> Outcome<AtLeastMinusTwo
   }
 }
 
-fn make_exact_one_int(value: Int, at: Locus) -> Outcome<ExactOneInt> {
+fn make_exact_one_int(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<ExactOneInt> {
   match refine(base: value, by: exact_one_int_validation, at: at) {
     Accepted { value: refined, diagnostics: diagnostics } =>
       Accepted {
@@ -258,7 +258,7 @@ type IterationClassifier<B> {
   classify: fn(B) -> IterationOrdering
 }
 
-fn refine_ordered_iteration<B>(base: B, by: IterationClassifier<B>, at: Locus) -> Outcome<Refined<B>> {
+fn refine_ordered_iteration<B>(base: B, by: IterationClassifier<B>, at: v2.std.diagnostic.Locus) -> Outcome<Refined<B>> {
   let classify = by.classify
   match classify(base) {
     StructurallyOrdered =>
@@ -266,7 +266,7 @@ fn refine_ordered_iteration<B>(base: B, by: IterationClassifier<B>, at: Locus) -
     StructurallyUnordered =>
       Rejected {
         diagnostics: diagnostics_singleton(
-          d: Diagnostic {
+          d: v2.std.diagnostic.Diagnostic {
             reason: ^naming_the_leak,
             at: at,
             correction: Unavailable { reason: UserInputBoundary }

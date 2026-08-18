@@ -1,7 +1,7 @@
 module gunbc.host_budget_source
 
 
-data host_budget_source_authority_disposition: Disposition = Terminal {
+data host_budget_source_authority_disposition: std.disposition.Disposition = Terminal {
   reason: "Single authority for the SOURCE half of the host memory budget the v1 memory governor arms against. The BUDGET VALUE stays where it is measured (a cgroup read, a meminfo read, an operator env override); what this module owns is the closed set of places that value can come from, whether each is degraded, and how each is rendered. It exists because those three facts were carried by a free-text label string and re-derived from it by substring scan."
 }
 
@@ -24,14 +24,14 @@ type HostBudgetResolution
   = HostBudgetResolved { source: HostBudgetSource, bytes: std.measure.ByteSize }
   | HostBudgetUnreadable { reason: std.types.NonEmptyStr }
 
-fn host_budget_resolution_bytes(r: HostBudgetResolution) -> ByteSize? {
+fn host_budget_resolution_bytes(r: HostBudgetResolution) -> std.measure.ByteSize? {
   match r {
     HostBudgetResolved { source: _, bytes: b } => Present { value: b }
     HostBudgetUnreadable { reason: _ } => none
   }
 }
 
-fn host_budget_unreadable_on_kernel(kernel: KernelFamily) -> HostBudgetResolution {
+fn host_budget_unreadable_on_kernel(kernel: std.os.types.KernelFamily) -> HostBudgetResolution {
   HostBudgetUnreadable {
     reason: concat(
       "no host memory budget is readable on kernel family ",
@@ -39,7 +39,7 @@ fn host_budget_unreadable_on_kernel(kernel: KernelFamily) -> HostBudgetResolutio
         kernel_family_label(kernel: kernel) as String,
         ": every modeled source refused, so the admission bound is UNKNOWN. Refuse the run rather than admitting against the widest cap the consumer could have chosen — an unbounded resolve on an unbounded host is the OOM-kill this arm exists to prevent, and it is not a state a default can rescue."
       )
-    ) as NonEmptyStr
+    ) as std.types.NonEmptyStr
   }
 }
 
@@ -69,18 +69,18 @@ fn host_budget_source_reads_procfs(s: HostBudgetSource) -> Bool {
   }
 }
 
-fn host_budget_source_label(s: HostBudgetSource) -> NonEmptyStr {
+fn host_budget_source_label(s: HostBudgetSource) -> std.types.NonEmptyStr {
   match s {
     BudgetSourceEnvOverride => "env GUNBC_MEMORY_BUDGET_BYTES"
     BudgetSourceCgroupMemoryHigh { cgroup_dir: d } =>
-      concat("cgroup memory.high (", concat(d as String, ")")) as NonEmptyStr
+      concat("cgroup memory.high (", concat(d as String, ")")) as std.types.NonEmptyStr
     BudgetSourceCgroupMemoryMax { cgroup_dir: d } =>
-      concat("cgroup memory.max (", concat(d as String, ")")) as NonEmptyStr
+      concat("cgroup memory.max (", concat(d as String, ")")) as std.types.NonEmptyStr
     BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: h } =>
       concat(
         "min(/proc/meminfo MemAvailable, declared runner-slot memory.high ",
         concat(to_string(byte_size_count(b: h)), " bytes)")
-      ) as NonEmptyStr
+      ) as std.types.NonEmptyStr
     BudgetSourceMemAvailable => "/proc/meminfo MemAvailable"
     BudgetSourceMemTotal => "/proc/meminfo MemTotal"
     BudgetSourceDarwinPhysicalMemory => "sysctl hw.memsize"
@@ -89,7 +89,7 @@ fn host_budget_source_label(s: HostBudgetSource) -> NonEmptyStr {
 
 data host_budget_source_platform_wall_note: String = "THE WALL THIS MODULE EXISTS TO HOLD, stated as a relation between two things that were previously unrelated: a source that READS procfs may not be reported on a kernel that does not PROVIDE procfs. That is exactly the sentence the live macOS diagnostic violates, and with both halves modeled it is now decidable — extdeps.linux.procfs answers which kernels synthesize /proc, this module answers which sources read it, and host_budget_source_admissible_on_kernel is their conjunction.\n\nIt is a validating predicate rather than a construction wall, and that is an honest limitation rather than a preferred design (DESIGN section 5 prefers construction). Making the bad state unwritable would mean parameterizing HostBudgetSource by the kernel it was observed on so a procfs arm could not be constructed for Darwin at all; that is buildable, and it is deliberately not attempted here because the constructor's only caller today is hand-Rust in the v1 seed, which cannot consume a .dag type at the point it runs. The predicate plus its RED control is the strongest wall reachable while the seed still composes these values itself; the dissolution is the same emit path that retires the seed's other budget mirrors."
 
-fn host_budget_source_admissible_on_kernel(s: HostBudgetSource, kernel: KernelFamily) -> Bool {
+fn host_budget_source_admissible_on_kernel(s: HostBudgetSource, kernel: std.os.types.KernelFamily) -> Bool {
   if host_budget_source_reads_procfs(s: s) {
     kernel_provides_procfs(kernel: kernel)
   } else {
@@ -98,7 +98,7 @@ fn host_budget_source_admissible_on_kernel(s: HostBudgetSource, kernel: KernelFa
 }
 
 // The source a host SHOULD read follows from its kernel, and stating it as a total match is what stops a platform being silently unserved. Darwin reads sysctl; the procfs kernels read their cgroup or meminfo path and are represented here by their weakest arm, MemTotal, because which of the stronger arms applies depends on runtime facts (is there a cgroup, is there an override) that no static row can answer. WindowsNt has no modeled source at all and therefore no arm — it returns none rather than a guess, and a consumer that reaches it refuses. That is the honest state: nobody has modeled Windows memory facts, and inventing one here would be the fabrication this whole change removes.
-fn host_budget_source_for_kernel(kernel: KernelFamily) -> HostBudgetSource? {
+fn host_budget_source_for_kernel(kernel: std.os.types.KernelFamily) -> HostBudgetSource? {
   match kernel {
     Darwin => Present { value: BudgetSourceDarwinPhysicalMemory }
     Linux => Present { value: BudgetSourceMemTotal }
@@ -107,9 +107,9 @@ fn host_budget_source_for_kernel(kernel: KernelFamily) -> HostBudgetSource? {
   }
 }
 
-data host_budget_source_seed_mirror_disposition: Disposition = Scaffold {
+data host_budget_source_seed_mirror_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_budget_source",
     decl_name: "host_budget_source_emitted_into_stage0",
     field: WholeDeclaration

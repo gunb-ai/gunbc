@@ -131,15 +131,15 @@ type BehavioralComparisonObservation {
 
 fn build_receipt_from_observation(
   o: BehavioralComparisonObservation,
-  subject: GenerationIdentity
+  subject: v2.compiler.self_host.generation.GenerationIdentity
 ) -> BuildReceipt {
   BuildReceipt { subject: subject, outcome: o.build }
 }
 
 fn equivalence_receipt_from_observation(
   o: BehavioralComparisonObservation,
-  subject: GenerationIdentity,
-  oracle: GenerationIdentity
+  subject: v2.compiler.self_host.generation.GenerationIdentity,
+  oracle: v2.compiler.self_host.generation.GenerationIdentity
 ) -> BehavioralEquivalenceReceipt {
   BehavioralEquivalenceReceipt {
     subject: subject,
@@ -152,7 +152,7 @@ fn equivalence_receipt_from_observation(
 
 fn fault_receipt_from_observation(
   o: BehavioralComparisonObservation,
-  subject: GenerationIdentity,
+  subject: v2.compiler.self_host.generation.GenerationIdentity,
   planted_fault: String
 ) -> DiscriminatingFaultReceipt {
   DiscriminatingFaultReceipt {
@@ -182,9 +182,9 @@ type PromotionOutcome
   | PromotionRefused { causes: List<PromotionRefusalCause> }
 
 fn stale_causes_for(
-  receipt: Symbol,
-  subject: GenerationIdentity,
-  expected: GenerationIdentity
+  receipt: v2.std.node.Symbol,
+  subject: v2.compiler.self_host.generation.GenerationIdentity,
+  expected: v2.compiler.self_host.generation.GenerationIdentity
 ) -> List<PromotionRefusalCause> {
   fold_list(
     xs: generation_identity_mismatched_axes(left: expected, right: subject),
@@ -202,9 +202,9 @@ fn stale_causes_for(
 }
 
 fn build_receipt_causes(
-  receipt: Symbol,
+  receipt: v2.std.node.Symbol,
   r: BuildReceipt,
-  expected: GenerationIdentity
+  expected: v2.compiler.self_host.generation.GenerationIdentity
 ) -> List<PromotionRefusalCause> {
   let stale = stale_causes_for(receipt: receipt, subject: r.subject, expected: expected)
   match r.outcome {
@@ -240,10 +240,10 @@ fn build_receipt_causes(
 // comes from the generation chain, which construction already fixed, so the receipt
 // cannot choose what it was measured against.
 fn equivalence_receipt_causes(
-  receipt: Symbol,
+  receipt: v2.std.node.Symbol,
   r: BehavioralEquivalenceReceipt,
-  expected: GenerationIdentity,
-  expected_oracle: GenerationIdentity
+  expected: v2.compiler.self_host.generation.GenerationIdentity,
+  expected_oracle: v2.compiler.self_host.generation.GenerationIdentity
 ) -> List<PromotionRefusalCause> {
   let subject_stale = stale_causes_for(
     receipt: receipt,
@@ -294,7 +294,7 @@ fn equivalence_receipt_causes(
 
 fn fault_receipt_causes(
   r: DiscriminatingFaultReceipt,
-  expected: GenerationIdentity
+  expected: v2.compiler.self_host.generation.GenerationIdentity
 ) -> List<PromotionRefusalCause> {
   let stale = stale_causes_for(
     receipt: ^receipt_discriminating_fault,
@@ -325,10 +325,10 @@ fn fault_receipt_causes(
 // assert who produced it, because the fact is already fixed by the type that
 // required a seed to construct it.
 fn provenance_receipt_causes(
-  receipt: Symbol,
+  receipt: v2.std.node.Symbol,
   r: GenerationProvenanceReceipt,
-  expected: GenerationIdentity,
-  declared_producer: GenerationIdentity
+  expected: v2.compiler.self_host.generation.GenerationIdentity,
+  declared_producer: v2.compiler.self_host.generation.GenerationIdentity
 ) -> List<PromotionRefusalCause> {
   let stale = stale_causes_for(receipt: receipt, subject: r.subject, expected: expected)
   if length(
@@ -350,8 +350,8 @@ fn provenance_receipt_causes(
 // therefore fine" — the same unavailable-is-not-equivalent rule the receipts follow,
 // applied to the generation itself.
 fn artifact_causes(
-  receipt: Symbol,
-  identity: GenerationIdentity
+  receipt: v2.std.node.Symbol,
+  identity: v2.compiler.self_host.generation.GenerationIdentity
 ) -> List<PromotionRefusalCause> {
   match identity.materialized_artifact {
     ArtifactMaterialized { digest: _ } => freemonoid_empty()
@@ -489,7 +489,7 @@ fn admit_promotion(c: SelfHostCandidate) -> PromotionOutcome {
   }
 }
 
-fn promotion_refusal_carries(o: PromotionOutcome, cause: Symbol) -> Bool {
+fn promotion_refusal_carries(o: PromotionOutcome, cause: v2.std.node.Symbol) -> Bool {
   match o {
     Promoted { successor: _, cases_compared: _ } => false
     PromotionRefused { causes: cs } =>
@@ -501,7 +501,7 @@ fn promotion_refusal_carries(o: PromotionOutcome, cause: Symbol) -> Bool {
   }
 }
 
-fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
+fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> v2.std.node.Symbol {
   match c {
     StaleReceiptSubject { receipt: _, axis: _ } => ^refusal_stale_receipt_subject
     ReceiptObservationUnavailable { receipt: _, cause: _ } =>

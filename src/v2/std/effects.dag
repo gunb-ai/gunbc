@@ -25,7 +25,7 @@ type IdempotentOperationSubject
   = Composable(ComposableIdempotentOperationSubject)
   | LabelOnlyIdempotentInhabitance { shape: EffectShape<SubstrateKeySource>, label: v2.std.node.Symbol }
 
-data sample_state: Node = Node {
+data sample_state: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^sample_state_value } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -95,8 +95,8 @@ fn create_always_shape() -> EffectShape<SubstrateKeySource> {
   CreateEffect { cause: PostAlways }
 }
 
-fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+fn atom_node(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
@@ -104,14 +104,14 @@ fn atom_node(s: Symbol) -> Node {
 fn key_source_node(key_source: SubstrateKeySource) -> Node {
   match key_source {
     PathParam { param: p } =>
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^key_source_path_param_field },
             target: atom_node(s: ^key_source_path_param_field)
           },
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^key_source_path_param_value_field },
             target: atom_node(s: p)
           },
@@ -119,14 +119,14 @@ fn key_source_node(key_source: SubstrateKeySource) -> Node {
         occurrence_id: SyntheticOccurrence
 }
     InputField { field: f } =>
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^key_source_input_field_field },
             target: atom_node(s: ^key_source_input_field_field)
           },
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^key_source_input_value_field },
             target: atom_node(s: f)
           },
@@ -136,15 +136,15 @@ fn key_source_node(key_source: SubstrateKeySource) -> Node {
   }
 }
 
-fn keyed_shape_node(variant_marker: Symbol, key_source: SubstrateKeySource) -> Node {
-  Node {
+fn keyed_shape_node(variant_marker: v2.std.node.Symbol, key_source: SubstrateKeySource) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: variant_marker },
         target: atom_node(s: variant_marker)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^idempotent_operation_key_source_field },
         target: key_source_node(key_source: key_source)
       },
@@ -173,14 +173,14 @@ fn effect_shape_node(shape: EffectShape<SubstrateKeySource>) -> Node {
 }
 
 fn classified_idempotent_effect_node(shape: EffectShape<SubstrateKeySource>) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^effect_shape_is_idempotent_field },
         target: atom_node(s: ^effect_shape_is_idempotent_field)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^effect_shape_inner_field },
         target: effect_shape_node(shape: shape)
       },
@@ -190,10 +190,10 @@ fn classified_idempotent_effect_node(shape: EffectShape<SubstrateKeySource>) -> 
 }
 
 fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^idempotent_operation_callable_field },
         target: atom_node(s: operation.callable)
       },
@@ -205,14 +205,14 @@ fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
 fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubject) -> Node {
   match subject {
     ReadIdempotentSample { operation: operation } =>
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^effect_shape_inner_field },
             target: classified_idempotent_effect_node(shape: ReadEffect)
           },
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^idempotent_operation_callable_field },
             target: idempotent_operation_ref_node(operation: operation)
           },
@@ -220,14 +220,14 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
         occurrence_id: SyntheticOccurrence
 }
     UpsertIdempotentSample { operation: operation, key_source: key_source } =>
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^effect_shape_inner_field },
             target: classified_idempotent_effect_node(shape: UpsertEffect { key_source: key_source })
           },
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^idempotent_operation_callable_field },
             target: idempotent_operation_ref_node(operation: operation)
           },
@@ -235,14 +235,14 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
         occurrence_id: SyntheticOccurrence
 }
     DeleteIdempotentSample { operation: operation, key_source: key_source } =>
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^effect_shape_inner_field },
             target: classified_idempotent_effect_node(shape: DeleteEffect { key_source: key_source })
           },
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^idempotent_operation_callable_field },
             target: idempotent_operation_ref_node(operation: operation)
           },
@@ -250,16 +250,16 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
         occurrence_id: SyntheticOccurrence
 }
     CreateIfAbsentIdempotentSample { operation: operation, key_source: key_source } =>
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^effect_shape_inner_field },
             target: classified_idempotent_effect_node(
               shape: CreateEffect { cause: CreateIfAbsent { key_source: key_source } }
             )
           },
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^idempotent_operation_callable_field },
             target: idempotent_operation_ref_node(operation: operation)
           },
@@ -270,14 +270,14 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
 }
 
 fn idempotent_operation_apply_node(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^idempotent_apply_state_field },
         target: state
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^idempotent_apply_operation_field },
         target: idempotent_operation_witness_node(subject: subject)
       },

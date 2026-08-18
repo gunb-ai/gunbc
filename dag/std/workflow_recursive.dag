@@ -5,14 +5,14 @@ type VerdictTree
   = Leaf { verdict: std.reducible.ReduceVerdict }
   | Decomposed { children: List<VerdictTree> }
 
-fn settle_verdict_tree(w: VerdictTree) -> ReduceVerdict {
+fn settle_verdict_tree(w: VerdictTree) -> std.reducible.ReduceVerdict {
   match w {
     Leaf { verdict: v } => v
     Decomposed { children: cs } => settle_verdict_children(cs)
   }
 }
 
-fn settle_verdict_children(cs: List<VerdictTree>) -> ReduceVerdict {
+fn settle_verdict_children(cs: List<VerdictTree>) -> std.reducible.ReduceVerdict {
   reduce_verdicts_located(
     verdicts: map(
       collection: cs,
@@ -22,7 +22,7 @@ fn settle_verdict_children(cs: List<VerdictTree>) -> ReduceVerdict {
   )
 }
 
-fn linearize_verdicts(verdicts: List<ReduceVerdict>) -> VerdictTree {
+fn linearize_verdicts(verdicts: List<std.reducible.ReduceVerdict>) -> VerdictTree {
   Decomposed {
     children: map(
       collection: verdicts,

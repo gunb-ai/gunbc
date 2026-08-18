@@ -23,16 +23,16 @@ fn empty_per_language_fact_bundle_registry() -> PerLanguageFactBundleRegistry {
   PerLanguageFactBundleRegistry { by_key: empty_map() }
 }
 
-fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn per_language_fact_bundle_duplicate_key_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^per_language_fact_bundle_duplicate_key_reason,
     at: port_locus(port: ^per_language_fact_bundle_duplicate_key_reason),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
-fn per_language_fact_bundle_ungrounded_subject_diagnostic(subject_carrier: Node) -> Diagnostic {
-  Diagnostic {
+fn per_language_fact_bundle_ungrounded_subject_diagnostic(subject_carrier: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^per_language_fact_bundle_ungrounded_subject_reason,
     at: node_locus(node: subject_carrier),
     correction: Unavailable { reason: UserInputBoundary }
@@ -61,8 +61,8 @@ fn insert_per_language_fact_bundle_entry(
 
 fn per_language_fact_bundle_subject_axis_key(
   subject_carrier: Node,
-  target: TargetModel,
-  fact_axis: ModelCorePrimitiveFactAxis
+  target: v2.std.compilers.target_model.TargetModel,
+  fact_axis: v2.std.model_core.ModelCorePrimitiveFactAxis
 ) -> PerLanguageFactBundleKey {
   PerLanguageFactBundleKey {
     subject_carrier: subject_carrier,
@@ -75,8 +75,8 @@ fn per_language_fact_bundle_insert_subject_axis(
   registry: PerLanguageFactBundleRegistry,
   state: PerLanguageFactBundleSpecFactsFoldState,
   subject_carrier: Node,
-  target: TargetModel,
-  fact_axis: ModelCorePrimitiveFactAxis
+  target: v2.std.compilers.target_model.TargetModel,
+  fact_axis: v2.std.model_core.ModelCorePrimitiveFactAxis
 ) -> Outcome<PerLanguageFactBundleSpecFactsFoldState> {
   match v2.std.collection.map_get(
     m: registry.by_key,
@@ -109,8 +109,8 @@ fn per_language_fact_bundle_spec_facts_after_axis(
   acc: Outcome<PerLanguageFactBundleSpecFactsFoldState>,
   registry: PerLanguageFactBundleRegistry,
   subject_carrier: Node,
-  target: TargetModel,
-  fact_axis: ModelCorePrimitiveFactAxis
+  target: v2.std.compilers.target_model.TargetModel,
+  fact_axis: v2.std.model_core.ModelCorePrimitiveFactAxis
 ) -> Outcome<PerLanguageFactBundleSpecFactsFoldState> {
   match acc {
     Accepted { value: state, diagnostics: _ } =>
@@ -128,7 +128,7 @@ fn per_language_fact_bundle_spec_facts_after_axis(
 fn per_language_fact_bundle_spec_facts_state_for_subject(
   registry: PerLanguageFactBundleRegistry,
   subject_carrier: Node,
-  target: TargetModel
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<PerLanguageFactBundleSpecFactsFoldState> {
   let width = per_language_fact_bundle_insert_subject_axis(
     registry: registry,
@@ -180,8 +180,8 @@ fn per_language_fact_bundle_spec_facts_state_for_subject(
 fn per_language_fact_bundle_spec_facts_for_subject(
   registry: PerLanguageFactBundleRegistry,
   subject_carrier: Node,
-  target: TargetModel
-) -> Outcome<Map<Symbol, Node>> {
+  target: v2.std.compilers.target_model.TargetModel
+) -> Outcome<Map<v2.std.node.Symbol, Node>> {
   match per_language_fact_bundle_spec_facts_state_for_subject(
     registry: registry,
     subject_carrier: subject_carrier,
@@ -200,8 +200,8 @@ fn per_language_fact_bundle_spec_facts_for_subject(
 fn primitive_fact_bundle_for_subject(
   registry: PerLanguageFactBundleRegistry,
   subject_carrier: Node,
-  target: TargetModel
-) -> Outcome<PrimitiveFactBundle> {
+  target: v2.std.compilers.target_model.TargetModel
+) -> Outcome<v2.std.model_core.PrimitiveFactBundle> {
   match per_language_fact_bundle_spec_facts_for_subject(
     registry: registry,
     subject_carrier: subject_carrier,
@@ -209,7 +209,7 @@ fn primitive_fact_bundle_for_subject(
   ) {
     Accepted { value: spec_facts, diagnostics: d } =>
       Accepted {
-        value: PrimitiveFactBundle {
+        value: v2.std.model_core.PrimitiveFactBundle {
           substrate_carrier: subject_carrier,
           spec_facts: spec_facts
         },
@@ -236,7 +236,7 @@ type PerTargetGroundingReceipt {
   host_run: v2.std.host_run.EmitHostRunReceipt
 }
 
-fn per_target_grounding_receipt_target(receipt: PerTargetGroundingReceipt) -> TargetModel {
+fn per_target_grounding_receipt_target(receipt: PerTargetGroundingReceipt) -> v2.std.compilers.target_model.TargetModel {
   receipt.host_run.target
 }
 
@@ -250,7 +250,7 @@ type PerTargetTestClaimReceipt {
   verdict_tally: v2.std.verdict.VerdictTally
 }
 
-fn per_target_testclaim_receipt_target(receipt: PerTargetTestClaimReceipt) -> TargetModel {
+fn per_target_testclaim_receipt_target(receipt: PerTargetTestClaimReceipt) -> v2.std.compilers.target_model.TargetModel {
   receipt.host_run.target
 }
 

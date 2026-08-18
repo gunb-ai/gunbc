@@ -59,7 +59,7 @@ fn deterministic_generated_projection_paths_from_rows(
 }
 
 fn deterministic_generated_projection_paths_from_stage0_plan(
-  outcome: Stage0EmissionPlanOutcome
+  outcome: gunbc.stage0_emit_plan.Stage0EmissionPlanOutcome
 ) -> GeneratedProjectionPathsOutcome {
   let committed = committed_generated_artifact_paths()
     |> map(path => GeneratedProjectionPathRow { path: path, source: CommittedGeneratedArtifact })

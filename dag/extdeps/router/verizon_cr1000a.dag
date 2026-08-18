@@ -2,8 +2,8 @@ module extdeps.router.verizon_cr1000a
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "scache.vzw.com/content/dam/support/pdf/user_guide/verizon-router-cr1000a-guide.pdf"
   }
@@ -58,7 +58,7 @@ type Cr1000aBroadbandIpv6Snapshot {
   prefix: std.types.NonEmptyStr?
 }
 
-data cr1000a_dhcp_lease_transport_frontier_rows: List<FrontierRow> = [
+data cr1000a_dhcp_lease_transport_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.router.verizon_cr1000a", decl_name: "Cr1000aDhcpLeaseTable"),
     reason: "Cr1000aDhcpLeaseTable has cited semantic shape only; read transport for /cgi/cgi_dhcp*.js addCfg projection is not yet bound as a handler",
@@ -66,7 +66,7 @@ data cr1000a_dhcp_lease_transport_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-data cr1000a_host_name_raw_parse_frontier_rows: List<FrontierRow> = [
+data cr1000a_host_name_raw_parse_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_field_ref(
       module_path: "extdeps.router.verizon_cr1000a",
@@ -78,7 +78,7 @@ data cr1000a_host_name_raw_parse_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-data cr1000a_delegated_prefix_length_scalar_frontier_rows: List<FrontierRow> = [
+data cr1000a_delegated_prefix_length_scalar_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_field_ref(
       module_path: "extdeps.router.verizon_cr1000a",
@@ -90,7 +90,7 @@ data cr1000a_delegated_prefix_length_scalar_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-data cr1000a_expires_in_ui_text_frontier_rows: List<FrontierRow> = [
+data cr1000a_expires_in_ui_text_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_field_ref(
       module_path: "extdeps.router.verizon_cr1000a",

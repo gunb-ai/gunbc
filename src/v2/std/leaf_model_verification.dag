@@ -85,7 +85,7 @@ type TargetTypeScriptCompileVerdict
   = TargetTypeScriptCompileAccepted
   | TargetTypeScriptCompileRejected { diagnostic_code: v2.std.node.Symbol }
 
-type LeafModelClaimId = Symbol
+type LeafModelClaimId = v2.std.node.Symbol
 
 data leaf_model_claim_rust_r1_i32_surface_spelling: LeafModelClaimId = leaf_model_claim_rust_r1_i32_surface_spelling
 data leaf_model_claim_python_r1_int_surface_spelling: LeafModelClaimId = leaf_model_claim_python_r1_int_surface_spelling
@@ -135,7 +135,7 @@ type LeafModelCrossTargetParityProbe {
   expected_parity: ValueDiff<String>
 }
 
-type LeafModelRustCrateType = Symbol
+type LeafModelRustCrateType = v2.std.node.Symbol
 
 data leaf_model_rust_crate_type_lib: LeafModelRustCrateType = leaf_model_rust_crate_type_lib
 data leaf_model_rust_crate_type_bin: LeafModelRustCrateType = leaf_model_rust_crate_type_bin

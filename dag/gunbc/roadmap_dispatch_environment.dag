@@ -31,7 +31,7 @@ fn no_capability_plan(reason: String) -> EnsurePlan<String> {
 }
 
 fn capability_ensure_decision(
-  realization: CapabilityRealization,
+  realization: gunbc.roadmap_execution_contract.CapabilityRealization,
   observation: EnsureObservation<String>,
   identity_matches: Bool,
 ) -> UpsertDecision<String> {
@@ -63,7 +63,7 @@ fn ensure_observation_evidence(observation: EnsureObservation<String>) -> String
 }
 
 fn capability_ensure_receipt(
-  realization: CapabilityRealization,
+  realization: gunbc.roadmap_execution_contract.CapabilityRealization,
   observation: EnsureObservation<String>,
   identity_matches: Bool,
 ) -> CapabilityEnsureReceipt {
@@ -119,7 +119,7 @@ fn capability_ensure_receipt(
   }
 }
 
-fn missing_capability_reason(cap: ExecutionCapability) -> String {
+fn missing_capability_reason(cap: gunbc.roadmap_execution_contract.ExecutionCapability) -> String {
   join([
     "host environment has no realization for required capability ",
     execution_capability_label(capability: cap),
@@ -127,14 +127,14 @@ fn missing_capability_reason(cap: ExecutionCapability) -> String {
 }
 
 fn missing_capability_receipt(
-  cap: ExecutionCapability,
+  cap: gunbc.roadmap_execution_contract.ExecutionCapability,
 ) -> CapabilityEnsureReceipt {
   CapabilityEnsureReceipt {
     capability: cap,
     capability_label: execution_capability_label(capability: cap),
     executable: "",
     decision: Refuse {
-      reason: missing_capability_reason(cap: cap) as NonEmptyStr,
+      reason: missing_capability_reason(cap: cap) as std.types.NonEmptyStr,
     },
     grounded: false,
     evidence: "",
@@ -143,7 +143,7 @@ fn missing_capability_receipt(
 }
 
 fn capability_ensure_observe(
-  realization: CapabilityRealization,
+  realization: gunbc.roadmap_execution_contract.CapabilityRealization,
 ) -> CapabilityEnsureReceipt {
   let executable = shell.Test.IsExecutable(
     path: realization.executable,
@@ -185,8 +185,8 @@ fn capability_ensure_observe(
 }
 
 fn capability_receipt_for_requirement(
-  environment: DispatchHostEnvironment,
-  cap: ExecutionCapability,
+  environment: gunbc.roadmap_execution_contract.DispatchHostEnvironment,
+  cap: gunbc.roadmap_execution_contract.ExecutionCapability,
 ) -> CapabilityEnsureReceipt {
   match dispatch_host_realization(environment: environment, capability: cap) {
     Present { value: realization } =>
@@ -198,7 +198,7 @@ fn capability_receipt_for_requirement(
 
 fn receipt_matches_requirement(
   receipt: CapabilityEnsureReceipt,
-  cap: ExecutionCapability,
+  cap: gunbc.roadmap_execution_contract.ExecutionCapability,
 ) -> Bool {
   execution_capability_equal(a: receipt.capability, b: cap)
 }
@@ -216,7 +216,7 @@ fn first_ungrounded_reason(receipts: List<CapabilityEnsureReceipt>) -> String {
 }
 
 fn dispatch_environment_admission_decision(
-  contract: WorkItemExecutionContract,
+  contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
   receipts: List<CapabilityEnsureReceipt>,
   validation_summary: String,
 ) -> DispatchEnvironmentAdmission {
@@ -267,8 +267,8 @@ fn dispatch_environment_admission_decision(
 }
 
 fn dispatch_environment_admit(
-  contract: WorkItemExecutionContract,
-  environment: DispatchHostEnvironment,
+  contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
+  environment: gunbc.roadmap_execution_contract.DispatchHostEnvironment,
 ) -> DispatchEnvironmentAdmission {
   let receipts = dispatch_required_capabilities(contract: contract)
     |> map(cap =>
@@ -335,7 +335,7 @@ fn dispatch_environment_receipt_decode(
   }
 }
 
-fn capability_ensure_receipt_json(receipt: CapabilityEnsureReceipt) -> JsonValue {
+fn capability_ensure_receipt_json(receipt: CapabilityEnsureReceipt) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "capability", value: json_string(s: receipt.capability_label)),
     json_kv(key: "executable", value: json_string(s: receipt.executable)),

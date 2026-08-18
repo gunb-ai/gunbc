@@ -1,22 +1,22 @@
 module extdeps.bmc.webui.nbd_proxy
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/openbmc/jsnbd"
   }
 }
 
-data nbd_protocol_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data nbd_protocol_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md"
   }
 }
 
-data openbmc_virtual_media_design_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data openbmc_virtual_media_design_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/openbmc/docs/blob/master/designs/virtual-media.md"
   }
@@ -156,14 +156,14 @@ type BmcwebNbdProxyEndpointVariant =
     NbdSlotEndpoint
   | VmSlotIndexEndpoint
 
-data nbd_slot_endpoint_path_template: PathTemplate = PathTemplate {
+data nbd_slot_endpoint_path_template: std.http_path.PathTemplate = std.http_path.PathTemplate {
   tokens: [
     LiteralToken { text: "/nbd/" },
     ParamToken { name: "slot" },
   ],
 }
 
-data vm_slot_index_endpoint_path_template: PathTemplate = PathTemplate {
+data vm_slot_index_endpoint_path_template: std.http_path.PathTemplate = std.http_path.PathTemplate {
   tokens: [
     LiteralToken { text: "/vm/" },
     ParamToken { name: "slot" },
@@ -172,7 +172,7 @@ data vm_slot_index_endpoint_path_template: PathTemplate = PathTemplate {
   ],
 }
 
-fn bmcweb_nbd_proxy_endpoint_path_template(variant: BmcwebNbdProxyEndpointVariant) -> PathTemplate {
+fn bmcweb_nbd_proxy_endpoint_path_template(variant: BmcwebNbdProxyEndpointVariant) -> std.http_path.PathTemplate {
   match variant {
     NbdSlotEndpoint => nbd_slot_endpoint_path_template
     VmSlotIndexEndpoint => vm_slot_index_endpoint_path_template
@@ -183,23 +183,23 @@ fn bmcweb_nbd_proxy_path_params(
   variant: BmcwebNbdProxyEndpointVariant,
   slot: Int,
   index: Int,
-) -> List<PathParamBinding> {
+) -> List<std.http_path.PathParamBinding> {
   match variant {
     NbdSlotEndpoint => [
-      PathParamBinding { name: "slot", value: to_string(slot) },
+      std.http_path.PathParamBinding { name: "slot", value: to_string(slot) },
     ]
     VmSlotIndexEndpoint => [
-      PathParamBinding { name: "slot", value: to_string(slot) },
-      PathParamBinding { name: "index", value: to_string(index) },
+      std.http_path.PathParamBinding { name: "slot", value: to_string(slot) },
+      std.http_path.PathParamBinding { name: "index", value: to_string(index) },
     ]
   }
 }
 
-fn bmcweb_nbd_proxy_ws_path(variant: BmcwebNbdProxyEndpointVariant, slot: Int, index: Int) -> NonEmptyStr {
+fn bmcweb_nbd_proxy_ws_path(variant: BmcwebNbdProxyEndpointVariant, slot: Int, index: Int) -> std.types.NonEmptyStr {
   render_path_template(
     template: bmcweb_nbd_proxy_endpoint_path_template(variant: variant),
     params: bmcweb_nbd_proxy_path_params(variant: variant, slot: slot, index: index),
-  ) as NonEmptyStr
+  ) as std.types.NonEmptyStr
 }
 
 type BmcwebNbdProxyWsUpgrade {

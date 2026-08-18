@@ -1,8 +1,8 @@
 module extdeps.formats.elf.segments
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch5.pheader.html"
   }
@@ -19,14 +19,14 @@ type Elf64Phdr {
   align: Int
 }
 
-fn decode_elf_segment_type(raw: Int) -> ElfDecodeOutcome<ElfSegmentType> {
+fn decode_elf_segment_type(raw: Int) -> ElfDecodeOutcome<extdeps.formats.elf.primitives.ElfSegmentType> {
   if raw == pt_load { ElfDecoded { value: PtLoad } }
   else if raw == pt_null { ElfDecoded { value: PtNull } }
   else { ElfRejected { reason: UnsupportedElfSegmentType { raw: raw } } }
 }
 
-fn decode_segment_permissions(flags: Int) -> SegmentPermission {
-  SegmentPermission {
+fn decode_segment_permissions(flags: Int) -> std.exec_format.SegmentPermission {
+  std.exec_format.SegmentPermission {
     readable: flags == pf_r || flags == (pf_r + pf_w) || flags == (pf_r + pf_x) || flags == (pf_r + pf_w + pf_x),
     writable: flags == pf_w || flags == (pf_r + pf_w) || flags == (pf_w + pf_x) || flags == (pf_r + pf_w + pf_x),
     executable: flags == pf_x || flags == (pf_r + pf_x) || flags == (pf_w + pf_x) || flags == (pf_r + pf_w + pf_x),
@@ -60,8 +60,8 @@ fn decode_elf64_phdr(bytes: List<Int>, offset: Int) -> ElfDecodeOutcome<Elf64Phd
   }
 }
 
-fn elf64_phdr_to_load_segment(phdr: Elf64Phdr) -> LoadSegment {
-  LoadSegment {
+fn elf64_phdr_to_load_segment(phdr: Elf64Phdr) -> std.exec_format.LoadSegment {
+  std.exec_format.LoadSegment {
     file_offset: phdr.offset,
     virtual_address: phdr.vaddr,
     file_size: phdr.filesz,

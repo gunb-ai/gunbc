@@ -2,7 +2,7 @@ module v2.test.lens_mock_totality.http_pilot_mock_totality
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedHttpPilotMock {
   tag: v2.std.node.Symbol
@@ -10,7 +10,7 @@ type MaterializedHttpPilotMock {
 
 data http_pilot_red_omit_keys: List<String> = ["test.HttpPilot.GetPost"]
 
-fn materialize_http_pilot_mock(case: PublishedMockCase) -> Outcome<MaterializedHttpPilotMock> {
+fn materialize_http_pilot_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedHttpPilotMock> {
   if case.operation_key == "test.HttpPilot.GetPost" {
     outcome_accepted(value: MaterializedHttpPilotMock { tag: ^materialized_get_post })
   } else {
@@ -18,11 +18,11 @@ fn materialize_http_pilot_mock(case: PublishedMockCase) -> Outcome<MaterializedH
   }
 }
 
-fn real_consumer_handles(case: PublishedMockCase) -> Bool {
+fn real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   outcome_accepted_p(outcome: materialize_http_pilot_mock(case: case))
 }
 
-fn omits_get_post_consumer_handles(case: PublishedMockCase) -> Bool {
+fn omits_get_post_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   omit_consumer_handles(
     case: case,
     omit_keys: http_pilot_red_omit_keys,

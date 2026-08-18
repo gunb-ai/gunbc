@@ -36,7 +36,7 @@ fn reachable_basenames_for_package(package: String, fuel: Int) -> List<String> {
   reachable_basenames_in(rows: generated_partition_crate_rows, package: package, fuel: fuel)
 }
 
-fn reachable_basenames_in(rows: List<GeneratedPartitionCrateRow>, package: String, fuel: Int) -> List<String> {
+fn reachable_basenames_in(rows: List<gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow>, package: String, fuel: Int) -> List<String> {
   if fuel <= 0 {
     []
   } else {
@@ -52,8 +52,8 @@ fn reachable_basenames_in(rows: List<GeneratedPartitionCrateRow>, package: Strin
 }
 
 fn reachable_basenames_via_reexports(
-  rows: List<GeneratedPartitionCrateRow>,
-  row: GeneratedPartitionCrateRow,
+  rows: List<gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow>,
+  row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow,
   fuel: Int
 ) -> List<String> {
   row.reexport_packages
@@ -69,7 +69,7 @@ fn emitted_basenames() -> List<String> {
   emitted_basenames_in(rows: generated_partition_crate_rows)
 }
 
-fn emitted_basenames_in(rows: List<GeneratedPartitionCrateRow>) -> List<String> {
+fn emitted_basenames_in(rows: List<gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow>) -> List<String> {
   rows
     |> fold(init: [], f: fn(acc, row) { concat(acc, row.modules) })
 }
@@ -203,7 +203,7 @@ fn targets_of_module(idx: Map<String, List<String>>, module: String) -> List<Str
 // but which this crate cannot reach, means the reexport/edge authority is short a relation.
 // The two are different edits in different lists, and telling the author only the first sends
 // them back around the loop for the second.
-fn authority_for_unreachable_target(rows: List<GeneratedPartitionCrateRow>, target_basename: String) -> PartitionAuthorityId {
+fn authority_for_unreachable_target(rows: List<gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow>, target_basename: String) -> PartitionAuthorityId {
   if list_contains_string(xs: emitted_basenames_in(rows: rows), needle: target_basename) {
     PartitionModuleEdgeList
   } else {
@@ -211,12 +211,12 @@ fn authority_for_unreachable_target(rows: List<GeneratedPartitionCrateRow>, targ
   }
 }
 
-fn remedy_for(authority: PartitionAuthorityId, target_basename: String) -> NonEmptyStr {
+fn remedy_for(authority: PartitionAuthorityId, target_basename: String) -> std.types.NonEmptyStr {
   match authority {
     PartitionCrateRoster =>
-      "no partition crate owns this module: add it to a crate roster in v2.workflow.rust_crate_partition, then regenerate" as NonEmptyStr
+      "no partition crate owns this module: add it to a crate roster in v2.workflow.rust_crate_partition, then regenerate" as std.types.NonEmptyStr
     PartitionModuleEdgeList =>
-      "a crate owns this module but the consuming crate cannot reach it: add the stage0_module_dag_edge row (or the reexport) in v2.workflow.rust_crate_partition, then regenerate" as NonEmptyStr
+      "a crate owns this module but the consuming crate cannot reach it: add the stage0_module_dag_edge row (or the reexport) in v2.workflow.rust_crate_partition, then regenerate" as std.types.NonEmptyStr
   }
 }
 
@@ -289,8 +289,8 @@ fn emitted_reference_confirms_in(importer_source: String, target_basename: Strin
 }
 
 fn defects_for_crate(
-  rows: List<GeneratedPartitionCrateRow>,
-  row: GeneratedPartitionCrateRow,
+  rows: List<gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow>,
+  row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow,
   targets: Map<String, List<String>>,
   basenames: Map<String, String>
 ) -> List<PartitionClosureDefect> {
@@ -340,7 +340,7 @@ fn partition_closure_verdict() -> PartitionClosureVerdict {
 // and targets so the confirmation step still reads a real file. The live tie is
 // w_live_corpus_partition_closure_holds alone. Leaving the old sentence would be a note
 // describing a property the tree stopped having.
-fn partition_closure_verdict_for_rows(rows: List<GeneratedPartitionCrateRow>) -> PartitionClosureVerdict {
+fn partition_closure_verdict_for_rows(rows: List<gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow>) -> PartitionClosureVerdict {
   let decls = v2.lens.module_graph.module_declaration_facts_live(pool_roots: partition_closure_pool_roots)
   let edges = v2.lens.module_graph.dependency_resolution_facts_live(
     pool_roots: partition_closure_pool_roots,
@@ -362,7 +362,7 @@ fn partition_closure_verdict_for_rows(rows: List<GeneratedPartitionCrateRow>) ->
 // witness-cost ruling: small discriminating mechanism fixtures, plus the irreducible live
 // census kept as its own row.
 fn partition_closure_verdict_over(
-  rows: List<GeneratedPartitionCrateRow>,
+  rows: List<gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow>,
   targets: Map<String, List<String>>,
   basenames: Map<String, String>,
   edges_considered: Int

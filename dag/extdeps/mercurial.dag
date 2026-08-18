@@ -1,50 +1,50 @@
 module extdeps.mercurial
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/glossary.txt"
   }
 }
 
-data mercurial_revisions_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data mercurial_revisions_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/revisions.txt"
   }
 }
 
-data mercurial_manifest_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data mercurial_manifest_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/commands.py:hg-manifest"
   }
 }
 
-data mercurial_phases_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data mercurial_phases_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/phases.txt"
   }
 }
 
-data mercurial_evolution_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data mercurial_evolution_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/evolution.txt"
   }
 }
 
-data mercurial_subrepositories_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data mercurial_subrepositories_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/subrepos.txt"
   }
 }
 
-data mercurial_closed_branch_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data mercurial_closed_branch_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/commands.py:hg-commit-close-branch"
   }
@@ -62,7 +62,7 @@ data mercurial_upstream_version: MercurialUpstreamVersion = MercurialUpstreamVer
   patch: 3
 }
 
-data mercurial_upstream_version_note: NonEmptyStr = "This R0 authority models Mercurial 7.2.3. Every external anchor above resolves into the immutable mercurial-7.2.3 release archive; mutable current-help pages are deliberately not the specification boundary."
+data mercurial_upstream_version_note: std.types.NonEmptyStr = "This R0 authority models Mercurial 7.2.3. Every external anchor above resolves into the immutable mercurial-7.2.3 release archive; mutable current-help pages are deliberately not the specification boundary."
 
 type MercurialNodeId {
   octet00: std.integer.UInt8
@@ -260,9 +260,9 @@ fn mercurial_decode_node_identity(
   }
 }
 
-type MercurialBookmarkName = NonEmptyStr where brand("MercurialBookmarkName")
-type MercurialNamedBranchName = NonEmptyStr where brand("MercurialNamedBranchName")
-type MercurialTagName = NonEmptyStr where brand("MercurialTagName")
+type MercurialBookmarkName = std.types.NonEmptyStr where brand("MercurialBookmarkName")
+type MercurialNamedBranchName = std.types.NonEmptyStr where brand("MercurialNamedBranchName")
+type MercurialTagName = std.types.NonEmptyStr where brand("MercurialTagName")
 
 type MercurialLocalRevision {
   value: std.integer.NonNegativeInt
@@ -1058,7 +1058,7 @@ fn mercurial_node_present(
 
 fn mercurial_first_cycle_node(
   nodes: List<MercurialNodeId>,
-  graph: CallGraph,
+  graph: std.graph.CallGraph,
 ) -> MercurialNodeId? {
   let names = nodes |> map(node => mercurial_node_id_text(node: node))
   match graph_cycle_members(
@@ -1077,11 +1077,11 @@ fn mercurial_first_cycle_node(
 
 fn mercurial_changeset_parent_graph(
   changesets: List<MercurialChangeset>,
-) -> CallGraph {
-  CallGraph {
+) -> std.graph.CallGraph {
+  std.graph.CallGraph {
     edges: changesets |> flat_map(changeset =>
       mercurial_revision_parent_nodes(parents: changeset.parents)
-        |> map(parent => GraphEdge {
+        |> map(parent => std.graph.GraphEdge {
           caller: mercurial_node_id_text(node: changeset.node),
           callee: mercurial_node_id_text(node: parent),
         })
@@ -1091,11 +1091,11 @@ fn mercurial_changeset_parent_graph(
 
 fn mercurial_file_revision_parent_graph(
   file_revisions: List<MercurialFileRevision>,
-) -> CallGraph {
-  CallGraph {
+) -> std.graph.CallGraph {
+  std.graph.CallGraph {
     edges: file_revisions |> flat_map(file_revision =>
       mercurial_revision_parent_nodes(parents: file_revision.parents)
-        |> map(parent => GraphEdge {
+        |> map(parent => std.graph.GraphEdge {
           caller: mercurial_node_id_text(node: file_revision.node),
           callee: mercurial_node_id_text(node: parent),
         })
@@ -1905,7 +1905,7 @@ fn mercurial_decode_partial_projection(
 }
 
 fn mercurial_decode_inaccessible_projection(
-  reason: NonEmptyStr,
+  reason: std.types.NonEmptyStr,
 ) -> MercurialDecodeOutcome {
   MercurialRepositoryUnavailable { reason: reason }
 }
@@ -1948,7 +1948,7 @@ fn mercurial_project_manifest(manifest: MercurialManifest) -> MercurialManifestW
   }
 }
 
-fn mercurial_phase_wire(phase: MercurialPhase) -> NonEmptyStr {
+fn mercurial_phase_wire(phase: MercurialPhase) -> std.types.NonEmptyStr {
   match phase {
     MercurialPublic => "public"
     MercurialDraft => "draft"
@@ -2068,4 +2068,4 @@ data mercurial_r0_conditional_advance: MercurialConditionalAdvanceCapability = M
     reason: "R0 has no executing transaction transport that grounds the target policy's conditional-advance guarantee"
   }
 
-data mercurial_history_shape_boundary_note: NonEmptyStr = "MercurialRevisionParents makes the upstream zero/one/two-parent bound structural for both changelog and filelog revisions. Ancestry projects into std.graph's canonical cycle and reverse-reachability queries; Mercurial does not own a parallel graph walker. Decode refuses duplicate parents and self- or multi-revision ancestry cycles. Open named-branch heads have no same-branch descendant, including descendants reached through changesets on another named branch. Exact equality between observed and graph-derived heads is established only for complete captures; a partial projection retains declared-missing heads as an explicit insufficiency bound rather than inventing a mismatch. R0 exposes no caller-constructible grounded conditional-advance arm: that capability can enter only with the later executing transport and its typed read-back receipt."
+data mercurial_history_shape_boundary_note: std.types.NonEmptyStr = "MercurialRevisionParents makes the upstream zero/one/two-parent bound structural for both changelog and filelog revisions. Ancestry projects into std.graph's canonical cycle and reverse-reachability queries; Mercurial does not own a parallel graph walker. Decode refuses duplicate parents and self- or multi-revision ancestry cycles. Open named-branch heads have no same-branch descendant, including descendants reached through changesets on another named branch. Exact equality between observed and graph-derived heads is established only for complete captures; a partial projection retains declared-missing heads as an explicit insufficiency bound rather than inventing a mismatch. R0 exposes no caller-constructible grounded conditional-advance arm: that capability can enter only with the later executing transport and its typed read-back receipt."

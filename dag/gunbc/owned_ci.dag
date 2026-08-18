@@ -8,8 +8,8 @@ data owned_ci_dry_run_github_boundary_note: String = "dry_run discovers from the
 data owned_ci_operator_rerun_surface_note: String = "v0 operator rerun: ci_control_plane --enqueue-rerun-sha <40-hex> (or OWNED_CI_ENQUEUE_RERUN_SHA) enqueues OperatorRerun with subject_key rerun:<sha> matching ci_execution_plan.ci_subject_identity_key."
 
 data owned_ci_state_root_rel: String = ".gunbc/owned-ci"
-data owned_ci_check_name: NonEmptyStr = "gunbc-ci"
-data owned_ci_default_lease: Second = second(count: 3600)
+data owned_ci_check_name: std.types.NonEmptyStr = "gunbc-ci"
+data owned_ci_default_lease: std.measure.Second = second(count: 3600)
 
 type QueueLease {
   holder: String
@@ -133,12 +133,12 @@ type PrPollGithubReadAdmission
   = PrPollGithubReadAdmitted
   | PrPollGithubReadRefused { cause: std.types.NonEmptyStr }
 
-fn owned_ci_pr_poll_missing_github_token_cause() -> NonEmptyStr {
-  "GITHUB_TOKEN required for owned-ci poll (fail-closed: cannot discover PR subjects without GitHub read)" as NonEmptyStr
+fn owned_ci_pr_poll_missing_github_token_cause() -> std.types.NonEmptyStr {
+  "GITHUB_TOKEN required for owned-ci poll (fail-closed: cannot discover PR subjects without GitHub read)" as std.types.NonEmptyStr
 }
 
-fn owned_ci_pr_poll_empty_github_token_cause() -> NonEmptyStr {
-  "GITHUB_TOKEN empty (fail-closed: cannot discover PR subjects)" as NonEmptyStr
+fn owned_ci_pr_poll_empty_github_token_cause() -> std.types.NonEmptyStr {
+  "GITHUB_TOKEN empty (fail-closed: cannot discover PR subjects)" as std.types.NonEmptyStr
 }
 
 fn owned_ci_pr_poll_github_read_admission(token_observation: String?) -> PrPollGithubReadAdmission {
@@ -170,7 +170,7 @@ type QueueLeaseValidityDecision
   | LeaseExpiredForHolder
   | LeaseValidityRefused { cause: std.types.NonEmptyStr }
 
-fn queue_lease_expiry_decision(lease: QueueLease, now: NumericDate) -> QueueLeaseExpiryDecision {
+fn queue_lease_expiry_decision(lease: QueueLease, now: extdeps.auth.jwt.NumericDate) -> QueueLeaseExpiryDecision {
   match lease.expires_at {
     NumericDateWholeSeconds { seconds: exp } =>
       match now {
@@ -182,17 +182,17 @@ fn queue_lease_expiry_decision(lease: QueueLease, now: NumericDate) -> QueueLeas
           }
         NumericDateFractionalSeconds { whole_seconds: _, fractional_digits: _ } =>
           LeaseClockRefused {
-            cause: "queue lease clock now carries fractional seconds; POSIX lease reclaim requires whole-second NumericDate" as NonEmptyStr,
+            cause: "queue lease clock now carries fractional seconds; POSIX lease reclaim requires whole-second NumericDate" as std.types.NonEmptyStr,
           }
       }
     NumericDateFractionalSeconds { whole_seconds: _, fractional_digits: _ } =>
       LeaseClockRefused {
-        cause: "queue lease expires_at carries fractional seconds; POSIX lease reclaim requires whole-second NumericDate" as NonEmptyStr,
+        cause: "queue lease expires_at carries fractional seconds; POSIX lease reclaim requires whole-second NumericDate" as std.types.NonEmptyStr,
       }
   }
 }
 
-fn queue_lease_reclaim_decision(lease: QueueLease, now: NumericDate) -> QueueLeaseReclaimDecision {
+fn queue_lease_reclaim_decision(lease: QueueLease, now: extdeps.auth.jwt.NumericDate) -> QueueLeaseReclaimDecision {
   match queue_lease_expiry_decision(lease: lease, now: now) {
     LeaseClockExpired => ReclaimExpiredLease
     LeaseClockNotExpired => RetainActiveLease
@@ -200,7 +200,7 @@ fn queue_lease_reclaim_decision(lease: QueueLease, now: NumericDate) -> QueueLea
   }
 }
 
-fn queue_lease_validity(lease: QueueLease, holder: String, now: NumericDate) -> QueueLeaseValidityDecision {
+fn queue_lease_validity(lease: QueueLease, holder: String, now: extdeps.auth.jwt.NumericDate) -> QueueLeaseValidityDecision {
   if lease.holder == holder {
     match queue_lease_expiry_decision(lease: lease, now: now) {
       LeaseClockExpired => LeaseExpiredForHolder
@@ -212,7 +212,7 @@ fn queue_lease_validity(lease: QueueLease, holder: String, now: NumericDate) -> 
   }
 }
 
-data check_publication_predicate_family_disposition: Disposition = Terminal {
+data check_publication_predicate_family_disposition: std.disposition.Disposition = Terminal {
   reason: "check_publication_reports_github_success and check_publication_is_pending_honest are total matches over CheckPublicationState — all six variants (CheckPublicationNotStarted, CheckPublicationQueued, CheckPublicationInProgress, CheckPublicationCompleted, CheckPublicationPending, CheckPublicationFailed) carry an explicit arm, no top-level wildcard false arm. Same disposition and same reason as runner_incarnation runner_slot_installation_predicate_family_disposition: these dissolve at authoring, so unlike fleet_runner_connectivity connectivity_verdict_is_* (wildcard false arms, enrolled in non_fold_residue_frontier) an NFR row would stale the roster. Adding a variant to CheckPublicationState therefore breaks these matches loudly rather than silently answering false."
 }
 
@@ -243,7 +243,7 @@ fn owned_ci_details_url(base_url: String, run_id: String) -> String {
   concat(concat(base_url, "/ci/run/"), run_id)
 }
 
-fn owned_ci_check_status_for_queue(state: CiRunQueueState) -> CheckStatus {
+fn owned_ci_check_status_for_queue(state: CiRunQueueState) -> extdeps.github.checks.CheckStatus {
   match state {
     QueuePending => Queued
     QueueClaimed { lease: _ } => InProgress
@@ -253,7 +253,7 @@ fn owned_ci_check_status_for_queue(state: CiRunQueueState) -> CheckStatus {
   }
 }
 
-fn owned_ci_check_conclusion_for_queue(state: CiRunQueueState, publication: CheckPublicationState) -> CheckConclusion? {
+fn owned_ci_check_conclusion_for_queue(state: CiRunQueueState, publication: CheckPublicationState) -> extdeps.github.checks.CheckConclusion? {
   match state {
     QueuePending => none
     QueueClaimed { lease: _ } => none

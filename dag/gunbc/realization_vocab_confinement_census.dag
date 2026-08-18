@@ -13,12 +13,12 @@ type ConfinementSurfaceAxis
   | RealizationEdgePathPrefix
   | DeclaredExceptionUnit
 
-fn confinement_axis_tag(axis: ConfinementSurfaceAxis) -> NonEmptyStr {
+fn confinement_axis_tag(axis: ConfinementSurfaceAxis) -> std.types.NonEmptyStr {
   match axis {
-    ExactVocabularyModule => "ExactVocabularyModule" as NonEmptyStr
-    VocabularyModulePrefix => "VocabularyModulePrefix" as NonEmptyStr
-    RealizationEdgePathPrefix => "RealizationEdgePathPrefix" as NonEmptyStr
-    DeclaredExceptionUnit => "DeclaredExceptionUnit" as NonEmptyStr
+    ExactVocabularyModule => "ExactVocabularyModule" as std.types.NonEmptyStr
+    VocabularyModulePrefix => "VocabularyModulePrefix" as std.types.NonEmptyStr
+    RealizationEdgePathPrefix => "RealizationEdgePathPrefix" as std.types.NonEmptyStr
+    DeclaredExceptionUnit => "DeclaredExceptionUnit" as std.types.NonEmptyStr
   }
 }
 
@@ -31,40 +31,40 @@ fn confinement_axis_is_prefix_grain(axis: ConfinementSurfaceAxis) -> Bool {
   }
 }
 
-data confinement_census_repository: RepositoryIdentity = "gunbc" as RepositoryIdentity
+data confinement_census_repository: gunbc.repository_census_observation.RepositoryIdentity = "gunbc" as gunbc.repository_census_observation.RepositoryIdentity
 
-fn confinement_census_decl(name: String) -> DeclarationRef {
+fn confinement_census_decl(name: String) -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "gunbc.realization_vocab_confinement_census", decl_name: name)
 }
 
-data confinement_census_population: RepositoryPopulation = RepositoryPopulation {
+data confinement_census_population: gunbc.repository_census_observation.RepositoryPopulation = gunbc.repository_census_observation.RepositoryPopulation {
   repository: confinement_census_repository,
-  first_source_root: "src/v2" as SourceRootIdentity,
+  first_source_root: "src/v2" as gunbc.repository_census_observation.SourceRootIdentity,
   additional_source_roots: [],
   inclusion_rule: confinement_census_decl(name: "confinement_surface_declared_keys"),
   exclusion_rule: Absent,
 }
 
-fn confinement_census_revision(commit: String) -> MeasurementRevision {
+fn confinement_census_revision(commit: String) -> gunbc.guarantee_measurement.MeasurementRevision {
   GitRevision { commit: commit }
 }
 
 fn confinement_census_invocation(
   procedure: String,
   invocation: String,
-  revision: MeasurementRevision,
-) -> CensusMethodRunIdentity {
-  CensusMethodRunIdentity {
+  revision: gunbc.guarantee_measurement.MeasurementRevision,
+) -> gunbc.repository_census_observation.CensusMethodRunIdentity {
+  gunbc.repository_census_observation.CensusMethodRunIdentity {
     classifier: confinement_census_decl(name: procedure),
     classifier_revision: revision,
-    invocation_identity: content_hash_atom(value: invocation as NonEmptyStr),
+    invocation_identity: content_hash_atom(value: invocation as std.types.NonEmptyStr),
   }
 }
 
 fn confinement_census_run(
   procedure: String,
-  revision: MeasurementRevision,
-) -> CensusMethodRunIdentity {
+  revision: gunbc.guarantee_measurement.MeasurementRevision,
+) -> gunbc.repository_census_observation.CensusMethodRunIdentity {
   confinement_census_invocation(
     procedure: procedure,
     invocation: procedure,
@@ -72,28 +72,28 @@ fn confinement_census_run(
   )
 }
 
-data confinement_census_capability: CensusMethodCapability = ClassifiesDeclaredStructure {
+data confinement_census_capability: gunbc.repository_census_coverage.CensusMethodCapability = ClassifiesDeclaredStructure {
   contract: confinement_census_decl(name: "confinement_surface_axis_of_declared_key"),
 }
 
 data confinement_census_denominator_note: String = "THE DENOMINATOR IS ASSEMBLED BY A DIFFERENT PROCEDURE THAN THE ROWS, which is the only reason the join can catch anything. Enumeration flattens all four declared rosters into one key list in roster order and knows nothing about axes. Classification walks each roster SEPARATELY and stamps the axis it came from. So a dropped axis, a roster walked twice, or a key stamped onto the wrong list shows up as a located missing, unexpected or duplicated subject rather than as a total that still happens to add up. The independence is at the PROCEDURE level and no further: both sides read the same four declared rosters, so this join cannot detect an error inside those rosters themselves — it detects an error in how a census walks them. That is the defect class actually paid for here (a concat census that missed an axis reported 117 where the population was 204), and overstating the independence would be the same substitution one level up."
 
-fn confinement_surface_declared_keys() -> List<CensusSubjectKey> {
-  let exact = target_ast_vocab_modules |> map(key => key as CensusSubjectKey)
-  let prefixes = target_ast_vocab_module_prefixes |> map(key => key as CensusSubjectKey)
-  let edges = realization_edge_path_prefixes |> map(key => key as CensusSubjectKey)
-  let exceptions = realization_vocab_grandfathered_edge_keys() |> map(key => key as CensusSubjectKey)
+fn confinement_surface_declared_keys() -> List<gunbc.repository_census_observation.CensusSubjectKey> {
+  let exact = target_ast_vocab_modules |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
+  let prefixes = target_ast_vocab_module_prefixes |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
+  let edges = realization_edge_path_prefixes |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
+  let exceptions = realization_vocab_grandfathered_edge_keys() |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
   append(append(append(exact, prefixes), edges), exceptions)
 }
 
-fn confinement_surface_row(key: String, axis: ConfinementSurfaceAxis) -> CensusObservedRow {
+fn confinement_surface_row(key: String, axis: ConfinementSurfaceAxis) -> gunbc.repository_census_observation.CensusObservedRow {
   census_observed_row(
-    subject: key as CensusSubjectKey,
+    subject: key as gunbc.repository_census_observation.CensusSubjectKey,
     fact: content_hash_atom(value: confinement_axis_tag(axis: axis)),
   )
 }
 
-fn confinement_surface_axis_of_declared_key() -> List<CensusObservedRow> {
+fn confinement_surface_axis_of_declared_key() -> List<gunbc.repository_census_observation.CensusObservedRow> {
   let exact = target_ast_vocab_modules
     |> map(key => confinement_surface_row(key: key, axis: ExactVocabularyModule))
   let prefixes = target_ast_vocab_module_prefixes
@@ -105,7 +105,7 @@ fn confinement_surface_axis_of_declared_key() -> List<CensusObservedRow> {
   append(append(append(exact, prefixes), edges), exceptions)
 }
 
-fn confinement_surface_observation(revision: MeasurementRevision) -> RepositoryCensusObservation {
+fn confinement_surface_observation(revision: gunbc.guarantee_measurement.MeasurementRevision) -> gunbc.repository_census_observation.RepositoryCensusObservation {
   repository_census_observation(
     population: confinement_census_population,
     observed_at_revision: revision,
@@ -117,7 +117,7 @@ fn confinement_surface_observation(revision: MeasurementRevision) -> RepositoryC
   )
 }
 
-fn confinement_surface_denominator(revision: MeasurementRevision) -> CensusDenominatorObservation {
+fn confinement_surface_denominator(revision: gunbc.guarantee_measurement.MeasurementRevision) -> gunbc.repository_census_coverage.CensusDenominatorObservation {
   census_denominator_observation(
     population: confinement_census_population,
     observed_at_revision: revision,
@@ -129,7 +129,7 @@ fn confinement_surface_denominator(revision: MeasurementRevision) -> CensusDenom
   )
 }
 
-fn confinement_surface_coverage(revision: MeasurementRevision) -> CensusCoverageOutcome {
+fn confinement_surface_coverage(revision: gunbc.guarantee_measurement.MeasurementRevision) -> gunbc.repository_census_coverage.CensusCoverageOutcome {
   census_establish_coverage(
     denominator: confinement_surface_denominator(revision: revision),
     observation: confinement_surface_observation(revision: revision),
@@ -138,7 +138,7 @@ fn confinement_surface_coverage(revision: MeasurementRevision) -> CensusCoverage
 
 data confinement_conformance_note: String = "THE CONFORMANCE CONTROLS EXECUTE INSIDE THE CORPUS, which is the difference between licensing a design decision and guarding it. A mutation probe run in a disposable worktree demonstrates that a classifier discriminates and then vanishes with the worktree; nothing re-runs it, so it is evidence about a moment rather than standing evidence. These two controls are ordinary functions this module evaluates, reached by an enrolled witness, so the discrimination is re-established on every affected change. The discriminating input is the classifier output with one whole axis dropped — the same defect probe 5 plants — and conformance requires that the reconciliation REFUSE it. The positive control requires that the real output reconcile. Both are needed: a classifier that refuses everything passes the first alone, and one that accepts everything passes the second alone. What this cannot establish is that the dropped axis was the right defect to plant; that judgement is the author's, and it is the honest frontier of the receipt."
 
-fn confinement_surface_defective_rows() -> List<CensusObservedRow> {
+fn confinement_surface_defective_rows() -> List<gunbc.repository_census_observation.CensusObservedRow> {
   let exact = target_ast_vocab_modules
     |> map(key => confinement_surface_row(key: key, axis: ExactVocabularyModule))
   let prefixes = target_ast_vocab_module_prefixes
@@ -149,10 +149,10 @@ fn confinement_surface_defective_rows() -> List<CensusObservedRow> {
 }
 
 fn confinement_control_observation(
-  rows: List<CensusObservedRow>,
+  rows: List<gunbc.repository_census_observation.CensusObservedRow>,
   invocation: String,
-  revision: MeasurementRevision,
-) -> RepositoryCensusObservation {
+  revision: gunbc.guarantee_measurement.MeasurementRevision,
+) -> gunbc.repository_census_observation.RepositoryCensusObservation {
   repository_census_observation(
     population: confinement_census_population,
     observed_at_revision: revision,
@@ -168,10 +168,10 @@ fn confinement_control_observation(
 data confinement_control_outcome_note: String = "THE CONTROLS HAND UP THEIR OUTCOMES, NOT A VERDICT ABOUT THEM. This helper used to collapse each control run to a Bool and pass the pair of Bools into the generic carrier, which is what let the carrier accept an authored answer where an executed one belonged (operator ruling 2026-08-05). Returning the CensusCoverageOutcome unchanged means the derivation happens once, inside the authority that owns it, against evidence that carries its own run identity — so this module can no longer be the only reason the conformance verdict is honest."
 
 fn confinement_control_outcome(
-  rows: List<CensusObservedRow>,
+  rows: List<gunbc.repository_census_observation.CensusObservedRow>,
   invocation: String,
-  revision: MeasurementRevision,
-) -> CensusCoverageOutcome {
+  revision: gunbc.guarantee_measurement.MeasurementRevision,
+) -> gunbc.repository_census_coverage.CensusCoverageOutcome {
   census_establish_coverage(
     denominator: confinement_surface_denominator(revision: revision),
     observation: confinement_control_observation(
@@ -184,9 +184,9 @@ fn confinement_control_outcome(
 
 data confinement_control_run_note: String = "BOTH CONTROLS RUN UNDER ONE DECLARED CONTROL INVOCATION, and the carrier now checks that rather than taking this module's word for it. The pair names the invocation the two control observations were produced under, and census_method_conformance_receipt refuses unless each outcome's own classification run identity equals it — so a control outcome produced under some other invocation cannot be presented here, and the control invocation must still differ from the measurement invocation."
 
-fn confinement_control_pair(revision: MeasurementRevision) -> CensusControlPair {
+fn confinement_control_pair(revision: gunbc.guarantee_measurement.MeasurementRevision) -> gunbc.repository_census_coverage.CensusControlPair {
   let control_invocation = "confinement_surface_axis_of_declared_key.conformance_controls"
-  CensusControlPair {
+  gunbc.repository_census_coverage.CensusControlPair {
     control_run: confinement_census_invocation(
       procedure: "confinement_surface_axis_of_declared_key",
       invocation: control_invocation,
@@ -206,8 +206,8 @@ fn confinement_control_pair(revision: MeasurementRevision) -> CensusControlPair 
 }
 
 fn confinement_conformance_outcome(
-  revision: MeasurementRevision,
-) -> CensusConformanceOutcome {
+  revision: gunbc.guarantee_measurement.MeasurementRevision,
+) -> gunbc.repository_census_coverage.CensusConformanceOutcome {
   census_method_conformance_receipt(
     pair: confinement_control_pair(revision: revision),
     method_run: confinement_census_run(
@@ -218,8 +218,8 @@ fn confinement_conformance_outcome(
 }
 
 fn confinement_capability_receipt(
-  revision: MeasurementRevision,
-) -> CensusMethodCapabilityReceipt? {
+  revision: gunbc.guarantee_measurement.MeasurementRevision,
+) -> gunbc.repository_census_coverage.CensusMethodCapabilityReceipt? {
   census_method_capability_receipt(
     observation: confinement_surface_observation(revision: revision),
     capability: confinement_census_capability,
@@ -239,7 +239,7 @@ type ConfinementSurfaceCeiling
       capability_method_run_identity: std.content_hash.Fnv1a64Structural
     }
 
-fn confinement_surface_ceiling(revision: MeasurementRevision) -> ConfinementSurfaceCeiling {
+fn confinement_surface_ceiling(revision: gunbc.guarantee_measurement.MeasurementRevision) -> ConfinementSurfaceCeiling {
   match confinement_capability_receipt(revision: revision) {
     Present { value: receipt } =>
       match census_inference_ceiling(
@@ -270,7 +270,7 @@ type ConfinementSurfacePopulationObserved sole_constructor {
 }
 
 fn confinement_surface_population_claim(
-  revision: MeasurementRevision,
+  revision: gunbc.guarantee_measurement.MeasurementRevision,
 ) -> ConfinementSurfacePopulationObserved? {
   match confinement_surface_ceiling(revision: revision) {
     ConfinementCeilingDerived { ceiling: ceiling } => {
@@ -301,7 +301,7 @@ fn confinement_surface_declared_key_count(
 
 fn confinement_surface_claimed_keys(
   claim: ConfinementSurfacePopulationObserved,
-) -> List<CensusSubjectKey> {
+) -> List<gunbc.repository_census_observation.CensusSubjectKey> {
   repository_census_subject_keys(observation: claim.observation)
 }
 
@@ -311,8 +311,8 @@ fn confinement_surface_supports_undeclared_key_absence(
   census_ceiling_supports_semantic_absence(ceiling: claim.ceiling)
 }
 
-fn confinement_surface_prefix_grain_keys() -> List<CensusSubjectKey> {
-  let prefixes = target_ast_vocab_module_prefixes |> map(key => key as CensusSubjectKey)
-  let edges = realization_edge_path_prefixes |> map(key => key as CensusSubjectKey)
+fn confinement_surface_prefix_grain_keys() -> List<gunbc.repository_census_observation.CensusSubjectKey> {
+  let prefixes = target_ast_vocab_module_prefixes |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
+  let edges = realization_edge_path_prefixes |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
   append(prefixes, edges)
 }

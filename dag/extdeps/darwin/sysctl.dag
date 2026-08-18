@@ -1,8 +1,8 @@
 module extdeps.darwin.sysctl
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/sysctl.3.html"
   }
@@ -14,7 +14,7 @@ type DarwinSysctlMib
   = HwMemsize
   | HwPagesize
 
-fn darwin_sysctl_mib_name(m: DarwinSysctlMib) -> NonEmptyStr {
+fn darwin_sysctl_mib_name(m: DarwinSysctlMib) -> std.types.NonEmptyStr {
   match m {
     HwMemsize => "hw.memsize"
     HwPagesize => "hw.pagesize"
@@ -45,9 +45,9 @@ fn darwin_memory_facts_are_plausible(f: DarwinMemoryFacts) -> Bool {
     && byte_size_count(b: f.total_physical) > byte_size_count(b: f.page_size)
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.darwin.sysctl",
       decl_name: "darwin_sysctl_mibs_read_by_this_repository",
       field: WholeDeclaration

@@ -2,10 +2,10 @@ module gunbc.host_identity_converge
 
 
 fn host_identity_precondition_verdict(
-  base: DeployedIntentV0,
-  observed: HostIdentityObservation,
-  desired: DeployedIntentV1,
-) -> HostIdentityLeafVerdict {
+  base: gunbc.deployed_intent_v0.DeployedIntentV0,
+  observed: gunbc.host_identity_observation.HostIdentityObservation,
+  desired: gunbc.deployed_intent_v1.DeployedIntentV1,
+) -> gunbc.host_identity_knob.HostIdentityLeafVerdict {
   host_identity_patch_from_intents(
     base_hostname: deployed_intent_observed_short_hostname(d: base),
     observed_hostname: observed.short_hostname,
@@ -13,10 +13,10 @@ fn host_identity_precondition_verdict(
   )
 }
 
-fn host_identity_precondition_allows_mutation(verdict: HostIdentityLeafVerdict) -> Bool {
+fn host_identity_precondition_allows_mutation(verdict: gunbc.host_identity_knob.HostIdentityLeafVerdict) -> Bool {
   keyed_leaf_verdict_fold(
     verdict: verdict,
-    fold: KeyedLeafVerdictFold {
+    fold: std.change.KeyedLeafVerdictFold {
       unchanged: false,
       conflict: false,
       apply_hunk: fn(_, _) { true },
@@ -26,14 +26,14 @@ fn host_identity_precondition_allows_mutation(verdict: HostIdentityLeafVerdict) 
   )
 }
 
-fn host_identity_precondition_permits_apply(verdict: HostIdentityLeafVerdict) -> Bool {
+fn host_identity_precondition_permits_apply(verdict: gunbc.host_identity_knob.HostIdentityLeafVerdict) -> Bool {
   host_identity_precondition_allows_mutation(verdict: verdict)
 }
 
-fn host_identity_precondition_is_noop(verdict: HostIdentityLeafVerdict) -> Bool {
+fn host_identity_precondition_is_noop(verdict: gunbc.host_identity_knob.HostIdentityLeafVerdict) -> Bool {
   keyed_leaf_verdict_fold(
     verdict: verdict,
-    fold: KeyedLeafVerdictFold {
+    fold: std.change.KeyedLeafVerdictFold {
       unchanged: true,
       conflict: false,
       apply_hunk: fn(_, _) { false },
@@ -43,10 +43,10 @@ fn host_identity_precondition_is_noop(verdict: HostIdentityLeafVerdict) -> Bool 
   )
 }
 
-fn host_identity_precondition_is_conflict(verdict: HostIdentityLeafVerdict) -> Bool {
+fn host_identity_precondition_is_conflict(verdict: gunbc.host_identity_knob.HostIdentityLeafVerdict) -> Bool {
   keyed_leaf_verdict_fold(
     verdict: verdict,
-    fold: KeyedLeafVerdictFold {
+    fold: std.change.KeyedLeafVerdictFold {
       unchanged: false,
       conflict: true,
       apply_hunk: fn(_, _) { false },
@@ -62,9 +62,9 @@ type HostIdentityPlan
   | ConflictPlan { verdict: gunbc.host_identity_knob.HostIdentityLeafVerdict }
 
 fn host_identity_plan_from_verdict(
-  verdict: HostIdentityLeafVerdict,
-  base: DnsLabel,
-  desired: DnsLabel,
+  verdict: gunbc.host_identity_knob.HostIdentityLeafVerdict,
+  base: extdeps.dns.domain_name.DnsLabel,
+  desired: extdeps.dns.domain_name.DnsLabel,
 ) -> HostIdentityPlan {
   match verdict {
     KeyedApplyHunk { from: _, to: _ } => ApplyPlan { base: base, desired: desired }
@@ -75,7 +75,7 @@ fn host_identity_plan_from_verdict(
   }
 }
 
-fn host_identity_plan_effect(plan: HostIdentityPlan) -> HostEffect? {
+fn host_identity_plan_effect(plan: HostIdentityPlan) -> gunbc.host_effect.HostEffect? {
   match plan {
     ApplyPlan { base: b, desired: d } =>
       Present {
@@ -90,25 +90,25 @@ fn host_identity_plan_effect(plan: HostIdentityPlan) -> HostEffect? {
   }
 }
 
-data host_identity_hostname_key_source: KeySource = CompositeKey { fields: ["host", "hostname_short"] }
+data host_identity_hostname_key_source: std.effects.KeySource = CompositeKey { fields: ["host", "hostname_short"] }
 
-data host_identity_hostname_effect_shape: EffectShape<KeySource> = UpsertEffect { key_source: host_identity_hostname_key_source }
+data host_identity_hostname_effect_shape: EffectShape<std.effects.KeySource> = UpsertEffect { key_source: host_identity_hostname_key_source }
 
-data host_identity_hostname_idempotency_evidence: IdempotencyEvidence = LatticeEffect { shape: host_identity_hostname_effect_shape }
+data host_identity_hostname_idempotency_evidence: std.effects.IdempotencyEvidence = LatticeEffect { shape: host_identity_hostname_effect_shape }
 
-fn host_identity_apply_evidence() -> IdempotencyEvidence {
+fn host_identity_apply_evidence() -> std.effects.IdempotencyEvidence {
   host_identity_hostname_idempotency_evidence
 }
 
 fn host_identity_apply_denied(
-  target: NodeControlPlane,
-  effect: HostEffect,
-  transport: HostEffectTransport,
+  target: gunbc.host_effect.NodeControlPlane,
+  effect: gunbc.host_effect.HostEffect,
+  transport: gunbc.host_effect.HostEffectTransport,
   reason: String,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   NotConverged {
     reason: reason,
-    applied: HostEffectIntent {
+    applied: gunbc.host_effect.HostEffectIntent {
       target: target,
       effect: effect,
       evidence: host_identity_apply_evidence(),
@@ -119,11 +119,11 @@ fn host_identity_apply_denied(
 }
 
 fn host_identity_apply_gated(
-  access: DeployAccess,
-  target: NodeControlPlane,
+  access: gunbc.ci_deploy_access.DeployAccess,
+  target: gunbc.host_effect.NodeControlPlane,
   plan: HostIdentityPlan,
-  transport: HostEffectTransport,
-  fixture_actor: DeployAccessActor?,
+  transport: gunbc.host_effect.HostEffectTransport,
+  fixture_actor: gunbc.ci_deploy_access.DeployAccessActor?,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence>? {
   match host_identity_plan_effect(plan: plan) {
     Present { value: effect } =>
@@ -142,17 +142,17 @@ fn host_identity_apply_gated(
 }
 
 fn host_identity_read_back_matches(
-  observed: HostIdentityObservation,
-  desired_hostname: DnsLabel,
+  observed: gunbc.host_identity_observation.HostIdentityObservation,
+  desired_hostname: extdeps.dns.domain_name.DnsLabel,
 ) -> Bool {
   observed.short_hostname == (desired_hostname as String)
 }
 
 fn host_identity_observation_live(
-  target: NodeControlPlane,
-  transport: HostEffectTransport,
-  probed_at: NonEmptyStr,
-) -> HostIdentityObservation? {
+  target: gunbc.host_effect.NodeControlPlane,
+  transport: gunbc.host_effect.HostEffectTransport,
+  probed_at: std.types.NonEmptyStr,
+) -> gunbc.host_identity_observation.HostIdentityObservation? {
   match host_identity_observation_from_apply(
     r: host_identity_observation_apply(target: target, transport: transport),
     probed_at: probed_at,

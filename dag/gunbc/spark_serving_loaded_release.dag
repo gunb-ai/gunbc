@@ -27,23 +27,23 @@ fn spark_serving_loaded_model_artifact(
   name: String,
   tag: String,
   digest_wire: String,
-) -> ModelArtifact? {
+) -> gunbc.model_artifact.ModelArtifact? {
   match ollama_model_digest_from_wire(
-    ref: OllamaModelRef { name: name as NonEmptyStr, tag: tag as NonEmptyStr },
+    ref: extdeps.ollama.api.OllamaModelRef { name: name as std.types.NonEmptyStr, tag: tag as std.types.NonEmptyStr },
     hex: digest_wire,
   ) {
     Absent => none
     Present { value: observed } =>
       Present {
         value: model_artifact_from_observed_digest(
-          publisher: "ollama" as NonEmptyStr,
+          publisher: "ollama" as std.types.NonEmptyStr,
           observed: observed,
         ),
       }
   }
 }
 
-fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> SparkServingRelease? {
+fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> gunbc.spark_serving_release.SparkServingRelease? {
   match readback.unit_outcome {
     SparkServingUnitInactive => none
     SparkServingUnitAbsent => none
@@ -78,9 +78,9 @@ fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> SparkS
                                 Absent => none
                                 Present { value: model } =>
                                   Present {
-                                    value: SparkServingRelease {
-                                      runtime: RuntimeArtifactIdentity {
-                                        closure_digest: runtime_digest.digest as NonEmptyStr,
+                                    value: gunbc.spark_serving_release.SparkServingRelease {
+                                      runtime: gunbc.spark_serving_release.RuntimeArtifactIdentity {
+                                        closure_digest: runtime_digest.digest as std.types.NonEmptyStr,
                                       },
                                       model: model,
                                     }
@@ -95,21 +95,21 @@ fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> SparkS
   }
 }
 
-fn derive_loaded_spark_serving_release_identity(readback: SparkServingReadback) -> SparkServingReleaseIdentity? {
+fn derive_loaded_spark_serving_release_identity(readback: SparkServingReadback) -> gunbc.spark_serving_release.SparkServingReleaseIdentity? {
   match derive_loaded_spark_serving_release(readback: readback) {
     Absent => none
     Present { value: spec } => Present { value: spark_serving_release_identity(spec: spec) }
   }
 }
 
-fn derive_spark_serving_observation(readback: SparkServingReadback) -> SparkServingObservation {
+fn derive_spark_serving_observation(readback: SparkServingReadback) -> gunbc.spark_serving_release.SparkServingObservation {
   match readback.unit_outcome {
     SparkServingUnitAbsent =>
       SparkServingAbsent { host: readback.host }
     SparkServingUnitInactive =>
       SparkServingObservationRefused {
         host: readback.host,
-        cause: "serving unit is present but inactive" as NonEmptyStr,
+        cause: "serving unit is present but inactive" as std.types.NonEmptyStr,
       }
     SparkServingUnitObservationRefused { cause: c } =>
       SparkServingObservationRefused { host: readback.host, cause: c }
@@ -133,7 +133,7 @@ fn derive_spark_serving_observation(readback: SparkServingReadback) -> SparkServ
                 Absent =>
                   SparkServingObservationRefused {
                     host: readback.host,
-                    cause: "serving unit is active but loaded-release fingerprint could not be derived from independent readback" as NonEmptyStr,
+                    cause: "serving unit is active but loaded-release fingerprint could not be derived from independent readback" as std.types.NonEmptyStr,
                   }
                 Present { value: loaded } =>
                   SparkServingObserved { host: readback.host, loaded_release: loaded }

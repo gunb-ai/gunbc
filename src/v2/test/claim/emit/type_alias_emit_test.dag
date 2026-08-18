@@ -1,11 +1,11 @@
 module v2.test.emit.type_alias_emit
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data type_alias_core_node_golden: String = "type CoreNode = Node;"
 data type_alias_generator_id_golden: String = "type GeneratorId = Symbol;"
 
-fn type_alias_interned_symbol(spelling: String) -> Symbol {
+fn type_alias_interned_symbol(spelling: String) -> v2.std.node.Symbol {
   spelling
 }
 
@@ -14,27 +14,27 @@ fn type_alias_atom(spelling: String) -> Node {
 }
 
 fn type_alias_qualified_name_emitted(type_name: String) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: type_alias_atom(spelling: type_name) } ],
+    children: [ v2.std.node.Edge { label: Positional, target: type_alias_atom(spelling: type_name) } ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn type_alias_type_expr_emitted(type_name: String) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: type_alias_qualified_name_emitted(type_name: type_name) } ],
+    children: [ v2.std.node.Edge { label: Positional, target: type_alias_qualified_name_emitted(type_name: type_name) } ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn type_alias_decl_emitted(name: String, type_name: String) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: type_alias_atom(spelling: name) },
-      Edge { label: Positional, target: type_alias_type_expr_emitted(type_name: type_name) }
+      v2.std.node.Edge { label: Positional, target: type_alias_atom(spelling: name) },
+      v2.std.node.Edge { label: Positional, target: type_alias_type_expr_emitted(type_name: type_name) }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -49,36 +49,36 @@ fn type_alias_generator_id_emitted() -> Node {
 }
 
 fn type_alias_generic_qualified_name_emitted(head: String, arg: String) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: type_alias_atom(spelling: head) },
-      Edge { label: Positional, target: type_alias_atom(spelling: arg) }
+      v2.std.node.Edge { label: Positional, target: type_alias_atom(spelling: head) },
+      v2.std.node.Edge { label: Positional, target: type_alias_atom(spelling: arg) }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn type_alias_generic_type_expr_emitted(head: String, arg: String) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: type_alias_generic_qualified_name_emitted(head: head, arg: arg) } ],
+    children: [ v2.std.node.Edge { label: Positional, target: type_alias_generic_qualified_name_emitted(head: head, arg: arg) } ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn type_alias_generic_rhs_decl_emitted() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: type_alias_atom(spelling: "NodeList") },
-      Edge { label: Positional, target: type_alias_generic_type_expr_emitted(head: "List", arg: "Node") }
+      v2.std.node.Edge { label: Positional, target: type_alias_atom(spelling: "NodeList") },
+      v2.std.node.Edge { label: Positional, target: type_alias_generic_type_expr_emitted(head: "List", arg: "Node") }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn type_alias_target() -> TargetModel {
+fn type_alias_target() -> v2.std.compilers.target_model.TargetModel {
   rust_type_alias_decl_structural_target_model()
 }
 

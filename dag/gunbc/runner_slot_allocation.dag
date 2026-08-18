@@ -22,7 +22,7 @@ type HostRunnerSlotAllocation {
   per_slot: RunnerSlotDesired
 }
 
-data gunbc_runner_slot_allocation_authority_disposition: Disposition = Terminal {
+data gunbc_runner_slot_allocation_authority_disposition: std.disposition.Disposition = Terminal {
   reason: "Single authority for fleet runner-slot desired allocation (operator rulings 2026-07-10 superseding the 2026-07-05 brief; MemoryHigh-emit + swap-provisioning 2026-07-11; srv3 host-standup converge 2026-07-21; PER-HOST WIDTH + 14GiB slot 2026-08-05; srv4 disk row-pin retired + apply-time preflight 2026-08-06). Fleet-uniform per-slot row: 8 cores · 16GiB MemoryMax · 15GiB MemoryHigh (the authored max−1GiB relation, its own emitted knob per the 2026-07-11 ruling — a hit at 16GiB spills to swap after throttling at 15; raised from 14/13 by the 2026-08-17 floor-peak ruling in gunbc_runner_slot_memory_max_ruling_note) · 32GiB MemorySwapMax · TasksMax 16384 (the 2026-06-21 incident REPAIR value restored by operator ruling 2026-08-08 on PR 8045: TasksMax=512 WAS the diagnosed EAGAIN/process-creation outage value, and the earlier 512 row here inverted that diagnosis; any lower derived envelope value must be separately accepted and never below live task demand) · cpu_weight 100. PER-HOST width: MEMORY admits 5/5/6/6 for srv1/srv2/srv3/srv4 at the 16GiB slot; COMMITTED width is the minimum over allocation-time axes — srv1/srv2/srv3 commit 5/5/6; srv4 commits 6 at memory with disk DiskWidthUnconstrained at allocation (apply-time gate gunbc.runner_lifecycle runner_width_disk_preflight; width_is_a_minimum_over_axes_note) — fleet total 22, down from 24 as the priced cost of the 16GiB ruling. Live fleet ran 5 slots on EVERY host when this was written, so srv3/srv4's sixth slot is a provisioning target rather than a description (gunbc_runner_slot_width_ruling_note). GUARANTEED mode is now STRUCTURAL rather than checked — runner_slice_cap is DERIVED as slots × MemoryMax instead of being a second literal, so Σ per-slot MemoryMax ≤ slice_cap holds by construction and an oversubscribed slice has no representation here (DESIGN 5 construction-over-validation; the prior 80GiB literal was kept coherent with 5 × 16GiB by hand, which the old note admitted when it called them 'coherent by construction at these values' — a coincidence maintained by an author, not a derivation). The real remaining constraint is CONSERVATION against host RAM, which is not this module's to check: gunbc.ci_runner_placement holds it, now against OS-usable RAM with the per-host session slice and per-host fixed overhead charged. Per-axis targets are operator-set; never reconcile this row toward live readback (live is not automatically truth — the 32-vs-0 swap fork existed precisely because the apply was assumed rather than readback-proven). Downstream: gunbc.ci_floor_measurement (declared vs live cap fork), gunbc.ci_runner_placement, gunbc.host_converge, gunbc.host_standup (prefix:host-converge + P1:runner-deploy-slot), gunbc.runner_slot_enforcement, gunbc.fleet_show_effective_read. ctrl applies host-side; gunbc emits converge — never apply from this module."
 }
 
@@ -55,7 +55,7 @@ data gunbc_runner_slots_per_host_unknown_note: String = "Unknown hosts refuse ra
 
 data width_is_a_minimum_over_axes_note: String = "A HOST'S WIDTH AT ALLOCATION IS THE MINIMUM OVER ALLOCATION-TIME CONSTRAINTS. Until this row existed gunbc_runner_slots_per_host returned the MEMORY verdict under a name that read as the full commitment — the defect that made srv4's roster and prose disagree when a disk row-pin silently lowered allocation to 5 while runner_host_deploy named seven slots.\n\nCollapsing 'one constraint admits this width' into 'this host should run this width' is the same conflation gunbc.ci_floor_measurement refuses for overhead: an axis nobody resolved is not an axis that permits everything. Memory admission and disk admission remain separate answers at allocation; gunbc_runner_slots_per_host takes their minimum when disk admits a numeric cap, otherwise memory alone.\n\nsrv4's historical five-slot disk row-pin is retired (operator 2026-08-06): host_disk_admitted_width returns DiskWidthUnconstrained citing apply-time gunbc.runner_lifecycle runner_width_disk_preflight, so srv4 commits 6 at allocation like srv3 (7 before the 2026-08-17 16GiB ruling) — disk no longer derives a lower minimum here. Insufficient or unobservable disk at apply refuses rather than absorbing to width 5 (gunbc_runner_slot_allocation_srv4_admission_note).\n\nHONEST RESIDUAL: srv1-3 still have DiskWidthUnconstrained without a measured disk width — status quo, not a new widen. Dissolve-on for allocation-time disk on all hosts is a per-host disk-headroom term folded into runner_deployment_plan; srv4's apply-time gate remains even after that lands."
 
-fn host_memory_admitted_width(host: HostIdentity) -> Int {
+fn host_memory_admitted_width(host: product.placement_supply.HostIdentity) -> Int {
   if (host as String) == (operator_host_srv1 as String) {
     5
   } else if (host as String) == (operator_host_srv2 as String) {
@@ -73,7 +73,7 @@ type HostDiskWidthConstraint
   = DiskAdmitsWidth { slots: Int, provenance: String }
   | DiskWidthUnconstrained { reason: String }
 
-fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
+fn host_disk_admitted_width(host: product.placement_supply.HostIdentity) -> HostDiskWidthConstraint {
   if (host as String) == (operator_host_srv4 as String) {
     DiskWidthUnconstrained {
       reason: "srv4 disk width is gated at apply-time by gunbc.runner_lifecycle runner_width_disk_preflight (operator 2026-08-06); runner_host_deploy runner_count names materialization target 6 (7 before the 2026-08-17 16GiB ruling), not a row pin that silently caps allocation"
@@ -85,7 +85,7 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
   }
 }
 
-fn gunbc_runner_slots_per_host(host: HostIdentity) -> Int {
+fn gunbc_runner_slots_per_host(host: product.placement_supply.HostIdentity) -> Int {
   let by_memory = host_memory_admitted_width(host: host)
   match host_disk_admitted_width(host: host) {
     DiskAdmitsWidth { slots: d, provenance: _ } => if d < by_memory { d } else { by_memory }
@@ -93,27 +93,27 @@ fn gunbc_runner_slots_per_host(host: HostIdentity) -> Int {
   }
 }
 
-fn gunbc_runner_cores_per_slot() -> HardwareThreadCount {
+fn gunbc_runner_cores_per_slot() -> std.measure.HardwareThreadCount {
   hardware_thread_count(count: 8)
 }
 
-fn gunbc_runner_slice_cap_declared(host: HostIdentity) -> ByteSize {
+fn gunbc_runner_slice_cap_declared(host: product.placement_supply.HostIdentity) -> std.measure.ByteSize {
   gunbc_runner_slot_demand_sum_memory_max(
     slots: gunbc_runner_slots_per_host(host: host),
     per_slot: gunbc_runner_slot_desired().memory_max
   )
 }
 
-fn gunbc_runner_slot_demand_sum_memory_max(slots: Int, per_slot: ByteSize) -> ByteSize {
+fn gunbc_runner_slot_demand_sum_memory_max(slots: Int, per_slot: std.measure.ByteSize) -> std.measure.ByteSize {
   byte_size(byte_size_count(b: per_slot) * slots)
 }
 
-fn gunbc_runner_slot_oversubscription_within_slice(slots: Int, per_slot: ByteSize, slice_cap: ByteSize) -> Bool {
+fn gunbc_runner_slot_oversubscription_within_slice(slots: Int, per_slot: std.measure.ByteSize, slice_cap: std.measure.ByteSize) -> Bool {
   byte_size_count(b: gunbc_runner_slot_demand_sum_memory_max(slots: slots, per_slot: per_slot)) <=
     byte_size_count(b: slice_cap)
 }
 
-fn gunbc_committed_host_runner_slot_allocation(host: HostIdentity) -> HostRunnerSlotAllocation {
+fn gunbc_committed_host_runner_slot_allocation(host: product.placement_supply.HostIdentity) -> HostRunnerSlotAllocation {
   let per_slot = gunbc_runner_slot_desired()
   let slots = gunbc_runner_slots_per_host(host: host)
   HostRunnerSlotAllocation {
@@ -152,7 +152,7 @@ fn gunbc_committed_runner_slot_allocations() -> List<HostRunnerSlotAllocation> {
   ]
 }
 
-fn gunbc_runner_slot_enforcement_expected_cap() -> ByteSize {
+fn gunbc_runner_slot_enforcement_expected_cap() -> std.measure.ByteSize {
   gunbc_runner_slot_desired().memory_max
 }
 
@@ -228,11 +228,11 @@ fn converged_slot_is_pinned_at_armed_throttle_line(obs: ConvergedSlotThrottleObs
 
 data gunbc_floor_measured_peak_observation_note: String = "THE FLOOR'S PEAK, MEASURED IN BYTES FROM cgroup memory.peak WITH ITS ARMED LINE BESIDE IT — no longer an interpretation of a rendered string. Read on srv2 2026-08-17 across all five slots, each carrying memory.high at 16106127360 and memory.high events at ZERO, so every figure below is an UNCENSORED peak rather than a throttle pin (the censored-bound distinction gunbc_runner_slot_memory_max_ruling_note turns on).\n\nTHE THREE HIGHEST CLEAN PEAKS: srv2-02 at 15509315584 bytes, srv2-05 at 15501008896, srv2-04 at 15474360320. The carrier takes the maximum, 15509315584, because a per-slot ceiling must hold the heaviest observed slot and not a central tendency.\n\nTHIS RETIRES THE UNIT AMBIGUITY BY OBSERVATION RATHER THAN BY PREFERENCE, which is the point. The prior revision of this row carried a hand-typed 15600000000 — the DECIMAL reading of a claim-scope receipt rendered as '15.6 GB' — and openly conceded that the BINARY reading (16750372454) would make the wall conjunct fail. A load-bearing gate hinging on an author's choice between two readings is the 2026-08-01 test-oracle ruling's concern, correctly raised in review on this PR.\n\nThe readings are now DISCRIMINATED, not chosen. Under the binary reading demand would be 16750372454 bytes, which EXCEEDS the 16106127360 line these five slots were armed at — so they would be pinned with nonzero memory.high events. All five report zero. The binary reading is therefore refuted by measurement, and the decimal reading is independently corroborated: the measured maximum sits within 0.6 percent of it. The rendered string is retained as corroboration only; nothing gates on it.\n\nWHAT THIS IS STILL NOT: a bound on the floor's DEMAND. A clean peak is a lower bound on what the workload wanted on the runs observed, and srv4-05 was separately pinned at exactly 15.00GiB with 1789 events on the same day, so at least one slot on this fleet wants MORE than the 15GiB line. The 16GiB/15GiB row is therefore a strict improvement over 14GiB/13GiB and NOT a claim that throttling is eliminated. Dissolve-on: a floor-run receipt series emitting peak and armed line per run, which would replace this single-day cross-sectional read with a distribution."
 
-data gunbc_floor_measured_peak_observation: ByteSize = byte_size(15509315584)
+data gunbc_floor_measured_peak_observation: std.measure.ByteSize = byte_size(15509315584)
 
-data gunbc_floor_measured_peak_armed_high: ByteSize = byte_size(16106127360)
+data gunbc_floor_measured_peak_armed_high: std.measure.ByteSize = byte_size(16106127360)
 
-data gunbc_floor_measured_peak_reported_decimal_corroboration: ByteSize = byte_size(15600000000)
+data gunbc_floor_measured_peak_reported_decimal_corroboration: std.measure.ByteSize = byte_size(15600000000)
 
 fn gunbc_floor_measured_peak_is_uncensored() -> Bool {
   byte_size_count(b: gunbc_floor_measured_peak_observation)
@@ -265,11 +265,11 @@ fn srv2_03_floor_leaf_cgroup_events_at_entry_are_zero() -> Bool {
 }
 
 
-fn runner_slot_effective_memory_max_drifts_from_declaration(effective: ByteSize) -> Bool {
+fn runner_slot_effective_memory_max_drifts_from_declaration(effective: std.measure.ByteSize) -> Bool {
   byte_size_count(b: effective) != byte_size_count(b: gunbc_runner_slot_desired().memory_max)
 }
 
-fn runner_slot_effective_memory_high_drifts_from_declaration(effective: ByteSize) -> Bool {
+fn runner_slot_effective_memory_high_drifts_from_declaration(effective: std.measure.ByteSize) -> Bool {
   byte_size_count(b: effective) != byte_size_count(b: gunbc_runner_slot_desired().memory_high)
 }
 
@@ -313,16 +313,16 @@ fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
     )
 }
 
-data gunbc_runner_slot_allocation_live_cap_dissolve_on: Disposition = Scaffold {
+data gunbc_runner_slot_allocation_live_cap_dissolve_on: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.runner_slot_allocation",
     decl_name: "gunbc_runner_slot_desired",
     field: WholeDeclaration
   }
 }
 
-data gunbc_floor_armed_budget_doomed_exit_137_outcome: FloorOutcome = FloorFailed {
+data gunbc_floor_armed_budget_doomed_exit_137_outcome: gunbc.ci_failure_class.FloorOutcome = FloorFailed {
   class: Structural { reason: "Process completed with exit code 137." }
 }
 
@@ -371,22 +371,22 @@ data gunbc_floor_armed_budget_success_class_receipt: FloorArmedBudgetSuccessClas
   floor_outcome: NoFailure,
 }
 
-data gunbc_floor_minimum_viable_armed_budget: ByteSize = byte_size(12884901888)
+data gunbc_floor_minimum_viable_armed_budget: std.measure.ByteSize = byte_size(12884901888)
 
-data gunbc_floor_minimum_viable_armed_budget_disposition: Disposition = Terminal {
+data gunbc_floor_minimum_viable_armed_budget_disposition: std.disposition.Disposition = Terminal {
   reason: "MEASURED minimum viable armed budget for the CI floor (operator ruling 2026-07-21, post-#6995): 12GiB (12884901888 bytes) is the conservative lower bound of the healthy capped-box success class (~12.5-16GiB floor_peak_post), NOT the typical peak. Derivation: doomed witnesses gunbc_floor_armed_budget_doomed_witness_receipts prove armed budgets 5.97-6.99GiB at arm time (MemAvailable on crowded uncapped srv3) cannot complete the floor walk - runs 29834380839 and 29845210061 died in batch witness phase after ~30min; success-class receipt gunbc_floor_armed_budget_success_class_receipt (run 29835983525 post-#6995, srv1-05, armed_budget=15GiB memory.high, floor_peak_post=16108544000) proves the healthy class sits above this bound. bright-seal #6999 fill-deferral is perf-only (entry-closure memo); coordinate via gunbc_floor_minimum_viable_armed_budget_dissolve_on if a future change cuts mature index residency. Consumed by claim_executor arm-time FloorBudgetBelowMinimumFootprint refusal (fail-fast, requeue-able)."
 }
 
-data gunbc_floor_minimum_viable_armed_budget_dissolve_on: Disposition = Scaffold {
+data gunbc_floor_minimum_viable_armed_budget_dissolve_on: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.runner_slot_allocation",
     decl_name: "gunbc_floor_minimum_viable_armed_budget",
     field: WholeDeclaration
   }
 }
 
-fn gunbc_floor_minimum_viable_armed_budget_bytes() -> ByteSize {
+fn gunbc_floor_minimum_viable_armed_budget_bytes() -> std.measure.ByteSize {
   gunbc_floor_minimum_viable_armed_budget
 }
 

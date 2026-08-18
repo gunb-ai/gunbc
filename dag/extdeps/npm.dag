@@ -1,23 +1,23 @@
 module extdeps.npm
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.npmjs.com/cli/v10/configuring-npm/package-lock-json"
   }
 }
 
-data npm_sri_w3c_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data npm_sri_w3c_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.w3.org/TR/SRI/"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.npm",
       decl_name: "NpmPackageLockFormat",
       field: WholeDeclaration
@@ -136,7 +136,7 @@ type NpmLockNodeDecode
 
 data npm_lock_node_selection_note: String = "FIRST CODEX PROFILE supports only root + registry-artifact nodes. Git, link, and local forms decode as NpmLockNodeFormUnsupported — add typed arms only when a real supported consumer needs them. NpmRegistryArtifact is the native selection record; Pin<PackageCoordinate<NpmRegistry>> is DERIVED (npm_registry_artifact_pin), never stored beside native integrity."
 
-fn npm_registry_integrity_content_hash(integrity: NpmRegistryIntegrity) -> ContentHash {
+fn npm_registry_integrity_content_hash(integrity: NpmRegistryIntegrity) -> std.content_hash.ContentHash {
   match integrity {
     NpmRegistrySha512Integrity { digest } => as_content_hash_sha512(digest: digest)
     NpmRegistrySha1Integrity { digest } => as_content_hash_sha1(digest: digest)
@@ -146,7 +146,7 @@ fn npm_registry_integrity_content_hash(integrity: NpmRegistryIntegrity) -> Conte
 fn npm_registry_artifact_pin(
   artifact: NpmRegistryArtifact,
 ) -> Pin<PackageCoordinate<NpmRegistry>> {
-  Pin {
+  extdeps.pin.Pin {
     subject: artifact.package,
     version: artifact.version,
     expected_identity: npm_registry_integrity_content_hash(
@@ -219,22 +219,22 @@ fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
               Present { value: digest } => NpmSingleSha512Integrity { digest: digest }
               Absent =>
                 NpmIntegrityMalformed {
-                  reason: "sha512 hex refinement refused" as NonEmptyStr,
+                  reason: "sha512 hex refinement refused" as std.types.NonEmptyStr,
                 }
             }
           } else {
             NpmIntegrityMalformed {
-              reason: "sha512 base64 payload is noncanonical" as NonEmptyStr,
+              reason: "sha512 base64 payload is noncanonical" as std.types.NonEmptyStr,
             }
           }
         } else {
           NpmIntegrityMalformed {
-            reason: "sha512 decoded length is not 64 octets" as NonEmptyStr,
+            reason: "sha512 decoded length is not 64 octets" as std.types.NonEmptyStr,
           }
         }
       Absent =>
         NpmIntegrityMalformed {
-          reason: "sha512 base64 decode refused" as NonEmptyStr,
+          reason: "sha512 base64 decode refused" as std.types.NonEmptyStr,
         }
     }
   } else if expression.starts_with(prefix: "sha1-") {
@@ -247,31 +247,31 @@ fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
               Present { value: digest } => NpmSingleSha1Integrity { digest: digest }
               Absent =>
                 NpmIntegrityMalformed {
-                  reason: "sha1 hex refinement refused" as NonEmptyStr,
+                  reason: "sha1 hex refinement refused" as std.types.NonEmptyStr,
                 }
             }
           } else {
             NpmIntegrityMalformed {
-              reason: "sha1 base64 payload is noncanonical" as NonEmptyStr,
+              reason: "sha1 base64 payload is noncanonical" as std.types.NonEmptyStr,
             }
           }
         } else {
           NpmIntegrityMalformed {
-            reason: "sha1 decoded length is not 20 octets" as NonEmptyStr,
+            reason: "sha1 decoded length is not 20 octets" as std.types.NonEmptyStr,
           }
         }
       Absent =>
         NpmIntegrityMalformed {
-          reason: "sha1 base64 decode refused" as NonEmptyStr,
+          reason: "sha1 base64 decode refused" as std.types.NonEmptyStr,
         }
     }
   } else if expression.starts_with(prefix: "sha256-") {
-    NpmIntegrityUnsupportedAlgorithm { algorithm: "sha256" as NonEmptyStr }
+    NpmIntegrityUnsupportedAlgorithm { algorithm: "sha256" as std.types.NonEmptyStr }
   } else if expression.starts_with(prefix: "sha384-") {
-    NpmIntegrityUnsupportedAlgorithm { algorithm: "sha384" as NonEmptyStr }
+    NpmIntegrityUnsupportedAlgorithm { algorithm: "sha384" as std.types.NonEmptyStr }
   } else {
     NpmIntegrityMalformed {
-      reason: "missing or unknown SRI algorithm prefix" as NonEmptyStr,
+      reason: "missing or unknown SRI algorithm prefix" as std.types.NonEmptyStr,
     }
   }
 }
@@ -281,14 +281,14 @@ fn npm_decode_integrity(wire: String) -> NpmIntegrityDecode {
   let n = count(expressions)
   if n == 0 {
     NpmIntegrityMalformed {
-      reason: "empty integrity wire" as NonEmptyStr,
+      reason: "empty integrity wire" as std.types.NonEmptyStr,
     }
   } else if n == 1 {
     match expressions |> first {
       Present { value: expression } => npm_decode_integrity_expression(expression: expression)
       Absent =>
         NpmIntegrityMalformed {
-          reason: "empty integrity wire" as NonEmptyStr,
+          reason: "empty integrity wire" as std.types.NonEmptyStr,
         }
     }
   } else {
@@ -325,11 +325,11 @@ fn npm_lock_path_key_from_json_key(key: String) -> NpmLockPathKey {
   if key == "" {
     NpmRootLockPath
   } else {
-    NpmRelativeLockPath { key: key as NonEmptyStr }
+    NpmRelativeLockPath { key: key as std.types.NonEmptyStr }
   }
 }
 
-fn npm_json_string_member(v: JsonValue, key: String) -> String? {
+fn npm_json_string_member(v: extdeps.languages.json.emit.JsonValue, key: String) -> String? {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value } =>
       match value {
@@ -361,7 +361,7 @@ type NpmBooleanMemberObservation
 
 data npm_boolean_member_observation_note: String = "Absent / observed / duplicate / wrong-type are DISTINCT. package-lock defaults apply only on Absent (npm docs: missing Boolean flags are false). Duplicate and wrong-type refuse — never collapse to false."
 
-fn npm_json_boolean_member(v: JsonValue, key: String) -> NpmBooleanMemberObservation {
+fn npm_json_boolean_member(v: extdeps.languages.json.emit.JsonValue, key: String) -> NpmBooleanMemberObservation {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value } =>
       match value {
@@ -401,7 +401,7 @@ type NpmStringListFoldAcc
     }
 
 fn npm_json_string_list_member_observation(
-  v: JsonValue,
+  v: extdeps.languages.json.emit.JsonValue,
   key: String,
 ) -> NpmStringListMemberObservation {
   match json_object_unique_member(v: v, key: key) {
@@ -421,7 +421,7 @@ fn npm_json_string_list_member_observation(
                       NpmStringListFoldOk { values: xs }
                     } else {
                       NpmStringListFoldOk {
-                        values: xs |> list_push(s as NonEmptyStr),
+                        values: xs |> list_push(s as std.types.NonEmptyStr),
                       }
                     }
                   other => NpmStringListFoldBadElement { observed: other }
@@ -465,7 +465,7 @@ fn npm_boolean_flag_default_false(
 
 fn npm_string_list_default_empty(
   observation: NpmStringListMemberObservation,
-) -> List<NonEmptyStr>? {
+) -> List<std.types.NonEmptyStr>? {
   match observation {
     NpmStringListMemberAbsent => Present { value: [] }
     NpmStringListMemberObserved { values } => Present { value: values }
@@ -476,7 +476,7 @@ fn npm_string_list_default_empty(
   }
 }
 
-fn npm_lock_node_metadata_from_json(v: JsonValue) -> NpmLockNodeMetadataDecode {
+fn npm_lock_node_metadata_from_json(v: extdeps.languages.json.emit.JsonValue) -> NpmLockNodeMetadataDecode {
   let dev_o = npm_boolean_flag_default_false(
     observation: npm_json_boolean_member(v: v, key: "dev"),
   )
@@ -503,48 +503,48 @@ fn npm_lock_node_metadata_from_json(v: JsonValue) -> NpmLockNodeMetadataDecode {
   )
   match dev_o {
     Absent =>
-      NpmLockNodeMetadataRefused { cause: "dev boolean member refused" as NonEmptyStr }
+      NpmLockNodeMetadataRefused { cause: "dev boolean member refused" as std.types.NonEmptyStr }
     Present { value: dev } =>
       match optional_o {
         Absent =>
           NpmLockNodeMetadataRefused {
-            cause: "optional boolean member refused" as NonEmptyStr,
+            cause: "optional boolean member refused" as std.types.NonEmptyStr,
           }
         Present { value: optional } =>
           match dev_optional_o {
             Absent =>
               NpmLockNodeMetadataRefused {
-                cause: "devOptional boolean member refused" as NonEmptyStr,
+                cause: "devOptional boolean member refused" as std.types.NonEmptyStr,
               }
             Present { value: dev_optional } =>
               match in_bundle_o {
                 Absent =>
                   NpmLockNodeMetadataRefused {
-                    cause: "inBundle boolean member refused" as NonEmptyStr,
+                    cause: "inBundle boolean member refused" as std.types.NonEmptyStr,
                   }
                 Present { value: in_bundle } =>
                   match has_install_o {
                     Absent =>
                       NpmLockNodeMetadataRefused {
-                        cause: "hasInstallScript boolean member refused" as NonEmptyStr,
+                        cause: "hasInstallScript boolean member refused" as std.types.NonEmptyStr,
                       }
                     Present { value: has_install_script } =>
                       match has_shrink_o {
                         Absent =>
                           NpmLockNodeMetadataRefused {
-                            cause: "hasShrinkwrap boolean member refused" as NonEmptyStr,
+                            cause: "hasShrinkwrap boolean member refused" as std.types.NonEmptyStr,
                           }
                         Present { value: has_shrinkwrap } =>
                           match os_o {
                             Absent =>
                               NpmLockNodeMetadataRefused {
-                                cause: "os string-list member refused" as NonEmptyStr,
+                                cause: "os string-list member refused" as std.types.NonEmptyStr,
                               }
                             Present { value: os } =>
                               match cpu_o {
                                 Absent =>
                                   NpmLockNodeMetadataRefused {
-                                    cause: "cpu string-list member refused" as NonEmptyStr,
+                                    cause: "cpu string-list member refused" as std.types.NonEmptyStr,
                                   }
                                 Present { value: cpu } =>
                                   NpmLockNodeMetadataDecoded {
@@ -573,42 +573,42 @@ fn npm_lock_node_metadata_from_json(v: JsonValue) -> NpmLockNodeMetadataDecode {
   }
 }
 
-fn npm_package_name_from_lock_path(key: NonEmptyStr) -> NonEmptyStr? {
+fn npm_package_name_from_lock_path(key: std.types.NonEmptyStr) -> std.types.NonEmptyStr? {
   let parts = split(s: key as String, delimiter: "node_modules/")
   match parts |> last {
     Present { value: name } =>
       if name == "" {
         none
       } else {
-        Present { value: name as NonEmptyStr }
+        Present { value: name as std.types.NonEmptyStr }
       }
     Absent => none
   }
 }
 
-fn npm_registry_package_name(node: JsonValue, path_key: NonEmptyStr) -> NonEmptyStr? {
+fn npm_registry_package_name(node: extdeps.languages.json.emit.JsonValue, path_key: std.types.NonEmptyStr) -> std.types.NonEmptyStr? {
   match npm_json_string_member(v: node, key: "name") {
     Present { value: named } =>
       if named == "" {
         npm_package_name_from_lock_path(key: path_key)
       } else {
-        Present { value: named as NonEmptyStr }
+        Present { value: named as std.types.NonEmptyStr }
       }
     Absent => npm_package_name_from_lock_path(key: path_key)
   }
 }
 
-fn npm_decode_lock_node(path_key: NpmLockPathKey, node: JsonValue) -> NpmLockNodeDecode {
+fn npm_decode_lock_node(path_key: NpmLockPathKey, node: extdeps.languages.json.emit.JsonValue) -> NpmLockNodeDecode {
   match path_key {
     NpmRootLockPath => {
       let identity_seed = match npm_json_string_member(v: node, key: "name") {
         Present { value: n } =>
           if n == "" {
-            "npm-root" as NonEmptyStr
+            "npm-root" as std.types.NonEmptyStr
           } else {
-            n as NonEmptyStr
+            n as std.types.NonEmptyStr
           }
-        Absent => "npm-root" as NonEmptyStr
+        Absent => "npm-root" as std.types.NonEmptyStr
       }
       NpmLockNodeDecoded {
         selection: NpmRootProject {
@@ -624,22 +624,22 @@ fn npm_decode_lock_node(path_key: NpmLockPathKey, node: JsonValue) -> NpmLockNod
         NpmBooleanMemberDuplicate { count: _ } =>
           NpmLockNodeFormUnsupported {
             key: path_key,
-            native_form: "link-boolean-duplicate" as NonEmptyStr,
+            native_form: "link-boolean-duplicate" as std.types.NonEmptyStr,
           }
         NpmBooleanMemberWrongType { observed: _ } =>
           NpmLockNodeFormUnsupported {
             key: path_key,
-            native_form: "link-boolean-wrong-type" as NonEmptyStr,
+            native_form: "link-boolean-wrong-type" as std.types.NonEmptyStr,
           }
         NpmBooleanMemberNotAnObject =>
           NpmLockNodeFormUnsupported {
             key: path_key,
-            native_form: "link-boolean-not-object" as NonEmptyStr,
+            native_form: "link-boolean-not-object" as std.types.NonEmptyStr,
           }
         NpmBooleanMemberObserved { value: true } =>
           NpmLockNodeFormUnsupported {
             key: path_key,
-            native_form: "link" as NonEmptyStr,
+            native_form: "link" as std.types.NonEmptyStr,
           }
         NpmBooleanMemberAbsent =>
           npm_decode_registry_lock_node(
@@ -666,8 +666,8 @@ fn npm_decode_lock_node(path_key: NpmLockPathKey, node: JsonValue) -> NpmLockNod
 
 fn npm_decode_registry_lock_node(
   path_key: NpmLockPathKey,
-  key: NonEmptyStr,
-  node: JsonValue,
+  key: std.types.NonEmptyStr,
+  node: extdeps.languages.json.emit.JsonValue,
   resolved: String?,
   integrity: String?,
   version: String?,
@@ -677,12 +677,12 @@ fn npm_decode_registry_lock_node(
       if loc.starts_with(prefix: "git+") || loc.starts_with(prefix: "git://") {
         NpmLockNodeFormUnsupported {
           key: path_key,
-          native_form: "git" as NonEmptyStr,
+          native_form: "git" as std.types.NonEmptyStr,
         }
       } else if loc.starts_with(prefix: "file:") {
         NpmLockNodeFormUnsupported {
           key: path_key,
-          native_form: "file" as NonEmptyStr,
+          native_form: "file" as std.types.NonEmptyStr,
         }
       } else {
         match version {
@@ -698,15 +698,15 @@ fn npm_decode_registry_lock_node(
                         NpmLockNodeDecoded {
                           selection: NpmRegistrySelected {
                             artifact: NpmRegistryArtifact {
-                              package: PackageCoordinate {
+                              package: extdeps.package.PackageCoordinate {
                                 ecosystem: NpmRegistry {
-                                  registry: "https://registry.npmjs.org/" as NonEmptyStr,
+                                  registry: "https://registry.npmjs.org/" as std.types.NonEmptyStr,
                                 },
                                 name: pkg_name,
                               },
-                              version: ver as NonEmptyStr,
+                              version: ver as std.types.NonEmptyStr,
                               resolved: NpmResolvedRegistryArtifact {
-                                locator: loc as NonEmptyStr,
+                                locator: loc as std.types.NonEmptyStr,
                               },
                               expected_integrity: expected,
                             },
@@ -715,32 +715,32 @@ fn npm_decode_registry_lock_node(
                       NpmRegistryIntegrityWireRefused { cause: _ } =>
                         NpmLockNodeFormUnsupported {
                           key: path_key,
-                          native_form: "registry-integrity-wire-refused" as NonEmptyStr,
+                          native_form: "registry-integrity-wire-refused" as std.types.NonEmptyStr,
                         }
                     }
                   Absent =>
                     NpmLockNodeFormUnsupported {
                       key: path_key,
-                      native_form: "registry-name-unresolvable" as NonEmptyStr,
+                      native_form: "registry-name-unresolvable" as std.types.NonEmptyStr,
                     }
                 }
               Absent =>
                 NpmLockNodeFormUnsupported {
                   key: path_key,
-                  native_form: "registry-missing-integrity" as NonEmptyStr,
+                  native_form: "registry-missing-integrity" as std.types.NonEmptyStr,
                 }
             }
           Absent =>
             NpmLockNodeFormUnsupported {
               key: path_key,
-              native_form: "registry-missing-version" as NonEmptyStr,
+              native_form: "registry-missing-version" as std.types.NonEmptyStr,
             }
         }
       }
     Absent =>
       NpmLockNodeFormUnsupported {
         key: path_key,
-        native_form: "non-root-missing-resolved" as NonEmptyStr,
+        native_form: "non-root-missing-resolved" as std.types.NonEmptyStr,
       }
   }
 }
@@ -749,7 +749,7 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
   match parse_json(s: text) {
     Absent =>
       NpmPackageLockParseRefused {
-        cause: "package-lock JSON parse refused" as NonEmptyStr,
+        cause: "package-lock JSON parse refused" as std.types.NonEmptyStr,
       }
     Present { value: doc } =>
       match json_object_unique_member(v: doc, key: "lockfileVersion") {
@@ -761,7 +761,7 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
                   match npm_decode_package_lock_format(observed: observed) {
                     NpmPackageLockFormatUnsupported { observed: _ } =>
                       NpmPackageLockParseRefused {
-                        cause: "unsupported lockfileVersion" as NonEmptyStr,
+                        cause: "unsupported lockfileVersion" as std.types.NonEmptyStr,
                       }
                     NpmPackageLockFormatDecoded { format } =>
                       match json_object_unique_member(v: doc, key: "packages") {
@@ -780,7 +780,7 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
                                     NpmLockNodeDecoded { selection } =>
                                       match npm_lock_node_metadata_from_json(v: member.value) {
                                         NpmLockNodeMetadataDecoded { metadata } => {
-                                          let row = PackageLockNode {
+                                          let row = extdeps.package.PackageLockNode {
                                             key: path_key,
                                             selection: selection,
                                             metadata: metadata,
@@ -819,7 +819,7 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
                                 manager: manager,
                                 nodes: decoded.accepted,
                                 unsupported: decoded.unsupported,
-                                graph: PackageLockGraph {
+                                graph: extdeps.package.PackageLockGraph {
                                   manager: manager,
                                   roots: [NpmRootLockPath],
                                   nodes: decoded.accepted,
@@ -829,76 +829,76 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
                             }
                             JsonNull =>
                               NpmPackageLockParseRefused {
-                                cause: "packages member is not an object" as NonEmptyStr,
+                                cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
                             JsonBool { value: _ } =>
                               NpmPackageLockParseRefused {
-                                cause: "packages member is not an object" as NonEmptyStr,
+                                cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
                             JsonString { value: _ } =>
                               NpmPackageLockParseRefused {
-                                cause: "packages member is not an object" as NonEmptyStr,
+                                cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
                             JsonNumber { lexeme: _ } =>
                               NpmPackageLockParseRefused {
-                                cause: "packages member is not an object" as NonEmptyStr,
+                                cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
                             JsonArray { elements: _ } =>
                               NpmPackageLockParseRefused {
-                                cause: "packages member is not an object" as NonEmptyStr,
+                                cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
                           }
                         JsonMemberAbsent =>
                           NpmPackageLockParseRefused {
-                            cause: "packages member absent" as NonEmptyStr,
+                            cause: "packages member absent" as std.types.NonEmptyStr,
                           }
                         JsonMemberDuplicated { count: _ } =>
                           NpmPackageLockParseRefused {
-                            cause: "packages member duplicated" as NonEmptyStr,
+                            cause: "packages member duplicated" as std.types.NonEmptyStr,
                           }
                         JsonMemberNotAnObject =>
                           NpmPackageLockParseRefused {
-                            cause: "lock root is not an object" as NonEmptyStr,
+                            cause: "lock root is not an object" as std.types.NonEmptyStr,
                           }
                       }
                   }
                 Absent =>
                   NpmPackageLockParseRefused {
-                    cause: "lockfileVersion is not an integer" as NonEmptyStr,
+                    cause: "lockfileVersion is not an integer" as std.types.NonEmptyStr,
                   }
               }
             JsonNull =>
               NpmPackageLockParseRefused {
-                cause: "lockfileVersion is not a number" as NonEmptyStr,
+                cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
             JsonBool { value: _ } =>
               NpmPackageLockParseRefused {
-                cause: "lockfileVersion is not a number" as NonEmptyStr,
+                cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
             JsonString { value: _ } =>
               NpmPackageLockParseRefused {
-                cause: "lockfileVersion is not a number" as NonEmptyStr,
+                cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
             JsonArray { elements: _ } =>
               NpmPackageLockParseRefused {
-                cause: "lockfileVersion is not a number" as NonEmptyStr,
+                cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
             JsonObject { members: _ } =>
               NpmPackageLockParseRefused {
-                cause: "lockfileVersion is not a number" as NonEmptyStr,
+                cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
           }
         JsonMemberAbsent =>
           NpmPackageLockParseRefused {
-            cause: "lockfileVersion absent" as NonEmptyStr,
+            cause: "lockfileVersion absent" as std.types.NonEmptyStr,
           }
         JsonMemberDuplicated { count: _ } =>
           NpmPackageLockParseRefused {
-            cause: "lockfileVersion duplicated" as NonEmptyStr,
+            cause: "lockfileVersion duplicated" as std.types.NonEmptyStr,
           }
         JsonMemberNotAnObject =>
           NpmPackageLockParseRefused {
-            cause: "lock root is not an object" as NonEmptyStr,
+            cause: "lock root is not an object" as std.types.NonEmptyStr,
           }
       }
   }

@@ -59,7 +59,7 @@ type ResolvedHostEffectCell =
     }
   | IncompatibleCell { reason: String }
 
-fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
+fn converge_plan_identity_mismatch_reason(node: gunbc.fleet_intent.ComputeHost, policy: gunbc.host_converge.HostConverge) -> String {
   concat(
     concat(
       "host_effect: ConvergePlan target identity ",
@@ -69,7 +69,7 @@ fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverg
   )
 }
 
-fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> ResolvedHostEffectCell {
+fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: gunbc.host_effect.HostEffect) -> ResolvedHostEffectCell {
   match target {
     HostOs { node: n } =>
       match effect {
@@ -292,7 +292,7 @@ fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
 
 fn srv3_shell_reconcile(
   observed: ShellExecObserved,
-  intent: HostEffectIntent,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let grounding = if observed.success {
       Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr } }
@@ -321,7 +321,7 @@ fn host_effect_join_lines(lines: List<String>) -> String {
 
 fn realize_receipt_emit_on_host(
   lines: List<String>,
-  intent: HostEffectIntent,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   srv3_shell_reconcile(
     observed: ShellExecObserved {
@@ -335,8 +335,8 @@ fn realize_receipt_emit_on_host(
 }
 
 fn realize_boot_once_read_back_sleep_body(
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let seconds = to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))
   let success = match srv3_tool_bin_path(tool_name: sleep_cli_tool.name, transport: transport) {
@@ -365,8 +365,8 @@ fn realize_boot_once_read_back_sleep_body(
 }
 
 fn realize_boot_once_read_back_sleep_on_host(
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     LocalShell =>
@@ -383,7 +383,7 @@ fn realize_boot_once_read_back_sleep_on_host(
   }
 }
 
-fn srv3_seeded_install_media_toolchain_receipt_line(outcome: NonEmptyStr) -> String {
+fn srv3_seeded_install_media_toolchain_receipt_line(outcome: std.types.NonEmptyStr) -> String {
   concat(
     concat("InstallMediaRemasterToolchainReceipt: outcome=", outcome as String),
     concat(
@@ -399,8 +399,8 @@ fn srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated() -> Bool
 }
 
 fn realize_seeded_install_media_toolchain_ensure_body(
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let was_present = srv3_apt_tool_present(tool_name: xorriso_cli_tool.name, transport: transport) && srv3_apt_tool_version_ok(tool_name: xorriso_cli_tool.name, transport: transport)
   let ensure_ok = srv3_ensure_apt_tool(
@@ -410,7 +410,7 @@ fn realize_seeded_install_media_toolchain_ensure_body(
     transport: transport,
   )
   let outcome = if was_present { "Present" } else { "Installed" }
-  let stdout = srv3_seeded_install_media_toolchain_receipt_line(outcome: outcome as NonEmptyStr)
+  let stdout = srv3_seeded_install_media_toolchain_receipt_line(outcome: outcome as std.types.NonEmptyStr)
   srv3_shell_reconcile(
     observed: ShellExecObserved {
       exit_code: if ensure_ok { 0 } else { 1 },
@@ -427,8 +427,8 @@ fn realize_seeded_install_media_toolchain_ensure_body(
 }
 
 fn realize_seeded_install_media_toolchain_ensure_on_host(
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     LocalShell =>
@@ -446,13 +446,13 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
 }
 
 fn realize_bmcweb_session_login_body(
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let curl_args = bmcweb_session_login_curl_args(
     bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
-    response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
+    request_body_file: srv3_bmcweb_login_body_path as std.types.NonEmptyStr,
+    response_path: srv3_bmcweb_login_response_path as std.types.NonEmptyStr,
   )
   let success = match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
     Present { value: curl_path } =>
@@ -480,8 +480,8 @@ fn realize_bmcweb_session_login_body(
 }
 
 fn realize_bmcweb_session_login_on_host(
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     LocalShell =>
@@ -499,7 +499,7 @@ fn realize_bmcweb_session_login_on_host(
 }
 
 fn realize_bmcweb_token_extract_body(
-  intent: HostEffectIntent,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match srv3_tool_bin_path(tool_name: jq_cli_tool.name, transport: LocalShell) {
     Present { value: jq_path } => {
@@ -549,8 +549,8 @@ fn realize_bmcweb_token_extract_body(
 }
 
 fn realize_bmcweb_token_extract_on_host(
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     LocalShell =>
@@ -577,7 +577,7 @@ data toolchain_ensure_reconcile_located_note: String = "The refusal names the ef
 
 fn toolchain_ensure_reconcile(
   observed: ShellExecObserved,
-  intent: HostEffectIntent,
+  intent: gunbc.host_effect.HostEffectIntent,
   effect_label: String,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let grounding = if observed.success {
@@ -606,7 +606,7 @@ fn toolchain_ensure_reconcile(
 
 fn srv3_toolchain_ensure_reconcile(
   observed: ShellExecObserved,
-  intent: HostEffectIntent,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   toolchain_ensure_reconcile(
     observed: observed,
@@ -617,7 +617,7 @@ fn srv3_toolchain_ensure_reconcile(
 
 fn provision_build_cache_reconcile(
   observed: ShellExecObserved,
-  intent: HostEffectIntent,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   toolchain_ensure_reconcile(
     observed: observed,
@@ -628,7 +628,7 @@ fn provision_build_cache_reconcile(
 
 fn provision_codex_runtime_reconcile(
   observed: ShellExecObserved,
-  intent: HostEffectIntent,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match provision_codex_runtime_target_host(effect_intent: intent) {
     Absent =>
@@ -655,7 +655,7 @@ fn provision_codex_runtime_reconcile(
   }
 }
 
-fn provision_codex_runtime_target_host(effect_intent: HostEffectIntent) -> product.placement_supply.HostIdentity? {
+fn provision_codex_runtime_target_host(effect_intent: gunbc.host_effect.HostEffectIntent) -> product.placement_supply.HostIdentity? {
   match effect_intent.target {
     HostOs { node: n } => Present { value: n.identity }
     BmcController { node: _ } => none
@@ -663,8 +663,8 @@ fn provision_codex_runtime_target_host(effect_intent: HostEffectIntent) -> produ
 }
 
 fn realize_provision_codex_runtime_body(
-  transport: HostEffectTransport,
-  effect_intent: HostEffectIntent,
+  transport: gunbc.host_effect.HostEffectTransport,
+  effect_intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match provision_codex_runtime_target_host(effect_intent: effect_intent) {
     Absent =>
@@ -720,7 +720,7 @@ fn realize_provision_codex_runtime_body(
 }
 
 fn realize_provision_codex_runtime(
-  effect_intent: HostEffectIntent,
+  effect_intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match effect_intent.effect {
     ProvisionCodexRuntime {} =>
@@ -775,7 +775,7 @@ fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt() -> Strin
 }
 
 fn srv3_transport_witness_bin_success(
-  transport: HostEffectTransport,
+  transport: gunbc.host_effect.HostEffectTransport,
   workdir: String,
   bin_path: String,
   args: List<String>,
@@ -793,7 +793,7 @@ fn srv3_transport_witness_bin_success(
           if argv == "" { bin_path } else { concat(bin_path, concat(" ", argv)) },
         )
       }
-      ssh_session_exec(host: h, command: cmd as NonEmptyStr).success
+      ssh_session_exec(host: h, command: cmd as std.types.NonEmptyStr).success
     }
     FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -801,24 +801,24 @@ fn srv3_transport_witness_bin_success(
   }
 }
 
-fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) -> Bool {
+fn srv3_transport_test_executable(path: String, transport: gunbc.host_effect.HostEffectTransport) -> Bool {
   match transport {
     LocalShell => shell.Test.IsExecutable(path: path).executable
     SshShell { ssh_host: h } =>
-      ssh_session_exec(host: h, command: concat("test -x ", path) as NonEmptyStr).success
+      ssh_session_exec(host: h, command: concat("test -x ", path) as std.types.NonEmptyStr).success
     FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
 }
 
-fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Bool {
+fn srv3_apt_tool_present(tool_name: std.types.NonEmptyStr, transport: gunbc.host_effect.HostEffectTransport) -> Bool {
   match transport {
     LocalShell => shell.Which.Check(command: tool_name).exists
     SshShell { ssh_host: h } =>
       ssh_session_exec(
         host: h,
-        command: concat("command -v ", tool_name as String) as NonEmptyStr,
+        command: concat("command -v ", tool_name as String) as std.types.NonEmptyStr,
       ).success
     FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -826,7 +826,7 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
   }
 }
 
-fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> String? {
+fn srv3_tool_bin_path(tool_name: std.types.NonEmptyStr, transport: gunbc.host_effect.HostEffectTransport) -> String? {
   match transport {
     LocalShell => {
       let found = shell.Which.Check(command: tool_name)
@@ -842,7 +842,7 @@ fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) ->
     SshShell { ssh_host: h } => {
       let result = ssh_session_exec(
         host: h,
-        command: concat("command -v ", tool_name as String) as NonEmptyStr,
+        command: concat("command -v ", tool_name as String) as std.types.NonEmptyStr,
       )
       if result.success {
         let tool_path = trim(result.stdout)
@@ -857,7 +857,7 @@ fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) ->
   }
 }
 
-fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Bool {
+fn srv3_apt_tool_version_ok(tool_name: std.types.NonEmptyStr, transport: gunbc.host_effect.HostEffectTransport) -> Bool {
   match srv3_tool_bin_path(tool_name: tool_name, transport: transport) {
     Present { value: tool_path } =>
       srv3_transport_witness_bin_success(
@@ -870,7 +870,7 @@ fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTranspo
   }
 }
 
-fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTransport) -> Bool {
+fn srv3_chown_directory_to_current_user(path: String, transport: gunbc.host_effect.HostEffectTransport) -> Bool {
   match transport {
     LocalShell => {
       let uid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-u"])
@@ -887,8 +887,8 @@ fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTrans
       }
     }
     SshShell { ssh_host: h } => {
-      let uid = ssh_session_exec(host: h, command: "id -u" as NonEmptyStr)
-      let gid = ssh_session_exec(host: h, command: "id -g" as NonEmptyStr)
+      let uid = ssh_session_exec(host: h, command: "id -u" as std.types.NonEmptyStr)
+      let gid = ssh_session_exec(host: h, command: "id -g" as std.types.NonEmptyStr)
       if uid.success && gid.success {
         let owner = concat(trim(uid.stdout), concat(":", trim(gid.stdout)))
         srv3_transport_witness_bin_success(
@@ -907,7 +907,7 @@ fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTrans
   }
 }
 
-fn srv3_privileged_apt_install(package: NonEmptyStr, transport: HostEffectTransport) -> Bool {
+fn srv3_privileged_apt_install(package: std.types.NonEmptyStr, transport: gunbc.host_effect.HostEffectTransport) -> Bool {
   srv3_transport_witness_bin_success(
     transport: transport,
     workdir: "/",
@@ -916,7 +916,7 @@ fn srv3_privileged_apt_install(package: NonEmptyStr, transport: HostEffectTransp
   )
 }
 
-fn srv3_actuator_toolchain_privileged_apt_install_args(package: NonEmptyStr) -> List<String> {
+fn srv3_actuator_toolchain_privileged_apt_install_args(package: std.types.NonEmptyStr) -> List<String> {
   [
     "-n",
     apt_get_binary_path as String,
@@ -951,10 +951,10 @@ fn srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_names
 }
 
 fn srv3_ensure_apt_tool(
-  tool_name: NonEmptyStr,
-  package: NonEmptyStr,
+  tool_name: std.types.NonEmptyStr,
+  package: std.types.NonEmptyStr,
   require_version_probe: Bool,
-  transport: HostEffectTransport,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> Bool {
   if srv3_apt_tool_present(tool_name: tool_name, transport: transport)
     && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport))
@@ -967,7 +967,7 @@ fn srv3_ensure_apt_tool(
   }
 }
 
-fn srv3_ensure_websocat(transport: HostEffectTransport) -> Bool {
+fn srv3_ensure_websocat(transport: gunbc.host_effect.HostEffectTransport) -> Bool {
   let install_path = websocat_install_path as String
   if srv3_transport_test_executable(path: install_path, transport: transport) {
     true
@@ -1007,8 +1007,8 @@ fn srv3_ensure_websocat(transport: HostEffectTransport) -> Bool {
 }
 
 fn srv3_realize_os_install_actuator_toolchain_ensure_body(
-  transport: HostEffectTransport,
-  effect_intent: HostEffectIntent,
+  transport: gunbc.host_effect.HostEffectTransport,
+  effect_intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let curl_ok = srv3_ensure_apt_tool(
     tool_name: curl_cli_tool.name,
@@ -1050,7 +1050,7 @@ fn srv3_realize_os_install_actuator_toolchain_ensure_body(
 }
 
 fn realize_os_install_actuator_toolchain_ensure(
-  effect_intent: HostEffectIntent,
+  effect_intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match effect_intent.transport {
     LocalShell =>
@@ -1086,7 +1086,7 @@ fn realize_os_install_actuator_toolchain_ensure(
 
 data provision_build_cache_arch_derivation_note: String = "The provisioning script is a function of the TARGET HOST's architecture, not a constant: the cited release publishes one musl tarball plus one sha256 per arch, so emitting a script at all requires knowing which. Arch comes from the effect target's own ComputeHost (compute_host_primary_cpu -> CpuFacts.architecture) and the token/digest selectors in extdeps.cache.sccache are partial over the Architecture coproduct — a host whose CPU is unreadable, or whose arch the release does not publish, yields NO script and a typed NotConverged. There is no default arch: shipping an aarch64 binary to an unlisted host is precisely the fabricated-plausible-output §5 forbids."
 
-fn provision_build_cache_host_arch(effect_intent: HostEffectIntent) -> Architecture? {
+fn provision_build_cache_host_arch(effect_intent: gunbc.host_effect.HostEffectIntent) -> extdeps.toolchain.types.Architecture? {
   match effect_intent.target {
     HostOs { node: host } =>
       match compute_host_primary_cpu(host: host) {
@@ -1098,8 +1098,8 @@ fn provision_build_cache_host_arch(effect_intent: HostEffectIntent) -> Architect
 }
 
 fn realize_provision_build_cache_body(
-  transport: HostEffectTransport,
-  effect_intent: HostEffectIntent,
+  transport: gunbc.host_effect.HostEffectTransport,
+  effect_intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match provision_build_cache_host_arch(effect_intent: effect_intent) {
     Absent =>
@@ -1153,7 +1153,7 @@ fn realize_provision_build_cache_body(
 }
 
 fn realize_provision_build_cache(
-  effect_intent: HostEffectIntent,
+  effect_intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match effect_intent.effect {
     ProvisionBuildCache { catalog_id: id } =>
@@ -1192,8 +1192,8 @@ fn realize_provision_build_cache(
   }
 }
 
-fn provision_build_cache_witness_intent() -> HostEffectIntent {
-  HostEffectIntent {
+fn provision_build_cache_witness_intent() -> gunbc.host_effect.HostEffectIntent {
+  gunbc.host_effect.HostEffectIntent {
     target: HostOs { node: srv1_host },
     effect: ProvisionBuildCache { catalog_id: sccache_local_id },
     evidence: host_effect_identity_evidence,
@@ -1204,8 +1204,8 @@ fn provision_build_cache_witness_intent() -> HostEffectIntent {
 
 data provision_build_cache_arch_unknown_fixture_note: String = "A host the fleet knows by identity but whose processor inventory is empty — the shape a freshly-racked srvN has before its BMC read lands (srv4 carried exactly this deferral for memory). Realization must REFUSE it, because 'which binary do I install' has no answer. The fixture deliberately does NOT fabricate a CPU catalog row for an arch the cited release omits: minting a machine that does not exist to test a refusal would be its own §3 violation, so the not-published arm is witnessed at the selector (sccache_release_arch_token over Riscv64/Wasm32) instead."
 
-fn provision_build_cache_arch_unknown_host_fixture() -> ComputeHost {
-  ComputeHost {
+fn provision_build_cache_arch_unknown_host_fixture() -> gunbc.fleet_intent.ComputeHost {
+  gunbc.fleet_intent.ComputeHost {
     identity: srv1_host.identity,
     baseboard: none,
     processors: [],
@@ -1215,8 +1215,8 @@ fn provision_build_cache_arch_unknown_host_fixture() -> ComputeHost {
   }
 }
 
-fn provision_build_cache_arch_unknown_intent_fixture() -> HostEffectIntent {
-  HostEffectIntent {
+fn provision_build_cache_arch_unknown_intent_fixture() -> gunbc.host_effect.HostEffectIntent {
+  gunbc.host_effect.HostEffectIntent {
     target: HostOs { node: provision_build_cache_arch_unknown_host_fixture() },
     effect: ProvisionBuildCache { catalog_id: sccache_local_id },
     evidence: host_effect_identity_evidence,
@@ -1234,7 +1234,7 @@ fn provision_build_cache_reconcile_shell_observed(
   )
 }
 
-fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTransport) -> ShellExecObserved {
+fn run_shell_transport(script: gunbc.retained_shell_script.RetainedShellScript, transport: gunbc.host_effect.HostEffectTransport) -> ShellExecObserved {
   match transport {
     LocalShell => {
       let result = shell.Exec.Run(script: retained_shell_script_to_transport(rss: script), expect: OutcomeIsData)
@@ -1287,7 +1287,7 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
   }
 }
 
-fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn realize_converge_in_process(host_converge: gunbc.host_converge.HostConverge, intent: gunbc.host_effect.HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match interpret_host_converge(host_converge: host_converge) {
     ConvergeHostRefused { reason: why } =>
       NotConverged { reason: why, applied: intent }
@@ -1312,7 +1312,7 @@ fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIn
   }
 }
 
-fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn realize_converge_on_host(host_converge: gunbc.host_converge.HostConverge, transport: gunbc.host_effect.HostEffectTransport, intent: gunbc.host_effect.HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       match gunbc_apply_mode_for_host(host: host_converge.identity) {
@@ -1339,7 +1339,7 @@ fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTr
   }
 }
 
-fn realize_install_media_fetch_in_process(intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn realize_install_media_fetch_in_process(intent: gunbc.host_effect.HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match install_media_fetch_reconcile(artifact: srv3_ubuntu_install_media_artifact) {
     InstallMediaFetchAlreadyPresent { path: p } =>
       reconcile_grounded(
@@ -1368,7 +1368,7 @@ fn realize_install_media_fetch_in_process(intent: HostEffectIntent) -> Reconcili
   }
 }
 
-fn realize_install_media_remaster_in_process(intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn realize_install_media_remaster_in_process(intent: gunbc.host_effect.HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match install_media_remaster_reconcile(artifact: srv3_seeded_install_media_artifact) {
     InstallMediaRemasterAlreadyPresent { path: p } =>
       reconcile_grounded(
@@ -1397,7 +1397,7 @@ fn realize_install_media_remaster_in_process(intent: HostEffectIntent) -> Reconc
   }
 }
 
-fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: gunbc.host_effect.HostEffectTransport, intent: gunbc.host_effect.HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     LocalShell =>
       match kind {
@@ -1424,7 +1424,7 @@ fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: HostEffectT
 
 fn reconcile_shell_exec_observed(
   observed: ShellExecObserved,
-  intent: HostEffectIntent,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let grounding = if observed.success {
       Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr } }
@@ -1439,8 +1439,8 @@ fn reconcile_shell_exec_observed(
 }
 
 fn reconcile_ssh_argv_exec_outcome(
-  outcome: TypedArgvExecOutcome,
-  intent: HostEffectIntent,
+  outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match outcome {
     TypedArgvExecConverged { result: r } =>
@@ -1462,8 +1462,8 @@ data run_typed_argv_transport_authority_note: String = "Executor→target typed 
 
 fn run_typed_argv_transport(
   argv: List<String>,
-  transport: HostEffectTransport,
-) -> TypedArgvExecOutcome {
+  transport: gunbc.host_effect.HostEffectTransport,
+) -> gunbc.typed_argv_exec.TypedArgvExecOutcome {
   match transport {
     LocalShell =>
       TypedArgvExecRefused {
@@ -1481,9 +1481,9 @@ fn run_typed_argv_transport(
 }
 
 fn realize_effective_principal_read_on_host(
-  read: EffectivePosixPrincipalRead,
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let argv = posix_effective_principal_read_argv()
   match transport {
@@ -1518,9 +1518,9 @@ fn realize_effective_principal_read_on_host(
 }
 
 fn realize_sudo_nopasswd_execute_probe_on_host(
-  probe: SudoNopasswdExecuteProbeShape,
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdExecuteProbeShape,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let argv = sudo_nopasswd_execute_probe_argv(probe: probe)
   match transport {
@@ -1555,7 +1555,7 @@ fn realize_sudo_nopasswd_execute_probe_on_host(
 }
 
 fn sudo_nopasswd_grant_list_observed(
-  probe: SudoNopasswdGrantListProbeShape,
+  probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape,
   exit_code: Int,
   query_success: Bool,
   stdout: String,
@@ -1579,9 +1579,9 @@ fn sudo_nopasswd_grant_list_observed(
 }
 
 fn reconcile_sudo_nopasswd_grant_list_outcome(
-  probe: SudoNopasswdGrantListProbeShape,
-  outcome: TypedArgvExecOutcome,
-  intent: HostEffectIntent,
+  probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape,
+  outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match outcome {
     TypedArgvExecConverged { result: r } =>
@@ -1601,9 +1601,9 @@ fn reconcile_sudo_nopasswd_grant_list_outcome(
 }
 
 fn realize_sudo_nopasswd_grant_list_probe_on_host(
-  probe: SudoNopasswdGrantListProbeShape,
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let argv = sudo_nopasswd_grant_list_argv()
   match transport {
@@ -1640,17 +1640,17 @@ fn realize_sudo_nopasswd_grant_list_probe_on_host(
   }
 }
 
-fn realize_shell_on_host(script: RetainedShellScript, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn realize_shell_on_host(script: gunbc.retained_shell_script.RetainedShellScript, transport: gunbc.host_effect.HostEffectTransport, intent: gunbc.host_effect.HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let result = run_shell_transport(script: script, transport: transport)
   reconcile_shell_exec_observed(observed: result, intent: intent)
 }
 
 fn realize_set_hostname_cas_on_host(
-  hostnamectl_path: NonEmptyStr,
-  base: DnsLabel,
-  desired: DnsLabel,
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  hostnamectl_path: std.types.NonEmptyStr,
+  base: extdeps.dns.domain_name.DnsLabel,
+  desired: extdeps.dns.domain_name.DnsLabel,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match hostname_set_cas(
     hostnamectl_path: hostnamectl_path,
@@ -1690,8 +1690,8 @@ fn realize_set_hostname_cas_on_host(
 }
 
 fn realize_hostname_read_on_host(
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match hostname_short_read(transport: transport) {
     HostnameShortCaptured { value: name } =>
@@ -1713,10 +1713,10 @@ fn realize_hostname_read_on_host(
 }
 
 fn realize_codex_supervised_worker_turn_on_host(
-  intent: CodexAppServerStdioSessionIntent,
-  lease_key: NonEmptyStr,
-  transport: HostEffectTransport,
-  intent_record: HostEffectIntent,
+  intent: extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent,
+  lease_key: std.types.NonEmptyStr,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent_record: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let cmd_id_read = Filesystem.Read(path: intent.client_command_id_path)
   if cmd_id_read.success == false || cmd_id_read.content == "" {
@@ -1728,7 +1728,7 @@ fn realize_codex_supervised_worker_turn_on_host(
     match host_effect_codex_supervised_turn_apply(
       intent: intent,
       lease_key: lease_key,
-      client_command_id: cmd_id_read.content as NonEmptyStr,
+      client_command_id: cmd_id_read.content as std.types.NonEmptyStr,
       transport: transport,
     ) {
       CodexSupervisedSessionApplyConverged {
@@ -1752,10 +1752,10 @@ fn realize_codex_supervised_worker_turn_on_host(
 }
 
 fn realize_nbd_proxy_session_on_host(
-  intent: NbdProxyServeTransportIntent,
-  lease_key: NonEmptyStr,
-  transport: HostEffectTransport,
-  intent_record: HostEffectIntent,
+  intent: extdeps.bmc.webui.nbd_proxy_serve.NbdProxyServeTransportIntent,
+  lease_key: std.types.NonEmptyStr,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent_record: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let binding = host_effect_nbd_proxy_serve_session_binding(intent: intent, lease_key: lease_key)
   match host_effect_nbd_proxy_serve_apply(binding: binding, transport: transport) {
@@ -1781,7 +1781,7 @@ fn realize_nbd_proxy_session_on_host(
 
 data candidate_observation_locus_note: String = "THE CANDIDATE WAS OBSERVED IN THE DEPLOYING CHECKOUT, SO IT MAY ONLY LABEL A TREE THAT IS THAT CHECKOUT. observe_candidate_release reads git HEAD where the deploy program runs. On LocalShell the observation locus and the mutation locus are the same filesystem — the CI job installs from its own workspace — so the revision it read is the revision it installs, and baking that value into ExecStart is a true statement about the resulting process.\\n\\nOver SshShell they are two different machines. The revision came from the LOCAL checkout while the unit is written on the REMOTE host, whose tree arrived by some other path and at some other time; nothing in this fold establishes that they agree. Emitting the local sha there would produce a process that CONFIDENTLY REPORTS a release it may not be running, and readiness would then compare that fabricated label against the expectation that produced it and agree — a self-consistent false green, which is worse than no identity at all because the wrongness is invisible to every downstream check.\\n\\nSo the SSH arm REFUSES rather than labels. This is not a transport allow-list standing in for a model; the admission that is genuinely missing is the agreement between candidate observation locus, source transfer locus, and mutation locus, and until a source transfer is modeled that PROVES the remote tree is this candidate, refusing is the only honest arm (DESIGN section 5: a failure arm must refuse, never widen). EmitArtifactThenThinRun refuses for the same reason, one step further removed.\\n\\nRetract is deliberately not restricted here: it installs no release, carries no candidate, and therefore has no locus to agree about. DISSOLVES WHEN a modeled source transfer establishes remote-tree identity, at which point this arm carries the transferred candidate instead of refusing."
 
-fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> String {
+fn live_deploy_apply_candidate_locus_refusal(transport: gunbc.host_effect.HostEffectTransport) -> String {
   match transport {
     LocalShell => ""
     SshShell { ssh_host: h } =>
@@ -1802,10 +1802,10 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
 }
 
 fn realize_live_deploy_apply_on_host(
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let locus_refusal = live_deploy_apply_candidate_locus_refusal(transport: transport)
   if locus_refusal != "" {
@@ -1826,9 +1826,9 @@ fn realize_live_deploy_apply_on_host(
 }
 
 fn realize_live_deploy_retract_on_host(
-  spec: DeploymentSpec,
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   realize_shell_on_host(
     script: retained_srvn(
@@ -1841,9 +1841,9 @@ fn realize_live_deploy_retract_on_host(
 }
 
 fn realize_live_deploy_ensure_dependency_on_host(
-  dep: DeploymentDependencyStep,
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  dep: gunbc.live_deploy.spec.DeploymentDependencyStep,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   realize_shell_on_host(
     script: retained_srvn(
@@ -1857,8 +1857,8 @@ fn realize_live_deploy_ensure_dependency_on_host(
 
 fn realize_live_deploy_digest_readback_on_host(
   port: Int,
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
+  transport: gunbc.host_effect.HostEffectTransport,
+  intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   realize_shell_on_host(
     script: retained_srvn(
@@ -1870,8 +1870,8 @@ fn realize_live_deploy_digest_readback_on_host(
   )
 }
 
-fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: IdempotencyEvidence, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let intent = HostEffectIntent {
+fn host_effect_apply(target: gunbc.host_effect.NodeControlPlane, effect: gunbc.host_effect.HostEffect, evidence: std.effects.IdempotencyEvidence, transport: gunbc.host_effect.HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let intent = gunbc.host_effect.HostEffectIntent {
     target: target,
     effect: effect,
     evidence: evidence,
@@ -1946,22 +1946,22 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
 }
 
 fn host_effect_privilege_verdict(
-  access: DeployAccess,
-  fixture_actor: DeployAccessActor?
-) -> AccessDecision {
+  access: gunbc.ci_deploy_access.DeployAccess,
+  fixture_actor: gunbc.ci_deploy_access.DeployAccessActor?
+) -> std.access.AccessDecision {
   match fixture_actor {
     Present { value: actor } => deploy_access_check(access: access, actor: actor)
     Absent => deploy_access_check_observed(access: access)
   }
 }
 
-fn deploy_access_host_target(access: DeployAccess) -> NodeControlPlane {
+fn deploy_access_host_target(access: gunbc.ci_deploy_access.DeployAccess) -> gunbc.host_effect.NodeControlPlane {
   HostOs { node: access.host }
 }
 
 fn deploy_access_shell_apply_success_stdout(
-  access: DeployAccess,
-  effect: HostEffect,
+  access: gunbc.ci_deploy_access.DeployAccess,
+  effect: gunbc.host_effect.HostEffect,
 ) -> String? {
   match host_effect_apply(
     target: deploy_access_host_target(access: access),
@@ -1983,7 +1983,7 @@ fn deploy_access_shell_apply_success_stdout(
   }
 }
 
-fn deploy_access_observed_principal(access: DeployAccess) -> NonEmptyStr? {
+fn deploy_access_observed_principal(access: gunbc.ci_deploy_access.DeployAccess) -> std.types.NonEmptyStr? {
   match deploy_access_shell_apply_success_stdout(
     access: access,
     effect: deploy_access_read_principal_effect(),
@@ -1993,7 +1993,7 @@ fn deploy_access_observed_principal(access: DeployAccess) -> NonEmptyStr? {
   }
 }
 
-fn deploy_access_sudo_check_cmd(access: DeployAccess, cmd: PrivilegedCommand) -> Bool {
+fn deploy_access_sudo_check_cmd(access: gunbc.ci_deploy_access.DeployAccess, cmd: gunbc.ci_deploy_access.PrivilegedCommand) -> Bool {
   match deploy_access_shell_apply_success_stdout(
     access: access,
     effect: deploy_access_sudo_probe_effect(cmd: cmd),
@@ -2003,7 +2003,7 @@ fn deploy_access_sudo_check_cmd(access: DeployAccess, cmd: PrivilegedCommand) ->
   }
 }
 
-fn deploy_access_sudo_all_granted(access: DeployAccess) -> Bool {
+fn deploy_access_sudo_all_granted(access: gunbc.ci_deploy_access.DeployAccess) -> Bool {
   fold_list(
     xs: access.privileged_commands,
     empty: true,
@@ -2011,11 +2011,11 @@ fn deploy_access_sudo_all_granted(access: DeployAccess) -> Bool {
   )
 }
 
-fn deploy_access_observed_actor(access: DeployAccess) -> DeployAccessActor? {
+fn deploy_access_observed_actor(access: gunbc.ci_deploy_access.DeployAccess) -> gunbc.ci_deploy_access.DeployAccessActor? {
   match deploy_access_observed_principal(access: access) {
     Present { value: observed_name } =>
       Present {
-        value: DeployAccessActor {
+        value: gunbc.ci_deploy_access.DeployAccessActor {
           observed_name: observed_name,
           sudo_granted: deploy_access_sudo_all_granted(access: access),
         }
@@ -2024,7 +2024,7 @@ fn deploy_access_observed_actor(access: DeployAccess) -> DeployAccessActor? {
   }
 }
 
-fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
+fn deploy_access_check_observed(access: gunbc.ci_deploy_access.DeployAccess) -> std.access.AccessDecision {
   match deploy_access_observed_actor(access: access) {
     Present { value: actor } => deploy_access_check(access: access, actor: actor)
     Absent =>
@@ -2039,14 +2039,14 @@ fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
 }
 
 fn host_effect_apply_gated(
-  access: DeployAccess,
-  target: NodeControlPlane,
-  effect: HostEffect,
-  evidence: IdempotencyEvidence,
-  transport: HostEffectTransport,
-  fixture_actor: DeployAccessActor?
+  access: gunbc.ci_deploy_access.DeployAccess,
+  target: gunbc.host_effect.NodeControlPlane,
+  effect: gunbc.host_effect.HostEffect,
+  evidence: std.effects.IdempotencyEvidence,
+  transport: gunbc.host_effect.HostEffectTransport,
+  fixture_actor: gunbc.ci_deploy_access.DeployAccessActor?
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let intent = HostEffectIntent {
+  let intent = gunbc.host_effect.HostEffectIntent {
     target: target,
     effect: effect,
     evidence: evidence,
@@ -2124,7 +2124,7 @@ fn host_effect_apply_gated(
     Deny { refusal: _ } =>
       NotConverged {
         reason: deploy_access_decision_reason(d: verdict),
-        applied: HostEffectIntent {
+        applied: gunbc.host_effect.HostEffectIntent {
           target: target,
           effect: effect,
           evidence: evidence,
@@ -2137,7 +2137,7 @@ fn host_effect_apply_gated(
 
 type ConvergeDirective = Settled | ReDrive | Refused { reason: String }
 
-fn not_converged_directive(drive: Drive) -> ConvergeDirective {
+fn not_converged_directive(drive: gunbc.host_effect.Drive) -> ConvergeDirective {
   match drive {
     OneShot => Settled
     ConvergeLoop => ReDrive

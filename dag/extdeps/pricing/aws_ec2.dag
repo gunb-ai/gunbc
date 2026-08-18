@@ -2,8 +2,8 @@ module extdeps.pricing.aws_ec2
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/us-east-1/index.json"
   }
@@ -27,7 +27,7 @@ data aws_ec2_m7a_medium_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceR
   family: M7a,
   region: UsEast1,
   vcpus: hardware_thread_count(1),
-  per_hour: MoneyPerHour {
+  per_hour: std.measure.MoneyPerHour {
     amount: money_amount_micro(count: 57960),
     currency: Usd,
   },
@@ -39,7 +39,7 @@ data aws_ec2_m7a_large_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceRo
   family: M7a,
   region: UsEast1,
   vcpus: hardware_thread_count(2),
-  per_hour: MoneyPerHour {
+  per_hour: std.measure.MoneyPerHour {
     amount: money_amount_micro(count: 115920),
     currency: Usd,
   },
@@ -51,7 +51,7 @@ data aws_ec2_m7a_xlarge_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceR
   family: M7a,
   region: UsEast1,
   vcpus: hardware_thread_count(4),
-  per_hour: MoneyPerHour {
+  per_hour: std.measure.MoneyPerHour {
     amount: money_amount_micro(count: 231840),
     currency: Usd,
   },
@@ -63,7 +63,7 @@ data aws_ec2_m7a_2xlarge_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPrice
   family: M7a,
   region: UsEast1,
   vcpus: hardware_thread_count(8),
-  per_hour: MoneyPerHour {
+  per_hour: std.measure.MoneyPerHour {
     amount: money_amount_micro(count: 463680),
     currency: Usd,
   },
@@ -75,7 +75,7 @@ data aws_ec2_m7a_4xlarge_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPrice
   family: M7a,
   region: UsEast1,
   vcpus: hardware_thread_count(16),
-  per_hour: MoneyPerHour {
+  per_hour: std.measure.MoneyPerHour {
     amount: money_amount_micro(count: 927360),
     currency: Usd,
   },

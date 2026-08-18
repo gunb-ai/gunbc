@@ -35,7 +35,7 @@ type ProcessLeasePlan
 fn classify_process_port(
   scope: ProcessPortScope,
   obs: ProcessPortObservation,
-) -> ObservationVerdict {
+) -> std.upsert_decision.ObservationVerdict {
   match obs {
     PortAbsent => Absent
     PortInaccessible => Inaccessible
@@ -74,15 +74,15 @@ fn classify_process_port(
 }
 
 fn decision_for_process_port_verdict(
-  verdict: ObservationVerdict,
+  verdict: std.upsert_decision.ObservationVerdict,
 ) -> UpsertDecision<ProcessLeasePlan> {
   match verdict {
     Converged => Noop
     Absent => Apply { plan: Start }
     Drifted => Apply { plan: DrainMatchingStaleThenStart }
-    Conflict => Refuse { reason: "foreign process owns port" as NonEmptyStr }
-    Inaccessible => Refuse { reason: "port inaccessible or wrong listen port" as NonEmptyStr }
-    UnknownRefused => Refuse { reason: "port observation refused" as NonEmptyStr }
+    Conflict => Refuse { reason: "foreign process owns port" as std.types.NonEmptyStr }
+    Inaccessible => Refuse { reason: "port inaccessible or wrong listen port" as std.types.NonEmptyStr }
+    UnknownRefused => Refuse { reason: "port observation refused" as std.types.NonEmptyStr }
   }
 }
 
@@ -91,7 +91,7 @@ fn classify_process_port_upsert(
   obs: ProcessPortObservation,
 ) -> std.upsert_decision.UpsertClassification<ProcessLeasePlan> {
   let verdict = classify_process_port(scope: scope, obs: obs)
-  UpsertClassification {
+  std.upsert_decision.UpsertClassification {
     verdict: verdict,
     decision: decision_for_process_port_verdict(verdict: verdict),
   }

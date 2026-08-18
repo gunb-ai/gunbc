@@ -1,8 +1,8 @@
 module gunbc.roadmap_dispatch_actuator
 
 
-data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
-  reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as NonEmptyStr
+data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: std.disposition.Disposition = Terminal {
+  reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as std.types.NonEmptyStr
 }
 
 data dispatch_repo: String = "gunbc"
@@ -21,7 +21,7 @@ type DispatchCliProvider
 
 data dispatch_cli_provider_note: String = "Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a host-wide constant. dispatch_cli_provider() projects the srv1-live Automatic selection for legacy call sites; instance-aware dispatch uses dispatch_selection_for_instance. Production Codex inventory standing is declared-unobserved at selection time; wet probe-derived standing is reserved for dashboard readiness (dispatch_production_standing_unobserved_refusal_note). Each DispatchCliProvider variant owns argv, preflight, and expected pane fingerprint together at this call site."
 
-fn provider_kind_to_dispatch_cli(kind: ProviderKind) -> DispatchCliProvider {
+fn provider_kind_to_dispatch_cli(kind: extdeps.llm.cli_lifecycle.ProviderKind) -> DispatchCliProvider {
   match kind {
     ClaudeCliProvider => ClaudeCodeProvider
     extdeps.llm.cli_lifecycle.CodexCliProvider => CodexDispatchProvider
@@ -29,7 +29,7 @@ fn provider_kind_to_dispatch_cli(kind: ProviderKind) -> DispatchCliProvider {
   }
 }
 
-fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> ProviderKind {
+fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> extdeps.llm.cli_lifecycle.ProviderKind {
   match provider {
     ClaudeCodeProvider => ClaudeCliProvider
     CodexDispatchProvider => extdeps.llm.cli_lifecycle.CodexCliProvider
@@ -47,7 +47,7 @@ type DispatchActuatorSelection
 
 data dispatch_actuator_selection_note: String = "The actuator's sole projection of gunbc.dispatch_selection for legacy call sites. Refusal propagates typed — no Codex substitute, no ReasoningMedium default, no actuator-local process fingerprint (DESIGN §5; review 47676). Process fingerprints are consumed from the selection kernel via resolved_process_fingerprint, never re-declared here (DESIGN §3)."
 
-fn dispatch_actuator_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
+fn dispatch_actuator_selection(node_sizing: gunbc.roadmap_model.NodeSizing) -> DispatchActuatorSelection {
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
     request: default_provider_selection_request(),
@@ -66,7 +66,7 @@ fn dispatch_actuator_selection(node_sizing: NodeSizing) -> DispatchActuatorSelec
 
 fn dispatch_actuator_selection_for_provider(
   provider: DispatchCliProvider,
-  node_sizing: NodeSizing,
+  node_sizing: gunbc.roadmap_model.NodeSizing,
 ) -> DispatchActuatorSelection {
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
@@ -98,7 +98,7 @@ data dispatch_claude_start_prompt: String = "Begin working on the assigned node.
 data dispatch_claude_permission_args: List<String> = ["--dangerously-skip-permissions"]
 data dispatch_codex_start_prompt: String = "Begin working on the assigned node."
 data dispatch_codex_home: String = srv1_roadmap_codex_home as String
-data dispatch_codex_exec_spec: CodexExecSpec = CodexExecSpec {
+data dispatch_codex_exec_spec: extdeps.llm.cli.CodexExecSpec = extdeps.llm.cli.CodexExecSpec {
   sandbox: CodexWorkspaceWrite,
   approval: CodexApprovalNever,
   json_events: true,
@@ -124,8 +124,8 @@ data dispatch_unrealized_capability_marker: String = "gunbc-unrealized-capabilit
 data dispatch_capability_program_absence_note: String = "An environment with no realization for a capability used to resolve to the empty program string. Empty is non-executable, so the host did fail — but it failed as an unattributable exec error with nothing naming WHICH capability was unrealized, which is a degradation that cannot be counted (DESIGN 5). The marker keeps the arm non-executable and makes it self-describing at the point of failure. It is not a widening: no marker value can run. The real close is a typed refusal on the resolver, which requires the argv shapers above it to carry a refusal arm — that rides with the DashboardExecResult typed-refusal migration named in dashboard_exec_result_carrier_note, and dissolves this row with it."
 
 fn dispatch_capability_program(
-  environment: DispatchHostEnvironment,
-  cap: ExecutionCapability,
+  environment: gunbc.roadmap_execution_contract.DispatchHostEnvironment,
+  cap: gunbc.roadmap_execution_contract.ExecutionCapability,
 ) -> String {
   match dispatch_host_realization(environment: environment, capability: cap) {
     Present { value: realization } => realization.executable as String
@@ -208,39 +208,39 @@ type DispatchLiveSession {
 
 data dispatch_provider_instance_note: String = "The configured provider instance is known from the actuator plan, not guessed from one process command. dispatch_provider_instance_for is total over the same closed DispatchCliProvider choice that owns argv and expected process fingerprint: Claude consumes claude_cli_program; Codex consumes codex_cli_program. The tmux observation does not read hostname, version, state/auth directory, credential storage, or service identity, so each stays explicitly Unobserved; filling any from deployment prose would fabricate live evidence. A later provider-instance probe replaces those arms independently."
 
-fn dispatch_provider_executable(provider: DispatchCliProvider) -> NonEmptyStr {
+fn dispatch_provider_executable(provider: DispatchCliProvider) -> std.types.NonEmptyStr {
   match provider {
-    ClaudeCodeProvider => claude_cli_program as NonEmptyStr
-    CodexDispatchProvider => codex_cli_program as NonEmptyStr
-    CursorDispatchProvider => cursor_cli_program as NonEmptyStr
+    ClaudeCodeProvider => claude_cli_program as std.types.NonEmptyStr
+    CodexDispatchProvider => codex_cli_program as std.types.NonEmptyStr
+    CursorDispatchProvider => cursor_cli_program as std.types.NonEmptyStr
   }
 }
 
 fn dispatch_provider_instance_for(
   provider: DispatchCliProvider,
-) -> ProviderInstance {
-  ProviderInstance {
+) -> extdeps.llm.cli_lifecycle.ProviderInstance {
+  extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: dispatch_cli_to_provider_kind(provider: provider),
     host: ProviderInstanceFieldUnobserved {
-      reason: "session observation does not read host identity" as NonEmptyStr,
+      reason: "session observation does not read host identity" as std.types.NonEmptyStr,
     },
     executable: dispatch_provider_executable(provider: provider),
     observed_version: ProviderInstanceFieldUnobserved {
-      reason: "session observation does not execute the provider version probe" as NonEmptyStr,
+      reason: "session observation does not execute the provider version probe" as std.types.NonEmptyStr,
     },
     state_directory: ProviderInstanceFieldUnobserved {
-      reason: "session observation does not inspect provider state" as NonEmptyStr,
+      reason: "session observation does not inspect provider state" as std.types.NonEmptyStr,
     },
     credential_storage_method: ProviderInstanceFieldUnobserved {
-      reason: "session observation does not inspect credential storage" as NonEmptyStr,
+      reason: "session observation does not inspect credential storage" as std.types.NonEmptyStr,
     },
     service_identity: ProviderInstanceFieldUnobserved {
-      reason: "session observation does not read process ownership" as NonEmptyStr,
+      reason: "session observation does not read process ownership" as std.types.NonEmptyStr,
     },
   }
 }
 
-fn dispatch_provider_instance() -> ProviderInstance? {
+fn dispatch_provider_instance() -> extdeps.llm.cli_lifecycle.ProviderInstance? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
       Present { value: dispatch_provider_instance_for(provider: provider) }
@@ -249,8 +249,8 @@ fn dispatch_provider_instance() -> ProviderInstance? {
 }
 
 fn dispatch_worker_observation_for_process(
-  process: WorkerProcessEvidence,
-) -> WorkerObservation? {
+  process: gunbc.worker_lifecycle.WorkerProcessEvidence,
+) -> gunbc.worker_lifecycle.WorkerObservation? {
   match dispatch_provider_instance() {
     Present { value: instance } =>
       Present {
@@ -263,7 +263,7 @@ fn dispatch_worker_observation_for_process(
   }
 }
 
-fn dispatch_worker_observation() -> WorkerObservation? {
+fn dispatch_worker_observation() -> gunbc.worker_lifecycle.WorkerObservation? {
   match dispatch_provider_instance() {
     Present { value: instance } =>
       Present { value: worker_observation_without_provider_probe(instance: instance) }
@@ -271,7 +271,7 @@ fn dispatch_worker_observation() -> WorkerObservation? {
   }
 }
 
-fn dispatch_applied_effort() -> ReasoningEffort? {
+fn dispatch_applied_effort() -> extdeps.llm.cli.ReasoningEffort? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider: _, effort, process_fingerprint: _ } =>
       Present { value: effort }
@@ -279,7 +279,7 @@ fn dispatch_applied_effort() -> ReasoningEffort? {
   }
 }
 
-fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEmptyStr? {
+fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> std.types.NonEmptyStr? {
   match dispatch_actuator_selection_for_provider(
     provider: provider,
     node_sizing: Unsized,
@@ -290,23 +290,23 @@ fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEm
   }
 }
 
-fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
+fn dispatch_tmux_session_name(node_id: gunbc.roadmap_model.RoadmapNodeId) -> String {
   concat(dispatch_tmux_session_prefix, node_id)
 }
 
 data dispatch_attempt_note: String = "Dispatch is ATTEMPT-grain (U1, the redispatch fix, 2026-07-25; the operator's accidental spawn was the live receipt): branch and worktree carry an attempt key derived from (node_id x the spawn's clock observation) through std.content_hash; the Claude provider also derives its required session-id from that stamp, while Codex mints its own persisted thread identity and does not yet join it back to the attempt. A stopped attempt's debris therefore never collides with the next spawn, and NOTHING is deleted to make way. The tmux session name deliberately STAYS node-grain: it is what observe/reconcile key on, so already-live detection, kill, and tick idempotency are untouched. Same-instant duplicate spawns for one node collide on the attempt key and refuse at the git step, typed. A clock refusal refuses the spawn (step attempt-clock), never an unknown-stamped attempt."
 
-fn dispatch_attempt_key(node_id: RoadmapNodeId, probed_at: String) -> String {
-  content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as NonEmptyStr).digest as String
+fn dispatch_attempt_key(node_id: gunbc.roadmap_model.RoadmapNodeId, probed_at: String) -> String {
+  content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as std.types.NonEmptyStr).digest as String
 }
 
-fn dispatch_worktree_path(node_id: RoadmapNodeId, attempt_key: String) -> String {
+fn dispatch_worktree_path(node_id: gunbc.roadmap_model.RoadmapNodeId, attempt_key: String) -> String {
   join([dispatch_worktree_root, "/", node_id as String, "-a", attempt_key], "")
 }
 
 fn dispatch_worktree_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -321,8 +321,8 @@ fn dispatch_worktree_path_for_instance(
 data dispatch_verification_checkout_path_note: String = "Verification validates the committed head in a DETACHED checkout, never the mutable implementation worktree the agent may still be editing. The path is head-addressed beside the attempt worktree so multiple heads per attempt each retain their own immutable tree without colliding on the branch checkout."
 
 fn dispatch_verification_checkout_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
 ) -> String {
@@ -338,8 +338,8 @@ fn dispatch_verification_checkout_path_for_instance(
 }
 
 fn dispatch_attempt_state_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -352,8 +352,8 @@ fn dispatch_attempt_state_path_for_instance(
 }
 
 fn dispatch_attempt_events_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -367,8 +367,8 @@ fn dispatch_attempt_events_path_for_instance(
 }
 
 fn dispatch_attempt_key_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -382,8 +382,8 @@ fn dispatch_attempt_key_path_for_instance(
 }
 
 fn dispatch_attempt_admission_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -399,8 +399,8 @@ fn dispatch_attempt_admission_path_for_instance(
 data attempt_verification_receipt_path_note: String = "The attempt's verification evidence sits beside its admission receipt and its event stream, in the same attempt-state directory and keyed by the same attempt key. That placement is what lets a Publication step find the evidence for the revision it is about to publish without being told where to look: the attempt identity already addresses everything else the attempt produced, and a verification record filed anywhere else would need a second index."
 
 fn dispatch_attempt_verification_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -414,8 +414,8 @@ fn dispatch_attempt_verification_path_for_instance(
 }
 
 fn dispatch_attempt_spawn_failure_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -431,8 +431,8 @@ fn dispatch_attempt_spawn_failure_path_for_instance(
 data dispatch_attempt_oracle_pin_layout_note: String = "The oracle pin is TWO one-fact files beside the attempt's other evidence, not one record needing a grammar. That follows the directory's existing shape — attempt-key, spawn-failure.txt and provider-events.jsonl are each one fact in one file — and it is what lets the verification side read a value back without a JSON parser, which this seam does not have. Only these two facts cross the disk seam because they are the only two that cannot be re-derived at verification time: what the oracle's content WAS before the agent started, and which revision that content came from. The subject, the selection, and the declared command are all re-derived from the node's own execution contract, so persisting them would be a second home for a fact that already has one."
 
 fn dispatch_attempt_oracle_identity_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -446,8 +446,8 @@ fn dispatch_attempt_oracle_identity_path_for_instance(
 }
 
 fn dispatch_attempt_oracle_revision_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -461,8 +461,8 @@ fn dispatch_attempt_oracle_revision_path_for_instance(
 }
 
 fn dispatch_attempt_oracle_pin_refusal_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -476,8 +476,8 @@ fn dispatch_attempt_oracle_pin_refusal_path_for_instance(
 }
 
 fn dispatch_current_attempt_oracle_pin_refusal_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
 ) -> String {
   join([
     dispatch_current_attempt_state_path_for_instance(
@@ -489,8 +489,8 @@ fn dispatch_current_attempt_oracle_pin_refusal_path_for_instance(
 }
 
 fn dispatch_current_attempt_oracle_identity_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
 ) -> String {
   join([
     dispatch_current_attempt_state_path_for_instance(
@@ -502,8 +502,8 @@ fn dispatch_current_attempt_oracle_identity_path_for_instance(
 }
 
 fn dispatch_current_attempt_oracle_revision_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
 ) -> String {
   join([
     dispatch_current_attempt_state_path_for_instance(
@@ -519,8 +519,8 @@ data publication_receipt_is_head_addressed_note: String = "THE HEAD IS IN THE PA
 data publication_receipt_directory_is_named_once_note: String = "The directory is its own function because a reader has to establish that a receipt is ABSENT, and the only honest way to do that is to list the directory it would be in and not find it there. Filesystem.Read reports the same failure for a file that does not exist and one that cannot be read (review 46148), so absence inferred from a failed read is a guess; absence established by a successful listing is a fact. That makes the directory a load-bearing address rather than a path fragment, so it is named here once and the receipt path is built from it."
 
 fn dispatch_attempt_publication_dir_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -536,8 +536,8 @@ fn dispatch_attempt_publication_dir_for_instance(
 data publication_receipt_directory_segment: String = "publication"
 
 fn dispatch_attempt_publication_receipt_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
 ) -> String {
@@ -558,8 +558,8 @@ data publication_receipt_has_no_current_alias_note: String = "EVERY OTHER RECEIP
 data verification_receipt_is_head_addressed_note: String = "VERIFICATION AND PUBLICATION SHARE THE HEAD × WINDOW GRAIN. One implementation attempt may be verified at head A under window W1 and again at the same head under window W2 after the target branch advances. Attempt-level files would either overwrite A or let A's verdict stand for B. The verification directory therefore mirrors publication at the finer grain: attempt/<attempt>/verification/<head>.<window_identity>.json for immutable receipts, plus a mutable current-selection pointer at verification/<head>.current-selection.json that names which window identity is selected for dashboard observation. DISSOLVE-ON: the legacy attempt-level validation-receipt.json path deletes once its last belt consumer is gone."
 
 fn dispatch_attempt_verification_dir_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -574,8 +574,8 @@ fn dispatch_attempt_verification_dir_for_instance(
 }
 
 fn dispatch_attempt_verification_receipt_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
   window_identity_hex: String,
@@ -595,8 +595,8 @@ fn dispatch_attempt_verification_receipt_path_for_instance(
 }
 
 fn dispatch_attempt_diff_window_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
   window_identity_hex: String,
@@ -616,8 +616,8 @@ fn dispatch_attempt_diff_window_path_for_instance(
 }
 
 fn dispatch_attempt_verification_current_selection_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
 ) -> String {
@@ -633,8 +633,8 @@ fn dispatch_attempt_verification_current_selection_path_for_instance(
 }
 
 fn dispatch_attempt_validation_receipt_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> String {
   join([
@@ -648,8 +648,8 @@ fn dispatch_attempt_validation_receipt_path_for_instance(
 }
 
 fn dispatch_current_attempt_validation_receipt_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
 ) -> String {
   join([
     dispatch_current_attempt_state_path_for_instance(
@@ -661,8 +661,8 @@ fn dispatch_current_attempt_validation_receipt_path_for_instance(
 }
 
 fn dispatch_current_attempt_state_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
 ) -> String {
   join([
     dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
@@ -673,8 +673,8 @@ fn dispatch_current_attempt_state_path_for_instance(
 }
 
 fn dispatch_current_attempt_key_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
 ) -> String {
   join([
     dispatch_current_attempt_state_path_for_instance(
@@ -686,8 +686,8 @@ fn dispatch_current_attempt_key_path_for_instance(
 }
 
 fn dispatch_current_attempt_admission_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
 ) -> String {
   join([
     dispatch_current_attempt_state_path_for_instance(
@@ -699,8 +699,8 @@ fn dispatch_current_attempt_admission_path_for_instance(
 }
 
 fn dispatch_current_attempt_spawn_failure_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
 ) -> String {
   join([
     dispatch_current_attempt_state_path_for_instance(
@@ -712,8 +712,8 @@ fn dispatch_current_attempt_spawn_failure_path_for_instance(
 }
 
 fn dispatch_current_attempt_events_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
 ) -> String {
   join([
     dispatch_current_attempt_state_path_for_instance(
@@ -725,8 +725,8 @@ fn dispatch_current_attempt_events_path_for_instance(
 }
 
 fn dispatch_current_attempt_events_projection_argv_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
 ) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
@@ -742,7 +742,7 @@ fn dispatch_current_attempt_events_projection_argv_for_instance(
   )
 }
 
-fn dispatch_branch_name(node_id: RoadmapNodeId, attempt_key: String) -> String {
+fn dispatch_branch_name(node_id: gunbc.roadmap_model.RoadmapNodeId, attempt_key: String) -> String {
   join(["dispatch/", node_id as String, "-a", attempt_key], "")
 }
 
@@ -752,25 +752,25 @@ data dispatch_live_session_admission_note: String = "Production admission onto t
 
 data dispatch_projection_standing_refusal_specimen_note: String = "One planted refusal specimen for production standing-blocked projection: tmux row gunbc-dispatch-panel-a while production dispatch_actuator_selection refuses. Actuator admission (dispatch_live_sessions_from_entries), classify_dispatch_request, and sessions wire (belt_sessions_json_value over Observed live) must all derive no eligible provider — omit the row, never Null-deref or Codex substitute."
 
-fn fixture_projection_standing_refusal_tmux_entry() -> TmuxLsEntry {
-  TmuxLsEntry {
+fn fixture_projection_standing_refusal_tmux_entry() -> extdeps.tmux.TmuxLsEntry {
+  extdeps.tmux.TmuxLsEntry {
     session_name: "gunbc-dispatch-panel-a",
     windows: 1,
   }
 }
 
 fn dispatch_tmux_session_scope_for_process_fingerprint(
-  node_id: RoadmapNodeId,
-  process_fingerprint: NonEmptyStr,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
+  process_fingerprint: std.types.NonEmptyStr,
 ) -> TmuxSessionScope {
   TmuxSessionScope {
-    session_name: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
-    expected_owner_label: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
+    session_name: dispatch_tmux_session_name(node_id: node_id) as std.types.NonEmptyStr,
+    expected_owner_label: dispatch_tmux_session_name(node_id: node_id) as std.types.NonEmptyStr,
     expected_process_fingerprint: process_fingerprint,
   }
 }
 
-fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope? {
+fn dispatch_tmux_session_scope(node_id: gunbc.roadmap_model.RoadmapNodeId) -> TmuxSessionScope? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
       Present {
@@ -783,7 +783,7 @@ fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope? {
   }
 }
 
-fn carrier_paths_label(carriers: List<Pointer>, repo: String) -> String {
+fn carrier_paths_label(carriers: List<gunbc.roadmap_model.Pointer>, repo: String) -> String {
   if count(carriers) == 0 {
     concat("dag/gunbc/roadmap_dispatch_actuator.dag (repo=", concat(repo, ")"))
   } else {
@@ -791,7 +791,7 @@ fn carrier_paths_label(carriers: List<Pointer>, repo: String) -> String {
   }
 }
 
-fn dispatch_slot_fields(node: RoadmapNode, repo: String) -> DispatchBriefFields {
+fn dispatch_slot_fields(node: gunbc.roadmap_model.RoadmapNode, repo: String) -> DispatchBriefFields {
   let title = node_title(item: node.line)
   match line_ticket(item: node.line) {
     Present { value: t } =>
@@ -824,8 +824,8 @@ fn dispatch_slot_fields(node: RoadmapNode, repo: String) -> DispatchBriefFields 
 }
 
 fn dispatch_brief_fields_for_environment(
-  node: RoadmapNode,
-  environment: DispatchHostEnvironment,
+  node: gunbc.roadmap_model.RoadmapNode,
+  environment: gunbc.roadmap_execution_contract.DispatchHostEnvironment,
 ) -> DispatchBriefFields {
   let validation = execution_contract_validation_summary(
     contract: node.execution,
@@ -865,7 +865,7 @@ fn dispatch_brief_fields_for_environment(
   }
 }
 
-fn dispatch_brief_fields(node: RoadmapNode) -> DispatchBriefFields {
+fn dispatch_brief_fields(node: gunbc.roadmap_model.RoadmapNode) -> DispatchBriefFields {
   dispatch_brief_fields_for_environment(
     node: node,
     environment: srv1_live_dashboard_instance().execution_environment,
@@ -887,7 +887,7 @@ fn fill_dispatch_brief(template: String, fields: DispatchBriefFields) -> String 
     .replace(from: "<what comes back even if the fix does not land>", to: fields.expected_artifact)
 }
 
-fn filled_dispatch_brief_for_node(node: RoadmapNode) -> String {
+fn filled_dispatch_brief_for_node(node: gunbc.roadmap_model.RoadmapNode) -> String {
   fill_dispatch_brief(
     template: dispatch_brief_template,
     fields: dispatch_brief_fields(node: node),
@@ -903,14 +903,14 @@ fn git_worktree_add_argv(worktree_path: String, branch_name: String, remote_ref:
     program: "git",
     args: shape_git_worktree_add_argv(
       path: worktree_path as std.types.FilePath,
-      branch: branch_name as NonEmptyStr,
-      remote_ref: remote_ref as GitRef,
+      branch: branch_name as std.types.NonEmptyStr,
+      remote_ref: remote_ref as std.types.GitRef,
     ),
   )
 }
 
 fn git_worktree_add_argv_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   worktree_path: String,
   branch_name: String,
   remote_ref: String,
@@ -922,14 +922,14 @@ fn git_worktree_add_argv_for_instance(
     ),
     args: shape_git_worktree_add_argv(
       path: worktree_path as std.types.FilePath,
-      branch: branch_name as NonEmptyStr,
-      remote_ref: remote_ref as GitRef,
+      branch: branch_name as std.types.NonEmptyStr,
+      remote_ref: remote_ref as std.types.GitRef,
     ),
   )
 }
 
 fn git_worktree_add_detached_argv_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   worktree_path: String,
   commit_sha: String,
 ) -> HostExecArgv {
@@ -940,15 +940,15 @@ fn git_worktree_add_detached_argv_for_instance(
     ),
     args: shape_git_worktree_add_detached_argv(
       path: worktree_path as std.types.FilePath,
-      commit: commit_sha as GitRef,
+      commit: commit_sha as std.types.GitRef,
     ),
   )
 }
 
 fn claude_spawn_argv(
-  effort: ReasoningEffort,
+  effort: extdeps.llm.cli.ReasoningEffort,
   session_uuid: String,
-  node_id: RoadmapNodeId,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   brief: String,
 ) -> List<String> {
   shape_claude_invoke_argv(
@@ -963,7 +963,7 @@ fn claude_spawn_argv(
 }
 
 fn codex_spawn_argv(
-  effort: ReasoningEffort,
+  effort: extdeps.llm.cli.ReasoningEffort,
   worktree_path: String,
   brief: String,
 ) -> List<String> {
@@ -977,8 +977,8 @@ fn codex_spawn_argv(
 }
 
 fn codex_spawn_argv_for_instance(
-  instance: HostDashboardInstance,
-  effort: ReasoningEffort,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  effort: extdeps.llm.cli.ReasoningEffort,
   worktree_path: String,
   brief: String,
 ) -> List<String> {
@@ -1001,13 +1001,13 @@ type DispatchProviderInnerArgv
   | CodexProviderExecutableAbsent { reason: std.types.NonEmptyStr }
   | CursorProviderSpawnUnwired { reason: std.types.NonEmptyStr }
 
-data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner argv is not wired on this actuator path" as NonEmptyStr
+data cursor_provider_spawn_unwired_reason: std.types.NonEmptyStr = "cursor dispatch inner argv is not wired on this actuator path" as std.types.NonEmptyStr
 
 fn dispatch_provider_inner_argv(
   provider: DispatchCliProvider,
-  effort: ReasoningEffort,
+  effort: extdeps.llm.cli.ReasoningEffort,
   session_uuid: String,
-  node_id: RoadmapNodeId,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   worktree_path: String,
   brief: String,
 ) -> DispatchProviderInnerArgv {
@@ -1038,11 +1038,11 @@ fn dispatch_provider_inner_argv(
 }
 
 fn dispatch_provider_inner_argv_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   provider: DispatchCliProvider,
-  effort: ReasoningEffort,
+  effort: extdeps.llm.cli.ReasoningEffort,
   session_uuid: String,
-  node_id: RoadmapNodeId,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   worktree_path: String,
   brief: String,
 ) -> DispatchProviderInnerArgv {
@@ -1069,7 +1069,7 @@ fn dispatch_provider_inner_argv_for_instance(
       match dashboard_instance_provider_executable(instance: instance) {
         Absent =>
           CodexProviderExecutableAbsent {
-            reason: dashboard_instance_provider_executable_refusal_detail(instance: instance) as NonEmptyStr,
+            reason: dashboard_instance_provider_executable_refusal_detail(instance: instance) as std.types.NonEmptyStr,
           }
         Present { value: codex_program } =>
           DispatchProviderInnerArgvReady {
@@ -1104,7 +1104,7 @@ fn tmux_spawn_inner_argv(session_name: String, worktree_path: String, inner_argv
 }
 
 fn tmux_spawn_inner_argv_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   session_name: String,
   worktree_path: String,
   inner_argv: List<String>,
@@ -1134,8 +1134,8 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
 data dispatch_event_pipe_seam_note: String = "tmux pipe-pane is the one foreign-executor seam in attempt capture: upstream requires a shell-command payload. TmuxPipeCommand bounds that residue. The earlier session-environment design was rejected by live execution because pipe processes did not inherit tmux set-environment values and created no file. Staging order is state directory -> idle exact-shell pane -> default-shell -> remain-on-exit -> quoted pipe -> typed provider respawn, so the first provider byte and a fast nonzero exit are both observable. The payload itself is no longer constructed here: gunbc.dispatch_pipe_pane_emit builds it as a bash AST and renders it through the signed serializer (review 44063), which is why this module now imports an EMISSION rather than joining a command: a serializer refusal has no command to hand back, so dispatch_spawn_commands_for_instance refuses the whole plan instead of staging one (review 44113)."
 
 fn attempt_state_prepare_argv_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> HostExecArgv {
   host_exec_argv(
@@ -1156,8 +1156,8 @@ fn attempt_state_prepare_argv_for_instance(
 }
 
 fn attempt_current_pointer_argv_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
 ) -> HostExecArgv {
   host_exec_argv(
@@ -1182,7 +1182,7 @@ fn attempt_current_pointer_argv_for_instance(
 }
 
 fn tmux_idle_spawn_argv_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   session_name: String,
   worktree_path: String,
 ) -> HostExecArgv {
@@ -1206,7 +1206,7 @@ fn tmux_idle_spawn_argv_for_instance(
 }
 
 fn tmux_attempt_default_shell_argv_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   session_name: String,
 ) -> HostExecArgv {
   host_exec_argv(
@@ -1226,7 +1226,7 @@ fn tmux_attempt_default_shell_argv_for_instance(
 }
 
 fn tmux_attempt_remain_argv_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   session_name: String,
 ) -> HostExecArgv {
   host_exec_argv(
@@ -1242,9 +1242,9 @@ fn tmux_attempt_remain_argv_for_instance(
 }
 
 fn tmux_attempt_pipe_argv_for_command(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   session_name: String,
-  command: TmuxPipeCommand,
+  command: extdeps.tmux.TmuxPipeCommand,
 ) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
@@ -1260,9 +1260,9 @@ fn tmux_attempt_pipe_argv_for_command(
 }
 
 fn dispatch_attempt_pipe_emission_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   events_path: String,
-) -> PipePaneEmission {
+) -> gunbc.dispatch_pipe_pane_emit.PipePaneEmission {
   dispatch_event_pipe_emission(
     tee_program: dispatch_capability_program(
       environment: instance.execution_environment,
@@ -1273,7 +1273,7 @@ fn dispatch_attempt_pipe_emission_for_instance(
 }
 
 fn tmux_attempt_provider_start_argv_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   session_name: String,
   inner_argv: List<String>,
 ) -> HostExecArgv {
@@ -1294,7 +1294,7 @@ fn tmux_ls_argv() -> HostExecArgv {
   host_exec_argv(program: "tmux", args: shape_tmux_ls_argv())
 }
 
-fn tmux_ls_argv_for_instance(instance: HostDashboardInstance) -> HostExecArgv {
+fn tmux_ls_argv_for_instance(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
       environment: instance.execution_environment,
@@ -1309,7 +1309,7 @@ fn tmux_kill_session_argv(session_name: String) -> HostExecArgv {
 }
 
 fn tmux_kill_session_argv_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   session_name: String,
 ) -> HostExecArgv {
   host_exec_argv(
@@ -1342,7 +1342,7 @@ type DispatchSpawnCommands {
 }
 
 fn dispatch_spawn_commands_for_provider(
-  node: RoadmapNode,
+  node: gunbc.roadmap_model.RoadmapNode,
   session_uuid: String,
   attempt_key: String,
   provider: DispatchCliProvider,
@@ -1359,12 +1359,12 @@ fn dispatch_spawn_commands_for_provider(
 }
 
 fn dispatch_spawn_commands_for_inventory(
-  instance: HostDashboardInstance,
-  inventory: ProviderInventory,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  inventory: gunbc.dispatch_selection.ProviderInventory,
+  node: gunbc.roadmap_model.RoadmapNode,
   session_uuid: String,
   attempt_key: String,
-  request: ProviderSelectionRequest,
+  request: gunbc.dispatch_selection.ProviderSelectionRequest,
 ) -> DispatchSpawnPlan {
   match resolve_dispatch_selection(
     inventory: inventory,
@@ -1373,7 +1373,7 @@ fn dispatch_spawn_commands_for_inventory(
   ) {
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
       DispatchSpawnRefused {
-        step: "dispatch-selection" as NonEmptyStr,
+        step: "dispatch-selection" as std.types.NonEmptyStr,
         detail: reason as String,
       }
     DispatchSelectionResolved { receipt } => {
@@ -1382,7 +1382,7 @@ fn dispatch_spawn_commands_for_inventory(
       match provider {
         CursorDispatchProvider =>
           DispatchSpawnRefused {
-            step: "cursor-provider-spawn" as NonEmptyStr,
+            step: "cursor-provider-spawn" as std.types.NonEmptyStr,
             detail: "cursor dispatch spawn is not yet wired on this actuator path",
           }
         _ =>
@@ -1400,11 +1400,11 @@ fn dispatch_spawn_commands_for_inventory(
 }
 
 fn dispatch_spawn_commands_for_instance(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
   session_uuid: String,
   attempt_key: String,
-  request: ProviderSelectionRequest,
+  request: gunbc.dispatch_selection.ProviderSelectionRequest,
 ) -> DispatchSpawnPlan {
   dispatch_spawn_commands_for_inventory(
     instance: instance,
@@ -1417,12 +1417,12 @@ fn dispatch_spawn_commands_for_instance(
 }
 
 fn dispatch_spawn_commands_for_resolved_instance(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
   session_uuid: String,
   attempt_key: String,
   provider: DispatchCliProvider,
-  effort: ReasoningEffort,
+  effort: extdeps.llm.cli.ReasoningEffort,
 ) -> DispatchSpawnPlan {
   let fields = dispatch_brief_fields_for_environment(
     node: node,
@@ -1447,12 +1447,12 @@ fn dispatch_spawn_commands_for_resolved_instance(
   ) {
     CursorProviderSpawnUnwired { reason } =>
       DispatchSpawnRefused {
-        step: "cursor-provider-spawn" as NonEmptyStr,
+        step: "cursor-provider-spawn" as std.types.NonEmptyStr,
         detail: reason as String,
       }
     CodexProviderExecutableAbsent { reason } =>
       DispatchSpawnRefused {
-        step: "codex-executable-placement" as NonEmptyStr,
+        step: "codex-executable-placement" as std.types.NonEmptyStr,
         detail: reason as String,
       }
     DispatchProviderInnerArgvReady { argv: provider_inner } => {
@@ -1483,7 +1483,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
   ) {
     PipeEmitRefused { detail } =>
       DispatchSpawnRefused {
-        step: "tmux-event-pipe-emit" as NonEmptyStr,
+        step: "tmux-event-pipe-emit" as std.types.NonEmptyStr,
         detail: detail,
       }
     PipeEmitted { command } =>
@@ -1522,7 +1522,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
   }
 }
 
-fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnPlan {
+fn dispatch_spawn_commands(node: gunbc.roadmap_model.RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnPlan {
   dispatch_spawn_commands_for_instance(
     instance: srv1_live_dashboard_instance(),
     node: node,
@@ -1532,13 +1532,13 @@ fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key:
   )
 }
 
-fn filter_dispatch_tmux_sessions(entries: List<TmuxLsEntry>) -> List<TmuxLsEntry> {
+fn filter_dispatch_tmux_sessions(entries: List<extdeps.tmux.TmuxLsEntry>) -> List<extdeps.tmux.TmuxLsEntry> {
   entries |> filter(e => starts_with(s: e.session_name, prefix: dispatch_tmux_session_prefix))
 }
 
 fn tmux_session_observation_for_scope(
   scope: TmuxSessionScope,
-  entries: List<TmuxLsEntry>,
+  entries: List<extdeps.tmux.TmuxLsEntry>,
 ) -> TmuxSessionObservation {
   let scoped_name = scope.session_name as String
   let matched = entries |> filter(e => e.session_name == scoped_name)
@@ -1556,7 +1556,7 @@ fn tmux_session_observation_for_scope(
 fn classify_tmux_session(
   scope: TmuxSessionScope,
   obs: TmuxSessionObservation,
-) -> ObservationVerdict {
+) -> std.upsert_decision.ObservationVerdict {
   match obs {
     SessionAbsent => Absent
     SessionInaccessible => Inaccessible
@@ -1602,16 +1602,16 @@ fn classify_tmux_session(
 }
 
 fn decision_for_dispatch_lease_verdict(
-  verdict: ObservationVerdict,
+  verdict: std.upsert_decision.ObservationVerdict,
 ) -> UpsertDecision<DispatchLeasePlan> {
   match verdict {
-    Converged => Refuse { reason: "dispatch session already running for node" as NonEmptyStr }
+    Converged => Refuse { reason: "dispatch session already running for node" as std.types.NonEmptyStr }
     Absent => Apply { plan: SpawnSession }
     Drifted => Apply { plan: DrainStaleThenSpawn }
-    Conflict => Refuse { reason: "foreign tmux session owns dispatch slot" as NonEmptyStr }
-    Inaccessible => Refuse { reason: "tmux session inaccessible" as NonEmptyStr }
+    Conflict => Refuse { reason: "foreign tmux session owns dispatch slot" as std.types.NonEmptyStr }
+    Inaccessible => Refuse { reason: "tmux session inaccessible" as std.types.NonEmptyStr }
     UnknownRefused =>
-      Refuse { reason: "dispatch session name occupied; process fingerprint unobserved" as NonEmptyStr }
+      Refuse { reason: "dispatch session name occupied; process fingerprint unobserved" as std.types.NonEmptyStr }
   }
 }
 
@@ -1620,17 +1620,17 @@ fn classify_dispatch_lease_upsert(
   obs: TmuxSessionObservation,
 ) -> UpsertClassification<DispatchLeasePlan> {
   let verdict = classify_tmux_session(scope: scope, obs: obs)
-  UpsertClassification {
+  std.upsert_decision.UpsertClassification {
     verdict: verdict,
     decision: decision_for_dispatch_lease_verdict(verdict: verdict),
   }
 }
 
-fn node_in_ready(node_id: RoadmapNodeId, ready: List<RoadmapNode>) -> Bool {
+fn node_in_ready(node_id: gunbc.roadmap_model.RoadmapNodeId, ready: List<gunbc.roadmap_model.RoadmapNode>) -> Bool {
   any(ready, n => n.node == node_id)
 }
 
-fn node_repo_supported(node: RoadmapNode) -> Bool {
+fn node_repo_supported(node: gunbc.roadmap_model.RoadmapNode) -> Bool {
   match node.sizing {
     Sized { repo, intricacy: _, volume: _, acceptance: _ } => repo == dispatch_repo
     Unsized => false
@@ -1638,9 +1638,9 @@ fn node_repo_supported(node: RoadmapNode) -> Bool {
 }
 
 fn dispatch_permitted_from_selection(
-  node: RoadmapNode,
+  node: gunbc.roadmap_model.RoadmapNode,
   attempt_key: String,
-  effort: ReasoningEffort,
+  effort: extdeps.llm.cli.ReasoningEffort,
 ) -> DispatchRequestGate {
   DispatchPermitted {
     session_name: dispatch_tmux_session_name(node_id: node.node),
@@ -1652,18 +1652,18 @@ fn dispatch_permitted_from_selection(
 }
 
 fn classify_dispatch_request_for_process_fingerprint(
-  node: RoadmapNode,
-  ready: List<RoadmapNode>,
-  tmux_entries: List<TmuxLsEntry>,
+  node: gunbc.roadmap_model.RoadmapNode,
+  ready: List<gunbc.roadmap_model.RoadmapNode>,
+  tmux_entries: List<extdeps.tmux.TmuxLsEntry>,
   attempt_key: String,
-  process_fingerprint: NonEmptyStr,
-  effort: ReasoningEffort,
+  process_fingerprint: std.types.NonEmptyStr,
+  effort: extdeps.llm.cli.ReasoningEffort,
 ) -> DispatchRequestGate {
   if !node_in_ready(node_id: node.node, ready: ready) {
-    DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
+    DispatchRefused { reason: "node not in ready frontier" as std.types.NonEmptyStr }
   } else {
     if !node_repo_supported(node: node) {
-      DispatchRefused { reason: "repo not supported on srv1 mvp" as NonEmptyStr }
+      DispatchRefused { reason: "repo not supported on srv1 mvp" as std.types.NonEmptyStr }
     } else {
       let scope = dispatch_tmux_session_scope_for_process_fingerprint(
         node_id: node.node,
@@ -1674,7 +1674,7 @@ fn classify_dispatch_request_for_process_fingerprint(
         UpsertClassification { verdict: _, decision: Refuse { reason } } =>
           DispatchRefused { reason: reason }
         UpsertClassification { verdict: _, decision: Noop } =>
-          DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
+          DispatchRefused { reason: "dispatch session already running for node" as std.types.NonEmptyStr }
         UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
           dispatch_permitted_from_selection(
             node: node,
@@ -1687,16 +1687,16 @@ fn classify_dispatch_request_for_process_fingerprint(
 }
 
 fn classify_dispatch_request(
-  node: RoadmapNode,
-  ready: List<RoadmapNode>,
-  tmux_entries: List<TmuxLsEntry>,
+  node: gunbc.roadmap_model.RoadmapNode,
+  ready: List<gunbc.roadmap_model.RoadmapNode>,
+  tmux_entries: List<extdeps.tmux.TmuxLsEntry>,
   attempt_key: String,
 ) -> DispatchRequestGate {
   if !node_in_ready(node_id: node.node, ready: ready) {
-    DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
+    DispatchRefused { reason: "node not in ready frontier" as std.types.NonEmptyStr }
   } else {
     if !node_repo_supported(node: node) {
-      DispatchRefused { reason: "repo not supported on srv1 mvp" as NonEmptyStr }
+      DispatchRefused { reason: "repo not supported on srv1 mvp" as std.types.NonEmptyStr }
     } else {
       match dispatch_actuator_selection(node_sizing: node.sizing) {
         DispatchActuatorSelectionRefused { reason } =>
@@ -1728,12 +1728,12 @@ fn dispatch_node_id_from_session_name(session_name: String) -> String {
 }
 
 fn dispatch_live_session_row_for_scope(
-  entry: TmuxLsEntry,
+  entry: extdeps.tmux.TmuxLsEntry,
   scope: TmuxSessionScope,
-  instance: ProviderInstance,
+  instance: extdeps.llm.cli_lifecycle.ProviderInstance,
 ) -> DispatchLiveSession {
   let obs = SessionNameObserved {
-    session_name: entry.session_name as NonEmptyStr,
+    session_name: entry.session_name as std.types.NonEmptyStr,
     windows: entry.windows,
   }
   DispatchLiveSession {
@@ -1745,11 +1745,11 @@ fn dispatch_live_session_row_for_scope(
   }
 }
 
-fn live_session_row(entry: TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLiveSession? {
+fn live_session_row(entry: extdeps.tmux.TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLiveSession? {
   match dispatch_worker_observation() {
     Present { value: worker } => {
       let obs = SessionNameObserved {
-        session_name: entry.session_name as NonEmptyStr,
+        session_name: entry.session_name as std.types.NonEmptyStr,
         windows: entry.windows,
       }
       Present {
@@ -1767,7 +1767,7 @@ fn live_session_row(entry: TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLive
 }
 
 fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> TmuxSessionScope? {
-  let node_id = sess.node_id as RoadmapNodeId
+  let node_id = sess.node_id as gunbc.roadmap_model.RoadmapNodeId
   match sess.worker.configured_provider.kind {
     CodexCliProvider =>
       match sess.worker.process {
@@ -1775,7 +1775,7 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
           Present {
             value: dispatch_tmux_session_scope_for_process_fingerprint(
               node_id: node_id,
-              process_fingerprint: command as NonEmptyStr,
+              process_fingerprint: command as std.types.NonEmptyStr,
             ),
           }
         WorkerProcessExited { exit_code: _, last_command } =>
@@ -1783,9 +1783,9 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
             value: dispatch_tmux_session_scope_for_process_fingerprint(
               node_id: node_id,
               process_fingerprint: if last_command == "" {
-                "retained-exit" as NonEmptyStr
+                "retained-exit" as std.types.NonEmptyStr
               } else {
-                last_command as NonEmptyStr
+                last_command as std.types.NonEmptyStr
               },
             ),
           }
@@ -1794,14 +1794,14 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
     ClaudeCliProvider =>
       Present {
         value: dispatch_tmux_session_scope_for_process_fingerprint(
-          node_id: sess.node_id as RoadmapNodeId,
+          node_id: sess.node_id as gunbc.roadmap_model.RoadmapNodeId,
           process_fingerprint: dispatch_claude_process_fingerprint,
         ),
       }
     CursorCliProvider =>
       Present {
         value: dispatch_tmux_session_scope_for_process_fingerprint(
-          node_id: sess.node_id as RoadmapNodeId,
+          node_id: sess.node_id as gunbc.roadmap_model.RoadmapNodeId,
           process_fingerprint: dispatch_cursor_process_fingerprint,
         ),
       }
@@ -1818,9 +1818,9 @@ fn dispatch_session_cleanup_for_live_session(sess: DispatchLiveSession) -> Dispa
   }
 }
 
-fn dispatch_live_session_for_entry(entry: TmuxLsEntry) -> DispatchLiveSession? {
+fn dispatch_live_session_for_entry(entry: extdeps.tmux.TmuxLsEntry) -> DispatchLiveSession? {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
-  match dispatch_tmux_session_scope(node_id: node_id as RoadmapNodeId) {
+  match dispatch_tmux_session_scope(node_id: node_id as gunbc.roadmap_model.RoadmapNodeId) {
     Present { value: scope } => live_session_row(entry: entry, scope: scope)
     Absent => none
   }
@@ -1828,7 +1828,7 @@ fn dispatch_live_session_for_entry(entry: TmuxLsEntry) -> DispatchLiveSession? {
 
 fn append_present_live_session(
   acc: List<DispatchLiveSession>,
-  entry: TmuxLsEntry,
+  entry: extdeps.tmux.TmuxLsEntry,
 ) -> List<DispatchLiveSession> {
   match dispatch_live_session_for_entry(entry: entry) {
     Present { value: row } => concat(acc, [row])
@@ -1837,7 +1837,7 @@ fn append_present_live_session(
 }
 
 fn dispatch_live_sessions_from_entries(
-  entries: List<TmuxLsEntry>,
+  entries: List<extdeps.tmux.TmuxLsEntry>,
 ) -> List<DispatchLiveSession> {
   fold(
     filter_dispatch_tmux_sessions(entries: entries),
@@ -1854,25 +1854,25 @@ type DispatchAttemptRef {
   attempt_key: String
 }
 
-fn dispatch_attempt_evidence(attempt: DispatchAttemptRef) -> AttemptEvidence {
-  AttemptEvidence {
+fn dispatch_attempt_evidence(attempt: DispatchAttemptRef) -> gunbc.worker_lifecycle.AttemptEvidence {
+  gunbc.worker_lifecycle.AttemptEvidence {
     node_id: attempt.node_id,
     attempt_key: attempt.attempt_key,
     branch: attempt.branch,
     worktree: WorktreeUnobserved {
-      reason: "branch observation does not inspect the attempt worktree" as NonEmptyStr,
+      reason: "branch observation does not inspect the attempt worktree" as std.types.NonEmptyStr,
     },
     provider_instance: ProviderEvidenceUnobserved {
-      reason: "branch observation does not identify the provider instance" as NonEmptyStr,
+      reason: "branch observation does not identify the provider instance" as std.types.NonEmptyStr,
     },
     process_identity: ProcessIdentityUnobserved {
-      reason: "branch observation does not inspect PID, start time, or ownership" as NonEmptyStr,
+      reason: "branch observation does not inspect PID, start time, or ownership" as std.types.NonEmptyStr,
     },
     transcript: TranscriptUnobserved {
-      reason: "branch observation does not locate a provider transcript" as NonEmptyStr,
+      reason: "branch observation does not locate a provider transcript" as std.types.NonEmptyStr,
     },
     terminal_outcome: TerminalOutcomeUnobserved {
-      reason: "branch existence does not imply a terminal outcome" as NonEmptyStr,
+      reason: "branch existence does not imply a terminal outcome" as std.types.NonEmptyStr,
     },
   }
 }
@@ -1891,15 +1891,15 @@ fn parse_dispatch_attempt_branch(line: String) -> DispatchAttemptRef? {
           none
         } else {
           Present { value: DispatchAttemptRef {
-            node_id: node_id as NonEmptyStr,
-            branch: line as NonEmptyStr,
+            node_id: node_id as std.types.NonEmptyStr,
+            branch: line as std.types.NonEmptyStr,
             attempt_key: last,
           } }
         }
       } else {
         Present { value: DispatchAttemptRef {
-          node_id: rest as NonEmptyStr,
-          branch: line as NonEmptyStr,
+          node_id: rest as std.types.NonEmptyStr,
+          branch: line as std.types.NonEmptyStr,
           attempt_key: "",
         } }
       }
@@ -1925,7 +1925,7 @@ fn git_for_each_ref_dispatch_argv() -> HostExecArgv {
 }
 
 fn git_for_each_ref_dispatch_argv_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
@@ -1973,7 +1973,7 @@ fn tmux_list_panes_argv() -> HostExecArgv {
   host_exec_argv(program: "tmux", args: shape_tmux_list_panes_argv())
 }
 
-fn tmux_list_panes_argv_for_instance(instance: HostDashboardInstance) -> HostExecArgv {
+fn tmux_list_panes_argv_for_instance(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
       environment: instance.execution_environment,
@@ -2030,8 +2030,8 @@ fn dispatch_session_cleanup_detail(
 data dispatch_process_cleanup_separation_note: String = "Session presence, pane/process lifecycle, and cleanup authority are independent facts. A running process is stop-eligible only when its observed command matches the provider fingerprint. A dead remain-on-exit pane is clear-eligible from the exact dead/status observation because no live process can be killed; its last command is historical evidence and is never re-used as a running ownership fingerprint. A present session with an absent/refused pane observation remains cleanup-refused. The wire therefore says stop, clear, or unavailable mechanically from DispatchSessionCleanup instead of presenting every tmux container as a live agent."
 
 fn worker_process_from_attempt_pane(
-  pane: TmuxAttemptPaneEntry,
-) -> WorkerProcessEvidence {
+  pane: extdeps.tmux.TmuxAttemptPaneEntry,
+) -> gunbc.worker_lifecycle.WorkerProcessEvidence {
   if pane.dead {
     match pane.exit_code {
       Present { value: code } =>
@@ -2041,26 +2041,26 @@ fn worker_process_from_attempt_pane(
         }
       Absent =>
         WorkerProcessUnobserved {
-          reason: "dead pane did not carry an exit status" as NonEmptyStr,
+          reason: "dead pane did not carry an exit status" as std.types.NonEmptyStr,
         }
     }
   } else if pane.command == "" {
     WorkerProcessUnobserved {
-      reason: "running pane did not expose pane_current_command" as NonEmptyStr,
+      reason: "running pane did not expose pane_current_command" as std.types.NonEmptyStr,
     }
   } else {
-    WorkerProcessRunning { command: pane.command as NonEmptyStr }
+    WorkerProcessRunning { command: pane.command as std.types.NonEmptyStr }
   }
 }
 
 fn worker_process_for_session(
-  panes: List<TmuxAttemptPaneEntry>,
+  panes: List<extdeps.tmux.TmuxAttemptPaneEntry>,
   session_name: String,
   pane_observation_refusal: String,
-) -> WorkerProcessEvidence {
+) -> gunbc.worker_lifecycle.WorkerProcessEvidence {
   if pane_observation_refusal != "" {
     WorkerProcessUnobserved {
-      reason: pane_observation_refusal as NonEmptyStr,
+      reason: pane_observation_refusal as std.types.NonEmptyStr,
     }
   } else {
     let matched = panes
@@ -2070,29 +2070,29 @@ fn worker_process_for_session(
         worker_process_from_attempt_pane(pane: pane)
       Absent =>
         WorkerProcessUnobserved {
-          reason: "session was observed but no pane row was returned" as NonEmptyStr,
+          reason: "session was observed but no pane row was returned" as std.types.NonEmptyStr,
         }
     }
   }
 }
 
 fn live_session_row_with_process(
-  entry: TmuxLsEntry,
+  entry: extdeps.tmux.TmuxLsEntry,
   scope: TmuxSessionScope,
-  process: WorkerProcessEvidence,
+  process: gunbc.worker_lifecycle.WorkerProcessEvidence,
 ) -> DispatchLiveSession? {
   match dispatch_worker_observation_for_process(process: process) {
     Present { value: worker } => {
       let obs = match process {
         WorkerProcessRunning { command } =>
           SessionObserved {
-            session_name: entry.session_name as NonEmptyStr,
+            session_name: entry.session_name as std.types.NonEmptyStr,
             windows: entry.windows,
             process_fingerprint: command,
           }
         _ =>
           SessionNameObserved {
-            session_name: entry.session_name as NonEmptyStr,
+            session_name: entry.session_name as std.types.NonEmptyStr,
             windows: entry.windows,
           }
       }
@@ -2112,12 +2112,12 @@ fn live_session_row_with_process(
 
 fn append_present_live_session_with_process(
   acc: List<DispatchLiveSession>,
-  entry: TmuxLsEntry,
-  panes: List<TmuxAttemptPaneEntry>,
+  entry: extdeps.tmux.TmuxLsEntry,
+  panes: List<extdeps.tmux.TmuxAttemptPaneEntry>,
   pane_observation_refusal: String,
 ) -> List<DispatchLiveSession> {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
-  match dispatch_tmux_session_scope(node_id: node_id as RoadmapNodeId) {
+  match dispatch_tmux_session_scope(node_id: node_id as gunbc.roadmap_model.RoadmapNodeId) {
     Present { value: scope } =>
       match live_session_row_with_process(
         entry: entry,
@@ -2136,8 +2136,8 @@ fn append_present_live_session_with_process(
 }
 
 fn dispatch_live_sessions_with_process(
-  entries: List<TmuxLsEntry>,
-  panes: List<TmuxAttemptPaneEntry>,
+  entries: List<extdeps.tmux.TmuxLsEntry>,
+  panes: List<extdeps.tmux.TmuxAttemptPaneEntry>,
   pane_observation_refusal: String,
 ) -> List<DispatchLiveSession> {
   fold(
@@ -2195,7 +2195,7 @@ fn dispatch_session_cleanup(
 }
 
 fn tmux_attempt_panes_argv_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
@@ -2213,7 +2213,7 @@ fn pane_command_for_session(panes: List<TmuxPaneEntry>, session_name: String) ->
 
 fn tmux_session_observation_with_panes(
   scope: TmuxSessionScope,
-  entries: List<TmuxLsEntry>,
+  entries: List<extdeps.tmux.TmuxLsEntry>,
   panes: List<TmuxPaneEntry>,
 ) -> TmuxSessionObservation {
   match tmux_session_observation_for_scope(scope: scope, entries: entries) {
@@ -2222,7 +2222,7 @@ fn tmux_session_observation_with_panes(
       if cmd == "" {
         SessionNameObserved { session_name: name, windows: w }
       } else {
-        SessionObserved { session_name: name, windows: w, process_fingerprint: cmd as NonEmptyStr }
+        SessionObserved { session_name: name, windows: w, process_fingerprint: cmd as std.types.NonEmptyStr }
       }
     }
     SessionAbsent => SessionAbsent
@@ -2258,10 +2258,10 @@ fn dispatch_session_is_owned(session: DispatchLiveSession) -> Bool {
 }
 
 fn session_lease_reuses_process_port_classifier_shape() -> Bool {
-  let port_scope = ProcessPortScope {
+  let port_scope = gunbc.session_lease.ProcessPortScope {
     listen_port: 8080,
-    expected_owner_label: "gunbc-roadmap" as NonEmptyStr,
-    expected_process_fingerprint: "node server.js" as NonEmptyStr,
+    expected_owner_label: "gunbc-roadmap" as std.types.NonEmptyStr,
+    expected_process_fingerprint: "node server.js" as std.types.NonEmptyStr,
   }
   match classify_process_port_upsert(
     scope: port_scope,

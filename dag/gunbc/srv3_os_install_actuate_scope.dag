@@ -1,11 +1,11 @@
 module gunbc.srv3_os_install_actuate_scope
 
 
-data gunbc_srv3_os_install_actuate_scope_boundary: Disposition = Terminal {
+data gunbc_srv3_os_install_actuate_scope_boundary: std.disposition.Disposition = Terminal {
   reason: "prefix:os-install-actuated boundary — actuator prep (stock ISO fetch, seeded-ISO remaster, derived actuator host, NBD serve/boot-once/SOL capture runnable entrypoints) + operator runbook ONLY; NOT srv3 OS install solved. Legacy solver plan (srv3_os_install_plan, NoCloudNet) seed gap stays fail-closed; actuator prep binds srv3_seeded_os_install_plan + srv3_actuator_virtual_media_iso_install_path (NoCloudLocal on-ISO). BMC runtime login resolves intent vs observed credential phase (gunbc.srv3_bmc_credential_resolve); destructive boot-once gated by workflow escalation (gunbc.srv3_os_install_actuate_workflow)."
 }
 
-data srv3_actuator_virtual_media_iso_install_path: NonEmptyStr = srv3_seeded_ubuntu_install_media_install_path
+data srv3_actuator_virtual_media_iso_install_path: std.types.NonEmptyStr = srv3_seeded_ubuntu_install_media_install_path
 
 type AutoinstallSeedDeliveryRefusal {
   install_server_count: Int
@@ -27,7 +27,7 @@ fn srv3_autoinstall_seed_delivery_refusal() -> AutoinstallSeedDeliveryRefusal? {
               value: AutoinstallSeedDeliveryRefusal {
                 install_server_count: fleet_install_server_specs.length(),
                 seed_url: uri_wire(uri: url),
-                refusal: "fail-closed: NoCloudNet autoinstall seed unreachable on NbdProxyVirtualMediaInstall path — fleet_install_server_specs empty; stock ISO may boot interactive installer or hang waiting for network seed; prefix:os-install-actuated does NOT solve seed delivery" as NonEmptyStr,
+                refusal: "fail-closed: NoCloudNet autoinstall seed unreachable on NbdProxyVirtualMediaInstall path — fleet_install_server_specs empty; stock ISO may boot interactive installer or hang waiting for network seed; prefix:os-install-actuated does NOT solve seed delivery" as std.types.NonEmptyStr,
               }
             }
           NoCloudLocal => none
@@ -66,18 +66,18 @@ fn srv3_seeded_plan_refuses_with_the_solve() -> Bool {
   }
 }
 
-data srv3_os_install_actuate_credential_source_scaffold: Disposition = Scaffold {
+data srv3_os_install_actuate_credential_source_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.roadmap_authority",
     decl_name: "roadmap_document",
     field: WholeDeclaration,
   }
 }
 
-data srv3_os_install_actuate_credential_debt_marker: Disposition = Scaffold {
+data srv3_os_install_actuate_credential_debt_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.srv3_bmc_credential_resolve",
     decl_name: "resolve_bmc_credential",
     field: WholeDeclaration
@@ -92,7 +92,7 @@ fn srv3_os_install_actuate_credential_resolution_is_wired() -> Bool {
 }
 
 fn srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref() -> Bool {
-  bmc_srv3_admin_secret_ref.secret == (bmc_srv3_secret_name as NonEmptyStr)
+  bmc_srv3_admin_secret_ref.secret == (bmc_srv3_secret_name as std.types.NonEmptyStr)
 }
 
 

@@ -25,9 +25,9 @@ type ShadowPushLedgerEntry
     }
 
 fn shadow_push_admission(
-  current: PublicProjectionPlan?,
+  current: gunbc.public_projection.PublicProjectionPlan?,
   observed: ObservedPublicPush,
-) -> PublicWriteAdmission {
+) -> tools.publication_publisher.PublicWriteAdmission {
   admit_public_write(
     session: observed.session,
     current: current,
@@ -38,7 +38,7 @@ fn shadow_push_admission(
 }
 
 fn shadow_push_ledger_entry(
-  current: PublicProjectionPlan?,
+  current: gunbc.public_projection.PublicProjectionPlan?,
   observed: ObservedPublicPush,
 ) -> ShadowPushLedgerEntry {
   let admission = shadow_push_admission(current: current, observed: observed)
@@ -60,7 +60,7 @@ fn shadow_push_ledger_entry(
 }
 
 fn shadow_replay_public_pushes(
-  current: PublicProjectionPlan?,
+  current: gunbc.public_projection.PublicProjectionPlan?,
   events: List<ObservedPublicPush>,
 ) -> List<ShadowPushLedgerEntry> {
   map(events, event => shadow_push_ledger_entry(current: current, observed: event))
@@ -76,7 +76,7 @@ fn shadow_refusal_count(entries: List<ShadowPushLedgerEntry>) -> Int {
 }
 
 fn shadow_would_refuse_ordinary_session(
-  current: PublicProjectionPlan?,
+  current: gunbc.public_projection.PublicProjectionPlan?,
   observed: ObservedPublicPush,
 ) -> Bool {
   match shadow_push_ledger_entry(current: current, observed: observed) {

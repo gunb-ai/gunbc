@@ -1,23 +1,23 @@
 module v2.std.orchestration_emit
 
 
-data orch_construct_run_rawline: Symbol = ^orch_construct_run_rawline
-data orch_construct_run_env_prefixed: Symbol = ^orch_construct_run_env_prefixed
-data orch_construct_run_env_unset: Symbol = ^orch_construct_run_env_unset
-data orch_construct_seq2: Symbol = ^orch_construct_seq2
-data orch_construct_retry: Symbol = ^orch_construct_retry
-data orch_construct_retry_1level: Symbol = ^orch_construct_retry_1level
-data orch_construct_retry_escalation_final: Symbol = ^orch_construct_retry_escalation_final
-data orch_construct_retry_escalation_step: Symbol = ^orch_construct_retry_escalation_step
-data orch_construct_if: Symbol = ^orch_construct_if
-data orch_construct_if_else: Symbol = ^orch_construct_if_else
-data orch_construct_if_block: Symbol = ^orch_construct_if_block
-data orch_construct_if_else_block: Symbol = ^orch_construct_if_else_block
-data orch_construct_while: Symbol = ^orch_construct_while
-data orch_construct_procedure: Symbol = ^orch_construct_procedure
-data orch_construct_call: Symbol = ^orch_construct_call
-data orch_construct_cmdsubst_assign: Symbol = ^orch_construct_cmdsubst_assign
-data orch_construct_let_assign: Symbol = ^orch_construct_let_assign
+data orch_construct_run_rawline: v2.std.node.Symbol = ^orch_construct_run_rawline
+data orch_construct_run_env_prefixed: v2.std.node.Symbol = ^orch_construct_run_env_prefixed
+data orch_construct_run_env_unset: v2.std.node.Symbol = ^orch_construct_run_env_unset
+data orch_construct_seq2: v2.std.node.Symbol = ^orch_construct_seq2
+data orch_construct_retry: v2.std.node.Symbol = ^orch_construct_retry
+data orch_construct_retry_1level: v2.std.node.Symbol = ^orch_construct_retry_1level
+data orch_construct_retry_escalation_final: v2.std.node.Symbol = ^orch_construct_retry_escalation_final
+data orch_construct_retry_escalation_step: v2.std.node.Symbol = ^orch_construct_retry_escalation_step
+data orch_construct_if: v2.std.node.Symbol = ^orch_construct_if
+data orch_construct_if_else: v2.std.node.Symbol = ^orch_construct_if_else
+data orch_construct_if_block: v2.std.node.Symbol = ^orch_construct_if_block
+data orch_construct_if_else_block: v2.std.node.Symbol = ^orch_construct_if_else_block
+data orch_construct_while: v2.std.node.Symbol = ^orch_construct_while
+data orch_construct_procedure: v2.std.node.Symbol = ^orch_construct_procedure
+data orch_construct_call: v2.std.node.Symbol = ^orch_construct_call
+data orch_construct_cmdsubst_assign: v2.std.node.Symbol = ^orch_construct_cmdsubst_assign
+data orch_construct_let_assign: v2.std.node.Symbol = ^orch_construct_let_assign
 
 type OrchRunEmitPlan {
   construct_tag: v2.std.node.Symbol

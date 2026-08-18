@@ -4,7 +4,7 @@ module v2.workflow.operand_flow
 data operand_flow_module_note: String = "Phase 2 of machine-shape-orthogonal-scheduling.md §4: DependencyView carries no operand today, so the scheduler's DependencyKindClassifier<Bool> collapse (v2.workflow.scheduler) discards shared-operand structure. operand_root/operand_flow_for_edge derive it without touching DependencyView's shape: operand identity is the producer node's content_hash (the same identity v2.std.materialize keys Share on), footprint is the single node_keyed_graph_transitive_bytes authority (v2.workflow.realization_runner) — no parallel size walk. Every DependencyKind other than DataDependsOn carries no operand by construction (the classifier is the single source of truth for which kinds apply, not a per-callsite match). operand_flows is total over its input edges: a non-applicable kind or an unsettled/missing footprint each yield a typed, located OperandFlowRefused row rather than being silently dropped, so refusals stay countable (DESIGN §5)."
 
 fn operand_flow_dependency_kind_classifier() -> DependencyKindClassifier<Bool> {
-  DependencyKindClassifier {
+  v2.std.dependency.DependencyKindClassifier {
     contains: false,
     binds_to: false,
     type_depends_on: false,
@@ -23,7 +23,7 @@ fn operand_flow_dependency_kind_classifier() -> DependencyKindClassifier<Bool> {
   }
 }
 
-fn dependency_carries_operand(kind: DependencyKind) -> Bool {
+fn dependency_carries_operand(kind: v2.std.dependency.DependencyKind) -> Bool {
   classify_dependency_kind(classifier: operand_flow_dependency_kind_classifier(), kind: kind)
 }
 
@@ -31,7 +31,7 @@ type OperandRootFacts
   = OperandRoot { root: Node }
   | OperandRootUnresolved { edge: v2.std.dependency.DependencyView }
 
-fn operand_root(edge: DependencyView) -> OperandRootFacts {
+fn operand_root(edge: v2.std.dependency.DependencyView) -> OperandRootFacts {
   if dependency_carries_operand(kind: edge.kind) {
     OperandRoot { root: edge.source }
   } else {
@@ -48,7 +48,7 @@ type OperandFlowRow
   = OperandFlow { edge: v2.std.dependency.DependencyView, operand: std.content_hash.ContentHash, footprint: std.measure.ByteSize }
   | OperandFlowRefused { edge: v2.std.dependency.DependencyView, cause: OperandFlowRefusalCause }
 
-fn operand_flow_for_edge(artifact: NodeKeyedGraphArtifact, edge: DependencyView) -> OperandFlowRow {
+fn operand_flow_for_edge(artifact: v2.workflow.realization_runner.NodeKeyedGraphArtifact, edge: v2.std.dependency.DependencyView) -> OperandFlowRow {
   match operand_root(edge: edge) {
     OperandRootUnresolved { edge: unresolved_edge } =>
       OperandFlowRefused {
@@ -74,6 +74,6 @@ fn operand_flow_for_edge(artifact: NodeKeyedGraphArtifact, edge: DependencyView)
   }
 }
 
-fn operand_flows(artifact: NodeKeyedGraphArtifact, edges: List<DependencyView>) -> List<OperandFlowRow> {
+fn operand_flows(artifact: v2.workflow.realization_runner.NodeKeyedGraphArtifact, edges: List<v2.std.dependency.DependencyView>) -> List<OperandFlowRow> {
   list_map(xs: edges, f: fn(edge) { operand_flow_for_edge(artifact: artifact, edge: edge) })
 }

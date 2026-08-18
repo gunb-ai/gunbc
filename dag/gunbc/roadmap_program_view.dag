@@ -37,34 +37,34 @@ fn v1_convergence_fronts() -> List<ConvergenceFrontSpec> {
       front: NamespacePDeriveFront,
       name: "Namespace / P-derive",
       purpose: "Names resolve from one containment authority and P-derive binds source slots on it, producing the receipt the emitter fixed point consumes.",
-      gates: [ "pderive-error-movement-receipt" as RoadmapNodeId ],
+      gates: [ "pderive-error-movement-receipt" as gunbc.roadmap_model.RoadmapNodeId ],
     },
     ConvergenceFrontSpec {
       front: V2GenerationFront,
       name: "V2 generation and admission",
       purpose: "The new compiler generates real modules through the direct Rust door and bootstraps natively from its own output.",
-      gates: [ "v2-emitter-native-bootstrap" as RoadmapNodeId ],
+      gates: [ "v2-emitter-native-bootstrap" as gunbc.roadmap_model.RoadmapNodeId ],
     },
     ConvergenceFrontSpec {
       front: HonestFrontierFront,
       name: "Honest frontier / hand queue",
       purpose: "Every tracked Rust path carries an honest disposition and the hand-maintained queue drains to zero.",
-      gates: [ "v1-hand-queue-drain" as RoadmapNodeId ],
+      gates: [ "v1-hand-queue-drain" as gunbc.roadmap_model.RoadmapNodeId ],
     },
     ConvergenceFrontSpec {
       front: MaterializationCutoverFront,
       name: "Materialization, verification, cutover",
       purpose: "Exact prior results are reusable, verification reads the ledger, and the CI floor cuts over to the new path.",
-      gates: [ "v1-ci-floor-cutover" as RoadmapNodeId ],
+      gates: [ "v1-ci-floor-cutover" as gunbc.roadmap_model.RoadmapNodeId ],
     },
     ConvergenceFrontSpec {
       front: TestMigrationTailFront,
       name: "Test migration and the namespace tail",
       purpose: "The old compiler's tests migrate or retire with coverage receipts, the seed honesty decision lands, and the import grammar deletes.",
       gates: [
-        "v1-test-migration" as RoadmapNodeId,
-        "v1-seed-honesty-decision" as RoadmapNodeId,
-        "namespace-import-deletion" as RoadmapNodeId,
+        "v1-test-migration" as gunbc.roadmap_model.RoadmapNodeId,
+        "v1-seed-honesty-decision" as gunbc.roadmap_model.RoadmapNodeId,
+        "namespace-import-deletion" as gunbc.roadmap_model.RoadmapNodeId,
       ],
     },
   ]
@@ -127,7 +127,7 @@ fn program_node_acc_has_duplicate(acc: ProgramNodeAcc, id: String) -> Bool {
   acc.duplicate_ids |> any(d => (d as String) == id)
 }
 
-fn program_node_acc_insert(acc: ProgramNodeAcc, n: RoadmapNode) -> ProgramNodeAcc {
+fn program_node_acc_insert(acc: ProgramNodeAcc, n: gunbc.roadmap_model.RoadmapNode) -> ProgramNodeAcc {
   let id = n.node as String
   match map_get(acc.by_id, id) {
     Present { value: _ } =>
@@ -147,7 +147,7 @@ fn program_node_acc_insert(acc: ProgramNodeAcc, n: RoadmapNode) -> ProgramNodeAc
   }
 }
 
-fn program_nodes_acc(nodes: List<RoadmapNode>) -> ProgramNodeAcc {
+fn program_nodes_acc(nodes: List<gunbc.roadmap_model.RoadmapNode>) -> ProgramNodeAcc {
   nodes |> fold(init: program_node_acc_init(), f: program_node_acc_insert)
 }
 
@@ -156,9 +156,9 @@ fn program_duplicate_node_causes(acc: ProgramNodeAcc) -> List<ProgramViewRefusal
 }
 
 fn program_find_node_indexed(
-  index: Map<String, RoadmapNode>,
-  id: RoadmapNodeId,
-) -> RoadmapNode? {
+  index: Map<String, gunbc.roadmap_model.RoadmapNode>,
+  id: gunbc.roadmap_model.RoadmapNodeId,
+) -> gunbc.roadmap_model.RoadmapNode? {
   match map_get(index, id as String) {
     Present { value: n } => Present { value: n }
     Absent => Absent
@@ -167,7 +167,7 @@ fn program_find_node_indexed(
 
 fn program_receipt_count_step(
   acc: Map<String, Int>,
-  r: RoadmapAcceptanceReceipt,
+  r: gunbc.roadmap_model.RoadmapAcceptanceReceipt,
 ) -> Map<String, Int> {
   let id = r.node as String
   match map_get(acc, id) {
@@ -176,13 +176,13 @@ fn program_receipt_count_step(
   }
 }
 
-fn program_receipt_counts(receipts: List<RoadmapAcceptanceReceipt>) -> Map<String, Int> {
+fn program_receipt_counts(receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>) -> Map<String, Int> {
   receipts |> fold(init: empty_map(), f: program_receipt_count_step)
 }
 
 fn program_accepted_ids(
-  node_index: Map<String, RoadmapNode>,
-  receipts: List<RoadmapAcceptanceReceipt>,
+  node_index: Map<String, gunbc.roadmap_model.RoadmapNode>,
+  receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>,
 ) -> List<String> {
   receipts
     |> filter(r =>
@@ -193,7 +193,7 @@ fn program_accepted_ids(
     |> map(r => r.node as String)
 }
 
-fn program_node_headline_map(nodes: List<RoadmapNode>) -> Map<String, String> {
+fn program_node_headline_map(nodes: List<gunbc.roadmap_model.RoadmapNode>) -> Map<String, String> {
   nodes |> fold(init: empty_map(), f: (acc, n) => {
     let id = n.node as String
     let headline = match line_ticket(item: n.line) {
@@ -212,7 +212,7 @@ fn program_headline_lookup(headlines: Map<String, String>, id: String) -> String
 }
 
 fn program_node_standing(
-  n: RoadmapNode,
+  n: gunbc.roadmap_model.RoadmapNode,
   parent_index: Map<String, List<String>>,
   accepted_map: Map<String, Bool>,
   in_flight_map: Map<String, Bool>,
@@ -220,7 +220,7 @@ fn program_node_standing(
   let id = n.node as String
   let unmet = program_parent_ids_index(index: parent_index, node: id)
     |> filter(p => !program_map_member(map: accepted_map, id: p))
-    |> map(p => p as RoadmapNodeId)
+    |> map(p => p as gunbc.roadmap_model.RoadmapNodeId)
   let state = if program_map_member(map: accepted_map, id: id) {
     ObligationAccepted
   } else {
@@ -317,7 +317,7 @@ fn program_depth_weight(accepted_map: Map<String, Bool>, id: String) -> Int {
 
 fn program_parent_index_step(
   acc: Map<String, List<String>>,
-  edge: RoadmapEdge,
+  edge: gunbc.roadmap_model.RoadmapEdge,
 ) -> Map<String, List<String>> {
   let child = edge.child as String
   let parent = edge.parent as String
@@ -327,7 +327,7 @@ fn program_parent_index_step(
   }
 }
 
-fn program_parent_index(edges: List<RoadmapEdge>) -> Map<String, List<String>> {
+fn program_parent_index(edges: List<gunbc.roadmap_model.RoadmapEdge>) -> Map<String, List<String>> {
   edges |> fold(init: empty_map(), f: program_parent_index_step)
 }
 
@@ -345,7 +345,7 @@ fn program_reverse_reachable_members(
   let reached = dfs_collect_component(
     node: start,
     adjacency: reverse_adj,
-    acc: SccComponentAcc { visited: empty_set(), members: [] },
+    acc: std.graph.SccComponentAcc { visited: empty_set(), members: [] },
   )
   reached.members |> filter(member => member != start)
 }
@@ -426,7 +426,7 @@ fn program_sequential_depth_map(
 
 fn program_line_scope_ids(
   reverse_adj: Map<String, List<String>>,
-  lines: List<V1FinishLineSpec>,
+  lines: List<gunbc.v1_deletion_plan.V1FinishLineSpec>,
 ) -> List<String> {
   program_dedupe_ids(
     fold(lines, init: [], f: (acc, l) => concat(acc,
@@ -437,7 +437,7 @@ data program_top_level_remaining_scope_note: String = "Top-level V1DeletionProgr
 
 fn program_union_scope_ids(
   reverse_adj: Map<String, List<String>>,
-  lines: List<V1FinishLineSpec>,
+  lines: List<gunbc.v1_deletion_plan.V1FinishLineSpec>,
   fronts: List<ConvergenceFrontSpec>,
 ) -> List<String> {
   let line_scope = program_line_scope_ids(reverse_adj: reverse_adj, lines: lines)
@@ -577,7 +577,7 @@ type ProgramViewRefusalCause
   | DuplicateProgramNodeId { node: gunbc.roadmap_model.RoadmapNodeId }
 
 fn program_duplicate_receipt_causes(
-  receipts: List<RoadmapAcceptanceReceipt>,
+  receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>,
 ) -> List<ProgramViewRefusalCause> {
   let counts = program_receipt_counts(receipts: receipts)
   receipts |> fold(init: [], f: (acc, r) => {
@@ -610,11 +610,11 @@ type V1ProgramViewResult
 data program_view_refusal_note: String = "IDENTITY RESOLUTION IS A WALL, NOT A FILTER. A finish-line node or front gate that names no declared node is a modeling defect — the requirements' misspelled-R1 red control — and the projection REFUSES with every located cause rather than deriving around the hole: a silently smaller front would zero the defect's frequency and misreport every count downstream, the absorbing-fallback shape DESIGN section 5 forbids. Duplicate live receipts for one node and duplicate declared node ids are the same class: DuplicateAcceptanceReceipt and DuplicateProgramNodeId refuse the whole projection rather than silently picking one row or last-wins merging into a map. The causes list carries all failures, not the first, so one repair round sees the whole population."
 
 fn program_view(
-  lines: List<V1FinishLineSpec>,
+  lines: List<gunbc.v1_deletion_plan.V1FinishLineSpec>,
   fronts: List<ConvergenceFrontSpec>,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
-  receipts: List<RoadmapAcceptanceReceipt>,
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
+  receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>,
   in_flight: List<String>,
 ) -> V1ProgramViewResult {
   let ids = nodes |> map(n => n.node as String)
@@ -741,7 +741,7 @@ fn program_front_view(
 data front_contribution_note: String = "A front contributes to a finish line exactly when one of its GATES is an ancestor of the line's node (or the node itself): the gate is the front's output, so contribution means the front's product flows into the outcome, not merely that the two share deep ancestors — a member-overlap rule would connect every front to every downstream outcome and discriminate nothing. Derived over the authority's edges, so the contribution sets shift exactly when someone edits the authored graph, which is when a human should be looking."
 
 fn program_finish_line_view(
-  l: V1FinishLineSpec,
+  l: gunbc.v1_deletion_plan.V1FinishLineSpec,
   fronts: List<ConvergenceFrontSpec>,
   front_views: List<FrontView>,
   reverse_adj: Map<String, List<String>>,
@@ -784,9 +784,9 @@ fn program_finish_line_view(
 }
 
 fn v1_program_view(
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
-  receipts: List<RoadmapAcceptanceReceipt>,
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
+  receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>,
   in_flight: List<String>,
 ) -> V1ProgramViewResult {
   program_view(

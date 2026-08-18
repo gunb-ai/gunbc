@@ -16,7 +16,7 @@ type V1FinishLineSpec {
   node: gunbc.roadmap_model.RoadmapNodeId
 }
 
-fn v1_exit_node_id(s: String) -> RoadmapNodeId { s }
+fn v1_exit_node_id(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
 
 fn v1_finish_line_key(l: V1FinishLine) -> String {
   match l {
@@ -56,10 +56,10 @@ fn v1_exit_finish_lines() -> List<V1FinishLineSpec> {
   ]
 }
 
-fn v1_finish_line_accepted(spec: V1FinishLineSpec, accepted: List<RoadmapNodeId>) -> Bool {
+fn v1_finish_line_accepted(spec: V1FinishLineSpec, accepted: List<gunbc.roadmap_model.RoadmapNodeId>) -> Bool {
   accepted |> any(id => id == spec.node)
 }
 
-fn v1_finish_lines_accepted_count(accepted: List<RoadmapNodeId>) -> Int {
+fn v1_finish_lines_accepted_count(accepted: List<gunbc.roadmap_model.RoadmapNodeId>) -> Int {
   count(v1_exit_finish_lines() |> filter(s => v1_finish_line_accepted(spec: s, accepted: accepted)))
 }

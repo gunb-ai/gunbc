@@ -80,41 +80,41 @@ data host_standup_p3_gunbc_pinned_tree_landing_gate: String = "gunbc.host_conver
 
 data host_standup_p3_gunbc_pinned_tree_landed: Bool = true
 
-data host_standup_p3_green_place_scaffold: Disposition = Scaffold {
+data host_standup_p3_green_place_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge",
     decl_name: "GunbcPinnedTree",
     field: WholeDeclaration
   }
 }
 
-data host_standup_p5_green_place_noop_gate_authority: DeclarationRef = DeclarationRef {
+data host_standup_p5_green_place_noop_gate_authority: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.host_converge",
   decl_name: "gunbc_pinned_noop_satisfied",
   field: WholeDeclaration,
 }
 
-data host_standup_p5_green_place_marker_gate_authority: DeclarationRef = DeclarationRef {
+data host_standup_p5_green_place_marker_gate_authority: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.host_converge",
   decl_name: "gunbc_green_place_marker_satisfied",
   field: WholeDeclaration,
 }
 
-data host_standup_p5_desired_pin_authority: DeclarationRef = DeclarationRef {
+data host_standup_p5_desired_pin_authority: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.host_converge",
   decl_name: "gunbc_ctrl_read_pin_script",
   field: WholeDeclaration,
 }
 
-data host_standup_p5_green_place_pin_scaffold: Disposition = Scaffold {
+data host_standup_p5_green_place_pin_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: host_standup_p5_green_place_noop_gate_authority
 }
 
-data host_standup_p5_composite_gate_scaffold: Disposition = Scaffold {
+data host_standup_p5_composite_gate_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_standup",
     decl_name: "AssimilationCompleteGate",
     field: WholeDeclaration
@@ -123,9 +123,9 @@ data host_standup_p5_composite_gate_scaffold: Disposition = Scaffold {
 
 fn host_standup_prefix_step(
   phase: HostStandupPrefixPhase,
-  label: NonEmptyStr,
-  authorities: List<DeclarationRef>,
-  effect_evidence: IdempotencyEvidence
+  label: std.types.NonEmptyStr,
+  authorities: List<std.decl_ref.DeclarationRef>,
+  effect_evidence: std.effects.IdempotencyEvidence
 ) -> HostStandupStep {
   HostStandupStep {
     phase: Prefix { phase: phase },
@@ -137,9 +137,9 @@ fn host_standup_prefix_step(
 
 fn host_standup_assimilation_step(
   phase: HostStandupAssimilationPhase,
-  label: NonEmptyStr,
+  label: std.types.NonEmptyStr,
   disposition: PhaseDisposition,
-  effect_evidence: IdempotencyEvidence
+  effect_evidence: std.effects.IdempotencyEvidence
 ) -> HostStandupStep {
   HostStandupStep {
     phase: Assimilation { phase: phase },
@@ -151,10 +151,10 @@ fn host_standup_assimilation_step(
 
 fn host_standup_prefix_gap_step(
   phase: HostStandupPrefixPhase,
-  label: NonEmptyStr,
+  label: std.types.NonEmptyStr,
   interim_realization: String,
   refusal: String,
-  effect_evidence: IdempotencyEvidence
+  effect_evidence: std.effects.IdempotencyEvidence
 ) -> HostStandupStep {
   HostStandupStep {
     phase: Prefix { phase: phase },
@@ -408,7 +408,7 @@ fn host_standup_step_is_effective_gap(step: HostStandupStep) -> Bool {
 
 fn host_standup_step_is_effective_gap_at_actuation_verdict(
   step: HostStandupStep,
-  verdict: ObservationVerdict,
+  verdict: std.upsert_decision.ObservationVerdict,
 ) -> Bool {
   match step.phase {
     Prefix { phase: OsInstallActuated } =>
@@ -425,7 +425,7 @@ fn host_standup_gap_phase_count() -> Int {
   filter(host_standup_spine, s => host_standup_step_is_gap(step: s)).length()
 }
 
-fn host_standup_gap_count_at_actuation_verdict(verdict: ObservationVerdict) -> Int {
+fn host_standup_gap_count_at_actuation_verdict(verdict: std.upsert_decision.ObservationVerdict) -> Int {
   fold(
     host_standup_spine,
     init: 0,
@@ -679,7 +679,7 @@ fn srv3_install_mechanism_refuses_rather_than_falling_back() -> Bool {
   }
 }
 
-fn credential_probe_maps_factory_default(probe: BmcCredentialProbeResult) -> Bool {
+fn credential_probe_maps_factory_default(probe: gunbc.bmc_onboarding.BmcCredentialProbeResult) -> Bool {
   match bmc_credential_probe_to_phase(probe: probe) {
     Present { value: FactoryDefault } => true
     Present { value: _ } => false
@@ -687,7 +687,7 @@ fn credential_probe_maps_factory_default(probe: BmcCredentialProbeResult) -> Boo
   }
 }
 
-fn credential_probe_maps_credentials_rotated(probe: BmcCredentialProbeResult) -> Bool {
+fn credential_probe_maps_credentials_rotated(probe: gunbc.bmc_onboarding.BmcCredentialProbeResult) -> Bool {
   match bmc_credential_probe_to_phase(probe: probe) {
     Present { value: CredentialsRotated } => true
     Present { value: _ } => false
@@ -695,6 +695,6 @@ fn credential_probe_maps_credentials_rotated(probe: BmcCredentialProbeResult) ->
   }
 }
 
-fn host_standup_fleet_converge_policy() -> ConvergePolicy {
+fn host_standup_fleet_converge_policy() -> gunbc.host_converge.ConvergePolicy {
   fleet_converge_policy()
 }

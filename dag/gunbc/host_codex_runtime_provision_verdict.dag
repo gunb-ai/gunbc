@@ -22,7 +22,7 @@ type CodexRuntimeProvisionVerdict
   | ProvisionRefused { cause: CodexRuntimeProvisionRefusal, reason: std.types.NonEmptyStr }
 
 fn provision_codex_runtime_verdict(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   observed: CodexRuntimeObservation,
 ) -> CodexRuntimeProvisionVerdict {
   match codex_bundled_executable_for_host(host: host) {
@@ -32,7 +32,7 @@ fn provision_codex_runtime_verdict(
         reason: concat(
           "host_codex_runtime_provision: no bundled Codex runtime placement for host ",
           host as String,
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       }
     Present { value: executable } =>
       match observed {
@@ -45,7 +45,7 @@ fn provision_codex_runtime_verdict(
               "host_codex_runtime_provision: bundled Codex executable absent at ",
               executable as String,
               "; fail-closed, no dispatch fallback",
-            ) as NonEmptyStr,
+            ) as std.types.NonEmptyStr,
           }
         CodexRuntimeMaterializationFailed { combined_output: out } =>
           ProvisionRefused {
@@ -53,7 +53,7 @@ fn provision_codex_runtime_verdict(
             reason: concat(
               "host_codex_runtime_provision: codex runtime materialization failed during ensure; observed: ",
               out,
-            ) as NonEmptyStr,
+            ) as std.types.NonEmptyStr,
           }
         CodexRuntimeIdentityMismatch { combined_output: out } =>
           ProvisionRefused {
@@ -64,7 +64,7 @@ fn provision_codex_runtime_verdict(
                 codex_runtime_version_identity_marker(),
               ),
               concat("; observed: ", out),
-            ) as NonEmptyStr,
+            ) as std.types.NonEmptyStr,
           }
         CodexRuntimeShellOutputUnrecognized { combined_output: out } =>
           ProvisionRefused {
@@ -72,7 +72,7 @@ fn provision_codex_runtime_verdict(
             reason: concat(
               "host_codex_runtime_provision: codex runtime shell output did not match any known provision receipt shape; observed: ",
               out,
-            ) as NonEmptyStr,
+            ) as std.types.NonEmptyStr,
           }
       }
   }
@@ -80,7 +80,7 @@ fn provision_codex_runtime_verdict(
 
 fn codex_runtime_absent_refuses_fail_closed() -> Bool {
   match provision_codex_runtime_verdict(
-    host: "srv1" as HostIdentity,
+    host: "srv1" as product.placement_supply.HostIdentity,
     observed: CodexRuntimeAbsent,
   ) {
     ProvisionRefused { cause: RefusalRuntimeAbsent, reason: _ } => true
@@ -90,7 +90,7 @@ fn codex_runtime_absent_refuses_fail_closed() -> Bool {
 
 fn codex_runtime_materialization_failed_refuses_fail_closed() -> Bool {
   match provision_codex_runtime_verdict(
-    host: "srv1" as HostIdentity,
+    host: "srv1" as product.placement_supply.HostIdentity,
     observed: CodexRuntimeMaterializationFailed {
       combined_output: "CodexRuntimeProvisionReceipt: ensure=FAILED" as String,
     },
@@ -102,7 +102,7 @@ fn codex_runtime_materialization_failed_refuses_fail_closed() -> Bool {
 
 fn codex_runtime_identity_mismatch_refuses_fail_closed() -> Bool {
   match provision_codex_runtime_verdict(
-    host: "srv1" as HostIdentity,
+    host: "srv1" as product.placement_supply.HostIdentity,
     observed: CodexRuntimeIdentityMismatch {
       combined_output: "codex-cli 0.133.0" as String,
     },
@@ -115,7 +115,7 @@ fn codex_runtime_identity_mismatch_refuses_fail_closed() -> Bool {
 
 fn codex_runtime_identity_ok_converges() -> Bool {
   match provision_codex_runtime_verdict(
-    host: "srv1" as HostIdentity,
+    host: "srv1" as product.placement_supply.HostIdentity,
     observed: CodexRuntimeIdentityOk {
       version_line: codex_runtime_version_identity_marker(),
     },
@@ -128,7 +128,7 @@ fn codex_runtime_identity_ok_converges() -> Bool {
 
 fn codex_runtime_shell_output_unrecognized_refuses_fail_closed() -> Bool {
   match provision_codex_runtime_verdict(
-    host: "srv1" as HostIdentity,
+    host: "srv1" as product.placement_supply.HostIdentity,
     observed: CodexRuntimeShellOutputUnrecognized {
       combined_output: "unexpected transport failure" as String,
     },
@@ -166,7 +166,7 @@ fn codex_runtime_observation_from_shell_output(
 }
 
 fn provision_codex_runtime_verdict_from_shell(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   success: Bool,
   stdout: String,
   stderr: String,

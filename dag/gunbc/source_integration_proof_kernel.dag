@@ -1,15 +1,15 @@
 module gunbc.source_integration_proof_kernel
 
 
-data source_integration_proof_kernel_model_note: NonEmptyStr = "P1 FIRST-SLICE MODEL, not a claim that the proof kernel is complete. It composes with P0 by carrying LandingProposalContract and LandingReadyEvidenceReceipt directly: occurrence identity, reads/relies, modifies/frame, guarantees, authority, and admitted claim evidence are not re-declared here. The new fact is the bounded candidate-generation problem P0 deliberately left absent. Callers supply finite generators and bounds, never a supposedly exhaustive candidate list. One KernelCandidateGenerationFold starts from the accepted-state seed and derives the finite combination classes of directly authored transformations, witnessed context transports, declared canonicalizations, finite recovery alternatives, and scheduled inference procedures. The fold refuses before an expansion would cross candidate_classes; the schedule refuses when its round population crosses inference_rounds. Candidate-generation closure remains a separate certificate the later public reconciliation fold must establish: this slice proves bounded enumeration executes, not that the supplied generators are complete. Domain facts, procedures, invariants, and closure certificates remain data. Every model-admission failure is a typed, located, counted KernelRefusal, queried through kernel_refusal_occurrences rather than scenario-specific walkers. This carrier has no source parser/edit lens (P2), target effect/write transport (P3), primary-outcome projection, arbitrary synthesis, or unbounded search."
+data source_integration_proof_kernel_model_note: std.types.NonEmptyStr = "P1 FIRST-SLICE MODEL, not a claim that the proof kernel is complete. It composes with P0 by carrying LandingProposalContract and LandingReadyEvidenceReceipt directly: occurrence identity, reads/relies, modifies/frame, guarantees, authority, and admitted claim evidence are not re-declared here. The new fact is the bounded candidate-generation problem P0 deliberately left absent. Callers supply finite generators and bounds, never a supposedly exhaustive candidate list. One KernelCandidateGenerationFold starts from the accepted-state seed and derives the finite combination classes of directly authored transformations, witnessed context transports, declared canonicalizations, finite recovery alternatives, and scheduled inference procedures. The fold refuses before an expansion would cross candidate_classes; the schedule refuses when its round population crosses inference_rounds. Candidate-generation closure remains a separate certificate the later public reconciliation fold must establish: this slice proves bounded enumeration executes, not that the supplied generators are complete. Domain facts, procedures, invariants, and closure certificates remain data. Every model-admission failure is a typed, located, counted KernelRefusal, queried through kernel_refusal_occurrences rather than scenario-specific walkers. This carrier has no source parser/edit lens (P2), target effect/write transport (P3), primary-outcome projection, arbitrary synthesis, or unbounded search."
 
-type KernelFactValue = NonEmptyStr where brand("KernelFactValue")
-type KernelProcedureHandle = NonEmptyStr where brand("KernelProcedureHandle")
-type KernelInvariantHandle = NonEmptyStr where brand("KernelInvariantHandle")
-type KernelCanonicalizationHandle = NonEmptyStr where brand("KernelCanonicalizationHandle")
-type KernelRecoveryAlternativeHandle = NonEmptyStr where brand("KernelRecoveryAlternativeHandle")
-type KernelContextTransportReceipt = NonEmptyStr where brand("KernelContextTransportReceipt")
-type KernelCommutingSquareReceipt = NonEmptyStr where brand("KernelCommutingSquareReceipt")
+type KernelFactValue = std.types.NonEmptyStr where brand("KernelFactValue")
+type KernelProcedureHandle = std.types.NonEmptyStr where brand("KernelProcedureHandle")
+type KernelInvariantHandle = std.types.NonEmptyStr where brand("KernelInvariantHandle")
+type KernelCanonicalizationHandle = std.types.NonEmptyStr where brand("KernelCanonicalizationHandle")
+type KernelRecoveryAlternativeHandle = std.types.NonEmptyStr where brand("KernelRecoveryAlternativeHandle")
+type KernelContextTransportReceipt = std.types.NonEmptyStr where brand("KernelContextTransportReceipt")
+type KernelCommutingSquareReceipt = std.types.NonEmptyStr where brand("KernelCommutingSquareReceipt")
 
 type KernelFact {
   key: gunbc.source_integration_landing_spine.LandingFactHandle
@@ -148,7 +148,7 @@ type KernelCandidateGenerationFold
 
 fn kernel_refusal(
   kind: KernelRefusalKind,
-  locus: NonEmptyStr,
+  locus: std.types.NonEmptyStr,
   occurrences: Int,
 ) -> List<KernelRefusal> {
   [KernelRefusal {
@@ -456,7 +456,7 @@ type KernelAcceptanceAdmission
 fn kernel_refusal_occurrences(
   refusals: List<KernelRefusal>,
   kind: KernelRefusalKind,
-  locus: NonEmptyStr,
+  locus: std.types.NonEmptyStr,
 ) -> Int {
   fold(refusals, init: 0, f: fn(occurrences, refusal) {
     if refusal.kind == kind && refusal.locus == locus {

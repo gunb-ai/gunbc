@@ -7,26 +7,26 @@ type HostnameSetCasOutcome
   | HostnameSetCasBaseMismatch { observed: String, base: extdeps.dns.domain_name.DnsLabel }
   | HostnameSetCasApplyFailed { stderr: String }
 
-fn hostname_set_operation_argv(desired: DnsLabel) -> List<String> {
+fn hostname_set_operation_argv(desired: extdeps.dns.domain_name.DnsLabel) -> List<String> {
   hostname_set_argv(desired: desired)
 }
 
 fn hostname_set_privileged_operation_argv(
-  hostnamectl_path: NonEmptyStr,
-  desired: DnsLabel,
+  hostnamectl_path: std.types.NonEmptyStr,
+  desired: extdeps.dns.domain_name.DnsLabel,
 ) -> List<String> {
   ["sudo", "-n", hostnamectl_path as String, "set-hostname", desired as String]
 }
 
-fn hostname_set_operation_argv_matches_authority(desired: DnsLabel) -> Bool {
+fn hostname_set_operation_argv_matches_authority(desired: extdeps.dns.domain_name.DnsLabel) -> Bool {
   let materialized = hostname_set_operation_argv(desired: desired)
   let authority = hostname_set_argv(desired: desired)
   join(materialized, " ") == join(authority, " ")
 }
 
 fn hostname_set_privileged_operation_argv_matches_fleet_grant(
-  hostnamectl_path: NonEmptyStr,
-  desired: DnsLabel,
+  hostnamectl_path: std.types.NonEmptyStr,
+  desired: extdeps.dns.domain_name.DnsLabel,
 ) -> Bool {
   join(
     hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired),
@@ -37,7 +37,7 @@ fn hostname_set_privileged_operation_argv_matches_fleet_grant(
   )
 }
 
-fn hostname_set_local(desired: DnsLabel) -> HostnameSetCasOutcome {
+fn hostname_set_local(desired: extdeps.dns.domain_name.DnsLabel) -> HostnameSetCasOutcome {
   let result = os.Hostname.Set(desired: desired)
   if result.success {
     HostnameSetCasApplied
@@ -50,7 +50,7 @@ fn hostname_set_local(desired: DnsLabel) -> HostnameSetCasOutcome {
 // render as HostnameSetCasApplyFailed with an empty stderr, because "we refused to try" and "the
 // host rejected it" call for different responses. It carries the refusal reason as the stderr so the
 // distinction survives into whatever reads it -- the field is the only channel this type has.
-fn hostname_set_cas_from_outcome(outcome: TypedArgvExecOutcome) -> HostnameSetCasOutcome {
+fn hostname_set_cas_from_outcome(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> HostnameSetCasOutcome {
   match outcome {
     TypedArgvExecConverged { result: r } =>
       if r.success { HostnameSetCasApplied } else { HostnameSetCasApplyFailed { stderr: r.stderr } }
@@ -60,10 +60,10 @@ fn hostname_set_cas_from_outcome(outcome: TypedArgvExecOutcome) -> HostnameSetCa
 }
 
 fn hostname_set_fleet_ssh(
-  hostnamectl_path: NonEmptyStr,
-  target: SshTarget,
-  context: FleetSshExecutionContext,
-  desired: DnsLabel,
+  hostnamectl_path: std.types.NonEmptyStr,
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  desired: extdeps.dns.domain_name.DnsLabel,
 ) -> HostnameSetCasOutcome {
   hostname_set_cas_from_outcome(
     outcome: typed_argv_exec_over_fleet_ssh(
@@ -75,9 +75,9 @@ fn hostname_set_fleet_ssh(
 }
 
 fn hostname_set_ssh(
-  hostnamectl_path: NonEmptyStr,
-  host: NonEmptyStr,
-  desired: DnsLabel,
+  hostnamectl_path: std.types.NonEmptyStr,
+  host: std.types.NonEmptyStr,
+  desired: extdeps.dns.domain_name.DnsLabel,
 ) -> HostnameSetCasOutcome {
   let argv = hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired)
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
@@ -96,9 +96,9 @@ fn hostname_set_ssh(
 }
 
 fn hostname_set_apply(
-  hostnamectl_path: NonEmptyStr,
-  transport: HostEffectTransport,
-  desired: DnsLabel,
+  hostnamectl_path: std.types.NonEmptyStr,
+  transport: gunbc.host_effect.HostEffectTransport,
+  desired: extdeps.dns.domain_name.DnsLabel,
 ) -> HostnameSetCasOutcome {
   match transport {
     LocalShell => hostname_set_local(desired: desired)
@@ -110,10 +110,10 @@ fn hostname_set_apply(
 }
 
 fn hostname_set_cas(
-  hostnamectl_path: NonEmptyStr,
-  transport: HostEffectTransport,
-  base: DnsLabel,
-  desired: DnsLabel,
+  hostnamectl_path: std.types.NonEmptyStr,
+  transport: gunbc.host_effect.HostEffectTransport,
+  base: extdeps.dns.domain_name.DnsLabel,
+  desired: extdeps.dns.domain_name.DnsLabel,
 ) -> HostnameSetCasOutcome {
   match hostname_short_read(transport: transport) {
     HostnameShortCaptured { value: observed } =>

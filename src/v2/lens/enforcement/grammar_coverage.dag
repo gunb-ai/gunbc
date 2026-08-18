@@ -43,11 +43,11 @@ type GrammarCoverageTakeAcc {
   remaining: Int
 }
 
-data grammar_coverage_no_reject: Symbol = ^grammar_coverage_no_reject
+data grammar_coverage_no_reject: v2.std.node.Symbol = ^grammar_coverage_no_reject
 
-data grammar_coverage_file_anchor: Symbol = ^grammar_coverage_file_anchor
+data grammar_coverage_file_anchor: v2.std.node.Symbol = ^grammar_coverage_file_anchor
 
-data grammar_coverage_reject_probe: Symbol = ^grammar_coverage_reject_probe
+data grammar_coverage_reject_probe: v2.std.node.Symbol = ^grammar_coverage_reject_probe
 
 fn grammar_coverage_string_eq(a: String, b: String) -> Bool {
   a == b
@@ -121,7 +121,7 @@ fn grammar_coverage_take_n(paths: List<String>, n: Int) -> List<String> {
 
 fn grammar_coverage_ingest_source_text(
   source_text: String,
-  file: Symbol
+  file: v2.std.node.Symbol
 ) -> GrammarCoverageParseVerdict {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
@@ -157,14 +157,14 @@ fn grammar_coverage_file_receipt(rel_path: String) -> GrammarCoverageFileReceipt
   }
 }
 
-fn grammar_coverage_symbol_reason_eq(a: Symbol, b: Symbol) -> Bool {
+fn grammar_coverage_symbol_reason_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> Bool {
   symbol_identity_digest(sym: a) == symbol_identity_digest(sym: b)
 }
 
 fn grammar_coverage_file_reject_locus_matches(
   receipt: GrammarCoverageFileReceipt,
   stage: String,
-  reason: Symbol
+  reason: v2.std.node.Symbol
 ) -> Bool {
   match receipt.verdict {
     ParsedClean => false
@@ -280,7 +280,7 @@ fn grammar_coverage_timing_work_units_match_take_n(
 fn grammar_coverage_rejected_row_present(
   rows: List<GrammarCoverageRejectedRow>,
   stage: String,
-  reason: Symbol
+  reason: v2.std.node.Symbol
 ) -> Bool {
   fold_list(
     xs: rows,

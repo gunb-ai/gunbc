@@ -1,30 +1,30 @@
 module gunbc.scm_compatibility_shape
 
 
-data scm_compatibility_shape_note: NonEmptyStr = "R1 compatibility-realization shape extracted from the independently executing Git, Mercurial, and Pijul R0 boundaries. The shared carrier owns only roles demonstrated by the landed R0s: an opaque realization and target handle, a handle to native generation evidence, honest capture fidelity, realization-specific preservation/loss facts, projection plus independent read-back, and an explicit modeled-or-unavailable conditional-advance capability. Native evidence remains in adapter-specific typed receipts; this presentation projection is not a semantic, policy, repair, execution, commit, or Applied receipt. A failed projection may later be replaced idempotently by realization and target only after some external operation supplies a new independently read-back receipt. Dispatch is a generic handler value, never ScmKind or a vendor switch. A fourth realization supplies one handler and does not edit this module or the native interaction contract."
+data scm_compatibility_shape_note: std.types.NonEmptyStr = "R1 compatibility-realization shape extracted from the independently executing Git, Mercurial, and Pijul R0 boundaries. The shared carrier owns only roles demonstrated by the landed R0s: an opaque realization and target handle, a handle to native generation evidence, honest capture fidelity, realization-specific preservation/loss facts, projection plus independent read-back, and an explicit modeled-or-unavailable conditional-advance capability. Native evidence remains in adapter-specific typed receipts; this presentation projection is not a semantic, policy, repair, execution, commit, or Applied receipt. A failed projection may later be replaced idempotently by realization and target only after some external operation supplies a new independently read-back receipt. Dispatch is a generic handler value, never ScmKind or a vendor switch. A fourth realization supplies one handler and does not edit this module or the native interaction contract."
 
-type CompatibilityRealizationHandle = NonEmptyStr where brand("CompatibilityRealizationHandle")
-type CompatibilityTargetHandle = NonEmptyStr where brand("CompatibilityTargetHandle")
-type CompatibilityGenerationEvidenceHandle = NonEmptyStr where brand("CompatibilityGenerationEvidenceHandle")
-type CompatibilityProjectionHandle = NonEmptyStr where brand("CompatibilityProjectionHandle")
-type CompatibilityReadBackHandle = NonEmptyStr where brand("CompatibilityReadBackHandle")
+type CompatibilityRealizationHandle = std.types.NonEmptyStr where brand("CompatibilityRealizationHandle")
+type CompatibilityTargetHandle = std.types.NonEmptyStr where brand("CompatibilityTargetHandle")
+type CompatibilityGenerationEvidenceHandle = std.types.NonEmptyStr where brand("CompatibilityGenerationEvidenceHandle")
+type CompatibilityProjectionHandle = std.types.NonEmptyStr where brand("CompatibilityProjectionHandle")
+type CompatibilityReadBackHandle = std.types.NonEmptyStr where brand("CompatibilityReadBackHandle")
 
 fn compatibility_identity_text(
-  tag: NonEmptyStr,
+  tag: std.types.NonEmptyStr,
   value: String,
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   content_hash_atom(
     value: concat(
       tag,
       concat(":", value),
-    ) as NonEmptyStr,
+    ) as std.types.NonEmptyStr,
   )
 }
 
 fn compatibility_identity_sequence(
-  tag: NonEmptyStr,
-  members: List<Fnv1a64Structural>,
-) -> Fnv1a64Structural {
+  tag: std.types.NonEmptyStr,
+  members: List<std.content_hash.Fnv1a64Structural>,
+) -> std.content_hash.Fnv1a64Structural {
   fold(
     members,
     init: content_hash_atom(value: tag),
@@ -36,27 +36,27 @@ fn compatibility_identity_sequence(
 
 fn compatibility_projection_handle(
   realization: CompatibilityRealizationHandle,
-  state: Fnv1a64Structural,
+  state: std.content_hash.Fnv1a64Structural,
 ) -> CompatibilityProjectionHandle {
   content_hash_tagged_structural(
     tag: concat(
       "compatibility-projection:",
       realization as String,
-    ) as NonEmptyStr,
+    ) as std.types.NonEmptyStr,
     payload: state,
   ).digest as CompatibilityProjectionHandle
 }
 
 fn compatibility_read_back_handle(
   realization: CompatibilityRealizationHandle,
-  producer: NonEmptyStr,
-  state: Fnv1a64Structural,
+  producer: std.types.NonEmptyStr,
+  state: std.content_hash.Fnv1a64Structural,
 ) -> CompatibilityReadBackHandle {
   content_hash_tagged_structural(
     tag: concat(
       "compatibility-readback:",
       realization as String,
-    ) as NonEmptyStr,
+    ) as std.types.NonEmptyStr,
     payload: content_hash_combine_structural(
       left: compatibility_identity_text(
         tag: "producer",

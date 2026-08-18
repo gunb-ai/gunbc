@@ -424,7 +424,7 @@ fn openapi_http_status_code_value(
   openapi_status_hundreds_value(hundreds: hundreds) + (openapi_status_digit_value(digit: tens) * 10) + openapi_status_digit_value(digit: ones)
 }
 
-data openapi_operation_exchange_request_reply: ExchangePattern = RequestReply
+data openapi_operation_exchange_request_reply: v2.extdeps.coordination.ExchangePattern = RequestReply
 
 type OpenApiOperationWireContractFacts {
   admitted_method: OpenApiAdmittedHttpMethod,

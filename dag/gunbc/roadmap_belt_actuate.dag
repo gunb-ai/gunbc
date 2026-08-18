@@ -4,18 +4,18 @@ module gunbc.roadmap_belt_actuate
 
 data belt_actuate_exec_authority_note: String = "Slice 2b actuation: the belt DECISION (gunbc.roadmap_belt.belt_reconcile) is CLOSED against the host by three proven single-authorities — the actuator's HostExecArgv argv model (gunbc.roadmap_dispatch_actuator, the one place git/tmux/provider argv is shaped), gunbc.WitnessBin.Run (the typed-argv exec intrinsic, no shell string), and shell.Which.Check (program -> bin_path). Provider is a closed ClaudeCodeProvider | CodexCliProvider choice whose argv, preflight, and pane fingerprint move together. This remains fail-closed throughout: which-miss or auth uncertainty refuses before git worktree add; a worktree failure short-circuits tmux spawn; a nonzero provider process after tmux accepted is runtime evidence, not spawn evidence, and is deliberately NOT absorbed into Spawned-as-success."
 
-data belt_actuate_placement_dissolution_trigger: Disposition = Scaffold {
+data belt_actuate_placement_dissolution_trigger: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.roadmap_dispatch_actuator",
     decl_name: "classify_dispatch_lease_upsert",
     field: WholeDeclaration
   }
 }
 
-data belt_actuate_fingerprint_dissolution_trigger: Disposition = Scaffold {
+data belt_actuate_fingerprint_dissolution_trigger: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.roadmap_dispatch_actuator",
     decl_name: "dispatch_tmux_process_fingerprint_observation_dissolution_trigger",
     field: WholeDeclaration
@@ -38,10 +38,10 @@ data belt_program_available_note: String = "program-on-PATH probe via shell.Whic
 data belt_outcome_is_data_note: String = "The probes in this module are annotated OutcomeIsData (operator ruling 2026-07-25): their exit codes are ANSWERS the belt adjudicates, not faults. belt_program_available's which-miss is the 'program missing' pole this module's belt_program_available_note already keeps deliberately distinct from 'present but exited nonzero'; belt_exec's nonzero exit becomes ExecFailed; belt_observe's becomes a typed BeltObserve arm. In every case the belt renders the fault loudly through its own per-variant status mapping, so the effect layer's anomaly glyph was a second, cruder judgment of an event that already has a real adjudicator. ADMISSIBILITY (§5 guard, gunbc.output_policy outcome_is_data_note): each annotated fn returns a typed value whose arms ARE the adjudication — Bool for the availability probe (consumed as the refuse/fail discriminator, never discarded), BeltExecOutcome, BeltObserve, PublicationCredentialSource — never unit. Dispatch failure stays anomalous: it is not an exit code and does not travel this arm."
 
 fn belt_program_available(program: String) -> Bool {
-  shell.Which.Check(command: program as NonEmptyStr, expect: OutcomeIsData).exists
+  shell.Which.Check(command: program as std.types.NonEmptyStr, expect: OutcomeIsData).exists
 }
 
-fn belt_exec(cmd: HostExecArgv, workdir: String) -> BeltExecOutcome {
+fn belt_exec(cmd: gunbc.roadmap_dispatch_actuator.HostExecArgv, workdir: String) -> BeltExecOutcome {
   if belt_program_available(program: cmd.program) {
     let result = gunbc.WitnessBin.Run(
       workdir: workdir as std.types.FilePath,
@@ -64,7 +64,7 @@ fn belt_exec(cmd: HostExecArgv, workdir: String) -> BeltExecOutcome {
 
 data belt_exec_all_fail_closed_note: String = "Fail-closed sequencing: fold runs each argv in order; once a step is non-ok (ExecFailed/ExecRefused) the accumulator SHORT-CIRCUITS — belt_exec is NOT called for the remaining steps and the first failure is returned. Spawn's worktree-add -> tmux-new-session ordering rides this: a failed git worktree add never spawns the tmux session (no orphan session on a missing worktree). Discriminating control: remove the ExecOk-guarded short-circuit and [false, echo] would run echo and go green when it must stay failed."
 
-fn belt_exec_all(cmds: List<HostExecArgv>, workdir: String) -> BeltExecOutcome {
+fn belt_exec_all(cmds: List<gunbc.roadmap_dispatch_actuator.HostExecArgv>, workdir: String) -> BeltExecOutcome {
   fold(cmds, init: ExecOk { stdout: "" }, f: fn(acc, cmd) {
     match acc {
       ExecOk { stdout: _ } => belt_exec(cmd: cmd, workdir: workdir)
@@ -114,8 +114,8 @@ type AttemptStateInitialization
 data attempt_state_publication_note: String = "A modeled attempt publishes an immutable evidence prefix before provider launch. After worktree and state-directory creation, the serve process writes the attempt key, the exact grounded environment-admission JSON receipt, and an empty provider-events.jsonl file through typed Filesystem.Write operations. Only then does it replace the node-current symlink. The replace may have a brief unreadable interval, which the observer reports as refusal and retries on its next poll; no atomicity is claimed for `ln -sfnT`. A readable current attempt is constructive proof that admission, workspace creation, and event capture initialization preceded provider launch; the progress route validates the admitted receipt rather than inferring those stages from a tmux name."
 
 fn belt_attempt_state_initialize_for_instance(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
   attempt_key: String,
   admission_receipt: String,
 ) -> AttemptStateInitialization {
@@ -219,8 +219,8 @@ type AttemptOraclePinCapture
 data belt_oracle_refs_primitive_note: String = "This projection used filter_map, which type-checks and DOES NOT RUN: std.primitives declares a filter_map contract but the seed registers no method for it, so the call reached the interpreter as `not yet implemented` and took the dispatch route to a 500. Found by a live dispatch on the lab, not by the whole-tree compile (0 blocking errors) and not by this lane's own witnesses — which is the specification-without-execution trap in DESIGN section 5 landing one layer below where this PR was watching for it: I checked that MY functions were exercised and never checked that the PRIMITIVES they call exist. The corpus had zero filter_map call sites before this change, which is why nothing else had already surfaced it. flat_map is the same fold with a registered implementation, and returning a one-or-zero element list is exactly the Present/none the contract described."
 
 fn belt_oracle_refs_for_contract(
-  contract: WorkItemExecutionContract,
-) -> List<ValidationOracleRef> {
+  contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
+) -> List<gunbc.roadmap_validation_oracle.ValidationOracleRef> {
   validation_oracle_scopes(contract: contract)
     |> flat_map(scope => match scope {
       OraclePinnable { oracle } => [oracle]
@@ -230,8 +230,8 @@ fn belt_oracle_refs_for_contract(
 
 fn belt_oracle_observe_in_worktree(
   worktree: String,
-  oracle: ValidationOracleRef,
-) -> OracleObservation {
+  oracle: gunbc.roadmap_validation_oracle.ValidationOracleRef,
+) -> gunbc.roadmap_validation_oracle.OracleObservation {
   let read = Filesystem.Read(
     path: join([worktree, "/", oracle.entry as String], ""),
   )
@@ -244,9 +244,9 @@ fn belt_oracle_observe_in_worktree(
 }
 
 fn belt_oracle_observations_in_worktree(
-  contract: WorkItemExecutionContract,
+  contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
   worktree: String,
-) -> List<OracleObservation> {
+) -> List<gunbc.roadmap_validation_oracle.OracleObservation> {
   belt_oracle_refs_for_contract(contract: contract)
     |> map(oracle => belt_oracle_observe_in_worktree(
       worktree: worktree,
@@ -268,7 +268,7 @@ fn worktree_head_observation_of(outcome: BeltExecOutcome) -> WorktreeHeadObserva
           reason: "git reported no revision for HEAD, which a worktree whose branch has no commit yet will do without failing",
         }
       } else {
-        WorktreeHeadObserved { revision: trim(stdout) as NonEmptyStr }
+        WorktreeHeadObserved { revision: trim(stdout) as std.types.NonEmptyStr }
       }
     ExecFailed { program, exit_code, stderr } =>
       WorktreeHeadUnobserved {
@@ -284,7 +284,7 @@ fn worktree_head_observation_of(outcome: BeltExecOutcome) -> WorktreeHeadObserva
 }
 
 fn belt_worktree_head_observe(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   worktree: String,
 ) -> WorktreeHeadObservation {
   worktree_head_observation_of(
@@ -302,7 +302,7 @@ fn belt_worktree_head_observe(
 }
 
 fn belt_worktree_head_revision(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   worktree: String,
 ) -> String {
   match belt_worktree_head_observe(instance: instance, worktree: worktree) {
@@ -312,8 +312,8 @@ fn belt_worktree_head_revision(
 }
 
 fn belt_verify_detached_worktree(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
 ) -> String {
@@ -347,8 +347,8 @@ fn belt_verify_detached_worktree(
 }
 
 fn belt_verify_detached_worktree_refusal(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
 ) -> String {
@@ -399,8 +399,8 @@ fn belt_verify_detached_worktree_refusal(
 }
 
 fn belt_attempt_oracle_pin_capture_for_instance(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
   attempt_key: String,
 ) -> AttemptOraclePinCapture {
   let worktree = dispatch_worktree_path_for_instance(
@@ -449,8 +449,8 @@ fn belt_attempt_oracle_pin_capture_for_instance(
 }
 
 fn belt_persist_oracle_pin_for_instance(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
   attempt_key: String,
   capture: AttemptOraclePinCapture,
 ) -> Bool {
@@ -487,7 +487,7 @@ fn belt_persist_oracle_pin_for_instance(
 }
 
 fn belt_created_session_cleanup_detail(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   session_name: String,
 ) -> String {
   match belt_exec(
@@ -511,8 +511,8 @@ fn belt_created_session_cleanup_detail(
 }
 
 fn belt_persist_spawn_failure_for_instance(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
   attempt_key: String,
   step: String,
   detail: String,
@@ -545,11 +545,11 @@ fn belt_dispatch_spawn_unselected_provider_wire_label() -> String {
   "unselected"
 }
 
-fn belt_dispatch_spawn_selection_refused_provider_wire_label(reason: NonEmptyStr) -> String {
+fn belt_dispatch_spawn_selection_refused_provider_wire_label(reason: std.types.NonEmptyStr) -> String {
   concat("selection-refused: ", reason as String)
 }
 
-fn belt_dispatch_spawn_provider_wire_label(provider: DispatchCliProvider) -> String {
+fn belt_dispatch_spawn_provider_wire_label(provider: gunbc.roadmap_dispatch_actuator.DispatchCliProvider) -> String {
   dispatch_provider_label(provider: provider)
 }
 
@@ -598,9 +598,9 @@ fn belt_claude_preflight_decision(
   }
 }
 
-fn belt_claude_preflight_for_instance(instance: HostDashboardInstance) -> BeltClaudePreflight {
+fn belt_claude_preflight_for_instance(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> BeltClaudePreflight {
   let claude_ok = belt_program_available(program: claude_cli_program)
-  let home = match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
+  let home = match shell.Env.Get(name: "HOME" as std.types.NonEmptyStr).value {
     Absent => ""
     Present { value: v } => v
   }
@@ -691,7 +691,7 @@ fn belt_codex_preflight_decision_observed_for_home(
   }
 }
 
-fn belt_codex_preflight_for_instance(instance: HostDashboardInstance) -> BeltCodexPreflight {
+fn belt_codex_preflight_for_instance(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> BeltCodexPreflight {
   match dashboard_instance_provider_executable(instance: instance) {
     Absent =>
       CodexPreflightRefused {
@@ -781,8 +781,8 @@ type BeltProviderPreflight
   | ProviderPreflightRefused { step: String, detail: String }
 
 fn belt_provider_preflight_for_instance(
-  instance: HostDashboardInstance,
-  provider: DispatchCliProvider,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  provider: gunbc.roadmap_dispatch_actuator.DispatchCliProvider,
 ) -> BeltProviderPreflight {
   match provider {
     ClaudeCodeProvider =>
@@ -805,7 +805,7 @@ fn belt_provider_preflight_for_instance(
   }
 }
 
-fn belt_provider_preflight(provider: DispatchCliProvider) -> BeltProviderPreflight {
+fn belt_provider_preflight(provider: gunbc.roadmap_dispatch_actuator.DispatchCliProvider) -> BeltProviderPreflight {
   belt_provider_preflight_for_instance(
     instance: srv1_live_dashboard_instance(),
     provider: provider,
@@ -819,7 +819,7 @@ type BeltFootprintRoot {
   path: String
 }
 
-fn belt_dispatch_footprint_roots(instance: HostDashboardInstance) -> List<BeltFootprintRoot> {
+fn belt_dispatch_footprint_roots(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> List<BeltFootprintRoot> {
   [
     BeltFootprintRoot {
       member: "dispatch-worktree-root",
@@ -906,7 +906,7 @@ fn belt_footprint_observe(root: BeltFootprintRoot) -> BeltFootprintObservation {
 }
 
 fn belt_footprint_admission_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> BeltFootprintAdmission {
   belt_footprint_admission_decision(
     observations: map(
@@ -917,8 +917,8 @@ fn belt_footprint_admission_for_instance(
 }
 
 fn belt_actuate_spawn_for_instance(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
   probed_at: String,
 ) -> BeltSpawnOutcome {
   match belt_footprint_admission_for_instance(instance: instance) {
@@ -988,8 +988,8 @@ fn belt_actuate_spawn_for_instance(
 }
 
 fn belt_actuate_spawn_exec_for_instance(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
   probed_at: String,
   admission_receipt: String,
   provider_wire_label: String,
@@ -1007,8 +1007,8 @@ fn belt_actuate_spawn_exec_for_instance(
 data belt_staged_spawn_cleanup_note: String = "The tmux creation boundary is explicit. Worktree/state publication happens before tmux; tmux new-session runs alone; only after its success do session configuration, pipe attachment, and provider respawn run. A later staging failure reaps exactly the session this same request just created, without relying on a name-only ownership guess. Worktree, branch, and attempt evidence are deliberately retained for diagnosis and user work. The original located failure plus cleanup receipt is persisted under the published attempt before SpawnFailed returns."
 
 fn belt_actuate_spawn_exec_modeled(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
   probed_at: String,
   workdir: String,
   admission_receipt: String,
@@ -1164,7 +1164,7 @@ fn belt_actuate_spawn_exec_modeled(
 }
 }
 
-fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> BeltSpawnOutcome {
+fn belt_actuate_spawn(node: gunbc.roadmap_model.RoadmapNode, probed_at: String, workdir: String) -> BeltSpawnOutcome {
   let instance = srv1_live_dashboard_instance()
   match dispatch_environment_admit(
     contract: node.execution,
@@ -1220,7 +1220,7 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> 
 }
 
 fn belt_actuate_spawn_exec(
-  node: RoadmapNode,
+  node: gunbc.roadmap_model.RoadmapNode,
   probed_at: String,
   workdir: String,
   admission_receipt: String,
@@ -1241,7 +1241,7 @@ type BeltTeardownOutcome
   | TeardownFailed { session_name: String, detail: String }
 
 fn belt_actuate_teardown_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   session_name: String,
 ) -> BeltTeardownOutcome {
   match belt_exec(
@@ -1268,12 +1268,12 @@ fn belt_actuate_teardown(session_name: String) -> BeltTeardownOutcome {
 
 data belt_actuate_member_shape_note: String = "The reconcile guarantees spawns are DesiredMembers (carry the RoadmapNode for the brief) and teardowns are ObservedMembers (carry the live session). The cross arms are unreachable by construction; if ever reached they REFUSE (typed SpawnFailed/TeardownFailed), never a fabricated action — DESIGN §5 (no spawn without a node model, no teardown without an observed session)."
 
-data belt_session_uuid_salt: NonEmptyStr = "belt-session-uuid-v1" as NonEmptyStr
+data belt_session_uuid_salt: std.types.NonEmptyStr = "belt-session-uuid-v1" as std.types.NonEmptyStr
 
 data belt_spawn_session_uuid_note: String = "The UUID is the Claude provider's --session-id input; Claude requires a syntactically valid UUID. It remains computed for every provider so dispatch_spawn_commands has one stable arity, but CodexCliProvider deliberately ignores it and lets Codex mint its persisted thread id. For Claude the UUID is ATTEMPT-scoped (U1 redispatch fix 2026-07-25): derived from (node_id x the spawn's clock observation), reshaped to RFC-4122 v4. The earlier node-deterministic derivation made every node one-shot at the Claude layer. Reconcile idempotency never keys on this id — the node-grain tmux session name is the observation key."
 
-fn belt_uuid_stamped_id(node_id: String, probed_at: String) -> NonEmptyStr {
-  join([node_id, "\n", probed_at], "") as NonEmptyStr
+fn belt_uuid_stamped_id(node_id: String, probed_at: String) -> std.types.NonEmptyStr {
+  join([node_id, "\n", probed_at], "") as std.types.NonEmptyStr
 }
 
 fn belt_uuid_hex32(node_id: String, probed_at: String) -> String {
@@ -1310,7 +1310,7 @@ fn belt_spawn_session_uuid(node_id: String, probed_at: String) -> String {
   belt_uuid_dash(v: belt_uuid_rfc4122(hex: belt_uuid_hex32(node_id: node_id, probed_at: probed_at)))
 }
 
-fn belt_actuate_spawn_member(m: DispatchMember, workdir: String) -> BeltSpawnOutcome {
+fn belt_actuate_spawn_member(m: gunbc.roadmap_belt.DispatchMember, workdir: String) -> BeltSpawnOutcome {
   match m {
     DesiredMember { node_id: nid, node: node } =>
       match clock_now_probed_at() {
@@ -1334,7 +1334,7 @@ fn belt_actuate_spawn_member(m: DispatchMember, workdir: String) -> BeltSpawnOut
   }
 }
 
-fn belt_actuate_teardown_member(m: DispatchMember) -> BeltTeardownOutcome {
+fn belt_actuate_teardown_member(m: gunbc.roadmap_belt.DispatchMember) -> BeltTeardownOutcome {
   match m {
     ObservedMember { node_id: _, session: session } =>
       belt_actuate_teardown(session_name: session.session_name)
@@ -1423,7 +1423,7 @@ data belt_tick_receipt_note: String = "THE PERSISTED TICK RECEIPT IS WHAT THE WO
 
 data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v2"
 
-fn belt_tick_receipt_path_for_instance(instance: HostDashboardInstance) -> String {
+fn belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> String {
   join([instance.instance_root as String, "/belt-last-tick.json"], "")
 }
 
@@ -1436,7 +1436,7 @@ fn belt_pass_outcome_key(o: BeltPassOutcome) -> String {
   }
 }
 
-fn belt_pass_outcome_json(o: BeltPassOutcome) -> JsonValue {
+fn belt_pass_outcome_json(o: BeltPassOutcome) -> extdeps.languages.json.emit.JsonValue {
   match o {
     BeltPassRecorded =>
       json_object(members: [
@@ -1464,7 +1464,7 @@ type BeltPassOutcomeDecode
   = BeltPassOutcomeDecoded { outcome: BeltPassOutcome }
   | BeltPassOutcomeUnreadable { reason: String }
 
-fn belt_pass_outcome_from_json(doc: JsonValue) -> BeltPassOutcomeDecode {
+fn belt_pass_outcome_from_json(doc: extdeps.languages.json.emit.JsonValue) -> BeltPassOutcomeDecode {
   match json_object_unique_member(v: doc, key: "outcome") {
     JsonMemberFound { value: JsonString { value: outcome } } =>
       match outcome {
@@ -1552,7 +1552,7 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
   }
 }
 
-fn belt_pass_outcome_from_member(doc: JsonValue, key: String) -> BeltPassOutcomeDecode {
+fn belt_pass_outcome_from_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> BeltPassOutcomeDecode {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: pass_doc } => belt_pass_outcome_from_json(doc: pass_doc)
     _ =>
@@ -1600,7 +1600,7 @@ fn belt_tick_receipt_read_from_filesystem(
 }
 
 fn belt_tick_receipt_read_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> BeltTickReceiptRead {
   let read = Filesystem.Read(
     path: belt_tick_receipt_path_for_instance(instance: instance),
@@ -1612,7 +1612,7 @@ fn belt_tick_receipt_read_for_instance(
   )
 }
 
-fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
+fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: belt_tick_receipt_schema)),
     json_kv(key: "observed_at", value: json_string(s: receipt.observed_at)),
@@ -1673,7 +1673,7 @@ fn belt_tick_observed_at() -> String {
 }
 
 fn belt_tick_receipt_write_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   receipt: BeltTickReceipt,
 ) -> BeltPassOutcome {
   let write = Filesystem.Write(
@@ -1704,8 +1704,8 @@ type BeltTickResult {
   publish_outcomes: List<BeltPublishOutcome>,
 }
 
-fn belt_tick_empty_reconcile(state: BeltRunState) -> BeltReconcile {
-  BeltReconcile {
+fn belt_tick_empty_reconcile(state: gunbc.roadmap_belt.BeltRunState) -> gunbc.roadmap_belt.BeltReconcile {
+  gunbc.roadmap_belt.BeltReconcile {
     run_state: state,
     occupied: 0,
     free: 0,
@@ -1727,15 +1727,15 @@ type BeltTickSessionPartition {
   conflicted: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>
 }
 
-fn belt_tick_node_row_count(live: List<DispatchLiveSession>, node_id: String) -> Int {
+fn belt_tick_node_row_count(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, node_id: String) -> Int {
   count(filter(live, s => s.node_id == node_id))
 }
 
 data belt_tick_session_class_note: String = "THE PARTITION READS THE COPRODUCT, NOT A PARALLEL STRING VOCABULARY (review artifact 51309). The first cut asked belt_tick_session_is(s, arm: \"running\") and compared string arms — a second naming scheme for BeltSessionLiveness, which already names exactly these states. Two vocabularies for one concept is the nicknaming class, and the string one is strictly worse: a typo in an arm name compiles and silently empties a bucket, where a missing coproduct arm is a non-exhaustive match the compiler catches.\n\nThe node-awareness stays here rather than moving into belt_session_liveness_from_process, because multiplicity is a fact about a NODE's rows and that function sees one row's process. belt_node_session_liveness makes the same distinction on the dispatch path."
 
 fn belt_tick_session_class(
-  live: List<DispatchLiveSession>,
-  s: DispatchLiveSession,
+  live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
+  s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession,
 ) -> BeltSessionLiveness {
   let n = belt_tick_node_row_count(live: live, node_id: s.node_id)
   if n > 1 {
@@ -1749,35 +1749,35 @@ fn belt_tick_session_class(
   }
 }
 
-fn belt_tick_is_running(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+fn belt_tick_is_running(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession) -> Bool {
   match belt_tick_session_class(live: live, s: s) {
     BeltSessionRunning { session_name: _, command: _ } => true
     _ => false
   }
 }
 
-fn belt_tick_is_stale(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+fn belt_tick_is_stale(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession) -> Bool {
   match belt_tick_session_class(live: live, s: s) {
     BeltSessionStaleTerminal { session_name: _, detail: _ } => true
     _ => false
   }
 }
 
-fn belt_tick_is_refused(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+fn belt_tick_is_refused(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession) -> Bool {
   match belt_tick_session_class(live: live, s: s) {
     BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true
     _ => false
   }
 }
 
-fn belt_tick_is_conflicted(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+fn belt_tick_is_conflicted(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>, s: gunbc.roadmap_dispatch_actuator.DispatchLiveSession) -> Bool {
   match belt_tick_session_class(live: live, s: s) {
     BeltSessionMultiplicityConflict { session_names: _, session_count: _ } => true
     _ => false
   }
 }
 
-fn belt_tick_classify_sessions(live: List<DispatchLiveSession>) -> BeltTickSessionPartition {
+fn belt_tick_classify_sessions(live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>) -> BeltTickSessionPartition {
   BeltTickSessionPartition {
     running: filter(live, s => belt_tick_is_running(live: live, s: s)),
     stale: filter(live, s => belt_tick_is_stale(live: live, s: s)),
@@ -1790,8 +1790,8 @@ data belt_tick_revision_drift_reason: String = "belt tick refused: deployed tree
 data belt_tick_revision_unobserved_reason: String = "belt tick refused: deployed revision could not be observed; spawn and reap withheld"
 
 fn belt_tick_revision_refused(
-  instance: HostDashboardInstance,
-  state: BeltRunState,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  state: gunbc.roadmap_belt.BeltRunState,
   reason: String,
 ) -> BeltTickResult {
   BeltTickResult {
@@ -1806,10 +1806,10 @@ fn belt_tick_revision_refused(
 }
 
 fn belt_tick_for_instance(
-  instance: HostDashboardInstance,
-  state: BeltRunState,
-  frontier: SpawnFrontier,
-  cap: BeltCapacity,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  state: gunbc.roadmap_belt.BeltRunState,
+  frontier: gunbc.roadmap_spawner.SpawnFrontier,
+  cap: gunbc.roadmap_belt.BeltCapacity,
   spawn_workdir: String,
 ) -> BeltTickResult {
   match belt_sessions_observe_for_instance(instance: instance) {
@@ -1875,9 +1875,9 @@ fn belt_tick_for_instance(
 }
 
 fn belt_tick(
-  state: BeltRunState,
-  frontier: SpawnFrontier,
-  cap: BeltCapacity,
+  state: gunbc.roadmap_belt.BeltRunState,
+  frontier: gunbc.roadmap_spawner.SpawnFrontier,
+  cap: gunbc.roadmap_belt.BeltCapacity,
   spawn_workdir: String,
 ) -> BeltTickResult {
   belt_tick_for_instance(
@@ -1890,9 +1890,9 @@ fn belt_tick(
 }
 
 fn belt_tick_default_workdir(
-  state: BeltRunState,
-  frontier: SpawnFrontier,
-  cap: BeltCapacity,
+  state: gunbc.roadmap_belt.BeltRunState,
+  frontier: gunbc.roadmap_spawner.SpawnFrontier,
+  cap: gunbc.roadmap_belt.BeltCapacity,
 ) -> BeltTickResult {
   belt_tick(state: state, frontier: frontier, cap: cap, spawn_workdir: belt_actuate_workdir as String)
 }
@@ -1919,7 +1919,7 @@ fn belt_tick_teardown_ok_count(t: BeltTickResult) -> Int {
 data belt_run_once_note: String = "The runnable belt entrypoint: one tick against the LIVE roadmap. Reads the roadmap authority + merged PRs, builds the ready frontier, and runs belt_tick_default_workdir (Running, default capacity, belt_actuate_workdir). Zero-arg so it is invokable directly (gunbc run --function belt_run_once_json, wet), spawning a real tmux session through dispatch_cli_provider on the host it runs on. belt_run_once returns the typed BeltTickResult; belt_run_once_json projects it to a receipt (observe verdict, occupied/free/deferred, per-node spawn/teardown outcomes, refusal count) so the operator sees exactly what one tick did — no fabricated summary. Idempotent: a spawned session is observed live next tick and reconciles to noop."
 
 fn belt_run_once_in(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   spawn_workdir: String,
 ) -> BeltTickResult {
   match roadmap_authority_projection() {
@@ -1951,7 +1951,7 @@ fn belt_run_once() -> BeltTickResult {
   )
 }
 
-fn belt_spawn_outcome_json(o: BeltSpawnOutcome) -> JsonValue {
+fn belt_spawn_outcome_json(o: BeltSpawnOutcome) -> extdeps.languages.json.emit.JsonValue {
   match o {
     Spawned { node_id: nid, session_name: sn, provider: p } =>
       json_object(members: [
@@ -1971,7 +1971,7 @@ fn belt_spawn_outcome_json(o: BeltSpawnOutcome) -> JsonValue {
   }
 }
 
-fn belt_teardown_outcome_json(o: BeltTeardownOutcome) -> JsonValue {
+fn belt_teardown_outcome_json(o: BeltTeardownOutcome) -> extdeps.languages.json.emit.JsonValue {
   match o {
     ReapedSession { session_name: sn } =>
       json_object(members: [
@@ -1987,7 +1987,7 @@ fn belt_teardown_outcome_json(o: BeltTeardownOutcome) -> JsonValue {
   }
 }
 
-fn belt_tick_result_json_value(t: BeltTickResult) -> JsonValue {
+fn belt_tick_result_json_value(t: BeltTickResult) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: "roadmap-belt-tick/v1")),
     json_kv(key: "observe_refused", value: json_bool(b: t.observe_refused)),
@@ -2007,7 +2007,7 @@ fn belt_tick_result_json_value(t: BeltTickResult) -> JsonValue {
   ])
 }
 
-fn belt_verify_outcome_json(o: BeltVerifyOutcome) -> JsonValue {
+fn belt_verify_outcome_json(o: BeltVerifyOutcome) -> extdeps.languages.json.emit.JsonValue {
   match o {
     VerifyDeferred { node_id, reason } =>
       json_object(members: [
@@ -2071,7 +2071,7 @@ type BeltAttempts
 
 data belt_attempts_observe_note: String = "U3: the attempts observation mirrors belt_observe's fail-closed grammar — git absent or a non-zero for-each-ref is an UNKNOWABLE attempts set (AttemptsRefused, typed, carries stderr), never widened to zero attempts; exit 0 with empty output IS a genuine zero (for-each-ref's documented no-match behavior). Runs in belt_actuate_workdir — the same repo-root authority the spawn's worktree add uses, because the attempt branches live exactly where spawns mint them."
 
-fn belt_attempts_observe_for_instance(instance: HostDashboardInstance) -> BeltAttempts {
+fn belt_attempts_observe_for_instance(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> BeltAttempts {
   let cmd = git_for_each_ref_dispatch_argv_for_instance(instance: instance)
   if belt_program_available(program: cmd.program) {
     let result = gunbc.WitnessBin.Run(
@@ -2093,7 +2093,7 @@ fn belt_attempts_observe() -> BeltAttempts {
   belt_attempts_observe_for_instance(instance: srv1_live_dashboard_instance())
 }
 
-fn belt_attempts_json_value(a: BeltAttempts) -> JsonValue {
+fn belt_attempts_json_value(a: BeltAttempts) -> extdeps.languages.json.emit.JsonValue {
   match a {
     AttemptsRefused { reason: r } =>
       json_object(members: [
@@ -2144,7 +2144,7 @@ type BeltWorkflowAttempts
 data belt_workflow_attempts_note: String = "The workflow route joins the latest published attempt state to process evidence at node grain. Git refs determine which nodes have attempts; the node-current pointer selects the latest modeled attempt without guessing chronology from content-hash keys; Filesystem.Read observes the immutable key/admission prefix plus the append-only Codex JSONL; one exact tmux list-panes read observes alive/dead/exit for all attempts. A git refusal refuses the route. A pane-command or parse refusal stays located inside each attempt so already-terminal provider evidence remains usable while incomplete attempts become refused."
 
 fn belt_attempt_panes_observe_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> BeltAttemptPanes {
   let cmd = tmux_attempt_panes_argv_for_instance(instance: instance)
   if belt_program_available(program: cmd.program) {
@@ -2212,7 +2212,7 @@ fn belt_attempt_panes_observe_for_instance(
 data belt_sessions_observation_separation_note: String = "The sessions route has two probes with independent authority. tmux ls decides only which session containers are present; if it refuses, the session set refuses. The richer pane probe decides process running/exited/unobserved and cleanup eligibility for each already-observed session. A pane-probe refusal therefore does NOT erase known session presence: it maps every present session to process-unobserved and cleanup-unavailable with the located pane reason. This keeps the UI capable of saying `session present · process unknown` instead of either fabricating liveness or hiding the container."
 
 fn belt_sessions_observe_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> BeltObserve {
   let ls = tmux_ls_argv_for_instance(instance: instance)
   if belt_program_available(program: ls.program) {
@@ -2313,10 +2313,10 @@ fn belt_sessions_observe() -> BeltObserve {
 fn attempt_process_for_node(
   panes: BeltAttemptPanes,
   node_id: String,
-) -> WorkerProcessEvidence {
+) -> gunbc.worker_lifecycle.WorkerProcessEvidence {
   match panes {
     BeltAttemptPanesRefused { reason } =>
-      WorkerProcessUnobserved { reason: reason as NonEmptyStr }
+      WorkerProcessUnobserved { reason: reason as std.types.NonEmptyStr }
     BeltAttemptPanesObserved { panes: observed } => {
       let session_name = dispatch_tmux_session_name(
         node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
@@ -2333,8 +2333,8 @@ fn attempt_process_for_node(
 }
 
 fn dispatch_attempt_ref_first_per_node(
-  attempts: List<DispatchAttemptRef>,
-) -> List<DispatchAttemptRef> {
+  attempts: List<gunbc.roadmap_dispatch_actuator.DispatchAttemptRef>,
+) -> List<gunbc.roadmap_dispatch_actuator.DispatchAttemptRef> {
   fold(attempts, init: [], f: fn(acc, attempt) {
     if any(acc, existing => existing.node_id == attempt.node_id) {
       acc
@@ -2345,7 +2345,7 @@ fn dispatch_attempt_ref_first_per_node(
 }
 
 fn belt_validation_summary_for_node(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   node_id: String,
 ) -> String {
   match belt_lookup_node(node_id: node_id) {
@@ -2364,7 +2364,7 @@ type ProviderEventProjectionObservation
   | ProviderEventProjectionRefused { reason: String }
 
 fn belt_provider_event_projection_observe_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   node_id: gunbc.roadmap_model.RoadmapNodeId,
 ) -> ProviderEventProjectionObservation {
   match belt_exec(
@@ -2440,11 +2440,11 @@ fn belt_listing_names_entry(listing: String, name: String) -> Bool {
 data publication_receipt_absence_is_established_note: String = "ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ (review 46148). Filesystem.Read answers success=false both for a receipt that does not exist and for one that exists and cannot be read, and those two worlds have opposite correct actions - observe and write, versus stop and preserve. This walk therefore never concludes absence from a failure of any kind.\\n\\nTHE LADDER STARTS AT A DIRECTORY THAT IS KNOWN TO EXIST, which is what makes each step decidable. The attempt state directory is created by dispatch when the attempt starts, and this producer only runs for an attempt whose worktree head it has already read, so a failure to list THAT directory is unambiguously a fault rather than a not-yet. From there each answer is positive: the publication directory is absent from a listing that succeeded, or the head's own file is absent from a listing that succeeded. Only when the file is listed does a read happen, and a read that then fails is unambiguously a fault because the entry was just observed to exist.\\n\\nWHAT THIS DELIBERATELY DOES NOT DO is widen on doubt. Every failure arm returns ReceiptSourceUnreadable carrying the path and the host error, which the gate turns into a typed, located, counted refusal that halts the row - it never falls back to `treat it as absent and rewrite`, which is the absorbing fallback DESIGN section 5 forbids and precisely the defect this replaced."
 
 fn belt_publication_receipt_source(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
-  subject: PublicationSubjectObservation,
-) -> PublicationReceiptSource {
+  subject: gunbc.roadmap_publish.PublicationSubjectObservation,
+) -> gunbc.roadmap_publish.PublicationReceiptSource {
   match subject {
     PublicationSubjectUnobserved { reason: _ } => ReceiptSourceAbsent
     PublicationSubjectObserved { subject: observed } => {
@@ -2519,11 +2519,11 @@ fn belt_publication_receipt_source(
 }
 
 fn belt_publish_current_verification_selection(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
-  subject: VerificationSubject,
-) -> VerificationSelectionPublishOutcome {
+  subject: gunbc.roadmap_verification_receipt.VerificationSubject,
+) -> gunbc.roadmap_verification_receipt.VerificationSelectionPublishOutcome {
   let path = dispatch_attempt_verification_current_selection_path_for_instance(
     instance: instance,
     node_id: node_id,
@@ -2533,7 +2533,7 @@ fn belt_publish_current_verification_selection(
   let write = Filesystem.Write(
     path: path,
     content: current_verification_selection_json(
-      selection: CurrentVerificationSelection {
+      selection: gunbc.roadmap_verification_receipt.CurrentVerificationSelection {
         head_sha: subject.head_sha,
         change_window_identity: subject.change_window_identity,
       },
@@ -2553,11 +2553,11 @@ fn belt_publish_current_verification_selection(
 }
 
 fn belt_verification_selection_observe(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
-) -> CurrentVerificationSelectionObservation {
+) -> gunbc.roadmap_verification_receipt.CurrentVerificationSelectionObservation {
   current_verification_selection_observe(
     attempt_dir: dispatch_attempt_state_path_for_instance(
       instance: instance,
@@ -2574,12 +2574,12 @@ fn belt_verification_selection_observe(
 }
 
 fn belt_verification_subject_from_selection(
-  node: RoadmapNode,
+  node: gunbc.roadmap_model.RoadmapNode,
   attempt_key: String,
   branch: String,
-  head: CommitSha,
-  selection: CurrentVerificationSelectionObservation,
-) -> VerificationSubjectObservation {
+  head: std.types.CommitSha,
+  selection: gunbc.roadmap_verification_receipt.CurrentVerificationSelectionObservation,
+) -> gunbc.roadmap_verification_receipt.VerificationSubjectObservation {
   match selection {
     SelectionUnaddressable { cause } =>
       VerificationSubjectUnobserved { reason: cause }
@@ -2609,11 +2609,11 @@ fn belt_verification_subject_from_selection(
             }
           Present { value: criteria_digest } =>
             VerificationSubjectObserved {
-              subject: VerificationSubject {
+              subject: gunbc.roadmap_verification_receipt.VerificationSubject {
                 node_identity: node.identity,
                 criteria_digest: criteria_digest,
                 attempt_key: attempt_key,
-                branch: branch as NonEmptyStr,
+                branch: branch as std.types.NonEmptyStr,
                 head_sha: head,
                 change_window_identity: window_identity,
               },
@@ -2624,12 +2624,12 @@ fn belt_verification_subject_from_selection(
 }
 
 fn belt_verification_receipt_source_for_selection(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
   window_identity_hex: String,
-) -> VerificationReceiptFileSource {
+) -> gunbc.roadmap_verification_receipt.VerificationReceiptFileSource {
   let address = exact_verification_address_for(
     attempt_dir: dispatch_attempt_state_path_for_instance(
       instance: instance,
@@ -2654,11 +2654,11 @@ fn belt_verification_receipt_source_for_selection(
 }
 
 fn belt_verification_receipt_source(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
-  selection: CurrentVerificationSelectionObservation,
-) -> VerificationReceiptFileSource {
+  selection: gunbc.roadmap_verification_receipt.CurrentVerificationSelectionObservation,
+) -> gunbc.roadmap_verification_receipt.VerificationReceiptFileSource {
   match selection {
     SelectionUnaddressable { cause } =>
       VerificationReceiptUnreadable {
@@ -2694,10 +2694,10 @@ fn belt_verification_receipt_source(
 }
 
 fn belt_workflow_progress_for_attempt_ref(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   panes: BeltAttemptPanes,
-  attempt: DispatchAttemptRef,
-) -> WorkflowAttemptProgress {
+  attempt: gunbc.roadmap_dispatch_actuator.DispatchAttemptRef,
+) -> gunbc.roadmap_workflow_progress.WorkflowAttemptProgress {
   let key_read = Filesystem.Read(
     path: dispatch_current_attempt_key_path_for_instance(
       instance: instance,
@@ -2705,7 +2705,7 @@ fn belt_workflow_progress_for_attempt_ref(
     ),
   )
   if !key_read.success || trim(key_read.content) == "" {
-    workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    workflow_attempt_progress(evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
       node_id: attempt.node_id,
       attempt_key: attempt.attempt_key,
       branch: attempt.branch,
@@ -2807,7 +2807,7 @@ fn belt_workflow_progress_for_attempt_ref(
                 node: node,
                 attempt_key: current_key,
                 branch: branch,
-                head: revision as CommitSha,
+                head: revision as std.types.CommitSha,
                 selection: verification_selection,
               )
             }
@@ -2819,7 +2819,7 @@ fn belt_workflow_progress_for_attempt_ref(
       attempt_key: current_key,
       subject: publication_subject,
     )
-    workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    workflow_attempt_progress(evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
       node_id: attempt.node_id,
       attempt_key: current_key,
       branch: dispatch_branch_name(
@@ -2891,7 +2891,7 @@ type BeltValidationRun {
 
 data belt_diff_window_producer_note: String = "Roadmap verification produces a GitExactDiffWindow with a derived window_identity immediately before gunbc-claim validation. The belt observes target_generation via rev-parse and merge-base(head, target_generation) in the detached verification checkout, writes the receipt at verification/<head>.<window_identity>.diff-window.json, and binds GUNBC_DIFF_WINDOW_PATH only for validations that consume an affected-set window."
 
-fn git_target_generation_observation_of(outcome: BeltExecOutcome) -> GitTargetGenerationObservation {
+fn git_target_generation_observation_of(outcome: BeltExecOutcome) -> gunbc.git_diff_change_window.GitTargetGenerationObservation {
   match outcome {
     ExecOk { stdout } =>
       match git_object_id_from_untagged_hex(hex: trim(stdout)) {
@@ -2914,10 +2914,10 @@ fn git_target_generation_observation_of(outcome: BeltExecOutcome) -> GitTargetGe
 
 fn git_merge_base_observation_of(
   outcome: BeltExecOutcome,
-  target: GitRef,
-  target_generation: GitObjectId,
-  head: GitObjectId,
-) -> GitMergeBaseObservation {
+  target: std.types.GitRef,
+  target_generation: extdeps.git.object_store.GitObjectId,
+  head: extdeps.git.object_store.GitObjectId,
+) -> gunbc.git_diff_change_window.GitMergeBaseObservation {
   match outcome {
     ExecOk { stdout } =>
       match git_object_id_from_untagged_hex(hex: trim(stdout)) {
@@ -2944,10 +2944,10 @@ fn git_merge_base_observation_of(
 }
 
 fn belt_observe_target_generation(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   worktree: String,
-  target: GitRef,
-) -> GitTargetGenerationObservation {
+  target: std.types.GitRef,
+) -> gunbc.git_diff_change_window.GitTargetGenerationObservation {
   git_target_generation_observation_of(
     outcome: belt_exec(
       cmd: host_exec_argv(
@@ -2963,7 +2963,7 @@ fn belt_observe_target_generation(
 }
 
 fn belt_observe_merge_base(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   worktree: String,
   head_sha: String,
   target_generation_hex: String,
@@ -2981,12 +2981,12 @@ fn belt_observe_merge_base(
 }
 
 fn belt_prepare_diff_window_for_verification(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
   attempt_key: String,
-  subject: VerificationSubject,
+  subject: gunbc.roadmap_verification_receipt.VerificationSubject,
   worktree: String,
-) -> GitDiffWindowPrepareOutcome {
+) -> gunbc.git_diff_change_window.GitDiffWindowPrepareOutcome {
   let head_sha = subject.head_sha as String
   let target = instance.dispatch_base_ref
   match git_object_id_from_untagged_hex(hex: head_sha) {
@@ -3100,10 +3100,10 @@ fn belt_prepare_diff_window_for_verification(
 }
 
 fn belt_verification_subject_with_window(
-  subject: VerificationSubject,
-  window_identity: Fnv1a64Structural,
-) -> VerificationSubject {
-  VerificationSubject {
+  subject: gunbc.roadmap_verification_receipt.VerificationSubject,
+  window_identity: std.content_hash.Fnv1a64Structural,
+) -> gunbc.roadmap_verification_receipt.VerificationSubject {
+  gunbc.roadmap_verification_receipt.VerificationSubject {
     node_identity: subject.node_identity,
     criteria_digest: subject.criteria_digest,
     attempt_key: subject.attempt_key,
@@ -3114,8 +3114,8 @@ fn belt_verification_subject_with_window(
 }
 
 fn belt_exec_with_diff_window_env(
-  instance: HostDashboardInstance,
-  cmd: HostExecArgv,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  cmd: gunbc.roadmap_dispatch_actuator.HostExecArgv,
   workdir: String,
   diff_window_path: String,
 ) -> BeltExecOutcome {
@@ -3135,10 +3135,10 @@ fn belt_exec_with_diff_window_env(
 }
 
 fn belt_run_validation_operations(
-  instance: HostDashboardInstance,
-  validations: List<ValidationOperation>,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  validations: List<gunbc.roadmap_execution_contract.ValidationOperation>,
   worktree: String,
-  oracle_identity: ContentHash,
+  oracle_identity: std.content_hash.ContentHash,
   diff_window_path: String?,
 ) -> BeltValidationRun {
   fold(
@@ -3206,7 +3206,7 @@ fn belt_run_validation_operations(
               match exec_outcome {
                 ExecOk { stdout } =>
                   BeltValidationRun {
-                    executions: acc.executions |> append(ValidationExecution {
+                    executions: acc.executions |> append(gunbc.roadmap_verification_receipt.ValidationExecution {
                       validation: validation,
                       command: command,
                       exit_code: 0,
@@ -3224,7 +3224,7 @@ fn belt_run_validation_operations(
                   }
                 ExecFailed { program: _, exit_code, stderr } =>
                   BeltValidationRun {
-                    executions: acc.executions |> append(ValidationExecution {
+                    executions: acc.executions |> append(gunbc.roadmap_verification_receipt.ValidationExecution {
                       validation: validation,
                       command: command,
                       exit_code: exit_code,
@@ -3265,8 +3265,8 @@ fn belt_run_validation_operations(
 }
 
 fn belt_verify_attempt_for_instance(
-  instance: HostDashboardInstance,
-  progress: WorkflowAttemptProgress,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  progress: gunbc.roadmap_workflow_progress.WorkflowAttemptProgress,
 ) -> BeltVerifyOutcome {
   let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
   match progress.provider {
@@ -3319,12 +3319,12 @@ fn belt_verify_attempt_for_instance(
                       reason: "this roadmap node has no criteria digest, so the verification subject cannot be constructed",
                     }
                   Present { value: criteria_digest } => {
-                    let partial_subject = VerificationSubject {
+                    let partial_subject = gunbc.roadmap_verification_receipt.VerificationSubject {
                       node_identity: node.identity,
                       criteria_digest: criteria_digest,
                       attempt_key: progress.attempt_key,
-                      branch: branch as NonEmptyStr,
-                      head_sha: revision as CommitSha,
+                      branch: branch as std.types.NonEmptyStr,
+                      head_sha: revision as std.types.CommitSha,
                       change_window_identity: git_diff_window_absent_identity(),
                     }
                     let prepared_window = if worktree != ""
@@ -3455,12 +3455,12 @@ fn belt_verify_attempt_for_instance(
 }
 
 fn belt_verify_run_and_persist(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
-  progress: WorkflowAttemptProgress,
-  subject: VerificationSubject,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  node: gunbc.roadmap_model.RoadmapNode,
+  progress: gunbc.roadmap_workflow_progress.WorkflowAttemptProgress,
+  subject: gunbc.roadmap_verification_receipt.VerificationSubject,
   diff_window_path: String?,
-  change_window_refusal: ChangeWindowPreparationRefusal?,
+  change_window_refusal: gunbc.git_diff_change_window.ChangeWindowPreparationRefusal?,
 ) -> BeltVerifyOutcome {
   let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
   let identity_hex = git_diff_window_identity_hex(
@@ -3522,7 +3522,7 @@ fn belt_verify_run_and_persist(
         },
       },
     }
-    let receipt = VerificationReceipt {
+    let receipt = gunbc.roadmap_verification_receipt.VerificationReceipt {
       subject: subject,
       oracle_identity: match pinned_identity {
         Present { value: identity } => identity
@@ -3559,7 +3559,7 @@ fn belt_verify_run_and_persist(
             cause: ValidationChangeWindowRefused { cause: cause },
           },
         }
-        let receipt = VerificationReceipt {
+        let receipt = gunbc.roadmap_verification_receipt.VerificationReceipt {
           subject: subject,
           oracle_identity: match pinned_identity {
             Present { value: identity } => identity
@@ -3606,7 +3606,7 @@ fn belt_verify_run_and_persist(
       },
       revision: match pinned_revision {
         Present { value: revision } => revision
-        Absent => "oracle-pin-unreadable" as NonEmptyStr as VersionIdentity
+        Absent => "oracle-pin-unreadable" as std.types.NonEmptyStr as extdeps.version.VersionIdentity
       },
       pin_read_detail: if pin_refusal == "" {
         "no oracle identity was recorded for this attempt at dispatch"
@@ -3638,7 +3638,7 @@ fn belt_verify_run_and_persist(
             )
         }
     }
-    let receipt = VerificationReceipt {
+    let receipt = gunbc.roadmap_verification_receipt.VerificationReceipt {
       subject: subject,
       oracle_identity: match pinned_identity {
         Present { value: identity } => identity
@@ -3672,7 +3672,7 @@ fn belt_verify_run_and_persist(
 }
 
 fn belt_verify_attempts_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> List<BeltVerifyOutcome> {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
@@ -3757,7 +3757,7 @@ fn belt_verify_pass_outcome_from(outcomes: List<BeltVerifyOutcome>) -> BeltPassO
 }
 
 fn belt_workflow_attempts_observe_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> BeltWorkflowAttempts {
   match belt_attempts_observe_for_instance(instance: instance) {
     AttemptsRefused { reason } =>
@@ -3779,8 +3779,8 @@ fn belt_workflow_attempts_observe_for_instance(
 data belt_attempt_presentation_note: String = "The wire join of the two authorities the client must never re-derive: the attempt's progress members (gunbc.roadmap_workflow_progress, unchanged) plus the DECIDED activity view (gunbc.roadmap_presentation) appended as one 'activity' member. The seam reads process and current activity from INSIDE the progress carrier (one_progress_authority_note — the belt cannot pass a disagreeing process beside it), so this join is one call on one value. The join lives here because progress cannot import presentation without a cycle; the member-list seam (workflow_attempt_progress_json_members) is what lets the belt extend the object without re-stating or re-matching it."
 
 fn belt_workflow_attempt_presentation_json(
-  progress: WorkflowAttemptProgress,
-) -> JsonValue {
+  progress: gunbc.roadmap_workflow_progress.WorkflowAttemptProgress,
+) -> extdeps.languages.json.emit.JsonValue {
   belt_workflow_attempt_presentation_json_with_tick_read(
     progress: progress,
     tick_read: BeltTickReceiptAbsent,
@@ -3788,9 +3788,9 @@ fn belt_workflow_attempt_presentation_json(
 }
 
 fn belt_workflow_attempt_presentation_json_for_instance(
-  instance: HostDashboardInstance,
-  progress: WorkflowAttemptProgress,
-) -> JsonValue {
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  progress: gunbc.roadmap_workflow_progress.WorkflowAttemptProgress,
+) -> extdeps.languages.json.emit.JsonValue {
   belt_workflow_attempt_presentation_json_with_tick_read(
     progress: progress,
     tick_read: belt_tick_receipt_read_for_instance(instance: instance),
@@ -3798,9 +3798,9 @@ fn belt_workflow_attempt_presentation_json_for_instance(
 }
 
 fn belt_workflow_attempt_presentation_json_with_tick_read(
-  progress: WorkflowAttemptProgress,
+  progress: gunbc.roadmap_workflow_progress.WorkflowAttemptProgress,
   tick_read: BeltTickReceiptRead,
-) -> JsonValue {
+) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: concat(
     workflow_attempt_progress_json_members(progress: progress),
     [
@@ -3818,7 +3818,7 @@ fn belt_workflow_attempt_presentation_json_with_tick_read(
     ]))
 }
 
-fn belt_tick_receipt_wire_json_from_read(tick_read: BeltTickReceiptRead) -> JsonValue {
+fn belt_tick_receipt_wire_json_from_read(tick_read: BeltTickReceiptRead) -> extdeps.languages.json.emit.JsonValue {
   match tick_read {
     BeltTickReceiptPresent { receipt } =>
       json_object(members: [
@@ -3841,17 +3841,17 @@ fn belt_tick_receipt_wire_json_from_read(tick_read: BeltTickReceiptRead) -> Json
 }
 
 fn belt_tick_receipt_wire_json_for_instance(
-  instance: HostDashboardInstance,
-) -> JsonValue {
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+) -> extdeps.languages.json.emit.JsonValue {
   belt_tick_receipt_wire_json_from_read(
     tick_read: belt_tick_receipt_read_for_instance(instance: instance),
   )
 }
 
 fn belt_workflow_attempts_json_value_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   observed: BeltWorkflowAttempts,
-) -> JsonValue {
+) -> extdeps.languages.json.emit.JsonValue {
   let tick_read = belt_tick_receipt_read_for_instance(instance: instance)
   match observed {
     WorkflowAttemptsRefused { reason } =>
@@ -3882,7 +3882,7 @@ fn belt_workflow_attempts_json_value_for_instance(
 
 fn belt_workflow_attempts_json_value(
   observed: BeltWorkflowAttempts,
-) -> JsonValue {
+) -> extdeps.languages.json.emit.JsonValue {
   belt_workflow_attempts_json_value_for_instance(
     instance: srv1_live_dashboard_instance(),
     observed: observed,
@@ -3890,7 +3890,7 @@ fn belt_workflow_attempts_json_value(
 }
 
 fn belt_workflow_attempts_observed_json_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   observed: BeltWorkflowAttempts,
 ) -> String {
   serialize_json(v: belt_workflow_attempts_json_value_for_instance(
@@ -3929,7 +3929,7 @@ type BeltStopResult
 data belt_stop_note: String = "U4 (stop/clear from the UI): cleanup consumes the same independently observed session and process facts served to the page. Session-list refusal yields StopObserveRefused. A present running pane is stop-eligible only with the configured provider fingerprint; a foreign or unobserved running process refuses. A retained dead pane is a different operation: clear removes tmux metadata after the process has already exited, so its historical wrapper command is never misclassified as a live foreign process. Teardown failure remains its own typed 502 arm."
 
 fn belt_stop_node_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   node_id: String,
 ) -> BeltStopResult {
   match instance.actuation {
@@ -4015,7 +4015,7 @@ fn belt_stop_node(node_id: String) -> BeltStopResult {
   )
 }
 
-fn belt_stop_result_json_value(r: BeltStopResult) -> JsonValue {
+fn belt_stop_result_json_value(r: BeltStopResult) -> extdeps.languages.json.emit.JsonValue {
   match r {
     StopProcessStopped { node_id: nid, session_name: sn } =>
       json_object(members: [
@@ -4097,7 +4097,7 @@ fn belt_stop_json(node_id: String) -> String {
 
 data belt_sessions_json_note: String = "The sessions wire projects independent session-container, process-lifecycle, provider, readiness, phase, and cleanup facts. Inclusion in sessions proves only `session_presence=present`. process_state comes from the exact dead/status pane observation; cleanup_action is derived separately from process state plus ownership policy. A refused pane probe stays per-session as process unobserved and cleanup unavailable while the known session set remains a 200. Only refusal of the tmux session-list source produces top-level observe_refused/503. Cleanup scope for admitted rows uses dispatch_tmux_session_scope_for_live_session from the session worker's configured provider facts — never a production-selection re-query that would fabricate eligibility or a partial row when standing refuses."
 
-fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
+fn belt_sessions_json_value(o: BeltObserve) -> extdeps.languages.json.emit.JsonValue {
   match o {
     ObserveRefused { reason: r } =>
       json_object(members: [
@@ -4171,7 +4171,7 @@ data belt_run_once_cli_note: String = "The ProcessExit entrypoint — this is wh
 
 data belt_spawn_workdir_is_a_parameter_note: String = "THE SPAWN ROOT IS SUPPLIED BY WHOEVER INVOKES THE TICK, AND MAKING IT A LITERAL WAS THE DEFECT. belt_actuate_workdir is a projection of srv1_gunbc_repo_root, so a tick spawned `git worktree add` into PRODUCTION's tree no matter which deployment invoked it. That was invisible while nothing invoked the belt on a cadence; the moment a deployment owns a timer it stops being invisible, because the srv1-lab twin would install a unit that actuates production — the failure gunbc.live_deploy.spec's deployment_service_handler_note records for the serve handler, where every path-level check passes and the process simply operates as production.\\n\\nIt enters through the environment for the same reason the node id does (belt_dispatch_node_cli_note): `gunbc run --function` cannot pass an argument, there is no --arg flag. So the deployment's belt unit sets GUNBC_BELT_SPAWN_WORKDIR to ITS instance's repo root, and each instance actuates its own tree.\\n\\nFAIL-CLOSED ON THE CHANNEL, and the choice matters more here than for a node id: defaulting an absent variable to belt_actuate_workdir would restore the exact defect, silently, for every caller that forgot to set it — the absorbing fallback DESIGN §5 forbids, with production's tree as the thing absorbed. A missing OR empty value refuses, and shell.Env.Get returns Present-but-empty for an unset var wet, so both fold into one refusal.\\n\\nbelt_run_once and belt_run_once_json keep the literal default: they are inspection surfaces invoked by hand against production, not the scheduled entrypoint, and belt_run_once_in is the one implementation both spellings route through so the parameterized and default paths cannot drift."
 
-fn belt_run_once_cli() -> ProcessExit {
+fn belt_run_once_cli() -> std.process.ProcessExit {
   match shell.Env.Get(name: belt_spawn_workdir_env_var).value {
     Absent =>
       exit_failure(reason: "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR not set — the spawn root is a per-deployment fact and defaulting it would actuate production's tree (fail-closed)")
@@ -4184,7 +4184,7 @@ fn belt_run_once_cli() -> ProcessExit {
   }
 }
 
-fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
+fn belt_run_once_cli_in(spawn_workdir: String) -> std.process.ProcessExit {
   match belt_dashboard_instance_lookup_for_spawn_workdir(workdir: spawn_workdir) {
     UnknownSpawnWorkdir { workdir: w } =>
       exit_failure(reason: join([
@@ -4222,7 +4222,7 @@ type BeltNodeLookup
   | NodeMissing
   | AuthorityProjectionRefused { detail: String }
 
-fn belt_find_node_in(nodes: List<RoadmapNode>, node_id: String) -> BeltNodeLookup {
+fn belt_find_node_in(nodes: List<gunbc.roadmap_model.RoadmapNode>, node_id: String) -> BeltNodeLookup {
   let matches = nodes |> filter(n => n.node == node_id)
   fold(matches, init: NodeMissing, f: fn(acc, n) {
     match acc {
@@ -4253,7 +4253,7 @@ type BeltSessionLiveness
 
 fn belt_session_liveness_from_process(
   session_name: String,
-  process: WorkerProcessEvidence,
+  process: gunbc.worker_lifecycle.WorkerProcessEvidence,
 ) -> BeltSessionLiveness {
   match process {
     WorkerProcessRunning { command } =>
@@ -4282,7 +4282,7 @@ fn belt_session_liveness_from_process(
 }
 
 fn belt_node_session_liveness(
-  live: List<DispatchLiveSession>,
+  live: List<gunbc.roadmap_dispatch_actuator.DispatchLiveSession>,
   node_id: String,
 ) -> BeltSessionLiveness {
   let matched = live |> filter(s => s.node_id == node_id)
@@ -4317,7 +4317,7 @@ type BeltRevisionAdmission
 
 data belt_revision_admission_note: String = "THE GATE, EXTRACTED SO IT IS WITNESSABLE (review artifact 51237 handback item 4). The revision check lived inline in belt_dispatch_node_for_instance, so every witness constructed DispatchRevisionDrifted directly and asserted its label, band and JSON — which proves the ARMS render, and would stay green if the fleet_revision_standing match were deleted outright. A test that survives the removal of the thing it tests is not testing it.\n\nThis fold is pure: FleetRevisionStanding in, admission out, no effect. The effectful read stays at the call site, so a witness can drive Converged / Drifted / Unobserved through the real decision without a git tree.\n\nIt is also the SHARED seam, which is the second half of the same finding: the belt timer is a dispatch actuator exactly as much as the button is, and a gate that only the button consults refuses a click on a drifted host while the tick spawns against it anyway."
 
-fn belt_revision_admission(standing: FleetRevisionStanding) -> BeltRevisionAdmission {
+fn belt_revision_admission(standing: gunbc.fleet_desired_observe.FleetRevisionStanding) -> BeltRevisionAdmission {
   match standing {
     RevisionConverged { revision: r } =>
       BeltRevisionAdmitted { revision: git_object_id_wire_hex(oid: r) as String }
@@ -4352,7 +4352,7 @@ type BeltDispatchResult
 data belt_dispatch_revision_gate_note: String = "DISPATCH READS BACK THE DEPLOYED REVISION BEFORE IT ACTS, and the reason is that every fact this path consumes comes from the deployed tree — the node roster, the signoff, the contract, the command it is about to run. `gunbc.fleet_desired_observe` `fleet_revision_standing` already decided that cell three ways, and until now its ONLY consumer was `gunbc.fleet_converge_cli`: convergence knew the host was drifted while the served page dispatched against the drifted tree anyway, saying nothing. That is not a stale display, it is a worker spawned from code the fleet never admitted, reported as an ordinary spawn.\\n\\nSo the standing is consulted FIRST — before node lookup, before session observation, before the worktree — because a roster read from an unadmitted tree cannot be trusted to name the right node, and refusing later would mean refusing after acting on it.\\n\\nBOTH non-converged arms refuse, and neither is an absorbing widen: `RevisionDrifted` carries BOTH revisions (the membership-diff `from` ruling — a catch-up needs the prior, and a receipt must name what it observed), `RevisionUnobserved` carries its cause and is unobserved-GRADE, never satisfied. A `RevisionUnobserved` that dispatched anyway would be exactly the empty-observation narrow: could-not-compare rendered as nothing-is-wrong.\\n\\nThe repo path is `instance.repo_root`, not the `srv1_gunbc_repo_root` constant `fleet_converge_cli` uses, because the gate is a fact about the instance being dispatched — hardcoding srv1 here would mint a second path authority and answer for the wrong host on any other instance."
 
 fn belt_dispatch_node_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   node_id: String,
 ) -> BeltDispatchResult {
   match instance.actuation {
@@ -4600,7 +4600,7 @@ fn belt_dispatch_provider_label() -> String {
   }
 }
 
-fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
+fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> extdeps.languages.json.emit.JsonValue {
   match r {
     DispatchSpawned { node_id: nid, session_name: sn, provider: p } =>
       json_object(members: [
@@ -4689,11 +4689,11 @@ fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
   }
 }
 
-data belt_dispatch_env_var: NonEmptyStr = "GUNBC_BELT_NODE_ID" as NonEmptyStr
+data belt_dispatch_env_var: std.types.NonEmptyStr = "GUNBC_BELT_NODE_ID" as std.types.NonEmptyStr
 
 data belt_dispatch_node_cli_note: String = "The ProcessExit entrypoint the roadmap-UI launch button drives. gunbc run --function cannot pass an argument (there is no --arg flag), so the node id enters through the environment: the Node HTTP server on srv1 shells env GUNBC_BELT_NODE_ID=NODE gunbc run --function belt_dispatch_node_cli, and this reads it via shell.Env.Get (the same env-read authority github.auth uses for its token). Fail-closed on the channel: a missing OR empty GUNBC_BELT_NODE_ID refuses — shell.Env.Get returns a Present-but-empty value for an unset var wet, so empty is folded into the same refusal as Absent. Exit map: DispatchSpawned or DispatchAlreadyLive -> ExitSuccess (the click achieved or already holds the desired state, the node is being worked); every refusal or failure (node_not_found, already_done, observe_refused, spawn_failed) -> exit_failure with the JSON receipt on stderr, so the server relays the exact cause back to the operator."
 
-fn belt_dispatch_node_cli() -> ProcessExit {
+fn belt_dispatch_node_cli() -> std.process.ProcessExit {
   match shell.Env.Get(name: belt_dispatch_env_var).value {
     Absent =>
       exit_failure(reason: "belt_dispatch_node_cli: GUNBC_BELT_NODE_ID not set — no node id to dispatch (fail-closed)")
@@ -4731,7 +4731,7 @@ fn belt_publication_subject_for(
   attempt_key: String,
   branch: String,
   head: WorktreeHeadObservation,
-) -> PublicationSubjectObservation {
+) -> gunbc.roadmap_publish.PublicationSubjectObservation {
   match head {
     WorktreeHeadUnobserved { reason } =>
       PublicationSubjectUnobserved {
@@ -4747,13 +4747,13 @@ fn belt_publication_subject_for(
         }
       } else {
         PublicationSubjectObserved {
-          subject: RoadmapPublicationSubject {
+          subject: gunbc.roadmap_publish.RoadmapPublicationSubject {
             node_id: node_id,
             attempt_key: attempt_key,
             repository: gunbc_repository,
-            branch: branch as NonEmptyStr,
-            expected_base: gunbc_repository.default_branch as NonEmptyStr,
-            expected_head: revision as CommitSha,
+            branch: branch as std.types.NonEmptyStr,
+            expected_base: gunbc_repository.default_branch as std.types.NonEmptyStr,
+            expected_head: revision as std.types.CommitSha,
           },
         }
       }
@@ -4768,8 +4768,8 @@ type BeltPublishGate
 
 fn belt_publish_gate(
   node_id: String,
-  subject: RoadmapPublicationSubject,
-  existing: PublicationReceiptSource,
+  subject: gunbc.roadmap_publish.RoadmapPublicationSubject,
+  existing: gunbc.roadmap_publish.PublicationReceiptSource,
 ) -> BeltPublishGate {
   match publication_evidence_for(expected: subject, source: existing) {
     EvidenceAbsent => PublishProceed
@@ -4810,8 +4810,8 @@ fn belt_publish_gate(
 
 fn belt_publish_write_outcome(
   node_id: String,
-  subject: RoadmapPublicationSubject,
-  receipt: PublicationReceipt,
+  subject: gunbc.roadmap_publish.RoadmapPublicationSubject,
+  receipt: gunbc.roadmap_publish.PublicationReceipt,
   write_success: Bool,
   write_error: String,
 ) -> BeltPublishOutcome {
@@ -4833,10 +4833,10 @@ fn belt_publish_write_outcome(
 }
 
 fn belt_publish_attempt_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   node_id: String,
   attempt_key: String,
-  credential: PublicationCredentialSource,
+  credential: gunbc.roadmap_publish_observe.PublicationCredentialSource,
 ) -> BeltPublishOutcome {
   let attempt_worktree = dispatch_worktree_path_for_instance(
     instance: instance,
@@ -4925,10 +4925,10 @@ fn belt_publish_attempt_for_instance(
 
 data belt_publish_credential_note: String = "THE CREDENTIAL IS PROBED FOR PRESENCE AND CARRIED AS A SOURCE, NEVER AS A VALUE. github.Pulls.List takes a CredentialSource - the same EnvVar row gunbc.tools.review_codex already passes - and the transport resolves it at the boundary, so the token itself never becomes a value in this graph. What this function establishes is only whether resolving it would find anything.\\n\\nWHY THE PROBE EXISTS AT ALL, rather than assuming presence: a publication read without a usable token is not a failed read, it is a read that must not be attempted. Sending an empty bearer produces a 401 whose only content is that we sent nothing - and the REST realization turns a 401 into a raise, so the most decidable failure on a fresh host would arrive as the least tractable kind of event. Probing turns it into an ordinary value that becomes a recorded refusal.\\n\\nTHE VALUE DOES TRANSIT, and pretending otherwise would be the overclaim. shell.Env.Get returns the variable's contents, so the token is briefly a String inside this process; only its emptiness escapes this function, and nothing stores or renders it. A presence probe that never read the value would need `test -n` against a variable this layer would have to name into a shell string, which is the composed-command shape the shell-to-intent lane exists to remove. Dissolve-on: a modeled presence-only environment probe, at which point this reads nothing.\\n\\nOutcomeIsData ADMISSIBILITY: printenv exits 1 when the variable is unset, and that exit IS the answer this function is asking for, not a fault. The result is a PublicationCredentialSource whose two arms ARE the adjudication - never unit - which is the shape belt_outcome_is_data_note requires of every annotated probe here."
 
-data belt_publication_credential_source: CredentialSource = std.credentials.EnvVar { name: "GITHUB_TOKEN" }
+data belt_publication_credential_source: std.credentials.CredentialSource = std.credentials.EnvVar { name: "GITHUB_TOKEN" }
 
-fn belt_publication_credential() -> PublicationCredentialSource {
-  match shell.Env.Get(name: "GITHUB_TOKEN" as NonEmptyStr, expect: OutcomeIsData).value {
+fn belt_publication_credential() -> gunbc.roadmap_publish_observe.PublicationCredentialSource {
+  match shell.Env.Get(name: "GITHUB_TOKEN" as std.types.NonEmptyStr, expect: OutcomeIsData).value {
     Present { value } =>
       if trim(value) == "" {
         CredentialSourceAbsent {
@@ -4974,7 +4974,7 @@ fn belt_publish_pass_outcome_from(outcomes: List<BeltPublishOutcome>) -> BeltPas
   }
 }
 
-fn belt_verification_segment(progress: WorkflowAttemptProgress) -> WorkflowSegment? {
+fn belt_verification_segment(progress: gunbc.roadmap_workflow_progress.WorkflowAttemptProgress) -> gunbc.roadmap_workflow_stage.WorkflowSegment? {
   fold(progress.segments, init: none, f: (acc, s) => match acc {
     Present { value: v } => Present { value: v }
     Absent =>
@@ -4986,7 +4986,7 @@ fn belt_verification_segment(progress: WorkflowAttemptProgress) -> WorkflowSegme
 }
 
 fn belt_verification_presentation_detail(
-  progress: WorkflowAttemptProgress,
+  progress: gunbc.roadmap_workflow_progress.WorkflowAttemptProgress,
   tick_read: BeltTickReceiptRead,
 ) -> String {
   match belt_verification_segment(progress: progress) {
@@ -5052,7 +5052,7 @@ fn belt_tick_receipt_from_result(
 data belt_publish_pass_note: String = "PUBLICATION RUNS ON THE SAME TICK AS SPAWN, TEARDOWN AND VERIFY, because it is the same kind of fact: a desired obligation reconciled against an observed one. A producer nobody calls is the defect this lane keeps producing - every piece of the publication path existed before this pass and none of it ever ran - so the wiring is the deliverable, not the type.\\n\\nIT RUNS PER ATTEMPT, OVER THE SAME OBSERVED LEDGER VERIFY USES, and it does NOT wait for the agent to finish. That is the difference from the verify pass and it is deliberate: verification is an action taken ON the attempt, so running it early would burn a validation against an unfinished tree, while publication is an OBSERVATION of the remote, so running it early records the true state - the branch is not published yet - and the next tick revises it. The gate is what makes that safe, since only a receipt saying the head is on offer stops the revisions.\\n\\nONE CREDENTIAL PROBE PER TICK, not one per attempt. The environment does not change between attempts within a tick, and probing per attempt would multiply a process spawn by the attempt count for an answer that cannot differ."
 
 fn belt_publish_attempts_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> List<BeltPublishOutcome> {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
@@ -5086,7 +5086,7 @@ fn belt_publish_attempts() -> List<BeltPublishOutcome> {
 data belt_publish_node_note: String = "THE PRODUCER NEEDS A LIVE TRIGGER, AND belt_tick IS NOT ONE. belt_tick is the belt's actuation pass and nothing calls it - not the serve routes, not a timer, not the CLI. That is a pre-existing gap it shares with the verification pass, which is wired into the same tick and is equally undriven; this lane did not create it and does not close it.\\n\\nWhat it does mean is that wiring publication into belt_tick alone would leave the receipt unproduced in production, which is the exact defect the recut exists to fix, one layer further out. So publication also gets a per-node entry the serve table can reach, mirroring belt_dispatch_node_for_instance: an operator presses it, the receipt is written, and the next read of the row paints from it.\\n\\nIT RESOLVES THE ATTEMPT ITSELF rather than taking one, because the caller is a route holding only a node id. The current attempt pointer is the same authority the workflow projection reads, so both are answering about the same attempt by construction rather than by the caller passing a matching key.\\n\\nOBSERVE-ONLY INSTANCES REFUSE, like dispatch. Publication performs a network read and a filesystem write against an instance's own attempt state, so an instance declared observe-only must not perform either - and the refusal names the posture rather than reporting an absence."
 
 fn belt_publish_node_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   node_id: String,
 ) -> BeltPublishOutcome {
   match instance.actuation {
@@ -5185,7 +5185,7 @@ fn belt_publish_outcome_http_status(o: BeltPublishOutcome) -> Int {
   }
 }
 
-fn belt_publish_outcome_json_value(o: BeltPublishOutcome) -> JsonValue {
+fn belt_publish_outcome_json_value(o: BeltPublishOutcome) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: "roadmap-belt-publish/v1")),
     json_kv(key: "outcome", value: json_string(s: belt_publish_outcome_key(o: o))),

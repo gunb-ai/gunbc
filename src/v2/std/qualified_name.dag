@@ -1,7 +1,7 @@
 module v2.std.qualified_name
 
 
-type QualifiedName = FreeMonoid<Symbol>
+type QualifiedName = FreeMonoid<v2.std.node.Symbol>
 
 type QnFoldStatus
   = QnFoldInit
@@ -18,7 +18,7 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
       } else if count(n.children) == 2 {
         QnFoldInit
       } else {
-        QnFoldError { diag: Diagnostic {
+        QnFoldError { diag: v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: n),
           correction: Unavailable { reason: ExternalContractUnknown }
@@ -28,14 +28,14 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
       if count(n.children) == 0 {
         QnFoldDone { qn: Cons { head: sym, tail: Empty } }
       } else {
-        QnFoldError { diag: Diagnostic {
+        QnFoldError { diag: v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: n),
           correction: Unavailable { reason: ExternalContractUnknown }
         }}
       }
     _ =>
-      QnFoldError { diag: Diagnostic {
+      QnFoldError { diag: v2.std.diagnostic.Diagnostic {
         reason: ^qualified_name_structure_invalid,
         at: node_locus(node: n),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -43,7 +43,7 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
   }
 }
 
-fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldStatus {
+fn qn_fold_step(acc: QnFoldStatus, edge: v2.std.node.Edge, child: QnFoldStatus) -> QnFoldStatus {
   match acc {
     QnFoldError { diag: d } => QnFoldError { diag: d }
     _ =>
@@ -62,25 +62,25 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                             match acc {
                               QnFoldInit => QnFoldHeadSeen { sym: sym }
                               QnFoldTailSeen { tail: tail_qn } => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
-                              _ => QnFoldError { diag: Diagnostic {
+                              _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                                 reason: ^qualified_name_structure_invalid,
                                 at: node_locus(node: edge.target),
                                 correction: Unavailable { reason: ExternalContractUnknown }
                               }}
                             }
-                          HeadFound { value: _ } => QnFoldError { diag: Diagnostic {
+                          HeadFound { value: _ } => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                             reason: ^qualified_name_structure_invalid,
                             at: node_locus(node: edge.target),
                             correction: Unavailable { reason: ExternalContractUnknown }
                           }}
                         }
-                      _ => QnFoldError { diag: Diagnostic {
+                      _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                         reason: ^qualified_name_structure_invalid,
                         at: node_locus(node: edge.target),
                         correction: Unavailable { reason: ExternalContractUnknown }
                       }}
                     }
-                  _ => QnFoldError { diag: Diagnostic {
+                  _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                     reason: ^qualified_name_structure_invalid,
                     at: node_locus(node: edge.target),
                     correction: Unavailable { reason: ExternalContractUnknown }
@@ -92,32 +92,32 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                     match acc {
                       QnFoldInit => QnFoldTailSeen { tail: child_qn }
                       QnFoldHeadSeen { sym: sym } => QnFoldDone { qn: Cons { head: sym, tail: child_qn } }
-                      _ => QnFoldError { diag: Diagnostic {
+                      _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                         reason: ^qualified_name_structure_invalid,
                         at: node_locus(node: edge.target),
                         correction: Unavailable { reason: ExternalContractUnknown }
                       }}
                     }
-                  _ => QnFoldError { diag: Diagnostic {
+                  _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                     reason: ^qualified_name_structure_invalid,
                     at: node_locus(node: edge.target),
                     correction: Unavailable { reason: ExternalContractUnknown }
                   }}
                 }
               } else {
-                QnFoldError { diag: Diagnostic {
+                QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                   reason: ^qualified_name_structure_invalid,
                   at: node_locus(node: edge.target),
                   correction: Unavailable { reason: ExternalContractUnknown }
                 }}
               }
-            _ => QnFoldError { diag: Diagnostic {
+            _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
               reason: ^qualified_name_structure_invalid,
               at: node_locus(node: edge.target),
               correction: Unavailable { reason: ExternalContractUnknown }
             }}
           }
-        _ => QnFoldError { diag: Diagnostic {
+        _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: edge.target),
           correction: Unavailable { reason: ExternalContractUnknown }
@@ -126,7 +126,7 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
   }
 }
 
-fn qualified_name_from_string_segments(segments: List<String>) -> FreeMonoid<Symbol> {
+fn qualified_name_from_string_segments(segments: List<String>) -> FreeMonoid<v2.std.node.Symbol> {
   fold_list_right(
     xs: segments,
     empty: Empty,
@@ -136,7 +136,7 @@ fn qualified_name_from_string_segments(segments: List<String>) -> FreeMonoid<Sym
   )
 }
 
-fn qualified_name_from_dotted_string(dotted: String) -> FreeMonoid<Symbol> {
+fn qualified_name_from_dotted_string(dotted: String) -> FreeMonoid<v2.std.node.Symbol> {
   if string_is_empty(s: dotted) {
     Empty
   } else {
@@ -144,9 +144,9 @@ fn qualified_name_from_dotted_string(dotted: String) -> FreeMonoid<Symbol> {
   }
 }
 
-data qualified_name_from_dotted_string_host_disposition: Disposition = Scaffold {
+data qualified_name_from_dotted_string_host_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.std.qualified_name",
     decl_name: "qualified_name_from_dotted_string",
     field: WholeDeclaration
@@ -170,7 +170,7 @@ fn qualified_name_init(qn: QualifiedName) -> QualifiedName {
   list_init(xs: qn)
 }
 
-fn qualified_name_last_segment(qn: QualifiedName) -> Optional<Symbol> {
+fn qualified_name_last_segment(qn: QualifiedName) -> Optional<v2.std.node.Symbol> {
   match qn {
     Empty => optional_absent()
     Cons { head: h, tail: t } =>
@@ -182,24 +182,24 @@ fn qualified_name_last_segment(qn: QualifiedName) -> Optional<Symbol> {
   }
 }
 
-fn qualified_name_snoc(qn: QualifiedName, segment: Symbol) -> QualifiedName {
+fn qualified_name_snoc(qn: QualifiedName, segment: v2.std.node.Symbol) -> QualifiedName {
   list_snoc_item(xs: qn, item: segment)
 }
 
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
   match root.kind {
     TypeNode { connective: Conj } =>
-      let acc = fold_node(n: root, algebra: NodeFold { init: qn_fold_init, step: qn_fold_step })
+      let acc = fold_node(n: root, algebra: v2.std.node.NodeFold { init: qn_fold_init, step: qn_fold_step })
       match acc {
         QnFoldDone { qn: qn } => outcome_accepted(value: qn)
         QnFoldError { diag: d } => outcome_rejected(d: d)
-        _ => outcome_rejected(d: Diagnostic {
+        _ => outcome_rejected(d: v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: root),
           correction: Unavailable { reason: ExternalContractUnknown }
         })
       }
-    _ => outcome_rejected(d: Diagnostic {
+    _ => outcome_rejected(d: v2.std.diagnostic.Diagnostic {
       reason: ^qualified_name_structure_invalid,
       at: node_locus(node: root),
       correction: Unavailable { reason: ExternalContractUnknown }

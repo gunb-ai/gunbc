@@ -9,14 +9,14 @@ type V4EvaluatorRuntime {
 }
 
 fn v2_eval_unit_type_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^v2_eval_unit_type_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-data v2_eval_bool_literal_pin: Node = Node {
+data v2_eval_bool_literal_pin: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^v2_eval_bool_literal_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -28,25 +28,25 @@ fn v2_eval_bool_true_byte() -> Byte {
   Byte { bits: [true] }
 }
 
-fn v2_eval_bool_true_primitive() -> RuntimeValue {
+fn v2_eval_bool_true_primitive() -> v2.std.runtime.RuntimeValue {
   RuntimePrimitive {
-    value: RuntimePrimitiveValue {
+    value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: v2_eval_bool_literal_pin,
       bytes: [v2_eval_bool_true_byte()]
     }
   }
 }
 
-fn v2_eval_unit_runtime_value() -> RuntimeValue {
+fn v2_eval_unit_runtime_value() -> v2.std.runtime.RuntimeValue {
   RuntimeUnit {
-    value: RuntimeUnitValue {
+    value: v2.std.runtime.RuntimeUnitValue {
       unit_type: v2_eval_unit_literal_pin
     }
   }
 }
 
 fn v2_eval_boundary_operation_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^v2_eval_boundary_operation_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -54,24 +54,24 @@ fn v2_eval_boundary_operation_node() -> Node {
 }
 
 fn v2_eval_effect_signature_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^v2_eval_boundary_effect_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn v2_eval_runtime_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn v2_eval_runtime_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^v2_eval_semantics_deferred,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn v2_eval_binding_lookup_miss(_key: EnvironmentBindingKey) -> Witness<RuntimeValue> {
+fn v2_eval_binding_lookup_miss(_key: v2.std.runtime.EnvironmentBindingKey) -> Witness<v2.std.runtime.RuntimeValue> {
   Violates {
-    diagnostic: Diagnostic {
+    diagnostic: v2.std.diagnostic.Diagnostic {
       reason: ^v2_eval_binding_miss,
       at: port_locus(port: ^v2_eval_binding_miss),
       correction: Unavailable { reason: AmbiguousIntent }
@@ -79,45 +79,45 @@ fn v2_eval_binding_lookup_miss(_key: EnvironmentBindingKey) -> Witness<RuntimeVa
   }
 }
 
-fn v2_eval_empty_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
+fn v2_eval_empty_bindings() -> Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
   Map {
     lookup: v2_eval_binding_lookup_miss
   }
 }
 
-fn v2_eval_empty_environment() -> EvaluationEnvironment {
-  EvaluationEnvironment {
+fn v2_eval_empty_environment() -> v2.std.runtime.EvaluationEnvironment {
+  v2.std.runtime.EvaluationEnvironment {
     bindings: v2_eval_empty_bindings()
   }
 }
 
-fn v2_eval_empty_frame() -> EvaluationFrame {
-  EvaluationFrame {
+fn v2_eval_empty_frame() -> v2.std.runtime.EvaluationFrame {
+  v2.std.runtime.EvaluationFrame {
     current: v2_eval_unit_type_node(),
     environment: v2_eval_empty_environment()
   }
 }
 
 fn v2_eval_int_type_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn v2_eval_int_runtime_value(value: Int) -> RuntimeValue {
+fn v2_eval_int_runtime_value(value: Int) -> v2.std.runtime.RuntimeValue {
   RuntimePrimitive {
-    value: RuntimePrimitiveValue {
+    value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: v2_eval_int_type_node(),
       bytes: integer_int_to_signed_i32_le_bytes(value: value)
     }
   }
 }
 
-fn v2_eval_bool_runtime_value(is_true: Bool) -> RuntimeValue {
+fn v2_eval_bool_runtime_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
   RuntimePrimitive {
-    value: RuntimePrimitiveValue {
+    value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: v2_eval_bool_literal_pin,
       bytes: if is_true {
         [Byte { bits: [true, false, false, false, false, false, false, false] }]
@@ -141,7 +141,7 @@ fn v2_eval_is_literal_shaped_node(node: Node) -> Bool {
   }
 }
 
-fn v2_eval_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn v2_eval_represent_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   if !v2_eval_is_literal_shaped_node(node: node) {
     outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
   } else if node == v2_eval_bool_literal_pin {
@@ -170,11 +170,11 @@ fn v2_eval_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome
   }
 }
 
-fn v2_eval_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
+fn v2_eval_represent_result(value: v2.std.runtime.RuntimeValue) -> Outcome<v2.std.runtime.RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
-fn v2_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn v2_eval_allocate_literal(node: Node, env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   if node == v2_eval_bool_literal_pin {
     Accepted { value: v2_eval_bool_true_primitive(), diagnostics: None }
   } else if node == v2_eval_unit_literal_pin {
@@ -184,7 +184,7 @@ fn v2_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<R
   }
 }
 
-fn v2_eval_runtime_value_as_int(value: RuntimeValue) -> Outcome<Int> {
+fn v2_eval_runtime_value_as_int(value: v2.std.runtime.RuntimeValue) -> Outcome<Int> {
   match value {
     RuntimePrimitive { value: p } =>
       if p.primitive_type == v2_eval_int_type_node() {
@@ -198,7 +198,7 @@ fn v2_eval_runtime_value_as_int(value: RuntimeValue) -> Outcome<Int> {
 
 data v2_eval_runtime_bool_predicate_dissolution_note: String = "🟡 dissolve-on: v2_eval_runtime_bool_is_true and v2_eval_runtime_bool_is_false are coproduct RuntimeValue→Bool predicates (RuntimePrimitive bool-literal pin, one arm true / others false) — parallel to lazy_arm_runtime_bool_true/false in branch_lazy_arm_eval_acceptance_test.dag; NFR roster listing alone is not a predicate-dissolution receipt. DISSOLVES WHEN std/runtime carries canonical RuntimeValue bool decode/eq (single authority for branch condition discrimination) and v2_evaluator branch dispatch routes through it instead of hand-rolled byte probes."
 
-fn v2_eval_runtime_bool_is_true(value: RuntimeValue) -> Bool {
+fn v2_eval_runtime_bool_is_true(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       if p.primitive_type == v2_eval_bool_literal_pin {
@@ -213,7 +213,7 @@ fn v2_eval_runtime_bool_is_true(value: RuntimeValue) -> Bool {
   }
 }
 
-fn v2_eval_runtime_bool_is_false(value: RuntimeValue) -> Bool {
+fn v2_eval_runtime_bool_is_false(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       p.primitive_type == v2_eval_bool_literal_pin && !v2_eval_runtime_bool_is_true(value: value)
@@ -252,9 +252,9 @@ fn v2_eval_transform_is_int_add(node: Node) -> Bool {
 
 fn v2_eval_call_primitive(
   node: Node,
-  args: List<RuntimeValue>,
-  _env: EvaluationEnvironment
-) -> Outcome<RuntimeValue> {
+  args: List<v2.std.runtime.RuntimeValue>,
+  _env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   if v2_eval_transform_is_int_add(node: node) {
     if count(args) == 2 {
       match list_at_optional(xs: args, index: 0) {
@@ -290,8 +290,8 @@ fn v2_eval_call_primitive(
 
 fn v2_eval_choose_branch(
   node: Node,
-  condition: RuntimeValue,
-  _env: EvaluationEnvironment
+  condition: v2.std.runtime.RuntimeValue,
+  _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<Node> {
   if count(node.children) == 3 {
     if v2_eval_runtime_bool_is_true(value: condition) {
@@ -306,17 +306,17 @@ fn v2_eval_choose_branch(
   }
 }
 
-fn v2_eval_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+fn v2_eval_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
   outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
 }
 
 fn v2_eval_bind_value(
-  key: EnvironmentBindingKey,
-  value: RuntimeValue,
-  env: EvaluationEnvironment
-) -> Outcome<EvaluationEnvironment> {
+  key: v2.std.runtime.EnvironmentBindingKey,
+  value: v2.std.runtime.RuntimeValue,
+  env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
   Accepted {
-    value: EvaluationEnvironment {
+    value: v2.std.runtime.EvaluationEnvironment {
       bindings: map_insert(
         m: env.bindings,
         key: key,
@@ -327,19 +327,19 @@ fn v2_eval_bind_value(
   }
 }
 
-fn v2_eval_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
+fn v2_eval_allocate(value: v2.std.runtime.RuntimeValue) -> Outcome<v2.std.runtime.RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
-fn v2_eval_call(call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+fn v2_eval_call(call: v2.std.runtime.EvaluationCall, _frame: v2.std.runtime.EvaluationFrame) -> Outcome<v2.std.runtime.ControlTransfer> {
   outcome_rejected(d: v2_eval_runtime_diagnostic(node: call.callee))
 }
 
-fn v2_eval_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+fn v2_eval_return_value(value: v2.std.runtime.RuntimeValue, _frame: v2.std.runtime.EvaluationFrame) -> Outcome<v2.std.runtime.ControlTransfer> {
   Accepted { value: Return { value: value }, diagnostics: None }
 }
 
-fn v2_eval_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
+fn v2_eval_transfer(control: v2.std.runtime.ControlTransfer, frame: v2.std.runtime.EvaluationFrame) -> Outcome<v2.std.runtime.EvaluationFrame> {
   match control {
     Continue { value: v } =>
       outcome_rejected(d: v2_eval_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
@@ -352,7 +352,7 @@ fn v2_eval_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome
   }
 }
 
-fn v2_eval_terminal_value(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<RuntimeValue> {
+fn v2_eval_terminal_value(control: v2.std.runtime.ControlTransfer, frame: v2.std.runtime.EvaluationFrame) -> Outcome<v2.std.runtime.RuntimeValue> {
   match control {
     Continue { value: v } =>
       Accepted { value: v, diagnostics: None }
@@ -365,23 +365,23 @@ fn v2_eval_terminal_value(control: ControlTransfer, frame: EvaluationFrame) -> O
   }
 }
 
-fn v2_eval_boundary_allowance(allowed: Bool) -> BoundaryAllowance {
-  BoundaryAllowance {
-    operation: PrimitiveOperationRef {
+fn v2_eval_boundary_allowance(allowed: Bool) -> v2.std.runtime.BoundaryAllowance {
+  v2.std.runtime.BoundaryAllowance {
+    operation: v2.std.model_core.PrimitiveOperationRef {
       operation: v2_eval_boundary_operation_node(),
-      effect_signature: EffectSignature {
+      effect_signature: v2.std.model_core.EffectSignature {
         signature: v2_eval_effect_signature_node()
       }
     },
-    resource: ResourceAccess {
+    resource: v2.std.model_core.ResourceAccess {
       resource: v2_eval_boundary_operation_node()
     },
     allowed: allowed
   }
 }
 
-fn v2_eval_resource_boundary() -> ResourceEffectBoundary {
-  ResourceEffectBoundary {
+fn v2_eval_resource_boundary() -> v2.std.runtime.ResourceEffectBoundary {
+  v2.std.runtime.ResourceEffectBoundary {
     ffi: v2_eval_boundary_allowance(allowed: false),
     exceptions: v2_eval_boundary_allowance(allowed: false),
     async: v2_eval_boundary_allowance(allowed: false),
@@ -390,42 +390,42 @@ fn v2_eval_resource_boundary() -> ResourceEffectBoundary {
   }
 }
 
-fn v2_evaluator_model_core() -> ModelCore {
+fn v2_evaluator_model_core() -> v2.std.model_core.ModelCore {
   bool_model_core()
 }
 
-fn v2_evaluator_value_representation() -> ValueRepresentationModel {
-  ValueRepresentationModel {
+fn v2_evaluator_value_representation() -> v2.std.runtime.ValueRepresentationModel {
+  v2.std.runtime.ValueRepresentationModel {
     represent_literal: v2_eval_represent_literal,
     represent_result: v2_eval_represent_result
   }
 }
 
-fn v2_evaluator_interpretation() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter {
+fn v2_evaluator_interpretation() -> v2.std.runtime.InterpretationAlgebra {
+  v2.std.runtime.InterpretationAlgebra {
+    value: v2.std.runtime.ValueInterpreter {
       allocate_literal: v2_eval_allocate_literal
     },
-    transform: TransformInterpreter {
+    transform: v2.std.runtime.TransformInterpreter {
       call_primitive: v2_eval_call_primitive
     },
-    branch: BranchInterpreter {
+    branch: v2.std.runtime.BranchInterpreter {
       choose_branch: v2_eval_choose_branch
     },
-    loop: LoopInterpreter {
+    loop: v2.std.runtime.LoopInterpreter {
       step_loop: v2_eval_step_loop
     },
-    bind: BindInterpreter {
+    bind: v2.std.runtime.BindInterpreter {
       bind_value: v2_eval_bind_value
     },
-    match: MatchInterpreter {
+    match: v2.std.runtime.MatchInterpreter {
       choose_arm: runtime_reject_match_arm
     }
   }
 }
 
-fn v2_evaluator_interpretation_structure_witness() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
+fn v2_evaluator_interpretation_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
+  v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^v2_eval_allocate_literal_sym,
     call_primitive: ^v2_eval_call_primitive_sym,
     choose_branch: ^v2_eval_choose_branch_sym,
@@ -435,23 +435,23 @@ fn v2_evaluator_interpretation_structure_witness() -> InterpretationStructureWit
   }
 }
 
-fn v2_evaluator_execution() -> ExecutionSemantics {
-  ExecutionSemantics {
-    allocation: AllocationSemantics {
+fn v2_evaluator_execution() -> v2.std.runtime.ExecutionSemantics {
+  v2.std.runtime.ExecutionSemantics {
+    allocation: v2.std.runtime.AllocationSemantics {
       allocate: v2_eval_allocate
     },
-    calls: CallSemantics {
+    calls: v2.std.runtime.CallSemantics {
       call: v2_eval_call,
       return_value: v2_eval_return_value
     },
-    control: ControlSemantics {
+    control: v2.std.runtime.ControlSemantics {
       transfer: v2_eval_transfer,
       terminal_value: v2_eval_terminal_value
     }
   }
 }
 
-fn v2_evaluator_boundary() -> ResourceEffectBoundary {
+fn v2_evaluator_boundary() -> v2.std.runtime.ResourceEffectBoundary {
   v2_eval_resource_boundary()
 }
 

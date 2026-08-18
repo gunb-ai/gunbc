@@ -1,8 +1,8 @@
 module extdeps.render.tier_glyphs
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.unicode.org/versions/latest/"
   }
@@ -14,11 +14,11 @@ type TierGlyphs {
   emoji: extdeps.render.glyph.Glyph
 }
 
-fn glyphs_for_tiers(emoji: Glyph, unicode: Glyph, ascii: Glyph) -> TierGlyphs {
+fn glyphs_for_tiers(emoji: extdeps.render.glyph.Glyph, unicode: extdeps.render.glyph.Glyph, ascii: extdeps.render.glyph.Glyph) -> TierGlyphs {
   { emoji: emoji, unicode: unicode, ascii: ascii }
 }
 
-fn glyph_at(glyphs: TierGlyphs, tier: Tier) -> String {
+fn glyph_at(glyphs: TierGlyphs, tier: std.symbols.Tier) -> String {
   match tier {
     Emoji   => glyph_text(g: glyphs.emoji)
     Unicode => glyph_text(g: glyphs.unicode)

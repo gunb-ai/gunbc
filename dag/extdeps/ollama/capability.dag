@@ -1,16 +1,16 @@
 module extdeps.ollama.capability
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/ollama/ollama/releases"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ollama.capability",
       decl_name: "OllamaModelSupportRow",
       field: WholeDeclaration
@@ -32,7 +32,7 @@ fn ollama_semantic_version(major: std.nat.Nat, minor: std.nat.Nat, patch: std.na
 
 data ollama_gpt_oss_feature_introduction_floor: OllamaSemanticVersion = ollama_semantic_version(major: 0, minor: 11, patch: 0)
 
-data ollama_gpt_oss_feature_introduction_citation: NonEmptyStr = "https://github.com/ollama/ollama/releases/tag/v0.11.0" as NonEmptyStr
+data ollama_gpt_oss_feature_introduction_citation: std.types.NonEmptyStr = "https://github.com/ollama/ollama/releases/tag/v0.11.0" as std.types.NonEmptyStr
 
 type OllamaModelSupportRow {
   model: extdeps.ollama.api.OllamaModelRef
@@ -40,9 +40,9 @@ type OllamaModelSupportRow {
   introduction_citation: std.types.NonEmptyStr
 }
 
-data ollama_gpt_oss_20b_model_ref: OllamaModelRef = OllamaModelRef {
-  name: "gpt-oss" as NonEmptyStr,
-  tag: "20b" as NonEmptyStr,
+data ollama_gpt_oss_20b_model_ref: extdeps.ollama.api.OllamaModelRef = extdeps.ollama.api.OllamaModelRef {
+  name: "gpt-oss" as std.types.NonEmptyStr,
+  tag: "20b" as std.types.NonEmptyStr,
 }
 
 data ollama_gpt_oss_20b_support_row: OllamaModelSupportRow = OllamaModelSupportRow {
@@ -63,7 +63,7 @@ type OllamaModelSupportVerdict
   | OllamaModelSupportUnobserved { cause: std.types.NonEmptyStr }
   | OllamaModelSupportUncatalogued { model_wire: String }
 
-fn ollama_model_ref_eq(a: OllamaModelRef, b: OllamaModelRef) -> Bool {
+fn ollama_model_ref_eq(a: extdeps.ollama.api.OllamaModelRef, b: extdeps.ollama.api.OllamaModelRef) -> Bool {
   (a.name as String) == (b.name as String) && (a.tag as String) == (b.tag as String)
 }
 
@@ -103,7 +103,7 @@ fn ollama_semantic_version_from_wire_text(raw: String) -> OllamaSemanticVersion?
   }
 }
 
-fn ollama_model_support_row_for(model: OllamaModelRef, catalog: List<OllamaModelSupportRow>) -> OllamaModelSupportRow? {
+fn ollama_model_support_row_for(model: extdeps.ollama.api.OllamaModelRef, catalog: List<OllamaModelSupportRow>) -> OllamaModelSupportRow? {
   fold(
     catalog,
     init: none,
@@ -122,12 +122,12 @@ fn ollama_model_support_row_for(model: OllamaModelRef, catalog: List<OllamaModel
 
 fn ollama_model_support_verdict(
   runtime_version: OllamaSemanticVersion?,
-  model: OllamaModelRef,
+  model: extdeps.ollama.api.OllamaModelRef,
 ) -> OllamaModelSupportVerdict {
   match runtime_version {
     Absent =>
       OllamaModelSupportUnobserved {
-        cause: "runtime version is unobserved; model support cannot be decided" as NonEmptyStr,
+        cause: "runtime version is unobserved; model support cannot be decided" as std.types.NonEmptyStr,
       }
     Present { value: observed } =>
       match ollama_model_support_row_for(model: model, catalog: ollama_model_support_catalog) {
@@ -178,9 +178,9 @@ type OllamaPlatformSupportVerdict
   | OllamaPlatformSupportUncatalogued { cause: std.types.NonEmptyStr }
 
 fn ollama_platform_support_verdict(
-  binary_release: OllamaBinaryRelease,
+  binary_release: extdeps.ollama.binary_release.OllamaBinaryRelease,
   platform: OllamaTargetPlatform,
-  architecture: OllamaLinuxArchitecture,
+  architecture: extdeps.ollama.binary_release.OllamaLinuxArchitecture,
 ) -> OllamaPlatformSupportVerdict {
   let hits = filter(
     ollama_platform_support_catalog,
@@ -193,27 +193,27 @@ fn ollama_platform_support_verdict(
   let n = count(hits)
   if n == 0 {
     OllamaPlatformSupportUncatalogued {
-      cause: "no catalogued ollama release supports this platform, architecture, and asset variant triple" as NonEmptyStr,
+      cause: "no catalogued ollama release supports this platform, architecture, and asset variant triple" as std.types.NonEmptyStr,
     }
   } else if n == 1 {
     OllamaPlatformSupportApplicable
   } else {
     OllamaPlatformSupportUnmet {
-      cause: "platform support catalog lists multiple rows for one release" as NonEmptyStr,
+      cause: "platform support catalog lists multiple rows for one release" as std.types.NonEmptyStr,
     }
   }
 }
 
 fn ollama_runtime_model_compatibility_verdict(
-  binary_release: OllamaBinaryRelease,
+  binary_release: extdeps.ollama.binary_release.OllamaBinaryRelease,
   platform: OllamaTargetPlatform,
-  architecture: OllamaLinuxArchitecture,
-  model: OllamaModelRef,
+  architecture: extdeps.ollama.binary_release.OllamaLinuxArchitecture,
+  model: extdeps.ollama.api.OllamaModelRef,
 ) -> OllamaPlatformSupportVerdict {
   match ollama_semantic_version_from_wire_text(raw: binary_release.version as String) {
     Absent =>
       OllamaPlatformSupportUnobserved {
-        cause: "pinned ollama release version is not a parseable semantic version" as NonEmptyStr,
+        cause: "pinned ollama release version is not a parseable semantic version" as std.types.NonEmptyStr,
       }
     Present { value: runtime_version } =>
       match ollama_model_support_verdict(runtime_version: Present { value: runtime_version }, model: model) {
@@ -229,13 +229,13 @@ fn ollama_runtime_model_compatibility_verdict(
               "ollama release ", binary_release.version as String, " does not support model ", w,
               " (observed ", to_string(o.major), ".", to_string(o.minor), ".", to_string(o.patch),
               " < minimum ", to_string(m.major), ".", to_string(m.minor), ".", to_string(m.patch), ")",
-            ], "") as NonEmptyStr,
+            ], "") as std.types.NonEmptyStr,
           }
         OllamaModelSupportUnobserved { cause: c } =>
           OllamaPlatformSupportUnobserved { cause: c }
         OllamaModelSupportUncatalogued { model_wire: w } =>
           OllamaPlatformSupportUncatalogued {
-            cause: join(["model support relation uncatalogued for ", w], "") as NonEmptyStr,
+            cause: join(["model support relation uncatalogued for ", w], "") as std.types.NonEmptyStr,
           }
       }
   }
@@ -248,11 +248,11 @@ type OllamaRuntimeAdmissionVerdict
   | OllamaRuntimeAdmissionUncatalogued { cause: std.types.NonEmptyStr }
 
 fn ollama_runtime_admission_verdict(
-  binary_release: OllamaBinaryRelease,
+  binary_release: extdeps.ollama.binary_release.OllamaBinaryRelease,
   platform: OllamaTargetPlatform,
-  architecture: OllamaLinuxArchitecture,
-  model: OllamaModelRef,
-  observed_nvidia_driver: OllamaNvidiaDriverVersion?,
+  architecture: extdeps.ollama.binary_release.OllamaLinuxArchitecture,
+  model: extdeps.ollama.api.OllamaModelRef,
+  observed_nvidia_driver: extdeps.ollama.gpu_support.OllamaNvidiaDriverVersion?,
 ) -> OllamaRuntimeAdmissionVerdict {
   match ollama_runtime_model_compatibility_verdict(
     binary_release: binary_release,
@@ -270,7 +270,7 @@ fn ollama_runtime_admission_verdict(
           OllamaRuntimeAdmissionUnmet {
             cause: join([
               "nvidia driver ", to_string(o.major), " is below minimum ", to_string(m.major),
-            ], "") as NonEmptyStr,
+            ], "") as std.types.NonEmptyStr,
           }
         OllamaNvidiaDriverRequirementUnobserved { cause: c } =>
           OllamaRuntimeAdmissionUnobserved { cause: c }

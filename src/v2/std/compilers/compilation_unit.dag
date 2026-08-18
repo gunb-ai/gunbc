@@ -2,8 +2,8 @@ module v2.std.compilers.compilation_unit
 
 
 
-type ModuleId = NonEmptyStr where brand("ModuleId")
-type CompilationUnitId = NonEmptyStr where brand("CompilationUnitId")
+type ModuleId = std.types.NonEmptyStr where brand("ModuleId")
+type CompilationUnitId = std.types.NonEmptyStr where brand("CompilationUnitId")
 
 type PartitionProvenance
   = HandExplicit
@@ -70,10 +70,10 @@ data partition_r4_validity_interface_note: String = "R4 validity interface (lock
 
 data partition_fold_outcome_note: String = "partition_fold_outcome is the fail-closed entry for derived interface/deps: map lookup Rejected and interface-closure saturation without fixpoint return PartitionFoldRefused with a typed cause — never a partial interface. partition_fold(module_dag, assignment) -> List<CompilationUnit> remains the locked signature for well-formed inputs; it unwraps PartitionFoldOk only and returns [] on Refused (callers requiring refusal receipts MUST use partition_fold_outcome)."
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallNow {
     mechanism: SingleAuthority,
-    authority: DeclarationRef {
+    authority: std.decl_ref.DeclarationRef {
       module_path: "v2.std.compilers.compilation_unit",
       decl_name: "partition_fold",
       field: WholeDeclaration,
@@ -89,7 +89,7 @@ fn partition_provenance_hand_explicit() -> PartitionProvenance {
   HandExplicit
 }
 
-fn partition_provenance_policy_derived(policy: DeclarationRef) -> PartitionProvenance {
+fn partition_provenance_policy_derived(policy: std.decl_ref.DeclarationRef) -> PartitionProvenance {
   PolicyDerived { policy: policy }
 }
 
@@ -182,7 +182,7 @@ fn list_snoc_unique_module(items: List<ModuleId>, item: ModuleId) -> List<Module
   }
 }
 
-fn list_snoc_unique_symbol(items: List<Symbol>, item: Symbol) -> List<Symbol> {
+fn list_snoc_unique_symbol(items: List<v2.std.node.Symbol>, item: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
   if any(xs: items, predicate: fn(sym) { sym == item }) {
     items
   } else {
@@ -205,7 +205,7 @@ fn list_unique_sorted_ids(items: List<CompilationUnitId>) -> List<CompilationUni
     |> sort_by(id => id)
 }
 
-fn node_sort_key(n: Node) -> Fnv1a64Structural {
+fn node_sort_key(n: Node) -> std.content_hash.Fnv1a64Structural {
   content_hash(n: n)
 }
 
@@ -257,11 +257,11 @@ fn module_type_definition_rows(module_dag: ModuleDag, module: ModuleId) -> List<
   }
 }
 
-fn type_definition_row_identity(row: ModuleTypeDefinitionRow) -> Symbol {
+fn type_definition_row_identity(row: ModuleTypeDefinitionRow) -> v2.std.node.Symbol {
   row.identity
 }
 
-fn type_atom_identity(node: Node) -> Optional<Symbol> {
+fn type_atom_identity(node: Node) -> Optional<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => Present { value: id }
     _ => Absent
@@ -442,7 +442,7 @@ fn partition_cross_boundary_exports(
     })
 }
 
-fn type_atoms_in_declaration(declaration: Node) -> List<Symbol> {
+fn type_atoms_in_declaration(declaration: Node) -> List<v2.std.node.Symbol> {
   node_subtree_nodes(root: declaration)
     |> fold(init: [], f: fn(acc, node) {
       match type_atom_identity(node: node) {
@@ -456,7 +456,7 @@ fn type_atoms_in_declaration(declaration: Node) -> List<Symbol> {
 fn type_definition_for_identity_in_module(
   module_dag: ModuleDag,
   member: ModuleId,
-  identity: Symbol
+  identity: v2.std.node.Symbol
 ) -> Optional<Node> {
   fold_list(
     xs: module_type_definition_rows(module_dag: module_dag, module: member),
@@ -478,7 +478,7 @@ fn type_definition_for_identity_in_module(
 fn type_definition_for_identity_in_members(
   module_dag: ModuleDag,
   members: List<ModuleId>,
-  identity: Symbol
+  identity: v2.std.node.Symbol
 ) -> Optional<Node> {
   fold_list(
     xs: members,
@@ -962,8 +962,8 @@ fn partition_interface_contains_node(interface: List<Node>, needle: Node) -> Boo
   any(xs: interface, predicate: fn(n) { content_hash(n: n) == needle_hash })
 }
 
-data compilation_unit_from_partition_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compilation_unit_from_partition_wrapper — delete fn compilation_unit_from_partition when every caller migrates to compilation_unit_from_partition_fold_default. UnitBuildRefused collapses to an empty-shell CompilationUnit here (same §5 absorbing-fallback shape); receipt-requiring paths must use compilation_unit_from_partition_fold_default or partition_fold_outcome.")
+data compilation_unit_from_partition_wrapper_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: compilation_unit_from_partition_wrapper — delete fn compilation_unit_from_partition when every caller migrates to compilation_unit_from_partition_fold_default. UnitBuildRefused collapses to an empty-shell CompilationUnit here (same §5 absorbing-fallback shape); receipt-requiring paths must use compilation_unit_from_partition_fold_default or partition_fold_outcome.")
 
-data partition_fold_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: partition_fold_list_wrapper — delete fn partition_fold when every caller migrates to partition_fold_outcome. The List-returning wrapper is locked-signature compat only; PartitionFoldRefused collapses to [] here (indistinguishable from a legitimately empty partition), so receipt-requiring paths must not call it (§5 absorbing-fallback shape; primary surface is partition_fold_outcome per")
+data partition_fold_list_wrapper_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: partition_fold_list_wrapper — delete fn partition_fold when every caller migrates to partition_fold_outcome. The List-returning wrapper is locked-signature compat only; PartitionFoldRefused collapses to [] here (indistinguishable from a legitimately empty partition), so receipt-requiring paths must not call it (§5 absorbing-fallback shape; primary surface is partition_fold_outcome per")
 
-data partition_unit_interface_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: partition_unit_interface_list_wrapper — delete fn partition_unit_interface when every caller migrates to partition_unit_interface_fold_default. InterfaceBuildRefused collapses to [] here (same §5 absorbing-fallback shape as partition_fold_list_wrapper_dissolve_on); receipt-requiring paths must use partition_unit_interface_fold_default.")
+data partition_unit_interface_list_wrapper_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: partition_unit_interface_list_wrapper — delete fn partition_unit_interface when every caller migrates to partition_unit_interface_fold_default. InterfaceBuildRefused collapses to [] here (same §5 absorbing-fallback shape as partition_fold_list_wrapper_dissolve_on); receipt-requiring paths must use partition_unit_interface_fold_default.")

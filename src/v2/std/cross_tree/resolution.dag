@@ -12,8 +12,8 @@ fn source_root_index_empty() -> SourceRootIndex {
 
 fn source_root_index_insert(
   index: SourceRootIndex,
-  module: QualifiedName,
-  root: SourceRootRef
+  module: v2.std.qualified_name.QualifiedName,
+  root: v2.std.cross_tree.import_model.SourceRootRef
 ) -> SourceRootIndex {
   Cons { head: SourceRootBinding { module: module, root: root }, tail: index }
 }
@@ -25,7 +25,7 @@ type SourceRootLookup
 
 fn source_root_index_lookup(
   index: SourceRootIndex,
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
 ) -> SourceRootLookup {
   fold_list(
     xs: index,
@@ -50,9 +50,9 @@ fn source_root_index_lookup(
 }
 
 fn tree_fundamentality_order(
-  from_tree: SourceRootRef,
-  to_tree: SourceRootRef
-) -> TreeFundamentalityOrder {
+  from_tree: v2.std.cross_tree.import_model.SourceRootRef,
+  to_tree: v2.std.cross_tree.import_model.SourceRootRef
+) -> v2.std.cross_tree.import_model.TreeFundamentalityOrder {
   match from_tree {
     V2Tree =>
       match to_tree {
@@ -73,7 +73,7 @@ fn layer_prefix_from_dotted_qualified_name(qn: String) -> v2.std.layer.LayerPref
   )
 }
 
-fn layer_prefix_from_qualified_name(qn: QualifiedName) -> v2.std.layer.LayerPrefix {
+fn layer_prefix_from_qualified_name(qn: v2.std.qualified_name.QualifiedName) -> v2.std.layer.LayerPrefix {
   match qn {
     Empty => v2.std.layer.LayerPrefixStd
     Cons { head: h, tail: t } =>
@@ -120,9 +120,9 @@ fn layer_prefix_from_qualified_name(qn: QualifiedName) -> v2.std.layer.LayerPref
 }
 
 fn source_root_set_insert(
-  roots: FreeMonoid<SourceRootRef>,
-  r: SourceRootRef
-) -> FreeMonoid<SourceRootRef> {
+  roots: FreeMonoid<v2.std.cross_tree.import_model.SourceRootRef>,
+  r: v2.std.cross_tree.import_model.SourceRootRef
+) -> FreeMonoid<v2.std.cross_tree.import_model.SourceRootRef> {
   if source_root_set_contains(roots: roots, r: r) {
     roots
   } else {
@@ -140,9 +140,9 @@ type CrossTreeEdgeDecision
 
 fn cross_tree_edge_decision(
   index: SourceRootIndex,
-  from_qn: QualifiedName,
-  to_qn: QualifiedName,
-  active_roots: SourceRootSet
+  from_qn: v2.std.qualified_name.QualifiedName,
+  to_qn: v2.std.qualified_name.QualifiedName,
+  active_roots: v2.std.cross_tree.import_model.SourceRootSet
 ) -> CrossTreeEdgeDecision {
   match source_root_index_lookup(index: index, module: from_qn) {
     SourceRootAbsent => EdgeNormalResolution
@@ -156,7 +156,7 @@ fn cross_tree_edge_decision(
             EdgeNormalResolution
           } else {
             match cross_tree_import_admitted(
-              edge: CrossTreeImport {
+              edge: v2.std.cross_tree.import_model.CrossTreeImport {
                 from_tree: from_tree,
                 from_module: cross_tree_module_path_interim,
                 to_tree: to_tree,

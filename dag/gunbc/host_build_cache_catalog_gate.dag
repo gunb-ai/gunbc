@@ -1,13 +1,13 @@
 module gunbc.host_build_cache_catalog_gate
 
 
-data provision_build_cache_unknown_catalog_fixture: CacheInterfaceId = "gunbc-test-unknown-cache-interface-id"
+data provision_build_cache_unknown_catalog_fixture: std.cache_identity.CacheInterfaceId = "gunbc-test-unknown-cache-interface-id"
 
 type ProvisionBuildCacheCatalogGateVerdict
   = ProvisionBuildCacheCatalogRealizable
   | ProvisionBuildCacheCatalogRefused { reason: std.types.NonEmptyStr }
 
-fn catalog_id_is_known(catalog_id: CacheInterfaceId) -> Bool {
+fn catalog_id_is_known(catalog_id: std.cache_identity.CacheInterfaceId) -> Bool {
   fold(
     cache_catalog,
     init: false,
@@ -16,18 +16,18 @@ fn catalog_id_is_known(catalog_id: CacheInterfaceId) -> Bool {
 }
 
 fn provision_build_cache_catalog_gate_verdict(
-  catalog_id: CacheInterfaceId,
+  catalog_id: std.cache_identity.CacheInterfaceId,
 ) -> ProvisionBuildCacheCatalogGateVerdict {
   if !catalog_id_is_known(catalog_id: catalog_id) {
     ProvisionBuildCacheCatalogRefused {
-      reason: concat("host_build_cache_provision: unknown catalog_id ", catalog_id) as NonEmptyStr,
+      reason: concat("host_build_cache_provision: unknown catalog_id ", catalog_id) as std.types.NonEmptyStr,
     }
   } else if catalog_id != sccache_local_id {
     ProvisionBuildCacheCatalogRefused {
       reason: concat(
         concat("host_build_cache_provision: catalog_id ", catalog_id),
         concat(" not yet realized; only ", sccache_local_id),
-      ) as NonEmptyStr,
+      ) as std.types.NonEmptyStr,
     }
   } else {
     ProvisionBuildCacheCatalogRealizable

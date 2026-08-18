@@ -1,7 +1,7 @@
 module v2.test.lens_mock_totality.gcp_mock_totality
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedGcpMock {
   tag: v2.std.node.Symbol
@@ -9,7 +9,7 @@ type MaterializedGcpMock {
 
 data gcp_red_omit_keys: List<String> = ["gcp.SecretManager.AddVersion"]
 
-fn materialize_gcp_mock(case: PublishedMockCase) -> Outcome<MaterializedGcpMock> {
+fn materialize_gcp_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedGcpMock> {
   if case.operation_key == "gcloud.Auth.Login" {
     outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_login })
   } else if case.operation_key == "gcloud.Auth.ReadADC" {
@@ -41,11 +41,11 @@ fn materialize_gcp_mock(case: PublishedMockCase) -> Outcome<MaterializedGcpMock>
   }
 }
 
-fn gcp_real_consumer_handles(case: PublishedMockCase) -> Bool {
+fn gcp_real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   outcome_accepted_p(outcome: materialize_gcp_mock(case: case))
 }
 
-fn gcp_omits_add_version_consumer_handles(case: PublishedMockCase) -> Bool {
+fn gcp_omits_add_version_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   omit_consumer_handles(
     case: case,
     omit_keys: gcp_red_omit_keys,

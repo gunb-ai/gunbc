@@ -169,7 +169,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
 ]
 
 fn schedule_row_matches(
-  w: ScheduleWitnessEntry,
+  w: std.realization_schedule.ScheduleWitnessEntry,
   entry: String,
   function: String
 ) -> Bool {
@@ -177,7 +177,7 @@ fn schedule_row_matches(
 }
 
 fn schedule_contains_entry(
-  xs: List<ScheduleWitnessEntry>,
+  xs: List<std.realization_schedule.ScheduleWitnessEntry>,
   entry: String,
   function: String
 ) -> Bool {

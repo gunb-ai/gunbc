@@ -8,7 +8,7 @@ type TargetBundleChildLookup
   | BundleChildDuplicate
   | BundleChildInvalidEdge
 
-fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
+fn target_translation_rules_budget(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Int> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
@@ -20,7 +20,7 @@ fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
   )
 }
 
-fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<Int> {
+fn translate_serialize_measure(target: v2.std.compilers.target_model.TargetModel, emitted: Node) -> Outcome<Int> {
   bind_outcome(
     o: target_translation_rules_budget(target: target),
     f: fn(rules_budget) {
@@ -31,7 +31,7 @@ fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<In
     }
   )
 }
-fn token_item_serialize_measure(item: Node, target: TargetModel) -> Outcome<Int> {
+fn token_item_serialize_measure(item: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Int> {
   bind_outcome(
     o: target_translation_rules_budget(target: target),
     f: fn(rules_budget) {
@@ -49,7 +49,7 @@ fn token_list_node_budget(tokens: List<Node>) -> Int {
     cons: fn(acc, item) { acc + node_subtree_count(n: item) }
   )
 }
-fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> Outcome<Int> {
+fn token_sequence_serialize_measure(tokens: List<Node>, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Int> {
   bind_outcome(
     o: target_translation_rules_budget(target: target),
     f: fn(rules_budget) {
@@ -69,7 +69,7 @@ type GroundingGatePassed {}
 
 data translate_grounding_gate_absent_facts_note: String = "Refuse only recorded GroundingNotDerived on the Holds arm, routing that variant through canonical_grounding_from_inferred_facts so the typed ^infer_grounding_not_derived diagnostic propagates (review 46789). DerivedGrounding on Holds accepts without re-running canonical admission. infer_facts_lookup_miss (Violates) is the compatibility class for trees with no infer judgment at a node: emit_orchestration's synthetic InferredTree (`orch_emit_facts_lookup`) and test-only shape-frontier carriers carry an empty facts map by construction, so lookup miss means no infer judgment exists — not an underived one recorded and erased (review 47246). Production paths (`cross_language_compile`, canonical infer→emit) pass infer's facts map facts-flow-forward. Eval refuses lookup miss because eval never runs on synthetic trees; translate is also consumed by emit, so absence is a named compatibility frontier until v2-inferred-tree-completeness splits the carrier. translate() opens with translate_grounding_derived_gate_subtree so mixed derived-root/underived-child trees cannot bypass fold attach or bodied-arrow shortcuts. translate_grounding_derived_gate_at_producer is the producer-entry call site for that same gate. translate_derived_parent_underived_child_gate refuses a recorded underived child under a derived parent during fold; translate_grounding_derived_gate_subtree covers bodied-arrow and import-carrier shortcuts that preserve producer IR without fold_node (review 46681). TranslateFoldAcc retains the source parent/child nodes because fold init rebuilds with empty children and facts.lookup keys on structural node equality. The four translate_grounding_*_gate* fns return Outcome<GroundingGatePassed>: a zero-information accept carrier (same wire-schema gate pattern as target_model.dag CtorTemplateUnit), not Outcome<Bool> — Bool would admit a meaningful false the gate never produces. Empty is a FreeMonoid variant, not a unit type, so Outcome<Empty> is an unresolved compile error. Callers bind with bind_outcome(fn(_) => ...) and never read the payload; the signal is Accepted vs Rejected disposition only."
 
-fn translate_grounding_derived_gate(tree: InferredTree, node: Node) -> Outcome<GroundingGatePassed> {
+fn translate_grounding_derived_gate(tree: v2.compiler.infer.InferredTree, node: Node) -> Outcome<GroundingGatePassed> {
   match inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
       match facts.grounding {
@@ -87,7 +87,7 @@ fn translate_grounding_derived_gate(tree: InferredTree, node: Node) -> Outcome<G
 }
 
 fn translate_derived_parent_underived_child_gate(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   parent: Node,
   child: Node
 ) -> Outcome<GroundingGatePassed> {
@@ -104,7 +104,7 @@ fn translate_derived_parent_underived_child_gate(
 }
 
 fn translate_grounding_derived_gate_subtree(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   root: Node
 ) -> Outcome<GroundingGatePassed> {
   fold_list(
@@ -122,7 +122,7 @@ fn translate_grounding_derived_gate_subtree(
 }
 
 fn translate_bodied_arrow_shortcut_after_subtree_gate(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   arrow: Node
 ) -> Outcome<Node> {
   bind_outcome(
@@ -134,7 +134,7 @@ fn translate_bodied_arrow_shortcut_after_subtree_gate(
 }
 
 fn translate_projection_absent_bodied_arrow_fold_init(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   node: Node
 ) -> Outcome<Node> {
   bind_outcome(
@@ -146,7 +146,7 @@ fn translate_projection_absent_bodied_arrow_fold_init(
 }
 
 fn translate_import_shortcut_after_subtree_gate(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   import_node: Node
 ) -> Outcome<Node> {
   bind_outcome(
@@ -158,31 +158,31 @@ fn translate_import_shortcut_after_subtree_gate(
 }
 
 fn translate_grounding_derived_gate_at_producer(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   node: Node
 ) -> Outcome<GroundingGatePassed> {
   translate_grounding_derived_gate(tree: tree, node: node)
 }
 
-fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnostic {
-  Diagnostic {
+fn translate_target_bundle_malformed_diagnostic(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_target_bundle_malformed,
     at: node_locus(node: target.bundle),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_target_bundle_duplicate_edge_diagnostic(
-  target: TargetModel,
-  edge_name: Symbol
-) -> Diagnostic {
-  Diagnostic {
+  target: v2.std.compilers.target_model.TargetModel,
+  edge_name: v2.std.node.Symbol
+) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_target_bundle_duplicate_edge,
     at: node_locus(node: target.bundle),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn translate_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> Diagnostic {
-  Diagnostic {
+fn translate_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_sg_rc_bundle_partial,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -190,8 +190,8 @@ fn translate_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> Diagnostic
 }
 fn target_bundle_child_lookup_step(
   acc: TargetBundleChildLookup,
-  e: Edge,
-  edge_name: Symbol
+  e: v2.std.node.Edge,
+  edge_name: v2.std.node.Symbol
 ) -> TargetBundleChildLookup {
   match acc {
     BundleChildInvalidEdge => acc
@@ -218,7 +218,7 @@ fn target_bundle_child_lookup_step(
       }
   }
 }
-fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
+fn conj_named_child(parent: Node, edge_name: v2.std.node.Symbol) -> Outcome<Node> {
   match parent.kind {
     TypeNode { connective: Conj } =>
       match fold(
@@ -234,7 +234,7 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
           outcome_rejected(translate_conj_named_child_missing_diagnostic(parent: parent))
         BundleChildDuplicate =>
           outcome_rejected(
-            Diagnostic {
+            v2.std.diagnostic.Diagnostic {
               reason: ^translate_target_bundle_duplicate_edge,
               at: node_locus(node: parent),
               correction: Unavailable { reason: ExternalContractUnknown }
@@ -245,7 +245,7 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
       }
     _ =>
       outcome_rejected(
-        Diagnostic {
+        v2.std.diagnostic.Diagnostic {
           reason: ^translate_grammar_inverse_not_realized,
           at: node_locus(node: parent),
           correction: Unavailable { reason: ExternalContractUnknown }
@@ -253,7 +253,7 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
       )
   }
 }
-fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> {
+fn conj_optional_named_child(parent: Node, edge_name: v2.std.node.Symbol) -> Outcome<Node?> {
   match parent.kind {
     TypeNode { connective: Conj } =>
       match fold(
@@ -269,7 +269,7 @@ fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> 
           Accepted { value: Absent, diagnostics: None }
         BundleChildDuplicate =>
           outcome_rejected(
-            Diagnostic {
+            v2.std.diagnostic.Diagnostic {
               reason: ^translate_target_bundle_duplicate_edge,
               at: node_locus(node: parent),
               correction: Unavailable { reason: ExternalContractUnknown }
@@ -280,7 +280,7 @@ fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> 
       }
     _ =>
       outcome_rejected(
-        Diagnostic {
+        v2.std.diagnostic.Diagnostic {
           reason: ^translate_grammar_inverse_not_realized,
           at: node_locus(node: parent),
           correction: Unavailable { reason: ExternalContractUnknown }
@@ -288,50 +288,50 @@ fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> 
       )
   }
 }
-fn translate_grammar_inverse_not_realized_diagnostic(emitted: Node) -> Diagnostic {
-  Diagnostic {
+fn translate_grammar_inverse_not_realized_diagnostic(emitted: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_grammar_inverse_not_realized,
     at: node_locus(node: emitted),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn translate_grammar_relation_row_not_found_diagnostic(emitted: Node) -> Diagnostic {
-  Diagnostic {
+fn translate_grammar_relation_row_not_found_diagnostic(emitted: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_grammar_relation_row_not_found,
     at: node_locus(node: emitted),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn translate_conj_invalid_edge_diagnostic(parent: Node) -> Diagnostic {
-  Diagnostic {
+fn translate_conj_invalid_edge_diagnostic(parent: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_conj_invalid_edge,
     at: node_locus(node: parent),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn translate_conj_named_child_missing_diagnostic(parent: Node) -> Diagnostic {
-  Diagnostic {
+fn translate_conj_named_child_missing_diagnostic(parent: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_conj_named_child_missing,
     at: node_locus(node: parent),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn translate_concrete_token_class_missing_diagnostic(token: Node) -> Diagnostic {
-  Diagnostic {
+fn translate_concrete_token_class_missing_diagnostic(token: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_concrete_token_class_missing,
     at: node_locus(node: token),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn translate_concrete_token_kind_invalid_diagnostic(token: Node) -> Diagnostic {
-  Diagnostic {
+fn translate_concrete_token_kind_invalid_diagnostic(token: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_concrete_token_kind_invalid,
     at: node_locus(node: token),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn translate_serialize_recursion_limit_exhausted_diagnostic(emitted: Node) -> Diagnostic {
-  Diagnostic {
+fn translate_serialize_recursion_limit_exhausted_diagnostic(emitted: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_serialize_recursion_limit_exhausted,
     at: node_locus(node: emitted),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -413,7 +413,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
 fn grammar_relation_row_for_bodied_arrow_serialize(
   rules: Node,
   emitted: Node
-) -> Outcome<TargetBodiedArrowStatementScaffold> {
+) -> Outcome<v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold> {
   bind_outcome(
     o: grammar_relation_row_with_bodied_scaffold(rules: rules),
     f: fn(row) {
@@ -423,7 +423,7 @@ fn grammar_relation_row_for_bodied_arrow_serialize(
 }
 
 fn grammar_inverse_bodied_arrow_validated(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   emitted: Node
 ) -> Outcome<Node> {
   bind_outcome(
@@ -455,7 +455,7 @@ fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
       )
   }
 }
-fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> Outcome<Node?> {
+fn optional_named_child_ignoring_positional(parent: Node, edge_name: v2.std.node.Symbol) -> Outcome<Node?> {
 
   match parent.kind {
     TypeNode { connective: Conj } =>
@@ -495,7 +495,7 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> 
           Accepted { value: Absent, diagnostics: None }
         BundleChildDuplicate =>
           outcome_rejected(
-            Diagnostic {
+            v2.std.diagnostic.Diagnostic {
               reason: ^translate_target_bundle_duplicate_edge,
               at: node_locus(node: parent),
               correction: Unavailable { reason: ExternalContractUnknown }
@@ -673,7 +673,7 @@ fn grammar_serialize_source_matches_row(
   }
 }
 fn grammar_inverse_source_validated(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   emitted: Node
 ) -> Outcome<Node> {
   bind_outcome(
@@ -697,8 +697,8 @@ fn grammar_inverse_source_validated(
   )
 }
 fn serialize_concrete_syntax_tokens_to_source(
-  target: TargetModel,
-  tokens: List<ConcreteSyntaxToken>
+  target: v2.std.compilers.target_model.TargetModel,
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens),
@@ -708,9 +708,9 @@ fn serialize_concrete_syntax_tokens_to_source(
   )
 }
 fn serialize_concrete_syntax_tokens_to_source_string(
-  target: TargetModel,
-  tokens: List<ConcreteSyntaxToken>
-) -> Outcome<TargetText> {
+  target: v2.std.compilers.target_model.TargetModel,
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   bound_tokens_source_text(
     tokens: tokens,
     lex: target.lex,
@@ -721,8 +721,8 @@ fn serialize_concrete_syntax_tokens_to_source_string(
 fn translate_project_transform_in_arrow_scope(
   arrow: Node,
   body: Node,
-  target: TargetModel
-) -> Outcome<TargetValueExpression> {
+  target: v2.std.compilers.target_model.TargetModel
+) -> Outcome<v2.std.compilers.target_model.TargetValueExpression> {
   bind_outcome(
     o: target_transform_surface_op_atom(node: body),
     f: fn(op_sym) {
@@ -751,9 +751,9 @@ fn translate_project_transform_in_arrow_scope(
 }
 
 fn target_serialize_bodied_arrow_from_model(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   emitted: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
@@ -801,9 +801,9 @@ fn target_serialize_bodied_arrow_from_model(
 
 fn target_serialize_relation_row_from_model_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   emitted: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -889,10 +889,10 @@ fn target_serialize_relation_row_from_model_bounded(
     )
   }
 }
-fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
-  Diagnostic {
+fn translate_lex_rule_literal_not_found_diagnostic(token_class: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_lex_rule_literal_not_found,
-    at: node_locus(node: Node {
+    at: node_locus(node: v2.std.node.Node {
       kind: TypeNode { connective: Atom { identity: token_class } },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -900,10 +900,10 @@ fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagn
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn translate_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnostic {
-  Diagnostic {
+fn translate_binding_spelling_not_found_diagnostic(binding: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_binding_spelling_not_found,
-    at: node_locus(node: Node {
+    at: node_locus(node: v2.std.node.Node {
       kind: TypeNode { connective: Atom { identity: binding } },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -911,7 +911,7 @@ fn translate_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnosti
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn node_atom_identity(node: Node) -> Outcome<Symbol> {
+fn node_atom_identity(node: Node) -> Outcome<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       Accepted { value: id, diagnostics: None }
@@ -922,8 +922,8 @@ fn node_atom_identity(node: Node) -> Outcome<Symbol> {
 fn token_item_to_source_bounded(
   remaining: Int,
   item: Node,
-  target: TargetModel
-) -> Outcome<TargetText> {
+  target: v2.std.compilers.target_model.TargetModel
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   bind_outcome(
     o: token_sequence_item_kind(item: item),
     f: fn(item_kind) {
@@ -941,7 +941,7 @@ fn token_item_to_source_bounded(
     }
   )
 }
-fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetText> {
+fn token_item_to_source(item: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<v2.std.compilers.target_model.TargetText> {
   bind_outcome(
     o: token_item_serialize_measure(item: item, target: target),
     f: fn(measure) {
@@ -952,8 +952,8 @@ fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetText> 
 fn token_sequence_to_source_bounded(
   remaining: Int,
   tokens: List<Node>,
-  target: TargetModel
-) -> Outcome<TargetText> {
+  target: v2.std.compilers.target_model.TargetModel
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   fold_list(
     xs: tokens,
     empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: None },
@@ -976,7 +976,7 @@ fn token_sequence_to_source_bounded(
     }
   )
 }
-fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetText> {
+fn token_sequence_to_source(tokens: List<Node>, target: v2.std.compilers.target_model.TargetModel) -> Outcome<v2.std.compilers.target_model.TargetText> {
   bind_outcome(
     o: token_sequence_serialize_measure(tokens: tokens, target: target),
     f: fn(measure) {
@@ -987,9 +987,9 @@ fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<
 
 fn target_serialize_source_from_model_bounded(
   remaining: Int,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   emitted: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -1048,7 +1048,7 @@ fn target_serialize_source_from_model_bounded(
   }
 }
 fn target_serialize_source_from_model(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   emitted: Node
 ) -> Outcome<Medium<String>> {
   bind_outcome(
@@ -1063,7 +1063,7 @@ fn target_serialize_source_from_model(
     }
   )
 }
-fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
+fn target_bundle_child(target: v2.std.compilers.target_model.TargetModel, edge_name: v2.std.node.Symbol) -> Outcome<Node> {
   match target.bundle.kind {
     TypeNode { connective: Conj } =>
       match fold(
@@ -1091,7 +1091,7 @@ fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> 
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
   }
 }
-fn target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node?> {
+fn target_bundle_optional_child(target: v2.std.compilers.target_model.TargetModel, edge_name: v2.std.node.Symbol) -> Outcome<Node?> {
   match target.bundle.kind {
     TypeNode { connective: Conj } =>
       match fold(
@@ -1119,7 +1119,7 @@ fn target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outco
       outcome_rejected(translate_target_bundle_malformed_diagnostic(target: target))
   }
 }
-fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
+fn target_selection_priority_from_model(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Node> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_selection_policy),
     f: fn(priority_node) {
@@ -1131,8 +1131,8 @@ fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
   )
 }
 fn coercion_candidates_from_target_model(
-  target: TargetModel
-) -> Outcome<CoercionCandidateSet> {
+  target: v2.std.compilers.target_model.TargetModel
+) -> Outcome<v2.std.coercion.CoercionCandidateSet> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_declared_inhabitants),
     f: fn(inhabitants_root) {
@@ -1145,9 +1145,9 @@ fn coercion_candidates_from_target_model(
 }
 fn coerce_grounded_node(
   source: Node,
-  tree: InferredTree,
-  target: TargetModel
-) -> Outcome<CoercionResult> {
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
+) -> Outcome<v2.std.coercion.CoercionResult> {
   match coercion_identity_from_target_model(source: source, target: target) {
     Accepted { value: identity, diagnostics: d } =>
       Accepted { value: identity, diagnostics: d }
@@ -1174,21 +1174,21 @@ fn coerce_grounded_node(
       )
   }
 }
-fn translate_type_expression_shape_missing_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn translate_type_expression_shape_missing_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_type_expression_shape_missing,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn translate_type_expr_kind_authority_invalid_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn translate_type_expr_kind_authority_invalid_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^translate_type_expr_kind_authority_invalid,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentationChoice> {
+fn target_collection_choice_from_node(node: Node) -> Outcome<v2.std.compilers.target_model.TargetRepresentationChoice> {
   bind_outcome(
     o: find_named_child(root: node, name: ^target_collection_choice_field_form),
     f: fn(form_node) {
@@ -1229,7 +1229,7 @@ fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentatio
                                 ),
                                 f: fn(supplemental_catalog) {
                                   outcome_accepted(
-                                    TargetRepresentationChoice {
+                                    v2.std.compilers.target_model.TargetRepresentationChoice {
                                       form: form,
                                       representation_parameters: supplemental_catalog.representation_parameters,
                                       constraints: constraints,
@@ -1254,7 +1254,7 @@ fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentatio
   )
 }
 
-fn target_text_carrier_from_node(node: Node) -> Outcome<TargetTextCarrier> {
+fn target_text_carrier_from_node(node: Node) -> Outcome<v2.std.compilers.target_model.TargetTextCarrier> {
   bind_outcome(
     o: conj_named_child(parent: node, edge_name: ^target_text_carrier_field_element),
     f: fn(element_carrier) {
@@ -1262,7 +1262,7 @@ fn target_text_carrier_from_node(node: Node) -> Outcome<TargetTextCarrier> {
         o: conj_named_child(parent: node, edge_name: ^target_text_carrier_field_emitted),
         f: fn(emitted) {
           v2.std.diagnostic.Accepted {
-            value: TargetTextCarrier { element_carrier: element_carrier, emitted_type_node: emitted },
+            value: v2.std.compilers.target_model.TargetTextCarrier { element_carrier: element_carrier, emitted_type_node: emitted },
             diagnostics: None
           }
         }
@@ -1271,7 +1271,7 @@ fn target_text_carrier_from_node(node: Node) -> Outcome<TargetTextCarrier> {
   )
 }
 
-fn target_text_carrier_optional_from_bundle(bundle: Node) -> Outcome<Optional<TargetTextCarrier>> {
+fn target_text_carrier_optional_from_bundle(bundle: Node) -> Outcome<Optional<v2.std.compilers.target_model.TargetTextCarrier>> {
   bind_outcome(
     o: conj_optional_named_child(parent: bundle, edge_name: ^target_collection_row_field_text_carrier),
     f: fn(opt) {
@@ -1289,7 +1289,7 @@ fn target_text_carrier_optional_from_bundle(bundle: Node) -> Outcome<Optional<Ta
 
 fn target_collection_realization_from_bundle(
   bundle: Node
-) -> Outcome<TargetCollectionRealization> {
+) -> Outcome<v2.std.compilers.target_model.TargetCollectionRealization> {
   bind_outcome(
     o: conj_named_child(parent: bundle, edge_name: ^target_collection_row_field_source_carrier),
     f: fn(source_carrier) {
@@ -1318,7 +1318,7 @@ fn target_collection_realization_from_bundle(
                                 o: target_text_carrier_optional_from_bundle(bundle: bundle),
                                 f: fn(text_carrier) {
                                   v2.std.diagnostic.Accepted {
-                                    value: TargetCollectionRealization {
+                                    value: v2.std.compilers.target_model.TargetCollectionRealization {
                                       source_carrier: source_carrier,
                                       primary: primary,
                                       alternatives: alternatives,
@@ -1345,7 +1345,7 @@ fn target_collection_realization_from_bundle(
   )
 }
 
-fn collection_realization_from_target(target: TargetModel) -> Outcome<TargetCollectionRealization> {
+fn collection_realization_from_target(target: v2.std.compilers.target_model.TargetModel) -> Outcome<v2.std.compilers.target_model.TargetCollectionRealization> {
   collection_realization_from_target_carrier(
     target: target,
     expected_source_carrier: target_collection_set_carrier_node()
@@ -1353,8 +1353,8 @@ fn collection_realization_from_target(target: TargetModel) -> Outcome<TargetColl
 }
 
 fn free_monoid_collection_realization_from_target(
-  target: TargetModel
-) -> Outcome<TargetCollectionRealization> {
+  target: v2.std.compilers.target_model.TargetModel
+) -> Outcome<v2.std.compilers.target_model.TargetCollectionRealization> {
   collection_realization_from_target_carrier(
     target: target,
     expected_source_carrier: target_carrier_free_monoid_node()
@@ -1362,9 +1362,9 @@ fn free_monoid_collection_realization_from_target(
 }
 
 fn collection_realization_from_target_carrier(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   expected_source_carrier: Node
-) -> Outcome<TargetCollectionRealization> {
+) -> Outcome<v2.std.compilers.target_model.TargetCollectionRealization> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_collection_realization),
     f: fn(catalog_node) {
@@ -1388,8 +1388,8 @@ fn collection_realization_from_target_carrier(
 
 fn project_set_collection_type_node(
   node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   match target_collection_set_element_type_node(set_node: node) {
     Present { value: elem } =>
@@ -1429,8 +1429,8 @@ fn project_set_collection_type_node(
 
 fn project_free_monoid_collection_type_node(
   node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   match target_collection_free_monoid_element_type_node(free_monoid_node: node) {
     Present { value: elem } =>
@@ -1455,10 +1455,10 @@ fn project_free_monoid_collection_type_node(
 }
 
 fn project_free_monoid_via_vec_choice(
-  row: TargetCollectionRealization,
+  row: v2.std.compilers.target_model.TargetCollectionRealization,
   elem: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   match target_collection_select_choice(
     primary: row.primary,
@@ -1552,7 +1552,7 @@ type TypeExprTranslateAcc
 fn translate_algebra_finalize(
   acc: TypeExprTranslateAcc,
   anchor: Node,
-  projection: TargetTypeExpressionProjection
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   match anchor.kind {
     TypeNode { connective: connective } =>
@@ -1633,8 +1633,8 @@ fn translate_algebra_finalize(
 
 fn translate_type_expression_arrow_project(
   node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   bind_outcome(
     o: type_expr_arrow_split_from_types(
@@ -1664,10 +1664,10 @@ fn translate_type_expression_arrow_project(
 }
 
 fn translate_algebra(
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> NodeFold<Outcome<TypeExprTranslateAcc>> {
-  NodeFold {
+  v2.std.node.NodeFold {
     init: fn(n) {
       match n.kind {
         TypeNode { connective: connective } =>
@@ -1751,7 +1751,7 @@ fn translate_algebra(
                                 value: TypeExprTranslateSlots {
                                   slots: list_snoc_item(
                                     xs: slots,
-                                    item: TargetTypeExprFieldSlot {
+                                    item: v2.std.compilers.target_model.TargetTypeExprFieldSlot {
                                       label: label,
                                       type_expr: wrapped
                                     }
@@ -1787,7 +1787,7 @@ fn translate_algebra(
                             value: TypeExprTranslateVariants {
                               variants: list_snoc_item(
                                 xs: variants,
-                                item: TargetTypeExprVariantSlot {
+                                item: v2.std.compilers.target_model.TargetTypeExprVariantSlot {
                                   label: label,
                                   type_expr: projected
                                 }
@@ -1832,8 +1832,8 @@ fn translate_algebra(
 
 fn translate_type_expression_project(
   node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   match node.kind {
     ComputationNode { behavior: _ } =>
@@ -1927,7 +1927,7 @@ fn translate_type_expression_project(
 fn type_expr_atom_binding_from_positional(
   targets: List<Node>,
   node: Node
-) -> Outcome<Symbol> {
+) -> Outcome<v2.std.node.Symbol> {
   bind_outcome(
     o: list_head_and_tail(xs: targets, node: node),
     f: fn(split) {
@@ -1943,14 +1943,14 @@ fn type_expr_atom_binding_from_positional(
     }
   )
 }
-fn type_expr_atom_binding(node: Node) -> Outcome<Symbol> {
+fn type_expr_atom_binding(node: Node) -> Outcome<v2.std.node.Symbol> {
   type_expr_atom_binding_from_positional(
     targets: node_positional_child_targets(node: node),
     node: node
   )
 }
 
-fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<TargetText> {
+fn type_expr_spelling_for_atom(target: v2.std.compilers.target_model.TargetModel, node: Node) -> Outcome<v2.std.compilers.target_model.TargetText> {
   bind_outcome(
     o: type_expr_atom_binding(node: node),
     f: fn(binding) {
@@ -1964,7 +1964,7 @@ fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<Targe
   )
 }
 
-fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<TargetText> {
+fn serialize_type_expr_record_field_label(target: v2.std.compilers.target_model.TargetModel, edge: v2.std.node.Edge) -> Outcome<v2.std.compilers.target_model.TargetText> {
   match edge.label {
     Named { name: label } =>
       bind_outcome(
@@ -1978,7 +1978,7 @@ fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Ou
   }
 }
 
-fn type_expr_carrier_identity(node: Node) -> Outcome<Symbol> {
+fn type_expr_carrier_identity(node: Node) -> Outcome<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: _ } } => node_atom_identity(node: node)
     _ => type_expr_atom_binding(node: node)
@@ -1992,11 +1992,11 @@ fn serialize_type_expr_emitted_positional_head_tail(node: Node) -> Outcome<TypeE
 }
 fn serialize_type_expr_generic_apply_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetGenericApply,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  form: v2.std.compilers.target_model.TargetGenericApply,
   node: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: node)
@@ -2053,12 +2053,12 @@ fn serialize_type_expr_generic_apply_bounded(
 }
 fn serialize_type_expr_args_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetGenericApply,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  form: v2.std.compilers.target_model.TargetGenericApply,
   args: List<Node>,
   anchor: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2104,12 +2104,12 @@ fn serialize_type_expr_args_bounded(
 }
 fn serialize_type_expr_separated_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  separator: Symbol,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  separator: v2.std.node.Symbol,
   items: List<Node>,
   anchor: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2156,13 +2156,13 @@ fn serialize_type_expr_separated_bounded(
 
 fn serialize_type_expr_record_fields_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  separator: Symbol,
-  field_label_separator: Symbol,
-  fields: List<Edge>,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  separator: v2.std.node.Symbol,
+  field_label_separator: v2.std.node.Symbol,
+  fields: List<v2.std.node.Edge>,
   anchor: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2223,11 +2223,11 @@ fn serialize_type_expr_record_fields_bounded(
 
 fn serialize_type_expr_record_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetGenericApply,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  form: v2.std.compilers.target_model.TargetGenericApply,
   node: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   match form.field_label_separator {
     Present { value: field_label_separator } =>
       bind_outcome(
@@ -2270,11 +2270,11 @@ fn serialize_type_expr_record_bounded(
 }
 fn serialize_type_expr_sum_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetSumTypeShape,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  form: v2.std.compilers.target_model.TargetSumTypeShape,
   node: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   bind_outcome(
     o: target_type_expr_emitted_labeled_slot_nodes(node: node),
     f: fn(variants) {
@@ -2291,11 +2291,11 @@ fn serialize_type_expr_sum_bounded(
 }
 fn serialize_type_expr_arrow_param_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetFunctionTypeShape,
-  slot: TargetTypeExprArrowParamSlot
-) -> Outcome<TargetText> {
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  form: v2.std.compilers.target_model.TargetFunctionTypeShape,
+  slot: v2.std.compilers.target_model.TargetTypeExprArrowParamSlot
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   bind_outcome(
     o: serialize_type_expr_arrow_param_spelling(
       target: target,
@@ -2331,12 +2331,12 @@ fn serialize_type_expr_arrow_param_bounded(
 
 fn serialize_type_expr_arrow_params_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetFunctionTypeShape,
-  params: List<TargetTypeExprArrowParamSlot>,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  form: v2.std.compilers.target_model.TargetFunctionTypeShape,
+  params: List<v2.std.compilers.target_model.TargetTypeExprArrowParamSlot>,
   anchor: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2384,11 +2384,11 @@ fn serialize_type_expr_arrow_params_bounded(
 
 fn serialize_type_expr_arrow_named_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetFunctionTypeShape,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  form: v2.std.compilers.target_model.TargetFunctionTypeShape,
   node: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   bind_outcome(
     o: target_type_expr_arrow_labeled_param_slots(node: node),
     f: fn(params) {
@@ -2454,11 +2454,11 @@ fn serialize_type_expr_arrow_named_bounded(
 
 fn serialize_type_expr_arrow_input_wrapped(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetFunctionTypeShape,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  form: v2.std.compilers.target_model.TargetFunctionTypeShape,
   input_node: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   bind_outcome(
     o: lex_rules_literal(target: target, token_class: form.open),
     f: fn(open_source) {
@@ -2490,12 +2490,12 @@ fn serialize_type_expr_arrow_input_wrapped(
 }
 fn serialize_type_expr_arrow_inputs_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetFunctionTypeShape,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  form: v2.std.compilers.target_model.TargetFunctionTypeShape,
   inputs: List<Node>,
   anchor: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2542,11 +2542,11 @@ fn serialize_type_expr_arrow_inputs_bounded(
 }
 fn serialize_type_expr_arrow_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  form: TargetFunctionTypeShape,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  form: v2.std.compilers.target_model.TargetFunctionTypeShape,
   node: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   match target_type_expr_arrow_wire_shape(node: node) {
     Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
       bind_outcome_accepted(
@@ -2611,10 +2611,10 @@ fn serialize_type_expr_arrow_bounded(
 }
 fn serialize_type_expr_emitted_wire_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  wire: TargetTypeExpression
-) -> Outcome<TargetText> {
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  wire: v2.std.compilers.target_model.TargetTypeExpression
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   match wire.kind {
     TargetTypeExprAtom =>
       type_expr_spelling_for_atom(target: target, node: wire.node)
@@ -2662,10 +2662,10 @@ fn serialize_type_expr_emitted_wire_bounded(
 }
 fn serialize_type_expr_emitted_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
   emitted: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -2685,14 +2685,14 @@ fn serialize_type_expr_emitted_bounded(
   }
 }
 fn translate_outcome_is_catalog_lookup_miss(
-  diagnostics: NonEmptyDiagnostics
+  diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
 ) -> Bool {
   diagnostics.head.reason == ^target_atom_realization_lookup_miss
 }
 
 fn translate_reference_layer_tokens_from_target(
-  target: TargetModel
-) -> Outcome<TargetReferenceLayerTokens> {
+  target: v2.std.compilers.target_model.TargetModel
+) -> Outcome<v2.std.compilers.target_model.TargetReferenceLayerTokens> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_reference_layer_tokens),
     f: fn(bundle) { target_reference_layer_tokens_from_node(node: bundle) }
@@ -2701,8 +2701,8 @@ fn translate_reference_layer_tokens_from_target(
 
 fn translate_apply_wrap_gate_to_type_shell(
   shell: Node,
-  gate: WrapDecisionGate,
-  target: TargetModel
+  gate: v2.std.compilers.target_model.WrapDecisionGate,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Node> {
   match gate {
     WrapGateInapplicable => outcome_accepted(shell)
@@ -2733,10 +2733,10 @@ fn translate_apply_wrap_gate_to_type_shell(
 }
 
 fn translate_apply_wrap_gate_to_value_expression(
-  expr: TargetValueExpression,
-  gate: WrapDecisionGate,
-  target: TargetModel
-) -> Outcome<TargetValueExpression> {
+  expr: v2.std.compilers.target_model.TargetValueExpression,
+  gate: v2.std.compilers.target_model.WrapDecisionGate,
+  target: v2.std.compilers.target_model.TargetModel
+) -> Outcome<v2.std.compilers.target_model.TargetValueExpression> {
   match gate {
     WrapGateInapplicable => outcome_accepted(expr)
     WrapGateDecided { decision } =>
@@ -2762,8 +2762,8 @@ fn translate_apply_wrap_gate_to_value_expression(
 fn translate_apply_use_site_ownership_to_projected_type(
   projected: Node,
   source_carrier: Node,
-  target: TargetModel,
-  use_site: TargetOwnershipUseSite
+  target: v2.std.compilers.target_model.TargetModel,
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Outcome<Node> {
   translate_apply_use_site_ownership_to_type_shell(
     shell: projected,
@@ -2776,9 +2776,9 @@ fn translate_apply_use_site_ownership_to_projected_type(
 fn translate_apply_use_site_ownership_to_projected_boundary(
   projected: Node,
   source_for_binding: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  use_site: TargetOwnershipUseSite
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Outcome<Node> {
   bind_outcome(
     o: target_type_expr_emitted_wire_decode(node: projected, projection: projection),
@@ -2815,9 +2815,9 @@ data translate_ownership_instantiation_boundary_note: String = "Instantiation-ki
 fn translate_apply_use_site_ownership_to_instantiation_boundary(
   projected: Node,
   source_for_binding: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  use_site: TargetOwnershipUseSite
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Outcome<Node> {
   bind_outcome(
     o: serialize_type_expr_emitted_positional_head_tail(node: projected),
@@ -2840,15 +2840,15 @@ fn translate_apply_use_site_ownership_to_instantiation_boundary(
                   )
                 }
               ),
-              policy: StageDiagnosticPolicy { accumulation: ShortCircuit }
+              policy: v2.std.diagnostic.StageDiagnosticPolicy { accumulation: ShortCircuit }
             ),
             f: fn(wrapped_args) {
               outcome_accepted(
                 node_rebuild(
                   n: projected,
                   children: list_append(
-                    left: [Edge { label: Positional, target: projected_split.head }],
-                    right: list_map(xs: wrapped_args, f: fn(a) { Edge { label: Positional, target: a } })
+                    left: [v2.std.node.Edge { label: Positional, target: projected_split.head }],
+                    right: list_map(xs: wrapped_args, f: fn(a) { v2.std.node.Edge { label: Positional, target: a } })
                   )
                 )
               )
@@ -2862,8 +2862,8 @@ fn translate_apply_use_site_ownership_to_instantiation_boundary(
 
 fn translate_project_arrow_input_types(
   original_inputs: List<Node>,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> Outcome<List<Node>> {
   fold_list(
     xs: original_inputs,
@@ -2897,8 +2897,8 @@ fn translate_project_arrow_input_types(
 
 fn translate_project_arrow_split_types(
   original_split: TypeExprArrowSplit,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
   anchor: Node
 ) -> Outcome<TypeExprArrowSplit> {
   bind_outcome(
@@ -2941,8 +2941,8 @@ fn translate_project_arrow_split_types(
 fn translate_apply_use_site_ownership_to_type_shell(
   shell: Node,
   source_carrier: Node,
-  target: TargetModel,
-  use_site: TargetOwnershipUseSite
+  target: v2.std.compilers.target_model.TargetModel,
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Outcome<Node> {
   match wrap_decision_gate(
     target: target,
@@ -2960,13 +2960,13 @@ fn translate_apply_use_site_ownership_to_type_shell(
 }
 
 fn translate_outcome_is_signature_realization_miss(
-  diagnostics: NonEmptyDiagnostics
+  diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
 ) -> Bool {
   diagnostics.head.reason == ^target_function_signature_realization_lookup_miss
 }
 
-fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
-  Node {
+fn translate_boundary_source_carrier_node(binding: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: binding } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -2974,8 +2974,8 @@ fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
 }
 
 fn function_boundary_site_to_ownership_use_site(
-  boundary_site: FunctionBoundarySite
-) -> TargetOwnershipUseSite {
+  boundary_site: v2.std.compilers.target_model.FunctionBoundarySite
+) -> v2.std.compilers.target_model.TargetOwnershipUseSite {
   match boundary_site {
     FunctionBoundaryParam => OwnershipAtFunctionParameter
     FunctionBoundaryReturn => OwnershipAtFunctionReturn
@@ -2983,10 +2983,10 @@ fn function_boundary_site_to_ownership_use_site(
 }
 
 fn translate_target_function_signature_realization_for_boundary(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   emitted: Node,
-  boundary_site: FunctionBoundarySite
-) -> Outcome<Optional<TargetFunctionSignatureRealization>> {
+  boundary_site: v2.std.compilers.target_model.FunctionBoundarySite
+) -> Outcome<Optional<v2.std.compilers.target_model.TargetFunctionSignatureRealization>> {
   match target_bundle_optional_child(
     target: target,
     edge_name: ^target_model_edge_signature_realizations
@@ -3022,11 +3022,11 @@ fn translate_target_function_signature_realization_for_boundary(
 
 fn serialize_type_expr_boundary_atom_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  boundary_site: FunctionBoundarySite,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  boundary_site: v2.std.compilers.target_model.FunctionBoundarySite,
   emitted: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   match translate_target_function_signature_realization_for_boundary(
     target: target,
     emitted: emitted,
@@ -3072,11 +3072,11 @@ fn serialize_type_expr_boundary_atom_bounded(
 
 fn serialize_type_expr_boundary_bounded(
   remaining: Int,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection,
-  boundary_site: FunctionBoundarySite,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection,
+  boundary_site: v2.std.compilers.target_model.FunctionBoundarySite,
   emitted: Node
-) -> Outcome<TargetText> {
+) -> Outcome<v2.std.compilers.target_model.TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -3107,7 +3107,7 @@ fn serialize_type_expr_boundary_bounded(
   }
 }
 
-fn translate_coerced_shell_base(coerced: Node, target: TargetModel) -> Outcome<Node> {
+fn translate_coerced_shell_base(coerced: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Node> {
   match translate_target_atom_realization_for_carrier(
     target: target,
     source_carrier: coerced
@@ -3128,8 +3128,8 @@ fn translate_coerced_shell_base(coerced: Node, target: TargetModel) -> Outcome<N
 
 fn translate_coerced_shell_at_use_site(
   coerced: Node,
-  target: TargetModel,
-  use_site: TargetOwnershipUseSite
+  target: v2.std.compilers.target_model.TargetModel,
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Outcome<Node> {
   translate_coerced_shell_at_use_site_from_source(
     coerced: coerced,
@@ -3142,8 +3142,8 @@ fn translate_coerced_shell_at_use_site(
 fn translate_coerced_shell_at_use_site_from_source(
   coerced: Node,
   ownership_source_carrier: Node,
-  target: TargetModel,
-  use_site: TargetOwnershipUseSite
+  target: v2.std.compilers.target_model.TargetModel,
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Outcome<Node> {
   match translate_coerced_type_shell_from_source(
     source_carrier: ownership_source_carrier,
@@ -3167,7 +3167,7 @@ fn translate_coerced_shell_at_use_site_from_source(
 fn translate_coerced_type_shell_from_source(
   source_carrier: Node,
   coerced: Node,
-  target: TargetModel
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Node> {
   match source_carrier.kind {
     TypeNode { connective: Instantiation } =>
@@ -3185,7 +3185,7 @@ fn translate_coerced_type_shell_from_source(
   }
 }
 
-fn translate_coerced_shell(coerced: Node, target: TargetModel) -> Outcome<Node> {
+fn translate_coerced_shell(coerced: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Node> {
   translate_coerced_shell_at_use_site(
     coerced: coerced,
     target: target,
@@ -3200,7 +3200,7 @@ fn translate_use_site_ownership_source_carrier(source: Node, coerced: Node) -> N
   }
 }
 fn target_atom_realizations_catalog_from_model(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node
 ) -> Outcome<Node> {
   match target_bundle_optional_child(
@@ -3221,9 +3221,9 @@ fn target_atom_realizations_catalog_from_model(
   }
 }
 fn translate_target_atom_realization_for_carrier(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node
-) -> Outcome<TargetAtomRealization> {
+) -> Outcome<v2.std.compilers.target_model.TargetAtomRealization> {
   bind_outcome(
     o: target_atom_realizations_catalog_from_model(
       target: target,
@@ -3255,11 +3255,11 @@ fn translate_shell_attach_value_expression(shell: Node, value: Node) -> Node {
   }
 }
 fn translate_apply_use_site_ownership_to_value_expression(
-  expr: TargetValueExpression,
+  expr: v2.std.compilers.target_model.TargetValueExpression,
   source_carrier: Node,
-  target: TargetModel,
-  use_site: TargetOwnershipUseSite
-) -> Outcome<TargetValueExpression> {
+  target: v2.std.compilers.target_model.TargetModel,
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
+) -> Outcome<v2.std.compilers.target_model.TargetValueExpression> {
   match wrap_decision_gate(
     target: target,
     source_carrier: source_carrier,
@@ -3278,8 +3278,8 @@ fn translate_apply_use_site_ownership_to_value_expression(
 fn translate_atom_realization_value_from_source_at_use_site(
   source: Node,
   coerced: Node,
-  target: TargetModel,
-  use_site: TargetOwnershipUseSite
+  target: v2.std.compilers.target_model.TargetModel,
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Outcome<Optional<Node>> {
   match translate_target_atom_realization_for_carrier(
     target: target,
@@ -3324,9 +3324,9 @@ fn translate_atom_realization_value_from_source_at_use_site(
 fn translate_coerced_with_atom_realization_at_use_site(
   source: Node,
   coerced: Node,
-  target: TargetModel,
-  use_site: TargetOwnershipUseSite,
-  pending: Diagnostics
+  target: v2.std.compilers.target_model.TargetModel,
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
+  pending: v2.std.diagnostic.Diagnostics
 ) -> Outcome<Node> {
   let ownership_source_carrier = translate_use_site_ownership_source_carrier(
     source: source,
@@ -3378,8 +3378,8 @@ fn translate_coerced_with_atom_realization_at_use_site(
 fn translate_coerced_with_atom_realization(
   source: Node,
   coerced: Node,
-  target: TargetModel,
-  pending: Diagnostics
+  target: v2.std.compilers.target_model.TargetModel,
+  pending: v2.std.diagnostic.Diagnostics
 ) -> Outcome<Node> {
   translate_coerced_with_atom_realization_at_use_site(
     source: source,
@@ -3416,8 +3416,8 @@ fn translate_type_fold_init_acc(node: Node) -> Outcome<TranslateFoldAcc> {
 
 fn translate_projection_absent_fold_init_acc(
   node: Node,
-  tree: InferredTree,
-  target: TargetModel
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<TranslateFoldAcc> {
   match translate_projection_absent_fold_init(node: node, tree: tree, target: target) {
     Accepted { value: rebuilt, diagnostics: d } =>
@@ -3444,8 +3444,8 @@ fn translate_computation_fold_init(node: Node) -> Outcome<Node> {
 }
 fn translate_projection_absent_coerce_from_grounding_or_evidence(
   node: Node,
-  tree: InferredTree,
-  target: TargetModel
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Node> {
   match coerce_grounded_node(source: node, tree: tree, target: target) {
     Accepted { value: coerced, diagnostics: d } =>
@@ -3476,8 +3476,8 @@ fn translate_projection_absent_coerce_from_grounding_or_evidence(
 }
 fn translate_projection_absent_fold_init(
   node: Node,
-  tree: InferredTree,
-  target: TargetModel
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Node> {
   match node.kind {
     TypeNode { connective: Arrow } =>
@@ -3517,7 +3517,7 @@ fn translate_projection_absent_fold_init(
   }
 }
 
-fn translate_grammar_relation_row_match(target: TargetModel, emitted: Node) -> Outcome<Node> {
+fn translate_grammar_relation_row_match(target: v2.std.compilers.target_model.TargetModel, emitted: Node) -> Outcome<Node> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) { grammar_relation_row_for_emitted(rules: rules, emitted: emitted) }
@@ -3525,9 +3525,9 @@ fn translate_grammar_relation_row_match(target: TargetModel, emitted: Node) -> O
 }
 fn translate_type_expression_tree(
   node: Node,
-  tree: InferredTree,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   bind_outcome(
     o: translate_grounding_derived_gate_at_producer(tree: tree, node: node),
@@ -3539,7 +3539,7 @@ fn translate_type_expression_tree(
           o: translate_fold_acc_rebuilt(
             o: fold_node(
               n: node,
-              algebra: NodeFold {
+              algebra: v2.std.node.NodeFold {
                 init: fn(n0) { translate_type_fold_init_acc(node: n0) },
                 step: fn(acc, e, child) {
                   translate_fold_step(acc: acc, edge: e, child: child, tree: tree)
@@ -3562,8 +3562,8 @@ fn translate_type_expression_tree(
 }
 fn translate_node_with_projection(
   node: Node,
-  tree: InferredTree,
-  target: TargetModel
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Node> {
   bind_outcome(
     o: type_expression_projection_from_target(target: target),
@@ -3596,8 +3596,8 @@ fn translate_node_with_projection(
 }
 fn translate_type_expression_subtree(
   node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   match node.kind {
     TypeNode { connective: _ } =>
@@ -3616,9 +3616,9 @@ fn translate_type_expression_subtree(
 }
 fn translate_type_expression_children_in_node(
   node: Node,
-  target: TargetModel,
-  projection: TargetTypeExpressionProjection
-) -> Outcome<List<Edge>> {
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
+) -> Outcome<List<v2.std.node.Edge>> {
   fold(
     node.children,
     init: Accepted { value: Empty, diagnostics: None },
@@ -3630,7 +3630,7 @@ fn translate_type_expression_children_in_node(
             o: translate_type_expression_subtree(node: e.target, target: target, projection: projection),
             f: fn(projected) {
               outcome_accepted(
-                list_snoc_item(xs: edges, item: Edge { label: e.label, target: projected })
+                list_snoc_item(xs: edges, item: v2.std.node.Edge { label: e.label, target: projected })
               )
             }
           )
@@ -3641,8 +3641,8 @@ fn translate_type_expression_children_in_node(
 }
 fn translate_node_computation(
   node: Node,
-  tree: InferredTree,
-  target: TargetModel
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Node> {
   bind_outcome(
     o: translate_grounding_derived_gate_at_producer(tree: tree, node: node),
@@ -3650,7 +3650,7 @@ fn translate_node_computation(
       translate_fold_acc_rebuilt(
         o: fold_node(
           n: node,
-          algebra: NodeFold {
+          algebra: v2.std.node.NodeFold {
             init: fn(n0) { translate_type_fold_init_acc(node: n0) },
             step: fn(acc, e, child) {
               translate_fold_step(acc: acc, edge: e, child: child, tree: tree)
@@ -3663,13 +3663,13 @@ fn translate_node_computation(
 }
 fn translate_node_projection_absent_fold(
   node: Node,
-  tree: InferredTree,
-  target: TargetModel
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Node> {
   translate_fold_acc_rebuilt(
     o: fold_node(
       n: node,
-      algebra: NodeFold {
+      algebra: v2.std.node.NodeFold {
         init: fn(n0) {
           translate_projection_absent_fold_init_acc(
             node: n0,
@@ -3708,7 +3708,7 @@ fn translate_import_production_qn_node(import_node: Node) -> Outcome<Node> {
             value: fold_list_node(
               xs: segments,
               item_node: fn(sym) {
-                Node {
+                v2.std.node.Node {
                   kind: TypeNode { connective: Atom { identity: sym } },
                   children: [],
                   occurrence_id: SyntheticOccurrence
@@ -3726,7 +3726,7 @@ fn translate_import_production_block_node(import_node: Node) -> Outcome<Node> {
     o: parse_import_block_idents(import_decl_node: import_node, root: import_node),
     f: fn(idents) {
       outcome_accepted(
-        value: Node {
+        value: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: fold_list(
             xs: idents,
@@ -3735,9 +3735,9 @@ fn translate_import_production_block_node(import_node: Node) -> Outcome<Node> {
               list_append(
                 left: acc,
                 right: [
-                  Edge {
+                  v2.std.node.Edge {
                     label: Positional,
-                    target: Node {
+                    target: v2.std.node.Node {
                       kind: TypeNode { connective: Atom { identity: sym } },
                       children: [],
                       occurrence_id: SyntheticOccurrence
@@ -3782,8 +3782,8 @@ fn is_dag_import_carrier(emitted: Node) -> Bool {
 
 fn translate_node_projection_absent(
   node: Node,
-  tree: InferredTree,
-  target: TargetModel
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Node> {
   bind_outcome(
     o: translate_grounding_derived_gate_at_producer(tree: tree, node: node),
@@ -3797,7 +3797,7 @@ fn translate_node_projection_absent(
           o: translate_fold_acc_rebuilt(
             o: fold_node(
               n: node,
-              algebra: NodeFold {
+              algebra: v2.std.node.NodeFold {
                 init: fn(n0) { translate_type_fold_init_acc(node: n0) },
                 step: fn(acc, e, child) {
                   translate_fold_step(acc: acc, edge: e, child: child, tree: tree)
@@ -3820,8 +3820,8 @@ fn translate_node_projection_absent(
 }
 fn translate_node(
   node: Node,
-  tree: InferredTree,
-  target: TargetModel
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Node> {
   match target_bundle_child_optional_type_expr_projection(target: target) {
     Accepted { value: ProjectionPresent, diagnostics: _ } =>
@@ -3837,7 +3837,7 @@ type TypeExprProjectionPresence
   = ProjectionPresent
   | ProjectionAbsent
 fn target_bundle_child_optional_type_expr_projection(
-  target: TargetModel
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<TypeExprProjectionPresence> {
   match target_bundle_optional_child(
     target: target,
@@ -3853,9 +3853,9 @@ fn target_bundle_child_optional_type_expr_projection(
 }
 fn translate_fold_step(
   acc: Outcome<TranslateFoldAcc>,
-  edge: Edge,
+  edge: v2.std.node.Edge,
   child: Outcome<TranslateFoldAcc>,
-  tree: InferredTree
+  tree: v2.compiler.infer.InferredTree
 ) -> Outcome<TranslateFoldAcc> {
   match acc {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -3876,7 +3876,7 @@ fn translate_fold_step(
                     n: parent_acc.rebuilt,
                     children: list_snoc_item(
                       xs: parent_acc.rebuilt.children,
-                      item: Edge { label: edge.label, target: child_acc.rebuilt }
+                      item: v2.std.node.Edge { label: edge.label, target: child_acc.rebuilt }
                     )
                   )
                 },
@@ -3892,8 +3892,8 @@ fn translate_fold_step(
   }
 }
 fn translate(
-  tree: InferredTree,
-  target: TargetModel
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<TargetNodeTree> {
   bind_outcome(
     o: translate_grounding_derived_gate_subtree(tree: tree, root: tree.root),
@@ -3903,7 +3903,7 @@ fn translate(
   )
 }
 
-fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<Node> {
+fn translate_emitted_node(tree: v2.compiler.infer.InferredTree, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Node> {
   bind_outcome(
     o: translate(tree: tree, target: target),
     f: fn(emitted) {
@@ -3953,7 +3953,7 @@ fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
   ]
 }
 
-fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symbol {
+fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> v2.std.node.Symbol {
   match reason {
     TargetBundleMalformed => ^translate_target_bundle_malformed
     TargetBundleDuplicateEdge => ^translate_target_bundle_duplicate_edge
@@ -3976,7 +3976,7 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symb
 }
 
 fn translate_diagnostic_reason_find_by_symbol(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   variants: List<TranslateDiagnosticReason>
 ) -> Optional<TranslateDiagnosticReason> {
   fold(variants, init: optional_absent(), f: fn(acc, variant) {
@@ -3992,14 +3992,14 @@ fn translate_diagnostic_reason_find_by_symbol(
   })
 }
 
-fn translate_diagnostic_reason_from_symbol(sym: Symbol) -> Optional<TranslateDiagnosticReason> {
+fn translate_diagnostic_reason_from_symbol(sym: v2.std.node.Symbol) -> Optional<TranslateDiagnosticReason> {
   translate_diagnostic_reason_find_by_symbol(
     sym: sym,
     variants: translate_diagnostic_reason_variants()
   )
 }
 
-fn translate_diagnostic_reason_roster() -> List<Symbol> {
+fn translate_diagnostic_reason_roster() -> List<v2.std.node.Symbol> {
   fold(translate_diagnostic_reason_variants(), init: Empty, f: fn(acc, variant) {
     list_snoc_item(
       xs: acc,
@@ -4009,7 +4009,7 @@ fn translate_diagnostic_reason_roster() -> List<Symbol> {
 }
 
 fn translate_diagnostic_reason_head(
-  diagnostics: NonEmptyDiagnostics
+  diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
 ) -> Optional<TranslateDiagnosticReason> {
   translate_diagnostic_reason_from_symbol(sym: diagnostics.head.reason)
 }

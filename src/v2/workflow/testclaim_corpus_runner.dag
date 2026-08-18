@@ -56,11 +56,11 @@ fn corpus_entry_label(e: CorpusEvalEntry) -> String {
   }
 }
 
-fn verdict_tally_add_deferred_row(t: VerdictTally) -> VerdictTally {
-  VerdictTally { pass: t.pass, fail: t.fail, deferred: Succ { prev: t.deferred } }
+fn verdict_tally_add_deferred_row(t: v2.std.verdict.VerdictTally) -> v2.std.verdict.VerdictTally {
+  v2.std.verdict.VerdictTally { pass: t.pass, fail: t.fail, deferred: Succ { prev: t.deferred } }
 }
 
-fn bool_witness_run_witness(run: BoolWitnessRun) -> BoolWitness {
+fn bool_witness_run_witness(run: BoolWitnessRun) -> v2.std.verification.BoolWitness {
   match run {
     BoolWitnessRuntimeVerdict { witness: witness, result: _ } =>
       witness
@@ -69,22 +69,22 @@ fn bool_witness_run_witness(run: BoolWitnessRun) -> BoolWitness {
   }
 }
 
-fn unified_bool_witness_run_tally(t: VerdictTally, run: BoolWitnessRun) -> VerdictTally {
+fn unified_bool_witness_run_tally(t: v2.std.verdict.VerdictTally, run: BoolWitnessRun) -> v2.std.verdict.VerdictTally {
   match run {
     BoolWitnessQueuedForHostTransport { witness: _ } =>
       verdict_tally_add_deferred_row(t: t)
     BoolWitnessRuntimeVerdict { witness: _, result: true } =>
       verdict_tally_add(t: t, v: Pass)
     BoolWitnessRuntimeVerdict { witness: _, result: false } =>
-      VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
+      v2.std.verdict.VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
   }
 }
 
-fn queued_bool_witness_run(witness: BoolWitness) -> BoolWitnessRun {
+fn queued_bool_witness_run(witness: v2.std.verification.BoolWitness) -> BoolWitnessRun {
   BoolWitnessQueuedForHostTransport { witness: witness }
 }
 
-fn corpus_report_tally_add_unified_run(t: VerdictTally, run: UnifiedClaimRun) -> VerdictTally {
+fn corpus_report_tally_add_unified_run(t: v2.std.verdict.VerdictTally, run: UnifiedClaimRun) -> v2.std.verdict.VerdictTally {
   match run {
     NodeCorpusRun { run: node_run } =>
       verdict_tally_add(t: t, v: test_claim_run_verdict(run: node_run))
@@ -97,7 +97,7 @@ fn corpus_report_tally_add_unified_run(t: VerdictTally, run: UnifiedClaimRun) ->
   }
 }
 
-fn corpus_report_tally(r: CorpusEvalReport) -> VerdictTally {
+fn corpus_report_tally(r: CorpusEvalReport) -> v2.std.verdict.VerdictTally {
   fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
     corpus_report_tally_add_unified_run(t: acc, run: e.run)
   })
@@ -149,22 +149,22 @@ fn run_node_runtime_value_subjects(
   map(subjects, fn(subject) { run_test_claim(subject: subject) })
 }
 
-fn node_corpus_claim_from_subject(subject: TestClaimEvalSubject<Node>) -> UnifiedTestClaim {
+fn node_corpus_claim_from_subject(subject: TestClaimEvalSubject<Node>) -> v2.std.verification.UnifiedTestClaim {
   NodeCorpus {
     claim: subject.claim,
     transport: EvalOnly
   }
 }
 
-fn manual_node_corpus_unified_claims() -> List<UnifiedTestClaim> {
+fn manual_node_corpus_unified_claims() -> List<v2.std.verification.UnifiedTestClaim> {
   map(manual_corpus_node_subject_rows, fn(subject) { node_corpus_claim_from_subject(subject: subject) })
 }
 
-fn unified_corpus_eval_pilot_claims() -> List<UnifiedTestClaim> {
+fn unified_corpus_eval_pilot_claims() -> List<v2.std.verification.UnifiedTestClaim> {
   manual_node_corpus_unified_claims()
 }
 
-fn corpus_entry_from_queued_bool_witness(witness: BoolWitness) -> CorpusEvalEntry {
+fn corpus_entry_from_queued_bool_witness(witness: v2.std.verification.BoolWitness) -> CorpusEvalEntry {
   CorpusEvalEntry {
     run: BoolWitnessRunReceipt { run: queued_bool_witness_run(witness: witness) }
   }
@@ -178,20 +178,20 @@ fn manual_node_corpus_unified_claim_projection_holds() -> Bool {
   )
 }
 
-fn corpus_entry_from_unresolved_node_corpus_claim(claim: TestClaim) -> CorpusEvalEntry {
+fn corpus_entry_from_unresolved_node_corpus_claim(claim: v2.std.verification.TestClaim) -> CorpusEvalEntry {
   CorpusEvalEntry { run: NodeCorpusUnresolvedRun { claim: claim } }
 }
 
 fn corpus_entry_from_emit_vs_eval_deferred_node_corpus_claim(
-  claim: TestClaim,
-  target: TargetModel
+  claim: v2.std.verification.TestClaim,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> CorpusEvalEntry {
   CorpusEvalEntry {
     run: NodeCorpusEmitVsEvalDeferredRun { claim: claim, target: target }
   }
 }
 
-fn run_node_corpus_eval_only_entry(c: UnifiedTestClaim) -> CorpusEvalEntry {
+fn run_node_corpus_eval_only_entry(c: v2.std.verification.UnifiedTestClaim) -> CorpusEvalEntry {
   match c {
     NodeCorpus { claim: claim, transport: EvalOnly } => {
       let unresolved = corpus_entry_from_unresolved_node_corpus_claim(claim: claim)
@@ -238,7 +238,7 @@ fn manual_node_corpus_claims_all_resolve() -> Bool {
   )
 }
 
-fn run_unified_corpus_eval_entry(c: UnifiedTestClaim) -> CorpusEvalEntry {
+fn run_unified_corpus_eval_entry(c: v2.std.verification.UnifiedTestClaim) -> CorpusEvalEntry {
   match c {
     BoolWitnessClaim { witness: w } =>
       corpus_entry_from_queued_bool_witness(witness: w)
@@ -252,7 +252,7 @@ fn run_unified_corpus_eval_entry(c: UnifiedTestClaim) -> CorpusEvalEntry {
   }
 }
 
-fn run_unified_corpus_eval(claims: List<UnifiedTestClaim>) -> CorpusEvalReport {
+fn run_unified_corpus_eval(claims: List<v2.std.verification.UnifiedTestClaim>) -> CorpusEvalReport {
   CorpusEvalReport {
     entries: map(claims, fn(c) { run_unified_corpus_eval_entry(c: c) })
   }

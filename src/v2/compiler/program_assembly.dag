@@ -10,16 +10,16 @@ type ProgramAssemblyFoldState
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
     }
 
-fn program_assembly_empty_roots() -> FreeMonoid<NormalizedTree> {
+fn program_assembly_empty_roots() -> FreeMonoid<v2.compiler.normalized_tree.NormalizedTree> {
   Empty
 }
 
 fn program_assembly_read_to_normalized_root_prepared(
-  read: DagSourceReadWitness,
-  lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
-) -> Outcome<NormalizedTree> {
+  read: v2.compiler.source_authority.DagSourceReadWitness,
+  lm: v2.std.language_model.LanguageModel,
+  prepared: v2.compiler.parse.PreparedGrammar,
+  residue: v2.std.diagnostic.Diagnostics
+) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   match read.artifact.kind {
     SourceFile =>
       bind_outcome(
@@ -45,9 +45,9 @@ fn program_assembly_read_to_normalized_root_prepared(
 }
 
 fn program_assembly_read_to_normalized_root(
-  read: DagSourceReadWitness,
-  lm: LanguageModel
-) -> Outcome<NormalizedTree> {
+  read: v2.compiler.source_authority.DagSourceReadWitness,
+  lm: v2.std.language_model.LanguageModel
+) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   match prepare_grammar(grammar: lm.grammar) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
@@ -62,10 +62,10 @@ fn program_assembly_read_to_normalized_root(
 
 fn program_assembly_fold_step(
   state: ProgramAssemblyFoldState,
-  read: DagSourceReadWitness,
-  lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  read: v2.compiler.source_authority.DagSourceReadWitness,
+  lm: v2.std.language_model.LanguageModel,
+  prepared: v2.compiler.parse.PreparedGrammar,
+  residue: v2.std.diagnostic.Diagnostics
 ) -> ProgramAssemblyFoldState {
   match state {
     ProgramAssemblyFoldFailed { diagnostics: d } =>
@@ -93,8 +93,8 @@ data program_assembly_module_binding_fail_closed_note: String = "§5 fail-closed
 data program_assembly_prepare_once_note: String = "prepare_grammar is hoisted ABOVE fold_list here so the grammar is well-formed-checked, validated (5 checks), and FIRST/nullable-analyzed ONCE per assembly — then parse_module_prepared reuses the PreparedGrammar for every module in the ingest. A door call over a K-module import closure therefore validates once, not K times (the recompute-per-module cost this dissolves). Empty-ingest is guarded so it never pays the one-time prepare for zero modules. Fail-closed: an invalid grammar fails the whole assembly (ProgramAssemblyFoldFailed) before any module is parsed, carrying the validation diagnostic — never a per-module silent skip."
 
 fn program_assembly_fold_ingest(
-  ingest: SourceRootIngest,
-  lm: LanguageModel
+  ingest: v2.compiler.source_authority.SourceRootIngest,
+  lm: v2.std.language_model.LanguageModel
 ) -> ProgramAssemblyFoldState {
   match ingest {
     Empty =>
@@ -122,9 +122,9 @@ fn program_assembly_fold_ingest(
 }
 
 fn module_roots_from_source_root_ingest(
-  ingest: SourceRootIngest,
-  lm: LanguageModel
-) -> Outcome<FreeMonoid<NormalizedTree>> {
+  ingest: v2.compiler.source_authority.SourceRootIngest,
+  lm: v2.std.language_model.LanguageModel
+) -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   match program_assembly_fold_ingest(ingest: ingest, lm: lm) {
     ProgramAssemblyFoldOk { roots: roots, index: _ } =>
       outcome_accepted(value: roots)
@@ -134,9 +134,9 @@ fn module_roots_from_source_root_ingest(
 }
 
 fn assemble_program_from_module_roots(
-  roots: FreeMonoid<NormalizedTree>,
-  admission: Admission,
-  lm: LanguageModel
+  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
+  admission: v2.compiler.name_resolve.Admission,
+  lm: v2.std.language_model.LanguageModel
 ) -> Outcome<Node> {
   bind_outcome(
     o: validate_module_roots(roots: roots),
@@ -151,9 +151,9 @@ fn assemble_program_from_module_roots(
 }
 
 fn assemble_program_from_ingest(
-  ingest: SourceRootIngest,
-  admission: Admission,
-  lm: LanguageModel
+  ingest: v2.compiler.source_authority.SourceRootIngest,
+  admission: v2.compiler.name_resolve.Admission,
+  lm: v2.std.language_model.LanguageModel
 ) -> Outcome<Node> {
   match program_assembly_fold_ingest(ingest: ingest, lm: lm) {
     ProgramAssemblyFoldFailed { diagnostics: d } =>

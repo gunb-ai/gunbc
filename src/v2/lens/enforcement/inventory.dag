@@ -58,7 +58,7 @@ data evaluated_scope_absent_reason: String = "evaluated_scope awaits Phase 1 exe
 
 data subject_counts_evaluated_unavailable_absent_note: String = "evaluated and unavailable subject counts await Phase 1 execution receipts; only discovered (receipt-local name count) is reported in Phase 0B"
 
-fn subject_counts_from_receipt(receipt: EnrollmentDiscoveryReceipt) -> SubjectPopulationCounts {
+fn subject_counts_from_receipt(receipt: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt) -> SubjectPopulationCounts {
   SubjectPopulationCounts {
     discovered: length(xs: receipt.discovered_subject_names.entries),
     evaluated: 0,
@@ -79,7 +79,7 @@ fn disposition_when_bool(enrolled: Bool) -> SchedulingDisposition {
 }
 
 fn pr_floor_scheduling_disposition(
-  primary: WitnessConsumerCadence,
+  primary: std.witness_admission.WitnessConsumerCadence,
   ci_enrolled: Bool
 ) -> SchedulingDisposition {
   match primary {
@@ -95,7 +95,7 @@ fn pr_floor_scheduling_disposition(
   }
 }
 
-fn wet_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> SchedulingDisposition {
+fn wet_falsifier_scheduling_disposition(primary: std.witness_admission.WitnessConsumerCadence) -> SchedulingDisposition {
   match primary {
     FalsifierSelfHostWet => SchedulingEnrolled
     FalsifierRehomedBinWet => SchedulingEnrolled
@@ -109,7 +109,7 @@ fn wet_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> Sche
   }
 }
 
-fn scheduled_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> SchedulingDisposition {
+fn scheduled_falsifier_scheduling_disposition(primary: std.witness_admission.WitnessConsumerCadence) -> SchedulingDisposition {
   match primary {
     FalsifierSelfHostWet => SchedulingEnrolled
     FalsifierRehomedBinWet => SchedulingEnrolled
@@ -125,7 +125,7 @@ fn scheduled_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -
 
 fn scheduling_disposition_for_primary_cadence(
   target: LensExecutionCadence,
-  primary: WitnessConsumerCadence,
+  primary: std.witness_admission.WitnessConsumerCadence,
   ci_enrolled: Bool,
   prepush_enrolled: Bool
 ) -> SchedulingDisposition {
@@ -150,7 +150,7 @@ fn scheduling_disposition_for_primary_cadence(
 }
 
 fn cadence_scheduling_rows_for_primary(
-  primary: WitnessConsumerCadence,
+  primary: std.witness_admission.WitnessConsumerCadence,
   ci_enrolled: Bool,
   prepush_enrolled: Bool
 ) -> List<CadenceSchedulingRow> {
@@ -264,11 +264,11 @@ fn cadence_rows_unbound() -> List<CadenceSchedulingRow> {
   ]
 }
 
-fn support_from_intent_verdict(v: IntentVerdict) -> LensEnforcementSupport {
+fn support_from_intent_verdict(v: v2.lens.enforcement.gate.IntentVerdict) -> LensEnforcementSupport {
   if intent_verdict_holds(v: v) { SupportHeld } else { SupportGap { gap: "standing intent legs do not all hold against current receipts" } }
 }
 
-fn contract_consumer_application_unbound(c: LensContract) -> LensEnforcementApplication {
+fn contract_consumer_application_unbound(c: v2.lens.enforcement.contract.LensContract) -> LensEnforcementApplication {
   LensEnforcementApplication {
     application_id: "contract.consumer.unbound",
     standing_intent_id: "",
@@ -282,7 +282,7 @@ fn contract_consumer_application_unbound(c: LensContract) -> LensEnforcementAppl
 }
 
 fn contract_consumer_application_bound_without_receipt(
-  c: LensContract,
+  c: v2.lens.enforcement.contract.LensContract,
   ci_enrolled: Bool,
   prepush_enrolled: Bool
 ) -> LensEnforcementApplication {
@@ -307,14 +307,14 @@ fn contract_consumer_application_bound_without_receipt(
   }
 }
 
-fn support_from_consumer_receipt(receipt: EnrollmentDiscoveryReceipt) -> LensEnforcementSupport {
+fn support_from_consumer_receipt(receipt: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt) -> LensEnforcementSupport {
   if red_control_passed(s: receipt.red_control_status) && consumer_is_live(k: receipt.consumer_enrolled) { SupportHeld } else { SupportGap { gap: "consumer not live or red control did not pass on enrollment receipt" } }
 }
 
 fn contract_consumer_application(
-  c: LensContract,
-  receipt: EnrollmentDiscoveryReceipt,
-  facts: List<DeclFact>,
+  c: v2.lens.enforcement.contract.LensContract,
+  receipt: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt,
+  facts: List<v2.std.decl_index.DeclFact>,
   ci_enrolled: Bool,
   prepush_enrolled: Bool
 ) -> LensEnforcementApplication {
@@ -340,10 +340,10 @@ fn contract_consumer_application(
 }
 
 fn standing_intent_application(
-  intent: StandingIntent,
-  c: LensContract,
-  receipts: List<EnrollmentDiscoveryReceipt>,
-  facts: List<DeclFact>
+  intent: v2.lens.enforcement.standing_intent.StandingIntent,
+  c: v2.lens.enforcement.contract.LensContract,
+  receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>,
+  facts: List<v2.std.decl_index.DeclFact>
 ) -> LensEnforcementApplication {
   let verdict = intent_family_verdict(intent: intent, contracts: [c], receipts: receipts)
   let counts = match find_receipt(cid: c.entry.lens_id, receipts: receipts) {
@@ -363,10 +363,10 @@ fn standing_intent_application(
 }
 
 fn standing_intent_applications_for_contract(
-  c: LensContract,
-  intents: List<StandingIntent>,
-  receipts: List<EnrollmentDiscoveryReceipt>,
-  facts: List<DeclFact>
+  c: v2.lens.enforcement.contract.LensContract,
+  intents: List<v2.lens.enforcement.standing_intent.StandingIntent>,
+  receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>,
+  facts: List<v2.std.decl_index.DeclFact>
 ) -> List<LensEnforcementApplication> {
   fold(intents, init: [], f: fn(acc, intent) {
     if contract_answers(c: c, p: intent.property) { list_append(left: [standing_intent_application(intent: intent, c: c, receipts: receipts, facts: facts)], right: acc) } else { acc }
@@ -374,12 +374,12 @@ fn standing_intent_applications_for_contract(
 }
 
 fn inventory_row_for_contract(
-  c: LensContract,
-  intents: List<StandingIntent>,
-  receipts: List<EnrollmentDiscoveryReceipt>,
-  facts: List<DeclFact>,
-  ci_entries: List<ScheduleWitnessEntry>,
-  prepush_entries: List<ScheduleWitnessEntry>
+  c: v2.lens.enforcement.contract.LensContract,
+  intents: List<v2.lens.enforcement.standing_intent.StandingIntent>,
+  receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>,
+  facts: List<v2.std.decl_index.DeclFact>,
+  ci_entries: List<std.realization_schedule.ScheduleWitnessEntry>,
+  prepush_entries: List<std.realization_schedule.ScheduleWitnessEntry>
 ) -> LensEnforcementInventoryRow {
   let unbound = lens_contract_is_unbound(c: c)
   let receipt_lookup = find_receipt(cid: c.entry.lens_id, receipts: receipts)
@@ -428,12 +428,12 @@ fn inventory_row_for_contract(
 }
 
 fn derive_lens_enforcement_inventory(
-  contracts: List<LensContract>,
-  intents: List<StandingIntent>,
-  receipts: List<EnrollmentDiscoveryReceipt>,
-  facts: List<DeclFact>,
-  ci_entries: List<ScheduleWitnessEntry>,
-  prepush_entries: List<ScheduleWitnessEntry>
+  contracts: List<v2.lens.enforcement.contract.LensContract>,
+  intents: List<v2.lens.enforcement.standing_intent.StandingIntent>,
+  receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>,
+  facts: List<v2.std.decl_index.DeclFact>,
+  ci_entries: List<std.realization_schedule.ScheduleWitnessEntry>,
+  prepush_entries: List<std.realization_schedule.ScheduleWitnessEntry>
 ) -> List<LensEnforcementInventoryRow> {
   fold(contracts, init: [], f: fn(acc, c) {
     list_append(
@@ -450,11 +450,11 @@ fn derive_lens_enforcement_inventory(
   })
 }
 
-fn lens_id_eq_inventory_row(row: LensEnforcementInventoryRow, id: LensIdV0) -> Bool {
+fn lens_id_eq_inventory_row(row: LensEnforcementInventoryRow, id: v2.lens.registry.LensIdV0) -> Bool {
   lens_id_v0_eq(left: row.lens_id, right: id)
 }
 
-fn inventory_contains_lens_id(inventory: List<LensEnforcementInventoryRow>, id: LensIdV0) -> Bool {
+fn inventory_contains_lens_id(inventory: List<LensEnforcementInventoryRow>, id: v2.lens.registry.LensIdV0) -> Bool {
   any(xs: inventory, predicate: fn(row) { lens_id_eq_inventory_row(row: row, id: id) })
 }
 
@@ -462,12 +462,12 @@ fn inventory_row_count(inventory: List<LensEnforcementInventoryRow>) -> Int {
   length(xs: inventory)
 }
 
-fn registry_contains_lens_id(contracts: List<LensContract>, id: LensIdV0) -> Bool {
+fn registry_contains_lens_id(contracts: List<v2.lens.enforcement.contract.LensContract>, id: v2.lens.registry.LensIdV0) -> Bool {
   any(xs: contracts, predicate: fn(c) { lens_id_v0_eq(left: c.entry.lens_id, right: id) })
 }
 
 fn inventory_row_registry_member(
-  contracts: List<LensContract>,
+  contracts: List<v2.lens.enforcement.contract.LensContract>,
   row: LensEnforcementInventoryRow
 ) -> Bool {
   registry_contains_lens_id(contracts: contracts, id: row.lens_id)
@@ -475,7 +475,7 @@ fn inventory_row_registry_member(
 
 fn inventory_reconciles_registry_both_ways(
   inventory: List<LensEnforcementInventoryRow>,
-  contracts: List<LensContract>
+  contracts: List<v2.lens.enforcement.contract.LensContract>
 ) -> Bool {
   (inventory_row_count(inventory: inventory) == length(xs: contracts))
     && for_all(xs: contracts, predicate: fn(c) {
@@ -488,7 +488,7 @@ fn inventory_reconciles_registry_both_ways(
 
 fn inventory_unbound_rows_match_contract_unbound(
   inventory: List<LensEnforcementInventoryRow>,
-  contracts: List<LensContract>
+  contracts: List<v2.lens.enforcement.contract.LensContract>
 ) -> Bool {
   for_all(xs: contracts, predicate: fn(c) {
     match find_inventory_row(inventory: inventory, id: c.entry.lens_id) {
@@ -501,7 +501,7 @@ fn inventory_unbound_rows_match_contract_unbound(
 
 type InventoryRowLookup = InventoryRowFound { value: LensEnforcementInventoryRow } | InventoryRowAbsent
 
-fn find_inventory_row(inventory: List<LensEnforcementInventoryRow>, id: LensIdV0) -> InventoryRowLookup {
+fn find_inventory_row(inventory: List<LensEnforcementInventoryRow>, id: v2.lens.registry.LensIdV0) -> InventoryRowLookup {
   match list_head(xs: filter(xs: inventory, predicate: fn(row) { lens_id_eq_inventory_row(row: row, id: id) })) {
     HeadFound { value: row } => InventoryRowFound { value: row }
     HeadAbsent => InventoryRowAbsent
@@ -510,7 +510,7 @@ fn find_inventory_row(inventory: List<LensEnforcementInventoryRow>, id: LensIdV0
 
 fn inventory_application_count_for_lens(
   inventory: List<LensEnforcementInventoryRow>,
-  id: LensIdV0
+  id: v2.lens.registry.LensIdV0
 ) -> Int {
   match find_inventory_row(inventory: inventory, id: id) {
     InventoryRowAbsent => 0
@@ -545,14 +545,14 @@ type WitnessAdmissionInventoryRow {
 
 data witness_admission_inventory_authority_note: String = "Phase 0B witness admission inventory: every row is derived from gunbc.ci_layer_roots witness_exclusion_frontier (pattern, classification, reason, dissolve_on) plus witness-admission cadence projection — never hand-authored scheduling. First specimen: enforcement_live_witness_test.dag (0A red-control probes) is OfflineLocalRecipe at the offline-recipe cadence, SchedulingExcluded at PR-floor/main-push, with dissolve_on from the frontier row. 0A fabrication removal is construction in the production fold; discriminating evidence runs at offline cadence only (operator status correction 2026-08-02)."
 
-fn schedule_entries_cover_pattern(xs: List<ScheduleWitnessEntry>, pattern: String) -> Bool {
+fn schedule_entries_cover_pattern(xs: List<std.realization_schedule.ScheduleWitnessEntry>, pattern: String) -> Bool {
   any(xs: xs, predicate: fn(w) { string_contains(s: w.entry, pattern: pattern) })
 }
 
 fn witness_admission_inventory_row_for_exclusion_row(
-  row: WitnessExclusionRow,
-  ci_entries: List<ScheduleWitnessEntry>,
-  prepush_entries: List<ScheduleWitnessEntry>
+  row: gunbc.ci_layer_roots.WitnessExclusionRow,
+  ci_entries: List<std.realization_schedule.ScheduleWitnessEntry>,
+  prepush_entries: List<std.realization_schedule.ScheduleWitnessEntry>
 ) -> WitnessAdmissionInventoryRow {
   WitnessAdmissionInventoryRow {
     witness_entry: row.pattern,
@@ -567,9 +567,9 @@ fn witness_admission_inventory_row_for_exclusion_row(
 }
 
 fn derive_witness_admission_inventory(
-  exclusion_rows: List<WitnessExclusionRow>,
-  ci_entries: List<ScheduleWitnessEntry>,
-  prepush_entries: List<ScheduleWitnessEntry>
+  exclusion_rows: List<gunbc.ci_layer_roots.WitnessExclusionRow>,
+  ci_entries: List<std.realization_schedule.ScheduleWitnessEntry>,
+  prepush_entries: List<std.realization_schedule.ScheduleWitnessEntry>
 ) -> List<WitnessAdmissionInventoryRow> {
   fold(exclusion_rows, init: [], f: fn(acc, row) {
     list_append(

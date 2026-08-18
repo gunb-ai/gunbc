@@ -1,8 +1,8 @@
 module extdeps.container.oci.manifest
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/opencontainers/image-spec/blob/main/manifest.md"
   }
@@ -54,7 +54,7 @@ fn accept_image_manifest(m: ImageManifest) -> ManifestOutcome {
   }
 }
 
-fn layer_at(layers: List<OciDescriptor>, index: Int) -> OciDescriptor? {
+fn layer_at(layers: List<extdeps.container.oci.descriptor.OciDescriptor>, index: Int) -> extdeps.container.oci.descriptor.OciDescriptor? {
   match layers |> get(index) {
     null => null
     other => other

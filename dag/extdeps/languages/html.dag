@@ -2,14 +2,14 @@ module extdeps.languages.html
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "html.spec.whatwg.org/"
   }
 }
 
-data canonical_html_spellings: MarkupBracket = MarkupBracket {
+data canonical_html_spellings: std.markup.MarkupBracket = std.markup.MarkupBracket {
   tag_open: "<",
   end_tag_open: "</",
   tag_close: ">",
@@ -72,7 +72,7 @@ fn html_strip_suffix(s: String, suffix: String) -> String {
   }
 }
 
-fn find_matching_close_with(s: String, tag: String, sp: MarkupBracket) -> HtmlSplitResult {
+fn find_matching_close_with(s: String, tag: String, sp: std.markup.MarkupBracket) -> HtmlSplitResult {
   let close_tag = join([sp.end_tag_open, tag, sp.tag_close], "")
   let open_pat = join([sp.tag_open, tag], "")
   let chunks = split(s: s, delimiter: close_tag)
@@ -115,7 +115,7 @@ fn find_matching_close_with(s: String, tag: String, sp: MarkupBracket) -> HtmlSp
   }
 }
 
-fn parse_attrs_with(attrs_str: String, sp: MarkupBracket) -> HtmlAttrFoldState {
+fn parse_attrs_with(attrs_str: String, sp: std.markup.MarkupBracket) -> HtmlAttrFoldState {
   let pieces = split(s: attrs_str, delimiter: sp.attr_quote)
   fold(pieces, init: HtmlAttrFoldState {
     attributes: [],
@@ -179,7 +179,7 @@ fn parse_attrs_with(attrs_str: String, sp: MarkupBracket) -> HtmlAttrFoldState {
   })
 }
 
-fn parse_one_with(s: String, sp: MarkupBracket) -> HtmlParseOneResult {
+fn parse_one_with(s: String, sp: std.markup.MarkupBracket) -> HtmlParseOneResult {
   if starts_with(s: s, prefix: sp.end_tag_open) {
     ParseOneRejected { reason: "unexpected end tag" }
   } else if starts_with(s: s, prefix: sp.tag_open) {
@@ -212,7 +212,7 @@ fn parse_one_with(s: String, sp: MarkupBracket) -> HtmlParseOneResult {
   }
 }
 
-fn parse_children_with(s: String, sp: MarkupBracket) -> HtmlChildrenResult {
+fn parse_children_with(s: String, sp: std.markup.MarkupBracket) -> HtmlChildrenResult {
   if s == "" {
     ParsedChildren { nodes: [] }
   } else if starts_with(s: s, prefix: sp.end_tag_open) {
@@ -240,8 +240,8 @@ data html5_raw_text_tags_note: String = "The HTML spec's raw-text elements (HTML
 
 data html5_raw_text_tags: List<String> = ["script", "style"]
 
-fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
-  MarkupMedium {
+fn html_medium_with(sp: std.markup.MarkupBracket) -> std.markup.MarkupMedium {
+  std.markup.MarkupMedium {
     tag_overrides: [],
     bracket: sp,
     text_escape: EscapeHtml,
@@ -251,15 +251,15 @@ fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
   }
 }
 
-fn serialize_html_source_with(node: Fragment, sp: MarkupBracket) -> String {
+fn serialize_html_source_with(node: std.markup.Fragment, sp: std.markup.MarkupBracket) -> String {
   serialize_fragment_with(frag: node, medium: html_medium_with(sp: sp))
 }
 
-fn serialize_html_source(node: Fragment) -> String {
+fn serialize_html_source(node: std.markup.Fragment) -> String {
   serialize_html_source_with(node: node, sp: canonical_html_spellings)
 }
 
-fn ingest_html_source_with(src: String, sp: MarkupBracket) -> HtmlIngestResult {
+fn ingest_html_source_with(src: String, sp: std.markup.MarkupBracket) -> HtmlIngestResult {
   let s = trim(src)
   let one = parse_one_with(s: s, sp: sp)
   match one {
@@ -272,15 +272,15 @@ fn ingest_html_source(src: String) -> HtmlIngestResult {
   ingest_html_source_with(src: src, sp: canonical_html_spellings)
 }
 
-fn html_medium_lossless(node: Fragment) -> Medium<Fragment> {
-  Medium { carried: node, fidelity: Lossless }
+fn html_medium_lossless(node: std.markup.Fragment) -> Medium<std.markup.Fragment> {
+  extdeps.communication.medium.Medium { carried: node, fidelity: Lossless }
 }
 
 type HtmlEmitResult
   = EmitOk { html: String }
   | EmitRejected { reason: String }
 
-fn raw_text_children_text(children: List<Fragment>) -> String {
+fn raw_text_children_text(children: List<std.markup.Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => match c {
     FragmentText { content: t } => concat(acc, t)
     RawNode { content: t } => concat(acc, t)
@@ -288,7 +288,7 @@ fn raw_text_children_text(children: List<Fragment>) -> String {
   })
 }
 
-fn raw_text_hazard(node: Fragment) -> String {
+fn raw_text_hazard(node: std.markup.Fragment) -> String {
   match node {
     FragmentText { content: _ } => ""
     RawNode { content: _ } => ""
@@ -305,11 +305,11 @@ fn raw_text_hazard(node: Fragment) -> String {
   }
 }
 
-fn raw_text_children_hazard(children: List<Fragment>) -> String {
+fn raw_text_children_hazard(children: List<std.markup.Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => if acc == "" { raw_text_hazard(node: c) } else { acc })
 }
 
-fn try_serialize_html_source(node: Fragment) -> HtmlEmitResult {
+fn try_serialize_html_source(node: std.markup.Fragment) -> HtmlEmitResult {
   match find_first_rejected_url(node: node) {
     Present { value: r } =>
       EmitRejected { reason: r.url }
@@ -324,6 +324,6 @@ fn try_serialize_html_source(node: Fragment) -> HtmlEmitResult {
   }
 }
 
-fn html_markup_medium() -> MarkupMedium {
+fn html_markup_medium() -> std.markup.MarkupMedium {
   html_medium_with(sp: canonical_html_spellings)
 }

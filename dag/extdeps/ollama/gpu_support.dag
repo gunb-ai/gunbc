@@ -1,16 +1,16 @@
 module extdeps.ollama.gpu_support
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.ollama.com/gpu"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ollama.gpu_support",
       decl_name: "OllamaGpuSupportRow",
       field: WholeDeclaration
@@ -26,8 +26,8 @@ type OllamaGpuSupportRow {
 }
 
 data ollama_gb10_gpu_support_row: OllamaGpuSupportRow = OllamaGpuSupportRow {
-  gpu_model: "GB10" as NonEmptyStr,
-  compute_capability: GpuComputeCapability {
+  gpu_model: "GB10" as std.types.NonEmptyStr,
+  compute_capability: extdeps.gpu.types.GpuComputeCapability {
     vendor: nvidia,
     major: 12,
     minor: 1,
@@ -84,7 +84,7 @@ fn ollama_nvidia_driver_requirement_verdict(
   match observed {
     Absent =>
       OllamaNvidiaDriverRequirementUnobserved {
-        cause: "nvidia driver version is unobserved; GB10 GPU acceleration cannot be admitted" as NonEmptyStr,
+        cause: "nvidia driver version is unobserved; GB10 GPU acceleration cannot be admitted" as std.types.NonEmptyStr,
       }
     Present { value: driver } =>
       if ollama_nvidia_driver_version_at_least(observed: driver, minimum: minimum) {

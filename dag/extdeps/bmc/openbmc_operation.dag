@@ -1,14 +1,14 @@
 module extdeps.bmc.openbmc_operation
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "www.freedesktop.org/software/systemd/man/latest/busctl.html",
   },
 }
 
-data openbmc_busctl_authority: ExternalAuthority = extdeps_external_authority_anchor
+data openbmc_busctl_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
 data openbmc_operation_authority_anchor_scaffold_note: String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads an aliased anchor as absent, so the literal anchor grounds its projection while openbmc_busctl_authority remains the semantic authority name. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
 

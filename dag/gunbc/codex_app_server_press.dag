@@ -18,7 +18,7 @@ type CodexRuntimeBundleReceiptRef {
   receipt_identity: std.content_hash.ContentHash
 }
 
-type ProviderProbeKey = NonEmptyStr
+type ProviderProbeKey = std.types.NonEmptyStr
 
 type AmbientCodexCredentialContext {
   codex_home: std.types.FilePath
@@ -31,7 +31,7 @@ type CodexAccountPreflightSubject {
   credential: AmbientCodexCredentialContext
 }
 
-type CodexPressItinerary = List<CodexAppServerMethod>
+type CodexPressItinerary = List<extdeps.llm.codex_app_server.CodexAppServerMethod>
 
 fn codex_press_account_trip_methods() -> CodexPressItinerary {
   [
@@ -113,7 +113,7 @@ type CodexAccountRealm
 fn codex_plan_type_from_wire(native: String) -> CodexPlanTypeReading {
   if native == "" {
     CodexPlanTypeMalformed {
-      cause: "account/read chatgpt planType is an empty string" as NonEmptyStr,
+      cause: "account/read chatgpt planType is an empty string" as std.types.NonEmptyStr,
     }
   } else if native == (codex_plan_type_wire_name(p: CodexPlanFree) as String) {
     CodexPlanTypeObserved { plan: CodexPlanFree }
@@ -142,39 +142,39 @@ fn codex_plan_type_from_wire(native: String) -> CodexPlanTypeReading {
   } else if native == (codex_plan_type_wire_name(p: CodexPlanUnknown) as String) {
     CodexPlanTypeObserved { plan: CodexPlanUnknown }
   } else {
-    CodexPlanTypeUnrecognized { native: native as NonEmptyStr }
+    CodexPlanTypeUnrecognized { native: native as std.types.NonEmptyStr }
   }
 }
 
-fn codex_chatgpt_plan_reading(account: JsonValue) -> CodexPlanTypeReading {
+fn codex_chatgpt_plan_reading(account: extdeps.languages.json.emit.JsonValue) -> CodexPlanTypeReading {
   match json_object_unique_member(v: account, key: codex_account_plan_type_key as String) {
     JsonMemberFound { value: JsonString { value: p } } => codex_plan_type_from_wire(native: p)
     JsonMemberFound { value: _ } =>
       CodexPlanTypeMalformed {
-        cause: "account/read chatgpt planType is not a JSON string" as NonEmptyStr,
+        cause: "account/read chatgpt planType is not a JSON string" as std.types.NonEmptyStr,
       }
     JsonMemberAbsent =>
       CodexPlanTypeMalformed {
-        cause: "account/read chatgpt account omits the required planType member" as NonEmptyStr,
+        cause: "account/read chatgpt account omits the required planType member" as std.types.NonEmptyStr,
       }
     JsonMemberDuplicated { count: _ } =>
       CodexPlanTypeMalformed {
-        cause: "account/read chatgpt account carries duplicate planType members" as NonEmptyStr,
+        cause: "account/read chatgpt account carries duplicate planType members" as std.types.NonEmptyStr,
       }
     JsonMemberNotAnObject =>
       CodexPlanTypeMalformed {
-        cause: "account/read account member is not a JSON object" as NonEmptyStr,
+        cause: "account/read account member is not a JSON object" as std.types.NonEmptyStr,
       }
   }
 }
 
 fn codex_account_not_an_object_realm() -> CodexAccountRealm {
   CodexAccountRealmUnobserved {
-    reason: "account/read account member is neither an object nor null" as NonEmptyStr,
+    reason: "account/read account member is neither an object nor null" as std.types.NonEmptyStr,
   }
 }
 
-fn codex_account_realm_from_account_value(account: JsonValue) -> CodexAccountRealm {
+fn codex_account_realm_from_account_value(account: extdeps.languages.json.emit.JsonValue) -> CodexAccountRealm {
   match account {
     JsonNull => CodexAccountRealmAbsent
     JsonObject { members: _ } =>
@@ -188,26 +188,26 @@ fn codex_account_realm_from_account_value(account: JsonValue) -> CodexAccountRea
             CodexAmazonBedrockRealm
           } else if t == "" {
             CodexAccountRealmUnobserved {
-              reason: "account/read account type is an empty string" as NonEmptyStr,
+              reason: "account/read account type is an empty string" as std.types.NonEmptyStr,
             }
           } else {
-            CodexAccountRealmUnrecognizedType { native: t as NonEmptyStr }
+            CodexAccountRealmUnrecognizedType { native: t as std.types.NonEmptyStr }
           }
         JsonMemberFound { value: _ } =>
           CodexAccountRealmUnobserved {
-            reason: "account/read account type is not a JSON string" as NonEmptyStr,
+            reason: "account/read account type is not a JSON string" as std.types.NonEmptyStr,
           }
         JsonMemberAbsent =>
           CodexAccountRealmUnobserved {
-            reason: "account/read account omits the required type discriminant" as NonEmptyStr,
+            reason: "account/read account omits the required type discriminant" as std.types.NonEmptyStr,
           }
         JsonMemberDuplicated { count: _ } =>
           CodexAccountRealmUnobserved {
-            reason: "account/read account carries duplicate type members" as NonEmptyStr,
+            reason: "account/read account carries duplicate type members" as std.types.NonEmptyStr,
           }
         JsonMemberNotAnObject =>
           CodexAccountRealmUnobserved {
-            reason: "account/read account member is not a JSON object" as NonEmptyStr,
+            reason: "account/read account member is not a JSON object" as std.types.NonEmptyStr,
           }
       }
     JsonString { value: _ } => codex_account_not_an_object_realm()
@@ -217,7 +217,7 @@ fn codex_account_realm_from_account_value(account: JsonValue) -> CodexAccountRea
   }
 }
 
-fn codex_account_realm_from_result(result: JsonValue) -> CodexAccountRealm {
+fn codex_account_realm_from_result(result: extdeps.languages.json.emit.JsonValue) -> CodexAccountRealm {
   match json_object_unique_member(
     v: result,
     key: codex_account_read_result_account_key as String,
@@ -227,16 +227,16 @@ fn codex_account_realm_from_result(result: JsonValue) -> CodexAccountRealm {
     JsonMemberAbsent => CodexAccountRealmAbsent
     JsonMemberDuplicated { count: _ } =>
       CodexAccountRealmUnobserved {
-        reason: "account/read result carries duplicate account members" as NonEmptyStr,
+        reason: "account/read result carries duplicate account members" as std.types.NonEmptyStr,
       }
     JsonMemberNotAnObject =>
       CodexAccountRealmUnobserved {
-        reason: "account/read result is not a JSON object" as NonEmptyStr,
+        reason: "account/read result is not a JSON object" as std.types.NonEmptyStr,
       }
   }
 }
 
-data codex_account_realm_unobserved_default: NonEmptyStr = "codex app-server account/read produced no decodable account frame on this trip" as NonEmptyStr
+data codex_account_realm_unobserved_default: std.types.NonEmptyStr = "codex app-server account/read produced no decodable account frame on this trip" as std.types.NonEmptyStr
 
 type CodexAccountStandingEvidence {
   itinerary: CodexPressItinerary
@@ -338,10 +338,10 @@ fn standing_is_redacted_projection(summary: CodexAccountStandingSummary) -> Bool
 }
 
 fn binding_from_initialize_session(
-  bundle: CodexRuntimeBundle,
-  projected: ProviderInterfaceBinding,
-) -> ProviderInterfaceBinding {
-  ProviderInterfaceBinding {
+  bundle: gunbc.package_delivery.CodexRuntimeBundle,
+  projected: gunbc.provider_interface_binding.ProviderInterfaceBinding,
+) -> gunbc.provider_interface_binding.ProviderInterfaceBinding {
+  gunbc.provider_interface_binding.ProviderInterfaceBinding {
     interface: projected.interface,
     transport: CodexAppServerStdio,
     executable: projected.executable,
@@ -350,7 +350,7 @@ fn binding_from_initialize_session(
   }
 }
 
-data codex_press_stdio_sentinel_mux_dissolve_note: DissolutionCondition = unbound_dissolution(description: "Interim stdout/stderr/exit capture muxes shell.Exec.Run output through literal ---GUNBC_EXIT---/---GUNBC_STDOUT---/---GUNBC_STDERR--- sentinels (codex_press_account_trip_script → split_gunbc_stdio_capture). Wrapped in retained_foreign with dissolve-on v2.workflow.bash_emit. The sentinel concat itself dissolves when shell→intent typed stdio transport replaces foreign script muxing (docs/plans/shell-intent-emit-realization-design.md Phase 2 host-effect route for runtime-present press sites).")
+data codex_press_stdio_sentinel_mux_dissolve_note: std.dissolution.DissolutionCondition = unbound_dissolution(description: "Interim stdout/stderr/exit capture muxes shell.Exec.Run output through literal ---GUNBC_EXIT---/---GUNBC_STDOUT---/---GUNBC_STDERR--- sentinels (codex_press_account_trip_script → split_gunbc_stdio_capture). Wrapped in retained_foreign with dissolve-on v2.workflow.bash_emit. The sentinel concat itself dissolves when shell→intent typed stdio transport replaces foreign script muxing (docs/plans/shell-intent-emit-realization-design.md Phase 2 host-effect route for runtime-present press sites).")
 
 fn codex_press_account_trip_script(
   executable: std.types.FilePath,
@@ -398,7 +398,7 @@ fn codex_press_account_trip_script(
   )
 }
 
-fn json_rpc_id_as_int(v: JsonValue) -> Int? {
+fn json_rpc_id_as_int(v: extdeps.languages.json.emit.JsonValue) -> Int? {
   match v {
     JsonNumber { lexeme: l } => parse_int(s: l as String)
     JsonNull => none
@@ -411,13 +411,13 @@ fn json_rpc_id_as_int(v: JsonValue) -> Int? {
 
 data json_rpc_error_message_note: String = "NO CANNED MESSAGE (review 50535). This read previously answered the literal \"json-rpc error\" whenever err.message was absent, empty, or any non-string shape — a structured error carrying code plus data, a nested message object, an array, null — so a real provider cause was reported as a fabricated string that reads exactly like a message the server sent (DESIGN §5 fabricated plausible output). The arms now separate: a genuine string message is carried verbatim, and every shape that is not one lands on AccountTripNativeCauseMessageUnreadable, which carries no text at all. That variant is deliberately field-free — inventing a description of the shape we failed to read would re-introduce the same fabrication one level down; the frame's own retained wire evidence is where the unread bytes stay recoverable."
 
-fn json_rpc_error_message(err: JsonValue) -> NonEmptyStr? {
+fn json_rpc_error_message(err: extdeps.languages.json.emit.JsonValue) -> std.types.NonEmptyStr? {
   match json_object_unique_member(v: err, key: "message") {
     JsonMemberFound { value: JsonString { value: msg } } =>
       if msg == "" {
         none
       } else {
-        Present { value: msg as NonEmptyStr }
+        Present { value: msg as std.types.NonEmptyStr }
       }
     JsonMemberFound { value: _ } => none
     JsonMemberAbsent => none
@@ -426,14 +426,14 @@ fn json_rpc_error_message(err: JsonValue) -> NonEmptyStr? {
   }
 }
 
-fn native_cause_from_json_rpc_error(err: JsonValue) -> AccountTripFrameDisposition {
+fn native_cause_from_json_rpc_error(err: extdeps.languages.json.emit.JsonValue) -> AccountTripFrameDisposition {
   match json_rpc_error_message(err: err) {
     Present { value: msg } => AccountTripNativeCauseUnknown { message: msg }
     Absent => AccountTripNativeCauseMessageUnreadable
   }
 }
 
-fn disposition_from_initialize_result(result: JsonValue) -> AccountTripFrameDisposition {
+fn disposition_from_initialize_result(result: extdeps.languages.json.emit.JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(
     v: result,
     key: codex_initialize_result_user_agent_key as String,
@@ -450,7 +450,7 @@ fn disposition_from_initialize_result(result: JsonValue) -> AccountTripFrameDisp
   }
 }
 
-fn disposition_from_account_read_result(result: JsonValue) -> AccountTripFrameDisposition {
+fn disposition_from_account_read_result(result: extdeps.languages.json.emit.JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(
     v: result,
     key: codex_account_read_result_account_key as String,
@@ -476,7 +476,7 @@ fn disposition_from_account_read_result(result: JsonValue) -> AccountTripFrameDi
   }
 }
 
-fn json_number_as_int(v: JsonValue) -> Int? {
+fn json_number_as_int(v: extdeps.languages.json.emit.JsonValue) -> Int? {
   match v {
     JsonNumber { lexeme: l } => parse_int(s: l as String)
     JsonNull => none
@@ -487,7 +487,7 @@ fn json_number_as_int(v: JsonValue) -> Int? {
   }
 }
 
-fn json_number_as_epoch_secs(v: JsonValue) -> EpochSecs? {
+fn json_number_as_epoch_secs(v: extdeps.languages.json.emit.JsonValue) -> std.types.EpochSecs? {
   match json_number_as_int(v: v) {
     Absent => none
     Present { value: n } =>
@@ -501,7 +501,7 @@ fn json_number_as_epoch_secs(v: JsonValue) -> EpochSecs? {
 
 data rate_limit_used_percent_carrier_frontier: String = "usedPercent is a DIMENSIONLESS RATIO and std.measure.Percent (Measure<Dimensionless, One, Nat>) is its authority — this is a consumer of that carrier, not a new unit, and no nickname is minted here. It is carried as bounded Int TODAY for exactly the reason std.measure.percent_from_computed_int_frontier states: percent(count: Nat) admits a LITERAL Nat only, and runtime eval refuses a computed Int→Nat cast, while this value is decoded from the app-server's JSON (json_number_as_int) and is therefore computed by construction. Same wall, same disposition as extdeps.color.srgb HslProjection s_pct/l_pct, which are bounded Int percent counts citing that identical frontier. DISSOLVE-ON: the numeric-tower Int=Nat grounding extending to computed values (same lane as the CrossRepresentationEquality guard removal) — at which point this fn returns Percent? and the comparison against the exhaustion threshold reads through percent_count with no change of meaning."
 
-fn rate_limit_window_used_percent(window: JsonValue) -> Int? {
+fn rate_limit_window_used_percent(window: extdeps.languages.json.emit.JsonValue) -> Int? {
   match json_object_unique_member(
     v: window,
     key: codex_rate_limits_window_used_percent_key as String,
@@ -513,21 +513,21 @@ fn rate_limit_window_used_percent(window: JsonValue) -> Int? {
   }
 }
 
-fn rate_limit_window_is_saturated(window: JsonValue) -> Bool {
+fn rate_limit_window_is_saturated(window: extdeps.languages.json.emit.JsonValue) -> Bool {
   match rate_limit_window_used_percent(window: window) {
     Absent => false
     Present { value: pct } => pct >= 100
   }
 }
 
-fn rate_limit_window_shows_remaining_capacity(window: JsonValue) -> Bool {
+fn rate_limit_window_shows_remaining_capacity(window: extdeps.languages.json.emit.JsonValue) -> Bool {
   match rate_limit_window_used_percent(window: window) {
     Absent => false
     Present { value: pct } => pct < 100
   }
 }
 
-fn rate_limits_snapshot_has_exhaustion_signal(snapshot: JsonValue) -> Bool {
+fn rate_limits_snapshot_has_exhaustion_signal(snapshot: extdeps.languages.json.emit.JsonValue) -> Bool {
   match json_object_unique_member(
     v: snapshot,
     key: codex_rate_limits_snapshot_rate_limit_reached_type_key as String,
@@ -552,7 +552,7 @@ fn rate_limits_snapshot_has_exhaustion_signal(snapshot: JsonValue) -> Bool {
   }
 }
 
-fn rate_limits_snapshot_window_saturated(snapshot: JsonValue, key: String) -> Bool {
+fn rate_limits_snapshot_window_saturated(snapshot: extdeps.languages.json.emit.JsonValue, key: String) -> Bool {
   match json_object_unique_member(v: snapshot, key: key) {
     JsonMemberFound { value: window } => rate_limit_window_is_saturated(window: window)
     JsonMemberAbsent => false
@@ -561,7 +561,7 @@ fn rate_limits_snapshot_window_saturated(snapshot: JsonValue, key: String) -> Bo
   }
 }
 
-fn rate_limits_snapshot_window_has_capacity(snapshot: JsonValue, key: String) -> Bool {
+fn rate_limits_snapshot_window_has_capacity(snapshot: extdeps.languages.json.emit.JsonValue, key: String) -> Bool {
   match json_object_unique_member(v: snapshot, key: key) {
     JsonMemberFound { value: window } =>
       rate_limit_window_shows_remaining_capacity(window: window)
@@ -571,7 +571,7 @@ fn rate_limits_snapshot_window_has_capacity(snapshot: JsonValue, key: String) ->
   }
 }
 
-fn rate_limits_primary_resets_at(snapshot: JsonValue) -> EpochSecs? {
+fn rate_limits_primary_resets_at(snapshot: extdeps.languages.json.emit.JsonValue) -> std.types.EpochSecs? {
   match json_object_unique_member(
     v: snapshot,
     key: codex_rate_limits_snapshot_primary_key as String,
@@ -588,7 +588,7 @@ fn rate_limits_primary_resets_at(snapshot: JsonValue) -> EpochSecs? {
   }
 }
 
-fn rate_limits_reached_type(snapshot: JsonValue) -> NonEmptyStr? {
+fn rate_limits_reached_type(snapshot: extdeps.languages.json.emit.JsonValue) -> std.types.NonEmptyStr? {
   match json_object_unique_member(
     v: snapshot,
     key: codex_rate_limits_snapshot_rate_limit_reached_type_key as String,
@@ -597,7 +597,7 @@ fn rate_limits_reached_type(snapshot: JsonValue) -> NonEmptyStr? {
       if t == "" {
         none
       } else {
-        Present { value: t as NonEmptyStr }
+        Present { value: t as std.types.NonEmptyStr }
       }
     _ => none
   }
@@ -610,7 +610,7 @@ type CodexRateLimitIdReading
   | CodexRateLimitIdAbsentLegacyMirror
   | CodexRateLimitIdMalformed { cause: std.types.NonEmptyStr }
 
-fn rate_limits_snapshot_limit_id(snapshot: JsonValue) -> CodexRateLimitIdReading {
+fn rate_limits_snapshot_limit_id(snapshot: extdeps.languages.json.emit.JsonValue) -> CodexRateLimitIdReading {
   match json_object_unique_member(
     v: snapshot,
     key: codex_rate_limits_snapshot_limit_id_key as String,
@@ -618,30 +618,30 @@ fn rate_limits_snapshot_limit_id(snapshot: JsonValue) -> CodexRateLimitIdReading
     JsonMemberFound { value: JsonString { value: id } } =>
       if id == "" {
         CodexRateLimitIdMalformed {
-          cause: "rateLimits snapshot limitId is an empty string" as NonEmptyStr,
+          cause: "rateLimits snapshot limitId is an empty string" as std.types.NonEmptyStr,
         }
       } else {
-        CodexRateLimitIdObserved { limit_id: id as NonEmptyStr }
+        CodexRateLimitIdObserved { limit_id: id as std.types.NonEmptyStr }
       }
     JsonMemberFound { value: _ } =>
       CodexRateLimitIdMalformed {
-        cause: "rateLimits snapshot limitId is not a JSON string" as NonEmptyStr,
+        cause: "rateLimits snapshot limitId is not a JSON string" as std.types.NonEmptyStr,
       }
     JsonMemberAbsent => CodexRateLimitIdAbsentLegacyMirror
     JsonMemberDuplicated { count: _ } =>
       CodexRateLimitIdMalformed {
-        cause: "rateLimits snapshot carries duplicate limitId members" as NonEmptyStr,
+        cause: "rateLimits snapshot carries duplicate limitId members" as std.types.NonEmptyStr,
       }
     JsonMemberNotAnObject =>
       CodexRateLimitIdMalformed {
-        cause: "rateLimits snapshot is not a JSON object" as NonEmptyStr,
+        cause: "rateLimits snapshot is not a JSON object" as std.types.NonEmptyStr,
       }
   }
 }
 
 fn verdict_from_rate_limits_snapshot(
-  limit_id: NonEmptyStr,
-  snapshot: JsonValue,
+  limit_id: std.types.NonEmptyStr,
+  snapshot: extdeps.languages.json.emit.JsonValue,
 ) -> CodexRateLimitBucketVerdict {
   if rate_limits_snapshot_has_exhaustion_signal(snapshot: snapshot) {
     CodexBucketUnavailableUntilReset {
@@ -663,7 +663,7 @@ fn verdict_from_rate_limits_snapshot(
   }
 }
 
-fn rate_limit_buckets_from_by_limit_id(by_id: JsonValue) -> List<CodexRateLimitBucketVerdict> {
+fn rate_limit_buckets_from_by_limit_id(by_id: extdeps.languages.json.emit.JsonValue) -> List<CodexRateLimitBucketVerdict> {
   match by_id {
     JsonObject { members: ms } =>
       fold(
@@ -675,7 +675,7 @@ fn rate_limit_buckets_from_by_limit_id(by_id: JsonValue) -> List<CodexRateLimitB
           } else {
             acc |> list_push(
               verdict_from_rate_limits_snapshot(
-                limit_id: kv.key as NonEmptyStr,
+                limit_id: kv.key as std.types.NonEmptyStr,
                 snapshot: kv.value,
               ),
             )
@@ -685,7 +685,7 @@ fn rate_limit_buckets_from_by_limit_id(by_id: JsonValue) -> List<CodexRateLimitB
   }
 }
 
-fn rate_limit_buckets_from_result(result: JsonValue) -> List<CodexRateLimitBucketVerdict> {
+fn rate_limit_buckets_from_result(result: extdeps.languages.json.emit.JsonValue) -> List<CodexRateLimitBucketVerdict> {
   match json_object_unique_member(
     v: result,
     key: codex_rate_limits_result_by_limit_id_key as String,
@@ -702,7 +702,7 @@ fn rate_limit_buckets_from_result(result: JsonValue) -> List<CodexRateLimitBucke
 }
 
 fn rate_limit_buckets_from_legacy_rate_limits(
-  result: JsonValue,
+  result: extdeps.languages.json.emit.JsonValue,
 ) -> List<CodexRateLimitBucketVerdict> {
   match json_object_unique_member(
     v: result,
@@ -734,7 +734,7 @@ fn rate_limit_buckets_from_legacy_rate_limits(
   }
 }
 
-fn disposition_from_rate_limits_result(result: JsonValue) -> AccountTripFrameDisposition {
+fn disposition_from_rate_limits_result(result: extdeps.languages.json.emit.JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(
     v: result,
     key: codex_rate_limits_result_rate_limits_key as String,
@@ -753,7 +753,7 @@ fn disposition_from_rate_limits_result(result: JsonValue) -> AccountTripFrameDis
 
 fn codex_bucket_verdict_for_limit_id(
   buckets: List<CodexRateLimitBucketVerdict>,
-  limit_id: NonEmptyStr,
+  limit_id: std.types.NonEmptyStr,
 ) -> CodexRateLimitBucketVerdict? {
   fold(
     buckets,
@@ -809,7 +809,7 @@ fn classification_from_codex_default_bucket(
 
 data account_trip_structured_error_code_note: String = "Business classifications Login/Quota are authorized only by typed result members or a structured JSON-RPC error `code` string that exactly matches a known native code from extdeps.llm.codex_app_server. Free-text `message` alone yields AccountTripNativeCauseUnknown → Incomplete — never Ready/Login/Quota (provider-audit handback)."
 
-fn disposition_from_structured_rpc_error(err: JsonValue) -> AccountTripFrameDisposition {
+fn disposition_from_structured_rpc_error(err: extdeps.languages.json.emit.JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(v: err, key: "code") {
     JsonMemberFound { value: JsonString { value: code } } =>
       if code == (codex_structured_error_code_rate_limit_reached as String)
@@ -828,7 +828,7 @@ fn disposition_from_structured_rpc_error(err: JsonValue) -> AccountTripFrameDisp
   }
 }
 
-fn disposition_for_id_response(id: Int, obj: JsonValue) -> AccountTripFrameDisposition {
+fn disposition_for_id_response(id: Int, obj: extdeps.languages.json.emit.JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(v: obj, key: "error") {
     JsonMemberFound { value: err } => disposition_from_structured_rpc_error(err: err)
     JsonMemberAbsent =>
@@ -909,13 +909,13 @@ fn digest_account_trip_line(
   line: String,
   evidence_root: std.types.FilePath,
   mode: AccountTripDigestMode,
-) -> ContentHash? {
+) -> std.content_hash.ContentHash? {
   if line == "" {
     none
   } else {
     match mode {
       AccountTripDigestStructural =>
-        Present { value: content_hash_of_value(value: line as NonEmptyStr) }
+        Present { value: content_hash_of_value(value: line as std.types.NonEmptyStr) }
       AccountTripDigestRetainPrivateSha512 =>
         match retain_private_evidence_bytes_detailed(root: evidence_root, bytes: line) {
           PrivateEvidenceBytesRetentionRefused { cause: _ } => none
@@ -972,7 +972,7 @@ fn push_unknown_digest(
 fn buckets_from_rate_limits_frame(
   current: AccountTripResponseObservation,
   prior_buckets: List<CodexRateLimitBucketVerdict>,
-  obj: JsonValue,
+  obj: extdeps.languages.json.emit.JsonValue,
 ) -> List<CodexRateLimitBucketVerdict> {
   match current {
     AccountTripResponseAbsent =>
@@ -990,7 +990,7 @@ data codex_account_realm_duplicate_frame_note: String = "FIRST FRAME WINS, mirro
 fn realm_from_account_read_frame(
   current: AccountTripResponseObservation,
   prior_realm: CodexAccountRealm,
-  obj: JsonValue,
+  obj: extdeps.languages.json.emit.JsonValue,
 ) -> CodexAccountRealm {
   match current {
     AccountTripResponseAbsent =>
@@ -1114,33 +1114,33 @@ fn codex_credential_liveness_from_rate_trip(
   match observation_to_disposition(obs: rate_limits) {
     AccountTripLoginRequiredSignal =>
       CodexCredentialDead {
-        reason: "account/rateLimits/read refused login; token not exercised upstream" as NonEmptyStr,
+        reason: "account/rateLimits/read refused login; token not exercised upstream" as std.types.NonEmptyStr,
       }
     AccountTripQuotaSignal =>
       CodexCredentialLivenessUnobserved {
-        reason: "account/rateLimits/read reported quota on the liveness probe" as NonEmptyStr,
+        reason: "account/rateLimits/read reported quota on the liveness probe" as std.types.NonEmptyStr,
       }
     AccountTripResultOk =>
       if count(buckets) > 0 {
         CodexCredentialLive { bucket_count: count(buckets) }
       } else {
         CodexCredentialDead {
-          reason: "account/rateLimits/read returned no decodable buckets; token not exercised upstream" as NonEmptyStr,
+          reason: "account/rateLimits/read returned no decodable buckets; token not exercised upstream" as std.types.NonEmptyStr,
         }
       }
     AccountTripMissing =>
       CodexCredentialLivenessUnobserved {
-        reason: "account/rateLimits/read response missing on this trip" as NonEmptyStr,
+        reason: "account/rateLimits/read response missing on this trip" as std.types.NonEmptyStr,
       }
     AccountTripNativeCauseUnknown { message: m } =>
       CodexCredentialLivenessUnobserved { reason: m }
     AccountTripNativeCauseNumericCode { code: c } =>
       CodexCredentialLivenessUnobserved {
-        reason: concat("account/rateLimits/read json-rpc error code ", to_string(n: c), "") as NonEmptyStr,
+        reason: concat("account/rateLimits/read json-rpc error code ", to_string(n: c), "") as std.types.NonEmptyStr,
       }
     AccountTripNativeCauseMessageUnreadable =>
       CodexCredentialLivenessUnobserved {
-        reason: "account/rateLimits/read error message unreadable" as NonEmptyStr,
+        reason: "account/rateLimits/read error message unreadable" as std.types.NonEmptyStr,
       }
   }
 }
@@ -1301,8 +1301,8 @@ fn split_gunbc_stdio_capture(combined: String) -> GunbcStdioCapture {
 }
 
 fn preflight_subject_from_bundle(
-  bundle: CodexRuntimeBundle,
-  binding: ProviderInterfaceBinding,
+  bundle: gunbc.package_delivery.CodexRuntimeBundle,
+  binding: gunbc.provider_interface_binding.ProviderInterfaceBinding,
   probe_key: ProviderProbeKey,
   codex_home: std.types.FilePath,
 ) -> CodexAccountPreflightSubject {
@@ -1320,7 +1320,7 @@ fn outcome_from_standing_receipt(receipt: CodexAccountStandingReceipt) -> CodexP
   match receipt.wire_evidence {
     Absent =>
       CodexPressUnavailable {
-        reason: "account standing requires retained wire evidence" as NonEmptyStr,
+        reason: "account standing requires retained wire evidence" as std.types.NonEmptyStr,
         process: receipt.process,
       }
     Present { value: _ } => {
@@ -1330,22 +1330,22 @@ fn outcome_from_standing_receipt(receipt: CodexAccountStandingReceipt) -> CodexP
           CodexPressAccountReady { receipt: receipt }
         AccountStandingLoginRequired =>
           CodexPressLoginRequired {
-            reason: "codex app-server account trip requires login" as NonEmptyStr,
+            reason: "codex app-server account trip requires login" as std.types.NonEmptyStr,
             receipt: receipt,
           }
         AccountStandingQuotaReached =>
           CodexPressRefused {
-            reason: "codex quota exhausted at account/rateLimits/read" as NonEmptyStr,
+            reason: "codex quota exhausted at account/rateLimits/read" as std.types.NonEmptyStr,
             receipt: receipt,
           }
         AccountStandingInitializeMissing =>
           CodexPressRefused {
-            reason: "codex app-server trip missing initialize result" as NonEmptyStr,
+            reason: "codex app-server trip missing initialize result" as std.types.NonEmptyStr,
             receipt: receipt,
           }
         AccountStandingIncomplete =>
           CodexPressRefused {
-            reason: "codex app-server account trip incomplete" as NonEmptyStr,
+            reason: "codex app-server account trip incomplete" as std.types.NonEmptyStr,
             receipt: receipt,
           }
       }
@@ -1364,7 +1364,7 @@ fn parse_account_trip_stdout_for_tests(stdout: String) -> CodexAccountStandingEv
 
 fn process_receipt_from_capture(
   capture: GunbcStdioCapture,
-  wire: ProviderWireEvidenceReceipt?,
+  wire: gunbc.provider_wire_evidence.ProviderWireEvidenceReceipt?,
   run_success: Bool,
 ) -> ProviderProcessReceipt {
   match capture.exit_code {
@@ -1389,7 +1389,7 @@ fn process_receipt_from_capture(
 }
 
 fn observe_codex_account_preflight(
-  bundle: CodexRuntimeBundle,
+  bundle: gunbc.package_delivery.CodexRuntimeBundle,
   probe_key: ProviderProbeKey,
   evidence_root: std.types.FilePath,
   codex_home: std.types.FilePath,
@@ -1407,7 +1407,7 @@ fn observe_codex_account_preflight(
       let present = shell.Test.IsFile(path: projected.executable.path)
       if present.is_file == false {
         CodexPressUnavailable {
-          reason: "bundled Codex native executable absent at binding path" as NonEmptyStr,
+          reason: "bundled Codex native executable absent at binding path" as std.types.NonEmptyStr,
           process: ProviderProcessReceipt {
             exit: ProviderProcessObservationFailed,
             wire: none,
@@ -1419,7 +1419,7 @@ fn observe_codex_account_preflight(
             executable: projected.executable.path,
             codex_home: codex_home,
           ),
-          reason: "Codex app-server held-open account session; exit+stdout/stderr captured for typed NDJSON id correlation" as NonEmptyStr,
+          reason: "Codex app-server held-open account session; exit+stdout/stderr captured for typed NDJSON id correlation" as std.types.NonEmptyStr,
         )
         let run = shell.Exec.Run(script: script)
         let capture = split_gunbc_stdio_capture(combined: run.stdout)
@@ -1474,7 +1474,7 @@ fn observe_codex_account_preflight(
               Present { value: code } =>
                 if code != 0 {
                   CodexPressUnavailable {
-                    reason: "codex app-server process exited nonzero" as NonEmptyStr,
+                    reason: "codex app-server process exited nonzero" as std.types.NonEmptyStr,
                     process: receipt.process,
                   }
                 } else {
@@ -1482,7 +1482,7 @@ fn observe_codex_account_preflight(
                 }
               Absent =>
                 CodexPressUnavailable {
-                  reason: "codex app-server process exit observation refused" as NonEmptyStr,
+                  reason: "codex app-server process exit observation refused" as std.types.NonEmptyStr,
                   process: receipt.process,
                 }
             }

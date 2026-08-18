@@ -19,19 +19,19 @@ type DirnameAscent {
   target: std.types.NonEmptyStr
 }
 
-fn path_intent_ref(name: NonEmptyStr) -> PathIntent {
+fn path_intent_ref(name: std.types.NonEmptyStr) -> PathIntent {
   PathRef { name: name }
 }
 
-fn path_intent_literal(parts: FilePathParts) -> PathIntent {
+fn path_intent_literal(parts: std.types.FilePathParts) -> PathIntent {
   PathLiteral { parts: parts }
 }
 
-fn path_intent_join(base: PathIntent, suffix: FilePathParts) -> PathIntent {
+fn path_intent_join(base: PathIntent, suffix: std.types.FilePathParts) -> PathIntent {
   PathJoin { base: base, suffix: suffix }
 }
 
-fn dirname_ascent(path: PathIntent, target: NonEmptyStr) -> DirnameAscent {
+fn dirname_ascent(path: PathIntent, target: std.types.NonEmptyStr) -> DirnameAscent {
   DirnameAscent { path: path, target: target }
 }
 
@@ -52,7 +52,7 @@ type NearestAncestorContainingResult
   = AncestorFound { path: PathIntent }
   | NoAncestorContainsEntry
 
-fn nearest_ancestor_walk_target(spec: NearestAncestorContaining) -> NonEmptyStr {
+fn nearest_ancestor_walk_target(spec: NearestAncestorContaining) -> std.types.NonEmptyStr {
   spec.start.name
 }
 

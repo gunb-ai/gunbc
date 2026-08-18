@@ -15,7 +15,7 @@ data materialization_provider_completeness_note: String = "The artifact-complete
 
 data materialization_provider_key_order_note: String = "Declared-input order is part of the key: declared_inputs_digest folds in list order, so the REQUESTER owes a canonical input order (the same duty artifact_key_hash discharges by fixed field order). Two requests that differ only by input permutation key apart — a loud miss, never a wrong hit — so the fail-open direction is closed; the canonical-order duty is on the constructor rows below, which fix an order by construction."
 
-type ArtifactOutputId = NonEmptyStr where brand("ArtifactOutputId")
+type ArtifactOutputId = std.types.NonEmptyStr where brand("ArtifactOutputId")
 
 data output_parse_tree: ArtifactOutputId = "parse_tree"
 data output_parse_diagnostics: ArtifactOutputId = "parse_diagnostics"
@@ -55,7 +55,7 @@ fn request_fold<T>(
   }
 }
 
-fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
+fn request_kind(req: ArtifactRequest) -> std.cache_identity.ArtifactKindId {
   request_fold(
     req: req,
     parse_module: (sd, c) => parse_source_artifact_kind,
@@ -64,7 +64,7 @@ fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
   )
 }
 
-fn request_subject_digest(req: ArtifactRequest) -> Fnv1a64Structural {
+fn request_subject_digest(req: ArtifactRequest) -> std.content_hash.Fnv1a64Structural {
   request_fold(
     req: req,
     parse_module: (sd, c) => sd,
@@ -93,14 +93,14 @@ fn request_required_outputs(req: ArtifactRequest) -> List<ArtifactOutputId> {
   )
 }
 
-fn declared_input_digest(input: DeclaredInput) -> Fnv1a64Structural {
+fn declared_input_digest(input: DeclaredInput) -> std.content_hash.Fnv1a64Structural {
   content_hash_combine_structural(
     left: content_hash_atom(value: input.ref),
     right: input.digest
   )
 }
 
-fn declared_inputs_digest(inputs: List<DeclaredInput>) -> ContentHash {
+fn declared_inputs_digest(inputs: List<DeclaredInput>) -> std.content_hash.ContentHash {
   as_content_hash_structural(
     structural: inputs |> fold(
       init: content_hash_atom(value: "materialization_provider.no_inputs"),
@@ -111,7 +111,7 @@ fn declared_inputs_digest(inputs: List<DeclaredInput>) -> ContentHash {
 
 data materialization_provider_key_authority_note: String = "WHICH AUTHORITY EACH FAMILY'S KEY COMES FROM (operator review, blocker 1 — a section 3 nickname violation in its exact form). The typed-module key already had a single authority: std.interface_summary's module_key (source hash + direct-import interface hashes) wrapped by typed_module_key (+ compiler identity), with its own RED controls in v2.test.claim.interface_summary.typed_module_key_test proving each term load-bearing. The earlier shape here reconstructed those same ingredients as an arbitrary ordered List<DeclaredInput> and hashed the LIST, which forked typed-module identity into two live definitions and re-homed the canonical direct-import ordering duty onto the caller — and nothing proved the two agreed. Generalizing the cited FACTS is not enough while both definitions are live. So the typecheck arm now CONSUMES the existing authority verbatim: TypecheckModuleRequest carries List<InterfaceHash>, the branded type module_key already takes, and its key IS typed_module_key(module_key(...)). The ordering duty is not a new one — it is the one that authority already owns, discharged by the same fold. Parse and resolve-closure have no prior key authority, so they keep the local tagged derivation, and the tags differ from typed-module-compiler, so no two families can collide on a shared subject. request_declared_inputs survives as a REPORTING projection over every family's reads, not as the typecheck key's ingredient list — one authority per fact, and the equivalence is witnessed by execution rather than asserted."
 
-fn local_request_key(req: ArtifactRequest) -> ContentHash {
+fn local_request_key(req: ArtifactRequest) -> std.content_hash.ContentHash {
   content_hash_tagged(
     tag: "materialization_provider.request",
     payload: content_hash_combine_structural(
@@ -130,7 +130,7 @@ fn local_request_key(req: ArtifactRequest) -> ContentHash {
   )
 }
 
-fn request_key(req: ArtifactRequest) -> ContentHash {
+fn request_key(req: ArtifactRequest) -> std.content_hash.ContentHash {
   request_fold(
     req: req,
     parse_module: (sd, c) => local_request_key(req: req),
@@ -151,7 +151,7 @@ type CarriedOutput {
   bytes: std.measure.ByteSize
 }
 
-fn carried_output_digest(o: CarriedOutput) -> Fnv1a64Structural {
+fn carried_output_digest(o: CarriedOutput) -> std.content_hash.Fnv1a64Structural {
   content_hash_combine_structural(
     left: content_hash_combine_structural(
       left: content_hash_atom(value: o.id),
@@ -161,7 +161,7 @@ fn carried_output_digest(o: CarriedOutput) -> Fnv1a64Structural {
   )
 }
 
-fn carried_outputs_digest(outputs: List<CarriedOutput>) -> ContentHash {
+fn carried_outputs_digest(outputs: List<CarriedOutput>) -> std.content_hash.ContentHash {
   content_hash_tagged(
     tag: "materialization_provider.carried_outputs",
     payload: outputs |> fold(
@@ -227,7 +227,7 @@ fn artifact_fold<T>(
   }
 }
 
-fn artifact_kind(artifact: MaterializedArtifact) -> ArtifactKindId {
+fn artifact_kind(artifact: MaterializedArtifact) -> std.cache_identity.ArtifactKindId {
   artifact_fold(
     artifact: artifact,
     parsed: (k, t, d) => parse_source_artifact_kind,
@@ -237,7 +237,7 @@ fn artifact_kind(artifact: MaterializedArtifact) -> ArtifactKindId {
   )
 }
 
-fn artifact_request_key(artifact: MaterializedArtifact) -> ContentHash {
+fn artifact_request_key(artifact: MaterializedArtifact) -> std.content_hash.ContentHash {
   artifact_fold(
     artifact: artifact,
     parsed: (k, t, d) => k,
@@ -267,15 +267,15 @@ fn artifact_carried_outputs(artifact: MaterializedArtifact) -> List<CarriedOutpu
   )
 }
 
-fn artifact_content_digest(artifact: MaterializedArtifact) -> ContentHash {
+fn artifact_content_digest(artifact: MaterializedArtifact) -> std.content_hash.ContentHash {
   carried_outputs_digest(outputs: artifact_carried_outputs(artifact: artifact))
 }
 
-fn carried_outputs_bytes(outputs: List<CarriedOutput>) -> ByteSize {
+fn carried_outputs_bytes(outputs: List<CarriedOutput>) -> std.measure.ByteSize {
   outputs |> fold(init: byte_size(count: 0), f: (acc, o) => measure_add(a: acc, b: o.bytes))
 }
 
-fn artifact_bytes(artifact: MaterializedArtifact) -> ByteSize {
+fn artifact_bytes(artifact: MaterializedArtifact) -> std.measure.ByteSize {
   carried_outputs_bytes(outputs: artifact_carried_outputs(artifact: artifact))
 }
 
@@ -316,7 +316,7 @@ type RequestArtifactBinding
 fn request_artifact_binding(
   req: ArtifactRequest,
   artifact: MaterializedArtifact,
-  observed_digest: ContentHash
+  observed_digest: std.content_hash.ContentHash
 ) -> RequestArtifactBinding {
   let key = request_key(req: req)
   let kind = request_kind(req: req)
@@ -339,7 +339,7 @@ fn request_artifact_binding(
 
 data materialization_provider_identity_derivation_note: String = "Identity is DERIVED from the comparison the contract already performs, never accepted from the caller (codex review 44265). The earlier shape took a ComputationIdentity parameter on both doors, which meant any consumer could pass StructurallyIdentical and be served without qualification — the enum arm carried no binding to the request, the artifact, or the computations being compared, so the module's claim that identity comes from the materialize spine was prose the API did not enforce. Note also what CANNOT fix this in .dag: a 'qualified identity token' type would not help, because records and variants are both freely constructible here, so a token is exactly as forgeable as the enum arm (the same lesson request_artifact_binding learned in review 44175). The enforceable move is therefore derivation, not custody: binding_identity_grade reads the RequestArtifactBinding — which is computed inside the door from the request and the probed artifact — and returns StructurallyIdentical only when kind, request key, content digest, and completeness all agree. Every other binding outcome derives IdentityUnknown with a LOCATED cause naming the specific disagreement, so the bottom of the lattice is reached by evidence rather than by assertion. Widening to NormalizedIdentical or ExtensionallyIdentical does not arrive as a caller-passed grade either: those grades justify a DIFFERENT KEY (a normalizer-canonicalized key, or a declared-bound equivalence class), so the spine's qualifier widens sharing by changing what request_key computes, and this derivation follows it for free. That is why there is no identity parameter and no identity-refusal arm to bypass."
 
-fn binding_identity_grade(b: RequestArtifactBinding) -> ComputationIdentity {
+fn binding_identity_grade(b: RequestArtifactBinding) -> std.computation_identity.ComputationIdentity {
   match b {
     BindingOk => StructurallyIdentical
     BindingKindMismatch { requested: _, found: _ } =>
@@ -411,7 +411,7 @@ type ProviderAdmission
 
 data materialization_provider_fit_authority_note: String = "The budget fit test has ONE authority, and it is store_put's (PR 7406, merged 2026-07-29). This function used to re-implement it — compare artifact bytes against store.budget, and only then call store_put — which was a second representation of a rule the store now carries by construction: store_put runs the fit test BEFORE any eviction and answers StorePutDidNotFit, so the destructive oversized path is unwritable there rather than guarded here. Keeping the local comparison would have made ProviderBudgetExhausted reachable by two different judgements that could drift apart, and would have left store_put's own refusal arm unreachable from this door — an inert arm, which section 5 counts as a lie. So the check is DELETED and ProviderBudgetExhausted is now DERIVED from store_put's refusal, carrying the needed/budget the store itself reported."
 
-fn provider_admit_bound(store: ArtifactStore, artifact: MaterializedArtifact) -> ProviderAdmission {
+fn provider_admit_bound(store: std.artifact_store.ArtifactStore, artifact: MaterializedArtifact) -> ProviderAdmission {
   store_put_fold(
     outcome: store_put(
       store: store,
@@ -424,10 +424,10 @@ fn provider_admit_bound(store: ArtifactStore, artifact: MaterializedArtifact) ->
 }
 
 fn provider_admit(
-  store: ArtifactStore,
+  store: std.artifact_store.ArtifactStore,
   req: ArtifactRequest,
   artifact: MaterializedArtifact,
-  observed_digest: ContentHash
+  observed_digest: std.content_hash.ContentHash
 ) -> ProviderAdmission {
   match request_artifact_binding(req: req, artifact: artifact, observed_digest: observed_digest) {
         BindingKindMismatch { requested: rk, found: fk } =>
@@ -443,19 +443,19 @@ fn provider_admit(
 
 data materialization_provider_request_family_note: String = "Each variant fixes its family's declared-input shape and required-output roster BY CONSTRUCTION, and the derivations above are the only readers: parse = source content + compiler identity, requiring the parse tree AND its diagnostics; typecheck = source content + direct-import interface digests + compiler identity (the typed_module_key facts, cited in extdeps.realization.reconcile_in_process), requiring the interface AND its diagnostics; resolve-closure = closure content + compiler identity (the resolved_graph_cache subject_digest facts, cited in extdeps.realization.resolved_graph), requiring graph, source indices, AND the compile-clean diagnostic union. Declared-input ORDER is fixed by request_declared_inputs, so the canonical-order duty request_key depends on is discharged by the fold rather than owed to the caller. Separate constructor functions were DELETED with the record shape (codex review 44175): a helper beside a freely-constructible record is an offer, not a wall, and a second way to spell a request is the redundancy section 2 forbids. A request family this module does not yet name lands as a new VARIANT — every derivation then fails to compile until it is answered — never a new outcome vocabulary."
 
-fn compiler_identity_input(digest: Fnv1a64Structural) -> DeclaredInput {
+fn compiler_identity_input(digest: std.content_hash.Fnv1a64Structural) -> DeclaredInput {
   DeclaredInput { ref: "compiler_binary_identity", digest: digest }
 }
 
-fn wire_fnv1a64_structural_hex(hex: Fnv1a64StructuralDigestHex) -> Fnv1a64Structural {
+fn wire_fnv1a64_structural_hex(hex: std.content_hash.Fnv1a64StructuralDigestHex) -> std.content_hash.Fnv1a64Structural {
   structural_content_hash(digest: hex)
 }
 
-fn wire_fnv1a64_content_hash_hex(hex: Fnv1a64StructuralDigestHex) -> ContentHash {
+fn wire_fnv1a64_content_hash_hex(hex: std.content_hash.Fnv1a64StructuralDigestHex) -> std.content_hash.ContentHash {
   as_content_hash_structural(structural: wire_fnv1a64_structural_hex(hex: hex))
 }
 
-fn admit_fnv1a64_structural(hash: ContentHash) -> Fnv1a64StructuralAdmission {
+fn admit_fnv1a64_structural(hash: std.content_hash.ContentHash) -> Fnv1a64StructuralAdmission {
   match hash {
     Fnv1a64(s) => Fnv1a64StructuralAdmitted { digest: s }
     Sha256Hash(_) => CrossFamilyContentHashRefused { family: Sha256Family }
@@ -465,8 +465,8 @@ fn admit_fnv1a64_structural(hash: ContentHash) -> Fnv1a64StructuralAdmission {
 }
 
 fn cross_family_fnv1a64_seam_lookup_refusal(
-  hash: ContentHash,
-  refusal_key: ContentHash
+  hash: std.content_hash.ContentHash,
+  refusal_key: std.content_hash.ContentHash
 ) -> ProviderLookup? {
   match admit_fnv1a64_structural(hash: hash) {
     CrossFamilyContentHashRefused { family: f } =>
@@ -477,7 +477,7 @@ fn cross_family_fnv1a64_seam_lookup_refusal(
   }
 }
 
-fn fnv1a64_structural_if_admitted(hash: ContentHash) -> Fnv1a64Structural? {
+fn fnv1a64_structural_if_admitted(hash: std.content_hash.ContentHash) -> std.content_hash.Fnv1a64Structural? {
   match admit_fnv1a64_structural(hash: hash) {
     Fnv1a64StructuralAdmitted { digest: d } => Present { value: d }
     CrossFamilyContentHashRefused { family: _ } => Absent
@@ -485,8 +485,8 @@ fn fnv1a64_structural_if_admitted(hash: ContentHash) -> Fnv1a64Structural? {
 }
 
 fn provider_refused_cross_family_from_admission(
-  key: ContentHash,
-  hash: ContentHash
+  key: std.content_hash.ContentHash,
+  hash: std.content_hash.ContentHash
 ) -> ProviderLookup {
   match admit_fnv1a64_structural(hash: hash) {
     CrossFamilyContentHashRefused { family: f } =>
@@ -496,17 +496,17 @@ fn provider_refused_cross_family_from_admission(
   }
 }
 
-fn wire_content_hash_to_hex(hash: ContentHash) -> String {
+fn wire_content_hash_to_hex(hash: std.content_hash.ContentHash) -> String {
   serialize_content_hash(hash: hash)
 }
 
-fn wire_byte_size(count: Int) -> ByteSize {
+fn wire_byte_size(count: Int) -> std.measure.ByteSize {
   byte_size(count: count)
 }
 
 fn resolve_closure_request_key_outcome(
-  closure_digest: ContentHash,
-  compiler_digest: ContentHash
+  closure_digest: std.content_hash.ContentHash,
+  compiler_digest: std.content_hash.ContentHash
 ) -> ResolveClosureRequestKeyOutcome {
   match fnv1a64_structural_if_admitted(hash: closure_digest) {
     Present { value: closure_admitted } =>
@@ -541,12 +541,12 @@ fn resolve_closure_request_key_outcome(
 }
 
 fn resolved_graph_parts_semantic_digest_outcome(
-  graph_digest: ContentHash,
-  graph_bytes: ByteSize,
-  indices_digest: ContentHash,
-  indices_bytes: ByteSize,
-  union_digest: ContentHash,
-  union_bytes: ByteSize
+  graph_digest: std.content_hash.ContentHash,
+  graph_bytes: std.measure.ByteSize,
+  indices_digest: std.content_hash.ContentHash,
+  indices_bytes: std.measure.ByteSize,
+  union_digest: std.content_hash.ContentHash,
+  union_bytes: std.measure.ByteSize
 ) -> ResolvedGraphPartsSemanticDigestOutcome {
   match fnv1a64_structural_if_admitted(hash: graph_digest) {
     Present { value: graph_admitted } =>
@@ -606,16 +606,16 @@ fn resolved_graph_parts_semantic_digest_outcome(
 }
 
 fn serve_resolved_graph_stored_disk_probe(
-  closure_digest: ContentHash,
-  compiler_digest: ContentHash,
-  stored_request_key: ContentHash,
-  stored_semantic_digest: ContentHash,
-  graph_digest: ContentHash,
-  graph_bytes: ByteSize,
-  indices_digest: ContentHash,
-  indices_bytes: ByteSize,
-  union_digest: ContentHash,
-  union_bytes: ByteSize
+  closure_digest: std.content_hash.ContentHash,
+  compiler_digest: std.content_hash.ContentHash,
+  stored_request_key: std.content_hash.ContentHash,
+  stored_semantic_digest: std.content_hash.ContentHash,
+  graph_digest: std.content_hash.ContentHash,
+  graph_bytes: std.measure.ByteSize,
+  indices_digest: std.content_hash.ContentHash,
+  indices_bytes: std.measure.ByteSize,
+  union_digest: std.content_hash.ContentHash,
+  union_bytes: std.measure.ByteSize
 ) -> ProviderLookup {
   match fnv1a64_structural_if_admitted(hash: closure_digest) {
     Present { value: closure_admitted } =>
@@ -689,13 +689,13 @@ fn serve_resolved_graph_stored_disk_probe(
 }
 
 fn serve_resolved_graph_incomplete_stored_disk_probe(
-  closure_digest: ContentHash,
-  compiler_digest: ContentHash,
-  stored_request_key: ContentHash,
-  graph_digest: ContentHash,
-  graph_bytes: ByteSize,
-  indices_digest: ContentHash,
-  indices_bytes: ByteSize
+  closure_digest: std.content_hash.ContentHash,
+  compiler_digest: std.content_hash.ContentHash,
+  stored_request_key: std.content_hash.ContentHash,
+  graph_digest: std.content_hash.ContentHash,
+  graph_bytes: std.measure.ByteSize,
+  indices_digest: std.content_hash.ContentHash,
+  indices_bytes: std.measure.ByteSize
 ) -> ProviderLookup {
   match fnv1a64_structural_if_admitted(hash: closure_digest) {
     Present { value: closure_admitted } =>
@@ -765,12 +765,12 @@ fn serve_resolved_graph_incomplete_stored_disk_probe(
   }
 }
 
-data materialization_provider_reader_predicate_contract: Disposition = Terminal {
+data materialization_provider_reader_predicate_contract: std.disposition.Disposition = Terminal {
   reason: "One canonical fold per outcome coproduct is the total-match authority (codex rework, review 44158): lookup_fold and admission_fold are the ONLY matches over ProviderLookup / ProviderAdmission, and completeness_missing is the single projection over ArtifactCompleteness. Every predicate and projection below is a DERIVATION of its fold and contains no match of its own, so a new outcome variant is a type error at exactly one site per coproduct, never a sweep over a hand-rolled selector family. Handler returns are a bare type variable by design — the seed types fn-typed parameters returning bare vars or concrete types, not generic-applied enums (realization_reconcile substrate-limit receipt). There is deliberately NO admission_store(admission, fallback) projection: it answered every refusal arm with a caller-supplied store, which is the absorbing fallback section 5 forbids — it erases the stopped line and lets processing continue against a plausible substitute. A consumer that needs the post-admission store folds the ProviderAdmission and handles refusal explicitly; the store exists on exactly one arm, so the fold makes that unavoidable. Discriminating corpus: dag/test/claim/materialization_provider_witness_test.dag."
 }
 
 data no_output_ids: List<ArtifactOutputId> = []
-data no_evicted_keys: List<ContentHash> = []
+data no_evicted_keys: List<std.content_hash.ContentHash> = []
 
 fn lookup_fold<T>(
   l: ProviderLookup,
@@ -871,7 +871,7 @@ fn lookup_is_refused_cross_family_content_hash(l: ProviderLookup) -> Bool {
   )
 }
 
-fn lookup_served_identity(l: ProviderLookup) -> ComputationIdentity {
+fn lookup_served_identity(l: ProviderLookup) -> std.computation_identity.ComputationIdentity {
   lookup_fold(
     l: l,
     hit: (a, i) => i,
@@ -943,7 +943,7 @@ fn admission_is_admitted(a: ProviderAdmission) -> Bool {
   )
 }
 
-fn admission_evicted_keys(a: ProviderAdmission) -> List<ContentHash> {
+fn admission_evicted_keys(a: ProviderAdmission) -> List<std.content_hash.ContentHash> {
   admission_fold(
     a: a,
     admitted: (s, e) => e,

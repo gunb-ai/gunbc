@@ -45,7 +45,7 @@ fn quiet_envelope(m: Material) -> Bool {
   quiet_envelope_hsl_pct(sat_pct: m.sat_pct, light_pct: m.light_pct)
 }
 
-fn quiet_envelope_srgb8(c: Srgb8) -> Bool {
+fn quiet_envelope_srgb8(c: extdeps.color.srgb.Srgb8) -> Bool {
   match uint8_channel_inclusive_max_value_derived() {
     Absent => false
     Present { value: maxv } => {
@@ -153,7 +153,7 @@ type MotionTrigger
   | OnActive
   | OnStateClass { class_name: String }
 
-fn css_trigger_for(cause: InteractionCause) -> MotionTrigger {
+fn css_trigger_for(cause: gunbc.design.interaction_cause.InteractionCause) -> MotionTrigger {
   match cause {
     PointerApproach => OnHover
     FocusAcquired => OnFocusVisible
@@ -162,7 +162,7 @@ fn css_trigger_for(cause: InteractionCause) -> MotionTrigger {
   }
 }
 
-fn css_selector_suffix_for_cause(cause: InteractionCause) -> String {
+fn css_selector_suffix_for_cause(cause: gunbc.design.interaction_cause.InteractionCause) -> String {
   trigger_selector_suffix(t: css_trigger_for(cause: cause))
 }
 
@@ -189,7 +189,7 @@ type CssDecl {
   value: String
 }
 
-fn decl(prop: CssPropertyName, value: String) -> CssDecl {
+fn decl(prop: extdeps.languages.css.properties.CssPropertyName, value: String) -> CssDecl {
   CssDecl { prop: prop, value: value }
 }
 
@@ -217,7 +217,7 @@ type BuildRule
       response_decls: List<CssDecl>,
     }
 
-fn response_base_selector(subject: SelectorSubject, shape: TriggerShape) -> String {
+fn response_base_selector(subject: extdeps.languages.css.selectors.SelectorSubject, shape: TriggerShape) -> String {
   match shape {
     SelfResponse => selector_subject_wire(s: subject)
     WithinSubject { target } => join([selector_subject_wire(s: subject), " ", target], "")
@@ -225,7 +225,7 @@ fn response_base_selector(subject: SelectorSubject, shape: TriggerShape) -> Stri
   }
 }
 
-fn response_hot_selector(subject: SelectorSubject, shape: TriggerShape, trigger: MotionTrigger) -> String {
+fn response_hot_selector(subject: extdeps.languages.css.selectors.SelectorSubject, shape: TriggerShape, trigger: MotionTrigger) -> String {
   let pseudo = trigger_selector_suffix(t: trigger)
   match shape {
     SelfResponse => concat(selector_subject_wire(s: subject), pseudo)
@@ -235,7 +235,7 @@ fn response_hot_selector(subject: SelectorSubject, shape: TriggerShape, trigger:
   }
 }
 
-fn transition_carrier_selector(subject: SelectorSubject, shape: TriggerShape, trigger: MotionTrigger) -> String {
+fn transition_carrier_selector(subject: extdeps.languages.css.selectors.SelectorSubject, shape: TriggerShape, trigger: MotionTrigger) -> String {
   if trigger_is_state_class(t: trigger) {
     response_hot_selector(subject: subject, shape: shape, trigger: trigger)
   } else {

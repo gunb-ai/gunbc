@@ -1,8 +1,8 @@
 module extdeps.exec.command
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "man7.org/linux/man-pages/man1/ssh.1.html"
   }
@@ -16,8 +16,8 @@ type CommandTransport
   = LocalExec
   | SshExec { ssh_target: std.types.NonEmptyStr }
 
-data sshpass_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data sshpass_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "sourceforge.net/projects/sshpass/"
   }
@@ -33,7 +33,7 @@ fn ssh_host_key_override_opts() -> List<String> {
   ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
 }
 
-fn ssh_exec_prefix(target: NonEmptyStr) -> List<String> {
+fn ssh_exec_prefix(target: std.types.NonEmptyStr) -> List<String> {
   append(
     append(
       append(sshpass_prefix(), items: ["ssh"]),
@@ -43,7 +43,7 @@ fn ssh_exec_prefix(target: NonEmptyStr) -> List<String> {
   )
 }
 
-fn scp_command(local_path: NonEmptyStr, remote_target: NonEmptyStr) -> ArgvCommand {
+fn scp_command(local_path: std.types.NonEmptyStr, remote_target: std.types.NonEmptyStr) -> ArgvCommand {
   ArgvCommand {
     argv: append(
       append(

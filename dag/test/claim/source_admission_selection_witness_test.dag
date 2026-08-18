@@ -34,27 +34,27 @@ fn on_trees(body: fn(FixtureTrees) -> Bool) -> Bool {
   }
 }
 
-fn mechanism_a() -> ComputedMechanismIdentity {
+fn mechanism_a() -> gunbc.source_admission_selection.ComputedMechanismIdentity {
   fixture_computed_mechanism(executing: SeedRustExecuting, label: "mechanism-a")
 }
 
-fn mechanism_b() -> ComputedMechanismIdentity {
+fn mechanism_b() -> gunbc.source_admission_selection.ComputedMechanismIdentity {
   fixture_computed_mechanism(executing: SeedRustExecuting, label: "mechanism-b")
 }
 
-fn mechanism_self_emitted() -> ComputedMechanismIdentity {
+fn mechanism_self_emitted() -> gunbc.source_admission_selection.ComputedMechanismIdentity {
   fixture_computed_mechanism(executing: SelfEmittedExecuting, label: "mechanism-a")
 }
 
-fn identity_of(file: SourcePoolFile) -> ActiveSourceIdentity {
-  ActiveSourceIdentity {
+fn identity_of(file: gunbc.source_admission_selection.SourcePoolFile) -> gunbc.source_admission_selection.ActiveSourceIdentity {
+  gunbc.source_admission_selection.ActiveSourceIdentity {
     module_path: file.module_path,
     path: file.path,
     content_digest: file.content_digest,
   }
 }
 
-fn observed_from_files(files: List<SourcePoolFile>) -> ActiveSourceManifest {
+fn observed_from_files(files: List<gunbc.source_admission_selection.SourcePoolFile>) -> gunbc.source_admission_selection.ActiveSourceManifest {
   let rows = project_active_source_rows(files: files)
   admit_active_source_manifest(
     rows: rows,
@@ -63,10 +63,10 @@ fn observed_from_files(files: List<SourcePoolFile>) -> ActiveSourceManifest {
 }
 
 fn mint_from_files(
-  tree: GitObjectId,
-  mechanism: ComputedMechanismIdentity,
-  files: List<SourcePoolFile>
-) -> AnnotationCorpusAdmitted? {
+  tree: extdeps.git.object_store.GitObjectId,
+  mechanism: gunbc.source_admission_selection.ComputedMechanismIdentity,
+  files: List<gunbc.source_admission_selection.SourcePoolFile>
+) -> gunbc.source_admission_selection.AnnotationCorpusAdmitted? {
   let rows = project_active_source_rows(files: files)
   mint_annotation_corpus_admitted(
     tree: tree,
@@ -81,10 +81,10 @@ fn mint_from_files(
 
 fn select_with_receipt(
   trees: FixtureTrees,
-  receipt: AnnotationCorpusAdmitted,
-  head_mechanism: AnnotationMechanismIdentity,
-  head_files: List<SourcePoolFile>
-) -> SourceAdmissionSelection {
+  receipt: gunbc.source_admission_selection.AnnotationCorpusAdmitted,
+  head_mechanism: gunbc.source_admission_selection.AnnotationMechanismIdentity,
+  head_files: List<gunbc.source_admission_selection.SourcePoolFile>
+) -> gunbc.source_admission_selection.SourceAdmissionSelection {
   select_source_admission(
     evaluating_merge_tree: true,
     base_tree: trees.base,
@@ -96,8 +96,8 @@ fn select_with_receipt(
 }
 
 fn refusal_is(
-  sel: SourceAdmissionSelection,
-  wanted: SourceTransitionRefusalCause
+  sel: gunbc.source_admission_selection.SourceAdmissionSelection,
+  wanted: gunbc.source_admission_selection.SourceTransitionRefusalCause
 ) -> Bool {
   match source_admission_refusal_cause(sel: sel) {
     Absent => false
@@ -105,7 +105,7 @@ fn refusal_is(
   }
 }
 
-fn file_high() -> SourcePoolFile {
+fn file_high() -> gunbc.source_admission_selection.SourcePoolFile {
   fixture_source(
     root_ordinal: 0,
     module_path: "mod.alpha",
@@ -114,7 +114,7 @@ fn file_high() -> SourcePoolFile {
   )
 }
 
-fn file_low() -> SourcePoolFile {
+fn file_low() -> gunbc.source_admission_selection.SourcePoolFile {
   fixture_source(
     root_ordinal: 1,
     module_path: "mod.alpha",
@@ -123,7 +123,7 @@ fn file_low() -> SourcePoolFile {
   )
 }
 
-fn file_beta() -> SourcePoolFile {
+fn file_beta() -> gunbc.source_admission_selection.SourcePoolFile {
   fixture_source(
     root_ordinal: 0,
     module_path: "mod.beta",
@@ -132,7 +132,7 @@ fn file_beta() -> SourcePoolFile {
   )
 }
 
-fn file_beta_changed() -> SourcePoolFile {
+fn file_beta_changed() -> gunbc.source_admission_selection.SourcePoolFile {
   fixture_source(
     root_ordinal: 0,
     module_path: "mod.beta",
@@ -141,7 +141,7 @@ fn file_beta_changed() -> SourcePoolFile {
   )
 }
 
-fn file_gamma() -> SourcePoolFile {
+fn file_gamma() -> gunbc.source_admission_selection.SourcePoolFile {
   fixture_source(
     root_ordinal: 0,
     module_path: "mod.gamma",

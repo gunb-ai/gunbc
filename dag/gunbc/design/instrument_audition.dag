@@ -26,7 +26,7 @@ fn audition_emission(i: AuditionIntensity) -> AuditionEmission {
   match i {
     AuditionRestrained => AuditionNoEmission
     AuditionExpressive => AuditionEmits {
-      spec: EmissionSpec {
+      spec: gunbc.design.salience.EmissionSpec {
         core_radius: css_px(4),
         corona_radius: css_px(20),
         core_alpha_pct: 60,
@@ -34,7 +34,7 @@ fn audition_emission(i: AuditionIntensity) -> AuditionEmission {
       },
     }
     AuditionHero => AuditionEmits {
-      spec: EmissionSpec {
+      spec: gunbc.design.salience.EmissionSpec {
         core_radius: css_px(6),
         corona_radius: css_px(48),
         core_alpha_pct: 80,
@@ -53,7 +53,7 @@ fn audition_attraction(i: AuditionIntensity) -> AuditionAttraction {
     AuditionRestrained => AuditionNoAttraction
     AuditionExpressive => AuditionNoAttraction
     AuditionHero => AuditionAttracts {
-      field: AttractionField {
+      field: gunbc.design.salience.AttractionField {
         activation_radius: css_px(attraction_activation_min_px),
         max_travel: css_px(focal_attraction_headroom_px(p: audition_instrument(i: AuditionHero))),
         settle: focal_attraction.settle,
@@ -62,7 +62,7 @@ fn audition_attraction(i: AuditionIntensity) -> AuditionAttraction {
   }
 }
 
-fn audition_instrument(i: AuditionIntensity) -> InstrumentPreference {
+fn audition_instrument(i: AuditionIntensity) -> gunbc.design.instrument_physical.InstrumentPreference {
   match i {
     AuditionRestrained => preference_still
     AuditionExpressive => preference_default
@@ -115,7 +115,7 @@ type AuditionEmissionOutcome
 
 fn audition_emission_outcome(
   i: AuditionIntensity,
-  role: SalienceRole,
+  role: gunbc.design.salience.SalienceRole,
   subject_key: String,
 ) -> AuditionEmissionOutcome {
   match audition_emission(i: i) {
@@ -130,7 +130,7 @@ fn audition_emission_outcome(
   }
 }
 
-fn emission_granted(g: EmissionGrant) -> Bool {
+fn emission_granted(g: gunbc.design.salience.EmissionGrant) -> Bool {
   match g {
     EmissionGranted { spec, discriminator } => true
     EmissionRefusedForRole { role } => false
@@ -164,7 +164,7 @@ fn admit_enclosure(i: AuditionIntensity) -> AuditionAdmission {
   }
 }
 
-fn admit_audition(i: AuditionIntensity, role: SalienceRole, subject_key: String) -> AuditionAdmission {
+fn admit_audition(i: AuditionIntensity, role: gunbc.design.salience.SalienceRole, subject_key: String) -> AuditionAdmission {
   match audition_emission_outcome(i: i, role: role, subject_key: subject_key) {
     NoEmissionRequested => admit_enclosure(i: i)
     EmissionResolved { grant } =>
@@ -198,14 +198,14 @@ data accepted_subject_has_no_constraint_reason: String = "the subject is accepte
 
 data no_workable_frontier_reason: String = "no workable frontier remains in the subject's unaccepted closure"
 
-fn constraint_kind_key(k: ConstraintKind) -> String {
+fn constraint_kind_key(k: gunbc.roadmap_program_view.ConstraintKind) -> String {
   match k {
     ImplementationConstraint => "implementation"
     ContractConstraint => "contract"
   }
 }
 
-fn read_constraint(subject_key: String, c: ConstraintView?, accepted: Bool) -> ProgramReading {
+fn read_constraint(subject_key: String, c: gunbc.roadmap_program_view.ConstraintView?, accepted: Bool) -> ProgramReading {
   match c {
     Absent => ReadingNoConstraint {
       subject_key: subject_key,
@@ -228,7 +228,7 @@ type SubjectDepth
   | SubjectNode
   | SubjectEvidence
 
-fn read_line_view(lv: FinishLineView, camera: ProgramCamera, d: SubjectDepth) -> ProgramReading {
+fn read_line_view(lv: gunbc.roadmap_program_view.FinishLineView, camera: gunbc.design.instrument_camera.ProgramCamera, d: SubjectDepth) -> ProgramReading {
   match d {
     SubjectOutcome => match camera.mode {
       ModeStatus => ReadingOutcomeStatus {
@@ -253,16 +253,16 @@ data front_grain_note: String = "At front depth the camera shows the contributin
 
 FIRST IS ENFORCED BY THE FOLD, NOT PROMISED BY THIS PARAGRAPH (review finding 48579, 2026-08-05). The first cut folded the contributing fronts with a step that ignored its accumulator, so the LAST match won while this note said first — and it was not hypothetical: the exemplar subject contributes to namespace-pderive and then v2-generation, so the study rendered the wrong front. A fold whose step drops acc is a last-wins selection wearing a first-wins comment, and nothing caught it because no witness read the front grain at all. Selection is now a separate take-first over the list, so the reading step cannot express a preference between candidates, and witness_the_front_grain_shows_the_first_contributing_front reads the rendered key."
 
-fn front_view_for(lv: FinishLineView, fronts: List<FrontView>) -> List<FrontView> {
+fn front_view_for(lv: gunbc.roadmap_program_view.FinishLineView, fronts: List<gunbc.roadmap_program_view.FrontView>) -> List<gunbc.roadmap_program_view.FrontView> {
   fronts |> filter(fv => lv.contributing_fronts |> any(f => program_front_key(front: f) == fv.key))
 }
 
-fn first_front_view(lv: FinishLineView, fronts: List<FrontView>) -> List<FrontView> {
+fn first_front_view(lv: gunbc.roadmap_program_view.FinishLineView, fronts: List<gunbc.roadmap_program_view.FrontView>) -> List<gunbc.roadmap_program_view.FrontView> {
   fold(front_view_for(lv: lv, fronts: fronts), init: [],
     f: (acc, fv) => if count(acc) == 0 { [fv] } else { acc })
 }
 
-fn read_front_view(fv: FrontView, camera: ProgramCamera) -> ProgramReading {
+fn read_front_view(fv: gunbc.roadmap_program_view.FrontView, camera: gunbc.design.instrument_camera.ProgramCamera) -> ProgramReading {
   match camera.mode {
     ModeStatus => ReadingFront {
       key: fv.key,
@@ -278,7 +278,7 @@ fn read_front_view(fv: FrontView, camera: ProgramCamera) -> ProgramReading {
 
 data no_contributing_front_cause: String = "no convergence front contributes to this finish line in the derived view"
 
-fn read_front(lv: FinishLineView, camera: ProgramCamera) -> ProgramReading {
+fn read_front(lv: gunbc.roadmap_program_view.FinishLineView, camera: gunbc.design.instrument_camera.ProgramCamera) -> ProgramReading {
   ReadingUnavailable {
     mode: program_mode_key(m: camera.mode),
     subject_key: lv.key,
@@ -288,16 +288,16 @@ fn read_front(lv: FinishLineView, camera: ProgramCamera) -> ProgramReading {
 
 data unresolved_subject_cause: String = "the focused subject key resolves to no finish line in the derived program view"
 
-fn line_view_for(view: V1DeletionProgramView, subject_key: String) -> List<FinishLineView> {
+fn line_view_for(view: gunbc.roadmap_program_view.V1DeletionProgramView, subject_key: String) -> List<gunbc.roadmap_program_view.FinishLineView> {
   view.finish_lines |> filter(lv => lv.key == subject_key)
 }
 
-fn first_line_view(view: V1DeletionProgramView, subject_key: String) -> List<FinishLineView> {
+fn first_line_view(view: gunbc.roadmap_program_view.V1DeletionProgramView, subject_key: String) -> List<gunbc.roadmap_program_view.FinishLineView> {
   fold(line_view_for(view: view, subject_key: subject_key), init: [],
     f: (acc, lv) => if count(acc) == 0 { [lv] } else { acc })
 }
 
-fn read_program_depth(view: V1DeletionProgramView, camera: ProgramCamera) -> ProgramReading {
+fn read_program_depth(view: gunbc.roadmap_program_view.V1DeletionProgramView, camera: gunbc.design.instrument_camera.ProgramCamera) -> ProgramReading {
   match camera.mode {
     ModeRemaining => ReadingProgramShape { remaining: view.remaining }
     ModeStatus => ReadingProgramShape { remaining: view.remaining }
@@ -309,7 +309,7 @@ fn read_program_depth(view: V1DeletionProgramView, camera: ProgramCamera) -> Pro
   }
 }
 
-fn read_camera(camera: ProgramCamera, view: V1DeletionProgramView) -> ProgramReading {
+fn read_camera(camera: gunbc.design.instrument_camera.ProgramCamera, view: gunbc.roadmap_program_view.V1DeletionProgramView) -> ProgramReading {
   match camera.focus {
     NoSubjectSelected => match camera.depth {
       DepthProgram => read_program_depth(view: view, camera: camera)
@@ -330,7 +330,7 @@ fn read_camera(camera: ProgramCamera, view: V1DeletionProgramView) -> ProgramRea
   }
 }
 
-fn read_camera_at(lv: FinishLineView, camera: ProgramCamera, view: V1DeletionProgramView) -> ProgramReading {
+fn read_camera_at(lv: gunbc.roadmap_program_view.FinishLineView, camera: gunbc.design.instrument_camera.ProgramCamera, view: gunbc.roadmap_program_view.V1DeletionProgramView) -> ProgramReading {
   match camera.depth {
     DepthFront => fold(
       first_front_view(lv: lv, fronts: view.fronts),

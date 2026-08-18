@@ -7,7 +7,7 @@ type CodexProcessFingerprintStanding
   = CodexProcessFingerprintObserved { fingerprint: std.types.NonEmptyStr }
   | CodexProcessFingerprintUnobserved { reason: std.types.NonEmptyStr }
 
-data codex_process_fingerprint_unobserved_reason: NonEmptyStr = "bundled-native pane_current_command not yet observed on this host; derive from CodexProviderRuntimeReceipt once wet observation updates process_fingerprint — never from a hand-authored literal" as NonEmptyStr
+data codex_process_fingerprint_unobserved_reason: std.types.NonEmptyStr = "bundled-native pane_current_command not yet observed on this host; derive from CodexProviderRuntimeReceipt once wet observation updates process_fingerprint — never from a hand-authored literal" as std.types.NonEmptyStr
 
 type CodexProviderRuntimeReceipt {
   host: product.placement_supply.HostIdentity
@@ -19,8 +19,8 @@ type CodexProviderRuntimeReceipt {
 }
 
 fn codex_provider_runtime_receipt_wire_path(
-  placement: ProviderRuntimePlacement,
-  host: HostIdentity,
+  placement: gunbc.host_layout.ProviderRuntimePlacement,
+  host: product.placement_supply.HostIdentity,
 ) -> std.types.FilePath {
   concat(
     placement.wire_evidence_root as String,
@@ -32,9 +32,9 @@ fn codex_provider_runtime_receipt_wire_path(
 }
 
 fn derive_codex_provider_runtime_receipt(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   bundled_executable: std.types.FilePath,
-  bundle_receipt_identity_hex: NonEmptyStr,
+  bundle_receipt_identity_hex: std.types.NonEmptyStr,
 ) -> CodexProviderRuntimeReceipt? {
   match provider_runtime_placement_for_host(host: host) {
     Absent => none
@@ -44,7 +44,7 @@ fn derive_codex_provider_runtime_receipt(
           host: host,
           placement: placement,
           bundled_executable: bundled_executable,
-          version_marker: codex_runtime_version_identity_marker() as NonEmptyStr,
+          version_marker: codex_runtime_version_identity_marker() as std.types.NonEmptyStr,
           bundle_receipt_identity_hex: bundle_receipt_identity_hex,
           process_fingerprint: CodexProcessFingerprintUnobserved {
             reason: codex_process_fingerprint_unobserved_reason,
@@ -64,7 +64,7 @@ fn codex_provider_runtime_receipt_converges_three_roots(
 
 fn codex_provider_runtime_receipt_process_fingerprint_observed(
   receipt: CodexProviderRuntimeReceipt,
-) -> NonEmptyStr? {
+) -> std.types.NonEmptyStr? {
   match receipt.process_fingerprint {
     CodexProcessFingerprintObserved { fingerprint } => Present { value: fingerprint }
     CodexProcessFingerprintUnobserved { reason: _ } => none

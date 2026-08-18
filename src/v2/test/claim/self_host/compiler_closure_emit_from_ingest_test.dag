@@ -1,9 +1,9 @@
 module v2.test.self_host.compiler_closure_emit_from_ingest
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-fn compiler_closure_ingest_from_manifest() -> SourceRootIngest {
+fn compiler_closure_ingest_from_manifest() -> v2.compiler.source_authority.SourceRootIngest {
   match source_root_ingest_build_from_source_refs(refs: host_source_root_closure_refs) {
     SourceRootIngestBuildOk { ingest: ingest } => ingest
     SourceRootIngestBuildReadFailed { result: _ } => Empty
@@ -25,8 +25,8 @@ type Gap4IngestProbeState
 
 fn gap4_probe_found_from_parse_reject(
   path: String,
-  reason: Symbol,
-  at: Locus
+  reason: v2.std.node.Symbol,
+  at: v2.std.diagnostic.Locus
 ) -> Gap4IngestProbeState {
   Gap4IngestProbeFound {
     path: path,
@@ -42,8 +42,8 @@ fn gap4_probe_found_from_parse_reject(
 
 fn gap4_ingest_probe_step(
   state: Gap4IngestProbeState,
-  read: DagSourceReadWitness,
-  lm: LanguageModel
+  read: v2.compiler.source_authority.DagSourceReadWitness,
+  lm: v2.std.language_model.LanguageModel
 ) -> Gap4IngestProbeState {
   match state {
     Gap4IngestProbeFound {

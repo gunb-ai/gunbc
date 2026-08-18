@@ -7,16 +7,16 @@ type DeterminismRoot {
   citation: String
 }
 
-fn map_keys_leak_source() -> DeclarationRef {
-  DeclarationRef {
+fn map_keys_leak_source() -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
     module_path: "v1.runtime_rust",
     decl_name: "map_keys",
     field: WholeDeclaration
   }
 }
 
-fn map_values_leak_source() -> DeclarationRef {
-  DeclarationRef {
+fn map_values_leak_source() -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
     module_path: "v1.runtime_rust",
     decl_name: "map_values",
     field: WholeDeclaration
@@ -40,7 +40,7 @@ data determinism_root_registry: List<DeterminismRoot> = [
   determinism_root_map_values
 ]
 
-fn determinism_root_for_symbol(registry: List<DeterminismRoot>, s: Symbol) -> Optional<DeterminismRoot> {
+fn determinism_root_for_symbol(registry: List<DeterminismRoot>, s: v2.std.node.Symbol) -> Optional<DeterminismRoot> {
   fold(registry, init: optional_absent(), f: fn(acc, row) {
     match acc {
       Present { value: _ } => acc
@@ -49,7 +49,7 @@ fn determinism_root_for_symbol(registry: List<DeterminismRoot>, s: Symbol) -> Op
   })
 }
 
-fn node_callee_symbol(n: Node) -> Optional<Symbol> {
+fn node_callee_symbol(n: Node) -> Optional<v2.std.node.Symbol> {
   if node_is_call(node: n) {
     match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
       Present { value: callee } => match callee.kind {
@@ -73,36 +73,36 @@ fn local_determinism_axis(n: Node) -> std.determinism.Determinism {
   }
 }
 
-fn determinism_axis_fold_step(acc: std.determinism.Determinism, _: Edge, child: std.determinism.Determinism) -> std.determinism.Determinism {
+fn determinism_axis_fold_step(acc: std.determinism.Determinism, _: v2.std.node.Edge, child: std.determinism.Determinism) -> std.determinism.Determinism {
   std.determinism.determinism_compose(outer: acc, inner: child)
 }
 
 fn determinism_axis_for_node(n: Node) -> std.determinism.Determinism {
   fold_node(
     n: n,
-    algebra: NodeFold {
+    algebra: v2.std.node.NodeFold {
       init: fn(n0) { local_determinism_axis(n: n0) },
       step: fn(acc, e, child) { determinism_axis_fold_step(acc: acc, e: e, child: child) }
     }
   )
 }
 
-fn determinism_fact_for_node(signature: Symbol, n: Node) -> v2.std.determinism.DeterminismFact {
+fn determinism_fact_for_node(signature: v2.std.node.Symbol, n: Node) -> v2.std.determinism.DeterminismFact {
   v2.std.determinism.DeterminismFact {
     signature: signature,
     classification: determinism_axis_for_node(n: n)
   }
 }
 
-fn determinism_leak_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn determinism_leak_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^determinism_nondeterministic_root_reach,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn determinism_contract_witness(signature: Symbol, n: Node) -> Witness<v2.std.determinism.DeterminismFact> {
+fn determinism_contract_witness(signature: v2.std.node.Symbol, n: Node) -> Witness<v2.std.determinism.DeterminismFact> {
   let fact = determinism_fact_for_node(signature: signature, n: n)
   match fact.classification {
     std.determinism.NonDeterministic { source: _ } => Violates { diagnostic: determinism_leak_diagnostic(n: n) }
@@ -112,17 +112,17 @@ fn determinism_contract_witness(signature: Symbol, n: Node) -> Witness<v2.std.de
 
 data compile_gate_law: String = "INTERIM CONTAINMENT, mechanically preventive for uniquely named registered roots — not repository-complete structural determinism. The former one-row registry asserted map_keys was the one readable nondeterministic atom and therefore could not miss a root. That premise was false: v1.runtime_rust map_values exposes the same host-unspecified Map iteration and was silently classified deterministic. The uniquely named map_keys and map_values hazards are directly registered, so a reach from either fails compilation over the floor compile scope. The aliases keys and values remain undetectable: determinism_root_for_symbol sees only an unqualified Symbol, v2 Node carries neither receiver domain nor resolved declaration identity, and method/free-call lowering erases their distinction; registering those generic symbols would fabricate failures for unrelated same-named functions. The broader denominator is also open because operations reach compiled trees through at least algebra templates, v1.compiler.infer_method builtin_function_registry, native v1_interpreter dispatch arms, PrimitiveContract rows, and target emit handlers. One PrimitiveDefinition identity join must close the denominator, disambiguate aliases, and give every root a resolvable identity. Until that lands, an unregistered future helper is not claimed safe, absence from this registry is not evidence of determinism, and absence of a diagnostic does not establish that no order-exposing operation was reached. Prefer retaining meaningful first-seen order beside a membership map, as PR 7515 does, over reconstructing a value order from the map; there is no universal sorted_map_values operation. Grain: root — one rooted whole-tree findings walk collects one located diagnostic per uniquely named registered call node. Every registered leak is typed, located, batched, and never absorbed."
 
-fn local_determinism_findings(n: Node) -> List<Diagnostic> {
+fn local_determinism_findings(n: Node) -> List<v2.std.diagnostic.Diagnostic> {
   match local_determinism_axis(n: n) {
     std.determinism.NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
     std.determinism.Deterministic => []
   }
 }
 
-fn determinism_findings(root: Node) -> List<Diagnostic> {
+fn determinism_findings(root: Node) -> List<v2.std.diagnostic.Diagnostic> {
   fold_node(
     n: root,
-    algebra: NodeFold {
+    algebra: v2.std.node.NodeFold {
       init: fn(n0) { local_determinism_findings(n: n0) },
       step: fn(acc, _edge, child) { concat(acc, child) }
     }
@@ -133,12 +133,12 @@ fn determinism_compile_gate(node: Node) -> Outcome<Witness<Node>> {
   match determinism_findings(root: node) {
     Cons { head: first, tail: rest } =>
       Rejected {
-        diagnostics: NonEmptyDiagnostics { head: first, tail: rest }
+        diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
       }
     Empty => outcome_accepted(value: Holds { value: node })
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

@@ -1,15 +1,15 @@
 module extdeps.cpu.ampere_altra_memory_controller
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
 
 // THE MODEL SCOPE, naming what this module is the authority FOR. The subject is the admitted
 // module classes rather than any single scalar, because that is the fact the rest of the module
 // exists to qualify: the withdrawal, the board-down standing and the density ceiling are all
 // statements about which memory this controller accepts.
-data ampere_altra_memory_controller_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data ampere_altra_memory_controller_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu.ampere_altra_memory_controller",
       decl_name: "altra_admitted_module_classes",
       field: WholeDeclaration
@@ -19,7 +19,7 @@ data ampere_altra_memory_controller_model_scope: ExternalModelScope = ExternalMo
   further_citations: []
 }
 
-data extdeps_model_scope: ExternalModelScope = ampere_altra_memory_controller_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = ampere_altra_memory_controller_model_scope
 
 // READ FROM THE PDF, NOT RECALLED. Every row below is transcribed from section 2.10 "Eight
 // DDR4-3200 SDRAM Memory Controllers" of the Ampere Altra Rev A1 Processor Datasheet, Issue 1.50
@@ -36,22 +36,22 @@ data extdeps_model_scope: ExternalModelScope = ampere_altra_memory_controller_mo
 // the UDIMM withdrawal below, which is a fact about THIS document's revision history.
 data altra_memory_controller_ingestion_note: String = "Section 2.10 only. Deliberately NOT carried: the DDR electrical specifications, the training sequence, the RAS feature list beyond its existence, and the signal tables — an ingestion-scope boundary, not a carriage refusal. The document is publicly reachable at the cited locator without a login, so gunbc.upstream_document_carriage permits its facts; the proprietary page footer is a recorded attribute that decides nothing. Also deliberately NOT carried: the maximum transfer rate the section states as DDR4-3200. It has no consumer here, and the corpus has no carrier for it — transfer rate is a bare Int named data_rate_mts at 30 references across 11 files, so authoring it would mint a 31st instance of a representation that is already forked rather than ground the fact. MT/s is not Hertz: DDR4-3200 transfers 3200 megatransfers per second on a 1600 MHz clock, so the existing Hertz carrier is the wrong grounding and a correct one is a std.measure dimension plus the migration of the whole existing population, at that grain and not this one."
 
-data altra_memory_generation: DramGeneration = dram_generation_ddr4
+data altra_memory_generation: extdeps.memory.types.DramGeneration = dram_generation_ddr4
 
-data altra_memory_channel_width: BitWidth = bit_width(count: 72)
+data altra_memory_channel_width: std.measure.BitWidth = bit_width(count: 72)
 
 // DPC IS CONSUMED AS THE CLOSED TOPOLOGY, not as a bare 2. The platform authority already models
 // this as a coproduct rather than a count, which is the stronger shape: "up to 2 DPC" names an
 // admitted set of arrangements, and an Int lets a 3 be written that no authority admits.
-data altra_memory_max_dimms_per_channel_topology: DimmsPerChannelTopology = TwoDimmsPerChannel
+data altra_memory_max_dimms_per_channel_topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology = TwoDimmsPerChannel
 
 // Four terabytes, as the datasheet states it for the whole processor rather than per channel.
-data altra_memory_max_capacity: ByteSize = byte_size(count: 4398046511104)
+data altra_memory_max_capacity: std.measure.ByteSize = byte_size(count: 4398046511104)
 
 // DEVICE ORGANIZATION. Both admitted widths, as BitWidth rather than a bare Int, because the
 // datasheet's "x4 and x8" names the device's data width and the corpus already grounds widths on
 // that carrier.
-data altra_admitted_device_widths: List<BitWidth> = [bit_width(count: 4), bit_width(count: 8)]
+data altra_admitted_device_widths: List<std.measure.BitWidth> = [bit_width(count: 4), bit_width(count: 8)]
 
 // DENSITY AS ByteSize, WHICH IS THE CORPUS CONVENTION FOR DRAM DIE DENSITY. The datasheet quotes
 // "8 Gb and 16 Gb" -- gigaBITS -- and an earlier revision of this module made the gigabit figure
@@ -64,9 +64,9 @@ data altra_admitted_device_widths: List<BitWidth> = [bit_width(count: 4), bit_wi
 // The quoted unit is not lost by this. It is recorded below as the conversion basis, and the
 // agreement between the two authorities is asserted by execution rather than by comment: see
 // w_admitted_densities_respect_the_jedec_monolithic_ceiling.
-data altra_device_density_conversion_basis: NonEmptyStr = "Datasheet quotes 8 Gb and 16 Gb (gigabits). JEDEC DRAM density convention: 1 Gb = 2^30 bits, so 8 Gb = 2^30 bytes and 16 Gb = 2^31 bytes. Carried as ByteSize to match extdeps.memory.jedec, which is the existing authority for DRAM die density."
+data altra_device_density_conversion_basis: std.types.NonEmptyStr = "Datasheet quotes 8 Gb and 16 Gb (gigabits). JEDEC DRAM density convention: 1 Gb = 2^30 bits, so 8 Gb = 2^30 bytes and 16 Gb = 2^31 bytes. Carried as ByteSize to match extdeps.memory.jedec, which is the existing authority for DRAM die density."
 
-data altra_admitted_device_densities: List<ByteSize> = [
+data altra_admitted_device_densities: List<std.measure.ByteSize> = [
   byte_size(count: 1073741824),
   byte_size(count: 2147483648),
 ]
@@ -74,13 +74,13 @@ data altra_admitted_device_densities: List<ByteSize> = [
 // THE ADMITTED MODULE CLASSES, AND THE ONE THAT WAS TAKEN AWAY. All three admitted classes carry
 // a register or a buffer; none is unbuffered. That is the fact a board-down DRAM proposal must
 // confront, so it is carried as data a consumer can fold rather than as a sentence.
-data altra_admitted_module_classes: List<DramModuleClass> = [
-  DramModuleClass { buffering: Registered, stacking: MonolithicDie },
-  DramModuleClass { buffering: LoadReduced, stacking: MonolithicDie },
-  DramModuleClass { buffering: Registered, stacking: ThreeDimensionalStacked },
+data altra_admitted_module_classes: List<extdeps.memory.types.DramModuleClass> = [
+  extdeps.memory.types.DramModuleClass { buffering: Registered, stacking: MonolithicDie },
+  extdeps.memory.types.DramModuleClass { buffering: LoadReduced, stacking: MonolithicDie },
+  extdeps.memory.types.DramModuleClass { buffering: Registered, stacking: ThreeDimensionalStacked },
 ]
 
-fn altra_admits_module_class(c: DramModuleClass) -> Bool {
+fn altra_admits_module_class(c: extdeps.memory.types.DramModuleClass) -> Bool {
   any(altra_admitted_module_classes, k => dram_module_class_eq(a: k, b: c))
 }
 
@@ -170,7 +170,7 @@ data altra_memory_interleave_note: String = "Section 2.10 states hashed memory i
 // rows free to drift with no join between them. The classic-vs-Max separation this module insists
 // on is about facts the two documents state DIFFERENTLY -- the UDIMM withdrawal -- not about
 // every number they happen to share.
-fn altra_total_memory_data_width() -> BitWidth {
+fn altra_total_memory_data_width() -> std.measure.BitWidth {
   bit_width(count: altra_ddr4_channel_count * bit_width_count(b: altra_memory_channel_width))
 }
 

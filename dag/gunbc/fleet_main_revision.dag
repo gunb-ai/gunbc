@@ -18,7 +18,7 @@ type FleetDesiredRevision
   = FleetDesiredAdmitted { revision: extdeps.git.object_store.GitObjectId }
   | FleetDesiredUnobserved { cause: String }
 
-fn fleet_desired_revision_target(d: FleetDesiredRevision) -> GitObjectId? {
+fn fleet_desired_revision_target(d: FleetDesiredRevision) -> extdeps.git.object_store.GitObjectId? {
   match d {
     FleetDesiredAdmitted { revision: r } => Present { value: r }
     FleetDesiredUnobserved { cause: _ } => none
@@ -35,9 +35,9 @@ type FleetDesiredAdvance
   | AdvanceRefused { cause: String }
 
 fn admit_fleet_desired_advance(
-  candidate: GitObjectId,
+  candidate: extdeps.git.object_store.GitObjectId,
   floor_green: Bool,
-  current: GitObjectId?,
+  current: extdeps.git.object_store.GitObjectId?,
 ) -> FleetDesiredAdvance {
   if floor_green {
     AdvanceAdmitted { from: current, to: candidate }
@@ -52,6 +52,6 @@ fn admit_fleet_desired_advance(
 // desired state. The converge circuit asks THIS function what revision it is converging
 // toward; an unobserved ref yields none and the caller refuses (typed, located), it
 // does not fall back to "whatever tree I was invoked from".
-fn converge_target_revision(observed: FleetDesiredRevision) -> GitObjectId? {
+fn converge_target_revision(observed: FleetDesiredRevision) -> extdeps.git.object_store.GitObjectId? {
   fleet_desired_revision_target(d: observed)
 }

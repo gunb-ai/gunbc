@@ -1,8 +1,8 @@
 module extdeps.tcgplayer.catalog
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.tcgplayer.com/reference/catalog_getproducts-1"
   }
@@ -19,7 +19,7 @@ type CatalogProduct {
   modifiedOn: std.types.Timestamp?
 }
 
-data structural_coverage_gap_catalog_product_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_catalog_product_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "CatalogProduct" },

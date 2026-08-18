@@ -153,7 +153,7 @@ fn classical_exclusive_alternative_arrival_prediction(
 fn arrival_count_row_matches(
   row: SyntheticArrivalCountObservationRow,
   fixture: SyntheticDoubleSlitFixture,
-  arrangement: SlitMaskConfiguration,
+  arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitMaskConfiguration,
   band: ScreenBand,
   exposure: SyntheticMatchedExposureSession,
 ) -> Bool {
@@ -171,7 +171,7 @@ type ArrivalCountFoldAcc {
 fn resolve_arrival_count_at(
   rows: List<SyntheticArrivalCountObservationRow>,
   fixture: SyntheticDoubleSlitFixture,
-  arrangement: SlitMaskConfiguration,
+  arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitMaskConfiguration,
   band: ScreenBand,
   exposure: SyntheticMatchedExposureSession,
 ) -> ArrivalCountResolution {
@@ -309,7 +309,7 @@ fn resolve_additivity_inputs(
 fn path_additivity_compare_observed_to_prediction(
   observed_both: std.integer.NonNegativeInt,
   prediction: std.integer.NonNegativeInt,
-) -> Ordering {
+) -> std.algebra.Ordering {
   if observed_both < prediction {
     Less
   } else {
@@ -332,7 +332,7 @@ fn path_additivity_witness_classical_additive_prediction(
 
 fn path_additivity_witness_observed_vs_prediction(
   witness: PathAdditivityCounterexampleWitness,
-) -> Ordering {
+) -> std.algebra.Ordering {
   path_additivity_compare_observed_to_prediction(
     observed_both: witness.both_open_observed_count,
     prediction: path_additivity_witness_classical_additive_prediction(witness: witness),

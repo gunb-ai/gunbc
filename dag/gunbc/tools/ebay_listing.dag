@@ -1,21 +1,21 @@
 module gunbc.tools.ebay_listing
 
 
-data ebay_client_id_source: CredentialSource = std.credentials.EnvVar { name: "EBAY_CLIENT_ID" }
+data ebay_client_id_source: std.credentials.CredentialSource = std.credentials.EnvVar { name: "EBAY_CLIENT_ID" }
 
-data ebay_client_secret_source: CredentialSource = std.credentials.EnvVar { name: "EBAY_CLIENT_SECRET" }
+data ebay_client_secret_source: std.credentials.CredentialSource = std.credentials.EnvVar { name: "EBAY_CLIENT_SECRET" }
 
-data ebay_refresh_token_source: CredentialSource = std.credentials.EnvVar { name: "EBAY_REFRESH_TOKEN" }
+data ebay_refresh_token_source: std.credentials.CredentialSource = std.credentials.EnvVar { name: "EBAY_REFRESH_TOKEN" }
 
-data default_marketplace: MarketplaceEnum = EbayUs
+data default_marketplace: extdeps.ebay.ebay.MarketplaceEnum = EbayUs
 
-data default_format: FormatTypeEnum = FixedPrice
+data default_format: extdeps.ebay.inventory.FormatTypeEnum = FixedPrice
 
-data default_content_language: NonEmptyStr = "en-US"
+data default_content_language: std.types.NonEmptyStr = "en-US"
 
-data default_currency: CurrencyCode = Usd
+data default_currency: std.currency.CurrencyCode = Usd
 
-data fixed_price_listing_duration: NonEmptyStr = "GTC"
+data fixed_price_listing_duration: std.types.NonEmptyStr = "GTC"
 
 type EbayListingDraft {
   sku: std.types.NonEmptyStr
@@ -32,14 +32,14 @@ type EbayListingDraft {
   merchant_location_key: String
 }
 
-fn build_inventory_item(draft: EbayListingDraft) -> InventoryItem {
-  InventoryItem {
-    availability: InventoryItemAvailability {
-      shipToLocationAvailability: ShipToLocationAvailability { quantity: draft.quantity }
+fn build_inventory_item(draft: EbayListingDraft) -> extdeps.ebay.inventory.InventoryItem {
+  extdeps.ebay.inventory.InventoryItem {
+    availability: extdeps.ebay.inventory.InventoryItemAvailability {
+      shipToLocationAvailability: extdeps.ebay.inventory.ShipToLocationAvailability { quantity: draft.quantity }
     },
     condition: draft.condition,
     conditionDescription: none,
-    product: InventoryItemProduct {
+    product: extdeps.ebay.inventory.InventoryItemProduct {
       title: draft.title,
       description: draft.description,
       aspects: none,
@@ -48,8 +48,8 @@ fn build_inventory_item(draft: EbayListingDraft) -> InventoryItem {
   }
 }
 
-fn build_offer(draft: EbayListingDraft) -> EbayOfferDetailsWithKeys {
-  EbayOfferDetailsWithKeys {
+fn build_offer(draft: EbayListingDraft) -> extdeps.ebay.inventory.EbayOfferDetailsWithKeys {
+  extdeps.ebay.inventory.EbayOfferDetailsWithKeys {
     sku: draft.sku,
     marketplaceId: default_marketplace,
     format: default_format,
@@ -57,13 +57,13 @@ fn build_offer(draft: EbayListingDraft) -> EbayOfferDetailsWithKeys {
     categoryId: draft.category_id,
     listingDescription: draft.description,
     listingDuration: fixed_price_listing_duration,
-    listingPolicies: ListingPolicies {
+    listingPolicies: extdeps.ebay.inventory.ListingPolicies {
       fulfillmentPolicyId: draft.fulfillment_policy_id,
       paymentPolicyId: draft.payment_policy_id,
       returnPolicyId: draft.return_policy_id
     },
-    pricingSummary: PricingSummary {
-      price: EbayAmount { value: draft.price_value, currency: default_currency }
+    pricingSummary: extdeps.ebay.inventory.PricingSummary {
+      price: extdeps.ebay.inventory.EbayAmount { value: draft.price_value, currency: default_currency }
     },
     merchantLocationKey: draft.merchant_location_key
   }

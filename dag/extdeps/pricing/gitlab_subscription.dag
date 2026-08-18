@@ -2,8 +2,8 @@ module extdeps.pricing.gitlab_subscription
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "about.gitlab.com/pricing"
   }
@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data pricing_subject_edge_note: String = "Subject and source are ORTHOGONAL axes and a filename encodes neither (operator ruling 2026-07-25): this module's ExternalAuthority anchor above is the SOURCE (the vendor's own pricing page — unchanged), and the subject row below is the typed edge naming the ENTITY these prices are about. It is the same entity node extdeps.sec.issuer.gitlab_facts reaches through its IssuerCatalogRow, so the two fact families (filed financials from EDGAR, list prices from the vendor site) are correlated by an edge in the graph rather than by a shared filename prefix. KNOWN MISMATCH, filed not fixed: the subject row's type reads Vendor<Securities> because Vendor parameterizes the ENTITY by domain, and GitLab is the tree's first two-domain entity (SEC issuer and SaaS vendor) -- one company cannot inhabit two domains without forking the entity row. The edge is correct on identity and wrong on domain; the fix (domain moves onto the relationship rows, Vendor un-parameterized) is a ~14-file migration filed on the grounding-inventory lane with this module as its discriminating receipt. dissolve-on: that migration landing, after which this row's type names no domain."
 
-data gitlab_subscription_subject: Vendor<Securities> = gitlab
+data gitlab_subscription_subject: Vendor<extdeps.securities.Securities> = gitlab
 
 data gitlab_subscription_pricing_provenance_note: String = "Tier list prices and usage meters live-fetched 2026-07-25 from the pricing page (anchor above; session gitlab-10k-scm-costs-baz90x). SaaS (gitlab.com) list pricing; self-managed uses the same tiers and Dedicated/enterprise terms are sales-negotiated. The 10-Ks describe the three-tier open-core model qualitatively but publish no dollar prices (FY2023 10-K: 'we recently announced a price increase in our Premium tier product offering'; FY2024 10-K: 'during fiscal year 2024 we implemented a price increase in our Premium tier'), so the pricing page and GitLab's own announcements are the price authorities, and extdeps.sec.issuer.gitlab_facts carries the filed financial consequences."
 
@@ -39,7 +39,7 @@ data gitlab_free_price: GitlabTierPriceRow = GitlabTierPriceRow {
   tier: GitlabFree,
   tier_wire_label: "free",
   seat_pricing: FreeOfCharge,
-  included_duo_credits_per_seat_month: MoneyPerMonth {
+  included_duo_credits_per_seat_month: std.measure.MoneyPerMonth {
     amount: money_amount_micro(count: 0),
     currency: Usd,
   },
@@ -50,13 +50,13 @@ data gitlab_premium_price: GitlabTierPriceRow = GitlabTierPriceRow {
   tier: GitlabPremium,
   tier_wire_label: "premium",
   seat_pricing: ListedPerSeatMonth {
-    per_seat_month: MoneyPerMonth {
+    per_seat_month: std.measure.MoneyPerMonth {
       amount: money_amount_micro(count: 29000000),
       currency: Usd,
     },
     billed_annually: true,
   },
-  included_duo_credits_per_seat_month: MoneyPerMonth {
+  included_duo_credits_per_seat_month: std.measure.MoneyPerMonth {
     amount: money_amount_micro(count: 12000000),
     currency: Usd,
   },
@@ -67,7 +67,7 @@ data gitlab_ultimate_price: GitlabTierPriceRow = GitlabTierPriceRow {
   tier: GitlabUltimate,
   tier_wire_label: "ultimate",
   seat_pricing: CustomNegotiatedPricing,
-  included_duo_credits_per_seat_month: MoneyPerMonth {
+  included_duo_credits_per_seat_month: std.measure.MoneyPerMonth {
     amount: money_amount_micro(count: 24000000),
     currency: Usd,
   },
@@ -82,7 +82,7 @@ fn gitlab_tier_price_catalog() -> List<GitlabTierPriceRow> {
   ]
 }
 
-data gitlab_compute_minute_overage_price: MoneyPerMinute = MoneyPerMinute {
+data gitlab_compute_minute_overage_price: std.measure.MoneyPerMinute = std.measure.MoneyPerMinute {
   amount: money_amount_micro(count: 10000),
   currency: Usd,
 }
@@ -97,11 +97,11 @@ type GitlabPremiumListPriceChange {
 // The one Premium list-price change since IPO, from GitLab's own announcement (citation below): 'Effective April 3, 2023, GitLab is increasing the list price of GitLab Premium from 19 to 29 USD per user per month.' The FY2023 and FY2024 10-K sentences quoted in the provenance note are the SEC-filed references to this same event. effective_date is an ISO 8601 calendar date.
 data gitlab_premium_2023_price_increase: GitlabPremiumListPriceChange = GitlabPremiumListPriceChange {
   effective_date: "2023-04-03",
-  prior_per_seat_month: MoneyPerMonth {
+  prior_per_seat_month: std.measure.MoneyPerMonth {
     amount: money_amount_micro(count: 19000000),
     currency: Usd,
   },
-  new_per_seat_month: MoneyPerMonth {
+  new_per_seat_month: std.measure.MoneyPerMonth {
     amount: money_amount_micro(count: 29000000),
     currency: Usd,
   },

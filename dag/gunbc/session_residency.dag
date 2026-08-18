@@ -1,7 +1,7 @@
 module gunbc.session_residency
 
 
-data session_residency_authority_disposition: Disposition = Terminal {
+data session_residency_authority_disposition: std.disposition.Disposition = Terminal {
   reason: "Single authority for WHICH FLEET HOSTS RUN INTERACTIVE AGENT SESSIONS. It is a fleet-topology fact — where session containers are placed — and it is the fact that justifies charging a host a sessions reservation out of its RAM budget. Nothing declared it before; consumers inferred it from whatever nearby row happened to correlate."
 }
 
@@ -83,9 +83,9 @@ fn operator_declared_absent_host_count() -> Int {
   )
 }
 
-data session_residency_negative_rows_dissolve_on: Disposition = Scaffold {
+data session_residency_negative_rows_dissolve_on: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,

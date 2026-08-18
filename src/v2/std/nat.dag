@@ -16,7 +16,7 @@ fn nat_mul(a: Nat, b: Nat) -> Nat {
   nat_cata(n: a, zero: Zero, succ: fn(acc) { nat_add(a: b, b: acc) })
 }
 
-fn nat_compare(a: Nat, b: Nat) -> Ordering {
+fn nat_compare(a: Nat, b: Nat) -> std.algebra.Ordering {
   if a == b {
     Equal
   } else {
@@ -60,11 +60,11 @@ fn nat_gte(a: Nat, b: Nat) -> Bool {
     Greater => true
   }
 }
-data nat_additive_commutative_monoid: CommutativeMonoid<Nat> = CommutativeMonoid {
+data nat_additive_commutative_monoid: CommutativeMonoid<Nat> = std.algebra.CommutativeMonoid {
   op: nat_add,
   identity: Zero
 }
-data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
+data nat_semiring: CommutativeSemiring<Nat> = std.algebra.CommutativeSemiring {
   add: nat_add,
   zero: Zero,
   mul: nat_mul,

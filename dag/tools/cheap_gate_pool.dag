@@ -7,11 +7,11 @@ data cheap_gate_pool_slot_sizing_note: String = "K sub-pools sized to the slot (
 
 data cheap_gate_pool_max_claims_per_child: Int = 16
 
-fn claim_key(c: ClaimRun) -> String {
+fn claim_key(c: tools.host_prelude.ClaimRun) -> String {
   concat(c.entry, concat("::", c.function))
 }
 
-fn cheap_claim_pool_claims() -> List<ClaimRun> {
+fn cheap_claim_pool_claims() -> List<tools.host_prelude.ClaimRun> {
   extdeps_external_authority_claims()
 }
 
@@ -21,7 +21,7 @@ type CheapPoolChunkAcc {
   current_len: Int
 }
 
-fn chunk_step(acc: CheapPoolChunkAcc, c: ClaimRun, max_per_child: Int) -> CheapPoolChunkAcc {
+fn chunk_step(acc: CheapPoolChunkAcc, c: tools.host_prelude.ClaimRun, max_per_child: Int) -> CheapPoolChunkAcc {
   if acc.current_len >= max_per_child {
     CheapPoolChunkAcc {
       chunks: concat(acc.chunks, [acc.current]),
@@ -37,7 +37,7 @@ fn chunk_step(acc: CheapPoolChunkAcc, c: ClaimRun, max_per_child: Int) -> CheapP
   }
 }
 
-fn chunk_claims(claims: List<ClaimRun>, max_per_child: Int) -> List<List<ClaimRun>> {
+fn chunk_claims(claims: List<tools.host_prelude.ClaimRun>, max_per_child: Int) -> List<List<tools.host_prelude.ClaimRun>> {
   let folded = fold(
     claims,
     init: CheapPoolChunkAcc { chunks: [], current: [], current_len: 0 },
@@ -61,7 +61,7 @@ fn run_cheap_claim_pool() -> Bool {
   })
 }
 
-fn claim_in_pool(c: ClaimRun, pool: List<ClaimRun>) -> Bool {
+fn claim_in_pool(c: tools.host_prelude.ClaimRun, pool: List<tools.host_prelude.ClaimRun>) -> Bool {
   fold(pool, init: false, f: fn(found, p) {
     found || (claim_key(c: p) == claim_key(c: c))
   })
@@ -69,7 +69,7 @@ fn claim_in_pool(c: ClaimRun, pool: List<ClaimRun>) -> Bool {
 
 data chunk_totality_wall_note: String = "The non-vacuous wall (review catch, endgame D1): the derived pool CANNOT drop a concern row — it is the union of the concern lists by construction, so a bare membership check against the pool would be a tautology (an inert gate, the coverage-by-illusion class). What CAN drop a claim is the K-chunking transform between the pool and the spawned children — new fold code sitting between declaration and execution. So each concern gate asserts chunk-transform TOTALITY for its claims: every claim reaches some chunked child's roster (the compile_clean_shard_totality pattern, applied to this partition). The RED direction is real: a chunker edit that loses or fuses rows reds the concern gate before the pool even spawns."
 
-fn cheap_pool_chunked_claims() -> List<ClaimRun> {
+fn cheap_pool_chunked_claims() -> List<tools.host_prelude.ClaimRun> {
   fold(
     chunk_claims(
       claims: cheap_claim_pool_claims(),
@@ -80,7 +80,7 @@ fn cheap_pool_chunked_claims() -> List<ClaimRun> {
   )
 }
 
-fn claims_covered_by_cheap_pool_chunks(claims: List<ClaimRun>) -> Bool {
+fn claims_covered_by_cheap_pool_chunks(claims: List<tools.host_prelude.ClaimRun>) -> Bool {
   let chunked = cheap_pool_chunked_claims()
   fold(claims, init: true, f: fn(ok, c) {
     ok && claim_in_pool(c: c, pool: chunked)

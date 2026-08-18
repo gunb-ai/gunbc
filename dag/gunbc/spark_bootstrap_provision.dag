@@ -38,10 +38,10 @@ type SparkCredentialOccurrence {
   kind: SparkCredentialKind
 }
 
-fn spark_srv5() -> HostIdentity { "srv5" }
-fn spark_srv6() -> HostIdentity { "srv6" }
+fn spark_srv5() -> product.placement_supply.HostIdentity { "srv5" }
+fn spark_srv6() -> product.placement_supply.HostIdentity { "srv6" }
 
-fn spark_credential_occurrence(host: HostIdentity, kind: SparkCredentialKind) -> SparkCredentialOccurrence {
+fn spark_credential_occurrence(host: product.placement_supply.HostIdentity, kind: SparkCredentialKind) -> SparkCredentialOccurrence {
   SparkCredentialOccurrence { host: host, kind: kind }
 }
 
@@ -334,7 +334,7 @@ type AccessGrantCellStanding
   | GrantCellAbsent { cell: AccessGrantCell }
   | GrantCellUnobserved { cell: AccessGrantCell }
 
-fn spark_scope_admits(scope: SparkCloudScope, resource: NonEmptyStr) -> Bool {
+fn spark_scope_admits(scope: SparkCloudScope, resource: std.types.NonEmptyStr) -> Bool {
   fold(scope.resources, init: false, f: (acc, r) => acc || r == resource)
 }
 
@@ -356,8 +356,8 @@ fn spark_principal_label(principal: FleetCloudPrincipalKey) -> String {
   }
 }
 
-fn spark_grant_refusal_location(grant: SparkCloudGrant, cell: AccessGrantCell) -> AccessRefusalLocation {
-  AccessRefusalLocation {
+fn spark_grant_refusal_location(grant: SparkCloudGrant, cell: AccessGrantCell) -> std.access.AccessRefusalLocation {
+  std.access.AccessRefusalLocation {
     profile: "spark_cloud_grant",
     subject: spark_principal_label(principal: grant.principal),
     action: "secret-manager-operation",
@@ -369,17 +369,17 @@ fn spark_grant_refusal_location(grant: SparkCloudGrant, cell: AccessGrantCell) -
 // operation outside its principal's role ceiling cannot be satisfied by adding an IAM binding --
 // the credential is not allowed to reach that operation at all -- so that refusal is about the
 // subject, not the action, and adding a binding in response would be the wrong remedy.
-fn spark_cloud_grant_decision(grant: SparkCloudGrant, cell: AccessGrantCell) -> AccessDecision {
+fn spark_cloud_grant_decision(grant: SparkCloudGrant, cell: AccessGrantCell) -> std.access.AccessDecision {
   if !principal_role_admits_operation(principal: grant.principal, op: cell.operation) {
-    Deny { refusal: AccessRefusal {
+    Deny { refusal: std.access.AccessRefusal {
       cause: AccessSubjectNotRecognized { subject: "operation outside this principal's role ceiling; the split forbids it regardless of any binding" },
       location: spark_grant_refusal_location(grant: grant, cell: cell) } }
   } else if !spark_grant_admits_operation(grant: grant, op: cell.operation) {
-    Deny { refusal: AccessRefusal {
+    Deny { refusal: std.access.AccessRefusal {
       cause: AccessActionNotGranted { action: "operation outside the granted population" },
       location: spark_grant_refusal_location(grant: grant, cell: cell) } }
   } else if !spark_scope_admits(scope: grant.scope, resource: cell.resource) {
-    Deny { refusal: AccessRefusal {
+    Deny { refusal: std.access.AccessRefusal {
       cause: AccessObjectNotGranted { object: "resource outside the granted scope" },
       location: spark_grant_refusal_location(grant: grant, cell: cell) } }
   } else {
@@ -390,19 +390,19 @@ fn spark_cloud_grant_decision(grant: SparkCloudGrant, cell: AccessGrantCell) -> 
 // Actuation additionally requires the principal to be independently observed. A Reported principal
 // is a claim about the cloud nobody in this run verified, so it cannot authorize an effect -- and
 // this is where decision_meet does the conjoining rather than a second fold.
-fn spark_principal_decision(standing: FleetCloudPrincipalAllocationStanding) -> AccessDecision {
+fn spark_principal_decision(standing: FleetCloudPrincipalAllocationStanding) -> std.access.AccessDecision {
   match standing {
     CloudPrincipalAllocated { principal: _, member: _, readback: _ } => Permit
     CloudPrincipalReported { principal: _, reported_member: _, source: _ } =>
-      Deny { refusal: AccessRefusal {
+      Deny { refusal: std.access.AccessRefusal {
         cause: AccessEvidenceAbsent { evidence: "principal allocation is externally reported and not read back by this run" },
-        location: AccessRefusalLocation {
+        location: std.access.AccessRefusalLocation {
           profile: "spark_cloud_principal", subject: "FleetCloudConvergence",
           action: "actuate", object: "spark-cloud-population" } } }
     CloudPrincipalUnallocated { principal: _ } =>
-      Deny { refusal: AccessRefusal {
+      Deny { refusal: std.access.AccessRefusal {
         cause: AccessSubjectNotRecognized { subject: "no allocated cloud principal" },
-        location: AccessRefusalLocation {
+        location: std.access.AccessRefusalLocation {
           profile: "spark_cloud_principal", subject: "FleetCloudConvergence",
           action: "actuate", object: "spark-cloud-population" } } }
   }
@@ -412,7 +412,7 @@ fn spark_actuation_decision(
   standing: FleetCloudPrincipalAllocationStanding,
   grant: SparkCloudGrant,
   cell: AccessGrantCell
-) -> AccessDecision {
+) -> std.access.AccessDecision {
   decision_meet(
     a: spark_principal_decision(standing: standing),
     b: spark_cloud_grant_decision(grant: grant, cell: cell))
@@ -592,15 +592,15 @@ type SparkIamDelta {
 // An earlier revision of this module defined spark_condition_eq / spark_cell_eq / spark_cell_in
 // locally; once the same mechanism landed in extdeps.cloud.gcp.iam for the BMC callers, keeping
 // these was a second semantics for one concept -- exactly the fork this lane exists to remove.
-fn spark_condition_eq(a: IamCondition?, b: IamCondition?) -> Bool {
+fn spark_condition_eq(a: extdeps.cloud.gcp.iam.IamCondition?, b: extdeps.cloud.gcp.iam.IamCondition?) -> Bool {
   gcp_condition_eq(a: a, b: b)
 }
 
-fn spark_cell_eq(a: GcpIamBindingCell, b: GcpIamBindingCell) -> Bool {
+fn spark_cell_eq(a: extdeps.cloud.gcp.iam.GcpIamBindingCell, b: extdeps.cloud.gcp.iam.GcpIamBindingCell) -> Bool {
   gcp_cell_eq(a: a, b: b)
 }
 
-fn spark_cell_in(c: GcpIamBindingCell, xs: List<GcpIamBindingCell>) -> Bool {
+fn spark_cell_in(c: extdeps.cloud.gcp.iam.GcpIamBindingCell, xs: List<extdeps.cloud.gcp.iam.GcpIamBindingCell>) -> Bool {
   gcp_cell_in(c: c, xs: xs)
 }
 
@@ -609,9 +609,9 @@ fn spark_cell_in(c: GcpIamBindingCell, xs: List<GcpIamBindingCell>) -> Bool {
 // reason this model cannot see, so removing it would be acting outside our authority even though
 // the member is one we recognise.
 fn spark_iam_delta(
-  observed: List<GcpIamBindingCell>,
-  desired_owned: List<GcpIamBindingCell>,
-  owned_universe: List<GcpIamBindingCell>
+  observed: List<extdeps.cloud.gcp.iam.GcpIamBindingCell>,
+  desired_owned: List<extdeps.cloud.gcp.iam.GcpIamBindingCell>,
+  owned_universe: List<extdeps.cloud.gcp.iam.GcpIamBindingCell>
 ) -> SparkIamDelta {
   SparkIamDelta {
     add: desired_owned |> filter(c => !spark_cell_in(c: c, xs: observed)),
@@ -744,7 +744,7 @@ type SparkVersionAddressAdmission
   = SparkVersionAddressAdmitted { version: std.types.NonEmptyStr }
   | SparkVersionAddressRefused { cause: std.types.NonEmptyStr }
 
-fn admit_spark_readback_version(version: NonEmptyStr) -> SparkVersionAddressAdmission {
+fn admit_spark_readback_version(version: std.types.NonEmptyStr) -> SparkVersionAddressAdmission {
   if (version as String) == "latest" {
     SparkVersionAddressRefused { cause: "readback named the moving alias latest rather than an exact version; it cannot witness which version this run wrote" }
   } else {
@@ -757,8 +757,8 @@ fn admit_spark_readback_version(version: NonEmptyStr) -> SparkVersionAddressAdmi
 // assumed, and no arm produces Matched without them agreeing.
 fn compare_spark_readback(
   address: SparkVersionAddressAdmission,
-  expected_identity: NonEmptyStr,
-  observed_identity: NonEmptyStr
+  expected_identity: std.types.NonEmptyStr,
+  observed_identity: std.types.NonEmptyStr
 ) -> SparkReadbackVerdict {
   match address {
     SparkVersionAddressRefused { cause: c } => SparkReadbackUnavailable { cause: c }
@@ -829,7 +829,7 @@ fn spark_demand_for_selected(
           source_effect: selected.step,
           executor: executor,
           invocation: op,
-          permission: p as NonEmptyStr,
+          permission: p as std.types.NonEmptyStr,
           resource: secret_manager_effect_resource(e: selected.effect),
           context: context
         }))
@@ -860,11 +860,11 @@ fn spark_plan_demand(
 // THE CEILING IS NORMATIVE AND SEPARATE. Derived demand says what the code will request; it never
 // says what is allowed. A selected DestroyVersion produces a real demand cell AND is refused here,
 // which is the whole point: adding a dangerous call to the workflow must not authorize it.
-fn spark_demand_decision(demand: ExternalAccessDemand) -> AccessDecision {
+fn spark_demand_decision(demand: ExternalAccessDemand) -> std.access.AccessDecision {
   if !principal_role_admits_operation_ref(principal: demand.executor, op: demand.invocation) {
-    Deny { refusal: AccessRefusal {
+    Deny { refusal: std.access.AccessRefusal {
       cause: AccessSubjectNotRecognized { subject: "operation outside this principal's role ceiling; no binding can admit it" },
-      location: AccessRefusalLocation {
+      location: std.access.AccessRefusalLocation {
         profile: "spark_access_demand",
         subject: spark_principal_label(principal: demand.executor),
         action: demand.invocation.operation,
@@ -885,7 +885,7 @@ fn spark_demand_decision(demand: ExternalAccessDemand) -> AccessDecision {
 //
 // An operation this policy has no row for is REFUSED, not admitted: a new Secret Manager
 // operation must be ruled on before any principal can reach it.
-fn principal_role_admits_operation_ref(principal: FleetCloudPrincipalKey, op: OperationRef) -> Bool {
+fn principal_role_admits_operation_ref(principal: FleetCloudPrincipalKey, op: v2.std.operation_argv.OperationRef) -> Bool {
   match principal {
     FleetCloudConvergencePrincipal { role: _ } =>
       op.operation == "AccessVersion" || op.operation == "AddVersion" || op.operation == "GetSecret"
@@ -970,7 +970,7 @@ fn derive_install_scope(observation: HostPrivilegeObservation) -> ServiceInstall
     } else {
       UserUnitScope {
         host: observation.host,
-        ground: "passwordless sudo refused and container socket refused the admitted principal; both closures share one cause, so user scope is what remains" as NonEmptyStr,
+        ground: "passwordless sudo refused and container socket refused the admitted principal; both closures share one cause, so user scope is what remains" as std.types.NonEmptyStr,
       }
     }
   }
@@ -981,7 +981,7 @@ fn derive_install_scope(observation: HostPrivilegeObservation) -> ServiceInstall
 // scope from the same function, which is the point of deriving rather than declaring.
 fn srv5_privilege_observation() -> HostPrivilegeObservation {
   HostPrivilegeObservation {
-    host: "srv5" as NonEmptyStr,
+    host: "srv5" as std.types.NonEmptyStr,
     passwordless_sudo: false,
     container_socket_admits_principal: false,
   }

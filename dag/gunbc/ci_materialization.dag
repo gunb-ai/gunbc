@@ -7,41 +7,41 @@ data ci_materialization_note: String = "The worked example the ladder was built 
 
 data ci_fleet_frame_note: String = "The fleet frame (recurring CI invocations over time) is DEFINED but not yet in live sites: UnboundedSiblingsFrame is declared-emergent, so enrolling it obligates a cross-run provider for EVERY pure step up front — exactly right, and exactly what the floor does not have yet (the affected-set / floor-memoization thread; the only cross-run providers live today are sccache and actions/cache, which cover the toolchain, not the floor). Enrolling ci_fleet_frame into ci_step_site is the ratchet flip that FORCES the cross-run floor provider — the typed dissolve-on trigger for the C2 census rows in docs/plans/duplicate-work-graph-lens-design.md section 10a. Until then the cross-run redundancy is state-4 unexpected-emergent only in the formal sense that the model has not yet declared it; the design doc names it, so it is prepared-for in prose and unprepared-for in the graph — the gap this note keeps countable."
 
-fn ci_fleet_frame() -> Frame {
-  Frame { name: "github-actions-ci-runs", kind: UnboundedSiblingsFrame }
+fn ci_fleet_frame() -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame { name: "github-actions-ci-runs", kind: UnboundedSiblingsFrame }
 }
 
-fn ci_workflow_frame() -> Frame {
-  Frame { name: "gunbc-ci", kind: IsolatedChildrenFrame }
+fn ci_workflow_frame() -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame { name: "gunbc-ci", kind: IsolatedChildrenFrame }
 }
 
-fn ci_job_frame(job_id: String) -> Frame {
-  Frame { name: job_id, kind: SharedStateFrame }
+fn ci_job_frame(job_id: String) -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame { name: job_id, kind: SharedStateFrame }
 }
 
-fn ci_step_frame(step_name: String) -> Frame {
-  Frame { name: step_name, kind: SharedStateFrame }
+fn ci_step_frame(step_name: String) -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame { name: step_name, kind: SharedStateFrame }
 }
 
-fn ci_step_site(job_id: String, step_name: String) -> List<Frame> {
+fn ci_step_site(job_id: String, step_name: String) -> List<std.materialization_ladder.Frame> {
   [ci_workflow_frame(), ci_job_frame(job_id: job_id), ci_step_frame(step_name: step_name)]
 }
 
-fn step_is_run(s: Step) -> Bool {
+fn step_is_run(s: extdeps.github.actions.Step) -> Bool {
   match s {
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => true
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
   }
 }
 
-fn step_run_script(s: Step) -> String {
+fn step_run_script(s: extdeps.github.actions.Step) -> String {
   match s {
     RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
   }
 }
 
-fn step_display_name(s: Step) -> String {
+fn step_display_name(s: extdeps.github.actions.Step) -> String {
   match s {
     RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       match n {
@@ -56,13 +56,13 @@ fn step_display_name(s: Step) -> String {
   }
 }
 
-data ci_no_demands: List<FrameDemand> = []
+data ci_no_demands: List<std.materialization_ladder.FrameDemand> = []
 data ci_no_identity_strings: List<String> = []
 
-fn job_run_demands(job: Job, fresh_scripts: List<String>) -> List<FrameDemand> {
+fn job_run_demands(job: extdeps.github.actions.Job, fresh_scripts: List<String>) -> List<std.materialization_ladder.FrameDemand> {
   job.steps
     |> filter(s => step_is_run(s: s))
-    |> map(s => FrameDemand {
+    |> map(s => std.materialization_ladder.FrameDemand {
       identity: step_run_script(s: s),
       site: ci_step_site(job_id: job.id, step_name: step_display_name(s: s)),
       nature: if string_list_contains(xs: fresh_scripts, wanted: step_run_script(s: s)) {
@@ -73,20 +73,20 @@ fn job_run_demands(job: Job, fresh_scripts: List<String>) -> List<FrameDemand> {
     })
 }
 
-fn workflow_run_demands(w: Workflow, fresh_scripts: List<String>) -> List<FrameDemand> {
+fn workflow_run_demands(w: extdeps.github.actions.Workflow, fresh_scripts: List<String>) -> List<std.materialization_ladder.FrameDemand> {
   w.jobs |> fold(
     init: ci_no_demands,
     f: (acc, j) => concat(acc, job_run_demands(job: j, fresh_scripts: fresh_scripts))
   )
 }
 
-fn job_scripts_named(job: Job, names: List<String>) -> List<String> {
+fn job_scripts_named(job: extdeps.github.actions.Job, names: List<String>) -> List<String> {
   job.steps
     |> filter(s => step_is_run(s: s) && string_list_contains(xs: names, wanted: step_display_name(s: s)))
     |> map(s => step_run_script(s: s))
 }
 
-fn workflow_scripts_named(w: Workflow, names: List<String>) -> List<String> {
+fn workflow_scripts_named(w: extdeps.github.actions.Workflow, names: List<String>) -> List<String> {
   w.jobs |> fold(
     init: ci_no_identity_strings,
     f: (acc, j) => concat(acc, job_scripts_named(job: j, names: names))
@@ -95,21 +95,21 @@ fn workflow_scripts_named(w: Workflow, names: List<String>) -> List<String> {
 
 data ci_uses_step_silence_note: String = "Denominator, not silence (the complexity-lens false-clean lesson, operator 2026-07-10): UsesStep actions are foreign computations this gate does NOT analyze — checkout, toolchain setup, cargo cache restore. Producing no demand row for them is a KNOWN blind spot, so it is COUNTED and pinned by the enrolled witness: a new foreign action entering the workflow must consciously bump the pinned count, never slide in unexamined. Dissolve-on: uses-grain demands (each action's cited cache behavior modeled, actions/cache as a provider row), at which point the count returns to zero and the pin becomes a wall. Nature default is the WEAKEST claim: an unrostered run-step is IdempotentEffect (never PureComputation — purity is not provable from an argv string; overclaiming it would let a misdeclared WorldRead be legally memoized). Verdict-identical under the ladder, honest under section 5."
 
-fn job_uses_steps_count(job: Job) -> Int {
+fn job_uses_steps_count(job: extdeps.github.actions.Job) -> Int {
   job.steps |> filter(s => !step_is_run(s: s)) |> count()
 }
 
-fn workflow_uses_steps_count(w: Workflow) -> Int {
+fn workflow_uses_steps_count(w: extdeps.github.actions.Workflow) -> Int {
   w.jobs |> fold(init: 0, f: (acc, j) => acc + job_uses_steps_count(job: j))
 }
 
 data ci_run_step_nature_claim_note: String = "Run-step natures are CLAIMS, not derivations — counted (operator ruling, 2026-07-10: hardcoded shell scripts get no affordances; run-steps are supposed to be modeled as typed intents and EMITTED — docs/plans/shell-emission-model.md, where the ci_workflow RunSteps are slice 4 of the pre-runtime census). Until that slice lands, every run-step script in this workflow is an authored bash string, so NO nature in job_run_demands is read off a modeled effect row: FreshEffect is a rostered claim (resolved by projection at gate time) and IdempotentEffect is the weakest default. This count pins the whole claimed-nature surface as residue: a NEW raw-script step must consciously bump the pin — it cannot slide in with a silently defaulted nature — and the slice-4 migration becomes a countable ratchet. Dissolve-on: run-steps authored as typed intents whose effect row supplies the nature; the count then returns to zero and the pin becomes a wall against new raw scripts. Rejected alternative (same ruling): a per-step declared-natures roster — an affordance that makes the raw-string state comfortable, a second parallel ledger over scripts the shell-emission plan already governs."
 
-fn job_run_steps_count(job: Job) -> Int {
+fn job_run_steps_count(job: extdeps.github.actions.Job) -> Int {
   job.steps |> filter(s => step_is_run(s: s)) |> count()
 }
 
-fn workflow_run_steps_count(w: Workflow) -> Int {
+fn workflow_run_steps_count(w: extdeps.github.actions.Workflow) -> Int {
   w.jobs |> fold(init: 0, f: (acc, j) => acc + job_run_steps_count(job: j))
 }
 
@@ -126,7 +126,7 @@ data ci_native_cache_root_exempt_note: String = "Fourth exempt entry (CI2-0 caps
 
 data ci_sccache_provider_note: String = "C0 (operator ruling, 2026-07-09): this provider row is DERIVED from the cited catalog, never hand-typed. extdeps.cache.sccache owns what sccache IS (NativeInternal content hashing over RustcInvocation+ToolchainSpec, PerHostFilesystem locality, and a cited retention: a finite on-disk ceiling with least-recently-used replacement); this module owns only the ROLE: scope (whole tree, covers every LCA including the fleet frame - why the release build is already cross-run warm while the floor is not) and coverage (the release build script). WHAT THIS ROW USED TO REST ON, and no longer does (2026-08-06): the sentence here read Lru => SpacePacked, sound to drop, costs one recompile - an inference from a replacement ORDER to a space GUARANTEE, which the old fused eviction axis made silently for every Lru row. A least-recently-used order says which entry goes first when the store is full; it does not establish that the store is ever full rather than growing without limit. The boundedness now comes from the fact that actually carries it: sccache v0.15.0 Configuration.md documents SCCACHE_CACHE_SIZE as the maximum size of the local on-disk cache (default 10G), pinned at the modeled binary version rather than main, so the row projects through CapacityBounded with LeastRecentlyUsed replacement. The effective ceiling stays LimitUnobserved because a runner may override it and none was read. A catalog correction still flows into this gate with zero edits here, but eligibility is now ASKED rather than minted by the projection, and a row that stopped establishing a ceiling would refuse here, counted, never a silent shrink of the provider list."
 
-fn ci_sccache_eligibility() -> CatalogProviderEligibility {
+fn ci_sccache_eligibility() -> extdeps.cache.materialization.CatalogProviderEligibility {
   provider_for_capacity_bounded_role(
     facts: sccache_local_facts,
     scope: empty_frame_path,
@@ -134,11 +134,11 @@ fn ci_sccache_eligibility() -> CatalogProviderEligibility {
   )
 }
 
-fn ci_catalog_provider_eligibilities() -> List<CatalogProviderEligibility> {
+fn ci_catalog_provider_eligibilities() -> List<extdeps.cache.materialization.CatalogProviderEligibility> {
   [ci_sccache_eligibility()]
 }
 
-fn ci_cache_providers() -> List<CacheProvider> {
+fn ci_cache_providers() -> List<std.materialization_ladder.CacheProvider> {
   eligible_providers(es: ci_catalog_provider_eligibilities())
 }
 
@@ -369,9 +369,9 @@ type FloorFinalization {
   expected_resolve_obligations: List<ResolveObligation>
 }
 
-data ci_sccache_provider_shell_injection_dissolution_trigger: Disposition = Scaffold {
+data ci_sccache_provider_shell_injection_dissolution_trigger: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_materialization_emit",
     decl_name: "ci_sccache_provider_shell_injection",
     field: WholeDeclaration
@@ -394,9 +394,9 @@ data ci_floor_on_success_materialization_receipt_claim_executor_seed_roadmap_lan
 
 data ci_floor_on_success_materialization_receipt_claim_executor_seed_witness_entry: String = "dag/test/claim/ci_floor_on_success_materialization_receipt_hand_rust_witness_test.dag"
 
-data ci_floor_on_success_materialization_receipt_claim_executor_seed_disposition: Disposition = Scaffold {
+data ci_floor_on_success_materialization_receipt_claim_executor_seed_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_materialization",
     decl_name: "ci_floor_on_success_materialization_receipt_path",
     field: WholeDeclaration

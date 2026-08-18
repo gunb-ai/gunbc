@@ -155,7 +155,7 @@ type DeclFactLookup
   | DeclFactUnique { fact: v2.std.decl_index.DeclFact }
   | DeclFactAmbiguous { candidates: List<v2.std.decl_index.DeclFact> }
 
-fn decl_fact_module_path_from_qualified_name(fact: DeclFact) -> String {
+fn decl_fact_module_path_from_qualified_name(fact: v2.std.decl_index.DeclFact) -> String {
   let suffix = concat(".", fact.name)
   let qn_len = string_length(s: fact.qualified_name)
   let suffix_len = string_length(s: suffix)
@@ -167,7 +167,7 @@ fn decl_fact_module_path_from_qualified_name(fact: DeclFact) -> String {
   }
 }
 
-fn pool_declaration_identity_from_fact(fact: DeclFact) -> PoolDeclarationIdentity {
+fn pool_declaration_identity_from_fact(fact: v2.std.decl_index.DeclFact) -> PoolDeclarationIdentity {
   PoolDeclarationIdentity {
     qualified_name: fact.qualified_name,
     name: fact.name,
@@ -187,7 +187,7 @@ fn pool_declaration_identities_equal(
 }
 
 fn decl_fact_matches_pool_declaration_identity(
-  fact: DeclFact,
+  fact: v2.std.decl_index.DeclFact,
   identity: PoolDeclarationIdentity
 ) -> Bool {
   pool_declaration_identities_equal(
@@ -196,7 +196,7 @@ fn decl_fact_matches_pool_declaration_identity(
   )
 }
 
-fn decl_fact_lookup_by_qualified_name(qn: String, facts: List<DeclFact>) -> DeclFactLookup {
+fn decl_fact_lookup_by_qualified_name(qn: String, facts: List<v2.std.decl_index.DeclFact>) -> DeclFactLookup {
   fold(facts, init: DeclFactMissing, f: fn(acc, fact) {
     if fact.qualified_name != qn {
       acc
@@ -212,7 +212,7 @@ fn decl_fact_lookup_by_qualified_name(qn: String, facts: List<DeclFact>) -> Decl
 
 fn decl_fact_lookup_by_pool_declaration_identity(
   identity: PoolDeclarationIdentity,
-  facts: List<DeclFact>
+  facts: List<v2.std.decl_index.DeclFact>
 ) -> DeclFactLookup {
   fold(facts, init: DeclFactMissing, f: fn(acc, fact) {
     if !decl_fact_matches_pool_declaration_identity(fact: fact, identity: identity) {
@@ -231,7 +231,7 @@ fn decl_fact_lookup_by_pool_declaration_identity(
   })
 }
 
-fn decl_fact_optional_by_qualified_name(qn: String, facts: List<DeclFact>) -> Optional<DeclFact> {
+fn decl_fact_optional_by_qualified_name(qn: String, facts: List<v2.std.decl_index.DeclFact>) -> Optional<v2.std.decl_index.DeclFact> {
   match decl_fact_lookup_by_qualified_name(qn: qn, facts: facts) {
     DeclFactUnique { fact: fact } => optional_present(value: fact)
     DeclFactMissing => optional_absent()

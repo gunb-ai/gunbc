@@ -17,11 +17,11 @@ type NonEmptyParseStageDiagnostics {
 }
 
 fn parse_overlap_residue_stage_diagnostic_at(
-  at: Locus,
-  row: GrammarChoiceAmbiguityRow
+  at: v2.std.diagnostic.Locus,
+  row: v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow
 ) -> ParseStageDiagnostic {
   ParseStageDiagnostic {
-    diagnostic: Diagnostic {
+    diagnostic: v2.std.diagnostic.Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
       at: at,
       correction: Unavailable { reason: ExternalContractUnknown }
@@ -30,7 +30,7 @@ fn parse_overlap_residue_stage_diagnostic_at(
   }
 }
 
-fn parse_overlap_residue_stage_diagnostic(row: GrammarChoiceAmbiguityRow) -> ParseStageDiagnostic {
+fn parse_overlap_residue_stage_diagnostic(row: v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow) -> ParseStageDiagnostic {
   parse_overlap_residue_stage_diagnostic_at(
     at: port_locus(port: ^parse_stage_locus_port),
     row: row
@@ -38,8 +38,8 @@ fn parse_overlap_residue_stage_diagnostic(row: GrammarChoiceAmbiguityRow) -> Par
 }
 
 fn non_empty_parse_stage_diagnostics_from_overlap_roster(
-  at: Locus,
-  roster: List<GrammarChoiceAmbiguityRow>
+  at: v2.std.diagnostic.Locus,
+  roster: List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
 ) -> Optional<NonEmptyParseStageDiagnostics> {
   match roster {
     std.algebra.Empty => optional_absent()
@@ -62,26 +62,26 @@ fn non_empty_parse_stage_diagnostics_from_overlap_roster(
   }
 }
 
-fn parse_stage_diagnostic_from_diagnostic_only(d: Diagnostic) -> ParseStageDiagnostic {
+fn parse_stage_diagnostic_from_diagnostic_only(d: v2.std.diagnostic.Diagnostic) -> ParseStageDiagnostic {
   ParseStageDiagnostic {
     diagnostic: d,
     evidence: NoParseDiagnosticEvidence
   }
 }
 
-fn parse_stage_diagnostic_core(d: ParseStageDiagnostic) -> Diagnostic {
+fn parse_stage_diagnostic_core(d: ParseStageDiagnostic) -> v2.std.diagnostic.Diagnostic {
   d.diagnostic
 }
 
-fn parse_stage_evidence_row_optional(d: ParseStageDiagnostic) -> Optional<GrammarChoiceAmbiguityRow> {
+fn parse_stage_evidence_row_optional(d: ParseStageDiagnostic) -> Optional<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match d.evidence {
     GrammarChoiceAmbiguityEvidence { row: row } => optional_present(value: row)
     NoParseDiagnosticEvidence => optional_absent()
   }
 }
 
-fn non_empty_diagnostics_from_parse_stage(d: NonEmptyParseStageDiagnostics) -> NonEmptyDiagnostics {
-  NonEmptyDiagnostics {
+fn non_empty_diagnostics_from_parse_stage(d: NonEmptyParseStageDiagnostics) -> v2.std.diagnostic.NonEmptyDiagnostics {
+  v2.std.diagnostic.NonEmptyDiagnostics {
     head: parse_stage_diagnostic_core(d: d.head),
     tail: fold_list(
       xs: d.tail,
@@ -94,9 +94,9 @@ fn non_empty_diagnostics_from_parse_stage(d: NonEmptyParseStageDiagnostics) -> N
 }
 
 fn grammar_choice_ambiguity_rows_append_parse_stage(
-  acc: FreeMonoid<GrammarChoiceAmbiguityRow>,
+  acc: FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>,
   d: ParseStageDiagnostic
-) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
+) -> FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match parse_stage_evidence_row_optional(d: d) {
     Present { value: row } => list_snoc_item(xs: acc, item: row)
     Absent => acc
@@ -105,7 +105,7 @@ fn grammar_choice_ambiguity_rows_append_parse_stage(
 
 fn grammar_choice_ambiguity_rows_from_non_empty_parse_stage(
   d: NonEmptyParseStageDiagnostics
-) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
+) -> FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   let head_rows = grammar_choice_ambiguity_rows_append_parse_stage(acc: Empty, d: d.head)
   fold_list(
     xs: d.tail,
@@ -118,12 +118,12 @@ fn grammar_choice_ambiguity_rows_from_non_empty_parse_stage(
 
 fn non_empty_grammar_choice_ambiguity_rows_from_parse_stage(
   d: NonEmptyParseStageDiagnostics
-) -> Optional<NonEmptyGrammarChoiceAmbiguityRows> {
+) -> Optional<v2.std.grammar_choice_ambiguity.NonEmptyGrammarChoiceAmbiguityRows> {
   let rows = grammar_choice_ambiguity_rows_from_non_empty_parse_stage(d: d)
   match list_head(xs: rows) {
     HeadFound { value: head } =>
       optional_present(
-        value: NonEmptyGrammarChoiceAmbiguityRows {
+        value: v2.std.grammar_choice_ambiguity.NonEmptyGrammarChoiceAmbiguityRows {
           head: head,
           tail: list_tail_or_empty_rows(xs: rows)
         }
@@ -132,7 +132,7 @@ fn non_empty_grammar_choice_ambiguity_rows_from_parse_stage(
   }
 }
 
-fn list_tail_or_empty_rows(xs: FreeMonoid<GrammarChoiceAmbiguityRow>) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
+fn list_tail_or_empty_rows(xs: FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>) -> FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match list_tail(xs: xs) {
     TailAbsent => Empty
     TailFound { tail: rest } => rest

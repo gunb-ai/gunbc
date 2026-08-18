@@ -2,8 +2,8 @@ module extdeps.boards.types
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Motherboard"
   }
@@ -36,7 +36,7 @@ type PopulationAdmission
   = PopulationSupported
   | PopulationUnsupported { slots: List<std.types.NonEmptyStr> }
 
-fn slot_occurrence_count(slots: List<NonEmptyStr>, slot: NonEmptyStr) -> Int {
+fn slot_occurrence_count(slots: List<std.types.NonEmptyStr>, slot: std.types.NonEmptyStr) -> Int {
   fold(slots, init: 0, f: (acc, s) => if s == slot { acc + 1 } else { acc })
 }
 
@@ -49,7 +49,7 @@ fn slot_occurrence_count(slots: List<NonEmptyStr>, slot: NonEmptyStr) -> Int {
 // lengths agree. No documented row has a duplicate today, so this was latent
 // rather than live; comparing occurrence counts removes the precondition
 // instead of leaving correctness resting on it.
-fn population_slots_match(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> Bool {
+fn population_slots_match(a: List<std.types.NonEmptyStr>, b: List<std.types.NonEmptyStr>) -> Bool {
   count(a) == count(b)
     && fold(
       a,
@@ -64,7 +64,7 @@ fn population_slots_match(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> Bool {
 // original plan for this incident — "four modules, one per channel" — was
 // exactly such a population.
 fn admit_population(
-  candidate: List<NonEmptyStr>,
+  candidate: List<std.types.NonEmptyStr>,
   documented: List<DimmPopulation>,
 ) -> PopulationAdmission {
   if any(documented, p => population_slots_match(a: p.slots, b: candidate)) {

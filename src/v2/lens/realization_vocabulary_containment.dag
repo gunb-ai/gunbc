@@ -103,7 +103,7 @@ data empty_realization_vocab_leaks: List<RealizationVocabularyLeak> = []
 
 data empty_realization_vocab_path_list: List<String> = []
 
-fn char_eq(a: Char, b: Char) -> Bool {
+fn char_eq(a: std.types.Char, b: std.types.Char) -> Bool {
   a == b
 }
 
@@ -119,7 +119,7 @@ fn realization_vocab_import_edge_eq(a: RealizationVocabImportEdge, b: Realizatio
   (a.importer_path == b.importer_path) && (a.vocab_module == b.vocab_module)
 }
 
-fn realization_vocab_edge_from_fact(fact: LayerImportFact) -> RealizationVocabImportEdge {
+fn realization_vocab_edge_from_fact(fact: v2.std.layer.LayerImportFact) -> RealizationVocabImportEdge {
   RealizationVocabImportEdge {
     importer_path: fact.path,
     vocab_module: fact.import_module
@@ -223,7 +223,7 @@ fn path_is_realization_edge(path: String) -> Bool {
 }
 
 fn is_realization_vocab_leak_under(
-  fact: LayerImportFact,
+  fact: v2.std.layer.LayerImportFact,
   edge_prefixes: List<String>
 ) -> Bool {
   module_is_target_ast_vocab(module: fact.import_module)
@@ -233,7 +233,7 @@ fn is_realization_vocab_leak_under(
     ) == false)
 }
 
-fn is_realization_vocab_leak(fact: LayerImportFact) -> Bool {
+fn is_realization_vocab_leak(fact: v2.std.layer.LayerImportFact) -> Bool {
   is_realization_vocab_leak_under(
     fact: fact,
     edge_prefixes: realization_edge_path_prefixes
@@ -255,7 +255,7 @@ fn realization_edge_path_prefixes_without(excluded: String) -> List<String> {
 }
 
 fn scan_facts_for_leaks_under(
-  facts: List<LayerImportFact>,
+  facts: List<v2.std.layer.LayerImportFact>,
   edge_prefixes: List<String>
 ) -> List<RealizationVocabularyLeak> {
   fold_list(
@@ -277,26 +277,26 @@ fn scan_facts_for_leaks_under(
   )
 }
 
-fn realization_vocab_leak_count(facts: List<LayerImportFact>) -> Int {
+fn realization_vocab_leak_count(facts: List<v2.std.layer.LayerImportFact>) -> Int {
   length(xs: scan_facts_for_leaks_under(facts: facts, edge_prefixes: realization_edge_path_prefixes))
 }
 
 fn realization_vocab_leak_count_with_edge_prefixes(
-  facts: List<LayerImportFact>,
+  facts: List<v2.std.layer.LayerImportFact>,
   edge_prefixes: List<String>
 ) -> Int {
   length(xs: scan_facts_for_leaks_under(facts: facts, edge_prefixes: edge_prefixes))
 }
 
-fn realization_vocab_containment_holds(facts: List<LayerImportFact>) -> Bool {
+fn realization_vocab_containment_holds(facts: List<v2.std.layer.LayerImportFact>) -> Bool {
   is_empty(xs: scan_facts_for_leaks_under(facts: facts, edge_prefixes: realization_edge_path_prefixes))
 }
 
-fn realization_vocab_leak_count_canonical(facts: List<LayerImportFact>) -> Int {
+fn realization_vocab_leak_count_canonical(facts: List<v2.std.layer.LayerImportFact>) -> Int {
   realization_vocab_leak_count(facts: facts)
 }
 
-fn realization_vocab_containment_holds_canonical(facts: List<LayerImportFact>) -> Bool {
+fn realization_vocab_containment_holds_canonical(facts: List<v2.std.layer.LayerImportFact>) -> Bool {
   realization_vocab_containment_holds(facts: facts)
 }
 
@@ -312,7 +312,7 @@ fn realization_vocab_containment_clean_live(scan_roots: List<String>) -> Bool {
   )
 }
 
-fn realization_vocab_leak_candidate_paths_from_facts(facts: List<LayerImportFact>) -> List<String> {
+fn realization_vocab_leak_candidate_paths_from_facts(facts: List<v2.std.layer.LayerImportFact>) -> List<String> {
   fold_list(
     xs: facts,
     empty: empty_realization_vocab_path_list,
@@ -333,7 +333,7 @@ fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List
   )
 }
 
-fn realization_vocab_live_leak_edges_from_facts(facts: List<LayerImportFact>) -> List<RealizationVocabImportEdge> {
+fn realization_vocab_live_leak_edges_from_facts(facts: List<v2.std.layer.LayerImportFact>) -> List<RealizationVocabImportEdge> {
   fold_list(
     xs: facts,
     empty: empty_realization_vocab_edges,
@@ -354,7 +354,7 @@ fn realization_vocab_live_leak_edges(scan_roots: List<String>) -> List<Realizati
   )
 }
 
-fn realization_vocab_live_leak_edge_keys_from_facts(facts: List<LayerImportFact>) -> List<String> {
+fn realization_vocab_live_leak_edge_keys_from_facts(facts: List<v2.std.layer.LayerImportFact>) -> List<String> {
   fold_list(
     xs: realization_vocab_live_leak_edges_from_facts(facts: facts),
     empty: empty_realization_vocab_path_list,
@@ -408,6 +408,6 @@ fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
   )
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

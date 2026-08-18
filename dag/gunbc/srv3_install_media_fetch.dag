@@ -1,19 +1,19 @@
 module gunbc.srv3_install_media_fetch
 
 
-data gunbc_srv3_install_media_fetch_scope_disposition: Disposition = Terminal {
+data gunbc_srv3_install_media_fetch_scope_disposition: std.disposition.Disposition = Terminal {
   reason: "srv3 Ubuntu 24.04.3 live-server arm64 ISO acquisition — CreateIfAbsent keyed on content_sha256; N mirror transport handlers on one cited artifact row; runnable on srv1 actuator host before nbd-proxy serve."
 }
 
-data srv3_install_media_fetch_shell_runner_scaffold: Disposition = Terminal {
+data srv3_install_media_fetch_shell_runner_scaffold: std.disposition.Disposition = Terminal {
   reason: "srv3_install_media_fetch() routes through host_effect_apply to install_media_fetch_reconcile() in-process (TypedReconcileOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
-data srv3_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_install_media_install_path(
+data srv3_ubuntu_install_media_install_path: std.types.NonEmptyStr = ubuntu_install_media_install_path(
   artifact: srv3_ubuntu_install_media_artifact,
 )
 
-data install_media_fetch_effect_shape: EffectShape<KeySource> = CreateEffect {
+data install_media_fetch_effect_shape: EffectShape<std.effects.KeySource> = CreateEffect {
   cause: CreateIfAbsent { key_source: InputField { field: "content_sha256" } },
 }
 
@@ -51,7 +51,7 @@ type InstallMediaFetchOutcome
 
 fn classify_install_media_fetch(
   observation: InstallMediaPresenceObservation,
-  artifact: UbuntuInstallMediaArtifactRow,
+  artifact: extdeps.provisioning.ubuntu_install_media.UbuntuInstallMediaArtifactRow,
 ) -> InstallMediaFetchVerdict {
   let install_path = ubuntu_install_media_install_path(artifact: artifact)
   match observation {
@@ -84,16 +84,16 @@ fn install_media_fetch_verdict_is_idempotent_skip(verdict: InstallMediaFetchVerd
   }
 }
 
-fn install_media_fetch_first_mirror_url(artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+fn install_media_fetch_first_mirror_url(artifact: extdeps.provisioning.ubuntu_install_media.UbuntuInstallMediaArtifactRow) -> std.types.NonEmptyStr {
   let first = ubuntu_install_media_mirror_rows.first()
   ubuntu_install_media_mirror_url(artifact: artifact, mirror: first)
 }
 
-fn srv3_install_media_fetch_actuator_host() -> ComputeHost {
+fn srv3_install_media_fetch_actuator_host() -> gunbc.fleet_intent.ComputeHost {
   srv3_os_install_actuator_host
 }
 
-func srv3_install_media_fetch() -> ProcessExit
+func srv3_install_media_fetch() -> std.process.ProcessExit
   uses net: Network
 {
   srv3_reconciliation_to_process_exit(

@@ -1,14 +1,14 @@
 module gunbc.heal_push_plan
 
 
-fn artifact_repository_path(a: gunbc.generated_artifact.GeneratedArtifact) -> RepositoryPath {
-  RepositoryPath { value: artifact_path(a: a) }
+fn artifact_repository_path(a: gunbc.generated_artifact.GeneratedArtifact) -> extdeps.github.effect.RepositoryPath {
+  extdeps.github.effect.RepositoryPath { value: artifact_path(a: a) }
 }
 
 fn artifact_push_authorized(
   a: gunbc.generated_artifact.GeneratedArtifact,
-  authority: GitHubCredentialAuthority,
-  control_plane: GitHubAppControlPlaneState
+  authority: gunbc.auth.github_credential.GitHubCredentialAuthority,
+  control_plane: gunbc.auth.github_apps.GitHubAppControlPlaneState
 ) -> Bool {
   credential_authorizes_required(
     authority: authority,
@@ -85,7 +85,7 @@ type RefusalDerivation
   = RefusalDerived { refusal: HealPushRefusal }
   | RefusalDerivationInconsistent { refused_paths: List<extdeps.github.effect.RepositoryPath> }
 
-fn capability_failure(c: CredentialCapability) -> HealPushFailure? {
+fn capability_failure(c: gunbc.auth.github_credential.CredentialCapability) -> HealPushFailure? {
   match c {
     CredentialGrants => none
     CredentialKindCannotSatisfy { missing } =>
@@ -108,9 +108,9 @@ fn capability_failure(c: CredentialCapability) -> HealPushFailure? {
 data no_heal_push_failures: List<HealPushFailure> = []
 
 fn refusal_failure_population(
-  paths: List<RepositoryPath>,
-  authority: GitHubCredentialAuthority,
-  control_plane: GitHubAppControlPlaneState
+  paths: List<extdeps.github.effect.RepositoryPath>,
+  authority: gunbc.auth.github_credential.GitHubCredentialAuthority,
+  control_plane: gunbc.auth.github_apps.GitHubAppControlPlaneState
 ) -> List<HealPushFailure> {
   v2.std.algebra.fold_list(
     xs: unsatisfied_capabilities_for_required(
@@ -130,8 +130,8 @@ fn refusal_failure_population(
 
 fn derive_refusal(
   refused: List<gunbc.generated_artifact.GeneratedArtifact>,
-  authority: GitHubCredentialAuthority,
-  control_plane: GitHubAppControlPlaneState
+  authority: gunbc.auth.github_credential.GitHubCredentialAuthority,
+  control_plane: gunbc.auth.github_apps.GitHubAppControlPlaneState
 ) -> RefusalDerivation {
   let paths = map(refused, a => artifact_repository_path(a: a))
   let failures = refusal_failure_population(
@@ -148,8 +148,8 @@ fn derive_refusal(
 
 fn plan_heal_push(
   artifacts: List<gunbc.generated_artifact.GeneratedArtifact>,
-  authority: GitHubCredentialAuthority,
-  control_plane: GitHubAppControlPlaneState
+  authority: gunbc.auth.github_credential.GitHubCredentialAuthority,
+  control_plane: gunbc.auth.github_apps.GitHubAppControlPlaneState
 ) -> HealPushPlan {
   let ready = filter(artifacts, a => artifact_push_authorized(a: a, authority: authority, control_plane: control_plane))
   let refused = filter(artifacts, a => !artifact_push_authorized(a: a, authority: authority, control_plane: control_plane))
@@ -173,8 +173,8 @@ fn plan_heal_push(
 
 fn plan_heal_push_from_binding(
   artifacts: List<gunbc.generated_artifact.GeneratedArtifact>,
-  resolution: PushBindingResolution,
-  control_plane: GitHubAppControlPlaneState
+  resolution: gunbc.auth.github_credential.PushBindingResolution,
+  control_plane: gunbc.auth.github_apps.GitHubAppControlPlaneState
 ) -> HealPushPlan {
   match resolution {
     PushBindingResolved { binding: _, authority } =>
@@ -226,7 +226,7 @@ fn plan_heal_push_from_binding(
   }
 }
 
-fn step_site(checkout_step: DeclarationRef) -> HealPushBindingSite {
+fn step_site(checkout_step: std.decl_ref.DeclarationRef) -> HealPushBindingSite {
   HealPushBindingSite { checkout_step: checkout_step, input: none, observed_kind: none }
 }
 
@@ -391,7 +391,7 @@ fn plan_remediation(plan: HealPushPlan) -> HealPushRemediation {
 
 data live_heal_remediation: HealPushRemediation = plan_remediation(plan: live_heal_push_plan)
 
-fn remediation_author_commit_paths(r: HealPushRemediation) -> List<RepositoryPath> {
+fn remediation_author_commit_paths(r: HealPushRemediation) -> List<extdeps.github.effect.RepositoryPath> {
   match r {
     AuthorCommitRequired { paths, causes: _ } => paths
     HealAutomatically { paths: _ } => []

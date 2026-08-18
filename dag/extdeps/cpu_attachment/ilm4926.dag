@@ -6,11 +6,11 @@ module extdeps.cpu_attachment.ilm4926
 // bindings to those declarations rather than second copies of the same URIs —
 // a re-typed locator is the parallel authority DESIGN section 3 forbids, and it
 // rots independently the day Ampere moves an asset.
-data extdeps_external_authority_anchor: ExternalAuthority = ampere_altra_rev_a1_datasheet_authority
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = ampere_altra_rev_a1_datasheet_authority
 
-data altra_classic_datasheet_authority: ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
+data altra_classic_datasheet_authority: extdeps.external_authority.ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
 
-data ocp_mt_jade_specification_authority: ExternalAuthority = mt_jade_subject_authority_anchor
+data ocp_mt_jade_specification_authority: extdeps.external_authority.ExternalAuthority = mt_jade_subject_authority_anchor
 
 // THE SUBJECT IS A DESIGNATION, NOT A PART, AND THAT IS THE WHOLE POINT OF
 // THIS MODULE. ILM4926 is named by documents from two different publishers —
@@ -38,9 +38,9 @@ data ilm4926: ProcessorAttachmentDesignation = ProcessorAttachmentDesignation {
   designator: "ILM4926",
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu_attachment.ilm4926",
       decl_name: "ilm4926",
       field: WholeDeclaration
@@ -122,7 +122,7 @@ fn attestation_count() -> Int {
 // datasheets agreeing is one publisher saying a thing twice; Ampere and OCP
 // agreeing is two. The distinction is modelled rather than asserted in prose
 // because it is the entire justification for this module existing separately.
-fn attestations_from_authority(authority: ExternalAuthority) -> List<DesignationAttestation> {
+fn attestations_from_authority(authority: extdeps.external_authority.ExternalAuthority) -> List<DesignationAttestation> {
   ilm4926_attestations |> filter(a => a.authority == authority)
 }
 
@@ -156,15 +156,15 @@ type AttestationStanding
 
 // THE VENDOR'S OWN CATALOGUE PAGE, which is a publisher of record for its own part and therefore
 // outranks the forum for anything it states. It resolves what the community thread could not.
-data lotes_azif0222_product_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data lotes_azif0222_product_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.lotes.cc/en/product.php?act=view&id=566"
   }
 }
 
-data ampere_community_lga4926_thread_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data ampere_community_lga4926_thread_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "community.amperecomputing.com/t/lga4926-socket-details/2837"
   }

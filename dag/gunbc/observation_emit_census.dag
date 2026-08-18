@@ -18,114 +18,114 @@ type CensusedEmitSite {
 }
 
 data floor_memory_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[floor-memory]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  marker: "[floor-memory]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as std.types.NonEmptyStr,
   disposition: MigratedToObservation {
-    via: "gunbc.observation_ci_render.ci_heartbeat_line (seed mirror render_heartbeat_line_mirror; HeartbeatFeed subject)" as NonEmptyStr
+    via: "gunbc.observation_ci_render.ci_heartbeat_line (seed mirror render_heartbeat_line_mirror; HeartbeatFeed subject)" as std.types.NonEmptyStr
   }
 }
 
 data typecheck_attribution_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[typecheck-attribution]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr,
+  marker: "[typecheck-attribution]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/cli_run.rs" as std.types.NonEmptyStr,
   disposition: MigratedToObservation {
-    via: "gunbc.observation_ci_render.ci_event_line (seed typecheck_begin_line / typecheck_concluded_line; mirror render_typecheck_*_line_mirror; ModuleSegment+PhaseSegment)" as NonEmptyStr
+    via: "gunbc.observation_ci_render.ci_event_line (seed typecheck_begin_line / typecheck_concluded_line; mirror render_typecheck_*_line_mirror; ModuleSegment+PhaseSegment)" as std.types.NonEmptyStr
   }
 }
 
 data gantt_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[gantt]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/v1_rt.rs" as NonEmptyStr,
+  marker: "[gantt]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/v1_rt.rs" as std.types.NonEmptyStr,
   disposition: MigratedToObservation {
-    via: "gunbc.observation_ci_render.ci_event_line (seed phase_begin_line / phase_concluded_line; mirror render_phase_begin_line_mirror / render_phase_concluded_line_mirror; PhaseSegment)" as NonEmptyStr
+    via: "gunbc.observation_ci_render.ci_event_line (seed phase_begin_line / phase_concluded_line; mirror render_phase_begin_line_mirror / render_phase_concluded_line_mirror; PhaseSegment)" as std.types.NonEmptyStr
   }
 }
 
 data governor_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[governor]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/memory_governor.rs" as NonEmptyStr,
+  marker: "[governor]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/memory_governor.rs" as std.types.NonEmptyStr,
   disposition: MigratedToObservation {
-    via: "gunbc.observation_ci_render.ci_hold_cause_text (seed seed_governor_hold_line; mirror render_governor_hold_line_mirror; SchedulerHold/BlockedOn)" as NonEmptyStr
+    via: "gunbc.observation_ci_render.ci_hold_cause_text (seed seed_governor_hold_line; mirror render_governor_hold_line_mirror; SchedulerHold/BlockedOn)" as std.types.NonEmptyStr
   }
 }
 
 data measurement_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[measurement]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  marker: "[measurement]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as std.types.NonEmptyStr,
   disposition: MigratedToObservation {
-    via: "gunbc.observation_ci_render.ci_measurement_rss_line (seed seed_peak_rss_line; mirror render_peak_rss_line_mirror; identity-first label, human GiB)" as NonEmptyStr
+    via: "gunbc.observation_ci_render.ci_measurement_rss_line (seed seed_peak_rss_line; mirror render_peak_rss_line_mirror; identity-first label, human GiB)" as std.types.NonEmptyStr
   }
 }
 
 data shell_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[shell]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/v1_interpreter.rs" as NonEmptyStr,
+  marker: "[shell]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/v1_interpreter.rs" as std.types.NonEmptyStr,
   disposition: MigratedToObservation {
-    via: "gunbc.observation_ci_render.ci_event_line (seed shell_effect_begin_line / shell_effect_done_line / shell_effect_failed_line; mirror render_shell_effect_*_line_mirror; named-intent subject; Ambient ShellTrace Suppressed-at-Normal; Anomaly Failed via disposition alone)" as NonEmptyStr
+    via: "gunbc.observation_ci_render.ci_event_line (seed shell_effect_begin_line / shell_effect_done_line / shell_effect_failed_line; mirror render_shell_effect_*_line_mirror; named-intent subject; Ambient ShellTrace Suppressed-at-Normal; Anomaly Failed via disposition alone)" as std.types.NonEmptyStr
   }
 }
 
 data floor_drain_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[floor-drain]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr,
+  marker: "[floor-drain]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/cli_run.rs" as std.types.NonEmptyStr,
   disposition: CountedFrontierSite {
-    reason: "schedule-retention / typed-cache drain diagnostics born after the initial census snapshot — retention kit instrumentation, not yet an observation projection" as NonEmptyStr,
+    reason: "schedule-retention / typed-cache drain diagnostics born after the initial census snapshot — retention kit instrumentation, not yet an observation projection" as std.types.NonEmptyStr,
     dissolution: unbound_dissolution(description: "re-census into MigratedToObservation once drain events speak the observation vocabulary (or retire the tag into a named group summary)")
   }
 }
 
 
 data receipt_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[receipt]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  marker: "[receipt]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as std.types.NonEmptyStr,
   disposition: CountedFrontierSite {
-    reason: "floor resolve / batch-wall / materialization receipt lines — data, not outcomes; still bracket-tagged" as NonEmptyStr,
+    reason: "floor resolve / batch-wall / materialization receipt lines — data, not outcomes; still bracket-tagged" as std.types.NonEmptyStr,
     dissolution: unbound_dissolution(description: "collapse into the floor-receipts observation group as Ambient MeasurementSegment / StatusPulse lines")
   }
 }
 
 data file_trace_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[file]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/v1_interpreter.rs" as NonEmptyStr,
+  marker: "[file]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/v1_interpreter.rs" as std.types.NonEmptyStr,
   disposition: CountedFrontierSite {
-    reason: "Filesystem transport host-effect traces — sibling of the shell-echo class, still raw-tagged" as NonEmptyStr,
+    reason: "Filesystem transport host-effect traces — sibling of the shell-echo class, still raw-tagged" as std.types.NonEmptyStr,
     dissolution: unbound_dissolution(description: "same named-intent ObservationEvent path as shell (Filesystem.Read/Write/…) once shell grain is proven")
   }
 }
 
 data resolve_split_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[resolve-split]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  marker: "[resolve-split]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as std.types.NonEmptyStr,
   disposition: CountedFrontierSite {
-    reason: "per-entry resolve-stage timing split (#7205 / #6848 cost instrumentation) — load/parse/resolve/normalize/typecheck/parent_envs/assembly/ownership" as NonEmptyStr,
+    reason: "per-entry resolve-stage timing split (#7205 / #6848 cost instrumentation) — load/parse/resolve/normalize/typecheck/parent_envs/assembly/ownership" as std.types.NonEmptyStr,
     dissolution: unbound_dissolution(description: "fold into a MeasurementSegment / StatusPulse receipt projection under the floor-receipts group")
   }
 }
 
 data assembly_split_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[assembly-split]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  marker: "[assembly-split]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as std.types.NonEmptyStr,
   disposition: CountedFrontierSite {
-    reason: "reconcile-assembly sub-split (#7205) — schedule/probe/registry/services/rewire/emit_info/residue timings that priced the type-export-set memo" as NonEmptyStr,
+    reason: "reconcile-assembly sub-split (#7205) — schedule/probe/registry/services/rewire/emit_info/residue timings that priced the type-export-set memo" as std.types.NonEmptyStr,
     dissolution: unbound_dissolution(description: "fold into the same MeasurementSegment receipt projection as resolve-split")
   }
 }
 
 data witness_row_cost_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[witness-row-cost]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  marker: "[witness-row-cost]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as std.types.NonEmptyStr,
   disposition: CountedFrontierSite {
-    reason: "falsifier-cadence per-witness cost TSV probe lines (#7284 / placement #5 spine) — complete join projection of the ObservationEvent N+1 stream mirrored to the cadence log for task #20 reproduction; per-PR keeps the complete TSV file and summary line, still a raw tag family" as NonEmptyStr,
+    reason: "falsifier-cadence per-witness cost TSV probe lines (#7284 / placement #5 spine) — complete join projection of the ObservationEvent N+1 stream mirrored to the cadence log for task #20 reproduction; per-PR keeps the complete TSV file and summary line, still a raw tag family" as std.types.NonEmptyStr,
     dissolution: unbound_dissolution(description: "fold the TSV emit into ObservationEvent-native emission (N+1 stream) and retire the bracket tag; TSV remains a complete join projection of the same events")
   }
 }
 
 
 data witness_row_cost_migration_disclosure_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[witness-row-cost-migration-disclosure]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  marker: "[witness-row-cost-migration-disclosure]" as std.types.NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as std.types.NonEmptyStr,
   disposition: CountedFrontierSite {
-    reason: "falsifier-cadence mandatory-migration disclosure lines (gunbc.witness_row_cost's migration threshold gate) — the per-row verdict body is cadence-scoped exactly as witness_row_cost_site/witness_row_cost_drift_site are, and the per-PR floor keeps only the worst-5 rows plus the [receipt] summary naming the TSV; still a raw tag family. DESCRIPTION CORRECTED: this row previously read 'per-floor-pass ... per-row verdict plus a worst-5 summary', which described the pre-#8126 behavior where all 8,614 rows printed on every floor run; the row was not updated when the emit was gated, so the census described a cadence the seed no longer had" as NonEmptyStr,
+    reason: "falsifier-cadence mandatory-migration disclosure lines (gunbc.witness_row_cost's migration threshold gate) — the per-row verdict body is cadence-scoped exactly as witness_row_cost_site/witness_row_cost_drift_site are, and the per-PR floor keeps only the worst-5 rows plus the [receipt] summary naming the TSV; still a raw tag family. DESCRIPTION CORRECTED: this row previously read 'per-floor-pass ... per-row verdict plus a worst-5 summary', which described the pre-#8126 behavior where all 8,614 rows printed on every floor run; the row was not updated when the emit was gated, so the census described a cadence the seed no longer had" as std.types.NonEmptyStr,
     dissolution: unbound_dissolution(description: "fold into ObservationEvent-native emission once the disclosure speaks the observation vocabulary, same trigger as witness_row_cost_site/witness_row_cost_drift_site")
   }
 }
@@ -148,9 +148,9 @@ data observation_emit_roster: List<CensusedEmitSite> = [
   witness_row_cost_migration_disclosure_site
 ]
 
-data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
+data observation_emit_roster_completeness_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.observation_emit_census",
     decl_name: "observation_emit_roster",
     field: WholeDeclaration
@@ -178,6 +178,6 @@ fn observation_emit_frontier_count() -> std.nat.Nat {
     if emit_site_is_frontier(site: site) { acc + 1 } else { acc })
 }
 
-data observation_emit_census_disposition: Disposition = Terminal {
+data observation_emit_census_disposition: std.disposition.Disposition = Terminal {
   reason: "The census MODEL is Terminal — a closed classification of emit sites is the wall's authority, not an interim stand-in. What is a scaffold is the ROSTER's completeness (declared above), because the site list grows when post-rewrite sites are enumerated. The model that classifies them does not change; only the rows do."
 }

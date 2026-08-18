@@ -1,8 +1,8 @@
 module extdeps.object_storage.content_addressed
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Object_storage#Content-addressable_storage"
   }

@@ -10,8 +10,8 @@ module extdeps.ssh.client_options
 // already separates PROTOCOL from IMPLEMENTATION in its own notes; putting these keywords under
 // its RFC anchor would ground them in a document that does not contain them, which is the
 // citation defect DESIGN section 3 names.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "man.openbsd.org/ssh_config.5"
   }
@@ -22,9 +22,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // (extdeps.ssh.session, RFC 4254) and NOT any particular verification policy: which options a given
 // invocation carries is a caller's fact, while WHICH OPTIONS EXIST and how each serializes is this
 // upstream's.
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ssh.client_options",
       decl_name: "SshClientOption",
       field: WholeDeclaration
@@ -219,12 +219,12 @@ fn serialize_ssh_client_options(options: List<SshClientOption>) -> List<String> 
 // FleetOpenSshTrustPolicy, which is sealed, is constructible only from a successful materialization,
 // and is what consumers accept. This builder exists separately because it is PURE and therefore
 // directly assertable by a witness, while the sealed policy requires an executed materialization.
-fn openssh_exclusive_known_hosts_trust_options(known_hosts: NonEmptyStr) -> List<SshClientOption> {
+fn openssh_exclusive_known_hosts_trust_options(known_hosts: std.types.NonEmptyStr) -> List<SshClientOption> {
   [
     StrictHostKeyChecking { value: StrictYes },
     UserKnownHostsFile { path: known_hosts },
-    GlobalKnownHostsFile { path: "/dev/null" as NonEmptyStr },
-    KnownHostsCommand { command: "none" as NonEmptyStr },
+    GlobalKnownHostsFile { path: "/dev/null" as std.types.NonEmptyStr },
+    KnownHostsCommand { command: "none" as std.types.NonEmptyStr },
     VerifyHostKeyDNS { value: VerifyHostKeyDnsNo },
     UpdateHostKeys { value: UpdateHostKeysNo },
   ]
@@ -243,7 +243,7 @@ fn openssh_exclusive_known_hosts_trust_options(known_hosts: NonEmptyStr) -> List
 // silently outranked by anything earlier. Order here is load-bearing, which is why it is asserted by
 // execution rather than described.
 fn shape_openssh_exec_portable_words_argv(
-  target: NonEmptyStr,
+  target: std.types.NonEmptyStr,
   options: List<SshClientOption>,
   words: List<String>,
 ) -> List<String> {
@@ -269,7 +269,7 @@ fn shape_openssh_exec_portable_words_argv(
 // is projected to -F by the shaper -- the alternative was a second ad-hoc word-building path beside
 // the option serializer, which is the fork this module exists to prevent.
 fn openssh_suppress_ambient_configuration_options() -> List<SshClientOption> {
-  [ConfigFile { path: "none" as NonEmptyStr }]
+  [ConfigFile { path: "none" as std.types.NonEmptyStr }]
 }
 
 // THE CREDENTIAL HALF. A host-key posture can be exact while authentication succeeds through the
@@ -282,12 +282,12 @@ fn openssh_suppress_ambient_configuration_options() -> List<SshClientOption> {
 // by IdentityFile, so naming the file does not mean the file authenticated. IdentityAgent=none
 // removes the agent entirely, and the three authentication-method options remove the fallbacks that
 // would otherwise let a success mean something other than publickey.
-fn openssh_exact_credential_options(identity_file: NonEmptyStr) -> List<SshClientOption> {
+fn openssh_exact_credential_options(identity_file: std.types.NonEmptyStr) -> List<SshClientOption> {
   [
     IdentityFile { path: identity_file },
     IdentitiesOnly { enabled: true },
-    IdentityAgent { path: "none" as NonEmptyStr },
-    PreferredAuthentications { methods: "publickey" as NonEmptyStr },
+    IdentityAgent { path: "none" as std.types.NonEmptyStr },
+    PreferredAuthentications { methods: "publickey" as std.types.NonEmptyStr },
     PasswordAuthentication { enabled: false },
     KbdInteractiveAuthentication { enabled: false },
   ]
@@ -308,14 +308,14 @@ fn openssh_exact_credential_options(identity_file: NonEmptyStr) -> List<SshClien
 // and one without `IdentitiesOnly` offers every key the agent holds -- in both cases a success stops
 // being evidence about the modeled key, which is the whole property these options exist to preserve.
 fn openssh_exact_agent_credential_options(
-  agent_socket: NonEmptyStr,
-  public_selector_file: NonEmptyStr,
+  agent_socket: std.types.NonEmptyStr,
+  public_selector_file: std.types.NonEmptyStr,
 ) -> List<SshClientOption> {
   [
     IdentityAgent { path: agent_socket },
     IdentityFile { path: public_selector_file },
     IdentitiesOnly { enabled: true },
-    PreferredAuthentications { methods: "publickey" as NonEmptyStr },
+    PreferredAuthentications { methods: "publickey" as std.types.NonEmptyStr },
     PasswordAuthentication { enabled: false },
     KbdInteractiveAuthentication { enabled: false },
   ]

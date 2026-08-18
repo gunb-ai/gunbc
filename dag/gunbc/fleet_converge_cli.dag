@@ -2,7 +2,7 @@ module gunbc.fleet_converge_cli
 
 
 
-data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
+data gunbc_converge_cli_stage0_receiver_disposition: std.disposition.Disposition = Terminal {
   reason: "THERE IS NO STAGE0 RECEIVER, AND THERE WILL NOT BE ONE — that is the terminal state this row records, not a gap awaiting repair. Corrected 2026-08-16 (PR #8286, review 52676) when the cli-run driver cut deleted cli_run handle_converge: until then this row named that handler as the live argv transport, so a canonical disposition asserted a terminal hand-Rust route that no longer existed. The stale half was not the arm but the reason — DESIGN §3's stale-citation class, in a carrier the cut itself falsified.
 
 WHY TERMINAL SURVIVES THE DELETION. Transport is a handler, one of N, never a fact about the interface (DESIGN §3), so removing the stage0 CLI transport does not demote this .dag interface — it removes one binding. All interpretation, the byte-locked receipt grammar, and every typed refusal cause remain modeled here and in gunbc.host_converge / gunbc.fleet_converge_apply, exactly as before; what changed is only which host reaches them.
@@ -186,11 +186,11 @@ fn converge_cli_codex_runtime_knob_registered_for_host(host: product.placement_s
   }
 }
 
-fn host_converge_for_identity(hosts: List<HostConverge>, identity: product.placement_supply.HostIdentity) -> HostConverge? {
+fn host_converge_for_identity(hosts: List<gunbc.host_converge.HostConverge>, identity: product.placement_supply.HostIdentity) -> gunbc.host_converge.HostConverge? {
   find_by_identity(hosts, identity: identity, key: fn(h) { h.identity })
 }
 
-fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> Int {
+fn converge_cli_applied_knob_count(intent: gunbc.host_effect.HostEffectIntent, fallback: Int) -> Int {
   match intent.effect {
     ConvergePlan { policy: p } => p.knobs.length()
     ShellCommand { script: _ } => fallback
@@ -392,7 +392,7 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
   }
 }
 
-fn converge_cli_receipt_for_host(host_converge: HostConverge) -> ConvergeCliReceipt {
+fn converge_cli_receipt_for_host(host_converge: gunbc.host_converge.HostConverge) -> ConvergeCliReceipt {
   match converge_apply_for_host(host_converge: host_converge, transport: LocalShell) {
     Present { value: r } =>
       match r {
@@ -430,7 +430,7 @@ type ConvergeCliOutput {
   reason: String?
 }
 
-fn converge_cli_receipt_from_memory_cap_verify(host: String, result: RunnerMemoryCapVerifyRunResult) -> ConvergeCliReceipt {
+fn converge_cli_receipt_from_memory_cap_verify(host: String, result: gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyRunResult) -> ConvergeCliReceipt {
   match result {
     RunnerMemoryCapVerifyObserved { receipt: r } =>
       ConvergeCliReceipt {
@@ -611,7 +611,7 @@ fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line:
 // ConvergeVerdict enum that knob-only convergence uses and would never emit. That the enum
 // cannot carry this without burdening an unrelated consumer is itself the dual-representation
 // smell one rung up (the enum doing two jobs) — named here, not fixed here.
-fn converge_cli_revision_verdict(standing: FleetRevisionStanding) -> ConvergeVerdict {
+fn converge_cli_revision_verdict(standing: gunbc.fleet_desired_observe.FleetRevisionStanding) -> gunbc.host_converge.ConvergeVerdict {
   match standing {
     RevisionConverged { revision: _ } => VerdictConverged
     RevisionDrifted { desired: _, local: _ } => Drifted
@@ -619,7 +619,7 @@ fn converge_cli_revision_verdict(standing: FleetRevisionStanding) -> ConvergeVer
   }
 }
 
-fn converge_cli_receipt_join_revision(r: ConvergeCliReceipt, standing: FleetRevisionStanding) -> ConvergeCliReceipt {
+fn converge_cli_receipt_join_revision(r: ConvergeCliReceipt, standing: gunbc.fleet_desired_observe.FleetRevisionStanding) -> ConvergeCliReceipt {
   ConvergeCliReceipt {
     host: r.host,
     applied: r.applied,
@@ -629,7 +629,7 @@ fn converge_cli_receipt_join_revision(r: ConvergeCliReceipt, standing: FleetRevi
   }
 }
 
-fn converge_cli_revision_reason(standing: FleetRevisionStanding) -> String? {
+fn converge_cli_revision_reason(standing: gunbc.fleet_desired_observe.FleetRevisionStanding) -> String? {
   match standing {
     RevisionConverged { revision: _ } => none
     RevisionDrifted { desired: d, local: l } =>
@@ -647,7 +647,7 @@ fn converge_cli_revision_reason(standing: FleetRevisionStanding) -> String? {
   }
 }
 
-fn converge_cli_revision_line(standing: FleetRevisionStanding) -> String {
+fn converge_cli_revision_line(standing: gunbc.fleet_desired_observe.FleetRevisionStanding) -> String {
   match standing {
     RevisionConverged { revision: r } =>
       concat("converge-revision observed=", git_object_id_wire_hex(oid: r) as String)

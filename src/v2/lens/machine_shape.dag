@@ -7,7 +7,7 @@ data machine_shape_witness_scope_note: String = "SCOPE: dag/test/claim and src/v
 
 data machine_shape_authority_module: String = "std.machine_shape"
 
-fn node_callee_symbol(n: Node) -> Optional<Symbol> {
+fn node_callee_symbol(n: Node) -> Optional<v2.std.node.Symbol> {
   if node_is_call(node: n) {
     match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
       Present { value: callee } => match callee.kind {
@@ -21,22 +21,22 @@ fn node_callee_symbol(n: Node) -> Optional<Symbol> {
   }
 }
 
-fn qualified_name_is_authority_home(qn: QualifiedName) -> Bool {
+fn qualified_name_is_authority_home(qn: v2.std.qualified_name.QualifiedName) -> Bool {
   qualified_name_to_dotted_string(qn: qn) == machine_shape_authority_module
 }
 
-fn qualified_name_is_catalog_fill_home(qn: QualifiedName) -> Bool {
+fn qualified_name_is_catalog_fill_home(qn: v2.std.qualified_name.QualifiedName) -> Bool {
   let dotted = qualified_name_to_dotted_string(qn: qn)
   dotted.starts_with(prefix: "extdeps.") && dotted.ends_with(suffix: ".machine_shape")
 }
 
-fn qualified_name_is_witness_module(qn: QualifiedName) -> Bool {
+fn qualified_name_is_witness_module(qn: v2.std.qualified_name.QualifiedName) -> Bool {
   let dotted = qualified_name_to_dotted_string(qn: qn)
   dotted.starts_with(prefix: "test.claim.")
     || dotted.starts_with(prefix: "v2.test.")
 }
 
-fn module_allows_machine_shape_literal(qn: Optional<QualifiedName>) -> Bool {
+fn module_allows_machine_shape_literal(qn: Optional<v2.std.qualified_name.QualifiedName>) -> Bool {
   match qn {
     Absent => false
     Present { value: qn0 } =>
@@ -46,7 +46,7 @@ fn module_allows_machine_shape_literal(qn: Optional<QualifiedName>) -> Bool {
   }
 }
 
-fn module_qn_from_node(n: Node, inherited: Optional<QualifiedName>) -> Optional<QualifiedName> {
+fn module_qn_from_node(n: Node, inherited: Optional<v2.std.qualified_name.QualifiedName>) -> Optional<v2.std.qualified_name.QualifiedName> {
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } =>
       if id == ^dag_surface_module {
@@ -61,15 +61,15 @@ fn module_qn_from_node(n: Node, inherited: Optional<QualifiedName>) -> Optional<
   }
 }
 
-fn machine_shape_unsanctioned_construction_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn machine_shape_unsanctioned_construction_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^machine_shape_unsanctioned_construction,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn local_machine_shape_findings(n: Node, module_qn: Optional<QualifiedName>) -> List<Diagnostic> {
+fn local_machine_shape_findings(n: Node, module_qn: Optional<v2.std.qualified_name.QualifiedName>) -> List<v2.std.diagnostic.Diagnostic> {
   if module_allows_machine_shape_literal(qn: module_qn) {
     []
   } else {
@@ -105,7 +105,7 @@ fn machine_shape_walk_init(n: Node, ctx: MachineShapeWalkCtx) -> MachineShapeWal
 fn machine_shape_walk_child_context(
   n: Node,
   ctx: MachineShapeWalkCtx,
-  _: Edge
+  _: v2.std.node.Edge
 ) -> MachineShapeWalkCtx {
   MachineShapeWalkCtx {
     module_qn: module_qn_from_node(n: n, inherited: ctx.module_qn)
@@ -114,7 +114,7 @@ fn machine_shape_walk_child_context(
 
 fn machine_shape_walk_step(
   acc: MachineShapeWalkResult,
-  _: Edge,
+  _: v2.std.node.Edge,
   child_r: MachineShapeWalkResult
 ) -> MachineShapeWalkResult {
   MachineShapeWalkResult {
@@ -124,14 +124,14 @@ fn machine_shape_walk_step(
 }
 
 fn machine_shape_topdown_algebra() -> NodeFoldTopDown<MachineShapeWalkCtx, MachineShapeWalkResult> {
-  NodeFoldTopDown {
+  v2.std.node.NodeFoldTopDown {
     init: machine_shape_walk_init,
     child_context: machine_shape_walk_child_context,
     step: machine_shape_walk_step
   }
 }
 
-fn machine_shape_construction_findings(root: Node) -> List<Diagnostic> {
+fn machine_shape_construction_findings(root: Node) -> List<v2.std.diagnostic.Diagnostic> {
   match fold_node_topdown(
     n: root,
     ctx: MachineShapeWalkCtx { module_qn: optional_absent() },
@@ -147,12 +147,12 @@ fn machine_shape_compile_gate(node: Node) -> Outcome<Witness<Node>> {
   match machine_shape_construction_findings(root: node) {
     Cons { head: first, tail: rest } =>
       Rejected {
-        diagnostics: NonEmptyDiagnostics { head: first, tail: rest }
+        diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
       }
     Empty => outcome_accepted(value: Holds { value: node })
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

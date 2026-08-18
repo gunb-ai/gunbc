@@ -2,15 +2,15 @@ module extdeps.linux.proc_self_cgroup
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "man7.org/linux/man-pages/man7/cgroups.7.html"
   }
 }
 
-data proc_self_cgroup_proc_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data proc_self_cgroup_proc_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "man7.org/linux/man-pages/man5/proc.5.html#/proc/self/cgroup"
   }
@@ -42,9 +42,9 @@ type UnifiedMembershipOutcomeTag
   | OutcomeTagMalformed
   | OutcomeTagObserved { relative_path: std.types.NonEmptyStr }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.linux.proc_self_cgroup",
       decl_name: "ProcPidCgroupMembershipRecord",
       field: WholeDeclaration
@@ -58,7 +58,7 @@ type ProcSelfCgroupMalformedScan
   = NoMalformedLine
   | MalformedFound { cause: ProcSelfCgroupLineRefusal }
 
-data proc_self_cgroup_empty_unified_paths: List<NonEmptyStr> = []
+data proc_self_cgroup_empty_unified_paths: List<std.types.NonEmptyStr> = []
 
 fn proc_self_cgroup_char_index_from(s: String, ch: String, from: Int) -> Int {
   let n = string_length(s: s)
@@ -93,9 +93,9 @@ fn proc_self_cgroup_line_from_wire(line: String) -> ProcSelfCgroupLineParse {
           ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineEmptyPath }
         } else {
           ProcSelfCgroupLineParsed {
-            hierarchy_id: hierarchy as NonEmptyStr,
+            hierarchy_id: hierarchy as std.types.NonEmptyStr,
             controller_list: controllers,
-            relative_path: path as NonEmptyStr,
+            relative_path: path as std.types.NonEmptyStr,
           }
         }
       }
@@ -103,7 +103,7 @@ fn proc_self_cgroup_line_from_wire(line: String) -> ProcSelfCgroupLineParse {
   }
 }
 
-fn proc_self_cgroup_is_unified_v2_line(hierarchy_id: NonEmptyStr, controller_list: String) -> Bool {
+fn proc_self_cgroup_is_unified_v2_line(hierarchy_id: std.types.NonEmptyStr, controller_list: String) -> Bool {
   (hierarchy_id as String == "0") && (controller_list == "")
 }
 
@@ -115,8 +115,8 @@ fn proc_self_cgroup_nonempty_lines(content: String) -> List<String> {
 
 fn proc_self_cgroup_unified_hierarchy_paths_loop(
   lines: List<String>,
-  acc: List<NonEmptyStr>,
-) -> List<NonEmptyStr> {
+  acc: List<std.types.NonEmptyStr>,
+) -> List<std.types.NonEmptyStr> {
   if list_length(items: lines) == 0 {
     acc
   } else {
@@ -135,7 +135,7 @@ fn proc_self_cgroup_unified_hierarchy_paths_loop(
   }
 }
 
-fn proc_self_cgroup_unified_hierarchy_paths(content: String) -> List<NonEmptyStr> {
+fn proc_self_cgroup_unified_hierarchy_paths(content: String) -> List<std.types.NonEmptyStr> {
   proc_self_cgroup_unified_hierarchy_paths_loop(
     lines: proc_self_cgroup_nonempty_lines(content: content),
     acc: proc_self_cgroup_empty_unified_paths,
@@ -214,7 +214,7 @@ fn unified_membership_outcome_tag_eq(
 }
 
 fn proc_self_cgroup_is_unified_v2_line_drift_sketch(
-  hierarchy_id: NonEmptyStr,
+  hierarchy_id: std.types.NonEmptyStr,
   controller_list: String,
 ) -> Bool {
   hierarchy_id as String == "0"
@@ -222,8 +222,8 @@ fn proc_self_cgroup_is_unified_v2_line_drift_sketch(
 
 fn proc_self_cgroup_unified_hierarchy_paths_drift_sketch_loop(
   lines: List<String>,
-  acc: List<NonEmptyStr>,
-) -> List<NonEmptyStr> {
+  acc: List<std.types.NonEmptyStr>,
+) -> List<std.types.NonEmptyStr> {
   if list_length(items: lines) == 0 {
     acc
   } else {
@@ -248,7 +248,7 @@ fn proc_self_cgroup_unified_hierarchy_paths_drift_sketch_loop(
   }
 }
 
-fn proc_self_cgroup_unified_hierarchy_paths_drift_sketch(content: String) -> List<NonEmptyStr> {
+fn proc_self_cgroup_unified_hierarchy_paths_drift_sketch(content: String) -> List<std.types.NonEmptyStr> {
   proc_self_cgroup_unified_hierarchy_paths_drift_sketch_loop(
     lines: proc_self_cgroup_nonempty_lines(content: content),
     acc: proc_self_cgroup_empty_unified_paths,
@@ -275,7 +275,7 @@ fn read_unified_cgroup_membership_drift_sketch(content: String) -> ProcPidCgroup
 
 data proc_self_cgroup_cross_realization_law_note: String = "PERMANENT CROSS-REALIZATION FIXTURE LAW: unified_membership_outcome_tag_from_content is the parser-side projection; bash_proc_self_cgroup classifies executed shell results into the same tag. proc_self_cgroup_is_unified_v2_line_drift_sketch and read_unified_cgroup_membership_drift_sketch are mutation sketches ONLY — they omit the empty-controller guard so a witness can prove drift in that branch reds without shipping the defect."
 
-fn proc_self_cgroup_mount_root_text(mount_root: FilePathParts) -> String {
+fn proc_self_cgroup_mount_root_text(mount_root: std.types.FilePathParts) -> String {
   fold(mount_root.segments, init: "", f: fn(acc, seg) {
     let seg_text = seg as String
     if acc == "" { concat("/", seg_text) } else { concat(acc, concat("/", seg_text)) }
@@ -283,8 +283,8 @@ fn proc_self_cgroup_mount_root_text(mount_root: FilePathParts) -> String {
 }
 
 fn proc_self_cgroup_absolute_path_from_relative(
-  relative_path: NonEmptyStr,
-  mount_root: FilePathParts,
+  relative_path: std.types.NonEmptyStr,
+  mount_root: std.types.FilePathParts,
 ) -> String {
   concat(proc_self_cgroup_mount_root_text(mount_root: mount_root), relative_path as String)
 }

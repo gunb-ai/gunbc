@@ -1,29 +1,29 @@
 module extdeps.github.effect
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/authentication/permissions-required-for-github-apps"
   }
 }
 
-data contents_write_citation: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data contents_write_citation: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/git/refs#update-a-reference"
   }
 }
 
-data workflow_dispatch_citation: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data workflow_dispatch_citation: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event"
   }
 }
 
-data organization_runner_citation: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data organization_runner_citation: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/actions/self-hosted-runners#create-a-registration-token-for-an-organization"
   }
@@ -52,9 +52,9 @@ type GitHubEffect
       organization: GitHubOrganizationRef
     }
 
-data workflow_directory_prefix: NonEmptyStr = ".github/workflows/"
+data workflow_directory_prefix: std.types.NonEmptyStr = ".github/workflows/"
 
-fn path_has_prefix(path: NonEmptyStr, prefix: NonEmptyStr) -> Bool {
+fn path_has_prefix(path: std.types.NonEmptyStr, prefix: std.types.NonEmptyStr) -> Bool {
   let prefix_len = string_length(s: prefix)
   if string_length(s: path) < prefix_len {
     false
@@ -79,32 +79,32 @@ fn workflow_projection_paths(paths: List<RepositoryPath>) -> List<RepositoryPath
   filter(paths, p => is_workflow_projection_path(path: p))
 }
 
-data contents_write: GitHubAppPermission = GitHubAppPermission {
+data contents_write: extdeps.github.app.GitHubAppPermission = extdeps.github.app.GitHubAppPermission {
   name: ContentsAxis,
   access: AppAccessWrite
 }
 
-data workflows_write: GitHubAppPermission = GitHubAppPermission {
+data workflows_write: extdeps.github.app.GitHubAppPermission = extdeps.github.app.GitHubAppPermission {
   name: WorkflowsAxis,
   access: AppAccessWrite
 }
 
-data actions_write: GitHubAppPermission = GitHubAppPermission {
+data actions_write: extdeps.github.app.GitHubAppPermission = extdeps.github.app.GitHubAppPermission {
   name: ActionsAxis,
   access: AppAccessWrite
 }
 
-data metadata_read: GitHubAppPermission = GitHubAppPermission {
+data metadata_read: extdeps.github.app.GitHubAppPermission = extdeps.github.app.GitHubAppPermission {
   name: MetadataAxis,
   access: AppAccessRead
 }
 
-data organization_self_hosted_runners_write: GitHubAppPermission = GitHubAppPermission {
+data organization_self_hosted_runners_write: extdeps.github.app.GitHubAppPermission = extdeps.github.app.GitHubAppPermission {
   name: OrganizationSelfHostedRunnersAxis,
   access: AppAccessWrite
 }
 
-fn advance_branch_required_permissions(paths: List<RepositoryPath>) -> List<GitHubAppPermission> {
+fn advance_branch_required_permissions(paths: List<RepositoryPath>) -> List<extdeps.github.app.GitHubAppPermission> {
   if any_workflow_projection_path(paths: paths) {
     [contents_write, workflows_write]
   } else {
@@ -112,7 +112,7 @@ fn advance_branch_required_permissions(paths: List<RepositoryPath>) -> List<GitH
   }
 }
 
-fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPermission> {
+fn github_effect_required_permissions(effect: GitHubEffect) -> List<extdeps.github.app.GitHubAppPermission> {
   match effect {
     AdvanceRepositoryBranch { repository: _, branch: _, changed_paths } =>
       advance_branch_required_permissions(paths: changed_paths)
@@ -123,9 +123,9 @@ fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPer
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.effect",
       decl_name: "GitHubEffect",
       field: WholeDeclaration

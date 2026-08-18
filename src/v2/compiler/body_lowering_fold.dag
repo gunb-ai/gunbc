@@ -4,7 +4,7 @@ module v2.compiler.body_lowering_fold
 
 data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into v2.compiler.body_producer_forward GrammarRelationRow forward fold (general-body-producer-design §3) once Slice 4 deletes this module; match/if/body_try hand-walker scaffolds dissolved into body_producer_forward + body_lower_fold. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained with typed diagnostic ^body_lowering_reason_wrapper_retained_emitted (general-body-producer-design Stage A frontier: lowered | wrapper-retained cause, counted — never silent shell accept)."
 
-data body_lowering_fold_dissolution_contract: DissolutionCondition = unbound_dissolution(description: "FLAG E dissolution DELETES this module — coverage lives in v2.compiler.body_producer_forward forward rows + GrammarRelationRow slot-map apply (general-body-producer-design §3). The hand-authored families (body_lower_deep_unwrap*, body_lower_operand_ref*, body_lower_operator_tail/infix*, body_lower_postfix_projection*) are receipt scaffolding only. Acceptance: this file is gone and coverage lives in forward rows + existing witnesses. match/if/body_try hand-walker scaffolds LANDED: body_lower_try_body_lowered delegates behavior productions to body_lower_fold; body_producer_forward owns the forward row table.")
+data body_lowering_fold_dissolution_contract: std.dissolution.DissolutionCondition = unbound_dissolution(description: "FLAG E dissolution DELETES this module — coverage lives in v2.compiler.body_producer_forward forward rows + GrammarRelationRow slot-map apply (general-body-producer-design §3). The hand-authored families (body_lower_deep_unwrap*, body_lower_operand_ref*, body_lower_operator_tail/infix*, body_lower_postfix_projection*) are receipt scaffolding only. Acceptance: this file is gone and coverage lives in forward rows + existing witnesses. match/if/body_try hand-walker scaffolds LANDED: body_lower_try_body_lowered delegates behavior productions to body_lower_fold; body_producer_forward owns the forward row table.")
 
 data body_lowering_rejection_propagation_note: String = "GENUINE REJECTION PROPAGATES; RETENTION IS PRODUCED, NEVER INFERRED FROM FAILURE (2026-08-11). body_lower_finish_for_normalize previously matched EVERY Rejected from body_lower_after_children and returned a wrapper-retained Accepted instead, binding the rejection diagnostics to _ and discarding them. That conflated four different states behind one arm: this lowering strategy does not apply, this valid form has no producer yet, this form is malformed, and an invariant was violated. It is the inverse of the not-applicable-versus-malformed conflation #6558 already ruled on, moved out to the outer seam.\n\nThe repair is a deletion rather than a new mechanism, because the legitimate case was already explicit: body_lower_production_emitted's final arm returns body_lower_wrapper_retained_shell for an emitted identity with no registered producer. That IS the declared lowered | wrapper-retained frontier, produced deliberately at the point where not-applicable is known. The outer catch was therefore a second, inferential source of retention standing beside the real one, and it could only fire on outcomes the strategy functions had already judged. So retention now has exactly one producer, and the outer Outcome owns genuine rejection with its diagnostics preserved through rejected_with_pending.\n\nWHAT THIS DOES NOT DO: it does not scope, weaken or relocate normalize's recursive well_formed gate, which #6520 established as the sole structural wall and which stays unchanged. Modules whose retained bodies still fail that gate continue to fail it; this change only stops a real refusal from being relabelled as a counted frontier state on its way there."
 
@@ -20,11 +20,11 @@ fn body_lowering_forward_behavior_row_count() -> Int {
   body_producer_forward_row_count()
 }
 
-fn body_lower_fold_behavior_surface_identities() -> List<Symbol> {
+fn body_lower_fold_behavior_surface_identities() -> List<v2.std.node.Symbol> {
   body_producer_forward_surface_identities()
 }
 
-fn body_lowering_surface_identity_list_contains(xs: List<Symbol>, target: Symbol) -> Bool {
+fn body_lowering_surface_identity_list_contains(xs: List<v2.std.node.Symbol>, target: v2.std.node.Symbol) -> Bool {
   fold(xs, init: false, f: fn(acc, id) { acc || id == target })
 }
 
@@ -47,11 +47,11 @@ type BodyLoweringFrontierDisposition
   | BodyLoweringWrapperRetained { reason: v2.std.node.Symbol }
   | BodyLoweringRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 
-fn body_lowering_diagnostic_is_wrapper_retained(d: Diagnostic) -> Bool {
+fn body_lowering_diagnostic_is_wrapper_retained(d: v2.std.diagnostic.Diagnostic) -> Bool {
   d.reason == ^body_lowering_reason_wrapper_retained_emitted
 }
 
-fn body_lowering_any_diagnostic_is_wrapper_retained(ne: NonEmptyDiagnostics) -> Bool {
+fn body_lowering_any_diagnostic_is_wrapper_retained(ne: v2.std.diagnostic.NonEmptyDiagnostics) -> Bool {
   fold_list(
     xs: ne.tail,
     empty: body_lowering_diagnostic_is_wrapper_retained(d: ne.head),
@@ -59,7 +59,7 @@ fn body_lowering_any_diagnostic_is_wrapper_retained(ne: NonEmptyDiagnostics) -> 
   )
 }
 
-fn body_lowering_diagnostics_carry_wrapper_retention(d: Diagnostics) -> Bool {
+fn body_lowering_diagnostics_carry_wrapper_retention(d: v2.std.diagnostic.Diagnostics) -> Bool {
   match d {
     None => false
     Some { diagnostics: ne } => body_lowering_any_diagnostic_is_wrapper_retained(ne: ne)
@@ -93,14 +93,14 @@ fn body_lower_outcome_frontier_disposition(o: Outcome<Node>) -> BodyLoweringFron
   }
 }
 
-fn body_lower_seq_child(node: Node, name: Symbol) -> Optional<Node> {
+fn body_lower_seq_child(node: Node, name: v2.std.node.Symbol) -> Optional<Node> {
   match find_named_child(root: node, name: name) {
     Accepted { value: child, diagnostics: _ } => Present { value: child }
     Rejected { diagnostics: _ } => Absent
   }
 }
 
-fn body_lower_fn_decl_ident_from_captured(captured: Node) -> Optional<Symbol> {
+fn body_lower_fn_decl_ident_from_captured(captured: Node) -> Optional<v2.std.node.Symbol> {
   match body_lower_seq_child(node: captured, name: ^grammar_sequence_right_node_projection) {
     Absent => Absent
     Present { value: after_kw_fn } =>
@@ -124,7 +124,7 @@ fn body_lower_fn_decl_ident_from_captured(captured: Node) -> Optional<Symbol> {
   }
 }
 
-fn body_lower_arrow_domain_named_bindings(root: Node) -> List<Symbol> {
+fn body_lower_arrow_domain_named_bindings(root: Node) -> List<v2.std.node.Symbol> {
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(root.children, init: Empty, f: fn(acc, e) {
@@ -138,13 +138,13 @@ fn body_lower_arrow_domain_named_bindings(root: Node) -> List<Symbol> {
 }
 
 fn body_lower_binding_symbol_lists_match(
-  expected: List<Symbol>,
-  actual: List<Symbol>
+  expected: List<v2.std.node.Symbol>,
+  actual: List<v2.std.node.Symbol>
 ) -> Bool {
   zip_eq(a: expected, b: actual, eq: fn(left, right) { left == right })
 }
 
-fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<Symbol> {
+fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<v2.std.node.Symbol> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
     Absent => Empty
     Present { value: comma_spine } =>
@@ -161,7 +161,7 @@ fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<Sy
   }
 }
 
-fn body_lower_param_binding_symbols_from_fn_captured(captured: Node) -> List<Symbol> {
+fn body_lower_param_binding_symbols_from_fn_captured(captured: Node) -> List<v2.std.node.Symbol> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
     ParseSubtreeFound { captured: param_list } =>
       body_lower_param_binding_symbols_from_param_list(param_list: param_list)
@@ -169,7 +169,7 @@ fn body_lower_param_binding_symbols_from_fn_captured(captured: Node) -> List<Sym
   }
 }
 
-fn body_lower_param_binding_symbols_from_fn_decl_module(root: Node) -> List<Symbol> {
+fn body_lower_param_binding_symbols_from_fn_decl_module(root: Node) -> List<v2.std.node.Symbol> {
   match body_lower_find_captured(root: root, emitted: ^dag_surface_fn_decl) {
     ParseSubtreeFound { captured: captured } =>
       body_lower_param_binding_symbols_from_fn_captured(captured: captured)
@@ -177,7 +177,7 @@ fn body_lower_param_binding_symbols_from_fn_decl_module(root: Node) -> List<Symb
   }
 }
 
-fn body_lower_arrow_domain_binding_symbols(arrow: Node) -> List<Symbol> {
+fn body_lower_arrow_domain_binding_symbols(arrow: Node) -> List<v2.std.node.Symbol> {
   match count(arrow.children) >= 1 {
     true =>
       match first(arrow.children) {
@@ -191,7 +191,7 @@ fn body_lower_arrow_domain_binding_symbols(arrow: Node) -> List<Symbol> {
 
 fn body_lower_arrow_domain_matches_ingest_param_bindings(
   arrow: Node,
-  ingest_bindings: List<Symbol>
+  ingest_bindings: List<v2.std.node.Symbol>
 ) -> Bool {
   body_lower_binding_symbol_lists_match(
     expected: ingest_bindings,
@@ -199,14 +199,14 @@ fn body_lower_arrow_domain_matches_ingest_param_bindings(
   )
 }
 
-fn body_lower_frontend_symbol_index_from_module(tree: Node) -> SymbolIndex {
+fn body_lower_frontend_symbol_index_from_module(tree: Node) -> v2.std.symbol_index.SymbolIndex {
   symbol_index_fill_module_root(index: empty_symbol_index(), root: tree)
 }
 
 fn body_lower_arrow_domain_matches_frontend_symbol_index(
   arrow: Node,
   module_tree: Node,
-  fn_name: Symbol
+  fn_name: v2.std.node.Symbol
 ) -> Bool {
   match qualified_name_from_module_node(root: module_tree) {
     Accepted { value: module_qn, diagnostics: _ } =>
@@ -233,19 +233,19 @@ fn body_lower_arrow_domain_matches_frontend_symbol_index(
   }
 }
 
-fn body_lower_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
-  Diagnostic {
+fn body_lower_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn body_lower_wrapper_retained_diagnostic(n: Node) -> Diagnostic {
+fn body_lower_wrapper_retained_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   body_lower_diagnostic(reason: ^body_lowering_reason_wrapper_retained_emitted, n: n)
 }
 
-fn body_lower_canonical_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
+fn body_lower_canonical_type_binding_optional(sym: v2.std.node.Symbol) -> Optional<v2.std.node.Symbol> {
   if sym == dag_int_type_binding() {
     optional_present(value: sym)
   } else if symbol_lexeme(sym: sym) == "Int" {
@@ -257,14 +257,14 @@ fn body_lower_canonical_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
   }
 }
 
-fn body_lower_resolved_type_binding(sym: Symbol) -> Symbol {
+fn body_lower_resolved_type_binding(sym: v2.std.node.Symbol) -> v2.std.node.Symbol {
   match body_lower_canonical_type_binding_optional(sym: sym) {
     Present { value: canonical } => canonical
     Absent => sym
   }
 }
 
-fn body_lower_type_atom_node(sym: Symbol) -> Node {
+fn body_lower_type_atom_node(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: body_lower_resolved_type_binding(sym: sym) } },
     children: []
@@ -288,7 +288,7 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
   }
 }
 
-fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
+fn body_lower_is_pass_through_emitted(emitted: v2.std.node.Symbol) -> Bool {
   (emitted == ^dag_surface_expr)
     || (emitted == ^dag_surface_binary_expr)
     || (emitted == ^dag_surface_unary_expr)
@@ -299,7 +299,7 @@ fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_arg)
 }
 
-fn body_lower_is_identity_projection_edge(edge: Edge) -> Bool {
+fn body_lower_is_identity_projection_edge(edge: v2.std.node.Edge) -> Bool {
   match edge.label {
     Named { name: n } => n == ^grammar_production_identity_node_projection
     Positional => false
@@ -320,13 +320,13 @@ fn body_lower_operand_fold_children_optional(node: Node) -> Optional<Node> {
   })
 }
 
-fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
+fn body_lower_is_deferred_lower_emitted(emitted: v2.std.node.Symbol) -> Bool {
   (emitted == ^dag_surface_pattern)
     || (emitted == ^dag_surface_match_arm)
     || (emitted == ^dag_surface_match_arm_stmt_body)
 }
 
-fn body_lower_is_deferred_lower_at_normalize(emitted: Symbol, under_fn_decl: Bool) -> Bool {
+fn body_lower_is_deferred_lower_at_normalize(emitted: v2.std.node.Symbol, under_fn_decl: Bool) -> Bool {
   if emitted == ^dag_surface_fn_body {
     under_fn_decl
   } else {
@@ -334,7 +334,7 @@ fn body_lower_is_deferred_lower_at_normalize(emitted: Symbol, under_fn_decl: Boo
   }
 }
 
-fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
+fn body_lower_is_metadata_preserved_emitted(emitted: v2.std.node.Symbol) -> Bool {
   (emitted == ^dag_surface_module)
     || (emitted == ^dag_surface_module_header)
     || (emitted == ^dag_surface_import_decl)
@@ -349,7 +349,7 @@ fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_import_block)
 }
 
-fn body_lower_param_ref_atom(source: Node, identity: Symbol) -> Node {
+fn body_lower_param_ref_atom(source: Node, identity: v2.std.node.Symbol) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
@@ -357,13 +357,13 @@ fn body_lower_param_ref_atom(source: Node, identity: Symbol) -> Node {
   )
 }
 
-fn body_lower_find_captured_prunable(id: Symbol) -> Bool {
+fn body_lower_find_captured_prunable(id: v2.std.node.Symbol) -> Bool {
   (id == ^dag_surface_module_header)
     || (id == ^dag_surface_qualified_name)
     || (id == ^dag_surface_type_expr)
 }
 
-fn body_lower_find_captured_under_children(root: Node, emitted: Symbol) -> ParseSubtreeFind {
+fn body_lower_find_captured_under_children(root: Node, emitted: v2.std.node.Symbol) -> v2.extdeps.languages.dag.ParseSubtreeFind {
   fold(root.children, init: ParseSubtreeAbsent, f: fn(acc, edge) {
     match acc {
       ParseSubtreeFound { captured: _ } => acc
@@ -372,7 +372,7 @@ fn body_lower_find_captured_under_children(root: Node, emitted: Symbol) -> Parse
   })
 }
 
-fn body_lower_find_captured(root: Node, emitted: Symbol) -> ParseSubtreeFind {
+fn body_lower_find_captured(root: Node, emitted: v2.std.node.Symbol) -> v2.extdeps.languages.dag.ParseSubtreeFind {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       if id == emitted {
@@ -391,7 +391,7 @@ fn body_lower_find_captured(root: Node, emitted: Symbol) -> ParseSubtreeFind {
 
 fn body_lower_find_production_shell_under_children(
   root: Node,
-  emitted: Symbol
+  emitted: v2.std.node.Symbol
 ) -> Optional<Node> {
   fold(root.children, init: Absent, f: fn(acc, edge) {
     match acc {
@@ -401,7 +401,7 @@ fn body_lower_find_production_shell_under_children(
   })
 }
 
-fn body_lower_find_production_shell_optional(root: Node, emitted: Symbol) -> Optional<Node> {
+fn body_lower_find_production_shell_optional(root: Node, emitted: v2.std.node.Symbol) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       match id == emitted {
@@ -776,7 +776,7 @@ fn body_lower_after_comma_tail_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_typed_param_from_comma_seq(sequence_capture: Node) -> Optional<Edge> {
+fn body_lower_typed_param_from_comma_seq(sequence_capture: Node) -> Optional<v2.std.node.Edge> {
   match sugar_sequence_pair_optional(node: sequence_capture) {
     Present { value: pair } =>
       match body_lower_typed_param_edge(param_capture: pair.right) {
@@ -787,7 +787,7 @@ fn body_lower_typed_param_from_comma_seq(sequence_capture: Node) -> Optional<Edg
   }
 }
 
-fn body_lower_collect_param_edges_from_repeat_tail(repeat_capture: Node) -> List<Edge> {
+fn body_lower_collect_param_edges_from_repeat_tail(repeat_capture: Node) -> List<v2.std.node.Edge> {
   if is_empty_conj_root(n: repeat_capture) {
     Empty
   } else {
@@ -821,7 +821,7 @@ fn body_lower_collect_param_edges_from_repeat_tail(repeat_capture: Node) -> List
   }
 }
 
-fn body_lower_collect_param_edges(sequence_capture: Node) -> List<Edge> {
+fn body_lower_collect_param_edges(sequence_capture: Node) -> List<v2.std.node.Edge> {
   match find_named_child(root: sequence_capture, name: ^grammar_sequence_left_node_projection) {
     Accepted { value: first, diagnostics: _ } =>
       let first_edges = match body_lower_typed_param_edge(param_capture: first) {
@@ -870,7 +870,7 @@ fn body_lower_collect_param_edges(sequence_capture: Node) -> List<Edge> {
   }
 }
 
-fn body_lower_param_binding_optional(node: Node) -> Optional<Symbol> {
+fn body_lower_param_binding_optional(node: Node) -> Optional<v2.std.node.Symbol> {
   match dag_binding_branded_atom_identity(node: node) {
     Present { value: binding } => Present { value: binding }
     Absent =>
@@ -894,7 +894,7 @@ fn body_lower_param_binding_optional(node: Node) -> Optional<Symbol> {
   }
 }
 
-fn body_lower_typed_param_edge(param_capture: Node) -> Optional<Edge> {
+fn body_lower_typed_param_edge(param_capture: Node) -> Optional<v2.std.node.Edge> {
   match sugar_sequence_pair_optional(node: param_capture) {
     Absent => Absent
     Present { value: pair } =>
@@ -908,7 +908,7 @@ fn body_lower_typed_param_edge(param_capture: Node) -> Optional<Edge> {
                 Absent => Absent
                 Present { value: type_node } =>
                   Present {
-                    value: Edge {
+                    value: v2.std.node.Edge {
                       label: Named { name: binding },
                       target: type_node
                     }
@@ -1275,7 +1275,7 @@ fn body_lower_reduce_or_keep(o: Outcome<Node>, folded: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
+fn body_lower_reduce_emitted(folded: Node, emitted: v2.std.node.Symbol) -> Outcome<Node> {
   if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: folded)
   } else if emitted == ^dag_surface_binary_expr {
@@ -1321,7 +1321,7 @@ fn body_lower_fold_children(node: Node) -> Outcome<Node> {
             v2.std.diagnostic.Accepted {
               value: node_rebuild(
                 n: shell,
-                children: list_snoc_item(xs: shell.children, item: Edge { label: e.label, target: child })
+                children: list_snoc_item(xs: shell.children, item: v2.std.node.Edge { label: e.label, target: child })
               ),
               diagnostics: diagnostics_merge(outer: ad, inner: cd)
             }
@@ -1530,14 +1530,14 @@ fn body_lower_reify_operand_node(node: Node) -> Optional<Node> {
 }
 
 fn body_lower_reify_transform_edge(
-  done: List<Edge>,
-  e: Edge
-) -> Outcome<List<Edge>> {
+  done: List<v2.std.node.Edge>,
+  e: v2.std.node.Edge
+) -> Outcome<List<v2.std.node.Edge>> {
   if length(xs: done) == 0 {
     outcome_accepted(
       value: list_snoc_item(
         xs: done,
-        item: Edge { label: e.label, target: e.target }
+        item: v2.std.node.Edge { label: e.label, target: e.target }
       )
     )
   } else {
@@ -1546,7 +1546,7 @@ fn body_lower_reify_transform_edge(
         outcome_accepted(
           value: list_snoc_item(
             xs: done,
-            item: Edge { label: e.label, target: reified }
+            item: v2.std.node.Edge { label: e.label, target: reified }
           )
         )
       Absent =>
@@ -1594,11 +1594,11 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol) -> Node {
+fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: fn_name }, target: arrow }
+      v2.std.node.Edge { label: Named { name: fn_name }, target: arrow }
     ]
   )
 }
@@ -1631,10 +1631,10 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
                                   let arrow = node_synthetic(
                                     kind: TypeNode { connective: Arrow },
                                     children: [
-                                      Edge { label: Positional, target: domain },
-                                      Edge { label: Positional, target: return_type },
-                                      Edge { label: Positional, target: return_type },
-                                      Edge {
+                                      v2.std.node.Edge { label: Positional, target: domain },
+                                      v2.std.node.Edge { label: Positional, target: return_type },
+                                      v2.std.node.Edge { label: Positional, target: return_type },
+                                      v2.std.node.Edge {
                                         label: Named { name: ^arrow_body_edge },
                                         target: reified_body
                                       }
@@ -1748,15 +1748,15 @@ fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: list_append(
-      left: [Edge { label: Positional, target: operator }],
+      left: [v2.std.node.Edge { label: Positional, target: operator }],
       right: fold(args, init: Empty, f: fn(acc, arg) {
-        list_snoc_item(xs: acc, item: Edge { label: Positional, target: arg })
+        list_snoc_item(xs: acc, item: v2.std.node.Edge { label: Positional, target: arg })
       })
     )
   )
 }
 
-fn body_lower_method_operator_atom(sym: Symbol) -> Node {
+fn body_lower_method_operator_atom(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: sym } },
     children: []
@@ -2000,7 +2000,7 @@ fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<List<Node>
   }
 }
 
-fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
+fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<v2.std.node.Symbol> {
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => Absent
@@ -2143,8 +2143,8 @@ fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: match_arm_pattern }, target: pat_node },
-      Edge { label: Named { name: match_arm_body }, target: body }
+      v2.std.node.Edge { label: Named { name: match_arm_pattern }, target: pat_node },
+      v2.std.node.Edge { label: Named { name: match_arm_body }, target: body }
     ]
   )
 }
@@ -2380,7 +2380,7 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_is_match_arm_navigate_emitted(emitted: Symbol) -> Bool {
+fn body_lower_is_match_arm_navigate_emitted(emitted: v2.std.node.Symbol) -> Bool {
   (emitted == ^dag_surface_pattern)
     || (emitted == ^dag_surface_primary_expr)
     || (emitted == ^dag_surface_match_arm_stmt_body)
@@ -2535,7 +2535,7 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
             outcome_with_diagnostics(
               value: list_snoc_item(
                 xs: done,
-                item: Edge {
+                item: v2.std.node.Edge {
                   label: e.label,
                   target: body_lower_reify_branch_target(node: e.target)
                 }
@@ -3016,7 +3016,7 @@ fn body_lower_let_in_value_capture_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<Symbol> {
+fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<v2.std.node.Symbol> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Present { value: left } =>
@@ -3482,7 +3482,7 @@ fn body_lower_match_spine_right(spine: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_match_scrutinee_on_token(id: Symbol, left: Node, right: Node) -> Optional<Node> {
+fn body_lower_match_scrutinee_on_token(id: v2.std.node.Symbol, left: Node, right: Node) -> Optional<Node> {
   match id == ^dag_token_lbrace {
     true => Absent
     false =>
@@ -3537,7 +3537,7 @@ fn body_lower_match_scrutinee_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_match_arms_on_lbrace_token(id: Symbol, right: Node) -> Outcome<Optional<List<Node>>> {
+fn body_lower_match_arms_on_lbrace_token(id: v2.std.node.Symbol, right: Node) -> Outcome<Optional<List<Node>>> {
   match id == ^dag_token_lbrace {
     true =>
       match body_lower_match_arms_from_brace_interior(interior: right) {
@@ -3648,11 +3648,11 @@ fn body_lowering_match_spine_identity_absent_fixture_spine() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^grammar_sequence_left_node_projection },
         target: match_kw
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^grammar_sequence_right_node_projection },
         target: tail
       }
@@ -3827,7 +3827,7 @@ fn body_lower_fn_body_shell(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<Node> {
+fn body_lower_forward_row_apply(shell: Node, emitted: v2.std.node.Symbol) -> Outcome<Node> {
   if emitted == ^dag_surface_fn_decl {
     body_lower_fn_decl_to_arrow(shell: shell)
   } else if emitted == ^dag_surface_fn_body {
@@ -3845,7 +3845,7 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<Node> {
   }
 }
 
-fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<Node> {
+fn body_lower_production_emitted(shell: Node, emitted: v2.std.node.Symbol, fn_body_pass_through: Bool) -> Outcome<Node> {
   if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: shell)
   } else if emitted == ^dag_surface_fn_body && fn_body_pass_through {
@@ -3883,7 +3883,7 @@ fn body_lower_after_children(folded: Node, fn_body_pass_through: Bool) -> Outcom
   }
 }
 
-fn body_lower_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
+fn body_lower_finish(n: Node, folded: Node, cd: v2.std.diagnostic.Diagnostics) -> Outcome<Node> {
   body_lower_finish_for_normalize(
     n: n,
     folded: folded,
@@ -3895,7 +3895,7 @@ fn body_lower_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
 fn body_lower_finish_for_normalize(
   n: Node,
   folded: Node,
-  cd: Diagnostics,
+  cd: v2.std.diagnostic.Diagnostics,
   fn_body_pass_through: Bool
 ) -> Outcome<Node> {
   match body_lower_after_children(folded: folded, fn_body_pass_through: fn_body_pass_through) {

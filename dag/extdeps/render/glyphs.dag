@@ -1,8 +1,8 @@
 module extdeps.render.glyphs
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.unicode.org/versions/latest/"
   }
@@ -83,7 +83,7 @@ data standard_symbols: List<SymbolEntry> = [
   { id: BoxCornerBottomRight,   glyphs: glyphs_for_tiers(emoji: glyph(text: "┘"), unicode: glyph(text: "┘"), ascii: glyph(text: "+")), color: Dim }
 ]
 
-fn lookup_symbol_entry(id: SymbolId) -> SymbolEntry? {
+fn lookup_symbol_entry(id: std.symbols.SymbolId) -> SymbolEntry? {
   fold(standard_symbols,
     init: none,
     f: (acc, e) => match acc {
@@ -98,14 +98,14 @@ fn lookup_symbol_entry(id: SymbolId) -> SymbolEntry? {
   )
 }
 
-fn resolve_symbol(id: SymbolId, tier: Tier) -> String? {
+fn resolve_symbol(id: std.symbols.SymbolId, tier: std.symbols.Tier) -> String? {
   match lookup_symbol_entry(id: id) {
     Present { value: entry } => Present { value: glyph_at(glyphs: entry.glyphs, tier: tier) }
     Absent => none
   }
 }
 
-fn symbol_color(id: SymbolId) -> SemanticColor? {
+fn symbol_color(id: std.symbols.SymbolId) -> std.symbols.SemanticColor? {
   match lookup_symbol_entry(id: id) {
     Present { value: entry } => Present { value: entry.color }
     Absent => none
@@ -114,7 +114,7 @@ fn symbol_color(id: SymbolId) -> SemanticColor? {
 
 data reward_animal_note: String = "The reward animal shown on a terminal success lands as ROWS in the one glyph authority, never as a hardcoded function in a renderer — the reference implementation studied for this lane keeps its emoji table mirrored by hand between Go and shell, which is the maintained dual representation we are here to not have. Selection is DETERMINISTIC: the index is derived from the run's own identity, so replaying a captured run reproduces its animal exactly and the event stream stays replayable by construction. A random draw would make the stream unreplayable and would be a non-determinism root of precisely the kind the determinism gate walls."
 
-data reward_animals: List<TierGlyphs> = [
+data reward_animals: List<extdeps.render.tier_glyphs.TierGlyphs> = [
   glyphs_for_tiers(emoji: glyph(text: "🦦"), unicode: glyph(text: "✦"), ascii: glyph(text: "otter")),
   glyphs_for_tiers(emoji: glyph(text: "🦊"), unicode: glyph(text: "✦"), ascii: glyph(text: "fox")),
   glyphs_for_tiers(emoji: glyph(text: "🦉"), unicode: glyph(text: "✦"), ascii: glyph(text: "owl")),
@@ -128,7 +128,7 @@ type RewardPick {
   found: extdeps.render.tier_glyphs.TierGlyphs?
 }
 
-fn reward_animal_at(index: Int, tier: Tier) -> String? {
+fn reward_animal_at(index: Int, tier: std.symbols.Tier) -> String? {
   let n = count(reward_animals)
   if n == 0 {
     none

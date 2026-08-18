@@ -1,16 +1,16 @@
 module extdeps.rust.target_triple
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "doc.rust-lang.org/rustc/platform-support.html"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.rust.target_triple",
       decl_name: "RustTargetTripleRow",
       field: WholeDeclaration
@@ -32,35 +32,35 @@ type RustTargetTripleRow {
 fn rust_target_triple_rows() -> List<RustTargetTripleRow> {
   [
     RustTargetTripleRow {
-      spelling: "x86_64-unknown-linux-gnu" as NonEmptyStr,
-      triple: TargetTriple { arch: X86_64, vendor: UnknownVendor, os: Linux, env: Present { value: Gnu } },
+      spelling: "x86_64-unknown-linux-gnu" as std.types.NonEmptyStr,
+      triple: extdeps.toolchain.types.TargetTriple { arch: X86_64, vendor: UnknownVendor, os: Linux, env: Present { value: Gnu } },
     },
     RustTargetTripleRow {
-      spelling: "aarch64-unknown-linux-gnu" as NonEmptyStr,
-      triple: TargetTriple { arch: Aarch64, vendor: UnknownVendor, os: Linux, env: Present { value: Gnu } },
+      spelling: "aarch64-unknown-linux-gnu" as std.types.NonEmptyStr,
+      triple: extdeps.toolchain.types.TargetTriple { arch: Aarch64, vendor: UnknownVendor, os: Linux, env: Present { value: Gnu } },
     },
     RustTargetTripleRow {
-      spelling: "x86_64-unknown-linux-musl" as NonEmptyStr,
-      triple: TargetTriple { arch: X86_64, vendor: UnknownVendor, os: Linux, env: Present { value: Musl } },
+      spelling: "x86_64-unknown-linux-musl" as std.types.NonEmptyStr,
+      triple: extdeps.toolchain.types.TargetTriple { arch: X86_64, vendor: UnknownVendor, os: Linux, env: Present { value: Musl } },
     },
     RustTargetTripleRow {
-      spelling: "aarch64-unknown-linux-musl" as NonEmptyStr,
-      triple: TargetTriple { arch: Aarch64, vendor: UnknownVendor, os: Linux, env: Present { value: Musl } },
+      spelling: "aarch64-unknown-linux-musl" as std.types.NonEmptyStr,
+      triple: extdeps.toolchain.types.TargetTriple { arch: Aarch64, vendor: UnknownVendor, os: Linux, env: Present { value: Musl } },
     },
     RustTargetTripleRow {
-      spelling: "aarch64-apple-darwin" as NonEmptyStr,
-      triple: TargetTriple { arch: Aarch64, vendor: Apple, os: Macos, env: none },
+      spelling: "aarch64-apple-darwin" as std.types.NonEmptyStr,
+      triple: extdeps.toolchain.types.TargetTriple { arch: Aarch64, vendor: Apple, os: Macos, env: none },
     },
     RustTargetTripleRow {
-      spelling: "x86_64-apple-darwin" as NonEmptyStr,
-      triple: TargetTriple { arch: X86_64, vendor: Apple, os: Macos, env: none },
+      spelling: "x86_64-apple-darwin" as std.types.NonEmptyStr,
+      triple: extdeps.toolchain.types.TargetTriple { arch: X86_64, vendor: Apple, os: Macos, env: none },
     },
   ]
 }
 
 data rust_target_triple_lookup_note: String = "The lookup is a fold over the rows in both directions, so one table serves parsing an observed triple and rendering a modeled one. Two functions reading one row set is the same structure read forwards and backwards; a second table for the reverse direction would be the fork this module exists to avoid."
 
-fn parse_rust_target_triple(spelling: String) -> TargetTriple? {
+fn parse_rust_target_triple(spelling: String) -> extdeps.toolchain.types.TargetTriple? {
   fold(
     rust_target_triple_rows(),
     init: none,
@@ -77,7 +77,7 @@ fn parse_rust_target_triple(spelling: String) -> TargetTriple? {
   )
 }
 
-fn render_rust_target_triple(triple: TargetTriple) -> NonEmptyStr? {
+fn render_rust_target_triple(triple: extdeps.toolchain.types.TargetTriple) -> std.types.NonEmptyStr? {
   fold(
     rust_target_triple_rows(),
     init: none,

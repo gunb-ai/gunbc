@@ -1,51 +1,51 @@
 module v2.test.lens_complexity.map_id
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 type LensComplexityClaim {
   input: Node
   expected_cost: v2.lens.cost.SymbolicCost
   expected_complexity: v2.lens.complexity.ComplexityBound
   falsification: v2.std.diagnostic.Diagnostic
 }
-data map_id_body_leaf: Node = Node {
+data map_id_body_leaf: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^map_id_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data map_id_body: Node = Node {
+data map_id_body: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: map_id_body_leaf }
+    v2.std.node.Edge { label: Positional, target: map_id_body_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data map_id_input: Node = Node {
+data map_id_input: Node = v2.std.node.Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: map_id_body }
+    v2.std.node.Edge { label: Positional, target: map_id_body }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
 data map_id_claim: LensComplexityClaim = LensComplexityClaim {
   input: map_id_input,
-  expected_cost: LinearCost { variable: SizeVariable { source: map_id_input } },
-  expected_complexity: linear_complexity(size_var: SizeVariable { source: map_id_input }),
-  falsification: Diagnostic {
+  expected_cost: LinearCost { variable: v2.lens.cost.SizeVariable { source: map_id_input } },
+  expected_complexity: linear_complexity(size_var: v2.lens.cost.SizeVariable { source: map_id_input }),
+  falsification: v2.std.diagnostic.Diagnostic {
     reason: ^map_id_claim_reason,
     at: Textual { file: ^map_id_claim_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
-fn map_id_actual_cost() -> Witness<SymbolicCost> {
+fn map_id_actual_cost() -> Witness<v2.lens.cost.SymbolicCost> {
   cost_lens(n: map_id_input)
 }
 
-fn map_id_actual_complexity() -> ComplexityBound {
+fn map_id_actual_complexity() -> v2.lens.complexity.ComplexityBound {
   complexity_lens(n: map_id_input)
 }
 

@@ -12,7 +12,7 @@ type UpstreamFactCarriage
   = FactsMayBeCarried
   | FactsBarredDocumentNotPublic { gate: std.types.NonEmptyStr }
 
-fn upstream_fact_carriage(status: DocumentPublicationStatus) -> UpstreamFactCarriage {
+fn upstream_fact_carriage(status: extdeps.publication.DocumentPublicationStatus) -> UpstreamFactCarriage {
   match status {
     PubliclyPublishedUnderOpenLicense { license } => FactsMayBeCarried
     PubliclyPublishedWithRestrictiveMarking { marking } => FactsMayBeCarried
@@ -31,6 +31,6 @@ fn carriage_permits_facts(carriage: UpstreamFactCarriage) -> Bool {
 // alternative to a ruling was never patience: the Ampere reference-board design
 // packages are behind Customer Connect, they cannot enter this repository at
 // all, and no ruling about public documents changes that.
-data ampere_customer_connect_collateral_status: DocumentPublicationStatus = AccessGatedNotPubliclyPublished {
+data ampere_customer_connect_collateral_status: extdeps.publication.DocumentPublicationStatus = AccessGatedNotPubliclyPublished {
   gate: "Ampere Customer Connect, NDA registration required",
 }

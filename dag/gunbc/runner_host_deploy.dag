@@ -9,7 +9,7 @@ type GithubAppRunnerConfig {
   app_pem_secret: extdeps.cloud.gcp.secret_ref.SecretRef
 }
 
-fn github_app_runner_org(config: GithubAppRunnerConfig) -> NonEmptyStr {
+fn github_app_runner_org(config: GithubAppRunnerConfig) -> std.types.NonEmptyStr {
   config.app.owner_login
 }
 
@@ -58,7 +58,7 @@ fn runner_host_docker_provision_script() -> String {
   docker_ce_repo_install_script(repo: docker_ce_apt_repo_noble_arm64, packages: docker_ce_packages)
 }
 
-fn runner_host_sccache_provision_script(arch: NonEmptyStr, sha256: NonEmptyStr) -> String {
+fn runner_host_sccache_provision_script(arch: std.types.NonEmptyStr, sha256: std.types.NonEmptyStr) -> String {
   sccache_install_script(rel: sccache_release_0_15_0, arch: arch, digest: sha256_digest(hex: sha256))
 }
 
@@ -80,7 +80,7 @@ type RunnerCommandOrRefusal
   = RunnerCommandReady { command: extdeps.exec.command.ArgvCommand }
   | RunnerCommandRefused { host_label: std.types.NonEmptyStr, reason: std.types.NonEmptyStr }
 
-fn fleet_intent_enrolls_host_label(label: NonEmptyStr) -> Bool {
+fn fleet_intent_enrolls_host_label(label: std.types.NonEmptyStr) -> Bool {
   fold(
     fleet_intent_known_hosts,
     init: false,
@@ -97,13 +97,13 @@ fn admit_runner_host(deploy: RunnerHostDeploy) -> RunnerHostAdmission {
       reason: concat(
         concat("runner_host_deploy: host '", deploy.host_label as String),
         "' is absent from gunbc.fleet_intent.fleet_intent_known_hosts; it takes no fleet work until it is an intent row with a converge receipt. Enrolling it is what gives runner_deployment_plan the host RAM to check the slot caps against. Fail-closed, no unenrolled install.",
-      ) as NonEmptyStr,
+      ) as std.types.NonEmptyStr,
     }
   }
 }
 
-fn runner_host_installer_command_argv(deploy: RunnerHostDeploy, installer_path: NonEmptyStr, pem_src_path: NonEmptyStr) -> ArgvCommand {
-  ArgvCommand {
+fn runner_host_installer_command_argv(deploy: RunnerHostDeploy, installer_path: std.types.NonEmptyStr, pem_src_path: std.types.NonEmptyStr) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.ArgvCommand {
     argv: [
       "env",
       join(["CTRL_RUNNER_HOST_LABEL=", deploy.host_label as String], ""),
@@ -117,8 +117,8 @@ fn runner_host_installer_command_argv(deploy: RunnerHostDeploy, installer_path: 
 
 fn runner_host_installer_command(
   admission: RunnerHostAdmission,
-  installer_path: NonEmptyStr,
-  pem_src_path: NonEmptyStr,
+  installer_path: std.types.NonEmptyStr,
+  pem_src_path: std.types.NonEmptyStr,
 ) -> RunnerCommandOrRefusal {
   match admission {
     RunnerHostEnrolled { deploy: d } =>
@@ -151,8 +151,8 @@ fn runner_instance_names(deploy: RunnerHostDeploy) -> List<String> {
   map(runner_index_seq(n: deploy.runner_count), i => runner_instance_name(deploy: deploy, index: i))
 }
 
-fn runner_enable_command_argv(deploy: RunnerHostDeploy) -> ArgvCommand {
-  ArgvCommand {
+fn runner_enable_command_argv(deploy: RunnerHostDeploy) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.ArgvCommand {
     argv: append(
       ["sudo", "systemctl", "enable", "--now"],
       items: map(runner_instance_names(deploy: deploy), n => join(["actions-runner@", n, ".service"], "")),

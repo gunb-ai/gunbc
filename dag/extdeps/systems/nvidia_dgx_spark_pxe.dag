@@ -1,23 +1,23 @@
 module extdeps.systems.nvidia_dgx_spark_pxe
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.nvidia.com/dgx/dgx-spark/pxe.html"
   }
 }
 
-data dgx_spark_uefi_settings_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data dgx_spark_uefi_settings_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.nvidia.com/dgx/dgx-spark/uefi-settings.html"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.systems.nvidia_dgx_spark_pxe",
       decl_name: "spark_pxe_bootloader_filename",
       field: WholeDeclaration
@@ -27,7 +27,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [dgx_spark_uefi_settings_authority]
 }
 
-data spark_pxe_bootloader_filename: NonEmptyStr = "grubnetaa64.efi.signed"
+data spark_pxe_bootloader_filename: std.types.NonEmptyStr = "grubnetaa64.efi.signed"
 
 type SparkPxeBootImageKind
   = FastOsRecoveryTarball
@@ -39,7 +39,7 @@ type SparkPxeTftpRelativePath
   | TftpKernelImage
   | TftpInitrdImage
 
-fn spark_pxe_tftp_relative_path(p: SparkPxeTftpRelativePath, image: SparkPxeBootImageKind) -> NonEmptyStr {
+fn spark_pxe_tftp_relative_path(p: SparkPxeTftpRelativePath, image: SparkPxeBootImageKind) -> std.types.NonEmptyStr {
   match image {
     FastOsRecoveryTarball =>
       match p {
@@ -58,7 +58,7 @@ fn spark_pxe_tftp_relative_path(p: SparkPxeTftpRelativePath, image: SparkPxeBoot
   }
 }
 
-fn spark_pxe_http_install_image_path(image: SparkPxeBootImageKind) -> NonEmptyStr {
+fn spark_pxe_http_install_image_path(image: SparkPxeBootImageKind) -> std.types.NonEmptyStr {
   match image {
     FastOsRecoveryTarball => "fastos/usb.customer.tar.gz"
     DgxOsIsoImage => "base_os_7.0.0/base_os_7.0.0.iso"
@@ -72,7 +72,7 @@ type SparkInstallerKernelParameterName
   | SparkInstallerAutoinstall
   | SparkInstallerPxeInstall
 
-fn spark_installer_kernel_parameter_name(p: SparkInstallerKernelParameterName) -> NonEmptyStr {
+fn spark_installer_kernel_parameter_name(p: SparkInstallerKernelParameterName) -> std.types.NonEmptyStr {
   match p {
     SparkInstallerUsbSkipFw => "usb.skipfw"
     SparkInstallerUsbShell => "usb.shell"
@@ -86,7 +86,7 @@ type SparkPxeSecureBootPrerequisite
   = SecureBootDisabledForPxe
   | BootloaderEnrolledForPxe { bootloader: std.types.NonEmptyStr }
 
-fn spark_fastos_unattended_kernel_cmdline(http_image_root: Uri) -> String {
+fn spark_fastos_unattended_kernel_cmdline(http_image_root: extdeps.uri.Uri) -> String {
   kernel_cmdline_render(args: [
     KernelKeyValue { key: "nouveau.modeset", value: "0" },
     KernelFlag { name: "console=tty0" },
@@ -108,7 +108,7 @@ fn spark_fastos_unattended_kernel_cmdline(http_image_root: Uri) -> String {
   ])
 }
 
-fn spark_dgx_os_unattended_kernel_cmdline(http_image_root: Uri) -> String {
+fn spark_dgx_os_unattended_kernel_cmdline(http_image_root: extdeps.uri.Uri) -> String {
   kernel_cmdline_render(args: [
     KernelFlag { name: "fsck.mode=skip" },
     KernelFlag { name: spark_installer_kernel_parameter_name(p: SparkInstallerAutoinstall) },
@@ -125,6 +125,6 @@ fn spark_dgx_os_unattended_kernel_cmdline(http_image_root: Uri) -> String {
   ])
 }
 
-fn spark_pxe_client_boot_mode(tftp_root: Uri) -> ClientNetworkBootMode {
+fn spark_pxe_client_boot_mode(tftp_root: extdeps.uri.Uri) -> extdeps.provisioning.network_boot.ClientNetworkBootMode {
   UefiPxe { tftp_root: tftp_root }
 }

@@ -2,26 +2,26 @@ module gunbc.host_effect_nbd_proxy_serve
 
 
 
-data host_effect_nbd_proxy_serve_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: host_effect_nbd_proxy_serve — systemd transient-unit realize transport for Srv3NbdProxyServe (P6 Part 2; operator ruling 2026-07-14: no trap/&/$! ShellStmt vocabulary); DISSOLVES WHEN observe-side port/unit query is grounded on cited extdeps.systemd/systemctl read-back and typed argv dispatch retires WitnessBin systemd-run scaffolding. Token bridge: start_units materializes BMCWEB session token from srv3_bmcweb_token_path via Filesystem.Read into websocat argv (replaces deleted wrapper export). Wave 4 residue (shell→dag census §1C category C).")
+data host_effect_nbd_proxy_serve_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: host_effect_nbd_proxy_serve — systemd transient-unit realize transport for Srv3NbdProxyServe (P6 Part 2; operator ruling 2026-07-14: no trap/&/$! ShellStmt vocabulary); DISSOLVES WHEN observe-side port/unit query is grounded on cited extdeps.systemd/systemctl read-back and typed argv dispatch retires WitnessBin systemd-run scaffolding. Token bridge: start_units materializes BMCWEB session token from srv3_bmcweb_token_path via Filesystem.Read into websocat argv (replaces deleted wrapper export). Wave 4 residue (shell→dag census §1C category C).")
 
-data host_effect_nbd_proxy_serve_scaffold: Disposition = Scaffold {
+data host_effect_nbd_proxy_serve_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect_nbd_proxy_serve",
     decl_name: "host_effect_nbd_proxy_serve_dissolution_trigger",
     field: WholeDeclaration,
   }
 }
 
-data nbd_proxy_serve_expected_owner_label: NonEmptyStr = "gunbc-nbd-proxy" as NonEmptyStr
+data nbd_proxy_serve_expected_owner_label: std.types.NonEmptyStr = "gunbc-nbd-proxy" as std.types.NonEmptyStr
 
-data nbd_proxy_serve_expected_process_fingerprint: NonEmptyStr = "gunbc-nbd-proxy" as NonEmptyStr
+data nbd_proxy_serve_expected_process_fingerprint: std.types.NonEmptyStr = "gunbc-nbd-proxy" as std.types.NonEmptyStr
 
-fn host_effect_nbd_proxy_serve_session_policy(lease_key: NonEmptyStr) -> TemporalEffectPolicy {
+fn host_effect_nbd_proxy_serve_session_policy(lease_key: std.types.NonEmptyStr) -> std.temporal_effect.TemporalEffectPolicy {
   HeldSessionLease { lease_key: lease_key }
 }
 
-fn host_effect_nbd_proxy_serve_session_policy_is_held_lease(lease_key: NonEmptyStr) -> Bool {
+fn host_effect_nbd_proxy_serve_session_policy_is_held_lease(lease_key: std.types.NonEmptyStr) -> Bool {
   match host_effect_nbd_proxy_serve_session_policy(lease_key: lease_key) {
     HeldSessionLease { lease_key: lk } => lk == lease_key
     PureRead => false
@@ -32,8 +32,8 @@ fn host_effect_nbd_proxy_serve_session_policy_is_held_lease(lease_key: NonEmptyS
   }
 }
 
-fn host_effect_nbd_proxy_serve_session_scope(intent: NbdProxyServeTransportIntent) -> ProcessPortScope {
-  ProcessPortScope {
+fn host_effect_nbd_proxy_serve_session_scope(intent: extdeps.bmc.webui.nbd_proxy_serve.NbdProxyServeTransportIntent) -> gunbc.session_lease.ProcessPortScope {
+  gunbc.session_lease.ProcessPortScope {
     listen_port: intent.local_nbd_port,
     expected_owner_label: nbd_proxy_serve_expected_owner_label,
     expected_process_fingerprint: nbd_proxy_serve_session_fingerprint(),
@@ -48,8 +48,8 @@ type NbdProxyServeSessionBinding {
 }
 
 fn host_effect_nbd_proxy_serve_session_binding(
-  intent: NbdProxyServeTransportIntent,
-  lease_key: NonEmptyStr,
+  intent: extdeps.bmc.webui.nbd_proxy_serve.NbdProxyServeTransportIntent,
+  lease_key: std.types.NonEmptyStr,
 ) -> NbdProxyServeSessionBinding {
   NbdProxyServeSessionBinding {
     intent: intent,
@@ -67,7 +67,7 @@ fn host_effect_nbd_proxy_serve_append_argv(
 }
 
 fn host_effect_nbd_proxy_serve_witness_bin_run_argv(
-  transport: HostEffectTransport,
+  transport: gunbc.host_effect.HostEffectTransport,
   bin_path: String,
   args: List<String>,
 ) -> Bool {
@@ -81,9 +81,9 @@ fn host_effect_nbd_proxy_serve_witness_bin_run_argv(
 }
 
 fn host_effect_nbd_proxy_serve_systemd_run_transient(
-  unit: NonEmptyStr,
+  unit: std.types.NonEmptyStr,
   command_argv: List<String>,
-  transport: HostEffectTransport,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> Bool {
   let args = host_effect_nbd_proxy_serve_append_argv(
     acc: ["--unit", unit as String, "--collect", "--"],
@@ -97,8 +97,8 @@ fn host_effect_nbd_proxy_serve_systemd_run_transient(
 }
 
 fn host_effect_nbd_proxy_serve_systemd_stop_unit(
-  unit: NonEmptyStr,
-  transport: HostEffectTransport,
+  unit: std.types.NonEmptyStr,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> Bool {
   host_effect_nbd_proxy_serve_witness_bin_run_argv(
     transport: transport,
@@ -108,9 +108,9 @@ fn host_effect_nbd_proxy_serve_systemd_stop_unit(
 }
 
 fn host_effect_nbd_proxy_serve_observe_port(
-  _scope: ProcessPortScope,
-  transport: HostEffectTransport,
-) -> ProcessPortObservation {
+  _scope: gunbc.session_lease.ProcessPortScope,
+  transport: gunbc.host_effect.HostEffectTransport,
+) -> gunbc.session_lease.ProcessPortObservation {
   match transport {
     LocalShell => PortInaccessible
     SshShell { ssh_host: _ } => PortInaccessible
@@ -121,7 +121,7 @@ fn host_effect_nbd_proxy_serve_observe_port(
 
 fn host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented(
   binding: NbdProxyServeSessionBinding,
-  transport: HostEffectTransport,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> Bool {
   match host_effect_nbd_proxy_serve_apply(binding: binding, transport: transport) {
     NbdProxyServeApplyRefused { reason: why } =>
@@ -132,14 +132,14 @@ fn host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented(
 
 fn host_effect_nbd_proxy_serve_apply_classification(
   binding: NbdProxyServeSessionBinding,
-  obs: ProcessPortObservation,
-) -> UpsertClassification<ProcessLeasePlan> {
+  obs: gunbc.session_lease.ProcessPortObservation,
+) -> UpsertClassification<gunbc.session_lease.ProcessLeasePlan> {
   classify_process_port_upsert(scope: binding.scope, obs: obs)
 }
 
 fn host_effect_nbd_proxy_serve_apply_refuses_foreign_port(
   binding: NbdProxyServeSessionBinding,
-  obs: ProcessPortObservation,
+  obs: gunbc.session_lease.ProcessPortObservation,
 ) -> Bool {
   match host_effect_nbd_proxy_serve_apply_classification(binding: binding, obs: obs) {
     UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
@@ -149,7 +149,7 @@ fn host_effect_nbd_proxy_serve_apply_refuses_foreign_port(
 
 fn host_effect_nbd_proxy_serve_apply_drains_stale_matching(
   binding: NbdProxyServeSessionBinding,
-  obs: ProcessPortObservation,
+  obs: gunbc.session_lease.ProcessPortObservation,
 ) -> Bool {
   match host_effect_nbd_proxy_serve_apply_classification(binding: binding, obs: obs) {
     UpsertClassification {
@@ -173,8 +173,8 @@ fn host_effect_nbd_proxy_serve_read_session_token() -> String? {
 }
 
 fn host_effect_nbd_proxy_serve_websocat_argv_materialized(
-  intent: NbdProxyServeTransportIntent,
-  token: NonEmptyStr,
+  intent: extdeps.bmc.webui.nbd_proxy_serve.NbdProxyServeTransportIntent,
+  token: std.types.NonEmptyStr,
 ) -> List<String> {
   nbd_proxy_serve_websocat_argv(
     intent: nbd_proxy_serve_transport_intent(
@@ -188,8 +188,8 @@ fn host_effect_nbd_proxy_serve_websocat_argv_materialized(
 }
 
 fn host_effect_nbd_proxy_serve_websocat_argv_materialized_omits_shell_env_ref(
-  intent: NbdProxyServeTransportIntent,
-  token: NonEmptyStr,
+  intent: extdeps.bmc.webui.nbd_proxy_serve.NbdProxyServeTransportIntent,
+  token: std.types.NonEmptyStr,
 ) -> Bool {
   let argv = host_effect_nbd_proxy_serve_websocat_argv_materialized(intent: intent, token: token)
   let surface = fold(
@@ -203,7 +203,7 @@ fn host_effect_nbd_proxy_serve_websocat_argv_materialized_omits_shell_env_ref(
 
 fn host_effect_nbd_proxy_serve_start_units(
   binding: NbdProxyServeSessionBinding,
-  transport: HostEffectTransport,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> Bool {
   let nbdkit_unit = nbd_proxy_serve_nbdkit_unit_name(lease_key: binding.lease_key)
   let websocat_unit = nbd_proxy_serve_websocat_unit_name(lease_key: binding.lease_key)
@@ -219,7 +219,7 @@ fn host_effect_nbd_proxy_serve_start_units(
           unit: websocat_unit,
           command_argv: host_effect_nbd_proxy_serve_websocat_argv_materialized(
             intent: binding.intent,
-            token: token as NonEmptyStr,
+            token: token as std.types.NonEmptyStr,
           ),
           transport: transport,
         )
@@ -228,7 +228,7 @@ fn host_effect_nbd_proxy_serve_start_units(
 
 fn host_effect_nbd_proxy_serve_drain_stale_units(
   binding: NbdProxyServeSessionBinding,
-  transport: HostEffectTransport,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> Bool {
   host_effect_nbd_proxy_serve_systemd_stop_unit(
     unit: nbd_proxy_serve_nbdkit_unit_name(lease_key: binding.lease_key),
@@ -246,7 +246,7 @@ type NbdProxyServeApplyOutcome
 
 fn host_effect_nbd_proxy_serve_apply(
   binding: NbdProxyServeSessionBinding,
-  transport: HostEffectTransport,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> NbdProxyServeApplyOutcome {
   let obs = host_effect_nbd_proxy_serve_observe_port(scope: binding.scope, transport: transport)
   match host_effect_nbd_proxy_serve_apply_classification(binding: binding, obs: obs).decision {
@@ -288,8 +288,8 @@ fn host_effect_nbd_proxy_serve_apply(
 
 fn host_effect_nbd_proxy_serve_apply_with_observation(
   binding: NbdProxyServeSessionBinding,
-  obs: ProcessPortObservation,
-  transport: HostEffectTransport,
+  obs: gunbc.session_lease.ProcessPortObservation,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> NbdProxyServeApplyOutcome {
   match host_effect_nbd_proxy_serve_apply_classification(binding: binding, obs: obs).decision {
     Noop =>

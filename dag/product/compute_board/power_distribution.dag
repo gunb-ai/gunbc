@@ -69,11 +69,11 @@ type PowerAdmission
   = PowerIntentAdmitted { intent: BoardPowerIntent }
   | PowerIntentRefused { causes: List<PowerRefusal> }
 
-fn rail_is(a: Ice40SupplyRail, b: Ice40SupplyRail) -> Bool {
+fn rail_is(a: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, b: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail) -> Bool {
   supply_rails_equal(a: a, b: b)
 }
 
-fn built_rail(intent: BoardPowerIntent, r: Ice40SupplyRail) -> BoardSupplyRail? {
+fn built_rail(intent: BoardPowerIntent, r: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail) -> BoardSupplyRail? {
   fold(intent.rails, init: none, f: fn(acc, br) {
     match acc {
       Present { value: found } => Present { value: found }
@@ -82,7 +82,7 @@ fn built_rail(intent: BoardPowerIntent, r: Ice40SupplyRail) -> BoardSupplyRail? 
   })
 }
 
-fn is_deliberately_unconnected(intent: BoardPowerIntent, r: Ice40SupplyRail) -> Bool {
+fn is_deliberately_unconnected(intent: BoardPowerIntent, r: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail) -> Bool {
   fold(intent.deliberately_unconnected, init: false, f: fn(acc, u) { acc || rail_is(a: u, b: r) })
 }
 
@@ -90,7 +90,7 @@ fn is_deliberately_unconnected(intent: BoardPowerIntent, r: Ice40SupplyRail) -> 
 // returns nothing for VPP_2V5 by construction, so a consumer that forgot the mode would get an
 // absent requirement and could check nothing — this routes the one mode-dependent rail through
 // the function that takes a mode, rather than treating its absence as "no requirement".
-fn requirement_for(intent: BoardPowerIntent, r: Ice40SupplyRail) -> RailRequirement? {
+fn requirement_for(intent: BoardPowerIntent, r: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail) -> extdeps.programmable_logic.ice40.supply.RailRequirement? {
   if rail_is(a: r, b: NvcmProgrammingSupply) {
     Present { value: nvcm_supply_requirement(m: intent.configuration_mode) }
   } else {
@@ -102,7 +102,7 @@ fn requirement_for(intent: BoardPowerIntent, r: Ice40SupplyRail) -> RailRequirem
 // out-of-window one. There is no window to be outside of, and reporting it as a range
 // violation would send someone looking for the right voltage when the answer is that
 // there is no right voltage.
-fn rail_causes(intent: BoardPowerIntent, r: Ice40SupplyRail) -> List<PowerRefusal> {
+fn rail_causes(intent: BoardPowerIntent, r: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail) -> List<PowerRefusal> {
   match requirement_for(intent: intent, r: r) {
     Absent => []
     Present { value: req } =>
@@ -123,7 +123,7 @@ fn rail_causes(intent: BoardPowerIntent, r: Ice40SupplyRail) -> List<PowerRefusa
   }
 }
 
-fn supplying_rail(intent: BoardPowerIntent, net: NetIdentity) -> BoardSupplyRail? {
+fn supplying_rail(intent: BoardPowerIntent, net: product.electrical.connectivity.NetIdentity) -> BoardSupplyRail? {
   fold(intent.rails, init: none, f: fn(acc, br) {
     match acc {
       Present { value: found } => Present { value: found }
@@ -174,7 +174,7 @@ fn bank_causes(intent: BoardPowerIntent, b: BankAssignment) -> List<PowerRefusal
 // constraint IS enforced, on the rail path: a rail whose requirement is MustBeLeftUnconnected
 // and which the board nevertheless builds refuses as RailBuiltForAnUnconnectedPin. Restating
 // it here would be a second authority for one constraint, not a second check.
-fn inter_rail_causes(intent: BoardPowerIntent, c: Ice40InterRailConstraint) -> List<PowerRefusal> {
+fn inter_rail_causes(intent: BoardPowerIntent, c: extdeps.programmable_logic.ice40.supply.Ice40InterRailConstraint) -> List<PowerRefusal> {
   match c {
     UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: cr } =>
       fold(intent.banks, init: [], f: fn(acc, b) {
@@ -215,7 +215,7 @@ fn inter_rail_causes(intent: BoardPowerIntent, c: Ice40InterRailConstraint) -> L
   }
 }
 
-data required_rails: List<Ice40SupplyRail> = [
+data required_rails: List<extdeps.programmable_logic.ice40.supply.Ice40SupplyRail> = [
   CoreSupply,
   PllSupply,
   BankIoSupply,
@@ -261,7 +261,7 @@ fn admit_power_intent(intent: BoardPowerIntent) -> PowerAdmission {
 // look the same.
 // The design these reference rails belong to. Rail nets are board-scoped like every other net:
 // two boards both calling a rail vcc_core are not sharing one rail.
-data reference_power_design: ElectricalDesignIdentity = "compute_board.reference_power" as ElectricalDesignIdentity
+data reference_power_design: product.electrical.connectivity.ElectricalDesignIdentity = "compute_board.reference_power" as product.electrical.connectivity.ElectricalDesignIdentity
 
 data reference_power_intent: BoardPowerIntent = BoardPowerIntent {
   configuration_mode: MasterSpiConfiguration,

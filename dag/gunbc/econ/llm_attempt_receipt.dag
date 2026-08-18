@@ -7,8 +7,8 @@ data llm_token_count_authority_note: String = "TokenCount, token_count and token
 
 data llm_model_identity_brand_note: String = "Requested and resolved model identity are DISTINCT named carriers, not one string used twice. The dispatch receipt bar (gunbc.dispatch_selection dispatch_execution_receipt_bar_note) says the system must never display what was REQUESTED as though it proved what RAN, and holding them in separate fields on separate types is what keeps the two facts addressable. MEASURED LIMIT, NOT A WALL (probe executed 2026-08-05 on this branch): a scratch entry passing a RequestedModelIdentity into a parameter declared ResolvedModelIdentity RESOLVED AND RAN GREEN, so brand() on NonEmptyStr does not refuse cross-brand substitution at this slice. An earlier revision of this note claimed the substitution 'does not compile' and cited a witness named requested_model_identity_is_not_resolved_model_identity that was never written -- both the claim and the citation were false, caught by executing the probe rather than by reading the type. So the honest rung here is MITIGATABLE, the same rung std.measure token_count_note records for the Count-axis family: distinct names buy reading clarity and separate construction sites, not unwritability. NEXT-RUNG TRIGGER: the brand-refinement enforcement path that would make cross-brand assignment a typecheck refusal, or distinct record carriers rather than two brands over one primitive; until one of those lands, a compile-red control is the only evidence that would establish the wall, and no such control exists."
 
-type RequestedModelIdentity = NonEmptyStr where brand("RequestedModelIdentity")
-type ResolvedModelIdentity = NonEmptyStr where brand("ResolvedModelIdentity")
+type RequestedModelIdentity = std.types.NonEmptyStr where brand("RequestedModelIdentity")
+type ResolvedModelIdentity = std.types.NonEmptyStr where brand("ResolvedModelIdentity")
 
 data llm_artifact_identity_note: String = "A marketing model name is not an artifact. serving_runtime_identity and model_artifact_identity bind the exact served thing -- quantization, build, adapter set -- because two attempts naming the same model at different quantizations are different economic subjects. These stay NonEmptyStr at this slice: the cited artifact rows that would ground them (model catalog, GGUF sizes, runtime versions) land with the pricing rows in the follow-on, and grounding them early would mint a second artifact authority beside the one those rows will carry."
 
@@ -110,7 +110,7 @@ fn derive_decode_throughput(receipt: LlmAttemptReceipt) -> DecodeThroughputResul
             DecodeThroughputRefused { cause: ZeroDecodeDuration }
           } else {
             DecodeThroughputDerived {
-              throughput: FieldOfFractions {
+              throughput: std.algebra.FieldOfFractions {
                 num: token_count_value(t: u.output),
                 denom: nanosecond_count(n: d),
               }
@@ -181,7 +181,7 @@ type AcceptedGoodputResult
 
 fn derive_accepted_goodput(
   receipts: List<LlmAttemptReceipt>,
-  window: Nanosecond,
+  window: std.measure.Nanosecond,
 ) -> AcceptedGoodputResult {
   if attempt_roster_count(receipts: receipts) == 0 {
     AcceptedGoodputRefused { cause: EmptyAttemptRoster }
@@ -190,7 +190,7 @@ fn derive_accepted_goodput(
       AcceptedGoodputRefused { cause: ZeroObservationWindow }
     } else {
       AcceptedGoodputDerived {
-        goodput: FieldOfFractions {
+        goodput: std.algebra.FieldOfFractions {
           num: accepted_attempt_count(receipts: receipts),
           denom: nanosecond_count(n: window),
         }
@@ -213,7 +213,7 @@ fn derive_escalation_fraction(receipts: List<LlmAttemptReceipt>) -> EscalationFr
     EscalationFractionRefused { cause: EmptyAttemptRoster }
   } else {
     EscalationFractionDerived {
-      fraction: FieldOfFractions {
+      fraction: std.algebra.FieldOfFractions {
         num: escalated_attempt_count(receipts: receipts),
         denom: total,
       }

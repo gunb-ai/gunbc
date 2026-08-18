@@ -10,26 +10,26 @@ type DeclaredGitHubApp {
 
 data gunbai_bot_declared: DeclaredGitHubApp = DeclaredGitHubApp {
   owner_login: "gunb-ai",
-  app_id: GitHubAppId { value: 3909950 },
+  app_id: extdeps.github.app.GitHubAppId { value: 3909950 },
   client_id: "Iv23lidZeLYckmtvN3e8",
   slug: "gunbai",
 }
 
 data gunbai_ci_declared: DeclaredGitHubApp = DeclaredGitHubApp {
   owner_login: "gunb-ai",
-  app_id: GitHubAppId { value: 2653532 },
+  app_id: extdeps.github.app.GitHubAppId { value: 2653532 },
   client_id: "Iv23liq8VGaImxKCyjaR",
   slug: "gunbai-ci",
 }
 
-data gunbai_ci_app_pem_secret: SecretRef = SecretRef {
+data gunbai_ci_app_pem_secret: extdeps.cloud.gcp.secret_ref.SecretRef = extdeps.cloud.gcp.secret_ref.SecretRef {
   project: fleet_secrets_gcp_project,
   secret: "ci-github-app-private-key",
   version: "latest",
   hash_state: HashPending,
 }
 
-data gunbai_ci_declared_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 104134109 }
+data gunbai_ci_declared_installation_id: extdeps.github.app.GitHubAppInstallationId = extdeps.github.app.GitHubAppInstallationId { value: 104134109 }
 
 type ManagedGitHubAppKeyRole
   = ActiveSigningKey
@@ -45,7 +45,7 @@ data gunbai_bot_declared_key: ManagedGitHubAppKey = ManagedGitHubAppKey {
   role: ActiveSigningKey,
 }
 
-fn app_settings_permissions_locator(app: DeclaredGitHubApp) -> Uri {
+fn app_settings_permissions_locator(app: DeclaredGitHubApp) -> extdeps.uri.Uri {
   uri_https(
     locator: concat(
       concat(concat("github.com/organizations/", app.owner_login), "/settings/apps/"),
@@ -79,7 +79,7 @@ type SignerCustody
   | SignerKeyGenerationRequired
   | SignerReadbackFailed { cause: SignerSealFailure }
 
-fn app_key_settings_locator(app: DeclaredGitHubApp) -> Uri {
+fn app_key_settings_locator(app: DeclaredGitHubApp) -> extdeps.uri.Uri {
   uri_https(
     locator: concat(
       concat(concat("github.com/organizations/", app.owner_login), "/settings/apps/"),
@@ -157,16 +157,16 @@ type ObservedAppRegistration
   | AppRegistrationReadbackUnavailable
 
 fn registration_missing_permissions(
-  requested: List<ObservedGitHubPermission>,
-  required: List<GitHubAppPermission>
-) -> List<GitHubAppPermission> {
+  requested: List<extdeps.github.app.ObservedGitHubPermission>,
+  required: List<extdeps.github.app.GitHubAppPermission>
+) -> List<extdeps.github.app.GitHubAppPermission> {
   filter(required, r => match observed_access_for(perms: requested, axis: r.name) {
     Absent => true
     Present { value: held } => !permission_access_at_least(held: held, requested: r.access)
   })
 }
 
-fn installation_holds(installation: GitHubAppInstallation, required: GitHubAppPermission) -> Bool {
+fn installation_holds(installation: extdeps.github.app.GitHubAppInstallation, required: extdeps.github.app.GitHubAppPermission) -> Bool {
   match observed_access_for(perms: installation.permissions, axis: required.name) {
     Absent => false
     Present { value: held } => permission_access_at_least(held: held, requested: required.access)
@@ -174,20 +174,20 @@ fn installation_holds(installation: GitHubAppInstallation, required: GitHubAppPe
 }
 
 fn installation_missing_permissions(
-  installation: GitHubAppInstallation,
-  required: List<GitHubAppPermission>
-) -> List<GitHubAppPermission> {
+  installation: extdeps.github.app.GitHubAppInstallation,
+  required: List<extdeps.github.app.GitHubAppPermission>
+) -> List<extdeps.github.app.GitHubAppPermission> {
   filter(required, r => !installation_holds(installation: installation, required: r))
 }
 
-fn permission_set_duplicate(perms: List<GitHubAppPermission>) -> GitHubPermissionAxis? {
+fn permission_set_duplicate(perms: List<extdeps.github.app.GitHubAppPermission>) -> extdeps.github.app.GitHubPermissionAxis? {
   match admit_permission_set(perms: perms) {
     PermissionSetAdmitted { permissions: _ } => none
     PermissionSetDuplicateName { name } => Present { value: name }
   }
 }
 
-fn registration_duplicate_observed_name(registration: ObservedAppRegistration) -> ObservedGitHubPermissionName? {
+fn registration_duplicate_observed_name(registration: ObservedAppRegistration) -> extdeps.github.app.ObservedGitHubPermissionName? {
   match registration {
     AppRegistrationReadbackUnavailable => none
     AppRegistrationReadback { app_id: _, requested_permissions } =>
@@ -195,7 +195,7 @@ fn registration_duplicate_observed_name(registration: ObservedAppRegistration) -
   }
 }
 
-fn installation_duplicate_observed_name(observed: ObservedInstallation) -> ObservedGitHubPermissionName? {
+fn installation_duplicate_observed_name(observed: ObservedInstallation) -> extdeps.github.app.ObservedGitHubPermissionName? {
   match observed {
     InstallationReadbackUnavailable { cause: _ } => none
     InstallationReadback { installation } =>
@@ -206,8 +206,8 @@ fn installation_duplicate_observed_name(observed: ObservedInstallation) -> Obser
 fn first_duplicate_permission_name(
   registration: ObservedAppRegistration,
   observed: ObservedInstallation,
-  required: List<GitHubAppPermission>
-) -> ObservedGitHubPermissionName? {
+  required: List<extdeps.github.app.GitHubAppPermission>
+) -> extdeps.github.app.ObservedGitHubPermissionName? {
   match permission_set_duplicate(perms: required) {
     Present { value: axis } => Present { value: observed_permission_name(axis: axis) }
     Absent => match registration_duplicate_observed_name(registration: registration) {
@@ -222,8 +222,8 @@ fn app_control_plane_state(
   custody: SignerCustody,
   registration: ObservedAppRegistration,
   observed: ObservedInstallation,
-  required: List<GitHubAppPermission>,
-  reason: NonEmptyStr
+  required: List<extdeps.github.app.GitHubAppPermission>,
+  reason: std.types.NonEmptyStr
 ) -> GitHubAppControlPlaneState {
   match first_duplicate_permission_name(
     registration: registration,
@@ -247,8 +247,8 @@ fn sealed_control_plane_state(
   custody: SignerCustody,
   registration: ObservedAppRegistration,
   observed: ObservedInstallation,
-  required: List<GitHubAppPermission>,
-  reason: NonEmptyStr
+  required: List<extdeps.github.app.GitHubAppPermission>,
+  reason: std.types.NonEmptyStr
 ) -> GitHubAppControlPlaneState {
   match custody {
     SignerMaterialAvailabilityUnobserved =>
@@ -382,7 +382,7 @@ data signer_fingerprint_observation: ObservationProducer = ObservationProducerAb
 
 fn operator_packet_or_producer_binding(
   action: GitHubAppOperatorAction,
-  locator: Uri,
+  locator: extdeps.uri.Uri,
   postcondition: ControlPlanePostcondition,
   observation: ObservationProducer
 ) -> GitHubAppNextAction {

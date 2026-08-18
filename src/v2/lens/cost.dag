@@ -63,8 +63,8 @@ fn unit_cost() -> SymbolicCost {
   constant_cost(value: Succ { prev: Zero })
 }
 
-fn nonzero_one() -> NonZeroNat {
-  NonZeroNat { prev: Zero }
+fn nonzero_one() -> v2.std.cardinality.NonZeroNat {
+  v2.std.cardinality.NonZeroNat { prev: Zero }
 }
 
 fn polynomial_degree_two() -> PolynomialDegree {
@@ -83,13 +83,13 @@ fn linear_in_node(n: Node) -> SymbolicCost {
   LinearCost { variable: size_of_node(n: n) }
 }
 
-data cost_lattice_top_diagnostic: Diagnostic = Diagnostic {
+data cost_lattice_top_diagnostic: v2.std.diagnostic.Diagnostic = v2.std.diagnostic.Diagnostic {
   reason: ^cost_reason_unmodeled_symbolic_cost,
   at: Textual { file: ^cost_lattice_top_virtual_file, extent: WholeFile },
   correction: Unavailable { reason: AmbiguousIntent }
 }
 
-fn unknown_cost(diagnostic: Diagnostic) -> SymbolicCost {
+fn unknown_cost(diagnostic: v2.std.diagnostic.Diagnostic) -> SymbolicCost {
   UnknownCost { diagnostic: diagnostic }
 }
 
@@ -102,7 +102,7 @@ fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
   }
 }
 
-fn base_cost_for_connective(c: Connective, n: Node) -> SymbolicCost {
+fn base_cost_for_connective(c: v2.std.node.Connective, n: Node) -> SymbolicCost {
   match c {
     Atom { identity: _ } => zero_cost()
     Conj => zero_cost()
@@ -122,7 +122,7 @@ fn base_cost_for_loop(n: Node) -> SymbolicCost {
   }
 }
 
-fn base_cost_for_behavior(b: Behavior, n: Node) -> SymbolicCost {
+fn base_cost_for_behavior(b: v2.std.node.Behavior, n: Node) -> SymbolicCost {
   match b {
     Value => zero_cost()
     Transform => unit_cost()
@@ -133,7 +133,7 @@ fn base_cost_for_behavior(b: Behavior, n: Node) -> SymbolicCost {
   }
 }
 
-fn cost_mode_for_connective(c: Connective) -> CostCompositionMode {
+fn cost_mode_for_connective(c: v2.std.node.Connective) -> CostCompositionMode {
   match c {
     Atom { identity: _ } => SequentialCost
     Conj => SequentialCost
@@ -144,7 +144,7 @@ fn cost_mode_for_connective(c: Connective) -> CostCompositionMode {
   }
 }
 
-fn cost_mode_for_behavior(b: Behavior) -> CostCompositionMode {
+fn cost_mode_for_behavior(b: v2.std.node.Behavior) -> CostCompositionMode {
   match b {
     Value => SequentialCost
     Transform => SequentialCost
@@ -240,7 +240,7 @@ fn polylog_exponent_dominates(a: PolyLogExponent, b: PolyLogExponent) -> Bool {
   nonzero_nat_dominates(a: a.predecessor_after_log, b: b.predecessor_after_log)
 }
 
-fn nonzero_nat_dominates(a: NonZeroNat, b: NonZeroNat) -> Bool {
+fn nonzero_nat_dominates(a: v2.std.cardinality.NonZeroNat, b: v2.std.cardinality.NonZeroNat) -> Bool {
   nat_dominates(a: a.prev, b: b.prev)
 }
 
@@ -254,7 +254,7 @@ fn nat_dominates(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
 
 fn add_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> PolynomialDegree {
   PolynomialDegree {
-    predecessor_after_linear: NonZeroNat {
+    predecessor_after_linear: v2.std.cardinality.NonZeroNat {
       prev: Succ {
         prev: Succ {
           prev: nat_add(a: a.predecessor_after_linear.prev, b: b.predecessor_after_linear.prev)
@@ -266,19 +266,19 @@ fn add_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> Polynomial
 
 fn increment_polynomial_degree(d: PolynomialDegree) -> PolynomialDegree {
   PolynomialDegree {
-    predecessor_after_linear: NonZeroNat { prev: Succ { prev: d.predecessor_after_linear.prev } }
+    predecessor_after_linear: v2.std.cardinality.NonZeroNat { prev: Succ { prev: d.predecessor_after_linear.prev } }
   }
 }
 
 fn increment_polylog_exponent(e: PolyLogExponent) -> PolyLogExponent {
   PolyLogExponent {
-    predecessor_after_log: NonZeroNat { prev: Succ { prev: e.predecessor_after_log.prev } }
+    predecessor_after_log: v2.std.cardinality.NonZeroNat { prev: Succ { prev: e.predecessor_after_log.prev } }
   }
 }
 
 fn add_polylog_exponent(a: PolyLogExponent, b: PolyLogExponent) -> PolyLogExponent {
   PolyLogExponent {
-    predecessor_after_log: NonZeroNat {
+    predecessor_after_log: v2.std.cardinality.NonZeroNat {
       prev: Succ {
         prev: Succ {
           prev: nat_add(a: a.predecessor_after_log.prev, b: b.predecessor_after_log.prev)
@@ -332,7 +332,7 @@ fn compose_child_cost(
 
 fn cost_fold_step(
   acc: SymbolicCostFoldState,
-  e: Edge,
+  e: v2.std.node.Edge,
   child: SymbolicCostFoldState
 ) -> SymbolicCostFoldState {
   if edge_contributes_to_cost_fold(parent: acc.parent, e: e) {
@@ -347,7 +347,7 @@ fn cost_fold_step(
 }
 
 fn symbolic_cost_fold() -> NodeFold<SymbolicCostFoldState> {
-  NodeFold {
+  v2.std.node.NodeFold {
     init: cost_fold_init,
     step: cost_fold_step
   }
@@ -573,26 +573,26 @@ fn cost_lattice_join(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   symbolic_max(a: a, b: b)
 }
 
-data symbolic_cost_sequential_monoid: Monoid<SymbolicCost> = Monoid {
+data symbolic_cost_sequential_monoid: Monoid<SymbolicCost> = std.algebra.Monoid {
   op: symbolic_sequential,
   identity: ConstantCost { value: Zero }
 }
 
-data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = BoundedLattice {
+data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = std.algebra.BoundedLattice {
   meet: cost_lattice_meet,
   join: cost_lattice_join,
   top: UnknownCost { diagnostic: cost_lattice_top_diagnostic },
   bottom: ConstantCost { value: Zero }
 }
 
-data asymptotic_class_lattice: BoundedLattice<AsymptoticClass> = BoundedLattice {
+data asymptotic_class_lattice: BoundedLattice<AsymptoticClass> = std.algebra.BoundedLattice {
   meet: asymptotic_class_meet,
   join: asymptotic_class_join,
   top: ClassUnknown,
   bottom: ClassConstant
 }
 
-fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
+fn llvm_instruction_cost(i: v2.extdeps.languages.llvm_ir.LlvmInstruction) -> Int {
   match i {
     Binary { result: _, result_type: _, op: _, lhs: _, rhs: _ } => 1
     Conversion { result: _, result_type: _, op: OpBitCast, value: _ } => 0
@@ -622,9 +622,9 @@ fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallNow {
     mechanism: SubstrateMandatoryTag,
-    authority: DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: WholeDeclaration }
+    authority: std.decl_ref.DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: WholeDeclaration }
   }
 }

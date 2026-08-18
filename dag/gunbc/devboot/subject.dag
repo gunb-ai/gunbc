@@ -134,7 +134,7 @@ fn scan_cargo_config(entries: List<RawCargoConfigEntry>) -> BuildSubjectRefusalC
 }
 
 fn admitted_cargo_config(entries: List<RawCargoConfigEntry>) -> List<CargoConfigEntry> {
-  entries |> map(entry => CargoConfigEntry { key: entry.key as NonEmptyStr, value: entry.value })
+  entries |> map(entry => CargoConfigEntry { key: entry.key as std.types.NonEmptyStr, value: entry.value })
 }
 
 fn optional_nonempty_refusal(value: String?, cause: BuildSubjectRefusalCause) -> BuildSubjectRefusalCause? {
@@ -149,10 +149,10 @@ fn optional_nonempty_refusal(value: String?, cause: BuildSubjectRefusalCause) ->
   }
 }
 
-fn admitted_optional_nonempty(value: String?) -> NonEmptyStr? {
+fn admitted_optional_nonempty(value: String?) -> std.types.NonEmptyStr? {
   match value {
     Absent => none
-    Present { value: text } => Present { value: text as NonEmptyStr }
+    Present { value: text } => Present { value: text as std.types.NonEmptyStr }
   }
 }
 
@@ -164,7 +164,7 @@ fn first_refusal(left: BuildSubjectRefusalCause?, right: BuildSubjectRefusalCaus
 }
 
 // AN UNOBSERVED C LIBRARY REFUSES rather than being admitted as a distinct-looking environment. LibcUnobserved is representable so a consumer must handle it, and the handling is this: an environment whose platform ABI was never measured cannot identify an artifact, because the whole point of the axis is that two hosts differing only in their C library are two environments. Admitting the unobserved value would let every unmeasured host collapse into one identity -- exactly the collision the axis was added to prevent, reintroduced through its own absent case.
-fn platform_c_library_refusal(library: PlatformCLibrary) -> BuildSubjectRefusalCause? {
+fn platform_c_library_refusal(library: extdeps.gnu.libc.PlatformCLibrary) -> BuildSubjectRefusalCause? {
   match library {
     GnuLibc { version } => none
     LibcUnobserved => Present { value: PlatformCLibraryUnobserved }
@@ -176,7 +176,7 @@ fn environment_refusal(
   linker: String?,
   sysroot: String?,
   cargo_config: List<RawCargoConfigEntry>,
-  platform_c_library: PlatformCLibrary,
+  platform_c_library: extdeps.gnu.libc.PlatformCLibrary,
 ) -> BuildSubjectRefusalCause? {
   first_refusal(
     left: platform_c_library_refusal(library: platform_c_library),
@@ -205,18 +205,18 @@ fn scalar_refusal(package: String, profile: String) -> BuildSubjectRefusalCause?
 }
 
 fn admit_build_subject(
-  tree_oid: GitObjectId,
+  tree_oid: extdeps.git.object_store.GitObjectId,
   package: String,
-  cargo_target: CargoTarget,
-  toolchain: ToolchainRequirement,
-  target: TargetTriple,
+  cargo_target: extdeps.cargo.CargoTarget,
+  toolchain: extdeps.toolchain.types.ToolchainRequirement,
+  target: extdeps.toolchain.types.TargetTriple,
   profile: String,
   features: List<String>,
   rustflags: List<String>,
   linker: String?,
   sysroot: String?,
   cargo_config: List<RawCargoConfigEntry>,
-  platform_c_library: PlatformCLibrary,
+  platform_c_library: extdeps.gnu.libc.PlatformCLibrary,
 ) -> BuildSubjectAdmission {
   match first_refusal(
     left: scalar_refusal(package: package, profile: profile),
@@ -241,12 +241,12 @@ fn admit_build_subject(
         subject: BuildSubject {
           tree_oid: tree_oid,
           product: BuildProduct {
-            package: package as NonEmptyStr,
+            package: package as std.types.NonEmptyStr,
             target: cargo_target,
           },
           toolchain: toolchain,
           target: target,
-          profile: profile as NonEmptyStr,
+          profile: profile as std.types.NonEmptyStr,
           features: admitted_nonempty_names(values: features),
           environment: BuildEnvironmentSpec {
             platform_c_library: platform_c_library,
@@ -261,8 +261,8 @@ fn admit_build_subject(
 }
 
 // The projection that fills the non-empty-typed list fields, and it is sound only because the scan above already refused on every empty member. It runs strictly after that refusal, on the admitted branch, so the cast rests on an executed check rather than on an assertion -- which is the whole difference between admission and fabrication.
-fn admitted_nonempty_names(values: List<String>) -> List<NonEmptyStr> {
-  values |> map(value => value as NonEmptyStr)
+fn admitted_nonempty_names(values: List<String>) -> List<std.types.NonEmptyStr> {
+  values |> map(value => value as std.types.NonEmptyStr)
 }
 
 // THESE TAGS DEFINE STORED IDENTITY, WHICH IS WHY THEY ARE NOT THE DIAGNOSTIC NAMES. The earlier revision folded the toolchain module's *_diagnostic_name functions into this digest, and each of those carries a header saying it is for diagnostics only and never a wire label. That restriction is not decoration: a diagnostic spelling exists to be edited when a message reads badly, and an identity spelling must never be edited casually, because every artifact stored under the old spelling is orphaned the moment it changes. Borrowing one for the other fuses two lifetimes that must stay separate.
@@ -270,54 +270,54 @@ fn admitted_nonempty_names(values: List<String>) -> List<NonEmptyStr> {
 // So the digest owns its own total tag per variant. The tags are deliberately opaque and versioned by this module: they carry no meaning to a reader, they are never displayed, and their only contract is that each closed variant maps to exactly one distinct tag, forever. Renaming a variant in the upstream type now changes nothing here -- which is the property the finding asked for, because a rename is a spelling change and must not orphan a store.
 //
 // WHY A TAG RATHER THAN A POSITION. An ordinal would be smaller, but adding a variant in the middle of a coproduct silently renumbers everything after it, so identity would shift under an edit that looks additive. A tag per variant is stable under insertion by construction.
-fn architecture_identity_tag(arch: Architecture) -> NonEmptyStr {
+fn architecture_identity_tag(arch: extdeps.toolchain.types.Architecture) -> std.types.NonEmptyStr {
   match arch {
-    X86_64 => "arch.v1.x86_64" as NonEmptyStr
-    X86 => "arch.v1.x86" as NonEmptyStr
-    Aarch64 => "arch.v1.aarch64" as NonEmptyStr
-    Arm => "arch.v1.arm" as NonEmptyStr
-    Armv7 => "arch.v1.armv7" as NonEmptyStr
-    Mips => "arch.v1.mips" as NonEmptyStr
-    Mipsel => "arch.v1.mipsel" as NonEmptyStr
-    Mips64 => "arch.v1.mips64" as NonEmptyStr
-    Mips64el => "arch.v1.mips64el" as NonEmptyStr
-    Riscv64 => "arch.v1.riscv64" as NonEmptyStr
-    Wasm32 => "arch.v1.wasm32" as NonEmptyStr
+    X86_64 => "arch.v1.x86_64" as std.types.NonEmptyStr
+    X86 => "arch.v1.x86" as std.types.NonEmptyStr
+    Aarch64 => "arch.v1.aarch64" as std.types.NonEmptyStr
+    Arm => "arch.v1.arm" as std.types.NonEmptyStr
+    Armv7 => "arch.v1.armv7" as std.types.NonEmptyStr
+    Mips => "arch.v1.mips" as std.types.NonEmptyStr
+    Mipsel => "arch.v1.mipsel" as std.types.NonEmptyStr
+    Mips64 => "arch.v1.mips64" as std.types.NonEmptyStr
+    Mips64el => "arch.v1.mips64el" as std.types.NonEmptyStr
+    Riscv64 => "arch.v1.riscv64" as std.types.NonEmptyStr
+    Wasm32 => "arch.v1.wasm32" as std.types.NonEmptyStr
   }
 }
 
-fn triple_vendor_identity_tag(vendor: TripleVendor) -> NonEmptyStr {
+fn triple_vendor_identity_tag(vendor: extdeps.toolchain.types.TripleVendor) -> std.types.NonEmptyStr {
   match vendor {
-    UnknownVendor => "vendor.v1.unknown" as NonEmptyStr
-    Pc => "vendor.v1.pc" as NonEmptyStr
-    Apple => "vendor.v1.apple" as NonEmptyStr
-    W64 => "vendor.v1.w64" as NonEmptyStr
+    UnknownVendor => "vendor.v1.unknown" as std.types.NonEmptyStr
+    Pc => "vendor.v1.pc" as std.types.NonEmptyStr
+    Apple => "vendor.v1.apple" as std.types.NonEmptyStr
+    W64 => "vendor.v1.w64" as std.types.NonEmptyStr
   }
 }
 
-fn os_identity_tag(os: Os) -> NonEmptyStr {
+fn os_identity_tag(os: extdeps.toolchain.types.Os) -> std.types.NonEmptyStr {
   match os {
-    Linux => "os.v1.linux" as NonEmptyStr
-    Macos => "os.v1.macos" as NonEmptyStr
-    Windows => "os.v1.windows" as NonEmptyStr
-    Freebsd => "os.v1.freebsd" as NonEmptyStr
-    Android => "os.v1.android" as NonEmptyStr
-    Ios => "os.v1.ios" as NonEmptyStr
-    Wasi => "os.v1.wasi" as NonEmptyStr
+    Linux => "os.v1.linux" as std.types.NonEmptyStr
+    Macos => "os.v1.macos" as std.types.NonEmptyStr
+    Windows => "os.v1.windows" as std.types.NonEmptyStr
+    Freebsd => "os.v1.freebsd" as std.types.NonEmptyStr
+    Android => "os.v1.android" as std.types.NonEmptyStr
+    Ios => "os.v1.ios" as std.types.NonEmptyStr
+    Wasi => "os.v1.wasi" as std.types.NonEmptyStr
   }
 }
 
-fn abi_env_identity_tag(env: AbiEnv) -> NonEmptyStr {
+fn abi_env_identity_tag(env: extdeps.toolchain.types.AbiEnv) -> std.types.NonEmptyStr {
   match env {
-    NoneAbi => "abi.v1.none" as NonEmptyStr
-    Gnu => "abi.v1.gnu" as NonEmptyStr
-    GnuEabi => "abi.v1.gnueabi" as NonEmptyStr
-    GnuEabihf => "abi.v1.gnueabihf" as NonEmptyStr
-    Musl => "abi.v1.musl" as NonEmptyStr
-    Msvc => "abi.v1.msvc" as NonEmptyStr
-    AndroidAbi => "abi.v1.android" as NonEmptyStr
-    Eabi => "abi.v1.eabi" as NonEmptyStr
-    Eabihf => "abi.v1.eabihf" as NonEmptyStr
+    NoneAbi => "abi.v1.none" as std.types.NonEmptyStr
+    Gnu => "abi.v1.gnu" as std.types.NonEmptyStr
+    GnuEabi => "abi.v1.gnueabi" as std.types.NonEmptyStr
+    GnuEabihf => "abi.v1.gnueabihf" as std.types.NonEmptyStr
+    Musl => "abi.v1.musl" as std.types.NonEmptyStr
+    Msvc => "abi.v1.msvc" as std.types.NonEmptyStr
+    AndroidAbi => "abi.v1.android" as std.types.NonEmptyStr
+    Eabi => "abi.v1.eabi" as std.types.NonEmptyStr
+    Eabihf => "abi.v1.eabihf" as std.types.NonEmptyStr
   }
 }
 
@@ -326,31 +326,31 @@ fn abi_env_identity_tag(env: AbiEnv) -> NonEmptyStr {
 // THE ABI AXIS IS LOAD-BEARING RATHER THAN DECORATIVE. Gnu and Musl differ in exactly the property that decides whether a produced binary runs on a given host, so a digest blind to it would let a musl artifact satisfy a gnu request. An absent env is hashed as its own atom rather than skipped, because skipping would make an unspecified env collide with whatever env sorts first.
 //
 // WHAT THIS DIGEST IS FOR, stated because the previous revision got it wrong. It is an INDEX -- a short key under which a subject's artifact can be found. It is not proof that two subjects are the same, and no reuse decision may rest on it alone, because a structural hash admits collisions and a collision would hand a requester somebody else's bytes. The equality authority is exact structural comparison of the retrieved subject; see the retrieval path in gunbc.devboot.outcome.
-fn cargo_target_digest(target: CargoTarget) -> Fnv1a64Structural {
+fn cargo_target_digest(target: extdeps.cargo.CargoTarget) -> std.content_hash.Fnv1a64Structural {
   match target {
-    Lib => content_hash_atom(value: "cargo_target.v1.lib" as NonEmptyStr)
+    Lib => content_hash_atom(value: "cargo_target.v1.lib" as std.types.NonEmptyStr)
     Bin { name } => content_hash_combine_structural(
-      left: content_hash_atom(value: "cargo_target.v1.bin" as NonEmptyStr),
-      right: content_hash_atom(value: name as NonEmptyStr),
+      left: content_hash_atom(value: "cargo_target.v1.bin" as std.types.NonEmptyStr),
+      right: content_hash_atom(value: name as std.types.NonEmptyStr),
     )
     CargoTest { name } => content_hash_combine_structural(
-      left: content_hash_atom(value: "cargo_target.v1.test" as NonEmptyStr),
-      right: content_hash_atom(value: name as NonEmptyStr),
+      left: content_hash_atom(value: "cargo_target.v1.test" as std.types.NonEmptyStr),
+      right: content_hash_atom(value: name as std.types.NonEmptyStr),
     )
     Example { name } => content_hash_combine_structural(
-      left: content_hash_atom(value: "cargo_target.v1.example" as NonEmptyStr),
-      right: content_hash_atom(value: name as NonEmptyStr),
+      left: content_hash_atom(value: "cargo_target.v1.example" as std.types.NonEmptyStr),
+      right: content_hash_atom(value: name as std.types.NonEmptyStr),
     )
     Bench { name } => content_hash_combine_structural(
-      left: content_hash_atom(value: "cargo_target.v1.bench" as NonEmptyStr),
-      right: content_hash_atom(value: name as NonEmptyStr),
+      left: content_hash_atom(value: "cargo_target.v1.bench" as std.types.NonEmptyStr),
+      right: content_hash_atom(value: name as std.types.NonEmptyStr),
     )
   }
 }
 
-fn build_product_digest(product: BuildProduct) -> Fnv1a64Structural {
+fn build_product_digest(product: BuildProduct) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(
-    tag: "devboot.subject.product" as NonEmptyStr,
+    tag: "devboot.subject.product" as std.types.NonEmptyStr,
     payload: content_hash_combine_structural(
       left: content_hash_atom(value: product.package),
       right: cargo_target_digest(target: product.target),
@@ -358,16 +358,16 @@ fn build_product_digest(product: BuildProduct) -> Fnv1a64Structural {
   )
 }
 
-fn abi_env_atom(env: AbiEnv?) -> Fnv1a64Structural {
+fn abi_env_atom(env: extdeps.toolchain.types.AbiEnv?) -> std.content_hash.Fnv1a64Structural {
   match env {
     Present { value: e } => content_hash_atom(value: abi_env_identity_tag(env: e))
-    Absent => content_hash_atom(value: "abi.v1.absent" as NonEmptyStr)
+    Absent => content_hash_atom(value: "abi.v1.absent" as std.types.NonEmptyStr)
   }
 }
 
-fn target_triple_digest(target: TargetTriple) -> Fnv1a64Structural {
+fn target_triple_digest(target: extdeps.toolchain.types.TargetTriple) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(
-    tag: "devboot.subject.target" as NonEmptyStr,
+    tag: "devboot.subject.target" as std.types.NonEmptyStr,
     payload: content_hash_combine_structural(
       left: content_hash_atom(value: architecture_identity_tag(arch: target.arch)),
       right: content_hash_combine_structural(
@@ -381,9 +381,9 @@ fn target_triple_digest(target: TargetTriple) -> Fnv1a64Structural {
   )
 }
 
-fn toolchain_digest(toolchain: ToolchainRequirement) -> Fnv1a64Structural {
+fn toolchain_digest(toolchain: extdeps.toolchain.types.ToolchainRequirement) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(
-    tag: "devboot.subject.toolchain" as NonEmptyStr,
+    tag: "devboot.subject.toolchain" as std.types.NonEmptyStr,
     payload: content_hash_combine_structural(
       left: content_hash_atom(value: toolchain.name),
       right: content_hash_atom(value: toolchain.version),
@@ -391,10 +391,10 @@ fn toolchain_digest(toolchain: ToolchainRequirement) -> Fnv1a64Structural {
   )
 }
 
-fn features_digest(features: List<NonEmptyStr>) -> Fnv1a64Structural {
+fn features_digest(features: List<std.types.NonEmptyStr>) -> std.content_hash.Fnv1a64Structural {
   fold(
     features,
-    init: content_hash_atom(value: "devboot.subject.features" as NonEmptyStr),
+    init: content_hash_atom(value: "devboot.subject.features" as std.types.NonEmptyStr),
     f: (acc, name) => content_hash_combine_structural(
       left: acc,
       right: content_hash_atom(value: name),
@@ -402,7 +402,7 @@ fn features_digest(features: List<NonEmptyStr>) -> Fnv1a64Structural {
   )
 }
 
-fn optional_atom(value: NonEmptyStr?, absent_tag: NonEmptyStr) -> Fnv1a64Structural {
+fn optional_atom(value: std.types.NonEmptyStr?, absent_tag: std.types.NonEmptyStr) -> std.content_hash.Fnv1a64Structural {
   match value {
     Present { value: text } => content_hash_atom(value: text)
     Absent => content_hash_atom(value: absent_tag)
@@ -410,18 +410,18 @@ fn optional_atom(value: NonEmptyStr?, absent_tag: NonEmptyStr) -> Fnv1a64Structu
 }
 
 // A cargo configuration VALUE may legitimately be empty -- only the key is required to name something -- so unlike every other atom here it cannot be cast into the non-empty carrier. Casting it would assert a property the admission deliberately does not check, which is the fabrication class this module just finished removing; skipping the empty value instead would make an entry set to empty collide with the same entry absent, two states whose meanings differ. It hashes as its own distinct atom, so both stay representable and neither is invented.
-fn cargo_config_value_atom(value: String) -> Fnv1a64Structural {
+fn cargo_config_value_atom(value: String) -> std.content_hash.Fnv1a64Structural {
   if value == "" {
-    content_hash_atom(value: "devboot.subject.cargo_config.empty_value" as NonEmptyStr)
+    content_hash_atom(value: "devboot.subject.cargo_config.empty_value" as std.types.NonEmptyStr)
   } else {
-    content_hash_atom(value: value as NonEmptyStr)
+    content_hash_atom(value: value as std.types.NonEmptyStr)
   }
 }
 
-fn cargo_config_digest(entries: List<CargoConfigEntry>) -> Fnv1a64Structural {
+fn cargo_config_digest(entries: List<CargoConfigEntry>) -> std.content_hash.Fnv1a64Structural {
   fold(
     entries,
-    init: content_hash_atom(value: "devboot.subject.cargo_config" as NonEmptyStr),
+    init: content_hash_atom(value: "devboot.subject.cargo_config" as std.types.NonEmptyStr),
     f: (acc, entry) => content_hash_combine_structural(
       left: acc,
       right: content_hash_combine_structural(
@@ -432,18 +432,18 @@ fn cargo_config_digest(entries: List<CargoConfigEntry>) -> Fnv1a64Structural {
   )
 }
 
-fn build_environment_digest(environment: BuildEnvironmentSpec) -> Fnv1a64Structural {
+fn build_environment_digest(environment: BuildEnvironmentSpec) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(
-    tag: "devboot.subject.environment" as NonEmptyStr,
+    tag: "devboot.subject.environment" as std.types.NonEmptyStr,
     payload: content_hash_combine_structural(
       left: content_hash_combine_structural(
         left: features_digest(features: environment.rustflags),
         right: content_hash_atom(value: platform_c_library_identity_tag(library: environment.platform_c_library)),
       ),
       right: content_hash_combine_structural(
-        left: optional_atom(value: environment.linker, absent_tag: "devboot.subject.linker.absent" as NonEmptyStr),
+        left: optional_atom(value: environment.linker, absent_tag: "devboot.subject.linker.absent" as std.types.NonEmptyStr),
         right: content_hash_combine_structural(
-          left: optional_atom(value: environment.sysroot, absent_tag: "devboot.subject.sysroot.absent" as NonEmptyStr),
+          left: optional_atom(value: environment.sysroot, absent_tag: "devboot.subject.sysroot.absent" as std.types.NonEmptyStr),
           right: cargo_config_digest(entries: environment.cargo_config),
         ),
       ),
@@ -456,23 +456,23 @@ fn build_environment_digest(environment: BuildEnvironmentSpec) -> Fnv1a64Structu
 // It is not reachable today: this repository's stores are SHA-1, so one family is in play and the collision has no way to occur. That is a fact about the current population, not about the carrier, and the repository is explicitly moving toward SHA-256 object format -- the moment both exist, an identity that ignores which one it is becomes wrong silently.
 //
 // The fix mirrors the ref token, which already prefixes its family for the same reason, so the two places that turn a hash into an identity string now agree instead of one quietly being weaker. Found by review, and the argument that convinced me is that the adjacent note already made the case -- the code simply did not do what its own reasoning said.
-fn tree_oid_identity_atom(oid: GitObjectId) -> ContentHash {
+fn tree_oid_identity_atom(oid: extdeps.git.object_store.GitObjectId) -> std.content_hash.ContentHash {
   content_hash_combine_structural(
     left: content_hash_atom(value: git_object_format_identity_tag(format: git_object_id_format(oid: oid))),
     right: content_hash_atom(value: git_object_id_wire_hex(oid: oid)),
   )
 }
 
-fn git_object_format_identity_tag(format: GitObjectFormat) -> NonEmptyStr {
+fn git_object_format_identity_tag(format: extdeps.git.object_store.GitObjectFormat) -> std.types.NonEmptyStr {
   match format {
-    GitObjectFormatSha1 => "git.oid.v1.sha1" as NonEmptyStr
-    GitObjectFormatSha256 => "git.oid.v1.sha256" as NonEmptyStr
+    GitObjectFormatSha1 => "git.oid.v1.sha1" as std.types.NonEmptyStr
+    GitObjectFormatSha256 => "git.oid.v1.sha256" as std.types.NonEmptyStr
   }
 }
 
-fn build_subject_digest(subject: BuildSubject) -> ContentHash {
+fn build_subject_digest(subject: BuildSubject) -> std.content_hash.ContentHash {
   content_hash_tagged(
-    tag: "devboot.subject" as NonEmptyStr,
+    tag: "devboot.subject" as std.types.NonEmptyStr,
     payload: content_hash_combine_structural(
       left: tree_oid_identity_atom(oid: subject.tree_oid),
       right: content_hash_combine_structural(
@@ -509,14 +509,14 @@ fn build_subject_equal(left: BuildSubject, right: BuildSubject) -> Bool {
 // WHY A RENDERING RATHER THAN A PARSER. Comparing two subjects exactly needs only that the rendering be injective -- distinct subjects render distinctly -- not that it be reversible. So the stored text is compared against the rendering of the request, and equal renderings mean equal subjects without any need to reconstruct a value. That keeps the reuse law exact while adding one function instead of a serializer and a parser that could disagree.
 //
 // INJECTIVITY IS WHY EVERY FIELD APPEARS AND WHY THE SEPARATORS ARE NOT SHARED WITH THE DATA. Each axis is emitted with its own label and a newline separator, and list members are indexed, so no reordering or concatenation of one field can impersonate another. A rendering that dropped an axis would silently make two different subjects equal -- the false share this whole identity scheme exists to prevent, reintroduced at the storage layer.
-fn render_optional(value: NonEmptyStr?) -> String {
+fn render_optional(value: std.types.NonEmptyStr?) -> String {
   match value {
     Present { value: text } => text as String
     Absent => "<absent>"
   }
 }
 
-fn render_cargo_target(target: CargoTarget) -> String {
+fn render_cargo_target(target: extdeps.cargo.CargoTarget) -> String {
   match target {
     Lib => "lib"
     Bin { name } => concat("bin:", name)
@@ -526,7 +526,7 @@ fn render_cargo_target(target: CargoTarget) -> String {
   }
 }
 
-fn render_indexed_list(label: String, values: List<NonEmptyStr>) -> String {
+fn render_indexed_list(label: String, values: List<std.types.NonEmptyStr>) -> String {
   fold(
     values,
     init: IndexedRender { index: 0, text: "" },
@@ -577,7 +577,7 @@ fn render_build_subject(subject: BuildSubject) -> String {
   ], "")
 }
 
-fn render_abi(env: AbiEnv?) -> String {
+fn render_abi(env: extdeps.toolchain.types.AbiEnv?) -> String {
   match env {
     Present { value: e } => abi_env_identity_tag(env: e) as String
     Absent => "absent"

@@ -12,8 +12,8 @@ type CursorSdkSecureApiKeyInput
   | CursorSdkSecureApiKeyInputRefused { reason: std.types.NonEmptyStr }
 
 fn cursor_sdk_secure_api_key_from_secret_ref(
-  secret_ref: SecretRef,
-  token_source: AccessTokenSource,
+  secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef,
+  token_source: gunbc.auth.access_token_source.AccessTokenSource,
 ) -> CursorSdkSecureApiKeyInput {
   match cursor_sdk_admit_exact_secret_ref_version(ref: secret_ref) {
     CursorSdkSecretRefVersionRefused { reason } =>
@@ -24,7 +24,7 @@ fn cursor_sdk_secure_api_key_from_secret_ref(
           CursorSdkSecureApiKeyInputRefused { reason: reason }
         SecretCredentialAccessUpsertRequired { plan: plan } =>
           CursorSdkSecureApiKeyInputRefused {
-            reason: access_token_upsert_required_reason(plan: plan) as NonEmptyStr,
+            reason: access_token_upsert_required_reason(plan: plan) as std.types.NonEmptyStr,
           }
         SecretCredentialWireDecodeRefused { identity_cause: identity_cause, payload_cause: payload_cause } =>
           CursorSdkSecureApiKeyInputRefused {

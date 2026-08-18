@@ -15,7 +15,7 @@ type BmcFanThermalGuard {
   required_component_sensors: List<std.types.NonEmptyStr>
 }
 
-fn bmc_intent_fan_curve_duty_at(curve: BmcFanCurve, reading: Celsius) -> Percent {
+fn bmc_intent_fan_curve_duty_at(curve: extdeps.bmc.types.BmcFanCurve, reading: std.measure.Celsius) -> std.measure.Percent {
   fold(
     curve.steps,
     init: curve.minimum_duty,
@@ -29,7 +29,7 @@ fn bmc_intent_fan_curve_duty_at(curve: BmcFanCurve, reading: Celsius) -> Percent
 }
 
 fn bmc_fan_curve_engages_cooling_early(
-  curve: BmcFanCurve,
+  curve: extdeps.bmc.types.BmcFanCurve,
   policy: BmcFanAcousticPolicy,
 ) -> Bool {
   percent_count(
@@ -41,7 +41,7 @@ fn bmc_fan_curve_engages_cooling_early(
 }
 
 fn bmc_fan_curve_reaches_emergency_full_duty(
-  curve: BmcFanCurve,
+  curve: extdeps.bmc.types.BmcFanCurve,
   policy: BmcFanAcousticPolicy,
 ) -> Bool {
   fold(
@@ -57,8 +57,8 @@ fn bmc_fan_curve_reaches_emergency_full_duty(
 }
 
 fn bmc_fan_curve_effectively_reaches_full_duty_before(
-  curve: BmcFanCurve,
-  temperature: Celsius,
+  curve: extdeps.bmc.types.BmcFanCurve,
+  temperature: std.measure.Celsius,
 ) -> Bool {
   fold(
     curve.steps,
@@ -88,26 +88,26 @@ type BmcControlPlaneIntent {
   fan_policy: BmcFanPolicyIntent
 }
 
-data fleet_bmc_fan_graceful_restart_boundary: StateDurabilityBoundary = ControlPlaneRestartBoundary {
+data fleet_bmc_fan_graceful_restart_boundary: std.state_durability.StateDurabilityBoundary = ControlPlaneRestartBoundary {
   mode: LifecycleGracefulRestart,
 }
 
-data fleet_bmc_fan_durability_intent: StateDurabilityIntent = DurableAcross {
+data fleet_bmc_fan_durability_intent: std.state_durability.StateDurabilityIntent = DurableAcross {
   boundaries: state_durability_boundary_requirements(
     first: fleet_bmc_fan_graceful_restart_boundary,
     additional: [],
   ),
 }
 
-data fleet_quiet_temp_soc_fan_curve_steps: List<BmcFanCurveStep> = [
-  BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
-  BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
-  BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
-  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
-  BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
+data fleet_quiet_temp_soc_fan_curve_steps: List<extdeps.bmc.types.BmcFanCurveStep> = [
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
 ]
 
-data fleet_quiet_temp_soc_fan_curve: BmcFanCurve = BmcFanCurve {
+data fleet_quiet_temp_soc_fan_curve: extdeps.bmc.types.BmcFanCurve = extdeps.bmc.types.BmcFanCurve {
   control_sensor: "TEMP_SOC",
   steps: fleet_quiet_temp_soc_fan_curve_steps,
   minimum_duty: percent(30),

@@ -3,7 +3,7 @@ module gunbc.git_diff_change_window
 
 data git_diff_change_window_note: String = "Git realization of an exact affected-set comparison window. Producers observe merge-base(head, target_generation) in a Git worktree and persist a head- and window-identity-addressed receipt; consumers (gunbc.diff_baseline, floor_diff_observe) read the path named by GUNBC_DIFF_WINDOW_PATH. This module is Git-specific — other SCM realizations carry their own native receipts beneath a future compatibility envelope."
 
-data gunbc_diff_window_path_env: NonEmptyStr = "GUNBC_DIFF_WINDOW_PATH"
+data gunbc_diff_window_path_env: std.types.NonEmptyStr = "GUNBC_DIFF_WINDOW_PATH"
 
 data git_diff_window_schema: String = "gunbc-git-diff-window/v2"
 
@@ -70,7 +70,7 @@ type GitDiffWindowPrepareOutcome
   = GitDiffWindowPrepared { path: String, window: GitExactDiffWindow }
   | GitDiffWindowPrepareRefused { cause: ChangeWindowPreparationRefusal }
 
-fn git_diff_window_required_string(doc: JsonValue, key: String) -> String? {
+fn git_diff_window_required_string(doc: extdeps.languages.json.emit.JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberAbsent => none
     JsonMemberDuplicated { count: _ } => none
@@ -89,7 +89,7 @@ fn git_diff_window_required_string(doc: JsonValue, key: String) -> String? {
   }
 }
 
-fn git_diff_window_git_object_id_from_member(doc: JsonValue, key: String) -> GitObjectId? {
+fn git_diff_window_git_object_id_from_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> extdeps.git.object_store.GitObjectId? {
   match git_diff_window_required_string(doc: doc, key: key) {
     Absent => none
     Present { value: hex } => git_object_id_from_untagged_hex(hex: hex)
@@ -97,48 +97,48 @@ fn git_diff_window_git_object_id_from_member(doc: JsonValue, key: String) -> Git
 }
 
 fn git_diff_window_identity_of(
-  target: GitRef,
-  target_generation: GitObjectId,
-  base: GitObjectId,
-  head: GitObjectId,
-) -> Fnv1a64Structural {
+  target: std.types.GitRef,
+  target_generation: extdeps.git.object_store.GitObjectId,
+  base: extdeps.git.object_store.GitObjectId,
+  head: extdeps.git.object_store.GitObjectId,
+) -> std.content_hash.Fnv1a64Structural {
   content_hash_combine_structural(
     left: content_hash_combine_structural(
       left: content_hash_combine_structural(
-        left: content_hash_atom(value: target as NonEmptyStr),
+        left: content_hash_atom(value: target as std.types.NonEmptyStr),
         right: content_hash_atom(
-          value: git_object_id_wire_hex(oid: target_generation) as NonEmptyStr
+          value: git_object_id_wire_hex(oid: target_generation) as std.types.NonEmptyStr
         ),
       ),
       right: content_hash_combine_structural(
-        left: content_hash_atom(value: git_object_id_wire_hex(oid: base) as NonEmptyStr),
-        right: content_hash_atom(value: git_object_id_wire_hex(oid: head) as NonEmptyStr),
+        left: content_hash_atom(value: git_object_id_wire_hex(oid: base) as std.types.NonEmptyStr),
+        right: content_hash_atom(value: git_object_id_wire_hex(oid: head) as std.types.NonEmptyStr),
       ),
     ),
-    right: content_hash_atom(value: git_diff_window_relation_observed as NonEmptyStr),
+    right: content_hash_atom(value: git_diff_window_relation_observed as std.types.NonEmptyStr),
   )
 }
 
-fn git_diff_window_absent_identity() -> Fnv1a64Structural {
-  content_hash_atom(value: git_diff_window_absent_identity_label as NonEmptyStr)
+fn git_diff_window_absent_identity() -> std.content_hash.Fnv1a64Structural {
+  content_hash_atom(value: git_diff_window_absent_identity_label as std.types.NonEmptyStr)
 }
 
-fn git_diff_window_identity_hex(identity: Fnv1a64Structural) -> String {
+fn git_diff_window_identity_hex(identity: std.content_hash.Fnv1a64Structural) -> String {
   identity.digest as String
 }
 
 fn git_diff_window_identities_equal(
-  left: Fnv1a64Structural,
-  right: Fnv1a64Structural,
+  left: std.content_hash.Fnv1a64Structural,
+  right: std.content_hash.Fnv1a64Structural,
 ) -> Bool {
   content_hash_eq_structural(left: left, right: right)
 }
 
 fn git_exact_diff_window_for_verification(
-  target: GitRef,
-  target_generation: GitObjectId,
-  base: GitObjectId,
-  head: GitObjectId,
+  target: std.types.GitRef,
+  target_generation: extdeps.git.object_store.GitObjectId,
+  base: extdeps.git.object_store.GitObjectId,
+  head: extdeps.git.object_store.GitObjectId,
 ) -> GitExactDiffWindow {
   let identity = git_diff_window_identity_of(
     target: target,
@@ -251,7 +251,7 @@ fn git_diff_window_from_json(text: String) -> GitDiffWindowObservation {
                                   }
                                 } else {
                                   let derived = git_diff_window_identity_of(
-                                    target: target as GitRef,
+                                    target: target as std.types.GitRef,
                                     target_generation: target_generation,
                                     base: base,
                                     head: head,
@@ -272,7 +272,7 @@ fn git_diff_window_from_json(text: String) -> GitDiffWindowObservation {
                                       } else {
                                         GitDiffWindowObserved {
                                           window: GitExactDiffWindow {
-                                            target: target as GitRef,
+                                            target: target as std.types.GitRef,
                                             target_generation: target_generation,
                                             base: base,
                                             head: head,

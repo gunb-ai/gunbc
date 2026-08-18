@@ -42,15 +42,15 @@ type ModuleRootNameFindState
   | ModuleRootNameFoundOnce
   | ModuleRootNameFoundDuplicate
 
-fn resolve_diagnostic(reason: Symbol) -> Diagnostic {
-  Diagnostic {
+fn resolve_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: port_locus(port: reason),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn resolve_diagnostics(reason: Symbol) -> NonEmptyDiagnostics {
+fn resolve_diagnostics(reason: v2.std.node.Symbol) -> v2.std.diagnostic.NonEmptyDiagnostics {
   diagnostics_singleton(d: resolve_diagnostic(reason: reason))
 }
 
@@ -62,8 +62,8 @@ type ModuleRootLookup
   | ModuleRootLookupRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 
 fn resolve_module_not_found_diagnostic_from_missing(
-  requested: QualifiedName
-) -> NonEmptyDiagnostics {
+  requested: v2.std.qualified_name.QualifiedName
+) -> v2.std.diagnostic.NonEmptyDiagnostics {
   diagnostics_singleton(
     d: textual_whole_file_diagnostic(
       reason: ^resolve_module_not_found,
@@ -75,7 +75,7 @@ fn resolve_module_not_found_diagnostic_from_missing(
   )
 }
 
-fn resolve_module_not_found_diagnostic(name: QualifiedName) -> NonEmptyDiagnostics {
+fn resolve_module_not_found_diagnostic(name: v2.std.qualified_name.QualifiedName) -> v2.std.diagnostic.NonEmptyDiagnostics {
   resolve_module_not_found_diagnostic_from_missing(requested: name)
 }
 
@@ -144,7 +144,7 @@ fn admission_from_module_root(root: Node) -> Outcome<Admission> {
   }
 }
 
-fn admission_initial(base: Namespace) -> AdmissionState {
+fn admission_initial(base: v2.compiler.resolve.Namespace) -> AdmissionState {
   AdmissionAccepted {
     bindings: base.bindings,
     origins: empty_map()
@@ -152,8 +152,8 @@ fn admission_initial(base: Namespace) -> AdmissionState {
 }
 
 fn admit_export_symbol(
-  sym: Symbol,
-  origin: QualifiedName,
+  sym: v2.std.node.Symbol,
+  origin: v2.std.qualified_name.QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
   match state {
@@ -179,8 +179,8 @@ fn admit_export_symbol(
 }
 
 fn module_root_name_find_fold(
-  names: FreeMonoid<QualifiedName>,
-  name: QualifiedName,
+  names: FreeMonoid<v2.std.qualified_name.QualifiedName>,
+  name: v2.std.qualified_name.QualifiedName,
   acc: ModuleRootNameFindState
 ) -> ModuleRootNameFindState {
   fold_list(
@@ -200,7 +200,7 @@ fn module_root_name_find_fold(
   )
 }
 
-fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<FreeMonoid<NormalizedTree>> {
+fn validate_module_roots(roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>) -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   match fold_list(
     xs: roots,
     empty: ModuleRootsValid { seen: Empty, diagnostics: None },
@@ -263,8 +263,8 @@ fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<FreeMonoi
 data module_root_lookup_note: String = "Typed lookup result beside module_root_find diagnostics. ModuleRootMissing and ModuleRootAmbiguous preserve the exact QualifiedName sought; diagnostics are projections of these results for consumers that still read the Outcome directly."
 
 fn module_root_lookup(
-  roots: FreeMonoid<NormalizedTree>,
-  name: QualifiedName
+  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
+  name: v2.std.qualified_name.QualifiedName
 ) -> ModuleRootLookup {
   match fold_list(
     xs: roots,
@@ -313,9 +313,9 @@ fn module_root_lookup(
 }
 
 fn module_root_find(
-  roots: FreeMonoid<NormalizedTree>,
-  name: QualifiedName
-) -> Outcome<NormalizedTree> {
+  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
+  name: v2.std.qualified_name.QualifiedName
+) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   match module_root_lookup(roots: roots, name: name) {
     ModuleRootFound { root: root } =>
       Accepted { value: root, diagnostics: None }
@@ -332,7 +332,7 @@ fn module_root_find(
   }
 }
 
-fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
+fn try_admitted_export_binding(e: v2.std.node.Edge) -> v2.compiler.resolve.DeclaredBinding? {
   match try_edge_declared_binding(e: e) {
     Present { value: b } =>
       if dag_surface_module_header_metadata_edge(name: b.name) {
@@ -351,8 +351,8 @@ type AdmitExportsFold {
 }
 
 fn admit_named_export_edge(
-  edge: Edge,
-  origin: QualifiedName,
+  edge: v2.std.node.Edge,
+  origin: v2.std.qualified_name.QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
   match try_admitted_export_binding(e: edge) {
@@ -363,7 +363,7 @@ fn admit_named_export_edge(
 }
 
 fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExportsFold> {
-  NodeFoldTopDown {
+  v2.std.node.NodeFoldTopDown {
     init: fn(n, fold) {
       AdmitExportsFold {
         origin: fold.origin,
@@ -413,7 +413,7 @@ fn admit_named_exports_descend_spine(node: Node) -> Node {
 
 fn admit_named_exports(
   root: Node,
-  origin: QualifiedName,
+  origin: v2.std.qualified_name.QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
   let working = admit_named_exports_body_root(root: root)
@@ -436,8 +436,8 @@ fn admit_named_exports(
 }
 
 fn admit_import_root_find(
-  found: Outcome<NormalizedTree>,
-  origin: QualifiedName,
+  found: Outcome<v2.compiler.normalized_tree.NormalizedTree>,
+  origin: v2.std.qualified_name.QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
   match found {
@@ -459,7 +459,7 @@ fn admit_import_root_find(
 }
 
 fn admit_import_visible_entry(
-  roots: FreeMonoid<NormalizedTree>,
+  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
   import_edge: Import,
   state: AdmissionState
 ) -> AdmissionState {
@@ -474,12 +474,12 @@ fn admit_import_visible_entry(
 }
 
 fn admit_import_entry(
-  roots: FreeMonoid<NormalizedTree>,
+  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
   import_edge: Import,
   state: AdmissionState,
-  subject_qn: QualifiedName,
-  index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>
+  subject_qn: v2.std.qualified_name.QualifiedName,
+  index: v2.std.cross_tree.resolution.SourceRootIndex,
+  active_roots: FreeMonoid<v2.std.cross_tree.import_model.SourceRootRef>
 ) -> AdmissionState {
   match state {
     AdmissionRejected { diagnostics: d } =>
@@ -515,12 +515,12 @@ fn admit_import_entry(
 }
 
 fn admit_imports(
-  roots: FreeMonoid<NormalizedTree>,
+  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
   imports: FreeMonoid<Import>,
   state: AdmissionState,
-  subject_qn: QualifiedName,
-  index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>
+  subject_qn: v2.std.qualified_name.QualifiedName,
+  index: v2.std.cross_tree.resolution.SourceRootIndex,
+  active_roots: FreeMonoid<v2.std.cross_tree.import_model.SourceRootRef>
 ) -> AdmissionState {
   fold_list(
     xs: imports,
@@ -538,8 +538,8 @@ fn admit_imports(
   )
 }
 
-fn admission_namespace_base(lm: LanguageModel) -> Namespace {
-  Namespace {
+fn admission_namespace_base(lm: v2.std.language_model.LanguageModel) -> v2.compiler.resolve.Namespace {
+  v2.compiler.resolve.Namespace {
     bindings: empty_map(),
     canonical_symbols: dag_language_model_canonical_symbols(lm: lm),
     symbol_index: empty_symbol_index(),
@@ -548,17 +548,17 @@ fn admission_namespace_base(lm: LanguageModel) -> Namespace {
 }
 
 fn subject_module_root_for_name(
-  roots: FreeMonoid<NormalizedTree>,
-  name: QualifiedName
-) -> Outcome<NormalizedTree> {
+  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
+  name: v2.std.qualified_name.QualifiedName
+) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   module_root_find(roots: roots, name: name)
 }
 
 fn namespace_admission_initial_state(
-  policy: NameResolutionPolicy,
-  lm: LanguageModel,
-  subject_module_root: NormalizedTree,
-  subject_qn: QualifiedName
+  policy: v2.std.resolution_policy.NameResolutionPolicy,
+  lm: v2.std.language_model.LanguageModel,
+  subject_module_root: v2.compiler.normalized_tree.NormalizedTree,
+  subject_qn: v2.std.qualified_name.QualifiedName
 ) -> AdmissionState {
   let base = admission_namespace_base(lm: lm)
   match policy {
@@ -574,14 +574,14 @@ fn namespace_admission_initial_state(
 }
 
 fn admitted_subject_from_bindings(
-  bindings: Map<Symbol, Symbol>,
-  base: Namespace,
-  subject_module_root: NormalizedTree,
-  validated_roots: FreeMonoid<NormalizedTree>,
-  module_qn: QualifiedName
+  bindings: Map<v2.std.node.Symbol, v2.std.node.Symbol>,
+  base: v2.compiler.resolve.Namespace,
+  subject_module_root: v2.compiler.normalized_tree.NormalizedTree,
+  validated_roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
+  module_qn: v2.std.qualified_name.QualifiedName
 ) -> AdmittedSubject {
   AdmittedSubject {
-    namespace: Namespace {
+    namespace: v2.compiler.resolve.Namespace {
       bindings: namespace_bindings_augment_from_module_atoms(
         root: subject_module_root.root,
         bindings: bindings
@@ -598,12 +598,12 @@ fn admitted_subject_from_bindings(
 }
 
 fn namespace_for_subject(
-  lm: LanguageModel,
-  roots: FreeMonoid<NormalizedTree>,
+  lm: v2.std.language_model.LanguageModel,
+  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
   admission: Admission,
-  index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>,
-  policy: NameResolutionPolicy
+  index: v2.std.cross_tree.resolution.SourceRootIndex,
+  active_roots: FreeMonoid<v2.std.cross_tree.import_model.SourceRootRef>,
+  policy: v2.std.resolution_policy.NameResolutionPolicy
 ) -> Outcome<AdmittedSubject> {
   match validate_module_roots(roots: roots) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -683,13 +683,13 @@ fn namespace_for_subject(
 }
 
 fn resolve_with_admission_policy(
-  lm: LanguageModel,
-  roots: FreeMonoid<NormalizedTree>,
+  lm: v2.std.language_model.LanguageModel,
+  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
   admission: Admission,
-  index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>,
-  policy: NameResolutionPolicy
-) -> Outcome<ResolvedTree> {
+  index: v2.std.cross_tree.resolution.SourceRootIndex,
+  active_roots: FreeMonoid<v2.std.cross_tree.import_model.SourceRootRef>,
+  policy: v2.std.resolution_policy.NameResolutionPolicy
+) -> Outcome<v2.compiler.resolve.ResolvedTree> {
   match namespace_for_subject(
     lm: lm,
     roots: roots,
@@ -720,10 +720,10 @@ fn resolve_with_admission_policy(
 }
 
 fn resolve_with_admission(
-  lm: LanguageModel,
-  roots: FreeMonoid<NormalizedTree>,
+  lm: v2.std.language_model.LanguageModel,
+  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
   admission: Admission
-) -> Outcome<ResolvedTree> {
+) -> Outcome<v2.compiler.resolve.ResolvedTree> {
   resolve_with_admission_policy(
     lm: lm,
     roots: roots,
@@ -735,12 +735,12 @@ fn resolve_with_admission(
 }
 
 fn resolve_with_admission_grounded(
-  lm: LanguageModel,
-  roots: FreeMonoid<NormalizedTree>,
+  lm: v2.std.language_model.LanguageModel,
+  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
   admission: Admission,
-  index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>
-) -> Outcome<ResolvedTree> {
+  index: v2.std.cross_tree.resolution.SourceRootIndex,
+  active_roots: FreeMonoid<v2.std.cross_tree.import_model.SourceRootRef>
+) -> Outcome<v2.compiler.resolve.ResolvedTree> {
   resolve_with_admission_policy(
     lm: lm,
     roots: roots,

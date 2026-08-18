@@ -19,8 +19,8 @@ fn gha_pilot_optionals_all_absent(checks: List<Bool>) -> Bool {
 fn gha_pilot_run_step_non_emit_fields_absent(
   name: Optional<String>,
   id: Optional<String>,
-  shell: Optional<ShellType>,
-  env: Optional<List<YamlKeyValue>>,
+  shell: Optional<extdeps.github.actions.ShellType>,
+  env: Optional<List<extdeps.languages.yaml.types.YamlKeyValue>>,
   working_directory: Optional<String>,
   if_condition: Optional<String>,
   continue_on_error: Optional<Bool>,
@@ -43,8 +43,8 @@ fn gha_pilot_run_step_non_emit_fields_absent(
 fn gha_pilot_uses_step_non_emit_fields_absent(
   name: Optional<String>,
   id: Optional<String>,
-  with: Optional<List<YamlKeyValue>>,
-  env: Optional<List<YamlKeyValue>>,
+  with: Optional<List<extdeps.languages.yaml.types.YamlKeyValue>>,
+  env: Optional<List<extdeps.languages.yaml.types.YamlKeyValue>>,
   if_condition: Optional<String>,
   continue_on_error: Optional<Bool>,
   timeout_minutes: Optional<Int>
@@ -62,7 +62,7 @@ fn gha_pilot_uses_step_non_emit_fields_absent(
   )
 }
 
-fn gha_fold_pilot_emit_step(step: Step) -> Optional<GhaPilotStepEmit> {
+fn gha_fold_pilot_emit_step(step: extdeps.github.actions.Step) -> Optional<GhaPilotStepEmit> {
   match step {
     RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
       match gha_pilot_run_step_non_emit_fields_absent(

@@ -3,16 +3,16 @@ module v2.lens.complexity_accumulator_copy.compile_gate
 
 data compile_gate_law: String = "The accumulator-copy lens as a compile citizen (operator ruling 2026-07-13: a complexity violation FAILS COMPILATION, inheriting compile's affected-set scoping; the witness lane is the red control, never the enforcement). Gate semantics split the Finding coproduct on the suspect/refusal axis the lens already carries: a Poly2Suspect (proven copied-accumulator, DESIGN 6 bare-minimum-cost) REJECTS — the diagnostic is located at the finding node and the rejection tail carries the full finding ledger; Unclassifiable refusal causes are the undecidable residue and ride the Accepted diagnostics channel — typed per-cause, located, counted (the 5 stopped-line ledger), never gating and never silently dropped. Grain: this gate runs ONCE at the tree root (the lens is a rooted carrier-threading walk; running it per subtree node is O(n^2) — the enforcement of the complexity lens violating the complexity lens), so it enrolls in the root-grain required roster, not the per-node roster."
 
-fn finding_diagnostic(f: Finding) -> Diagnostic {
+fn finding_diagnostic(f: Finding) -> v2.std.diagnostic.Diagnostic {
   match f {
     Poly2Suspect { at: n, cost: _ } =>
-      Diagnostic {
+      v2.std.diagnostic.Diagnostic {
         reason: ^accumulator_copy_poly2_suspect,
         at: node_locus(node: n),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     Unclassifiable { at: n, cause: c } =>
-      Diagnostic {
+      v2.std.diagnostic.Diagnostic {
         reason: c,
         at: node_locus(node: n),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -54,7 +54,7 @@ fn accumulator_copy_compile_gate(node: Node) -> Outcome<Witness<Node>> {
   match ledger.suspects {
     Cons { head: first, tail: rest } =>
       Rejected {
-        diagnostics: NonEmptyDiagnostics {
+        diagnostics: v2.std.diagnostic.NonEmptyDiagnostics {
           head: first,
           tail: fold(ledger.refusals, init: rest, f: fn(acc, d) {
             Cons { head: d, tail: acc }
@@ -67,7 +67,7 @@ fn accumulator_copy_compile_gate(node: Node) -> Outcome<Witness<Node>> {
           outcome_with_diagnostics(
             value: Holds { value: node },
             diagnostics: Some {
-              diagnostics: NonEmptyDiagnostics { head: first, tail: rest }
+              diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
             }
           )
         Empty => outcome_accepted(value: Holds { value: node })
@@ -75,6 +75,6 @@ fn accumulator_copy_compile_gate(node: Node) -> Outcome<Witness<Node>> {
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

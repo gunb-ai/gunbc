@@ -1,15 +1,15 @@
 module extdeps.bmc.types
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.dmtf.org/standards/redfish"
   }
 }
 
-data phosphor_pid_control_stepwise_semantics_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data phosphor_pid_control_stepwise_semantics_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/openbmc/phosphor-pid-control/blob/master/configure.md"
   }
@@ -143,14 +143,14 @@ type BmcRedfishSurfaceDerivation
 
 fn bmc_redfish_surface_matches(
   catalog: List<BmcRedfishSurfaceRow>,
-  firmware: BmcFirmwareVersion,
+  firmware: extdeps.bmc.capability.BmcFirmwareVersion,
 ) -> List<BmcRedfishSurfaceRow> {
   filter(catalog, row => row.firmware == firmware)
 }
 
 fn bmc_redfish_surface_for(
   catalog: List<BmcRedfishSurfaceRow>,
-  firmware: BmcFirmwareVersion,
+  firmware: extdeps.bmc.capability.BmcFirmwareVersion,
 ) -> BmcRedfishSurfaceDerivation {
   let matches = bmc_redfish_surface_matches(catalog: catalog, firmware: firmware)
   let count = list_length(matches)
@@ -168,7 +168,7 @@ fn bmc_redfish_surface_for(
 // shape: the only per-host input is the version.
 fn bmc_redfish_surface_of_host(
   catalog: List<BmcRedfishSurfaceRow>,
-  observation: BmcFirmwareObservation,
+  observation: extdeps.bmc.capability.BmcFirmwareObservation,
 ) -> BmcRedfishSurfaceDerivation {
   bmc_redfish_surface_for(catalog: catalog, firmware: observation.firmware)
 }
@@ -378,8 +378,8 @@ type BmcFanDutyDecision
 // The curve branch is the stateless base projection of the declared step points, clamped by minimum_duty below the first point. phosphor-pid-control's cited stepwise semantics only recompute after the input moves farther than positiveHysteresis or negativeHysteresis from the prior recomputation input; the effective emergency proof therefore includes rising hysteresis. A runtime observation must retain prior state when exact transition timing matters. The coproduct keeps a base-curve request distinct from the numerically identical sensor-unavailable fail-safe request.
 fn bmc_fan_curve_duty_at(
   validated: ValidatedBmcFanCurve,
-  reading: Celsius,
-) -> Percent {
+  reading: std.measure.Celsius,
+) -> std.measure.Percent {
   let curve = validated.curve
   fold(
     curve.steps,
@@ -395,7 +395,7 @@ fn bmc_fan_curve_duty_at(
 
 fn bmc_fan_duty_decision(
   validated: ValidatedBmcFanCurve,
-  reading: Celsius?,
+  reading: std.measure.Celsius?,
 ) -> BmcFanDutyDecision {
   let curve = validated.curve
   match reading {
@@ -412,7 +412,7 @@ fn bmc_fan_duty_decision(
   }
 }
 
-fn bmc_fan_duty_decision_curve_duty(decision: BmcFanDutyDecision) -> Percent? {
+fn bmc_fan_duty_decision_curve_duty(decision: BmcFanDutyDecision) -> std.measure.Percent? {
   match decision {
     BmcFanDutyFromCurve { reading: _, duty: duty } => Present { value: duty }
     BmcFanDutyFromSensorFailsafe { duty: _ } => Absent
@@ -421,7 +421,7 @@ fn bmc_fan_duty_decision_curve_duty(decision: BmcFanDutyDecision) -> Percent? {
 
 fn bmc_fan_duty_decision_sensor_failsafe_duty(
   decision: BmcFanDutyDecision,
-) -> Percent? {
+) -> std.measure.Percent? {
   match decision {
     BmcFanDutyFromSensorFailsafe { duty: duty } => Present { value: duty }
     BmcFanDutyFromCurve { reading: _, duty: _ } => Absent
@@ -430,8 +430,8 @@ fn bmc_fan_duty_decision_sensor_failsafe_duty(
 
 fn bmc_fan_curve_curve_duty_at_temperature(
   curve: BmcFanCurve,
-  reading: Celsius,
-) -> Percent? {
+  reading: std.measure.Celsius,
+) -> std.measure.Percent? {
   match validate_bmc_fan_curve(curve: curve) {
     BmcFanCurveValid { curve: validated } =>
       bmc_fan_duty_decision_curve_duty(
@@ -444,7 +444,7 @@ fn bmc_fan_curve_curve_duty_at_temperature(
   }
 }
 
-fn bmc_fan_curve_sensor_unavailable_duty(curve: BmcFanCurve) -> Percent? {
+fn bmc_fan_curve_sensor_unavailable_duty(curve: BmcFanCurve) -> std.measure.Percent? {
   match validate_bmc_fan_curve(curve: curve) {
     BmcFanCurveValid { curve: validated } =>
       bmc_fan_duty_decision_sensor_failsafe_duty(
@@ -489,7 +489,7 @@ fn bmc_fan_controller_shape_aggregated_topology(
 
 fn bmc_fan_controller_shape_independent_entry_names(
   shape: BmcFanControllerShape,
-) -> List<NonEmptyStr>? {
+) -> List<std.types.NonEmptyStr>? {
   match shape {
     FanPidIndependentEntries { entry_names: entry_names } =>
       Present { value: entry_names }
@@ -590,7 +590,7 @@ type RedfishPrivilege =
   | PrivilegeConfigureComponents
   | PrivilegeConfigureSelf
 
-fn redfish_boot_target_wire(t: RedfishBootSourceOverrideTarget) -> NonEmptyStr {
+fn redfish_boot_target_wire(t: RedfishBootSourceOverrideTarget) -> std.types.NonEmptyStr {
   match t {
     BootTargetNone => "None"
     BootTargetPxe => "Pxe"
@@ -602,7 +602,7 @@ fn redfish_boot_target_wire(t: RedfishBootSourceOverrideTarget) -> NonEmptyStr {
   }
 }
 
-fn redfish_boot_override_enabled_wire(e: RedfishBootSourceOverrideEnabled) -> NonEmptyStr {
+fn redfish_boot_override_enabled_wire(e: RedfishBootSourceOverrideEnabled) -> std.types.NonEmptyStr {
   match e {
     BootOverrideDisabled => "Disabled"
     BootOverrideOnce => "Once"
@@ -610,14 +610,14 @@ fn redfish_boot_override_enabled_wire(e: RedfishBootSourceOverrideEnabled) -> No
   }
 }
 
-fn redfish_boot_override_mode_wire(m: RedfishBootSourceOverrideMode) -> NonEmptyStr {
+fn redfish_boot_override_mode_wire(m: RedfishBootSourceOverrideMode) -> std.types.NonEmptyStr {
   match m {
     BootOverrideModeLegacy => "Legacy"
     BootOverrideModeUefi => "UEFI"
   }
 }
 
-fn redfish_reset_type_wire(r: RedfishResetType) -> NonEmptyStr {
+fn redfish_reset_type_wire(r: RedfishResetType) -> std.types.NonEmptyStr {
   match r {
     ResetForceOff => "ForceOff"
     ResetForceOn => "ForceOn"
@@ -628,7 +628,7 @@ fn redfish_reset_type_wire(r: RedfishResetType) -> NonEmptyStr {
   }
 }
 
-fn redfish_account_role_wire(role: RedfishAccountRole) -> NonEmptyStr {
+fn redfish_account_role_wire(role: RedfishAccountRole) -> std.types.NonEmptyStr {
   match role {
     AccountRoleAdministrator => "Administrator"
     AccountRoleOperator => "Operator"
@@ -636,7 +636,7 @@ fn redfish_account_role_wire(role: RedfishAccountRole) -> NonEmptyStr {
   }
 }
 
-fn redfish_privilege_wire(p: RedfishPrivilege) -> NonEmptyStr {
+fn redfish_privilege_wire(p: RedfishPrivilege) -> std.types.NonEmptyStr {
   match p {
     PrivilegeLogin => "Login"
     PrivilegeConfigureManager => "ConfigureManager"

@@ -18,7 +18,7 @@ type RunnerCapacityApplyOutcome
   = RunnerCapacityApplyCompleted { hosts: List<RunnerCapacityHostApplyReceipt> }
   | RunnerCapacityApplyRefused { reason: String }
 
-fn disk_preflight_refusal(host: HostIdentity, requested_width: Int) -> String? {
+fn disk_preflight_refusal(host: product.placement_supply.HostIdentity, requested_width: Int) -> String? {
   match runner_width_disk_preflight(
     requested_width: requested_width,
     disk: host_disk_observation(host: host),
@@ -41,14 +41,14 @@ fn disk_preflight_refusal(host: HostIdentity, requested_width: Int) -> String? {
   }
 }
 
-fn disk_preflight_refusal_for_host_plan(host_plan: RunnerCapacityHostPlan) -> String? {
+fn disk_preflight_refusal_for_host_plan(host_plan: gunbc.runner_capacity_plan.RunnerCapacityHostPlan) -> String? {
   match host_plan.admission {
     WidthAdmitted { width: w } => disk_preflight_refusal(host: host_plan.host, requested_width: w)
     _ => none
   }
 }
 
-fn non_add_action_refusal(action: RunnerCapacityAction, host: HostIdentity) -> String? {
+fn non_add_action_refusal(action: gunbc.runner_capacity_plan.RunnerCapacityAction, host: product.placement_supply.HostIdentity) -> String? {
   match action {
     RunnerSlotAdd { to: _ } => none
     RunnerSlotChange { from: _, to: _ } =>
@@ -69,7 +69,7 @@ fn non_add_action_refusal(action: RunnerCapacityAction, host: HostIdentity) -> S
   }
 }
 
-fn host_plan_non_add_refusal(host_plan: RunnerCapacityHostPlan) -> String? {
+fn host_plan_non_add_refusal(host_plan: gunbc.runner_capacity_plan.RunnerCapacityHostPlan) -> String? {
   fold(
     host_plan.actions,
     init: none,
@@ -81,7 +81,7 @@ fn host_plan_non_add_refusal(host_plan: RunnerCapacityHostPlan) -> String? {
   )
 }
 
-fn count_add_actions_in_host_plan(host_plan: RunnerCapacityHostPlan) -> Int {
+fn count_add_actions_in_host_plan(host_plan: gunbc.runner_capacity_plan.RunnerCapacityHostPlan) -> Int {
   fold(
     host_plan.actions,
     init: 0,
@@ -93,7 +93,7 @@ fn count_add_actions_in_host_plan(host_plan: RunnerCapacityHostPlan) -> Int {
   )
 }
 
-fn count_runner_slot_add_actions(plan: RunnerCapacityPlan) -> Int {
+fn count_runner_slot_add_actions(plan: gunbc.runner_capacity_plan.RunnerCapacityPlan) -> Int {
   match plan {
     PlanRefused { reason: _ } => 0
     PlanReady { hosts: hs } =>
@@ -105,7 +105,7 @@ fn count_runner_slot_add_actions(plan: RunnerCapacityPlan) -> Int {
   }
 }
 
-fn runner_capacity_apply_host_plan(host_plan: RunnerCapacityHostPlan) -> RunnerCapacityHostApplyReceipt {
+fn runner_capacity_apply_host_plan(host_plan: gunbc.runner_capacity_plan.RunnerCapacityHostPlan) -> RunnerCapacityHostApplyReceipt {
   match host_plan_non_add_refusal(host_plan: host_plan) {
     Present { value: why } =>
       RunnerCapacityHostApplyReceipt {
@@ -154,7 +154,7 @@ fn runner_capacity_reapply_plans_zero_additions(
     && addition_actions(host: operator_host_srv4, requested_width: srv4_width, observed_width: observed_srv4).length() == 0
 }
 
-fn runner_capacity_apply_plan(plan: RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {
+fn runner_capacity_apply_plan(plan: gunbc.runner_capacity_plan.RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {
   match plan {
     PlanRefused { reason: r } => RunnerCapacityApplyRefused { reason: r }
     PlanReady { hosts: hs } =>
@@ -199,7 +199,7 @@ fn runner_capacity_apply_total_adds_executed(outcome: RunnerCapacityApplyOutcome
 
 fn runner_capacity_host_apply_receipt(
   outcome: RunnerCapacityApplyOutcome,
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
 ) -> RunnerCapacityHostApplyReceipt? {
   match outcome {
     RunnerCapacityApplyRefused { reason: _ } => none
@@ -217,7 +217,7 @@ fn runner_capacity_host_apply_receipt(
   }
 }
 
-fn runner_capacity_apply_wet_exit(srv3_width: Int, srv4_width: Int) -> ProcessExit {
+fn runner_capacity_apply_wet_exit(srv3_width: Int, srv4_width: Int) -> std.process.ProcessExit {
   let plan = runner_capacity_plan(
     srv3_width: srv3_width,
     srv4_width: srv4_width,

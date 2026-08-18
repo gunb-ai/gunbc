@@ -42,16 +42,16 @@ data srv1_dashboard_controller_repo: std.types.FilePath = "/home/briansrls/.work
 data gunbc_host_layout_codex_executable_note: String = "The bundled Codex executable path is derived through codex_bundled_executable_for_host, not stored as an independent layout literal. GunbcHostLayout.codex_bundled_executable is FilePath? so Absent has no fabricated path constructor — executors refuse when the committed-lock placement is unavailable. Witness: srv1_committed_lock_bundled_executable_is_present."
 
 fn srv1_codex_bundled_executable() -> std.types.FilePath? {
-  codex_bundled_executable_for_host(host: "srv1" as HostIdentity)
+  codex_bundled_executable_for_host(host: "srv1" as product.placement_supply.HostIdentity)
 }
 
 fn srv2_codex_bundled_executable() -> std.types.FilePath? {
-  codex_bundled_executable_for_host(host: "srv2" as HostIdentity)
+  codex_bundled_executable_for_host(host: "srv2" as product.placement_supply.HostIdentity)
 }
 
 fn srv1_host_layout() -> GunbcHostLayout {
   GunbcHostLayout {
-    host_identity: "srv1" as NonEmptyStr,
+    host_identity: "srv1" as std.types.NonEmptyStr,
     gunbc_serve_binary: srv1_gunbc_serve_binary,
     roadmap_codex_home: srv1_roadmap_codex_home,
     controller_repo: srv1_dashboard_controller_repo,
@@ -72,7 +72,7 @@ data srv2_dashboard_controller_repo: std.types.FilePath = "/home/briansrls/.work
 
 fn srv2_host_layout() -> GunbcHostLayout {
   GunbcHostLayout {
-    host_identity: "srv2" as NonEmptyStr,
+    host_identity: "srv2" as std.types.NonEmptyStr,
     gunbc_serve_binary: srv2_gunbc_serve_binary,
     roadmap_codex_home: srv2_roadmap_codex_home,
     controller_repo: srv2_dashboard_controller_repo,
@@ -81,11 +81,11 @@ fn srv2_host_layout() -> GunbcHostLayout {
 }
 data managed_compile_pool_slice_note: String = "The ONE authority for the managed compile-pool slice unit name, homed here for the same reason as the paths above: it is a fact about how a HOST is laid out, not about any one consumer of it. Its live consumers are gunbc.build_cache_instance `ci_cache_instance` and `session_cache_instance`, which carry it as each deployed instance's `intended_compile_pool`, plus the `managed_compile_pool_slice_fixture` row in gunbc.host_build_cache_provision. STATE, stated so this row is not read as a description of the fleet: NOTHING PROVISIONS THIS SLICE YET. No observed host has it — the 2026-08-01 placement receipt found every CI cache endpoint owned by a runner-slot process, never by a managed unit inside a compile pool — so the name is declared intent that an observation is checked against, and gunbc.fleet_host_budget's `CompilePoolInRunnerSlots` correspondingly derives a ZERO pool today. CORRECTED 2026-08-01 (review 46182, and the review understated it — all three of this note's claims had gone stale in one edit, which is the §3 citation class this repo keeps paying for): it previously cited `ServerUnitOwned.slice_unit` in gunbc.host_build_cache_provision, said the emitted shell in gunbc.host_build_cache_provision_script greps the observed cgroup for this value, and justified its homing by an import cycle between those two consumers. `ServerUnitOwned` no longer exists (it is `ServerManagedUnitOwned { unit }` in gunbc.build_cache_instance, and placement is decided against the instance's `intended_unit` — a service, not this slice); the script carries no compile-pool reference at all, because the branch's emitted placement probe was deliberately not landed (that module is an A5 census row whose emitted shell may shrink but not grow); and with that consumer absent the two-consumer drift hazard and the cycle rationale describe a mechanism that is not in the tree."
 
-data gunbc_managed_compile_pool_slice: NonEmptyStr = "gunbc-compile-pool.slice" as NonEmptyStr
+data gunbc_managed_compile_pool_slice: std.types.NonEmptyStr = "gunbc-compile-pool.slice" as std.types.NonEmptyStr
 
 data belt_spawn_workdir_env_var_note: String = "The ONE authority for the environment variable that carries a belt tick's spawn root, homed here for the same reason as the compile-pool slice name above: it is a fact about how a HOST is laid out and it has TWO consumers on opposite sides of a boundary, so neither may own it. gunbc.roadmap_belt_actuate READS it in belt_run_once_cli; gunbc.live_deploy.emit WRITES it as the Environment= line of the belt unit it installs. A literal in either place is the same string in two files, and the failure it produces is silent rather than loud: the writer and the reader would simply stop meeting, the reader would refuse for a missing variable, and nothing would say which of the two spellings was wrong.\\n\\nHoming it in either consumer would also drag one into the other's closure. The deploy emitter needs exactly one string from the belt; importing gunbc.roadmap_belt_actuate to get it would put the belt's whole implementation — tmux, git worktrees, the Claude provider preflight — behind every emission of a deploy script, for a name. That is the coupling this module exists to prevent."
 
-data belt_spawn_workdir_env_var: NonEmptyStr = "GUNBC_BELT_SPAWN_WORKDIR" as NonEmptyStr
+data belt_spawn_workdir_env_var: std.types.NonEmptyStr = "GUNBC_BELT_SPAWN_WORKDIR" as std.types.NonEmptyStr
 
 // The ONE authority for the fleet converge-receipt directory path, homed here for the
 // two-consumers-across-a-boundary reason: gunbc.fleet_converge_cli publishes under it;
@@ -119,7 +119,7 @@ fn srv1_provider_runtime_placement() -> ProviderRuntimePlacement {
   }
 }
 
-fn provider_runtime_placement_for_host(host: HostIdentity) -> ProviderRuntimePlacement? {
+fn provider_runtime_placement_for_host(host: product.placement_supply.HostIdentity) -> ProviderRuntimePlacement? {
   if host == operator_host_srv1
     || host == operator_host_srv2
     || host == operator_host_srv3
@@ -133,7 +133,7 @@ fn provider_runtime_placement_for_host(host: HostIdentity) -> ProviderRuntimePla
 
 data provider_runtime_placement_shared_row_note: String = "srv1..srv4 currently project srv1_provider_runtime_placement() — paths are convention-uniform today, not derived per-host. dissolve-on: each host's GunbcHostLayout row carries its own ProviderRuntimePlacement when a fleet host diverges from the srv1-shaped paths."
 
-fn codex_bundled_executable_for_host(host: HostIdentity) -> std.types.FilePath? {
+fn codex_bundled_executable_for_host(host: product.placement_supply.HostIdentity) -> std.types.FilePath? {
   match provider_runtime_placement_for_host(host: host) {
     Absent => none
     Present { value: placement } =>

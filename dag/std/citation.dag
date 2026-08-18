@@ -124,8 +124,8 @@ type CitationSelectorConstruction
   | CitationSelectorRefused { cause: SelectorRefusalCause }
 
 fn cited_representation_identity(
-  source: ExternalSubjectRef,
-  access_route: Uri,
+  source: extdeps.external_authority.ExternalSubjectRef,
+  access_route: extdeps.uri.Uri,
   byte_domain: RepresentationByteDomain,
 ) -> CitedRepresentationIdentity {
   CitedRepresentationIdentity {
@@ -144,18 +144,18 @@ fn cited_representation_identity_eq(
     && left.byte_domain == right.byte_domain
 }
 
-fn http_status_is_success(status: HttpStatus) -> Bool {
+fn http_status_is_success(status: std.types.HttpStatus) -> Bool {
   status >= 200 && status <= 299
 }
 
 fn citation_exact_pin(
-  source: ExternalSubjectRef,
-  access_route: Uri,
+  source: extdeps.external_authority.ExternalSubjectRef,
+  access_route: extdeps.uri.Uri,
   byte_domain: RepresentationByteDomain,
-  version: VersionIdentity,
-  expected_identity: Sha256Digest,
+  version: extdeps.version.VersionIdentity,
+  expected_identity: std.content_hash.Sha256Digest,
 ) -> Pin<CitedRepresentationIdentity> {
-  Pin {
+  extdeps.pin.Pin {
     subject: cited_representation_identity(
       source: source,
       access_route: access_route,
@@ -167,7 +167,7 @@ fn citation_exact_pin(
   }
 }
 
-fn citation_pin_expected_sha256(pin: Pin<CitedRepresentationIdentity>) -> Sha256Digest? {
+fn citation_pin_expected_sha256(pin: Pin<CitedRepresentationIdentity>) -> std.content_hash.Sha256Digest? {
   match pin.expected_identity {
     Sha256Hash(digest) => Present { value: digest }
     _ => none
@@ -176,8 +176,8 @@ fn citation_pin_expected_sha256(pin: Pin<CitedRepresentationIdentity>) -> Sha256
 
 fn observed_cited_representation(
   identity: CitedRepresentationIdentity,
-  media_type: MediaType,
-  observed_identity: Sha256Digest,
+  media_type: extdeps.http.server.MediaType,
+  observed_identity: std.content_hash.Sha256Digest,
 ) -> ObservedCitedRepresentation {
   ObservedCitedRepresentation {
     identity: identity,
@@ -219,7 +219,7 @@ fn reconcile_citation_representation(
   }
 }
 
-fn fragment_selector(conforms_to: ExternalAuthority, value: NonEmptyStr) -> CitationSelectorConstruction {
+fn fragment_selector(conforms_to: extdeps.external_authority.ExternalAuthority, value: std.types.NonEmptyStr) -> CitationSelectorConstruction {
   CitationSelectorConstructed(FragmentSelectorVariant(FragmentSelector {
     conforms_to: conforms_to,
     value: value,
@@ -227,9 +227,9 @@ fn fragment_selector(conforms_to: ExternalAuthority, value: NonEmptyStr) -> Cita
 }
 
 fn text_quote_selector(
-  exact: NonEmptyStr,
-  prefix: NonEmptyStr?,
-  suffix: NonEmptyStr?,
+  exact: std.types.NonEmptyStr,
+  prefix: std.types.NonEmptyStr?,
+  suffix: std.types.NonEmptyStr?,
 ) -> CitationSelectorConstruction {
   CitationSelectorConstructed(TextQuoteSelectorVariant(TextQuoteSelector {
     exact: exact,
@@ -434,18 +434,18 @@ fn admit_citation_retrieval_observation(
   }
 }
 
-data citation_cit1_pdf_profile_scaffold: Disposition = Scaffold {
+data citation_cit1_pdf_profile_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.standards.rfc_8118",
     decl_name: "extdeps_external_authority_anchor",
     field: WholeDeclaration,
   },
 }
 
-data citation_cit2_mediawiki_provider_observation_scaffold: Disposition = Scaffold {
+data citation_cit2_mediawiki_provider_observation_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.mediawiki",
     decl_name: "extdeps_external_authority_anchor",
     field: WholeDeclaration,
@@ -457,10 +457,10 @@ type CitationRecordedFact<Selector> {
 }
 
 fn citation_recorded_fact<Selector>(
-  id: RecordedFactId,
+  id: std.claim_evidence.RecordedFactId,
   cited: CitationTarget<Selector>,
 ) -> RecordedFact<CitationRecordedFact<Selector>> {
-  RecordedFact {
+  std.claim_evidence.RecordedFact {
     id: id,
     value: CitationRecordedFact { cited: cited },
   }
@@ -468,6 +468,6 @@ fn citation_recorded_fact<Selector>(
 
 data citation_evidence_interface_note: String = "CitationRecordedFact is the provenance payload consumed by std.claim_evidence EvidenceLink — same authority, provenance, maximum_conclusion, fidelity, supporting/challenging, insufficiency, and EvidenceAdmissionPolicy machinery. Rich citations do not form a competing evidence system."
 
-data citation_cit1_pdf_profile_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: citation_cit1_pdf_profile — ordered RFC 8118 fragment sequence, safe profile (page, nameddest, structelem), navigable URL projection, and one real versioned PDF consumer land in CIT-1 after CIT-0 sign-off.")
+data citation_cit1_pdf_profile_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: citation_cit1_pdf_profile — ordered RFC 8118 fragment sequence, safe profile (page, nameddest, structelem), navigable URL projection, and one real versioned PDF consumer land in CIT-1 after CIT-0 sign-off.")
 
-data citation_cit2_mediawiki_provider_observation_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: citation_cit2_mediawiki_provider_observation — provider-bound revision lookup outcomes land in CIT-2 beside generic extdeps MediaWiki protocol shapes separate from site realizations.")
+data citation_cit2_mediawiki_provider_observation_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: citation_cit2_mediawiki_provider_observation — provider-bound revision lookup outcomes land in CIT-2 beside generic extdeps MediaWiki protocol shapes separate from site realizations.")

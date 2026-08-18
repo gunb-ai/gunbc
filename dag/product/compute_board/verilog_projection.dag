@@ -47,13 +47,13 @@ type VerilogBinding {
   spelling: String
 }
 
-fn spelling_count(bindings: List<VerilogBinding>, name: SignalName) -> std.nat.Nat {
+fn spelling_count(bindings: List<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> std.nat.Nat {
   fold(bindings, init: 0, f: fn(acc, b) {
     if (b.signal as String) == (name as String) { acc + 1 } else { acc }
   })
 }
 
-fn spelling_for(bindings: List<VerilogBinding>, name: SignalName) -> String? {
+fn spelling_for(bindings: List<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> String? {
   fold(bindings, init: none, f: fn(acc, b) {
     match acc {
       Present { value: v } => Present { value: v }
@@ -70,24 +70,24 @@ fn spelling_for(bindings: List<VerilogBinding>, name: SignalName) -> String? {
 
 
 
-fn signal_is_declared_output(intent: DigitalControlIntent, name: SignalName) -> Bool {
+fn signal_is_declared_output(intent: product.compute_board.digital_control.DigitalControlIntent, name: product.compute_board.digital_control.SignalName) -> Bool {
   fold(intent.signals, init: false, f: fn(acc, s) {
     acc || (signal_direction_is_output(s: s) && (s.name as String) == (name as String))
   })
 }
 
 // Every signal the module names, including the module name itself, must be bound and admissible.
-fn signal_admission_refusal(bindings: List<VerilogBinding>, name: SignalName) -> VerilogProjectionRefusal? {
+fn signal_admission_refusal(bindings: List<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> VerilogProjectionRefusal? {
   if spelling_count(bindings: bindings, name: name) > 1 {
-    Present { value: DuplicateSignalBinding { signal: name as NonEmptyStr } }
+    Present { value: DuplicateSignalBinding { signal: name as std.types.NonEmptyStr } }
   } else {
   match spelling_for(bindings: bindings, name: name) {
-    Absent => Present { value: SignalSpellingUnbound { signal: name as NonEmptyStr } }
+    Absent => Present { value: SignalSpellingUnbound { signal: name as std.types.NonEmptyStr } }
     Present { value: sp } =>
       if verilog_identifier_is_admissible(spelling: sp) {
         none
       } else {
-        Present { value: SignalSpellingNotAdmissible { signal: name as NonEmptyStr, spelling: sp } }
+        Present { value: SignalSpellingNotAdmissible { signal: name as std.types.NonEmptyStr, spelling: sp } }
       }
   }
   }
@@ -95,7 +95,7 @@ fn signal_admission_refusal(bindings: List<VerilogBinding>, name: SignalName) ->
 
 fn first_admission_refusal(
   bindings: List<VerilogBinding>,
-  intent: DigitalControlIntent
+  intent: product.compute_board.digital_control.DigitalControlIntent
 ) -> VerilogProjectionRefusal? {
   match signal_admission_refusal(bindings: bindings, name: intent.block_name) {
     Present { value: r } => Present { value: r }
@@ -122,7 +122,7 @@ fn first_admission_refusal(
 // owns its own syntax: a fold from board vocabulary onto the Verilog AST, naming no keyword, no
 // punctuation and no layout. If a Verilog spelling ever reappears in this module, the language
 // has leaked back into the product and the wall this lane built has come down.
-fn symbol_for(bindings: List<VerilogBinding>, name: SignalName) -> Symbol? {
+fn symbol_for(bindings: List<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> v2.std.node.Symbol? {
   fold(bindings, init: none, f: fn(acc, b) {
     match acc {
       Present { value: v } => Present { value: v }
@@ -131,20 +131,20 @@ fn symbol_for(bindings: List<VerilogBinding>, name: SignalName) -> Symbol? {
   })
 }
 
-fn binding_spellings_for(bindings: List<VerilogBinding>) -> Map<Symbol, String> {
+fn binding_spellings_for(bindings: List<VerilogBinding>) -> Map<v2.std.node.Symbol, String> {
   fold(bindings, init: verilog_base_spellings(), f: fn(acc, b) {
     map_insert(acc, b.symbol, b.spelling)
   })
 }
 
-fn direction_symbol(s: DigitalSignal) -> Symbol {
+fn direction_symbol(s: product.compute_board.digital_control.DigitalSignal) -> v2.std.node.Symbol {
   match s.direction {
     DigitalInput => ^verilog_dir_input
     DigitalOutput => ^verilog_dir_output
   }
 }
 
-fn expr_node(bindings: List<VerilogBinding>, e: DigitalExpr) -> Node {
+fn expr_node(bindings: List<VerilogBinding>, e: product.compute_board.digital_control.DigitalExpr) -> Node {
   match e {
     SignalRef { signal: n } =>
       verilog_signal_reference(name: symbol_or_unbound(bindings: bindings, name: n))
@@ -169,14 +169,14 @@ fn expr_node(bindings: List<VerilogBinding>, e: DigitalExpr) -> Node {
 // refuses on a signal with no binding. The arm exists because the lookup is total and must
 // answer something; it is unreachable on the production path and the witness for the unbound
 // case proves the refusal fires first.
-fn symbol_or_unbound(bindings: List<VerilogBinding>, name: SignalName) -> Symbol {
+fn symbol_or_unbound(bindings: List<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> v2.std.node.Symbol {
   match symbol_for(bindings: bindings, name: name) {
     Present { value: sym } => sym
     Absent => ^verilog_unbound_signal
   }
 }
 
-fn port_list_node(bindings: List<VerilogBinding>, signals: List<DigitalSignal>) -> Node {
+fn port_list_node(bindings: List<VerilogBinding>, signals: List<product.compute_board.digital_control.DigitalSignal>) -> Node {
   match signals {
     Empty => verilog_conj(children: [])
     Cons { head: s, tail: rest } =>
@@ -200,7 +200,7 @@ fn port_list_node(bindings: List<VerilogBinding>, signals: List<DigitalSignal>) 
   }
 }
 
-fn assign_list_node(bindings: List<VerilogBinding>, equations: List<DigitalEquation>) -> Node {
+fn assign_list_node(bindings: List<VerilogBinding>, equations: List<product.compute_board.digital_control.DigitalEquation>) -> Node {
   match equations {
     Empty => verilog_conj(children: [])
     Cons { head: eq, tail: rest } =>
@@ -224,7 +224,7 @@ fn assign_list_node(bindings: List<VerilogBinding>, equations: List<DigitalEquat
   }
 }
 
-fn intent_module_node(bindings: List<VerilogBinding>, intent: DigitalControlIntent) -> Node {
+fn intent_module_node(bindings: List<VerilogBinding>, intent: product.compute_board.digital_control.DigitalControlIntent) -> Node {
   verilog_module_declaration(
     name: symbol_or_unbound(bindings: bindings, name: intent.block_name),
     ports: port_list_node(bindings: bindings, signals: intent.signals),
@@ -233,8 +233,8 @@ fn intent_module_node(bindings: List<VerilogBinding>, intent: DigitalControlInte
 }
 
 fn project_intent_to_verilog(
-  article_identity: BoardArticleIdentity,
-  intent: DigitalControlIntent,
+  article_identity: product.compute_board.article.BoardArticleIdentity,
+  intent: product.compute_board.digital_control.DigitalControlIntent,
   bindings: List<VerilogBinding>
 ) -> VerilogProjection {
   match first_admission_refusal(bindings: bindings, intent: intent) {
@@ -262,7 +262,7 @@ fn project_intent_to_verilog(
 // exactly that kind of fact from the authority. The article names logical signals; this table
 // says how this one target spells them.
 data power_interlock_verilog_bindings: List<VerilogBinding> = [
-  VerilogBinding { signal: "board_power_interlock" as SignalName, symbol: ^interlock_module_name, spelling: "board_power_interlock" },
+  VerilogBinding { signal: "board_power_interlock" as product.compute_board.digital_control.SignalName, symbol: ^interlock_module_name, spelling: "board_power_interlock" },
   VerilogBinding { signal: conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "conditioned_good" },
   VerilogBinding { signal: fault_signal, symbol: ^interlock_fault, spelling: "fault" },
   VerilogBinding { signal: power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
@@ -278,7 +278,7 @@ data power_interlock_verilog_bindings: List<VerilogBinding> = [
 // wrapper removes the trust: an article with two components sharing an identity, or an output
 // nothing drives, has no route to this function at all.
 fn project_article_to_verilog(
-  admitted: AdmittedBoardPowerInterfaceArticle,
+  admitted: product.compute_board.admission.AdmittedBoardPowerInterfaceArticle,
   bindings: List<VerilogBinding>
 ) -> VerilogProjection {
   let article = admitted_article(a: admitted)

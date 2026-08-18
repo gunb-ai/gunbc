@@ -18,7 +18,7 @@ data deploy_target_id_note: String = "The mutex identity is the DEPLOYMENT DOMAI
 data srv1_dashboard_target: DeployTargetId = DeployTargetId {
   host: srv1_host.identity,
   destination: "/opt/gunbc/gunbc" as std.types.FilePath,
-  service_unit: "gunbc-dashboard" as NonEmptyStr,
+  service_unit: "gunbc-dashboard" as std.types.NonEmptyStr,
 }
 
 type DeployRevisionRelation
@@ -41,7 +41,7 @@ fn classify_deploy_revision(relation: DeployRevisionRelation) -> DeployRevisionV
     CandidateIsAncestor => RevisionSupersededNoOp
     UnrelatedHistories =>
       RevisionRefused {
-        cause: "deployed and candidate revisions share no ancestry (force-push, rewritten history, or foreign repository) — refusing rather than guessing which is newer" as NonEmptyStr
+        cause: "deployed and candidate revisions share no ancestry (force-push, rewritten history, or foreign repository) — refusing rather than guessing which is newer" as std.types.NonEmptyStr
       }
     RelationUnverifiable { cause: why } => RevisionRefused { cause: why }
   }
@@ -79,8 +79,8 @@ fn deploy_revision_refuses(verdict: DeployRevisionVerdict) -> Bool {
 data deploy_revision_probe_relation_note: String = "The (deployed→candidate, candidate→deployed) probe pair folded into a relation. SHA equality is checked first and short-circuits both probes. Note that (true,true) is reachable ONLY when the SHAs are equal — a commit is its own ancestor and ancestry is antisymmetric — so this arm is defensive rather than expected, and it agrees with the equality short-circuit instead of contradicting it."
 
 fn deploy_revision_relation_from_probes(
-  deployed: CommitSha,
-  candidate: CommitSha,
+  deployed: std.types.CommitSha,
+  candidate: std.types.CommitSha,
   deployed_is_ancestor_of_candidate: Bool,
   candidate_is_ancestor_of_deployed: Bool,
 ) -> DeployRevisionRelation {

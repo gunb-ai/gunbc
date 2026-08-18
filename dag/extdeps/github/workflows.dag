@@ -1,14 +1,14 @@
 module extdeps.github.workflows
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event"
   }
 }
 
-data workflows_api_version: NonEmptyStr = "2026-03-10"
+data workflows_api_version: std.types.NonEmptyStr = "2026-03-10"
 
 data create_dispatch_version_fidelity_note: String = "Create Workflow Dispatch has two live response contracts across GitHub REST versions. Requests without X-GitHub-Api-Version default to 2022-11-28 and return 204 No Content. Version 2026-03-10 returns 200 with workflow_run_id, run_url, and html_url. This service explicitly pins 2026-03-10 in the transport header, so WorkflowDispatchReceipt is the cited response rather than a fabricated body projected from an unversioned 204. Authority: docs.github.com/en/rest/about-the-rest-api/api-versions and the Create a workflow dispatch event response schema, read 2026-08-01."
 
@@ -35,12 +35,12 @@ service github.Workflows {
       repo: String
       workflow_id: String
       ref: String
-      expected_healed_sha: CommitSha
+      expected_healed_sha: std.types.CommitSha
     }
     output {
       workflow_run_id: Int
-      run_url: NonEmptyStr
-      html_url: NonEmptyStr
+      run_url: std.types.NonEmptyStr
+      html_url: std.types.NonEmptyStr
     }
     transport rest {
       method: POST,

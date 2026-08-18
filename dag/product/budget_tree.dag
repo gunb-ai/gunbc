@@ -15,21 +15,21 @@ type BudgetNode {
   children: List<BudgetNode>
 }
 
-data budget_tree_method: BudgetingMethod = ZeroBased
+data budget_tree_method: extdeps.accounting.budget.BudgetingMethod = ZeroBased
 
 fn claim_items(claims: List<BudgetClaim>) -> List<LineItem<Memory, One>> {
   map(claims, c => c.item)
 }
 
 fn child_as_line_item(child: BudgetNode) -> LineItem<Memory, One> {
-  LineItem { purpose: child.name, amount: child.appropriation.ceiling }
+  extdeps.accounting.budget.LineItem { purpose: child.name, amount: child.appropriation.ceiling }
 }
 
 fn node_commitments(node: BudgetNode) -> List<LineItem<Memory, One>> {
   concat(claim_items(claims: node.claims), map(node.children, child_as_line_item))
 }
 
-fn node_balance(node: BudgetNode) -> BudgetBalance {
+fn node_balance(node: BudgetNode) -> extdeps.accounting.budget.BudgetBalance {
   budget_balance(appropriation: node.appropriation, items: node_commitments(node: node))
 }
 
@@ -83,7 +83,7 @@ type AdmitState {
   evicted: List<BudgetClaim>
 }
 
-fn reconcile(node: BudgetNode, actual: ByteSize) -> BudgetReconciliation {
+fn reconcile(node: BudgetNode, actual: std.measure.ByteSize) -> BudgetReconciliation {
   let ordered = ordered_by_priority(claims: node.claims)
   let final_state = fold(
     ordered,

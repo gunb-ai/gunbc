@@ -11,11 +11,11 @@ type FloorDiscoveryTreeId sole_constructor {
   object_id: extdeps.git.object_store.GitObjectId
 }
 
-fn floor_discovery_commit_id(object_id: GitObjectId) -> FloorDiscoveryCommitId {
+fn floor_discovery_commit_id(object_id: extdeps.git.object_store.GitObjectId) -> FloorDiscoveryCommitId {
   FloorDiscoveryCommitId { object_id: object_id }
 }
 
-fn floor_discovery_tree_id(object_id: GitObjectId) -> FloorDiscoveryTreeId {
+fn floor_discovery_tree_id(object_id: extdeps.git.object_store.GitObjectId) -> FloorDiscoveryTreeId {
   FloorDiscoveryTreeId { object_id: object_id }
 }
 
@@ -159,7 +159,7 @@ fn floor_discovery_request_bind(
   }
 }
 
-fn floor_discovery_execution_mode_identity(mode: ExecutionMode) -> String {
+fn floor_discovery_execution_mode_identity(mode: std.execution_mode.ExecutionMode) -> String {
   match mode {
     Hermetic => "Hermetic"
     Wet => "Wet"
@@ -182,9 +182,9 @@ fn floor_discovery_commit_identity(commit: FloorDiscoveryCommitId) -> String {
 }
 
 fn floor_discovery_identity_fold_strings(
-  seed: Fnv1a64Structural,
+  seed: std.content_hash.Fnv1a64Structural,
   values: List<String>,
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   fold(
     values,
     init: seed,
@@ -194,7 +194,7 @@ fn floor_discovery_identity_fold_strings(
   )
 }
 
-fn floor_discovery_request_identity(request: FloorDiscoveryRequest) -> Fnv1a64Structural {
+fn floor_discovery_request_identity(request: FloorDiscoveryRequest) -> std.content_hash.Fnv1a64Structural {
   let with_commit = content_hash_combine_structural(
     left: content_hash_atom(value: "floor-discovery-request-identity-v2"),
     right: content_hash_atom(value: floor_discovery_commit_identity(commit: request.subject.tested_commit))

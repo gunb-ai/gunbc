@@ -1,22 +1,22 @@
 module v2.test.execution.native_selected_witness_bundle
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 // First executable SelectedWitnessPlan slice: meet, join, and complement are emitted into one content-addressed Rust artifact. Its generated main directly invokes all three functions and one run_emit_host_cached call launches one process for the whole selected population. The interpreter is executed beside both the correct bundle and the deliberately all-wrong bundle; verdict equality admits failure==failure as the family's live discriminating RED. A second host invocation proves compile_skipped=true against the same content address.
 data selected_logic_bundle_cache_root: String = emit_on_demand_family_cache_root(
   family: "selected_witness_bundle_logic"
 )
 
-fn selected_logic_compiler_identity() -> Fnv1a64Structural {
+fn selected_logic_compiler_identity() -> std.content_hash.Fnv1a64Structural {
   content_hash_atom(value: "v2-compiler-emit-selected-logic-bundle-v1")
 }
 
 fn selected_logic_identity(
-  function_name: NonEmptyStr,
-  tree: InferredTree
-) -> SelectedWitnessIdentity {
-  SelectedWitnessIdentity {
+  function_name: std.types.NonEmptyStr,
+  tree: v2.compiler.infer.InferredTree
+) -> std.selected_witness_bundle.SelectedWitnessIdentity {
+  std.selected_witness_bundle.SelectedWitnessIdentity {
     entry: "src/v2/test/claim/execution/native_selected_witness_bundle_test.dag",
     function: function_name,
     subject_digest: inferred_tree_digest(tree: tree)
@@ -24,12 +24,12 @@ fn selected_logic_identity(
 }
 
 fn selected_logic_native_member(
-  function_name: NonEmptyStr,
-  tree: InferredTree
-) -> SelectedWitnessMember {
+  function_name: std.types.NonEmptyStr,
+  tree: v2.compiler.infer.InferredTree
+) -> std.selected_witness_bundle.SelectedWitnessMember {
   NativeSelected {
     witness: selected_logic_identity(function_name: function_name, tree: tree),
-    realization: NativeRealizationIdentity {
+    realization: std.selected_witness_bundle.NativeRealizationIdentity {
       family: "logic",
       realization_digest: inferred_tree_digest(tree: tree)
     }
@@ -37,11 +37,11 @@ fn selected_logic_native_member(
 }
 
 fn selected_logic_plan_for(
-  meet_tree: InferredTree,
-  join_tree: InferredTree,
-  complement_tree: InferredTree
-) -> SelectedWitnessPlan {
-  SelectedWitnessPlan {
+  meet_tree: v2.compiler.infer.InferredTree,
+  join_tree: v2.compiler.infer.InferredTree,
+  complement_tree: v2.compiler.infer.InferredTree
+) -> std.selected_witness_bundle.SelectedWitnessPlan {
+  std.selected_witness_bundle.SelectedWitnessPlan {
     compiler_identity: selected_logic_compiler_identity(),
     shard_policy: OneSelectedBundle {
       reason: "Three sub-millisecond members share one Rust runtime; sharding would add process and artifact overhead without a capability boundary."
@@ -54,7 +54,7 @@ fn selected_logic_plan_for(
   }
 }
 
-fn selected_logic_primary_plan() -> SelectedWitnessPlan {
+fn selected_logic_primary_plan() -> std.selected_witness_bundle.SelectedWitnessPlan {
   selected_logic_plan_for(
     meet_tree: family_crate_meet_tree(),
     join_tree: family_crate_join_tree(),
@@ -62,7 +62,7 @@ fn selected_logic_primary_plan() -> SelectedWitnessPlan {
   )
 }
 
-fn selected_logic_alt_plan() -> SelectedWitnessPlan {
+fn selected_logic_alt_plan() -> std.selected_witness_bundle.SelectedWitnessPlan {
   selected_logic_plan_for(
     meet_tree: family_crate_meet_alt_tree(),
     join_tree: family_crate_join_alt_tree(),
@@ -70,7 +70,7 @@ fn selected_logic_alt_plan() -> SelectedWitnessPlan {
   )
 }
 
-fn selected_logic_workspace(test_id: String, plan: SelectedWitnessPlan) -> String {
+fn selected_logic_workspace(test_id: String, plan: std.selected_witness_bundle.SelectedWitnessPlan) -> String {
   let bundle = native_witness_bundle_from_plan(plan: plan)
   let root = concat(selected_logic_bundle_cache_root, concat("/", test_id))
   let key = bundle.identity.structural_fingerprint
@@ -85,7 +85,7 @@ type SelectedLogicVerdicts {
   complement: std.selected_witness_bundle.SelectedWitnessVerdict
 }
 
-fn selected_verdict_for_byte(actual: Optional<Byte>, expected_octet: Int) -> SelectedWitnessVerdict {
+fn selected_verdict_for_byte(actual: Optional<Byte>, expected_octet: Int) -> std.selected_witness_bundle.SelectedWitnessVerdict {
   match actual {
     Present { value: value } => if value == emit_host_byte_from_octet(octet: expected_octet) {
       SelectedWitnessPassed
@@ -96,7 +96,7 @@ fn selected_verdict_for_byte(actual: Optional<Byte>, expected_octet: Int) -> Sel
   }
 }
 
-fn interpreted_value(tree: InferredTree, context: EvalContext, root: Node) -> Outcome<RuntimeValue> {
+fn interpreted_value(tree: v2.compiler.infer.InferredTree, context: v2.compiler.eval.EvalContext, root: Node) -> Outcome<v2.std.runtime.RuntimeValue> {
   eval_with_context(
     tree: tree,
     context: context,
@@ -105,10 +105,10 @@ fn interpreted_value(tree: InferredTree, context: EvalContext, root: Node) -> Ou
 }
 
 fn interpreted_meet_join_verdict(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   root: Node,
   expected_true: Bool
-) -> SelectedWitnessVerdict {
+) -> std.selected_witness_bundle.SelectedWitnessVerdict {
   match interpreted_value(tree: tree, context: meet_join_eval_context(), root: root) {
     Accepted { value: value, diagnostics: _ } =>
       if (expected_true && meet_join_eval_bool_true(value: value))
@@ -122,9 +122,9 @@ fn interpreted_meet_join_verdict(
 }
 
 fn interpreted_complement_verdict(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   expected_true: Bool
-) -> SelectedWitnessVerdict {
+) -> std.selected_witness_bundle.SelectedWitnessVerdict {
   match interpreted_value(
     tree: tree,
     context: emit_complement_eval_context(),
@@ -142,7 +142,7 @@ fn interpreted_complement_verdict(
 }
 
 fn interpreted_value_meet_join_equals(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   root: Node,
   expected_true: Bool
 ) -> Bool {
@@ -157,7 +157,7 @@ fn interpreted_value_meet_join_equals(
   }
 }
 
-fn interpreted_value_complement_equals(tree: InferredTree, expected_true: Bool) -> Bool {
+fn interpreted_value_complement_equals(tree: v2.compiler.infer.InferredTree, expected_true: Bool) -> Bool {
   match interpreted_value(
     tree: tree,
     context: emit_complement_eval_context(),
@@ -220,9 +220,9 @@ test fn native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_
 }
 
 fn selected_logic_interpreted_verdicts(
-  meet_tree: InferredTree,
-  join_tree: InferredTree,
-  complement_tree: InferredTree
+  meet_tree: v2.compiler.infer.InferredTree,
+  join_tree: v2.compiler.infer.InferredTree,
+  complement_tree: v2.compiler.infer.InferredTree
 ) -> SelectedLogicVerdicts {
   SelectedLogicVerdicts {
     meet: interpreted_meet_join_verdict(
@@ -242,7 +242,7 @@ fn selected_logic_interpreted_verdicts(
   }
 }
 
-fn selected_logic_native_verdicts(stdout: ByteString) -> SelectedLogicVerdicts {
+fn selected_logic_native_verdicts(stdout: v2.std.host_transport.ByteString) -> SelectedLogicVerdicts {
   SelectedLogicVerdicts {
     meet: selected_verdict_for_byte(
       actual: list_at_optional(xs: stdout, index: 1),
@@ -260,10 +260,10 @@ fn selected_logic_native_verdicts(stdout: ByteString) -> SelectedLogicVerdicts {
 }
 
 fn selected_logic_equivalence_rows(
-  plan: SelectedWitnessPlan,
+  plan: std.selected_witness_bundle.SelectedWitnessPlan,
   interpreted: SelectedLogicVerdicts,
   native: SelectedLogicVerdicts
-) -> List<NativeBundleMemberEquivalence> {
+) -> List<std.selected_witness_bundle.NativeBundleMemberEquivalence> {
   let meet_tree = match plan.members {
     Cons { head: NativeSelected { witness: witness, realization: _ }, tail: _ } => witness
     _ => selected_logic_identity(function_name: "meet", tree: family_crate_meet_tree())
@@ -277,19 +277,19 @@ fn selected_logic_equivalence_rows(
     _ => selected_logic_identity(function_name: "complement", tree: family_crate_complement_tree())
   }
   [
-    NativeBundleMemberEquivalence {
+    std.selected_witness_bundle.NativeBundleMemberEquivalence {
       witness: meet_tree,
       family: "logic",
       interpreted: interpreted.meet,
       native: native.meet
     },
-    NativeBundleMemberEquivalence {
+    std.selected_witness_bundle.NativeBundleMemberEquivalence {
       witness: join_tree,
       family: "logic",
       interpreted: interpreted.join,
       native: native.join
     },
-    NativeBundleMemberEquivalence {
+    std.selected_witness_bundle.NativeBundleMemberEquivalence {
       witness: complement_tree,
       family: "logic",
       interpreted: interpreted.complement,
@@ -340,7 +340,7 @@ fn observe_selected_bundle_native(
   }
 }
 
-fn selected_logic_stdout(receipt: EmitHostRunReceipt) -> Optional<ByteString> {
+fn selected_logic_stdout(receipt: v2.std.host_run.EmitHostRunReceipt) -> Optional<v2.std.host_transport.ByteString> {
   match receipt.logical_run {
     Accepted {
       value: HostLogicalRun { stdout: stdout },
@@ -350,7 +350,7 @@ fn selected_logic_stdout(receipt: EmitHostRunReceipt) -> Optional<ByteString> {
   }
 }
 
-fn selected_logic_expected_stdout(primary: Bool) -> ByteString {
+fn selected_logic_expected_stdout(primary: Bool) -> v2.std.host_transport.ByteString {
   emit_host_octets_byte_string(octets: selected_logic_expected_stdout_octets(primary: primary))
 }
 
@@ -371,14 +371,14 @@ fn selected_logic_expected_stdout_octets(primary: Bool) -> List<Int> {
 }
 
 fn selected_logic_receipt(
-  plan: SelectedWitnessPlan,
+  plan: std.selected_witness_bundle.SelectedWitnessPlan,
   observation: SelectedBundleNativeObservation,
   interpreted: SelectedLogicVerdicts,
-  interpreted_wall: NanosecondDuration,
-  native_stdout: ByteString
-) -> NativeWitnessBundleExecutionReceipt {
+  interpreted_wall: std.verification.NanosecondDuration,
+  native_stdout: v2.std.host_transport.ByteString
+) -> std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
   let bundle = native_witness_bundle_from_plan(plan: plan)
-  NativeWitnessBundleExecutionReceipt {
+  std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
     bundle_identity: bundle.identity
     compiler_identity: plan.compiler_identity
     process_count: 1
@@ -395,9 +395,9 @@ fn selected_logic_receipt(
 }
 
 fn selected_logic_sample_cutover_evidence_for_plan(
-  plan: SelectedWitnessPlan,
-  native_verdict: SelectedWitnessVerdict
-) -> List<NativeBundleFamilyCutoverEvidence> {
+  plan: std.selected_witness_bundle.SelectedWitnessPlan,
+  native_verdict: std.selected_witness_bundle.SelectedWitnessVerdict
+) -> List<std.selected_witness_bundle.NativeBundleFamilyCutoverEvidence> {
   let interpreted = SelectedLogicVerdicts {
     meet: SelectedWitnessPassed
     join: SelectedWitnessPassed
@@ -408,9 +408,9 @@ fn selected_logic_sample_cutover_evidence_for_plan(
     join: native_verdict
     complement: native_verdict
   }
-  [NativeBundleFamilyCutoverEvidence {
+  [std.selected_witness_bundle.NativeBundleFamilyCutoverEvidence {
     planted_plan: plan
-    execution: NativeWitnessBundleExecutionReceipt {
+    execution: std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
       bundle_identity: native_witness_bundle_from_plan(plan: plan).identity
       compiler_identity: plan.compiler_identity
       process_count: 1
@@ -428,33 +428,33 @@ fn selected_logic_sample_cutover_evidence_for_plan(
 }
 
 fn selected_logic_sample_cutover_evidence_with_native(
-  native_verdict: SelectedWitnessVerdict
-) -> List<NativeBundleFamilyCutoverEvidence> {
+  native_verdict: std.selected_witness_bundle.SelectedWitnessVerdict
+) -> List<std.selected_witness_bundle.NativeBundleFamilyCutoverEvidence> {
   selected_logic_sample_cutover_evidence_for_plan(
     plan: selected_logic_alt_plan(),
     native_verdict: native_verdict
   )
 }
 
-fn selected_logic_sample_cutover_evidence() -> List<NativeBundleFamilyCutoverEvidence> {
+fn selected_logic_sample_cutover_evidence() -> List<std.selected_witness_bundle.NativeBundleFamilyCutoverEvidence> {
   selected_logic_sample_cutover_evidence_with_native(native_verdict: SelectedWitnessFailed)
 }
 
 fn selected_logic_cutover_evidence_from_red_receipt(
-  plan: SelectedWitnessPlan,
-  receipt: NativeWitnessBundleExecutionReceipt
-) -> List<NativeBundleFamilyCutoverEvidence> {
-  [NativeBundleFamilyCutoverEvidence {
+  plan: std.selected_witness_bundle.SelectedWitnessPlan,
+  receipt: std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt
+) -> List<std.selected_witness_bundle.NativeBundleFamilyCutoverEvidence> {
+  [std.selected_witness_bundle.NativeBundleFamilyCutoverEvidence {
     planted_plan: plan
     execution: receipt
   }]
 }
 
 fn selected_logic_execution_admit(
-  plan: SelectedWitnessPlan,
-  receipt: NativeWitnessBundleExecutionReceipt,
-  family_evidence: List<NativeBundleFamilyCutoverEvidence>
-) -> NativeWitnessBundleExecutionVerdict {
+  plan: std.selected_witness_bundle.SelectedWitnessPlan,
+  receipt: std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt,
+  family_evidence: List<std.selected_witness_bundle.NativeBundleFamilyCutoverEvidence>
+) -> std.selected_witness_bundle.NativeWitnessBundleExecutionVerdict {
   native_witness_bundle_execution_admit(
     plan: plan,
     current_compiler_identity: plan.compiler_identity,
@@ -476,7 +476,7 @@ test fn native_selected_witness_bundle_primary_typed_admission_holds() -> Bool {
     join_tree: family_crate_join_tree(),
     complement_tree: family_crate_complement_tree()
   )
-  let receipt = NativeWitnessBundleExecutionReceipt {
+  let receipt = std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
     bundle_identity: native_witness_bundle_from_plan(plan: plan).identity
     compiler_identity: plan.compiler_identity
     process_count: 1
@@ -568,13 +568,13 @@ test fn native_selected_witness_bundle_cutover_evidence_holds() -> Bool {
 
 fn selected_logic_execution_holds(
   test_id: String,
-  plan: SelectedWitnessPlan,
-  members: List<EmitFamilyMember>,
-  meet_tree: InferredTree,
-  join_tree: InferredTree,
-  complement_tree: InferredTree,
+  plan: std.selected_witness_bundle.SelectedWitnessPlan,
+  members: List<v2.compiler.emit_module.EmitFamilyMember>,
+  meet_tree: v2.compiler.infer.InferredTree,
+  join_tree: v2.compiler.infer.InferredTree,
+  complement_tree: v2.compiler.infer.InferredTree,
   primary: Bool,
-  family_evidence: List<NativeBundleFamilyCutoverEvidence>
+  family_evidence: List<std.selected_witness_bundle.NativeBundleFamilyCutoverEvidence>
 ) -> Bool {
   let interpreter_start = observed_monotonic_nanos("selected-bundle-interpreter-start")
   let interpreted = selected_logic_interpreted_verdicts(
@@ -657,7 +657,7 @@ test fn native_selected_witness_bundle_cold_warm_equivalence_holds() -> Bool {
   )
 }
 
-fn selected_logic_discriminating_red_evidence() -> List<NativeBundleFamilyCutoverEvidence> {
+fn selected_logic_discriminating_red_evidence() -> List<std.selected_witness_bundle.NativeBundleFamilyCutoverEvidence> {
   let plan = selected_logic_alt_plan()
   let interpreter_start = observed_monotonic_nanos("selected-bundle-red-interpreter-start")
   let interpreted = selected_logic_interpreted_verdicts(
@@ -731,14 +731,14 @@ test fn native_selected_witness_bundle_discriminating_red_holds() -> Bool {
   )
 }
 
-fn selected_logic_sample_receipt() -> NativeWitnessBundleExecutionReceipt {
+fn selected_logic_sample_receipt() -> std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
   let plan = selected_logic_primary_plan()
   let interpreted = SelectedLogicVerdicts {
     meet: SelectedWitnessPassed
     join: SelectedWitnessPassed
     complement: SelectedWitnessPassed
   }
-  NativeWitnessBundleExecutionReceipt {
+  std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
     bundle_identity: native_witness_bundle_from_plan(plan: plan).identity
     compiler_identity: plan.compiler_identity
     process_count: 1
@@ -757,24 +757,24 @@ fn selected_logic_sample_receipt() -> NativeWitnessBundleExecutionReceipt {
 test fn native_selected_witness_bundle_divergence_hard_red_holds() -> Bool {
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
-  let divergent = NativeWitnessBundleExecutionReceipt {
+  let divergent = std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
     bundle_identity: receipt.bundle_identity
     compiler_identity: receipt.compiler_identity
     process_count: receipt.process_count
     compile_skipped: receipt.compile_skipped
     native_wall_nanos: receipt.native_wall_nanos
     interpreted_wall_nanos: receipt.interpreted_wall_nanos
-    member_equivalence: [NativeBundleMemberEquivalence {
+    member_equivalence: [std.selected_witness_bundle.NativeBundleMemberEquivalence {
       witness: selected_logic_identity(function_name: "meet", tree: family_crate_meet_tree())
       family: "logic"
       interpreted: SelectedWitnessFailed
       native: SelectedWitnessPassed
-    }, NativeBundleMemberEquivalence {
+    }, std.selected_witness_bundle.NativeBundleMemberEquivalence {
       witness: selected_logic_identity(function_name: "join", tree: family_crate_join_tree())
       family: "logic"
       interpreted: SelectedWitnessPassed
       native: SelectedWitnessPassed
-    }, NativeBundleMemberEquivalence {
+    }, std.selected_witness_bundle.NativeBundleMemberEquivalence {
       witness: selected_logic_identity(
         function_name: "complement",
         tree: family_crate_complement_tree()
@@ -843,7 +843,7 @@ test fn native_selected_witness_bundle_unplanted_subject_red_refuses_holds() -> 
 test fn native_selected_witness_bundle_process_count_refuses_holds() -> Bool {
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
-  let invalid = NativeWitnessBundleExecutionReceipt {
+  let invalid = std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
     bundle_identity: receipt.bundle_identity
     compiler_identity: receipt.compiler_identity
     process_count: 3
@@ -866,7 +866,7 @@ test fn native_selected_witness_bundle_process_count_refuses_holds() -> Bool {
 test fn native_selected_witness_bundle_empty_coverage_refuses_holds() -> Bool {
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
-  let empty = NativeWitnessBundleExecutionReceipt {
+  let empty = std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
     bundle_identity: receipt.bundle_identity
     compiler_identity: receipt.compiler_identity
     process_count: receipt.process_count
@@ -889,13 +889,13 @@ test fn native_selected_witness_bundle_empty_coverage_refuses_holds() -> Bool {
 
 test fn native_selected_witness_bundle_no_native_members_refuses_holds() -> Bool {
   let primary = selected_logic_primary_plan()
-  let plan = SelectedWitnessPlan {
+  let plan = std.selected_witness_bundle.SelectedWitnessPlan {
     compiler_identity: primary.compiler_identity
     shard_policy: primary.shard_policy
     members: []
   }
   let bundle = native_witness_bundle_from_plan(plan: plan)
-  let receipt = NativeWitnessBundleExecutionReceipt {
+  let receipt = std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
     bundle_identity: bundle.identity
     compiler_identity: plan.compiler_identity
     process_count: 1
@@ -951,7 +951,7 @@ test fn native_selected_witness_bundle_execution_stale_plan_compiler_refuses_hol
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
   let current = content_hash_atom(value: "different-compiler")
-  let forged_current_receipt = NativeWitnessBundleExecutionReceipt {
+  let forged_current_receipt = std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
     bundle_identity: receipt.bundle_identity
     compiler_identity: current
     process_count: receipt.process_count
@@ -978,7 +978,7 @@ test fn native_selected_witness_bundle_execution_stale_plan_compiler_refuses_hol
 test fn native_selected_witness_bundle_warm_artifact_miss_refuses_holds() -> Bool {
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
-  let cold = NativeWitnessBundleExecutionReceipt {
+  let cold = std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
     bundle_identity: receipt.bundle_identity
     compiler_identity: receipt.compiler_identity
     process_count: receipt.process_count
@@ -1001,7 +1001,7 @@ test fn native_selected_witness_bundle_warm_artifact_miss_refuses_holds() -> Boo
 test fn native_selected_witness_bundle_frontier_count_refuses_holds() -> Bool {
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
-  let invalid = NativeWitnessBundleExecutionReceipt {
+  let invalid = std.selected_witness_bundle.NativeWitnessBundleExecutionReceipt {
     bundle_identity: receipt.bundle_identity
     compiler_identity: receipt.compiler_identity
     process_count: receipt.process_count
@@ -1042,7 +1042,7 @@ test fn native_selected_witness_bundle_stale_plan_compiler_refuses_holds() -> Bo
   let plan = selected_logic_primary_plan()
   let required = native_witness_bundle_from_plan(plan: plan)
   let current = content_hash_atom(value: "different-compiler")
-  let forged_current_bundle = NativeWitnessBundle {
+  let forged_current_bundle = std.selected_witness_bundle.NativeWitnessBundle {
     identity: required.identity
     compiler_identity: current
     members: required.members
@@ -1063,7 +1063,7 @@ test fn native_selected_witness_bundle_stale_plan_compiler_refuses_holds() -> Bo
 test fn native_selected_witness_bundle_member_drift_refuses_holds() -> Bool {
   let plan = selected_logic_primary_plan()
   let required = native_witness_bundle_from_plan(plan: plan)
-  let drifted = NativeWitnessBundle {
+  let drifted = std.selected_witness_bundle.NativeWitnessBundle {
     identity: required.identity
     compiler_identity: required.compiler_identity
     members: []
@@ -1081,11 +1081,11 @@ test fn native_selected_witness_bundle_member_drift_refuses_holds() -> Bool {
 
 test fn native_selected_witness_bundle_unavailable_is_counted_holds() -> Bool {
   let primary = selected_logic_primary_plan()
-  let unavailable = SelectedWitnessPlan {
+  let unavailable = std.selected_witness_bundle.SelectedWitnessPlan {
     compiler_identity: primary.compiler_identity
     shard_policy: primary.shard_policy
     members: concat(primary.members, [InterpreterFrontier {
-      witness: SelectedWitnessIdentity {
+      witness: std.selected_witness_bundle.SelectedWitnessIdentity {
         entry: "src/v2/test/claim/execution/unrealized_selected_witness.dag"
         function: "unrealized_selected_witness"
         subject_digest: content_hash_atom(value: "unrealized-selected-subject")
@@ -1104,7 +1104,7 @@ test fn native_selected_witness_bundle_unavailable_is_counted_holds() -> Bool {
 
 test fn native_selected_witness_bundle_compiler_identity_keys_holds() -> Bool {
   let primary = selected_logic_primary_plan()
-  let changed = SelectedWitnessPlan {
+  let changed = std.selected_witness_bundle.SelectedWitnessPlan {
     compiler_identity: content_hash_atom(value: "changed-compiler-identity")
     shard_policy: primary.shard_policy
     members: primary.members

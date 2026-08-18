@@ -65,10 +65,10 @@ type HostDashboardInstance {
 
 data dashboard_instance_note: String = "A dashboard is an explicit host instance, not an ambient serve process. One value moves the source repository, local Git origin, attempt-worktree root, semantic execution-capability realizations, provider state binding, tmux server, listen address, handler entrypoint, and actuation posture together. Selection is by the serve entry function that receives this value; no environment variable may replace one projection independently. Production uses the user's default tmux server for compatibility. Labs and previews use named tmux servers and roots disjoint from production. Provider credentials remain pre-existing user-authored state and are referenced, never copied into a deployment payload. Capability realizations name exact executable paths and identity probes; observe-only means absence refuses admission until a separate capability-specific provisioner exists, never that generic Ensure guesses an installer."
 
-data srv1_dashboard_live_id: NonEmptyStr = "srv1-live" as NonEmptyStr
-data srv1_dashboard_green_id: NonEmptyStr = "srv1-green" as NonEmptyStr
-data srv1_dashboard_lab_id: NonEmptyStr = "srv1-lab-codex-feedback-v0" as NonEmptyStr
-data srv2_dashboard_preview_id: NonEmptyStr = "srv2-preview-codex-feedback-v0" as NonEmptyStr
+data srv1_dashboard_live_id: std.types.NonEmptyStr = "srv1-live" as std.types.NonEmptyStr
+data srv1_dashboard_green_id: std.types.NonEmptyStr = "srv1-green" as std.types.NonEmptyStr
+data srv1_dashboard_lab_id: std.types.NonEmptyStr = "srv1-lab-codex-feedback-v0" as std.types.NonEmptyStr
+data srv2_dashboard_preview_id: std.types.NonEmptyStr = "srv2-preview-codex-feedback-v0" as std.types.NonEmptyStr
 
 data srv1_dashboard_lab_root: std.types.FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0" as std.types.FilePath
 data srv2_dashboard_preview_root: std.types.FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0" as std.types.FilePath
@@ -110,7 +110,7 @@ fn dashboard_instance_provider_executable_refusal_detail(instance: HostDashboard
 
 fn dashboard_instance_capability_executable(
   instance: HostDashboardInstance,
-  cap: ExecutionCapability,
+  cap: gunbc.roadmap_execution_contract.ExecutionCapability,
 ) -> std.types.FilePath? {
   match dispatch_host_realization(
     environment: instance.execution_environment,
@@ -143,16 +143,16 @@ fn dashboard_instance_ownership_marker_path(instance: HostDashboardInstance) -> 
   )
 }
 
-fn dashboard_instance_service_session_name(instance: HostDashboardInstance) -> NonEmptyStr {
-  join(["gunbc-dashboard-", instance.instance_id as String], "") as NonEmptyStr
+fn dashboard_instance_service_session_name(instance: HostDashboardInstance) -> std.types.NonEmptyStr {
+  join(["gunbc-dashboard-", instance.instance_id as String], "") as std.types.NonEmptyStr
 }
 
-fn dashboard_instance_checkout_branch(instance: HostDashboardInstance) -> NonEmptyStr {
+fn dashboard_instance_checkout_branch(instance: HostDashboardInstance) -> std.types.NonEmptyStr {
   replace(
     s: instance.local_origin_publish_ref as String,
     from: "refs/heads/",
     to: "",
-  ) as NonEmptyStr
+  ) as std.types.NonEmptyStr
 }
 
 fn dashboard_instance_controller_workdir(instance: HostDashboardInstance) -> std.types.FilePath {
@@ -205,97 +205,97 @@ fn dashboard_instance_health_identity_prefix(instance_id: String) -> String {
   ])
 }
 
-fn dashboard_named_tmux_server(instance_id: NonEmptyStr) -> TmuxServerScope {
+fn dashboard_named_tmux_server(instance_id: std.types.NonEmptyStr) -> extdeps.tmux.TmuxServerScope {
   NamedTmuxServer { socket_name: instance_id }
 }
 
 fn dashboard_execution_environment(
   serve_binary: std.types.FilePath,
-) -> DispatchHostEnvironment {
-  DispatchHostEnvironment {
+) -> gunbc.roadmap_execution_contract.DispatchHostEnvironment {
+  gunbc.roadmap_execution_contract.DispatchHostEnvironment {
     realizations: [
-      CapabilityRealization {
+      gunbc.roadmap_execution_contract.CapabilityRealization {
         capability: GitWorkspaceCapability,
         executable: "/usr/bin/git" as std.types.FilePath,
         identity_args: ["--version"],
-        identity_contains: "git version" as NonEmptyStr,
+        identity_contains: "git version" as std.types.NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
-      CapabilityRealization {
+      gunbc.roadmap_execution_contract.CapabilityRealization {
         capability: TmuxSessionCapability,
         executable: "/usr/bin/tmux" as std.types.FilePath,
         identity_args: ["-V"],
-        identity_contains: "tmux" as NonEmptyStr,
+        identity_contains: "tmux" as std.types.NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
-      CapabilityRealization {
+      gunbc.roadmap_execution_contract.CapabilityRealization {
         capability: TmuxPipeShellCapability,
         executable: "/usr/bin/sh" as std.types.FilePath,
         identity_args: ["-c", "printf gunbc-tmux-pipe-shell"],
-        identity_contains: "gunbc-tmux-pipe-shell" as NonEmptyStr,
+        identity_contains: "gunbc-tmux-pipe-shell" as std.types.NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
-      CapabilityRealization {
+      gunbc.roadmap_execution_contract.CapabilityRealization {
         capability: TeeEventCaptureCapability,
         executable: "/usr/bin/tee" as std.types.FilePath,
         identity_args: ["--version"],
-        identity_contains: "coreutils" as NonEmptyStr,
+        identity_contains: "coreutils" as std.types.NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
-      CapabilityRealization {
+      gunbc.roadmap_execution_contract.CapabilityRealization {
         capability: ProviderEventProjectionCapability,
         executable: "/usr/bin/jq" as std.types.FilePath,
         identity_args: ["--version"],
-        identity_contains: "jq-" as NonEmptyStr,
+        identity_contains: "jq-" as std.types.NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
-      CapabilityRealization {
+      gunbc.roadmap_execution_contract.CapabilityRealization {
         capability: EnvironmentBindingCapability,
         executable: dashboard_environment_binding_executable,
         identity_args: ["--version"],
-        identity_contains: "coreutils" as NonEmptyStr,
+        identity_contains: "coreutils" as std.types.NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
-      CapabilityRealization {
+      gunbc.roadmap_execution_contract.CapabilityRealization {
         capability: AttemptStateDirectoryCapability,
         executable: "/usr/bin/install" as std.types.FilePath,
         identity_args: ["--version"],
-        identity_contains: "coreutils" as NonEmptyStr,
+        identity_contains: "coreutils" as std.types.NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
-      CapabilityRealization {
+      gunbc.roadmap_execution_contract.CapabilityRealization {
         capability: AttemptCurrentPointerCapability,
         executable: "/usr/bin/ln" as std.types.FilePath,
         identity_args: ["--version"],
-        identity_contains: "coreutils" as NonEmptyStr,
+        identity_contains: "coreutils" as std.types.NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
-      CapabilityRealization {
+      gunbc.roadmap_execution_contract.CapabilityRealization {
         capability: GunbcClaimRunnerCapability,
         executable: serve_binary,
         identity_args: ["--help"],
-        identity_contains: "A causal compiler" as NonEmptyStr,
+        identity_contains: "A causal compiler" as std.types.NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
-      CapabilityRealization {
+      gunbc.roadmap_execution_contract.CapabilityRealization {
         capability: CargoCapability,
         executable: "/home/briansrls/.cargo/bin/cargo" as std.types.FilePath,
         identity_args: ["--version"],
-        identity_contains: "cargo" as NonEmptyStr,
+        identity_contains: "cargo" as std.types.NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
-      CapabilityRealization {
+      gunbc.roadmap_execution_contract.CapabilityRealization {
         capability: RustcCapability,
         executable: "/home/briansrls/.cargo/bin/rustc" as std.types.FilePath,
         identity_args: ["--version"],
-        identity_contains: "rustc" as NonEmptyStr,
+        identity_contains: "rustc" as std.types.NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
-      CapabilityRealization {
+      gunbc.roadmap_execution_contract.CapabilityRealization {
         capability: RustfmtCapability,
         executable: "/home/briansrls/.cargo/bin/rustfmt" as std.types.FilePath,
         identity_args: ["--version"],
-        identity_contains: "rustfmt" as NonEmptyStr,
+        identity_contains: "rustfmt" as std.types.NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
     ],
@@ -305,13 +305,13 @@ fn dashboard_execution_environment(
 fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   HostDashboardInstance {
     instance_id: srv1_dashboard_live_id,
-    host_identity: "srv1" as NonEmptyStr,
+    host_identity: "srv1" as std.types.NonEmptyStr,
     provision_parent_root: "/opt/gunbc" as std.types.FilePath,
     instance_root: "/opt/gunbc" as std.types.FilePath,
     local_origin_root: srv1_gunbc_repo_root,
-    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    local_origin_publish_ref: "refs/heads/main" as std.types.NonEmptyStr,
     repo_root: srv1_gunbc_repo_root,
-    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_base_ref: "origin/main" as std.types.NonEmptyStr,
     dispatch_state_scope: DispatchStateHostShared {
       worktree_root: srv1_dispatch_worktree_root,
       attempt_state_root: srv1_dispatch_attempt_state_root,
@@ -328,13 +328,13 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
       ),
     },
     serve_binary: srv1_gunbc_serve_binary,
-    serve_function: "roadmap_serve_handle" as NonEmptyStr,
-    listen_host: "0.0.0.0" as NonEmptyStr,
+    serve_function: "roadmap_serve_handle" as std.types.NonEmptyStr,
+    listen_host: "0.0.0.0" as std.types.NonEmptyStr,
     listen_port: 8080,
     tmux_server: DefaultTmuxServer,
     actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
-    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    provision_transport: DashboardSshProvision { host: "srv1" as std.types.NonEmptyStr },
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as std.types.NonEmptyStr },
   }
 }
 
@@ -345,13 +345,13 @@ fn srv1_green_dashboard_instance() -> HostDashboardInstance {
   let binary = dashboard_instance_child(root: root, child: "bin/gunbc")
   HostDashboardInstance {
     instance_id: srv1_dashboard_green_id,
-    host_identity: "srv1" as NonEmptyStr,
+    host_identity: "srv1" as std.types.NonEmptyStr,
     provision_parent_root: "/opt" as std.types.FilePath,
     instance_root: root,
     local_origin_root: dashboard_instance_child(root: root, child: "gunbc"),
-    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    local_origin_publish_ref: "refs/heads/main" as std.types.NonEmptyStr,
     repo_root: dashboard_instance_child(root: root, child: "gunbc"),
-    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_base_ref: "origin/main" as std.types.NonEmptyStr,
     dispatch_state_scope: DispatchStateHostShared {
       worktree_root: srv1_dispatch_worktree_root,
       attempt_state_root: srv1_dispatch_attempt_state_root,
@@ -366,13 +366,13 @@ fn srv1_green_dashboard_instance() -> HostDashboardInstance {
       ),
     },
     serve_binary: binary,
-    serve_function: "roadmap_serve_handle_srv1_green" as NonEmptyStr,
-    listen_host: "0.0.0.0" as NonEmptyStr,
+    serve_function: "roadmap_serve_handle_srv1_green" as std.types.NonEmptyStr,
+    listen_host: "0.0.0.0" as std.types.NonEmptyStr,
     listen_port: 18080,
     tmux_server: DefaultTmuxServer,
     actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
-    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    provision_transport: DashboardSshProvision { host: "srv1" as std.types.NonEmptyStr },
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as std.types.NonEmptyStr },
   }
 }
 
@@ -383,12 +383,12 @@ data isolated_instance_own_binary_note: String = "EACH INSTANCE OWNS ITS BINARY,
 data isolated_instance_anchor_parameter_note: String = "WHICH REF A LAB SERVES IS THE LAB'S OWN FACT, and it was the fourth srv1-preview literal hiding in this constructor — found by probing the served endpoints after the other three were lifted, not by reading the diff. Every isolated instance inherited anchor_ref refs/heads/session/codex-provider-feedback-v0, so a newly added lab would have provisioned itself from a stale feedback branch belonging to a different lane while its page, its instance id, and its posture all read correctly. Nothing would have refused; it would simply have served the wrong source.\\n\\nThat is worse than the host-fact defect above, which produced identical values and no wrong output. This one produces a plausible page from unintended content — the failure that looks like success. It is a parameter rather than a layout field because two labs on ONE host may legitimately serve different refs; the ref belongs to the instance, not the machine."
 
 fn isolated_dashboard_instance(
-  instance_id: NonEmptyStr,
-  layout: GunbcHostLayout,
+  instance_id: std.types.NonEmptyStr,
+  layout: gunbc.host_layout.GunbcHostLayout,
   root: std.types.FilePath,
-  serve_function: NonEmptyStr,
-  listen_port: Port,
-  source_anchor_ref: NonEmptyStr,
+  serve_function: std.types.NonEmptyStr,
+  listen_port: std.types.Port,
+  source_anchor_ref: std.types.NonEmptyStr,
   actuation: DashboardActuationPosture,
   provision_transport: DashboardProvisionTransport,
 ) -> HostDashboardInstance {
@@ -398,12 +398,12 @@ fn isolated_dashboard_instance(
     provision_parent_root: "/home/briansrls/.local/share" as std.types.FilePath,
     instance_root: root,
     local_origin_root: dashboard_instance_child(root: root, child: "origin.git"),
-    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    local_origin_publish_ref: "refs/heads/main" as std.types.NonEmptyStr,
     repo_root: dashboard_instance_child(root: root, child: "source"),
-    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_base_ref: "origin/main" as std.types.NonEmptyStr,
     dispatch_state_scope: DispatchStateInstanceOwned {
-      worktree_child: "attempts" as NonEmptyStr,
-      attempt_state_child: "attempt-state" as NonEmptyStr,
+      worktree_child: "attempts" as std.types.NonEmptyStr,
+      attempt_state_child: "attempt-state" as std.types.NonEmptyStr,
     },
     execution_environment: dashboard_execution_environment(
       serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
@@ -418,7 +418,7 @@ fn isolated_dashboard_instance(
     },
     serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
     serve_function: serve_function,
-    listen_host: "0.0.0.0" as NonEmptyStr,
+    listen_host: "0.0.0.0" as std.types.NonEmptyStr,
     listen_port: listen_port,
     tmux_server: dashboard_named_tmux_server(instance_id: instance_id),
     actuation: actuation,
@@ -427,7 +427,7 @@ fn isolated_dashboard_instance(
       controller_repo: layout.controller_repo,
       staged_bundle: dashboard_instance_child(root: root, child: "inbox/source.bundle"),
       anchor_ref: source_anchor_ref,
-      history_remote: "origin" as NonEmptyStr,
+      history_remote: "origin" as std.types.NonEmptyStr,
     },
   }
 }
@@ -437,11 +437,11 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     instance_id: srv1_dashboard_lab_id,
     layout: srv1_host_layout(),
     root: srv1_dashboard_lab_root,
-    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    serve_function: "roadmap_serve_handle_srv1_lab" as std.types.NonEmptyStr,
     listen_port: 18081,
-    source_anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as NonEmptyStr,
+    source_anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as std.types.NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
+    provision_transport: DashboardSshProvision { host: "srv1" as std.types.NonEmptyStr },
   )
 }
 
@@ -450,9 +450,9 @@ fn srv2_preview_dashboard_instance() -> HostDashboardInstance {
     instance_id: srv2_dashboard_preview_id,
     layout: srv2_host_layout(),
     root: srv2_dashboard_preview_root,
-    serve_function: "roadmap_serve_handle_srv2_preview" as NonEmptyStr,
+    serve_function: "roadmap_serve_handle_srv2_preview" as std.types.NonEmptyStr,
     listen_port: 18080,
-    source_anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as NonEmptyStr,
+    source_anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as std.types.NonEmptyStr,
     actuation: DashboardObserveOnly,
     provision_transport: DashboardLocalProvision,
   )
@@ -460,7 +460,7 @@ fn srv2_preview_dashboard_instance() -> HostDashboardInstance {
 
 data srv2_lab_instance_note: String = "THE ACTUATING srv2 INSTANCE, added because the preview one could never have worked and its failure mode was silent until someone ran it. srv2_preview above is DashboardObserveOnly, so its dispatch endpoint refuses by construction — correct, and invisible on a page whose buttons simply read disabled. It also had no entry in gunbc.roadmap_dashboard_instance_apply, which contained zero srv2 references, so nothing in the tree could provision the directories its observations refuse against. Declared, servable, and unreachable in the same value.\\n\\nThis row is the actuating peer: same isolated layout, its own root and named tmux server, DashboardActuating so dispatch is admitted, DashboardLocalProvision because srv2 provisions itself rather than over SSH. It listens on 18082 — 18080 is the preview's declared port and 18081 is srv1's lab, and a port collision resolved by passing a different --port on the command line is how the last deployment ended up serving one instance's page under another instance's identity.\\n\\nThe preview row is deliberately kept rather than repointed. It is the observe-only posture's only live specimen, several witnesses discriminate against it, and deleting a row because a better one arrived is how the 2026-07-27 authority refresh lost the only execution contract it had."
 
-data srv2_dashboard_lab_id: NonEmptyStr = "srv2-lab-v1-deletion" as NonEmptyStr
+data srv2_dashboard_lab_id: std.types.NonEmptyStr = "srv2-lab-v1-deletion" as std.types.NonEmptyStr
 
 data srv2_dashboard_lab_root: std.types.FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/srv2-lab-v1-deletion" as std.types.FilePath
 
@@ -469,9 +469,9 @@ fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
     instance_id: srv2_dashboard_lab_id,
     layout: srv2_host_layout(),
     root: srv2_dashboard_lab_root,
-    serve_function: "roadmap_serve_handle_srv2_lab" as NonEmptyStr,
+    serve_function: "roadmap_serve_handle_srv2_lab" as std.types.NonEmptyStr,
     listen_port: 18082,
-    source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
+    source_anchor_ref: "refs/remotes/origin/main" as std.types.NonEmptyStr,
     actuation: DashboardActuating,
     provision_transport: DashboardLocalProvision,
   )
@@ -760,7 +760,7 @@ fn dashboard_instance_provision_op_row(
   match op {
     DashboardHydrateControllerHistory { controller_repo, history_remote } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "hydrate-controller-history" as NonEmptyStr,
+        kind: "hydrate-controller-history" as std.types.NonEmptyStr,
         target: controller_repo as String,
         detail: join([
           "complete shallow history from named remote ",
@@ -770,7 +770,7 @@ fn dashboard_instance_provision_op_row(
       }
     DashboardPrepareGitBundle { controller_repo, anchor_ref } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "prepare-git-bundle" as NonEmptyStr,
+        kind: "prepare-git-bundle" as std.types.NonEmptyStr,
         target: controller_repo as String,
         detail: join([
           anchor_ref as String,
@@ -779,25 +779,25 @@ fn dashboard_instance_provision_op_row(
       }
     DashboardStageGitBundle { controller_repo: _, staged_bundle } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "stage-git-bundle" as NonEmptyStr,
+        kind: "stage-git-bundle" as std.types.NonEmptyStr,
         target: staged_bundle as String,
         detail: "copy proven temporary bundle to .next, then atomically rename",
       }
     DashboardEnsureDirectory { path } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-directory" as NonEmptyStr,
+        kind: "ensure-directory" as std.types.NonEmptyStr,
         target: path as String,
         detail: "mkdir parents; idempotent",
       }
     DashboardEnsureProviderStateRoot { path } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-provider-state-root" as NonEmptyStr,
+        kind: "ensure-provider-state-root" as std.types.NonEmptyStr,
         target: path as String,
         detail: "mkdir parents so the provider login has somewhere to write; never torn down, never populated by the deploy",
       }
     DashboardEnsureServeBinary { controller_repo: _, built_binary, path } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-serve-binary" as NonEmptyStr,
+        kind: "ensure-serve-binary" as std.types.NonEmptyStr,
         target: path as String,
         detail: join([
           "copy the controller's built seed from ",
@@ -807,13 +807,13 @@ fn dashboard_instance_provision_op_row(
       }
     DashboardEnsureOwnershipMarker { path, instance_id } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-ownership-marker" as NonEmptyStr,
+        kind: "ensure-ownership-marker" as std.types.NonEmptyStr,
         target: path as String,
         detail: instance_id as String,
       }
     DashboardEnsureLocalOrigin { bundle, origin, source_ref, publish_ref } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-local-origin" as NonEmptyStr,
+        kind: "ensure-local-origin" as std.types.NonEmptyStr,
         target: origin as String,
         detail: join([
           bundle as String,
@@ -825,7 +825,7 @@ fn dashboard_instance_provision_op_row(
       }
     DashboardEnsureSourceRepo { origin, repo, anchor_ref } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-source-repo" as NonEmptyStr,
+        kind: "ensure-source-repo" as std.types.NonEmptyStr,
         target: repo as String,
         detail: join([origin as String, " @ ", anchor_ref as String], ""),
       }
@@ -839,7 +839,7 @@ fn dashboard_instance_provision_op_row(
       tmux_server: _,
     } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-service" as NonEmptyStr,
+        kind: "ensure-service" as std.types.NonEmptyStr,
         target: instance_id as String,
         detail: join([
           binary as String,
@@ -855,7 +855,7 @@ fn dashboard_instance_provision_op_row(
       }
     DashboardVerifyProviderRuntime { executable, state_root } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "verify-provider-runtime" as NonEmptyStr,
+        kind: "verify-provider-runtime" as std.types.NonEmptyStr,
         target: executable as String,
         detail: join([
           "run --version through the modeled environment binding with CODEX_HOME=",
@@ -865,13 +865,13 @@ fn dashboard_instance_provision_op_row(
       }
     DashboardVerifyProviderAuth { executable, state_root } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "verify-provider-auth" as NonEmptyStr,
+        kind: "verify-provider-auth" as std.types.NonEmptyStr,
         target: state_root as String,
         detail: executable as String,
       }
     DashboardVerifyHealth { host, port } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "verify-health" as NonEmptyStr,
+        kind: "verify-health" as std.types.NonEmptyStr,
         target: join([host as String, ":", to_string(port)], ""),
         detail: "/instance.json must name the intended instance within the bounded readiness poll",
       }
@@ -944,31 +944,31 @@ fn dashboard_instance_reconcile(
       reason: join([
         "observation incomplete; no field is evidence: ",
         join(observed.observation_refusals, " | "),
-      ], "") as NonEmptyStr,
+      ], "") as std.types.NonEmptyStr,
     }
   } else if !dashboard_instance_paths_are_owned(instance: instance) {
     DashboardInstanceRefused {
-      reason: "instance-owned paths escape the instance root" as NonEmptyStr,
+      reason: "instance-owned paths escape the instance root" as std.types.NonEmptyStr,
     }
   } else if !observed.production_untouched {
     DashboardInstanceRefused {
-      reason: "production isolation read-back failed" as NonEmptyStr,
+      reason: "production isolation read-back failed" as std.types.NonEmptyStr,
     }
   } else if (observed.origin_present || observed.source_present)
       && !observed.ownership_marker_present {
     DashboardInstanceRefused {
-      reason: "source or origin exists without the matching instance ownership marker" as NonEmptyStr,
+      reason: "source or origin exists without the matching instance ownership marker" as std.types.NonEmptyStr,
     }
   } else if observed.source_present && !observed.source_anchor_matches {
     DashboardInstanceRefused {
-      reason: "source repo exists at a different anchor; replacement is destructive and must be adjudicated" as NonEmptyStr,
+      reason: "source repo exists at a different anchor; replacement is destructive and must be adjudicated" as std.types.NonEmptyStr,
     }
   } else if observed.source_present && !observed.source_revision_observed {
     DashboardInstanceRefused {
       reason: join([
         "source revision read-back refused: ",
         observed.source_revision_detail,
-      ], "") as NonEmptyStr,
+      ], "") as std.types.NonEmptyStr,
     }
   } else if observed.health_current
       && observed.root_present
@@ -1010,13 +1010,13 @@ fn dashboard_instance_retract_plan(
 ) -> DashboardInstanceRetract {
   if !dashboard_instance_paths_are_owned(instance: instance) {
     DashboardInstanceRetractRefused {
-      reason: "instance-owned paths escape the instance root" as NonEmptyStr,
+      reason: "instance-owned paths escape the instance root" as std.types.NonEmptyStr,
     }
   } else {
     match instance.source_seed {
       DashboardExistingRepo { anchor_ref: _ } =>
         DashboardInstanceRetractRefused {
-          reason: "existing-repo dashboard instances are not owned by the isolated-instance retractor" as NonEmptyStr,
+          reason: "existing-repo dashboard instances are not owned by the isolated-instance retractor" as std.types.NonEmptyStr,
         }
       DashboardGitBundle {
         controller_repo: _,

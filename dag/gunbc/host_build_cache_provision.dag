@@ -5,20 +5,20 @@ data provision_build_cache_widen_sketch_note: String = "RED-control fixture mode
 
 data lane_e_srv1_ci_noncompletion_root_cause_receipt: String = "LANE E ROOT-CAUSE RECEIPT (2026-08-06 investigation; quarantine mechanism RETIRED 2026-08-07 — see retirement paragraph). SYMPTOM CLASS INVESTIGATED: cargo check -p v1-compiler-tests --tests killed at the 15m compile-gate ceiling while still compiling v1-compiler. HARM MEASURE: count long cancelled jobs as capacity absorption, not only conclusion=failure — a 14m cancelled build costs the same slot-hours as a 15m killed build. EXECUTED EVIDENCE (historical failure): runs 31060400858 (srv1-05) and 31060543168 (srv1-01), killed at 15m mid-Compiling v1-compiler; srv1-02 build cancelled at 14m (still-bat-561 sample). SLOT DISCRIMINANT (Lane E measurement): srv1 is NOT uniformly broken — still-bat-561 measured srv1-04 build success in ~1m and srv1-03 regen success in the same window srv1-01/05 cold-killed at 15m; warm-cache fleet runs complete the compile gate in ~50s–1m. MECHANISM (load-bearing): one CI sccache endpoint per host; cache-miss compiles execute as CHILDREN OF THE SERVER PROCESS (extdeps.cache.sccache sccache_server_process_facts), so the server's cgroup bounds every compile on the host — not the slot that issued the compile. A server stranded in a retired slot's cgroup (pid 3975946 in srv1-10, 2026-08-01 receipt) exported one dead slot's memory ceiling to all live slots on cache miss. FIX AUTHORITY: ServerManagedUnitOwned on the managed compile-pool slice — ServerRunnerOwned on ANY lifecycle (active or retired) must refuse ProvisionConverged (placement_verdict, build_cache_placement_observation_test witness_both_runner_lifecycles_refuse_at_the_verdict). 2026-08-07 STATUS: INCIDENT CLEARED, NOT REPAIRED — pid 3975946 gone; surviving server on srv1 is runner-owned on ACTIVE slot srv1-02 (~90s old at observation), same ServerRunnerOwned class srv2/srv3 already carried per 2026-08-01 receipt; ephemeral runner recycle is the only reason it has not stranded again — the class can strand again the next time a slot retires while holding the server. POST-INCIDENT MEASUREMENT (still-bat-561, 45 completed runs sampled 2026-08-07, kill-shape = non-success with duration 13–18m): srv1 16 jobs / 5 non-success / 0 kill-shape; srv2 26 / 6 / 2; srv3 29 / 12 / 0; srv4 49 / 14 / 1 — srv1 has zero kill-shape failures while srv2 and srv4 still show them; host-scoped CI quarantine would route work toward hosts currently exhibiting the defect. QUARANTINE RETIREMENT: ci-fleet-admit host-label gate (PR #7889) retired rather than merged — premise expired and measurement inverted the remedy; this receipt is the durable home for the investigation."
 
-data host_build_cache_provision_scope_disposition: Disposition = SingleAuthority
+data host_build_cache_provision_scope_disposition: std.disposition.Disposition = SingleAuthority
 
-data host_build_cache_provision_realize_scaffold: Disposition = Scaffold {
+data host_build_cache_provision_realize_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect_realize",
     decl_name: "realize_provision_build_cache",
     field: WholeDeclaration,
   }
 }
 
-data ci_sccache_opportunistic_detect_scaffold: Disposition = Scaffold {
+data ci_sccache_opportunistic_detect_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_materialization_emit",
     decl_name: "ci_sccache_provider_shell_injection",
     field: WholeDeclaration,
@@ -56,7 +56,7 @@ type BuildCacheProvisionVerdict
   | ProvisionRefused { cause: BuildCacheProvisionRefusal, reason: std.types.NonEmptyStr }
 
 fn provision_build_cache_absorbing_fallback_widen_sketch(
-  catalog_id: CacheInterfaceId,
+  catalog_id: std.cache_identity.CacheInterfaceId,
   observed: BuildCacheDaemonObservation,
 ) -> BuildCacheProvisionVerdict {
   match observed {
@@ -72,7 +72,7 @@ fn provision_build_cache_absorbing_fallback_widen_sketch(
     DaemonMisconfigured { matched_fragment: frag, detail: d } =>
       ProvisionRefused {
         cause: RefusalDaemonMisconfigured,
-        reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
+        reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as std.types.NonEmptyStr,
       }
     DaemonPathShadowed { resolved: r, expected: e } =>
       ProvisionConverged {
@@ -109,7 +109,7 @@ fn verdict_shape_matches(
 }
 
 fn build_cache_provision_gate_accepts(
-  catalog_id: CacheInterfaceId,
+  catalog_id: std.cache_identity.CacheInterfaceId,
   verdict: BuildCacheProvisionVerdict,
   observed: BuildCacheDaemonObservation,
 ) -> Bool {
@@ -120,9 +120,9 @@ fn build_cache_provision_gate_accepts(
 }
 
 fn placement_verdict(
-  catalog_id: CacheInterfaceId,
+  catalog_id: std.cache_identity.CacheInterfaceId,
   stats_line: String,
-  placement: BuildCacheServerPlacement,
+  placement: gunbc.build_cache_instance.BuildCacheServerPlacement,
 ) -> BuildCacheProvisionVerdict {
   match placement {
     ServerManagedUnitOwned { unit: _ } =>
@@ -133,27 +133,27 @@ fn placement_verdict(
         reason: concat(
           concat("host_build_cache_provision: the configured cache endpoint is owned by a RUNNER-SLOT process, not by the managed unit. Slot index ", to_string(s.slot_index)),
           concat(runner_slot_lifecycle_refusal_clause(lifecycle: lc), " Cache-miss compiles execute as children of the endpoint owner, so that slot's memory ceiling bounds every compile on this host. Refusing: responsive is not placed."),
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       }
     ServerUnsupervised { cgroup: cg } =>
       ProvisionRefused {
         cause: RefusalDaemonUnsupervised,
-        reason: concat("host_build_cache_provision: the endpoint owner is not the intended managed unit; observed cgroup ", concat(cg as String, ". Refusing rather than accepting an out-of-band supervisor.")) as NonEmptyStr,
+        reason: concat("host_build_cache_provision: the endpoint owner is not the intended managed unit; observed cgroup ", concat(cg as String, ". Refusing rather than accepting an out-of-band supervisor.")) as std.types.NonEmptyStr,
       }
     ServerPlacementAbsent =>
       ProvisionRefused {
         cause: RefusalDaemonAbsent,
-        reason: "host_build_cache_provision: no process holds the LISTEN on the configured endpoint; the instance is not running." as NonEmptyStr,
+        reason: "host_build_cache_provision: no process holds the LISTEN on the configured endpoint; the instance is not running." as std.types.NonEmptyStr,
       }
     ServerPlacementUnknown { detail: d } =>
       ProvisionRefused {
         cause: RefusalPlacementUnknown,
-        reason: concat("host_build_cache_provision: sccache server placement could not be observed; refusing rather than assuming unit-owned: ", d as String) as NonEmptyStr,
+        reason: concat("host_build_cache_provision: sccache server placement could not be observed; refusing rather than assuming unit-owned: ", d as String) as std.types.NonEmptyStr,
       }
   }
 }
 
-fn runner_slot_lifecycle_refusal_clause(lifecycle: RunnerSlotLifecycle) -> String {
+fn runner_slot_lifecycle_refusal_clause(lifecycle: gunbc.build_cache_instance.RunnerSlotLifecycle) -> String {
   match lifecycle {
     DesiredRunnerSlot =>
       " on a slot the fleet still desires, so BIRTH ORDERING failed: a runner was able to run before a managed cache endpoint existed, and its client created the server inside its own cgroup."
@@ -163,7 +163,7 @@ fn runner_slot_lifecycle_refusal_clause(lifecycle: RunnerSlotLifecycle) -> Strin
 }
 
 fn provision_build_cache_verdict(
-  catalog_id: CacheInterfaceId,
+  catalog_id: std.cache_identity.CacheInterfaceId,
   observed: BuildCacheDaemonObservation,
 ) -> BuildCacheProvisionVerdict {
   match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
@@ -179,14 +179,14 @@ fn provision_build_cache_verdict(
         DaemonAbsent =>
           ProvisionRefused {
             cause: RefusalDaemonAbsent,
-            reason: "host_build_cache_provision: sccache daemon absent; fail-closed, no local-build fallback" as NonEmptyStr,
+            reason: "host_build_cache_provision: sccache daemon absent; fail-closed, no local-build fallback" as std.types.NonEmptyStr,
           }
         DaemonUnresponsive { detail: d } =>
           ProvisionRefused { cause: RefusalDaemonUnresponsive, reason: d }
         DaemonMisconfigured { matched_fragment: frag, detail: d } =>
           ProvisionRefused {
             cause: RefusalDaemonMisconfigured,
-            reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
+            reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as std.types.NonEmptyStr,
           }
         DaemonPathShadowed { resolved: r, expected: e } =>
           ProvisionRefused {
@@ -197,7 +197,7 @@ fn provision_build_cache_verdict(
                 concat(" but the modeled install authority is ", e),
                 "; the compiler would call a binary this lane never provisioned. Fail-closed, no local-build fallback.",
               ),
-            ) as NonEmptyStr,
+            ) as std.types.NonEmptyStr,
           }
         DaemonUnsupervised { unit: u, unit_state: s } =>
           ProvisionRefused {
@@ -208,17 +208,17 @@ fn provision_build_cache_verdict(
                 concat(" is ", s),
                 "; the daemon is only alive because an invocation auto-started it, so it exits on its own idle timeout and nothing restarts it. Fail-closed, no local-build fallback.",
               ),
-            ) as NonEmptyStr,
+            ) as std.types.NonEmptyStr,
           }
       }
   }
 }
 
-fn provision_build_cache_effect_for_catalog(catalog_id: CacheInterfaceId) -> HostEffect {
+fn provision_build_cache_effect_for_catalog(catalog_id: std.cache_identity.CacheInterfaceId) -> gunbc.host_effect.HostEffect {
   ProvisionBuildCache { catalog_id: catalog_id }
 }
 
-fn provision_build_cache_default_effect() -> HostEffect {
+fn provision_build_cache_default_effect() -> gunbc.host_effect.HostEffect {
   provision_build_cache_effect_for_catalog(catalog_id: sccache_local_id)
 }
 
@@ -243,14 +243,14 @@ fn daemon_absent_refuses_fail_closed() -> Bool {
   }
 }
 
-data managed_compile_pool_slice_fixture: NonEmptyStr = gunbc_managed_compile_pool_slice
+data managed_compile_pool_slice_fixture: std.types.NonEmptyStr = gunbc_managed_compile_pool_slice
 
 fn stats_ok_lazy_spawned_refuses() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: ServerRunnerOwned { slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
+      placement: ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
     },
   ) {
     ProvisionRefused { cause: RefusalServerRunnerOwned, reason: _ } => true
@@ -293,7 +293,7 @@ fn misconfigured_matches_cited_fragment() -> Bool {
   )
 }
 
-func provision_build_cache(host: HostIdentity, catalog_id: CacheInterfaceId) -> ProcessExit
+func provision_build_cache(host: product.placement_supply.HostIdentity, catalog_id: std.cache_identity.CacheInterfaceId) -> std.process.ProcessExit
   uses net: Network
 {
   match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {

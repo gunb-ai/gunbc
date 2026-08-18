@@ -58,7 +58,7 @@ fn glitch_is_armed(g: ImpulseGlitchDuration) -> Bool {
   }
 }
 
-fn glitch_settle(g: ImpulseGlitchDuration) -> TimingToken {
+fn glitch_settle(g: ImpulseGlitchDuration) -> gunbc.design.material.TimingToken {
   match g {
     ImpulseOff => respond_fast
     ImpulseBrief => respond_fast
@@ -184,7 +184,7 @@ fn displacement_admission(p: InstrumentPreference) -> DisplacementAdmission {
 
 data provenance_edge_note: String = "THE PROVENANCE IS A TYPED EDGE NOW, NOT A PARAGRAPH. The first cut described the Pip-Boy precedent in prose and carried a DISSOLVE-ON saying the citation edge would arrive when the reference join reached main. It has (gunbc.design.reference_instrument, merged), so the prose is replaced by the edge it promised: every channel names the agnostic behaviour axis it inhabits, and that axis carries its own provenance — cited on a real declaration inside a product module, or originated here. Nothing in this module restates what the upstream shipped; it points at the join that does. ChannelBuoyantDrift resolving to an OriginatedHere axis is the case that makes the edge worth having: the drift is OURS, no reference product realizes it, and the edge says so rather than letting a reader assume the whole set was borrowed."
 
-fn channel_behaviour_axis(c: InstrumentChannel) -> InstrumentBehaviourAxis {
+fn channel_behaviour_axis(c: InstrumentChannel) -> gunbc.design.reference_instrument.InstrumentBehaviourAxis {
   match c {
     ChannelOpticalJitter => OpticalInstability
     ChannelVerticalShift => RestingOffsetCalibration
@@ -193,7 +193,7 @@ fn channel_behaviour_axis(c: InstrumentChannel) -> InstrumentBehaviourAxis {
   }
 }
 
-fn channel_provenance(c: InstrumentChannel) -> AxisProvenance {
+fn channel_provenance(c: InstrumentChannel) -> gunbc.design.reference_instrument.AxisProvenance {
   axis_provenance(a: channel_behaviour_axis(c: c))
 }
 

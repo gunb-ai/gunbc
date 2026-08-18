@@ -8,7 +8,7 @@ type CarrierCloneTrigger
 
 data identical_variant_payload_module: String = "v2.lens.identical_variant_payload"
 
-fn identical_variant_payload_unrealized_verdict() -> LensVerdict {
+fn identical_variant_payload_unrealized_verdict() -> v2.std.lens_verdict.LensVerdict {
   lens_verdict_module_unrealized(
     reason: ^identical_variant_payload_producer_unavailable,
     module_name: identical_variant_payload_module
@@ -27,6 +27,6 @@ fn identical_variant_payload_fact_for_type(type_node: Node) -> IdenticalVariantP
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

@@ -1,15 +1,15 @@
 module extdeps.github.issues
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/issues/issues"
   }
 }
 
-data issue_comments_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data issue_comments_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/issues/comments"
   }
@@ -19,9 +19,9 @@ data issues_module_homing_note: String = "WHY THIS MODULE EXISTS AND WHAT MOVED 
 
 data issue_state_note: String = "IssueState is Open | Closed and deliberately does NOT carry the state_reason axis (completed / not_planned / reopened) that GitHub added beside it. Those are two independent facts upstream — an issue is closed, and separately there is a recorded reason it was closed — and fusing them into one enum would produce a coproduct where Closed appears three times and every consumer that only cares whether the issue is open has to enumerate reasons it does not use. The alert consumer needs the open/closed axis alone. When a consumer needs the reason, it lands as its own optional field on Issue, cited to the same authority, and this enum is untouched."
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.issues",
       decl_name: "IssueState",
       field: WholeDeclaration
@@ -121,7 +121,7 @@ service github.Issues {
     }
     output {
       number: Int from "number"
-      html_url: NonEmptyStr from "html_url"
+      html_url: std.types.NonEmptyStr from "html_url"
     }
     transport rest {
       method: POST,
@@ -150,7 +150,7 @@ service github.Issues {
     }
     output {
       number: Int from "number"
-      html_url: NonEmptyStr from "html_url"
+      html_url: std.types.NonEmptyStr from "html_url"
     }
     transport rest {
       method: PATCH,
@@ -177,7 +177,7 @@ service github.Issues {
     }
     output {
       id: Int from "id"
-      html_url: NonEmptyStr from "html_url"
+      html_url: std.types.NonEmptyStr from "html_url"
     }
     transport rest {
       method: POST,

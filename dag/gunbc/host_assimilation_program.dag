@@ -29,7 +29,7 @@ data host_phase_participation_classification_note: String = "The one place a sta
 
 data host_phase_prefix_participation_note: String = "Every PREFIX phase is CI-runner only. BMC credential convergence and virtual-media OS installation are the Ampere Altra provisioning path and have no analogue on an appliance that self-provisions through its own first-boot flow; HostConvergePolicyDerived is grouped with them because the policy it derives is that installation path's policy. A DGX Spark absolutely HAS arrival obligations -- physical binding, network convergence, baseline observation -- but they are its OWN obligations, authored where that arrival is modeled, and inheriting a differently-shaped host's provisioning steps because they sound generic is precisely the false-obligation defect this module exists to prevent."
 
-fn prefix_phase_participations(p: HostStandupPrefixPhase) -> List<FleetParticipation> {
+fn prefix_phase_participations(p: gunbc.host_standup.HostStandupPrefixPhase) -> List<FleetParticipation> {
   match p {
     BmcCredentialConverge => [CiRunnerParticipation]
     OsInstallMechanismResolved => [CiRunnerParticipation]
@@ -40,7 +40,7 @@ fn prefix_phase_participations(p: HostStandupPrefixPhase) -> List<FleetParticipa
 
 data host_phase_assimilation_participation_note: String = "HostIdentityConverge and ReachSecretsNetwork are shared: every enrolled host needs a converged identity and an admitted reach path whatever it does for the fleet. ComputeFabricEnroll is shared because both kinds offer capacity, though of different shapes -- hardware threads for a runner, an inference envelope for an appliance -- and that is the fit-predicate work downstream, not a reason to fork the phase. StandupAssimilationComplete is shared because every program needs a terminal obligation. RunnerDeploySlot, BuildCacheProvision, CodexRuntimeProvision, GreenPlaceReadiness and SessionPlacementEnrollment are CI-runner only: Actions runner slots, an sccache build cache, a pinned Codex provider-runtime bundle, dashboard green-place pinning and session placement are all facts about executing CI work, and an inference appliance that acquired them would be competing with its own serving."
 
-fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<FleetParticipation> {
+fn assimilation_phase_participations(p: gunbc.host_standup.HostStandupAssimilationPhase) -> List<FleetParticipation> {
   match p {
     HostIdentityConverge => [CiRunnerParticipation, InferenceServingParticipation]
     ReachSecretsNetwork => [CiRunnerParticipation, InferenceServingParticipation]
@@ -54,7 +54,7 @@ fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<Fl
   }
 }
 
-fn host_phase_participations(phase: HostStandupPhase) -> List<FleetParticipation> {
+fn host_phase_participations(phase: gunbc.host_standup.HostStandupPhase) -> List<FleetParticipation> {
   match phase {
     Prefix { phase: p } => prefix_phase_participations(p: p)
     Assimilation { phase: p } => assimilation_phase_participations(p: p)
@@ -69,11 +69,11 @@ fn participation_list_contains(ps: List<FleetParticipation>, wanted: FleetPartic
   )
 }
 
-fn step_serves_participation(step: HostStandupStep, wanted: FleetParticipation) -> Bool {
+fn step_serves_participation(step: gunbc.host_standup.HostStandupStep, wanted: FleetParticipation) -> Bool {
   participation_list_contains(ps: host_phase_participations(phase: step.phase), wanted: wanted)
 }
 
-fn step_serves_any(step: HostStandupStep, wanted: List<FleetParticipation>) -> Bool {
+fn step_serves_any(step: gunbc.host_standup.HostStandupStep, wanted: List<FleetParticipation>) -> Bool {
   v2.std.algebra.fold_list(
     xs: wanted,
     empty: false,
@@ -117,11 +117,11 @@ fn canonical_participation(ps: List<FleetParticipation>) -> List<FleetParticipat
   filter(fleet_participation_canonical_roster, c => participation_list_contains(ps: ps, wanted: c))
 }
 
-fn host_enrollment_program_identity(intent: HostEnrollmentIntent) -> NonEmptyStr {
+fn host_enrollment_program_identity(intent: HostEnrollmentIntent) -> std.types.NonEmptyStr {
   join(
     map(canonical_participation(ps: intent.participation), p => fleet_participation_label(p: p)),
     "+"
-  ) as NonEmptyStr
+  ) as std.types.NonEmptyStr
 }
 
 fn program_step_count(program: HostAssimilationProgram) -> Int {
@@ -142,8 +142,8 @@ data both_participation_enrollment_participation: List<FleetParticipation> = [
 data assimilation_completion_inputs_union_note: String = "Completion inputs derive as the union over enrolled participations, deduplicated by AssimilationCompleteInput identity, not as a priority chain over participation kinds. A host enrolled for both CI and inference must carry every obligation either role requires; ordering in the participation list must not drop CI-only inputs when inference is listed first."
 
 fn assimilation_completion_input_list_contains(
-  inputs: List<AssimilationCompleteInput>,
-  wanted: AssimilationCompleteInput,
+  inputs: List<gunbc.host_standup.AssimilationCompleteInput>,
+  wanted: gunbc.host_standup.AssimilationCompleteInput,
 ) -> Bool {
   v2.std.algebra.fold_list(
     xs: inputs,
@@ -159,9 +159,9 @@ fn assimilation_completion_input_list_contains(
 }
 
 fn assimilation_completion_input_append_unique(
-  inputs: List<AssimilationCompleteInput>,
-  wanted_input: AssimilationCompleteInput,
-) -> List<AssimilationCompleteInput> {
+  inputs: List<gunbc.host_standup.AssimilationCompleteInput>,
+  wanted_input: gunbc.host_standup.AssimilationCompleteInput,
+) -> List<gunbc.host_standup.AssimilationCompleteInput> {
   if assimilation_completion_input_list_contains(inputs: inputs, wanted: wanted_input) {
     inputs
   } else {
@@ -170,9 +170,9 @@ fn assimilation_completion_input_append_unique(
 }
 
 fn assimilation_completion_inputs_union(
-  a: List<AssimilationCompleteInput>,
-  b: List<AssimilationCompleteInput>,
-) -> List<AssimilationCompleteInput> {
+  a: List<gunbc.host_standup.AssimilationCompleteInput>,
+  b: List<gunbc.host_standup.AssimilationCompleteInput>,
+) -> List<gunbc.host_standup.AssimilationCompleteInput> {
   v2.std.algebra.fold_list(
     xs: b,
     empty: a,
@@ -184,17 +184,17 @@ fn assimilation_completion_inputs_union(
 
 data assimilation_completion_input_classification_note: String = "Completion obligations are derived from participation beside the phase classification tables above, not as fixed fields on AssimilationCompleteGate. CiRunnerParticipation requires all four AssimilationCompleteInput arms because a CI runner host must be node-registered, resources-present, green-place coherent via the gunbc gate (not merely P3 modeled), and runner-slot healthy. InferenceServingParticipation requires only NodeRegistered and ResourcesPresent: an inference appliance has no GitHub Actions runner slot to health-check and no dashboard green-place pin to coherence-check, so those inputs are not obligations and cannot be supplied without fabricating evidence. GreenPlacePinCoherent and RunnerSlotHealthy are CI-only because they gate facts about executing CI work (dashboard pin coherence, Actions slot enforcement), not generic host readiness."
 
-data shared_completion_inputs: List<AssimilationCompleteInput> = [
+data shared_completion_inputs: List<gunbc.host_standup.AssimilationCompleteInput> = [
   NodeRegistered,
   ResourcesPresent,
 ]
 
-data ci_runner_only_completion_inputs: List<AssimilationCompleteInput> = [
+data ci_runner_only_completion_inputs: List<gunbc.host_standup.AssimilationCompleteInput> = [
   GreenPlacePinCoherent,
   RunnerSlotHealthy,
 ]
 
-fn assimilation_completion_inputs_for_one(p: FleetParticipation) -> List<AssimilationCompleteInput> {
+fn assimilation_completion_inputs_for_one(p: FleetParticipation) -> List<gunbc.host_standup.AssimilationCompleteInput> {
   match p {
     CiRunnerParticipation =>
       append(shared_completion_inputs, items: ci_runner_only_completion_inputs)
@@ -203,9 +203,9 @@ fn assimilation_completion_inputs_for_one(p: FleetParticipation) -> List<Assimil
   }
 }
 
-data empty_assimilation_complete_input_list: List<AssimilationCompleteInput> = []
+data empty_assimilation_complete_input_list: List<gunbc.host_standup.AssimilationCompleteInput> = []
 
-fn assimilation_completion_inputs_for(participation: List<FleetParticipation>) -> List<AssimilationCompleteInput> {
+fn assimilation_completion_inputs_for(participation: List<FleetParticipation>) -> List<gunbc.host_standup.AssimilationCompleteInput> {
   v2.std.algebra.fold_list(
     xs: participation,
     empty: empty_assimilation_complete_input_list,
@@ -218,7 +218,7 @@ fn assimilation_completion_inputs_for(participation: List<FleetParticipation>) -
   )
 }
 
-fn default_unsatisfied_witness_for_input(input: AssimilationCompleteInput) -> AssimilationInputWitness {
+fn default_unsatisfied_witness_for_input(input: gunbc.host_standup.AssimilationCompleteInput) -> gunbc.host_standup.AssimilationInputWitness {
   match input {
     NodeRegistered =>
       InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" }
@@ -231,12 +231,12 @@ fn default_unsatisfied_witness_for_input(input: AssimilationCompleteInput) -> As
   }
 }
 
-fn assimilation_gate_unsatisfied_for_participation(participation: List<FleetParticipation>) -> AssimilationCompleteGate {
-  AssimilationCompleteGate {
+fn assimilation_gate_unsatisfied_for_participation(participation: List<FleetParticipation>) -> gunbc.host_standup.AssimilationCompleteGate {
+  gunbc.host_standup.AssimilationCompleteGate {
     obligations: map(
       assimilation_completion_inputs_for(participation: participation),
       fn(wanted_input) {
-        AssimilationObligation {
+        gunbc.host_standup.AssimilationObligation {
           input: wanted_input,
           witness: default_unsatisfied_witness_for_input(input: wanted_input),
         }
@@ -245,7 +245,7 @@ fn assimilation_gate_unsatisfied_for_participation(participation: List<FleetPart
   }
 }
 
-fn host_standup_default_assimilation_gate_unsatisfied() -> AssimilationCompleteGate {
+fn host_standup_default_assimilation_gate_unsatisfied() -> gunbc.host_standup.AssimilationCompleteGate {
   assimilation_gate_unsatisfied_for_participation(participation: ci_runner_enrollment_participation)
 }
 

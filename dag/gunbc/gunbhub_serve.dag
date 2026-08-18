@@ -23,21 +23,21 @@ type GunbhubRenderResult
   = RenderedHtml { html: String }
   | RenderRejected { reason: String }
 
-fn gunbhub_header() -> Fragment {
-  Element {
+fn gunbhub_header() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "header",
     attributes: [],
     children: [
-      Element {
+      extdeps.browser.Element {
         tag: "h1",
         attributes: [],
         children: [ FragmentText { content: "gunbc" } ],
       },
-      Element {
+      extdeps.browser.Element {
         tag: "nav",
         attributes: [],
         children: [
-          Element {
+          extdeps.browser.Element {
             tag: "a",
             attributes: [ attr(name: "href", value: "/" ) ],
             children: [ FragmentText { content: "Browse" } ],
@@ -48,12 +48,12 @@ fn gunbhub_header() -> Fragment {
   }
 }
 
-fn gunbhub_browse_entry(name: String, path: String) -> Fragment {
-  Element {
+fn gunbhub_browse_entry(name: String, path: String) -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "li",
     attributes: [],
     children: [
-      Element {
+      extdeps.browser.Element {
         tag: "a",
         attributes: [ attr(name: "href", value: path ) ],
         children: [ FragmentText { content: name } ],
@@ -62,32 +62,32 @@ fn gunbhub_browse_entry(name: String, path: String) -> Fragment {
   }
 }
 
-fn gunbhub_browse_page() -> Fragment {
-  Element {
+fn gunbhub_browse_page() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "html",
     attributes: [],
     children: [
-      Element {
+      extdeps.browser.Element {
         tag: "head",
         attributes: [],
         children: [
-          Element {
+          extdeps.browser.Element {
             tag: "title",
             attributes: [],
             children: [ FragmentText { content: "gunbc" } ],
           },
         ],
       },
-      Element {
+      extdeps.browser.Element {
         tag: "body",
         attributes: [],
         children: [
           gunbhub_header(),
-          Element {
+          extdeps.browser.Element {
             tag: "main",
             attributes: [],
             children: [
-              Element {
+              extdeps.browser.Element {
                 tag: "ul",
                 attributes: [],
                 children: [
@@ -104,44 +104,44 @@ fn gunbhub_browse_page() -> Fragment {
   }
 }
 
-fn gunbhub_hostile_page() -> Fragment {
-  Element {
+fn gunbhub_hostile_page() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "a",
     attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
     children: [ FragmentText { content: "x" } ],
   }
 }
 
-fn gunbhub_readme_page() -> Fragment {
-  Element {
+fn gunbhub_readme_page() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "html",
     attributes: [],
     children: [
-      Element {
+      extdeps.browser.Element {
         tag: "head",
         attributes: [],
         children: [
-          Element {
+          extdeps.browser.Element {
             tag: "title",
             attributes: [],
             children: [ FragmentText { content: "gunbc — README" } ],
           },
         ],
       },
-      Element {
+      extdeps.browser.Element {
         tag: "body",
         attributes: [],
         children: [
           gunbhub_header(),
-          Element {
+          extdeps.browser.Element {
             tag: "main",
             attributes: [],
             children: [
-              Element {
+              extdeps.browser.Element {
                 tag: "article",
                 attributes: [],
                 children: [
-                  Element {
+                  extdeps.browser.Element {
                     tag: "p",
                     attributes: [],
                     children: [
@@ -163,27 +163,27 @@ type GunbhubComposeResult
   = ComposedOk { html: String }
   | ComposeRejected { reason: String }
 
-fn gunbhub_compose_body(node: Fragment) -> GunbhubComposeResult {
+fn gunbhub_compose_body(node: std.markup.Fragment) -> GunbhubComposeResult {
   match try_serialize_html_source(node: node) {
     EmitOk { html: h } => ComposedOk { html: h }
     EmitRejected { reason: r } => ComposeRejected { reason: r }
   }
 }
 
-fn gunbhub_html_content_type() -> MediaType {
+fn gunbhub_html_content_type() -> extdeps.http.server.MediaType {
   text_html_utf8
 }
 
-fn gunbhub_browse_path_template() -> PathTemplate {
+fn gunbhub_browse_path_template() -> std.http_path.PathTemplate {
   match parse_path_template(raw: "/") {
     ParsedPathTemplate { template: t } => t
     MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
-      PathTemplate { tokens: [] }
+      std.http_path.PathTemplate { tokens: [] }
   }
 }
 
-fn gunbhub_repo_path_template() -> PathTemplate {
-  PathTemplate { tokens: [ParamToken { name: "repo-path" }] }
+fn gunbhub_repo_path_template() -> std.http_path.PathTemplate {
+  std.http_path.PathTemplate { tokens: [ParamToken { name: "repo-path" }] }
 }
 
 fn normalize_request_path(path: String) -> String {
@@ -211,7 +211,7 @@ type PathMatchState {
   ok: Bool
 }
 
-fn path_matches_template(template: PathTemplate, path: String) -> Bool {
+fn path_matches_template(template: std.http_path.PathTemplate, path: String) -> Bool {
   let segs = request_path_segments(path: path)
   let st = fold(
     xs: template.tokens,
@@ -273,28 +273,28 @@ type GunbhubRouteRow {
   page: GunbhubPageSource
 }
 
-fn gunbhub_browse_route() -> HttpServerRoute {
-  HttpServerRoute {
+fn gunbhub_browse_route() -> extdeps.http.server.HttpServerRoute {
+  extdeps.http.server.HttpServerRoute {
     operation_name: "browseRoot",
     method: GET,
     path_template: gunbhub_browse_path_template(),
     request_body: NoRequestBody,
     parameters: [],
     responses: [
-      HttpStatusResponse { status: 200, body_kind: TextRequestBody },
+      extdeps.http.server.HttpStatusResponse { status: 200, body_kind: TextRequestBody },
     ],
   }
 }
 
-fn gunbhub_repo_path_route() -> HttpServerRoute {
-  HttpServerRoute {
+fn gunbhub_repo_path_route() -> extdeps.http.server.HttpServerRoute {
+  extdeps.http.server.HttpServerRoute {
     operation_name: "repoPathDoc",
     method: GET,
     path_template: gunbhub_repo_path_template(),
     request_body: NoRequestBody,
     parameters: [],
     responses: [
-      HttpStatusResponse { status: 200, body_kind: TextRequestBody },
+      extdeps.http.server.HttpStatusResponse { status: 200, body_kind: TextRequestBody },
     ],
   }
 }
@@ -312,7 +312,7 @@ fn gunbhub_route_table() -> List<GunbhubRouteRow> {
   ]
 }
 
-fn gunbhub_served_static_route_table() -> ServedStaticRouteTable {
+fn gunbhub_served_static_route_table() -> extdeps.http.server.ServedStaticRouteTable {
   let routes = fold(
     xs: gunbhub_route_table(),
     init: [],
@@ -324,7 +324,7 @@ fn gunbhub_served_static_route_table() -> ServedStaticRouteTable {
           concat(
             acc,
             [
-              ServedStaticRoute {
+              extdeps.http.server.ServedStaticRoute {
                 method: row.route.method,
                 path_pattern: row.route.path_template,
                 body: h,
@@ -336,15 +336,15 @@ fn gunbhub_served_static_route_table() -> ServedStaticRouteTable {
         EmitRejected { reason: _ } => acc
       }
   )
-  ServedStaticRouteTable { routes: routes }
+  extdeps.http.server.ServedStaticRouteTable { routes: routes }
 }
 
-fn served_row_matches_request(row: ServedStaticRoute, req: GunbhubServeRequest) -> Bool {
+fn served_row_matches_request(row: extdeps.http.server.ServedStaticRoute, req: GunbhubServeRequest) -> Bool {
   row.method == req.method
     && path_matches_template(template: row.path_pattern, path: req.path)
 }
 
-fn path_matches_any_served_pattern(path: String, table: ServedStaticRouteTable) -> Bool {
+fn path_matches_any_served_pattern(path: String, table: extdeps.http.server.ServedStaticRouteTable) -> Bool {
   fold(
     xs: table.routes,
     init: false,
@@ -395,13 +395,13 @@ fn serve_gunbhub_request(req: GunbhubServeRequest) -> GunbhubServeResult {
   }
 }
 
-fn gunbhub_node_route_bindings() -> List<NodeHttpServerRouteBinding> {
+fn gunbhub_node_route_bindings() -> List<extdeps.http.server.NodeHttpServerRouteBinding> {
   map(
     xs: gunbhub_route_table(),
     f: row =>
-      NodeHttpServerRouteBinding {
+      extdeps.http.server.NodeHttpServerRouteBinding {
         route: row.route,
-        listener: NodeHttpRequestListener {
+        listener: extdeps.http.server.NodeHttpRequestListener {
           handler_name: concat("gunbhub_handle_", row.route.operation_name),
         },
       }

@@ -22,7 +22,7 @@ type ModuleDependencyViewsResult
   = ModuleDependencyViews { views: List<v2.std.dependency.DependencyView> }
   | ModuleNodeBindingMissing { module: String }
 
-fn declared_module_match(decl: ModuleDeclarationFact, path: String) -> String? {
+fn declared_module_match(decl: v2.lens.module_graph.ModuleDeclarationFact, path: String) -> String? {
   if decl.path == path {
     optional_present(value: decl.module)
   } else {
@@ -30,7 +30,7 @@ fn declared_module_match(decl: ModuleDeclarationFact, path: String) -> String? {
   }
 }
 
-fn declared_module_for_path(declarations: List<ModuleDeclarationFact>, path: String) -> String? {
+fn declared_module_for_path(declarations: List<v2.lens.module_graph.ModuleDeclarationFact>, path: String) -> String? {
   fold(declarations, init: Absent, f: fn(acc, decl) {
     match acc {
       Present { value: _ } => acc
@@ -40,8 +40,8 @@ fn declared_module_for_path(declarations: List<ModuleDeclarationFact>, path: Str
 }
 
 fn module_import_edges(
-  imports: List<ImportResolutionFact>,
-  declarations: List<ModuleDeclarationFact>
+  imports: List<v2.lens.module_graph.ImportResolutionFact>,
+  declarations: List<v2.lens.module_graph.ModuleDeclarationFact>
 ) -> List<ModuleImportEdge> {
   fold(imports, init: [], f: fn(acc, fact) {
     if fact.target_declared {
@@ -91,7 +91,7 @@ fn module_dependency_views(
               Absent => ModuleNodeBindingMissing { module: edge.dependent_module }
               Present { value: dependent_node } =>
                 ModuleDependencyViews {
-                  views: list_snoc_item(xs: views, item: DependencyView {
+                  views: list_snoc_item(xs: views, item: v2.std.dependency.DependencyView {
                     source: source_node,
                     dependent: dependent_node,
                     kind: DataDependsOn,
@@ -106,8 +106,8 @@ fn module_dependency_views(
 
 fn module_resolution_schedule(
   nodes: List<Node>,
-  dependencies: List<DependencyView>
-) -> RunnerSchedulePlan<RunnerOrderingResult> {
+  dependencies: List<v2.std.dependency.DependencyView>
+) -> RunnerSchedulePlan<v2.workflow.realization_runner.RunnerOrderingResult> {
   runner_schedule_plan_from_dependencies(
     nodes: nodes,
     dependencies: dependencies,

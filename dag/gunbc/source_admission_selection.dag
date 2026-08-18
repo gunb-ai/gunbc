@@ -10,32 +10,32 @@ type AdmissionMechanismRoot {
 // src/v1 is not in witness_layer_roots, so mechanism identity is a separate axis from the compile-clean active-source manifest: a tokenize_artifact edit cannot appear as an IncrementalSources path-diff of corpus files. Until self-host, the executing admission path is the seed: tokenize_artifact, parse_with_table_at / parse_module, admit_source_annotations, attach_annotations / admit_annotations, and alloc_occurrence_id. A .dag-only identity is MechanismIdentityUnobservable, not an identity. Omitting the seed is broken by construction. transform_content_digest and hashing those five files whole are both rejected: file-grain is still a roster, and a parse-only edit of v1_compiler_parse.rs would EntireHead the corpus. Identity is the reachable-declaration closure of those roots, which gunbc.namespace_reference_derived_closure cannot yet produce (production admissions Unavailable; closing witness red on purpose). Seed-Rust declaration closure is likewise uncomputable (rustc dep-info is file/crate grain). Do not substitute a 4-file or 38-file module union.
 data admission_mechanism_seed_roots: List<AdmissionMechanismRoot> = [
   AdmissionMechanismRoot {
-    realization_file: "src/v1/stage0/src/v1_compiler_tokenize.rs" as NonEmptyStr,
-    function_name: "tokenize_artifact" as NonEmptyStr,
+    realization_file: "src/v1/stage0/src/v1_compiler_tokenize.rs" as std.types.NonEmptyStr,
+    function_name: "tokenize_artifact" as std.types.NonEmptyStr,
   },
   AdmissionMechanismRoot {
-    realization_file: "src/v1/stage0/src/v1_compiler_parse.rs" as NonEmptyStr,
-    function_name: "parse_with_table_at" as NonEmptyStr,
+    realization_file: "src/v1/stage0/src/v1_compiler_parse.rs" as std.types.NonEmptyStr,
+    function_name: "parse_with_table_at" as std.types.NonEmptyStr,
   },
   AdmissionMechanismRoot {
-    realization_file: "src/v1/stage0/src/v1_compiler_parse.rs" as NonEmptyStr,
-    function_name: "parse_module" as NonEmptyStr,
+    realization_file: "src/v1/stage0/src/v1_compiler_parse.rs" as std.types.NonEmptyStr,
+    function_name: "parse_module" as std.types.NonEmptyStr,
   },
   AdmissionMechanismRoot {
-    realization_file: "src/v1/stage0/src/v1_compiler_annotation_bind.rs" as NonEmptyStr,
-    function_name: "admit_source_annotations" as NonEmptyStr,
+    realization_file: "src/v1/stage0/src/v1_compiler_annotation_bind.rs" as std.types.NonEmptyStr,
+    function_name: "admit_source_annotations" as std.types.NonEmptyStr,
   },
   AdmissionMechanismRoot {
-    realization_file: "src/v1/stage0/src/std_source_annotation.rs" as NonEmptyStr,
-    function_name: "attach_annotations" as NonEmptyStr,
+    realization_file: "src/v1/stage0/src/std_source_annotation.rs" as std.types.NonEmptyStr,
+    function_name: "attach_annotations" as std.types.NonEmptyStr,
   },
   AdmissionMechanismRoot {
-    realization_file: "src/v1/stage0/src/std_source_annotation.rs" as NonEmptyStr,
-    function_name: "admit_annotations" as NonEmptyStr,
+    realization_file: "src/v1/stage0/src/std_source_annotation.rs" as std.types.NonEmptyStr,
+    function_name: "admit_annotations" as std.types.NonEmptyStr,
   },
   AdmissionMechanismRoot {
-    realization_file: "src/v1/stage0/src/std_occurrence_identity.rs" as NonEmptyStr,
-    function_name: "alloc_occurrence_id" as NonEmptyStr,
+    realization_file: "src/v1/stage0/src/std_occurrence_identity.rs" as std.types.NonEmptyStr,
+    function_name: "alloc_occurrence_id" as std.types.NonEmptyStr,
   },
 ]
 
@@ -366,7 +366,7 @@ fn admit_active_source_manifest(
 }
 
 fn mint_annotation_corpus_admitted(
-  tree: GitObjectId,
+  tree: extdeps.git.object_store.GitObjectId,
   mechanism: AnnotationMechanismIdentity,
   manifest: ActiveSourceManifest,
   admitted: List<ActiveSourceIdentity>
@@ -411,8 +411,8 @@ fn production_annotation_mechanism_identity() -> AnnotationMechanismIdentity {
 }
 
 // gunbc#8201 merge commit. AnnotationCorpusAdmitted may be minted only against this exact tree, after a census that identity-joins the active-source manifest, under a Computed mechanism identity. Main has moved since that merge; a receipt against any later tree is not this induction base. Completeness is an identity join over admitted source identities, never diagnostic-count-is-zero. This landing does not mint the receipt: production_annotation_mechanism_identity is Unobservable.
-data annotation_corpus_induction_base_tree: GitObjectId = GitSha1ObjectId {
-  digest: Sha1Digest { hex: "a85594dc557386f4c85d9bc6d7be057325b75c58" as Sha1DigestHex },
+data annotation_corpus_induction_base_tree: extdeps.git.object_store.GitObjectId = GitSha1ObjectId {
+  digest: std.content_hash.Sha1Digest { hex: "a85594dc557386f4c85d9bc6d7be057325b75c58" as std.content_hash.Sha1DigestHex },
 }
 
 fn annotation_corpus_induction_standing() -> AnnotationCorpusInductionStanding? {
@@ -433,8 +433,8 @@ fn annotation_corpus_induction_standing() -> AnnotationCorpusInductionStanding? 
 
 fn refused_selection(
   cause: SourceTransitionRefusalCause,
-  base_tree: GitObjectId,
-  head_tree: GitObjectId
+  base_tree: extdeps.git.object_store.GitObjectId,
+  head_tree: extdeps.git.object_store.GitObjectId
 ) -> SourceAdmissionSelection {
   SourceTransitionRefused {
     cause: cause,
@@ -454,17 +454,17 @@ fn hunk_admission_rows(
 }
 
 fn select_from_observed_manifests(
-  base_tree: GitObjectId,
-  head_tree: GitObjectId,
+  base_tree: extdeps.git.object_store.GitObjectId,
+  head_tree: extdeps.git.object_store.GitObjectId,
   base_rows: NonEmptyActiveSourceIdentities,
   head_rows: NonEmptyActiveSourceIdentities
 ) -> SourceAdmissionSelection {
   let patch = keyed_two_way_diff(
     left: map(nonempty_active_sources_all(rows: base_rows), r =>
-      KeyedRow { row_key: r.module_path, value: r }
+      std.keyed_row.KeyedRow { row_key: r.module_path, value: r }
     ),
     right: map(nonempty_active_sources_all(rows: head_rows), r =>
-      KeyedRow { row_key: r.module_path, value: r }
+      std.keyed_row.KeyedRow { row_key: r.module_path, value: r }
     ),
     key_eq: (a, b) => a == b,
     value_eq: active_source_identity_eq,
@@ -478,8 +478,8 @@ fn select_from_observed_manifests(
 
 fn select_source_admission(
   evaluating_merge_tree: Bool,
-  base_tree: GitObjectId,
-  head_tree: GitObjectId,
+  base_tree: extdeps.git.object_store.GitObjectId,
+  head_tree: extdeps.git.object_store.GitObjectId,
   base_receipt: AnnotationCorpusAdmitted?,
   head_mechanism: AnnotationMechanismIdentity,
   head_manifest: ActiveSourceManifest
@@ -589,8 +589,8 @@ fn incremental_changed_module_paths(sel: SourceAdmissionSelection) -> List<Strin
   }
 }
 
-fn fixture_content_digest(label: String) -> Fnv1a64Structural {
-  content_hash_atom(value: label as NonEmptyStr)
+fn fixture_content_digest(label: String) -> std.content_hash.Fnv1a64Structural {
+  content_hash_atom(value: label as std.types.NonEmptyStr)
 }
 
 fn fixture_source(

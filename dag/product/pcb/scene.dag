@@ -54,11 +54,11 @@ type PcbEngineeringScene sole_constructor {
   elements: List<PcbSceneElement>
 }
 
-fn pcb_engineering_scene(world: PcbWorld, elements: List<PcbSceneElement>) -> PcbEngineeringScene {
+fn pcb_engineering_scene(world: product.pcb.world.PcbWorld, elements: List<PcbSceneElement>) -> PcbEngineeringScene {
   PcbEngineeringScene { world: world, elements: elements }
 }
 
-fn legend_of(w: PcbWorld) -> PcbSceneLegend {
+fn legend_of(w: product.pcb.world.PcbWorld) -> PcbSceneLegend {
   let p = pcb_world_physical(w: w)
   let causes = pcb_cause_counts(p: p)
   PcbSceneLegend {
@@ -78,7 +78,7 @@ fn legend_of(w: PcbWorld) -> PcbSceneLegend {
   }
 }
 
-fn envelope_read_for(reads: List<EstablishedEnvelopeRead>, identity: NonEmptyStr) -> DeclarationRef? {
+fn envelope_read_for(reads: List<product.pcb.world.EstablishedEnvelopeRead>, identity: std.types.NonEmptyStr) -> std.decl_ref.DeclarationRef? {
   fold(reads, init: none, f: fn(acc, r) {
     match acc {
       Present { value: v } => Present { value: v }
@@ -92,7 +92,7 @@ fn envelope_read_for(reads: List<EstablishedEnvelopeRead>, identity: NonEmptyStr
   })
 }
 
-fn established_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
+fn established_elements(p: product.pcb.world.PcbPhysicalWorld) -> List<PcbSceneElement> {
   fold(p.components, init: [], f: fn(acc, c) {
     concat(acc, [SceneEstablishedBody {
       identity: c.identity,
@@ -104,7 +104,7 @@ fn established_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
   })
 }
 
-fn obligation_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
+fn obligation_elements(p: product.pcb.world.PcbPhysicalWorld) -> List<PcbSceneElement> {
   fold(p.obligations, init: [], f: fn(acc, o) {
     concat(acc, [SceneObligationMarker {
       identity: o.identity,
@@ -114,7 +114,7 @@ fn obligation_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
   })
 }
 
-fn functional_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
+fn functional_elements(p: product.pcb.world.PcbPhysicalWorld) -> List<PcbSceneElement> {
   fold(p.functional_obligations, init: [], f: fn(acc, f) {
     concat(acc, [SceneFunctionalMarker {
       function: f.function,
@@ -123,7 +123,7 @@ fn functional_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
   })
 }
 
-fn attachment_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
+fn attachment_elements(p: product.pcb.world.PcbPhysicalWorld) -> List<PcbSceneElement> {
   fold(p.attachment_obligations, init: [], f: fn(acc, a) {
     concat(acc, [SceneAttachmentMarker {
       layer: a.layer,
@@ -132,7 +132,7 @@ fn attachment_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
   })
 }
 
-fn project_engineering_scene(w: PcbWorld) -> PcbEngineeringScene {
+fn project_engineering_scene(w: product.pcb.world.PcbWorld) -> PcbEngineeringScene {
   let p = pcb_world_physical(w: w)
   let outline = [SceneBoardOutline { outline: p.board.outline }]
   let legend = [SceneLegend { counts: legend_of(w: w) }]
@@ -145,40 +145,40 @@ fn project_engineering_scene(w: PcbWorld) -> PcbEngineeringScene {
   )
 }
 
-fn scene_element_identities(e: PcbSceneElement) -> List<NonEmptyStr> {
+fn scene_element_identities(e: PcbSceneElement) -> List<std.types.NonEmptyStr> {
   match e {
     SceneBoardOutline { outline: _ } => []
     SceneEstablishedBody { identity: id, origin: _, body_width: _, body_height: _, source: src } =>
       match src {
         Absent => [id]
-        Present { value: r } => [id, declaration_ref_display_key(ref: r) as NonEmptyStr]
+        Present { value: r } => [id, declaration_ref_display_key(ref: r) as std.types.NonEmptyStr]
       }
     SceneObligationMarker { identity: id, origin: _, cause: _ } => [id]
-    SceneAttachmentMarker { layer: layer, cause: _ } => [concat("attachment: ", layer as String) as NonEmptyStr]
-    SceneFunctionalMarker { function: f, cause: _ } => [concat("function unrealized: ", f as String) as NonEmptyStr]
+    SceneAttachmentMarker { layer: layer, cause: _ } => [concat("attachment: ", layer as String) as std.types.NonEmptyStr]
+    SceneFunctionalMarker { function: f, cause: _ } => [concat("function unrealized: ", f as String) as std.types.NonEmptyStr]
     SceneLegend { counts: c } =>
       concat(
-        [declaration_ref_display_key(ref: c.design) as NonEmptyStr],
+        [declaration_ref_display_key(ref: c.design) as std.types.NonEmptyStr],
         fold(c.envelope_reads, init: [], f: fn(acc, r) {
-          concat(acc, [declaration_ref_display_key(ref: r) as NonEmptyStr])
+          concat(acc, [declaration_ref_display_key(ref: r) as std.types.NonEmptyStr])
         })
       )
   }
 }
 
-fn scene_identities(scene: PcbEngineeringScene) -> List<NonEmptyStr> {
+fn scene_identities(scene: PcbEngineeringScene) -> List<std.types.NonEmptyStr> {
   fold(scene.elements, init: [], f: fn(acc, e) {
     concat(acc, scene_element_identities(e: e))
   })
 }
 
-fn label_is_represented(represented: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
+fn label_is_represented(represented: List<std.types.NonEmptyStr>, id: std.types.NonEmptyStr) -> Bool {
   fold(represented, init: false, f: fn(acc, r) {
     acc || (r as String) == (id as String)
   })
 }
 
-fn first_unrepresented_scene_identity(scene: PcbEngineeringScene, represented: List<NonEmptyStr>) -> NonEmptyStr? {
+fn first_unrepresented_scene_identity(scene: PcbEngineeringScene, represented: List<std.types.NonEmptyStr>) -> std.types.NonEmptyStr? {
   fold(scene.elements, init: none, f: fn(acc, e) {
     match acc {
       Present { value: found } => Present { value: found }
@@ -198,7 +198,7 @@ fn first_unrepresented_scene_identity(scene: PcbEngineeringScene, represented: L
   })
 }
 
-fn obligation_cause_label(c: PcbObligationCause) -> String {
+fn obligation_cause_label(c: product.pcb.world.PcbObligationCause) -> String {
   match c {
     MissingDocument { what_is_missing: w } => concat("missing document:", w as String)
     CommercialAccess { subject: s } => concat("commercial access:", s as String)

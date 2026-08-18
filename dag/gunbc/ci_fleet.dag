@@ -23,7 +23,7 @@ type ComputeOffer {
   cost_quote: CostEstimate?
 }
 
-fn per_second_billed_cost_quote(unit_price: MoneyAmountMicro, currency: CurrencyCode) -> CostEstimate {
+fn per_second_billed_cost_quote(unit_price: std.measure.MoneyAmountMicro, currency: std.currency.CurrencyCode) -> CostEstimate {
   CostEstimate {
     model: CostModel { cost_class: PerSecondBilled },
     unit_price: unit_price,
@@ -91,12 +91,12 @@ data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_off
 
 data gunbc_ci_host_identity: product.placement_supply.HostIdentity = "gunbc-ci-fleet"
 
-data gunbc_ci_cpu: CpuFacts = CpuFacts {
+data gunbc_ci_cpu: extdeps.cpu.types.CpuFacts = extdeps.cpu.types.CpuFacts {
   catalog: altra_q6430_catalog,
-  deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
+  deployment: extdeps.cpu.types.CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
 }
 
-data gunbc_ci_linux_surface: OperatingSystemSurface = OperatingSystemSurface {
+data gunbc_ci_linux_surface: std.os.types.OperatingSystemSurface = std.os.types.OperatingSystemSurface {
   kernel: Linux,
   distro_or_product: none,
   version: none,
@@ -106,20 +106,20 @@ data gunbc_ci_linux_surface: OperatingSystemSurface = OperatingSystemSurface {
 
 data gunbc_ci_host_memory_deferral_note: String = fleet_host_memory_nominal_vs_usable_note
 
-data gunbc_ci_host_memory_deferral_disposition: Disposition = Scaffold {
+data gunbc_ci_host_memory_deferral_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_fleet",
     decl_name: "gunbc_ci_host",
     field: NamedField { field_name: "memory" },
   },
 }
 
-data gunbc_ci_host: ComputeHost = ComputeHost {
+data gunbc_ci_host: gunbc.fleet_intent.ComputeHost = gunbc.fleet_intent.ComputeHost {
   identity: gunbc_ci_host_identity,
   baseboard: none,
   processors: [CpuProcessor { cpu: gunbc_ci_cpu }],
-  memory: [MemoryDevice { capacity: byte_size(134217728000), memory_kind: Dram, bandwidth: none }],
+  memory: [gunbc.fleet_intent.MemoryDevice { capacity: byte_size(134217728000), memory_kind: Dram, bandwidth: none }],
   storage: [],
   network_interfaces: [],
 }
@@ -128,7 +128,7 @@ data gunbc_ci_fleet_offer: ComputeOffer = ComputeOffer {
   provider: "gunbc-ci-fleet",
   supply: ComputeSupplyFacts {
     physical: gunbc_ci_host,
-    execution: ExecutionSurface {
+    execution: gunbc.fleet_intent.ExecutionSurface {
       os: gunbc_ci_linux_surface,
       isolation: PerJobFilesystem,
       container_runtime: none,

@@ -33,7 +33,7 @@ data engage_detent_click: SoundSpec = SoundSpec {
 
 data sound_specs: List<SoundSpec> = [engage_detent_click]
 
-data operation_sound_max_decay_ms: Milliseconds = 60
+data operation_sound_max_decay_ms: std.types.Milliseconds = 60
 data operation_sound_max_peak_gain_micros: Int = 250000
 data operation_sound_min_hz: Int = 120
 data operation_sound_max_hz: Int = 5000

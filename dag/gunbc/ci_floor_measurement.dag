@@ -3,23 +3,23 @@ module gunbc.ci_floor_measurement
 
 data gunbc_ci_width_constants_retired_note: String = "WITHIN-run width constants retired (operator ruling 2026-07-12): the hand-edited per-shard peak samples (floor 3.2-4.6GiB, falsifier 3.9-6.4GiB), the executor base overhead (8910036989), the 17/20 usable fraction, the conservative fallback width, the execution-corpus per-witness reservation, and every memory-derived width fold over them are DELETED — they were pins freezing derivations (the per-shard source row itself said STALE-PENDING-RECALIBRATION: samples predated the enrollment flip) and their staleness was the July OOM/wedge regime's root. Run-time concurrency is now governed adaptively by v1_compiler::memory_governor (AIMD admission against the slot's own cgroup budget, graceful back-off on creep, counted receipts — see gunbc_ci_adaptive_width_note in v2.workflow.ci_floor_plan). This module keeps only the INTER-run granularity: whole-run job peaks and session reservations feeding host co-residence and the conserving budget tree, plus the live slot-limit readback receipts. Quantified per-runnable demand returns when derivable from the graph, never as authored literals."
 
-data gunbc_ci_runner_cgroup_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_max
+data gunbc_ci_runner_cgroup_memory_cap: std.measure.ByteSize = gunbc_runner_slot_desired().memory_max
 
-data gunbc_ci_dashboard_session_container_cap: ByteSize = byte_size(33578549248)
+data gunbc_ci_dashboard_session_container_cap: std.measure.ByteSize = byte_size(33578549248)
 
-data gunbc_ci_cap_split_disposition: Disposition = Terminal {
+data gunbc_ci_cap_split_disposition: std.disposition.Disposition = Terminal {
   reason: "DESIGN §3 de-conflation (PR-A): gunbc_ci_runner_cgroup_memory_cap (declared per-slot MemoryMax from gunbc.runner_slot_allocation) vs gunbc_ci_dashboard_session_container_cap (31.27GiB, dashboard session pool, inter-run). Retired gunbc_ci_host_container_memory_cap nickname that fused both."
 }
 
-data gunbc_ci_runner_slot_memory_max_live: ByteSize = gunbc_runner_slot_desired().memory_max
+data gunbc_ci_runner_slot_memory_max_live: std.measure.ByteSize = gunbc_runner_slot_desired().memory_max
 
-data gunbc_ci_runner_slot_memory_high_live: ByteSize = gunbc_runner_slot_desired().memory_high
+data gunbc_ci_runner_slot_memory_high_live: std.measure.ByteSize = gunbc_runner_slot_desired().memory_high
 
-data gunbc_ci_runner_slot_memory_high_live_source: Disposition = Terminal {
+data gunbc_ci_runner_slot_memory_high_live_source: std.disposition.Disposition = Terminal {
   reason: "Live readback 2026-07-11, four independent floor cgroup post-reads across four diffs and both hosts (runs 29137081535, 29142398465, 29159082043 and the 29112-series wedge, srv1-01/srv1-03/srv2-01/srv2-02): floor_peak_post pinned within 0.65MiB ABOVE exactly 16106127360 with zero oom_kill events - the memory.high reclaim clamp's overshoot signature (allocations cross the line by one burst, forced direct reclaim drags usage back, memory.peak records the overshoot; sub-MiB overshoot = reclaim keeping up = the floor tail running at swap speed). This is the throttle line the 2026-07-11 MemoryHigh-emit ruling declared APPLIED (gunbc.runner_slot_allocation, max-1GiB relation). memory.max is the kill line (loud, attributable); memory.high is the speed line - between them the slot does not fail, it degrades into swap. The run-time memory governor packs to this line by construction: it reads the tightest memory.high as its budget and backs off on the creep signals (PSI, swap growth) that crossing it produces. Values derive from gunbc.runner_slot_allocation single authority (operator ruling 2026-07-14); the four floor_peak_post receipts in gunbc_ci_floor_run_peak_receipts are the measured corroboration, not a second numeric source."
 }
 
-fn gunbc_ci_runner_slot_ram_speed_ceiling() -> ByteSize {
+fn gunbc_ci_runner_slot_ram_speed_ceiling() -> std.measure.ByteSize {
   if byte_size_count(b: gunbc_ci_runner_slot_memory_high_live) <= byte_size_count(b: gunbc_ci_runner_slot_memory_max_live) {
     gunbc_ci_runner_slot_memory_high_live
   } else {
@@ -27,7 +27,7 @@ fn gunbc_ci_runner_slot_ram_speed_ceiling() -> ByteSize {
   }
 }
 
-data gunbc_ci_runner_slot_memory_max_live_source: Disposition = Terminal {
+data gunbc_ci_runner_slot_memory_max_live_source: std.disposition.Disposition = Terminal {
   reason: "Operator ruling 2026-07-14: gunbc_ci_runner_slot_memory_max_live derives from gunbc.runner_slot_allocation (no duplicate literal). DECLARED ROW is 14GiB MemoryMax / 13GiB MemoryHigh (2026-08-05 allocation ruling). HONEST RESIDUAL (operator observation 2026-08-13, srv1): deploy drop-ins on disk may still read 16GiB/15GiB while system.control set-property residue pins EFFECTIVE caps at 14GiB/13GiB until live_deploy clears it — gunbc.host_axis_caps control_shadow_reconcile + deploy apply (author derived drop-ins then systemctl revert under ghrunner sudo; converge on briansrls does not run this pipeline). This carrier names the DECLARED allocation row, not the kernel-effective cap; floor width sizing must not assume deploy drop-in authority is in force while shadow residue remains. Post-apply throttle-line evidence is the four floor_peak_post receipts (gunbc_ci_floor_run_peak_receipts). Dissolve-on: direct post-apply memory.max readback on a COMPLETED fleet floor lands as a FloorRunCgroupPeakReceipt with memory_max_observed, then the live row can retire in favor of the receipt-fed authority."
 }
 
@@ -43,7 +43,7 @@ type FloorRunCgroupPeakReceipt
     }
   | FloorRunCgroupPeakUnmeasured
 
-data gunbc_ci_floor_run_peak_receipt_overshoot_ceiling: ByteSize = byte_size(681574)
+data gunbc_ci_floor_run_peak_receipt_overshoot_ceiling: std.measure.ByteSize = byte_size(681574)
 
 data gunbc_ci_floor_run_peak_receipts: List<FloorRunCgroupPeakReceipt> = [
   FloorRunCgroupPeakMeasured {
@@ -76,7 +76,7 @@ data gunbc_ci_floor_run_peak_receipts: List<FloorRunCgroupPeakReceipt> = [
   },
 ]
 
-data gunbc_ci_floor_run_peak_receipt_disposition: Disposition = Terminal {
+data gunbc_ci_floor_run_peak_receipt_disposition: std.disposition.Disposition = Terminal {
   reason: "Per-run floor cgroup peak receipts (operator ruling 2026-07-14): typed carrier for floor_peak_post observations from completed fleet floors — the INTER-run whole-run peak at the slot's memory.high throttle line. Four independent readbacks across four diffs and both hosts (runs 29137081535, 29142398465, 29159082043, 29112500694 on srv1-01/srv1-03/srv2-01/srv2-02) pinned within gunbc_ci_floor_run_peak_receipt_overshoot_ceiling (0.65MiB) above gunbc_ci_runner_slot_memory_high_live with zero oom_kill events. floor_outcome != success means the peak is a CENSORED lower bound (DESIGN §5); these wedged runs still prove the throttle-line signature. The executor [measurement] line on a COMPLETED floor is the memory.max readback path that closes the residual in gunbc_ci_runner_slot_memory_max_live_source."
 }
 
@@ -88,7 +88,7 @@ fn floor_run_peak_receipt_at_throttle_line(receipt: FloorRunCgroupPeakReceipt) -
   }
 }
 
-fn floor_run_peak_within_throttle_overshoot(peak: ByteSize, high: ByteSize) -> Bool {
+fn floor_run_peak_within_throttle_overshoot(peak: std.measure.ByteSize, high: std.measure.ByteSize) -> Bool {
   let overshoot_ceiling = gunbc_ci_floor_run_peak_receipt_overshoot_ceiling
   byte_size_count(b: peak) >= byte_size_count(b: high)
     && byte_size_count(b: peak) <= (byte_size_count(b: high) + byte_size_count(b: overshoot_ceiling))
@@ -124,14 +124,14 @@ data gunbc_ci_job_peaks: List<CiJobPeak> = [
 ]
 
 
-data gunbc_ci_run_count_divisor: ByteSize = byte_size(9985798963)
+data gunbc_ci_run_count_divisor: std.measure.ByteSize = byte_size(9985798963)
 
 
 data gunbc_ci_runner_unit_cap_safety_margin_num: Int = 5
 data gunbc_ci_runner_unit_cap_safety_margin_den: Int = 4
 
 
-data gunbc_ci_per_session_peak_samples: List<ByteSize> = [
+data gunbc_ci_per_session_peak_samples: List<std.measure.ByteSize> = [
   byte_size(8879844884),
   byte_size(4584877588),
   byte_size(4370129224),
@@ -176,9 +176,9 @@ data gunbc_ci_session_reservation_mode: SessionReservationMode = Regime2Aggregat
   aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(21474836480) },
 }
 
-data gunbc_ci_regime2_aggregate_dissolution_marker: Disposition = Scaffold {
+data gunbc_ci_regime2_aggregate_dissolution_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.jobserver",
     decl_name: "jobserver_build_pool_bytes",
     field: WholeDeclaration
@@ -188,9 +188,9 @@ data gunbc_ci_regime2_aggregate_dissolution_marker: Disposition = Scaffold {
 
 
 
-data gunbc_ci_footprint_granularity_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split, revised 2026-07-12: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run parallelism is governed at run time by the memory governor against the slot's own cgroup budget (the former within-run per-shard-peak carrier and its width fold are retired). Different granularity, different scheduling decision, different consumer. Do not re-fuse them into one authority." }
+data gunbc_ci_footprint_granularity_disposition: std.disposition.Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split, revised 2026-07-12: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run parallelism is governed at run time by the memory governor against the slot's own cgroup budget (the former within-run per-shard-peak carrier and its width fold are retired). Different granularity, different scheduling decision, different consumer. Do not re-fuse them into one authority." }
 
-data gunbc_ci_footprint_bridge_disposition: Disposition = Terminal { reason: "Deferred unification path (acknowledged, not attempted): INTER-run whole-run peak is plausibly governor-width x measured per-worker residency + base, so the INTER-run footprint could eventually derive from within-run measured receipts (the executor's [measurement]/[governor] lines) - the real single authority. Held back deliberately: derive only from measured receipts, never from authored predictions (the retired width-fold constants are the cautionary receipt)." }
+data gunbc_ci_footprint_bridge_disposition: std.disposition.Disposition = Terminal { reason: "Deferred unification path (acknowledged, not attempted): INTER-run whole-run peak is plausibly governor-width x measured per-worker residency + base, so the INTER-run footprint could eventually derive from within-run measured receipts (the executor's [measurement]/[governor] lines) - the real single authority. Held back deliberately: derive only from measured receipts, never from authored predictions (the retired width-fold constants are the cautionary receipt)." }
 
 type HostFixedOverhead
   = HostFixedOverheadMeasured { bytes: std.measure.ByteSize, provenance: std.types.NonEmptyStr }
@@ -217,7 +217,7 @@ data gunbc_ci_srv3_memavailable_high_water: HostMemAvailableObservation = HostMe
   mem_available: byte_size(128200089600),
 }
 
-fn host_overhead_upper_bound(obs: HostMemAvailableObservation) -> ByteSize {
+fn host_overhead_upper_bound(obs: HostMemAvailableObservation) -> std.measure.ByteSize {
   byte_size_saturating_sub(total: obs.host_total, reserved: obs.mem_available)
 }
 
@@ -233,7 +233,7 @@ data gunbc_ci_legacy_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadA
 
 data gunbc_ci_host_fixed_overhead_unknown_host_note: String = "THE UNKNOWN ARM REFUSES, and the first draft of this function did not — it ended in a bare else returning the managed measurement, so a host nobody had classified would silently inherit srv3's 5.6 GiB bound and the budget would hand it two extra slots on the strength of another machine's receipt. That is the absorbing fallback (DESIGN 5) sitting in the input to a conservation wall, which is the worst place for one: the wall's arithmetic would be correct and its premise fabricated, exactly the shape gunbc.plans.fleet_subsumption_manual_gaps section C prices — srv4 took fleet work as a member of GitHub's fleet and a ghost of the model, and OOM-killed live CI the next day.\n\nSo an unclassified host derives HostFixedOverheadUnmeasured, which host_fixed_overhead_bytes cannot turn into a number and gunbc.ci_runner_placement refuses on. Adding srv5 therefore fails closed with a located reason rather than quietly succeeding with a borrowed one — the enrollment wall's own shape, applied to the budget's inputs instead of its installer."
 
-fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
+fn gunbc_ci_host_fixed_overhead_for(host: product.placement_supply.HostIdentity) -> HostFixedOverhead {
   if (host as String) == (operator_host_srv1 as String) {
     gunbc_ci_legacy_host_fixed_overhead
   } else if (host as String) == (operator_host_srv2 as String) {
@@ -249,18 +249,18 @@ fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
 
 data gunbc_ci_host_fixed_overhead_disposition_split_note: String = "ONE SCAFFOLD BECOMES TWO BECAUSE THE TWO OVERHEADS DISSOLVE ON DIFFERENT EVENTS, and each still binds a successor that DOES NOT YET EXIST — which is what a Scaffold bind is for. v2.lens.disposition_redundancy reads these marks and counts a violation when a bind target is PRESENT: a scaffold whose successor has been written is redundant and must be dissolved. So an absent target is the normal, correct state of outstanding debt, and the lens is the thing that notices when the debt is actually payable.\n\nCORRECTION, recorded because an earlier revision of this change got it backwards and would have shipped the inversion. The row this replaces bound to gunbc_ci_per_service_overhead, and that bind was read here as a defect — 'a dissolve-on pointing at nothing' — on the reasoning that a marker naming a nonexistent declaration can never fire. The reasoning inverts the mechanism. It fires precisely BY that declaration coming into existence, and the first draft's repair (re-binding both scaffolds to rows this module already declares) would have made both of them immediate violations of the redundancy lens, converting two pieces of honest outstanding debt into two false claims that the debt was already paid. The original bind was right; only its single-row grain was wrong.\n\nWhat legitimately changed is the grain. gunbc_ci_per_service_overhead was one successor for one fleet-wide number, and there are now two facts with two different closure conditions: the managed hosts need an observation, the legacy pair need their deployments modeled. Neither successor exists, both name what would replace them, and writing either one fires the lens for that arm alone."
 
-data gunbc_ci_managed_host_fixed_overhead_disposition: Disposition = Scaffold {
+data gunbc_ci_managed_host_fixed_overhead_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_floor_measurement",
     decl_name: "gunbc_ci_managed_host_quiescent_meminfo_read",
     field: WholeDeclaration
   }
 }
 
-data gunbc_ci_legacy_host_fixed_overhead_disposition: Disposition = Scaffold {
+data gunbc_ci_legacy_host_fixed_overhead_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_floor_measurement",
     decl_name: "gunbc_ci_legacy_host_modeled_residents",
     field: WholeDeclaration
@@ -281,16 +281,16 @@ data gunbc_ci_conservative_lower_bound_usable_ram: HostUsableRam = HostUsableRam
 
 data gunbc_ci_host_usable_ram_disposition_note: String = "REGISTERED AS SCAFFOLD DEBT BECAUSE ITS TWIN IS, and because the debt is PRE-EXISTING rather than introduced here: the fleet-wide constant this carrier replaces was already an unmeasured stand-in, and modeling it is what makes it countable. DESIGN 5 refuses NEW dissolution obligations without an operator verdict; it separately exists so that documenting previously hidden debt never reads as creating it, which is this row.\n\nTHE BIND TARGET IS DELIBERATELY NOT THE OVERHEAD ROW'S. gunbc_ci_managed_host_fixed_overhead_disposition binds a QUIESCENT read, because overhead is estimated from MemAvailable and MemAvailable moves with load. MemTotal does not — the kernel reports total usable RAM after firmware and kernel reservations — so an ordinary read taken while the host serves work discharges this and not that. Two obligations, two observations, two independently removable units, which is the grain DESIGN 5 requires: sharing one trigger is admissible only when neither artifact can survive the other, and these plainly can."
 
-data gunbc_ci_host_usable_ram_disposition: Disposition = Scaffold {
+data gunbc_ci_host_usable_ram_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_floor_measurement",
     decl_name: "gunbc_ci_per_host_memtotal_read",
     field: WholeDeclaration
   }
 }
 
-fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
+fn gunbc_ci_host_usable_ram_for(host: product.placement_supply.HostIdentity) -> HostUsableRam {
   if (host as String) == (operator_host_srv1 as String) {
     gunbc_ci_conservative_lower_bound_usable_ram
   } else if (host as String) == (operator_host_srv2 as String) {
@@ -306,7 +306,7 @@ fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
 
 data host_usable_ram_ceiling_note: String = "THE CEILING PROJECTION LIVES ONCE, BESIDE THE CARRIER. gunbc.ci_budget_tree and gunbc.fleet_host_budget each grew a byte-identical fold over HostUsableRam when they migrated off nominal DIMM capacity, which is the duplication DESIGN 2 forbids and exactly the shape that lets two budget models drift apart again — the defect the migration existed to close.\n\nIt does NOT absorb gunbc.ci_runner_placement host_usable_ram_or_refusal, which folds the same coproduct to a different answer on purpose. That one is LOUD: an unmeasured host yields a typed, located refusal that becomes PlanUnsound. This one is a total ceiling for budget arithmetic, where zero is the fail-closed reading because an unknown ceiling admits nothing. Same input, two honest consumers, two results — collapsing them would force one caller to accept the other's failure semantics."
 
-fn host_usable_ram_ceiling_bytes(host: HostIdentity) -> ByteSize {
+fn host_usable_ram_ceiling_bytes(host: product.placement_supply.HostIdentity) -> std.measure.ByteSize {
   match gunbc_ci_host_usable_ram_for(host: host) {
     HostUsableRamMeasured { bytes: b, provenance: _ } => b
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => b
@@ -315,9 +315,9 @@ fn host_usable_ram_ceiling_bytes(host: HostIdentity) -> ByteSize {
 }
 
 
-data gunbc_ci_concurrent_runs_conservative_high_disposition: Disposition = Scaffold {
+data gunbc_ci_concurrent_runs_conservative_high_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_runner_placement",
     decl_name: "runner_deployment_plan",
     field: WholeDeclaration

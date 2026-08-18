@@ -20,14 +20,14 @@ type BoundaryAdmission
   = BoundaryMaterialized { grade: std.effect_grant.LifecycleGrade }
   | BoundaryUnmaterialized { tree: std.effect_grant.NamespaceTree }
 
-fn boundary_grade_meet(a: LifecycleGrade, b: LifecycleGrade) -> LifecycleGrade {
+fn boundary_grade_meet(a: std.effect_grant.LifecycleGrade, b: std.effect_grant.LifecycleGrade) -> std.effect_grant.LifecycleGrade {
   match a {
     LifecycleByConvention => LifecycleByConvention
     LifecycleByConstruction => b
   }
 }
 
-fn tree_coverage(closures: List<BoundaryClosure>, tree: NamespaceTree) -> TreeCoverage {
+fn tree_coverage(closures: List<BoundaryClosure>, tree: std.effect_grant.NamespaceTree) -> TreeCoverage {
   fold(
     closures,
     init: Uncovered,
@@ -45,7 +45,7 @@ fn tree_coverage(closures: List<BoundaryClosure>, tree: NamespaceTree) -> TreeCo
 
 fn boundary_admit_tree(
   acc: BoundaryAdmission,
-  tree: NamespaceTree,
+  tree: std.effect_grant.NamespaceTree,
   provided: BoundaryMaterialization
 ) -> BoundaryAdmission {
   match acc {
@@ -60,7 +60,7 @@ fn boundary_admit_tree(
 }
 
 fn boundary_admits(
-  required_trees: List<NamespaceTree>,
+  required_trees: List<std.effect_grant.NamespaceTree>,
   provided: BoundaryMaterialization
 ) -> BoundaryAdmission {
   fold(

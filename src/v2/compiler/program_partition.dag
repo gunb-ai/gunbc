@@ -64,7 +64,7 @@ fn partition_snoc_user_semantic_type_unique(
 
 fn partition_collect_user_semantic_type_edge(
   acc: List<PartitionUserSemanticType>,
-  edge: Edge
+  edge: v2.std.node.Edge
 ) -> List<PartitionUserSemanticType> {
   match edge.label {
     Named { name: sym } =>
@@ -103,10 +103,10 @@ fn partition_user_semantic_types_from_root(root: Node) -> List<PartitionUserSema
 
 fn partition_user_type_ownership_realization(
   source_carrier: Node,
-  use_site: TargetOwnershipUseSite,
-  display_name: Symbol
-) -> TargetUseSiteOwnershipRealization {
-  TargetUseSiteOwnershipRealization {
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
+  display_name: v2.std.node.Symbol
+) -> v2.std.compilers.target_model.TargetUseSiteOwnershipRealization {
+  v2.std.compilers.target_model.TargetUseSiteOwnershipRealization {
     source_carrier: source_carrier,
     source_projection: UseSiteOwnershipExactCarrier,
     use_site: use_site,
@@ -117,8 +117,8 @@ fn partition_user_type_ownership_realization(
 
 fn partition_user_type_ownership_realizations_for_carrier(
   source_carrier: Node,
-  display_name: Symbol
-) -> List<TargetUseSiteOwnershipRealization> {
+  display_name: v2.std.node.Symbol
+) -> List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization> {
   [
     partition_user_type_ownership_realization(
       source_carrier: source_carrier,
@@ -145,7 +145,7 @@ fn partition_user_type_ownership_realizations_for_carrier(
 
 fn partition_user_type_ownership_realizations_for_decl(
   decl: PartitionUserSemanticType
-) -> List<TargetUseSiteOwnershipRealization> {
+) -> List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization> {
   list_append(
     left: partition_user_type_ownership_realizations_for_carrier(
       source_carrier: target_carrier_type_node(identity: decl.name),
@@ -160,7 +160,7 @@ fn partition_user_type_ownership_realizations_for_decl(
 
 fn partition_user_type_ownership_realizations_from_decls(
   decls: List<PartitionUserSemanticType>
-) -> List<TargetUseSiteOwnershipRealization> {
+) -> List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization> {
   fold_list(
     xs: decls,
     empty: Empty,
@@ -175,7 +175,7 @@ fn partition_user_type_ownership_realizations_from_decls(
 
 fn partition_user_type_atom_names_from_decls(
   decls: List<PartitionUserSemanticType>
-) -> List<Symbol> {
+) -> List<v2.std.node.Symbol> {
   fold_list(
     xs: decls,
     empty: Empty,
@@ -185,7 +185,7 @@ fn partition_user_type_atom_names_from_decls(
   )
 }
 
-fn partition_symbol_snoc_unique(acc: List<Symbol>, sym: Symbol) -> List<Symbol> {
+fn partition_symbol_snoc_unique(acc: List<v2.std.node.Symbol>, sym: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
   if any(xs: acc, predicate: fn(s) { s == sym }) {
     acc
   } else {
@@ -193,7 +193,7 @@ fn partition_symbol_snoc_unique(acc: List<Symbol>, sym: Symbol) -> List<Symbol> 
   }
 }
 
-fn partition_carrier_identity_snoc(acc: List<Symbol>, node: Node) -> List<Symbol> {
+fn partition_carrier_identity_snoc(acc: List<v2.std.node.Symbol>, node: Node) -> List<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       partition_symbol_snoc_unique(acc: acc, sym: id)
@@ -201,7 +201,7 @@ fn partition_carrier_identity_snoc(acc: List<Symbol>, node: Node) -> List<Symbol
   }
 }
 
-fn partition_carrier_identities_in_semantic(semantic: Node) -> List<Symbol> {
+fn partition_carrier_identities_in_semantic(semantic: Node) -> List<v2.std.node.Symbol> {
   fold_list(
     xs: node_subtree_nodes(root: semantic),
     empty: Empty,
@@ -211,15 +211,15 @@ fn partition_carrier_identities_in_semantic(semantic: Node) -> List<Symbol> {
   )
 }
 
-data partition_structural_value_carriers_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the whole-program emit applies use-site ownership to the module-surface wrapper node (carrier ^dag_surface_module), which is always by-value (a module is never reference-wrapped) — this returns the fixed set of such structural surface carriers. Currently one entry (module surface); expand as further synthetic surface carriers surface. DISSOLVES WHEN the emit stops running use-site ownership over non-value structural surfaces (06_translate scopes the ownership fold to genuine type carriers), at which point no structural-surface value-carrier enrollment is needed.")
+data partition_structural_value_carriers_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the whole-program emit applies use-site ownership to the module-surface wrapper node (carrier ^dag_surface_module), which is always by-value (a module is never reference-wrapped) — this returns the fixed set of such structural surface carriers. Currently one entry (module surface); expand as further synthetic surface carriers surface. DISSOLVES WHEN the emit stops running use-site ownership over non-value structural surfaces (06_translate scopes the ownership fold to genuine type carriers), at which point no structural-surface value-carrier enrollment is needed.")
 
-fn partition_program_structural_value_carriers() -> List<Symbol> {
+fn partition_program_structural_value_carriers() -> List<v2.std.node.Symbol> {
   [^dag_surface_module]
 }
 
 fn partition_user_type_carrier_identities_from_decls(
   decls: List<PartitionUserSemanticType>
-) -> List<Symbol> {
+) -> List<v2.std.node.Symbol> {
   fold_list(
     xs: decls,
     empty: Empty,
@@ -237,8 +237,8 @@ fn partition_user_type_carrier_identities_from_decls(
 
 fn partition_derive_target_for_emit(
   partition: ProgramPartition,
-  target: TargetModel
-) -> Outcome<TargetModel> {
+  target: v2.std.compilers.target_model.TargetModel
+) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   let decls = partition_user_semantic_types_from_root(root: partition.ambient.root)
   let ownership_rows = partition_user_type_ownership_realizations_from_decls(decls: decls)
   let atom_names = list_append(
@@ -262,32 +262,32 @@ fn partition_derive_target_for_emit(
   )
 }
 
-fn partition_root_not_in_ambient_diagnostic(segment_root: Node) -> Diagnostic {
-  Diagnostic {
+fn partition_root_not_in_ambient_diagnostic(segment_root: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^partition_root_not_in_ambient,
     at: node_locus(node: segment_root),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn partition_facts_miss_diagnostic(key: Node) -> Diagnostic {
-  Diagnostic {
+fn partition_facts_miss_diagnostic(key: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^partition_facts_miss,
     at: node_locus(node: key),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn partition_boundary_free_ref_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn partition_boundary_free_ref_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^partition_boundary_free_ref,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn partition_empty_segment_diagnostic(root: Node) -> Diagnostic {
-  Diagnostic {
+fn partition_empty_segment_diagnostic(root: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^partition_empty_segment,
     at: node_locus(node: root),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -304,7 +304,7 @@ fn partition_subtree_root_contained_in_ambient(
 
 fn partition_grounding_subject_in_segment(
   segment_root: Node,
-  facts: InferredFacts
+  facts: v2.compiler.infer.InferredFacts
 ) -> Bool {
   node_in_subtree_by_identity(
     root: segment_root,
@@ -314,9 +314,9 @@ fn partition_grounding_subject_in_segment(
 
 fn partition_fail_closed_boundary_admits(
   segment_root: Node,
-  boundary: PartitionBoundaryPolicy,
+  boundary: v2.std.program_segment.PartitionBoundaryPolicy,
   node: Node,
-  facts: InferredFacts
+  facts: v2.compiler.infer.InferredFacts
 ) -> Bool {
   match boundary {
     AmbientContextAvailable => true
@@ -326,11 +326,11 @@ fn partition_fail_closed_boundary_admits(
 }
 
 fn partition_closure_entry_for_node(
-  ambient: InferredTree,
+  ambient: v2.compiler.infer.InferredTree,
   segment_root: Node,
-  boundary: PartitionBoundaryPolicy,
+  boundary: v2.std.program_segment.PartitionBoundaryPolicy,
   node: Node
-) -> Outcome<InferredFactsEntry> {
+) -> Outcome<v2.compiler.infer.InferredFactsEntry> {
   match ambient.facts.lookup(node) {
     Present { value: facts } =>
       if partition_fail_closed_boundary_admits(
@@ -348,16 +348,16 @@ fn partition_closure_entry_for_node(
   }
 }
 
-fn partition_empty_inferred_facts_entries() -> List<InferredFactsEntry> {
+fn partition_empty_inferred_facts_entries() -> List<v2.compiler.infer.InferredFactsEntry> {
   []
 }
 
 fn facts_closure_entries_fold(
-  ambient: InferredTree,
+  ambient: v2.compiler.infer.InferredTree,
   segment_root: Node,
-  boundary: PartitionBoundaryPolicy,
+  boundary: v2.std.program_segment.PartitionBoundaryPolicy,
   nodes: List<Node>
-) -> Outcome<List<InferredFactsEntry>> {
+) -> Outcome<List<v2.compiler.infer.InferredFactsEntry>> {
   fold_list(
     xs: nodes,
     empty: outcome_accepted(value: partition_empty_inferred_facts_entries()),
@@ -383,7 +383,7 @@ fn facts_closure_entries_fold(
   )
 }
 
-fn facts_closure_fold(partition: ProgramPartition) -> Outcome<Map<Node, InferredFacts>> {
+fn facts_closure_fold(partition: ProgramPartition) -> Outcome<Map<Node, v2.compiler.infer.InferredFacts>> {
   match partition.boundary {
     AmbientContextAvailable =>
       outcome_accepted(value: partition.ambient.facts)
@@ -403,8 +403,8 @@ fn facts_closure_fold(partition: ProgramPartition) -> Outcome<Map<Node, Inferred
 }
 
 fn resolve_program_segment_root(
-  program: InferredTree,
-  segment: ProgramSegment
+  program: v2.compiler.infer.InferredTree,
+  segment: v2.std.program_segment.ProgramSegment
 ) -> Outcome<Node> {
   match segment {
     WholeProgram => outcome_accepted(value: program.root)
@@ -422,7 +422,7 @@ fn resolve_program_segment_root(
   }
 }
 
-fn partition_inferred_tree(partition: ProgramPartition) -> Outcome<InferredTree> {
+fn partition_inferred_tree(partition: ProgramPartition) -> Outcome<v2.compiler.infer.InferredTree> {
   if !well_formed(n: partition.root) {
     outcome_rejected(d: partition_empty_segment_diagnostic(root: partition.root))
   } else {
@@ -430,7 +430,7 @@ fn partition_inferred_tree(partition: ProgramPartition) -> Outcome<InferredTree>
       o: facts_closure_fold(partition: partition),
       f: fn(facts) {
         outcome_accepted(
-          value: InferredTree {
+          value: v2.compiler.infer.InferredTree {
             root: partition.root,
             facts: facts
           }
@@ -441,9 +441,9 @@ fn partition_inferred_tree(partition: ProgramPartition) -> Outcome<InferredTree>
 }
 
 fn resolve_program_partition(
-  program: InferredTree,
-  segment: ProgramSegment,
-  boundary: PartitionBoundaryPolicy
+  program: v2.compiler.infer.InferredTree,
+  segment: v2.std.program_segment.ProgramSegment,
+  boundary: v2.std.program_segment.PartitionBoundaryPolicy
 ) -> Outcome<ProgramPartition> {
   bind_outcome(
     o: resolve_program_segment_root(program: program, segment: segment),
@@ -483,7 +483,7 @@ fn partition_segment_is_ambient_arrow_body_behavior(
 
 fn emit_partition_arrow_body_behavior_source(
   partition: ProgramPartition,
-  target: TargetModel
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: target_project_arrow_body_to_value_expression(
@@ -519,7 +519,7 @@ fn emit_partition_arrow_body_behavior_source(
 
 fn emit_partition_with_target(
   partition: ProgramPartition,
-  target: TargetModel
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Medium<String>> {
   if partition_segment_is_ambient_arrow_body_behavior(partition: partition) {
     bind_outcome(
@@ -543,7 +543,7 @@ fn emit_partition_with_target(
 
 fn emit_partition(
   partition: ProgramPartition,
-  target: TargetModel
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: partition_derive_target_for_emit(partition: partition, target: target),
@@ -554,10 +554,10 @@ fn emit_partition(
 }
 
 fn emit_for_target(
-  program: InferredTree,
-  segment: ProgramSegment,
-  target: TargetModel,
-  boundary: PartitionBoundaryPolicy
+  program: v2.compiler.infer.InferredTree,
+  segment: v2.std.program_segment.ProgramSegment,
+  target: v2.std.compilers.target_model.TargetModel,
+  boundary: v2.std.program_segment.PartitionBoundaryPolicy
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: resolve_program_partition(
@@ -571,9 +571,9 @@ fn emit_for_target(
   )
 }
 
-fn program_segment_from_section_unavailable() -> Outcome<ProgramSegment> {
+fn program_segment_from_section_unavailable() -> Outcome<v2.std.program_segment.ProgramSegment> {
   outcome_rejected(
-    d: Diagnostic {
+    d: v2.std.diagnostic.Diagnostic {
       reason: ^partition_section_adapter_unavailable,
       at: port_locus(port: ^program_segment_from_section_port),
       correction: Unavailable { reason: ExternalContractUnknown }

@@ -2,8 +2,8 @@ module extdeps.bmc.capability
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.dmtf.org/standards/redfish"
   }
@@ -181,4 +181,4 @@ fn catalog_has_vm_capable_firmware(catalog: List<BmcFirmwareCapabilityRow>) -> B
   catalog |> any(row => firmware_has_capability(row: row, cap: CapabilityVirtualMedia))
 }
 
-data bmc_firmware_semver_parser_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: a cited semantic-version grammar row set lands in the shared grammar substrate with forward ingest. bmc_firmware_version_from_wire then consumes that grammar fold instead of its local three-component parser; until then this is the declared Redfish/OpenBMC wire scaffold and refuses every non-exact or non-Nat component through BmcFirmwareVersionRefused.")
+data bmc_firmware_semver_parser_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: a cited semantic-version grammar row set lands in the shared grammar substrate with forward ingest. bmc_firmware_version_from_wire then consumes that grammar fold instead of its local three-component parser; until then this is the declared Redfish/OpenBMC wire scaffold and refuses every non-exact or non-Nat component through BmcFirmwareVersionRefused.")

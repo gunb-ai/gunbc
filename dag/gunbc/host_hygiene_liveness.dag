@@ -1,7 +1,7 @@
 module gunbc.host_hygiene_liveness
 
 
-data gunbc_host_hygiene_liveness_scope_disposition: Disposition = Terminal {
+data gunbc_host_hygiene_liveness_scope_disposition: std.disposition.Disposition = Terminal {
   reason: "Brief 4 deliverable (b): registration liveness. NRestarts is useless as slot health (it counts jobs-served under the ephemeral restart-per-job runner design, 400-950 across slots at diagnosis time, not failure). Real liveness mines the 'Listening for Jobs' journal line per slot and compares its age against a bound; zero-occupancy outages (a 2.5h-class incident) had no liveness signal before this. RED: a stopped listener on one slot must flip the fleet verdict within one cadence — fleet_green_from_listening is any-stale-fails, not majority-fails."
 }
 
@@ -15,7 +15,7 @@ type SlotListeningVerdict
   | ListeningStale { unit: std.types.NonEmptyStr, age: std.measure.Second, bound: std.measure.Second }
   | ListeningUnknown { unit: std.types.NonEmptyStr, reason: std.types.NonEmptyStr }
 
-fn slot_listening_verdict(obs: SlotListeningObservation, bound: Second) -> SlotListeningVerdict {
+fn slot_listening_verdict(obs: SlotListeningObservation, bound: std.measure.Second) -> SlotListeningVerdict {
   match obs {
     ListeningObserved { unit: u, age: a } =>
       if measure_le(a: a, b: bound) {
@@ -24,7 +24,7 @@ fn slot_listening_verdict(obs: SlotListeningObservation, bound: Second) -> SlotL
         ListeningStale { unit: u, age: a, bound: bound }
       }
     ListeningNeverSeen { unit: u } =>
-      ListeningUnknown { unit: u, reason: "no 'Listening for Jobs' line found in the unit's journal" as NonEmptyStr }
+      ListeningUnknown { unit: u, reason: "no 'Listening for Jobs' line found in the unit's journal" as std.types.NonEmptyStr }
     ListeningReadInaccessible { unit: u, detail: d } => ListeningUnknown { unit: u, reason: d }
   }
 }
@@ -37,7 +37,7 @@ fn slot_listening_verdict_healthy(v: SlotListeningVerdict) -> Bool {
   }
 }
 
-fn slot_listening_verdict_unit(v: SlotListeningVerdict) -> NonEmptyStr {
+fn slot_listening_verdict_unit(v: SlotListeningVerdict) -> std.types.NonEmptyStr {
   match v {
     ListeningFresh { unit: u } => u
     ListeningStale { unit: u, age: _, bound: _ } => u
@@ -116,7 +116,7 @@ fn reconcile_fleet_listening(
   }
 }
 
-data gunbc_host_hygiene_liveness_bound: Second = second(1800)
+data gunbc_host_hygiene_liveness_bound: std.measure.Second = second(1800)
 
 data gunbc_host_hygiene_liveness_show_effective_read: ShowEffectiveRead<List<SlotListeningVerdict>> = ReadAbsent {
   reason: "no live per-slot journal read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"

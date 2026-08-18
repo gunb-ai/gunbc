@@ -1,8 +1,8 @@
 module extdeps.bmc.os_install_actuator_toolchain
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/openbmc/docs/blob/master/designs/virtual-media.md"
   }
@@ -21,15 +21,15 @@ data os_install_actuator_toolchain_requirement: ActuatorToolchainRequirement = A
   ],
 }
 
-data srv3_os_install_actuator_host_label: NonEmptyStr = "install-actuator-host"
+data srv3_os_install_actuator_host_label: std.types.NonEmptyStr = "install-actuator-host"
 
-data gunbc_bin_dir: NonEmptyStr = "/var/lib/gunbc/bin"
+data gunbc_bin_dir: std.types.NonEmptyStr = "/var/lib/gunbc/bin"
 
 data srv3_os_install_actuator_toolchain_grant: ActuatorToolchainRequirement = os_install_actuator_toolchain_requirement
 
 fn actuator_toolchain_requirement_includes_tool(
   requirement: ActuatorToolchainRequirement,
-  tool_name: NonEmptyStr,
+  tool_name: std.types.NonEmptyStr,
 ) -> Bool {
   fold(
     requirement.required_tools,

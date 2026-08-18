@@ -16,8 +16,8 @@ type NativeRoutingFrontierRow {
   disposition: NativeRoutingDisposition
 }
 
-fn family_subject(module_path: String, decl_name: String) -> DeclarationRef {
-  DeclarationRef {
+fn family_subject(module_path: String, decl_name: String) -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
     field: WholeDeclaration
@@ -25,7 +25,7 @@ fn family_subject(module_path: String, decl_name: String) -> DeclarationRef {
 }
 
 fn retained_no_cached_carrier(
-  subject: DeclarationRef,
+  subject: std.decl_ref.DeclarationRef,
   entry: String,
   f: String
 ) -> NativeRoutingFrontierRow {
@@ -43,9 +43,9 @@ fn retained_no_cached_carrier(
 data routed_flip_reverted_note: String = "FIRST FLIP REVERTED BY RECEIPT (2026-07-22): complement + meet_join were NativeRouted at #7069 landing; main run 29963619401 (2a226829f, srv2-05, 23:28Z) redded emit_on_demand_family_crate_pr_native_agreement_holds WARM — native-cache key=8f21f541808ddb22, compile_skipped=true on all three members, witness false in 496ms. ROOT-CAUSED 2026-07-28: the outer key covered inferred trees but omitted target runtime-row realization inputs; the durable warm handler trusted the old marker and could serve a pre-change dispatcher. Construction fix: artifact_realization_digest(exact workspace files + build argv) is now the effective child workspace identity. Executing RED control family_crate_dispatch_change_cold_rebuild_holds holds the tree/source/outer key fixed, changes meet dispatch, and observes cold meet=1, cold meet=0, warm meet=0 (keys d2242e574084a711 then d04f722d8b60c4fa); the companion original agreement is green cold+warm+warm. #7111 separately closed the failure-loudness gap. The policy rows remain InterpretedRetained until fresh independent-host evidence satisfies their dissolve_on; root-cause closure never silently re-flips routing. DEMOTION RECEIPT (2026-07-29, this PR): both families had SATISFIED the retired pre-flip parity streak (three green srv1 probe windows) and the flip still redded — and the root cause above is exactly WHY a pre-flip streak could not have prevented it: the defect was a stale realization key whose trigger was a LATER dispatcher change, so no number of green windows observed BEFORE the flip carries any information about it. Consecutive-green-before-flip was measuring the wrong thing; what actually caught the red was the live agreement leg plus this one-data-edit revert. Hence parity_window is demoted from pre-flip gate to post-flip monitoring (parity_window_note), and NativeRouted now CARRIES its observations so a recorded red, an absent history, or refused evidence DENIES native routing by construction rather than relying on someone remembering to edit this row."
 
 fn routed_via_family_crate(
-  subject: DeclarationRef,
+  subject: std.decl_ref.DeclarationRef,
   observation_family: String,
-  observations: List<ParityObservation>
+  observations: List<v2.compiler.self_host.parity_window.ParityObservation>
 ) -> NativeRoutingFrontierRow {
   NativeRoutingFrontierRow {
     subject: subject,
@@ -199,11 +199,11 @@ fn interpreted_retained_rows() -> List<NativeRoutingFrontierRow> {
   )
 }
 
-fn subject_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
+fn subject_eq(a: std.decl_ref.DeclarationRef, b: std.decl_ref.DeclarationRef) -> Bool {
   (a.module_path == b.module_path) && (a.decl_name == b.decl_name)
 }
 
-fn routing_frontier_row_for_subject(subject: DeclarationRef) -> List<NativeRoutingFrontierRow> {
+fn routing_frontier_row_for_subject(subject: std.decl_ref.DeclarationRef) -> List<NativeRoutingFrontierRow> {
   fold(
     native_routing_frontier_roster,
     init: [],
@@ -236,8 +236,8 @@ fn routing_frontier_agreement_entries_distinct() -> List<String> {
 }
 
 fn subject_module_source_paths(
-  subject: DeclarationRef,
-  facts: List<ModuleDeclarationFact>
+  subject: std.decl_ref.DeclarationRef,
+  facts: List<v2.lens.module_graph.ModuleDeclarationFact>
 ) -> List<String> {
   fold(
     facts,
@@ -281,7 +281,7 @@ fn native_routing_pool_closures(
           NativeRoutingEntryClosure {
             entry: entry,
             closure: import_closure_bfs_walk(
-              state: ImportClosureBfsState { reached: [entry], queue: [entry] },
+              state: v2.lens.module_graph.ImportClosureBfsState { reached: [entry], queue: [entry] },
               adjacency: adjacency
             )
           }
@@ -293,8 +293,8 @@ fn native_routing_pool_closures(
 
 fn native_routing_closure_reaches_subject(
   closure: List<String>,
-  subject: DeclarationRef,
-  facts: List<ModuleDeclarationFact>
+  subject: std.decl_ref.DeclarationRef,
+  facts: List<v2.lens.module_graph.ModuleDeclarationFact>
 ) -> Bool {
   any(
     xs: subject_module_source_paths(subject: subject, facts: facts),
@@ -307,7 +307,7 @@ fn native_routing_closure_reaches_subject(
 fn native_routing_row_membership_derived(
   row: NativeRoutingFrontierRow,
   pool: List<NativeRoutingEntryClosure>,
-  facts: List<ModuleDeclarationFact>
+  facts: List<v2.lens.module_graph.ModuleDeclarationFact>
 ) -> List<String> {
   fold(
     pool,
@@ -326,6 +326,6 @@ fn native_routing_row_membership_derived(
   )
 }
 
-fn native_routing_membership_facts_live(pool_roots: List<String>) -> List<ModuleDeclarationFact> {
+fn native_routing_membership_facts_live(pool_roots: List<String>) -> List<v2.lens.module_graph.ModuleDeclarationFact> {
   module_declaration_facts_live(pool_roots: pool_roots)
 }

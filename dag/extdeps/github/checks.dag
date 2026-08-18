@@ -1,8 +1,8 @@
 module extdeps.github.checks
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/checks/runs"
   }
@@ -163,7 +163,7 @@ service github.Checks {
       owner: String
       repo: String
       name: String
-      head_sha: CommitSha
+      head_sha: std.types.CommitSha
       status: CheckStatus
       details_url: String
       external_id: String

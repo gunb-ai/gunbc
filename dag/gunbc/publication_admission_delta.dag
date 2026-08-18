@@ -34,9 +34,9 @@ type ChangeLocalAdmissionOutcome
     }
 
 fn classify_subject_delta(
-  current: PublicProjectionPlan?,
-  candidate: PublicProjectionPlan,
-  subject: PublicProjectionSubject,
+  current: gunbc.public_projection.PublicProjectionPlan?,
+  candidate: gunbc.public_projection.PublicProjectionPlan,
+  subject: gunbc.public_projection.PublicProjectionSubject,
 ) -> ProjectionDeltaClass? {
   let included_now = match current {
     Absent => false
@@ -64,8 +64,8 @@ fn classify_subject_delta(
 }
 
 fn subject_identity_in_list(
-  subjects: List<PublicProjectionSubject>,
-  subject_identity: ContentHash,
+  subjects: List<gunbc.public_projection.PublicProjectionSubject>,
+  subject_identity: std.content_hash.ContentHash,
 ) -> Bool {
   fold(subjects, init: false, f: fn(found, subject) {
     found || subject.subject_identity == subject_identity
@@ -73,9 +73,9 @@ fn subject_identity_in_list(
 }
 
 fn candidate_delta_subjects(
-  current: PublicProjectionPlan?,
-  candidate: PublicProjectionPlan,
-) -> List<PublicProjectionSubject> {
+  current: gunbc.public_projection.PublicProjectionPlan?,
+  candidate: gunbc.public_projection.PublicProjectionPlan,
+) -> List<gunbc.public_projection.PublicProjectionSubject> {
   let candidate_subjects = concat(candidate.included_subjects, candidate.omitted_subjects)
   match current {
     Absent => candidate_subjects

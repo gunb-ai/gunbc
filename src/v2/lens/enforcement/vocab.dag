@@ -110,9 +110,9 @@ fn self_application_ok(s: SelfApplicationStatus) -> Bool {
   }
 }
 
-data narrowing_reason_same_variant_disposition: Disposition = Scaffold {
+data narrowing_reason_same_variant_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.enforcement.vocab",
     decl_name: "narrowing_reason_same_variant",
     field: WholeDeclaration
@@ -152,7 +152,7 @@ fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+fn qualified_name_eq(a: v2.std.qualified_name.QualifiedName, b: v2.std.qualified_name.QualifiedName) -> Bool {
   a == b
 }
 

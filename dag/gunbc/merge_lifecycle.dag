@@ -31,8 +31,8 @@ type LifecycleState {
   unverified_tip_seen: Bool
 }
 
-fn squash_result_tree(pr: PrIdentity, base: GitObjectId) -> GitObjectId {
-  merge_admission_fixture_git_tree_from_tagged(tag: pr.squash_tag as NonEmptyStr, base: base)
+fn squash_result_tree(pr: PrIdentity, base: extdeps.git.object_store.GitObjectId) -> extdeps.git.object_store.GitObjectId {
+  merge_admission_fixture_git_tree_from_tagged(tag: pr.squash_tag as std.types.NonEmptyStr, base: base)
 }
 
 fn initial_lifecycle_state() -> LifecycleState {
@@ -40,8 +40,8 @@ fn initial_lifecycle_state() -> LifecycleState {
     Present { value: oid } => oid
     Absent =>
       GitSha1ObjectId {
-        digest: Sha1Digest {
-          hex: "0000000000000000000000000000000000000001" as Sha1DigestHex,
+        digest: std.content_hash.Sha1Digest {
+          hex: "0000000000000000000000000000000000000001" as std.content_hash.Sha1DigestHex,
         },
       }
   }
@@ -55,14 +55,14 @@ fn initial_lifecycle_state() -> LifecycleState {
   }
 }
 
-fn receipt_is_for_pr_head(r: MergeAdmissionReceipt, pr: PrIdentity) -> Bool {
+fn receipt_is_for_pr_head(r: gunbc.merge_admission.MergeAdmissionReceipt, pr: PrIdentity) -> Bool {
   match r.pr_number {
     Present { value } => value == pr.number && r.head_sha == pr.head_sha
     Absent => false
   }
 }
 
-fn latest_receipt_for(receipts: List<MergeAdmissionReceipt>, pr: PrIdentity) -> List<MergeAdmissionReceipt> {
+fn latest_receipt_for(receipts: List<gunbc.merge_admission.MergeAdmissionReceipt>, pr: PrIdentity) -> List<gunbc.merge_admission.MergeAdmissionReceipt> {
   fold(receipts, init: [], f: fn(acc, r) {
     if receipt_is_for_pr_head(r: r, pr: pr) { [r] } else { acc }
   })
@@ -71,11 +71,11 @@ fn latest_receipt_for(receipts: List<MergeAdmissionReceipt>, pr: PrIdentity) -> 
 data latest_receipt_semantics_note: String = "latest_receipt_for keeps the LAST minted receipt for the exact (PR number, head SHA) pair. GitHub required checks attach evidence to a commit, not to a mutable PR number: after auto-heal pushes a new head, the old head's green is historical evidence and the new head has no admissible receipt until CI re-runs. Joining on number alone admitted RunPrCi(old head) then MergePr(healed head), the exact stale-evidence class the heal transition creates."
 
 fn merge_enabled(
-  policy: AdmissionPolicy,
-  receipts: List<MergeAdmissionReceipt>,
+  policy: gunbc.merge_admission.AdmissionPolicy,
+  receipts: List<gunbc.merge_admission.MergeAdmissionReceipt>,
   pr: PrIdentity,
-  tip: GitObjectId,
-  roster: GateRosterHash,
+  tip: extdeps.git.object_store.GitObjectId,
+  roster: gunbc.merge_admission.GateRosterHash,
 ) -> Bool {
   fold(latest_receipt_for(receipts: receipts, pr: pr), init: false, f: fn(acc, r) {
     acc || policy_admits(
@@ -93,7 +93,7 @@ fn verified_contains(xs: List<VerifiedRun>, probe: VerifiedRun) -> Bool {
   })
 }
 
-fn apply_lifecycle_event(policy: AdmissionPolicy, state: LifecycleState, ev: LifecycleEvent) -> LifecycleState {
+fn apply_lifecycle_event(policy: gunbc.merge_admission.AdmissionPolicy, state: LifecycleState, ev: LifecycleEvent) -> LifecycleState {
   match ev {
     RunPrCi { pr } =>
       let tested = squash_result_tree(pr: pr, base: state.main_tip)
@@ -140,13 +140,13 @@ fn apply_lifecycle_event(policy: AdmissionPolicy, state: LifecycleState, ev: Lif
 }
 
 // The unverified_tip_seen latch is checked ONLY where main ADVANCES (an admitted MergePr): the quantified property is that the merge step never lands a tree unverified under the roster current at landing. A RosterBump alone does not latch — criteria drift over a standing tip is the stale-ROSTER admission question the static gunbc.merge_admission witnesses already discriminate, not a merge-step fault; a disabled merge is a refusal, and a refusal is never a violation.
-fn simulate_lifecycle(policy: AdmissionPolicy, events: List<LifecycleEvent>) -> LifecycleState {
+fn simulate_lifecycle(policy: gunbc.merge_admission.AdmissionPolicy, events: List<LifecycleEvent>) -> LifecycleState {
   fold(events, init: initial_lifecycle_state(), f: fn(acc, ev) {
     apply_lifecycle_event(policy: policy, state: acc, ev: ev)
   })
 }
 
-fn lifecycle_admits_unverified_tip(policy: AdmissionPolicy, events: List<LifecycleEvent>) -> Bool {
+fn lifecycle_admits_unverified_tip(policy: gunbc.merge_admission.AdmissionPolicy, events: List<LifecycleEvent>) -> Bool {
   simulate_lifecycle(policy: policy, events: events).unverified_tip_seen
 }
 
@@ -175,7 +175,7 @@ fn event_sequences_of_length_4(alphabet: List<LifecycleEvent>) -> List<List<Life
   )
 }
 
-fn count_unverified_admitting_sequences(policy: AdmissionPolicy, seqs: List<List<LifecycleEvent>>) -> Int {
+fn count_unverified_admitting_sequences(policy: gunbc.merge_admission.AdmissionPolicy, seqs: List<List<LifecycleEvent>>) -> Int {
   fold(seqs, init: 0, f: fn(acc, seq) {
     if lifecycle_admits_unverified_tip(policy: policy, events: seq) { acc + 1 } else { acc }
   })

@@ -53,9 +53,9 @@ fn pxe_network_reachability_gaps(observation: PxeNetworkObservation) -> List<Pxe
 }
 
 fn pxe_network_authority_gaps(
-  dhcp_authority: DeclarationRef?,
-  tftp_endpoint: DeclarationRef?,
-  http_endpoint: DeclarationRef?,
+  dhcp_authority: std.decl_ref.DeclarationRef?,
+  tftp_endpoint: std.decl_ref.DeclarationRef?,
+  http_endpoint: std.decl_ref.DeclarationRef?,
   isolation: PxeNetworkIsolation?,
 ) -> List<PxeNetworkGap> {
   concat(
@@ -90,9 +90,9 @@ type PxeNetworkPresentAuthorities {
 }
 
 fn pxe_network_present_authorities(
-  dhcp_authority: DeclarationRef?,
-  tftp_endpoint: DeclarationRef?,
-  http_endpoint: DeclarationRef?,
+  dhcp_authority: std.decl_ref.DeclarationRef?,
+  tftp_endpoint: std.decl_ref.DeclarationRef?,
+  http_endpoint: std.decl_ref.DeclarationRef?,
   isolation: PxeNetworkIsolation?,
 ) -> PxeNetworkPresentAuthorities? {
   match dhcp_authority {
@@ -121,7 +121,7 @@ fn pxe_network_present_authorities(
   }
 }
 
-fn pxe_network_isolation_dhcp_direction(isolation: PxeNetworkIsolation) -> DhcpBootDirection {
+fn pxe_network_isolation_dhcp_direction(isolation: PxeNetworkIsolation) -> extdeps.provisioning.network_boot.DhcpBootDirection {
   match isolation {
     ProxyDhcpPxeOnly => ProxyDhcp
     IsolatedProvisioningSegment => NativeDhcpBootOptions
@@ -131,9 +131,9 @@ fn pxe_network_isolation_dhcp_direction(isolation: PxeNetworkIsolation) -> DhcpB
 }
 
 fn pxe_network_ready_standing(
-  dhcp_authority: DeclarationRef,
-  tftp_endpoint: DeclarationRef,
-  http_endpoint: DeclarationRef,
+  dhcp_authority: std.decl_ref.DeclarationRef,
+  tftp_endpoint: std.decl_ref.DeclarationRef,
+  http_endpoint: std.decl_ref.DeclarationRef,
   isolation: PxeNetworkIsolation,
 ) -> PxeNetworkStanding {
   PxeNetworkReady {
@@ -146,9 +146,9 @@ fn pxe_network_ready_standing(
 
 fn pxe_network_all_gaps(
   observation: PxeNetworkObservation,
-  dhcp_authority: DeclarationRef?,
-  tftp_endpoint: DeclarationRef?,
-  http_endpoint: DeclarationRef?,
+  dhcp_authority: std.decl_ref.DeclarationRef?,
+  tftp_endpoint: std.decl_ref.DeclarationRef?,
+  http_endpoint: std.decl_ref.DeclarationRef?,
   isolation: PxeNetworkIsolation?,
 ) -> List<PxeNetworkGap> {
   concat(
@@ -164,9 +164,9 @@ fn pxe_network_all_gaps(
 
 fn evaluate_pxe_network_standing(
   observation: PxeNetworkObservation?,
-  dhcp_authority: DeclarationRef?,
-  tftp_endpoint: DeclarationRef?,
-  http_endpoint: DeclarationRef?,
+  dhcp_authority: std.decl_ref.DeclarationRef?,
+  tftp_endpoint: std.decl_ref.DeclarationRef?,
+  http_endpoint: std.decl_ref.DeclarationRef?,
   isolation: PxeNetworkIsolation?,
 ) -> PxeNetworkStanding {
   match observation {
@@ -227,9 +227,9 @@ type SparkPxeFirmwareStanding
   = SparkPxeFirmwareReady
   | SparkPxeFirmwareHumanInterventionRequired { intervention: std.human_intervention.HumanIntervention }
 
-fn spark_pxe_firmware_enablement_intervention() -> HumanIntervention {
-  HumanIntervention {
-    identity: "spark-pxe-firmware-enablement" as HumanInterventionIdentity,
+fn spark_pxe_firmware_enablement_intervention() -> std.human_intervention.HumanIntervention {
+  std.human_intervention.HumanIntervention {
+    identity: "spark-pxe-firmware-enablement" as std.human_intervention.HumanInterventionIdentity,
     frequency: DeviceOnce,
     subject: "UEFI network stack",
     instruction: concat(
@@ -282,14 +282,14 @@ type SparkUnattendedImageBoot {
 }
 
 fn spark_unattended_image_boot(
-  image_kind: SparkPxeBootImageKind,
-  tftp_root: Uri,
-  http_image_root: Uri,
+  image_kind: extdeps.systems.nvidia_dgx_spark_pxe.SparkPxeBootImageKind,
+  tftp_root: extdeps.uri.Uri,
+  http_image_root: extdeps.uri.Uri,
   isolation: PxeNetworkIsolation,
 ) -> SparkUnattendedImageBoot {
   SparkUnattendedImageBoot {
     image_kind: image_kind,
-    network_chain: NetworkBootChain {
+    network_chain: extdeps.provisioning.network_boot.NetworkBootChain {
       boot_mode: spark_pxe_client_boot_mode(tftp_root: tftp_root),
       dhcp_direction: pxe_network_isolation_dhcp_direction(isolation: isolation),
       image_http_root: http_image_root,
@@ -317,13 +317,13 @@ type SparkUnattendedPxeBootRefusalReason
   | FirmwareConfigurationAbsent
 
 fn admit_spark_unattended_pxe_boot(
-  image_kind: SparkPxeBootImageKind,
-  tftp_root: Uri,
-  http_image_root: Uri,
+  image_kind: extdeps.systems.nvidia_dgx_spark_pxe.SparkPxeBootImageKind,
+  tftp_root: extdeps.uri.Uri,
+  http_image_root: extdeps.uri.Uri,
   network_observation: PxeNetworkObservation?,
-  dhcp_authority: DeclarationRef?,
-  tftp_endpoint: DeclarationRef?,
-  http_endpoint: DeclarationRef?,
+  dhcp_authority: std.decl_ref.DeclarationRef?,
+  tftp_endpoint: std.decl_ref.DeclarationRef?,
+  http_endpoint: std.decl_ref.DeclarationRef?,
   isolation: PxeNetworkIsolation?,
   firmware_config: SparkUefiPxeConfiguration?,
 ) -> SparkUnattendedPxeBootAdmissionOutcome {

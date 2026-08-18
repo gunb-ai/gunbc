@@ -28,7 +28,7 @@ type EntryRealizationAttempt {
 }
 
 
-fn first_located_cause(ds: NonEmptyDiagnostics) -> Symbol {
+fn first_located_cause(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> v2.std.node.Symbol {
   let residue = ^parse_grammar_choice_overlap_residue
   if !(ds.head.reason == residue) {
     ds.head.reason
@@ -39,11 +39,11 @@ fn first_located_cause(ds: NonEmptyDiagnostics) -> Symbol {
   }
 }
 
-fn attempt_refused(entry: String, phase: RealizationPhase, cause: Symbol) -> EntryRealizationAttempt {
+fn attempt_refused(entry: String, phase: RealizationPhase, cause: v2.std.node.Symbol) -> EntryRealizationAttempt {
   attempt_refused_at(entry: entry, phase: phase, cause: cause, located: "")
 }
 
-fn attempt_refused_at(entry: String, phase: RealizationPhase, cause: Symbol, located: String) -> EntryRealizationAttempt {
+fn attempt_refused_at(entry: String, phase: RealizationPhase, cause: v2.std.node.Symbol, located: String) -> EntryRealizationAttempt {
   EntryRealizationAttempt {
     entry: entry,
     arrow_count: 0,
@@ -51,7 +51,7 @@ fn attempt_refused_at(entry: String, phase: RealizationPhase, cause: Symbol, loc
   }
 }
 
-fn first_located_file(ds: NonEmptyDiagnostics) -> String {
+fn first_located_file(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> String {
   let head_file = match ds.head.at {
     Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
     _ => ""
@@ -93,7 +93,7 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
           Present { value: arrow } =>
             concat(inner, [node_synthetic(
               kind: TypeNode { connective: Conj },
-              children: [Edge { label: Named { name: decl_name }, target: arrow }]
+              children: [v2.std.node.Edge { label: Named { name: decl_name }, target: arrow }]
             )])
           Absent => inner
         }
@@ -204,7 +204,7 @@ fn attempt_phase_label(a: EntryRealizationAttempt) -> String {
   }
 }
 
-fn attempt_cause(a: EntryRealizationAttempt) -> Optional<Symbol> {
+fn attempt_cause(a: EntryRealizationAttempt) -> Optional<v2.std.node.Symbol> {
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => Absent
     V2RealizationRefused { phase: _, exact_cause: c, located: _ } => Present { value: c }
@@ -213,7 +213,7 @@ fn attempt_cause(a: EntryRealizationAttempt) -> Optional<Symbol> {
 
 data attempt_assembled_note: String = "The CANONICAL closure attempt (operator seven-findings contract, msg_9dec74f7): exact ingest (real file reads as DagSourceReadWitness rows) -> assemble_program_from_ingest (the SAME multi-module assembly the source-root-ingest gate rides — imports resolve against the closure, finding 2; no fixture bridge, finding 1) -> EXACTLY-ONE identity join against the resolved program for the required declaration name (zero and many both refuse with typed causes — finding 6, never a synthetic wrapper) -> infer (finding 3, its own phase) -> compile_inferred TranslateTo (finding 4: assembly, join, infer, translate each report their own phase; the exact cause Symbol locates the true stage inside assembly refusals). rust_target_model_staging remains the target pending the finding-5 canonicality ruling, surfaced in the sweep receipt."
 
-fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> {
+fn decl_edges_named(root: Node, fn_name: v2.std.node.Symbol, acc: List<Node>) -> List<Node> {
   let here = fold(root.children, init: acc, f: fn(inner, e) {
     match e.label {
       Named { name: n } =>
@@ -221,7 +221,7 @@ fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> 
           match first_arrow_in(root: e.target) {
             Present { value: _ } => concat(inner, [node_synthetic(
               kind: TypeNode { connective: Conj },
-              children: [Edge { label: Named { name: n }, target: e.target }]
+              children: [v2.std.node.Edge { label: Named { name: n }, target: e.target }]
             )])
             Absent => inner
           }
@@ -236,7 +236,7 @@ fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> 
 
 data phase_for_reason_note: String = "Finding 4 (per-stage phase precision): an assembly rejection carries the TRUE originating stage inside its reason symbol — parse/tokenize reasons are PhaseFrontend, body_lowering reasons are PhaseNormalize, resolve reasons are PhaseResolve — so the harness classifies the located reason's family instead of flattening every assembly refusal into one phase. An unrecognized family keeps the harness stage's fallback rather than fabricating a stage (§5: never a guessed label)."
 
-fn phase_for_reason(reason: Symbol, fallback: RealizationPhase) -> RealizationPhase {
+fn phase_for_reason(reason: v2.std.node.Symbol, fallback: RealizationPhase) -> RealizationPhase {
   let lexeme = symbol_lexeme(sym: reason)
   if starts_with(s: lexeme, prefix: "parse_") || starts_with(s: lexeme, prefix: "tokenize_") || starts_with(s: lexeme, prefix: "lex_") {
     PhaseFrontend
@@ -251,7 +251,7 @@ fn phase_for_reason(reason: Symbol, fallback: RealizationPhase) -> RealizationPh
   }
 }
 
-fn attempt_joined(program: Node, fn_name: Symbol, entry: String) -> EntryRealizationAttempt {
+fn attempt_joined(program: Node, fn_name: v2.std.node.Symbol, entry: String) -> EntryRealizationAttempt {
   let joined = decl_edges_named(root: program, fn_name: fn_name, acc: [])
   if length(xs: joined) == 0 {
     attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
@@ -286,9 +286,9 @@ fn attempt_joined(program: Node, fn_name: Symbol, entry: String) -> EntryRealiza
 }
 
 fn attempt_assembled(
-  ingest: SourceRootIngest,
-  admission: Admission,
-  fn_name: Symbol,
+  ingest: v2.compiler.source_authority.SourceRootIngest,
+  admission: v2.compiler.name_resolve.Admission,
+  fn_name: v2.std.node.Symbol,
   entry: String
 ) -> EntryRealizationAttempt {
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
@@ -303,13 +303,13 @@ fn attempt_assembled(
 
 data attempt_closure_rows_note: String = "Sweep seam (CI2-0 Commit B): ONE assembly per entry closure, then one attempt_joined per required test-fn identity — the exactly-once accounting grain the mandate names. The ingest is marker-captured at this seam only (test_marker_capture_note: the grammar cannot yet parse the authored test marker, so the capture scaffold rewrites line-leading markers and the count stays observable); an assembly refusal is replicated to EVERY identity in the entry with the reason-classified phase, because each identity is accountable and none of them reached its join."
 
-fn capture_markers_ingest(ingest: SourceRootIngest) -> SourceRootIngest {
+fn capture_markers_ingest(ingest: v2.compiler.source_authority.SourceRootIngest) -> v2.compiler.source_authority.SourceRootIngest {
   match ingest {
     Empty => Empty
     Cons { head: r, tail: t } =>
       Cons {
-        head: DagSourceReadWitness {
-          source: Medium {
+        head: v2.compiler.source_authority.DagSourceReadWitness {
+          source: extdeps.communication.medium.Medium {
             carried: capture_test_markers(source: r.source.carried).unmarked,
             fidelity: r.source.fidelity
           },
@@ -322,7 +322,7 @@ fn capture_markers_ingest(ingest: SourceRootIngest) -> SourceRootIngest {
   }
 }
 
-fn entry_witness_source(ingest: SourceRootIngest, entry: String) -> Optional<String> {
+fn entry_witness_source(ingest: v2.compiler.source_authority.SourceRootIngest, entry: String) -> Optional<String> {
   fold_list(xs: ingest, empty: Absent, cons: fn(acc, r) {
     match acc {
       Present { value: _ } => acc
@@ -340,9 +340,9 @@ fn no_attempt_rows() -> List<EntryRealizationAttempt> {
 }
 
 fn attempt_closure_rows(
-  ingest: SourceRootIngest,
-  admission: Admission,
-  fn_names: List<Symbol>,
+  ingest: v2.compiler.source_authority.SourceRootIngest,
+  admission: v2.compiler.name_resolve.Admission,
+  fn_names: List<v2.std.node.Symbol>,
   entry: String
 ) -> List<EntryRealizationAttempt> {
   match assemble_program_from_ingest(ingest: capture_markers_ingest(ingest: ingest), admission: admission, lm: dag_language_model()) {

@@ -58,9 +58,9 @@ type RunningReleaseIdentity
 data running_release_unidentified_cause_note: String = "ReleaseRevisionAbsent IS THE MIGRATION ARM AND IT REFUSES RATHER THAN BOOTSTRAPS. A process launched before the identity channel existed answers /healthz with a well-formed surface document carrying no revision member. That is not 'nothing is deployed' and not 'the revision is unknown but assume the worst is fine' — it is a routed process that is demonstrably serving something whose identity this system cannot yet read, so no ancestry relation to a candidate is decidable and any advance from it would be unordered. The consumer maps this arm to a REFUSAL, never to an advance and never to a synthetic predecessor. It dissolves by deploying the identity-publishing release once, after which the arm is unreachable in production and survives as the executing control that proves the refusal is real.\\n\\nAbsent / Duplicated / NotAnObject / NotAString / Malformed stay distinct because each names a different broken producer: no channel, a document with two revision members (two writers), a body that is not an object at all (wrong process on the port), a non-string revision, and a string that is not a 40-digit lowercase sha (a tag, a branch name, an abbreviated sha, or an empty launch argument that reached the wire). Collapsing them into one Unknown would leave the remedy unlocatable, which is the state-space conflation DESIGN records as a recurring failure mode."
 
 fn running_release_healthz_members(
-  revision: CommitSha,
-  surface_bundle_identity: Fnv1a64Structural,
-) -> List<JsonKeyValue> {
+  revision: std.types.CommitSha,
+  surface_bundle_identity: std.content_hash.Fnv1a64Structural,
+) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   [
     json_kv(key: running_release_revision_key, value: json_string(s: revision as String)),
     json_kv(
@@ -70,7 +70,7 @@ fn running_release_healthz_members(
   ]
 }
 
-fn running_release_member_string(lookup: JsonMemberLookup) -> String? {
+fn running_release_member_string(lookup: extdeps.languages.json.parse.JsonMemberLookup) -> String? {
   match lookup {
     JsonMemberFound { value: v } =>
       match v {
@@ -120,8 +120,8 @@ fn observe_running_release_identity(healthz_body: String) -> RunningReleaseIdent
                         } else {
                           RunningReleaseIdentified {
                             observation: RunningReleaseObservation {
-                              revision: revision_text as CommitSha,
-                              surface_bundle_identity: Fnv1a64Structural { digest: surface_text as NonEmptyStr },
+                              revision: revision_text as std.types.CommitSha,
+                              surface_bundle_identity: std.content_hash.Fnv1a64Structural { digest: surface_text as std.types.NonEmptyStr },
                             },
                           }
                         }
@@ -139,7 +139,7 @@ data observe_running_release_identity_note: String = "THE OBSERVATION VALIDATES 
 
 fn running_release_revision_equals(
   identity: RunningReleaseIdentity,
-  expected: CommitSha,
+  expected: std.types.CommitSha,
 ) -> Bool {
   match identity {
     RunningReleaseUnidentified { cause: _ } => false
@@ -149,7 +149,7 @@ fn running_release_revision_equals(
 
 fn running_release_surface_equals(
   identity: RunningReleaseIdentity,
-  expected: Fnv1a64Structural,
+  expected: std.content_hash.Fnv1a64Structural,
 ) -> Bool {
   match identity {
     RunningReleaseUnidentified { cause: _ } => false

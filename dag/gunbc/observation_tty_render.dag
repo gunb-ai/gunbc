@@ -13,8 +13,8 @@ type PreambleFields {
 
 data observation_tty_preamble_note: String = "The preamble is REQUIRED — no anonymous process. The reference implementation makes this a construction rule (a titled, described process or nothing), and it is kept: a TTY run opens with what is running, why it was triggered, and how much work it faces, so the first thing on screen answers the question the crawl window could not. The diff-to-runs selection summary is the centre of it (section 6b), but its declaration-grain form rides the namespace lane; this carrier holds the fields that exist today and grows without a format change when decl-grain selection lands."
 
-fn tty_preamble_line(fields: PreambleFields) -> RenderedLine {
-  RenderedLine {
+fn tty_preamble_line(fields: PreambleFields) -> gunbc.observation_ci_render.RenderedLine {
+  gunbc.observation_ci_render.RenderedLine {
     glyph: NodeRunning,
     text: concat(
       "run ", concat(fields.run_id,
@@ -27,7 +27,7 @@ fn tty_preamble_line(fields: PreambleFields) -> RenderedLine {
 }
 
 // Whether a line repaints in place or scrolls is DERIVED from its attention, one decision function, never chosen at the call site. Routine progress overwrites — the spinner and the current-entry counter update on one line so the terminal does not fill with green. An anomaly appends, because it must survive on screen and be scrollable back to; overwriting a refusal would erase it the instant the next line arrived, which is the terminal form of burying it in a collapsed group. The summary appends too — it is the last thing the reader wants to keep. This is the same law-4 asymmetry the CI renderer expresses through group placement, expressed here through cursor action, because that is what the medium offers.
-fn tty_cursor_action(density: ObservationDensity, attention: AttentionLevel, cap: RenderCapability) -> CursorAction {
+fn tty_cursor_action(density: std.observation.ObservationDensity, attention: std.observation.AttentionLevel, cap: std.render.RenderCapability) -> std.render.CursorAction {
   match density {
     SummaryAlwaysShown => Append
     AnomalyExpanded => Append
@@ -46,9 +46,9 @@ fn tty_cursor_action(density: ObservationDensity, attention: AttentionLevel, cap
 
 data observation_tty_group_note: String = "The live group line is a repainting projection of the currently-running subject: a spinner, the phase, and the k-of-n counter, overwritten each tick. It names the current entry the way the reference's group line does, and it carries the same identity-first discipline as the heartbeat — the spinner says alive, the text says what is alive."
 
-fn tty_group_line(active: ObservationSubject, k: std.nat.Nat, n: std.nat.Nat, spinner: SymbolId) -> RenderedLine {
+fn tty_group_line(active: std.observation.ObservationSubject, k: std.nat.Nat, n: std.nat.Nat, spinner: std.symbols.SymbolId) -> gunbc.observation_ci_render.RenderedLine {
   let detail = ci_subject_detail_text(subject: active)
-  RenderedLine {
+  gunbc.observation_ci_render.RenderedLine {
     glyph: spinner,
     text: concat(
       ci_subject_activity_text(subject: active),
@@ -60,16 +60,16 @@ fn tty_group_line(active: ObservationSubject, k: std.nat.Nat, n: std.nat.Nat, sp
 }
 
 // BlockedOn renders INLINE on the TTY, with its holder and its remaining bound when the governor has one — the reference's contention feature, kept and upgraded to derived facts. A bounded remaining prints the time; an unknown remaining prints why it is unknown rather than a fabricated estimate, because a made-up ETA is the same fabrication the model forbids for any other measurement.
-fn tty_remaining_text(remaining: ContentionRemaining) -> String {
+fn tty_remaining_text(remaining: std.observation.ContentionRemaining) -> String {
   match remaining {
     RemainingBounded { by: b } => concat("about ", concat(ci_human_duration(d: b), " remaining"))
     RemainingUnknown { cause: c } => concat("no estimate (", concat(c, ")"))
   }
 }
 
-fn tty_blocked_line(blocked: BlockedOn) -> RenderedLine {
+fn tty_blocked_line(blocked: std.observation.BlockedOn) -> gunbc.observation_ci_render.RenderedLine {
   let holders = concat(to_string(count(blocked.holders)), " holder(s)")
-  RenderedLine {
+  gunbc.observation_ci_render.RenderedLine {
     glyph: StatusBlocked,
     text: concat(
       "blocked — ",
@@ -80,12 +80,12 @@ fn tty_blocked_line(blocked: BlockedOn) -> RenderedLine {
 }
 
 // The reward animal renders on Final — the reference's flourish, kept, and kept CORRECTLY: it is drawn from the reward-animal rows in the one glyph authority, selected deterministically by the run's identity, never a random draw. A random animal would make the event stream unreplayable, which would defeat the same replay the flagship depends on. On a non-emoji terminal the row's ascii form renders, so the flourish degrades to a word rather than a mojibake box.
-fn tty_final_line(shown_failures: std.nat.Nat, run_index: Int, tier: Tier) -> RenderedLine {
+fn tty_final_line(shown_failures: std.nat.Nat, run_index: Int, tier: std.symbols.Tier) -> gunbc.observation_ci_render.RenderedLine {
   let animal = match reward_animal_at(index: run_index, tier: tier) {
     Present { value: a } => a
     Absent => ""
   }
-  RenderedLine {
+  gunbc.observation_ci_render.RenderedLine {
     glyph: StatusFinal,
     text: if shown_failures == 0 {
       concat("all clean ", animal)
@@ -107,9 +107,9 @@ type TtyEmissionProjection
   | TtyEmissionRefused { cause: std.types.NonEmptyStr }
 
 fn tty_emission_at_attention(
-  event: ObservationEvent,
-  attention: AttentionLevel,
-  cap: RenderCapability
+  event: std.observation.ObservationEvent,
+  attention: std.observation.AttentionLevel,
+  cap: std.render.RenderCapability
 ) -> TtyEmission {
   let density = observation_class_density(c: observation_event_class(event: event))
   let line = ci_event_line_at_attention(event: event, attention: attention)
@@ -119,7 +119,7 @@ fn tty_emission_at_attention(
   }
 }
 
-fn tty_event_emission_under(event: ObservationEvent, basis: Measured<AttentionBasis>, cap: RenderCapability) -> TtyEmissionProjection {
+fn tty_event_emission_under(event: std.observation.ObservationEvent, basis: Measured<std.observation.AttentionBasis>, cap: std.render.RenderCapability) -> TtyEmissionProjection {
   match observation_attention_under(event: event, basis: basis) {
     AttentionRefused { cause: c } => TtyEmissionRefused { cause: c }
     AttentionAssigned { level: attention } =>
@@ -129,7 +129,7 @@ fn tty_event_emission_under(event: ObservationEvent, basis: Measured<AttentionBa
   }
 }
 
-fn tty_event_emission(event: ObservationEvent, basis: AttentionBasis, cap: RenderCapability) -> TtyEmission {
+fn tty_event_emission(event: std.observation.ObservationEvent, basis: std.observation.AttentionBasis, cap: std.render.RenderCapability) -> TtyEmission {
   tty_emission_at_attention(
     event: event,
     attention: observation_attention(event: event, basis: basis),
@@ -137,10 +137,10 @@ fn tty_event_emission(event: ObservationEvent, basis: AttentionBasis, cap: Rende
   )
 }
 
-fn tty_render_emission(emission: TtyEmission, tier: Tier) -> String {
+fn tty_render_emission(emission: TtyEmission, tier: std.symbols.Tier) -> String {
   ci_render_line(line: emission.line, tier: tier)
 }
 
-data observation_tty_render_disposition: Disposition = Terminal {
+data observation_tty_render_disposition: std.disposition.Disposition = Terminal {
   reason: "The TTY renderer is Terminal — an in-place-repaint projection is what an interactive terminal IS. It is a peer of the CI-log renderer and the later dashboard, all projecting one event stream; none is a scaffold for another. What dissolves is the hand-rolled TTY progress code the P3 census will enumerate, not this projection."
 }

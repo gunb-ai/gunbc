@@ -39,14 +39,14 @@ fn digest_subject(pr: extdeps.github.pulls.PullRequest) -> PullRequestDigestSubj
   }
 }
 
-fn render_pull_request_state(state: PullRequestState) -> String {
+fn render_pull_request_state(state: extdeps.github.pulls.PullRequestState) -> String {
   match state {
     Open => "open"
     Closed => "closed"
   }
 }
 
-fn render_review_state(state: ReviewState) -> String {
+fn render_review_state(state: extdeps.github.pulls.ReviewState) -> String {
   match state {
     Pending => "pending"
     Commented => "commented"
@@ -56,7 +56,7 @@ fn render_review_state(state: ReviewState) -> String {
   }
 }
 
-fn review_state_labels(reviews: List<PullReview>) -> List<String> {
+fn review_state_labels(reviews: List<extdeps.github.pulls.PullReview>) -> List<String> {
   map(reviews, r => render_review_state(state: r.state))
 }
 
@@ -75,7 +75,7 @@ fn readiness_projection(pr: extdeps.github.pulls.PullRequest) -> DigestReadiness
   }
 }
 
-fn project_pull_request_digest(pr: extdeps.github.pulls.PullRequest, reviews: List<PullReview>) -> PullRequestDigestView {
+fn project_pull_request_digest(pr: extdeps.github.pulls.PullRequest, reviews: List<extdeps.github.pulls.PullReview>) -> PullRequestDigestView {
   PullRequestDigestView {
     subject: digest_subject(pr: pr),
     readiness: readiness_projection(pr: pr),

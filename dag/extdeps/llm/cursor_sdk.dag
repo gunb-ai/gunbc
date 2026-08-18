@@ -1,16 +1,16 @@
 module extdeps.llm.cursor_sdk
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "cursor.com/docs/sdk/typescript"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.llm.cursor_sdk",
       decl_name: "CursorSdkLocalInvocation",
       field: WholeDeclaration
@@ -65,7 +65,7 @@ type CursorSdkCredentialProjection
 
 fn cursor_sdk_project_materialization(
   materialization: CursorSdkApiKeyMaterialization,
-  environment_key_plaintext: NonEmptyStr,
+  environment_key_plaintext: std.types.NonEmptyStr,
 ) -> CursorSdkCredentialProjection {
   match materialization {
     CursorSdkApiKeyFromSecretRef { secret_ref: _ } =>
@@ -77,17 +77,17 @@ fn cursor_sdk_project_materialization(
       CursorSdkCredentialProjected {
         argv: [],
         environment: [
-          CursorEnvBinding { name: var, value: environment_key_plaintext },
+          extdeps.llm.cursor_cli.CursorEnvBinding { name: var, value: environment_key_plaintext },
         ],
       }
   }
 }
 
 fn cursor_sdk_refuse_argv_api_key_projection(
-  _key: NonEmptyStr,
+  _key: std.types.NonEmptyStr,
 ) -> CursorSdkCredentialProjection {
   CursorSdkCredentialProjectionRefused {
-    reason: "Cursor SDK local must not project API key material into argv tokens" as NonEmptyStr,
+    reason: "Cursor SDK local must not project API key material into argv tokens" as std.types.NonEmptyStr,
   }
 }
 
@@ -105,7 +105,7 @@ fn cursor_sdk_projection_argv_excludes_token(
 
 fn cursor_sdk_projection_binds_environment(
   projection: CursorSdkCredentialProjection,
-  env_var: NonEmptyStr,
+  env_var: std.types.NonEmptyStr,
 ) -> Bool {
   match projection {
     CursorSdkCredentialProjected { argv: _, environment: environment } =>
@@ -123,9 +123,9 @@ type CursorSdkLocalInvocation {
 
 fn cursor_sdk_local_invocation(
   credential: CursorSdkLocalCredential,
-  model_id: CursorModelId,
+  model_id: extdeps.llm.cursor_cli.CursorModelId,
   cwd: std.types.FilePath,
-  prompt: NonEmptyStr,
+  prompt: std.types.NonEmptyStr,
 ) -> CursorSdkLocalInvocation {
   CursorSdkLocalInvocation {
     credential: credential,

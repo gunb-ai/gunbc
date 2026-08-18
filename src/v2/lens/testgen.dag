@@ -72,15 +72,15 @@ data testgen_lens_file_path: String = "src/v2/lens/testgen.dag"
 fn default_generator_profile() -> GeneratorProfile {
   GeneratorProfile { profile_ref: ^testgen_default_profile_ref }
 }
-fn testgen_profile_roster_mismatch_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn testgen_profile_roster_mismatch_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^testgen_profile_roster_mismatch,
     at: Textual { file: ^testgen_lens_file, extent: WholeFile },
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
+fn generator_id_for_manual_anchor(key: v2.std.verification.ManualAnchorKey) -> v2.std.artifact.GeneratorId {
   match key {
     ManualTcConjEmpty => ^gen_id_tc_conj_empty
     ManualTcDisjEmpty => ^gen_id_tc_disj_empty
@@ -107,7 +107,7 @@ fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
   }
 }
 
-fn generator_id_for_coproduct_arm(coproduct_type: Symbol, omitted_variant: Symbol) -> GeneratorId {
+fn generator_id_for_coproduct_arm(coproduct_type: v2.std.node.Symbol, omitted_variant: v2.std.node.Symbol) -> v2.std.artifact.GeneratorId {
   concat(
     "gen_id_coproduct_exhaustiveness::",
     concat(coproduct_type, concat("::", omitted_variant))
@@ -115,16 +115,16 @@ fn generator_id_for_coproduct_arm(coproduct_type: Symbol, omitted_variant: Symbo
 }
 
 fn generator_id_for_cross_representation_straddle(
-  modeled_coproduct: Symbol,
-  native_realization: Symbol
-) -> GeneratorId {
+  modeled_coproduct: v2.std.node.Symbol,
+  native_realization: v2.std.node.Symbol
+) -> v2.std.artifact.GeneratorId {
   concat(
     "gen_id_cross_representation_equality::",
     concat(modeled_coproduct, concat("::", native_realization))
   )
 }
 
-fn generator_id_for_generated_anchor(key: GeneratedAnchorKey) -> GeneratorId {
+fn generator_id_for_generated_anchor(key: v2.std.verification.GeneratedAnchorKey) -> v2.std.artifact.GeneratorId {
   match key {
     GeneratedCoproductExhaustiveness { coproduct_type, omitted_variant } =>
       generator_id_for_coproduct_arm(coproduct_type: coproduct_type, omitted_variant: omitted_variant)
@@ -136,15 +136,15 @@ fn generator_id_for_generated_anchor(key: GeneratedAnchorKey) -> GeneratorId {
   }
 }
 
-fn generator_id_for_claim_anchor(anchor: ClaimAnchorKey) -> GeneratorId {
+fn generator_id_for_claim_anchor(anchor: v2.std.verification.ClaimAnchorKey) -> v2.std.artifact.GeneratorId {
   match anchor {
     ManualClaimAnchor { manual_anchor } => generator_id_for_manual_anchor(key: manual_anchor)
     GeneratedClaimAnchor { generated_anchor } => generator_id_for_generated_anchor(key: generated_anchor)
   }
 }
 
-fn generator_provenance(id: GeneratorId) -> GeneratorProvenance {
-  GeneratorProvenance {
+fn generator_provenance(id: v2.std.artifact.GeneratorId) -> v2.std.artifact.GeneratorProvenance {
+  v2.std.artifact.GeneratorProvenance {
     generator_id: id,
     artifact: test_claim_generated_artifact(id: id, file_path: testgen_lens_file_path),
   }
@@ -282,10 +282,10 @@ fn lbe_subject_transform_dag_surface() -> LanguageBehaviorEquivalenceSubject {
   }
 }
 
-fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<Node>>> {
+fn refine_nonempty_node_list(xs: List<Node>, at: v2.std.diagnostic.Locus) -> Outcome<Refined<List<Node>>> {
   refine(
     base: xs,
-    by: Validation {
+    by: v2.std.refinement.Validation {
       reason: ^refinement_preservation_empty_list_reason,
       admits: fn(candidate) { non_empty(xs: candidate) }
     },
@@ -295,17 +295,17 @@ fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<
 fn refinement_preservation_list_node(xs: List<Node>) -> Node {
   fold_list_right(
     xs: xs,
-    empty: Node {
+    empty: v2.std.node.Node {
       kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_empty_node } },
       children: [],
       occurrence_id: SyntheticOccurrence
 },
     snoc: fn(tail_node, h) {
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_cons_node } },
         children: [
-          Edge { label: Named { name: ^refinement_preservation_list_head_edge }, target: h },
-          Edge {
+          v2.std.node.Edge { label: Named { name: ^refinement_preservation_list_head_edge }, target: h },
+          v2.std.node.Edge {
             label: Named { name: ^refinement_preservation_list_tail_edge },
             target: tail_node
           }
@@ -332,10 +332,10 @@ fn refinement_preservation_subject_nonempty_list_base() -> Outcome<RefinementPre
 }
 
 fn testgen_emit_refinement_preservation_claim(
-  anchor: ManualAnchorKey,
+  anchor: v2.std.verification.ManualAnchorKey,
   label: String,
   subject: RefinementPreservationSubject
-) -> Outcome<TestClaim> {
+) -> Outcome<v2.std.verification.TestClaim> {
   match anchor {
     ManualRefinementNonEmptyListBase =>
       Accepted {
@@ -346,7 +346,7 @@ fn testgen_emit_refinement_preservation_claim(
             xs: refined_base(r: subject.refined)
           ),
           rhs: refinement_preservation_list_node(xs: subject.original),
-          classification: TestClassification { tier: Tier1, layer: Unit },
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
         },
         diagnostics: None,
       }
@@ -370,9 +370,9 @@ fn testgen_scheduled_refinement_preservation_generators() -> Outcome<List<Genera
 
 fn testgen_emit_idempotent_operation_equals_claim(
   label: String,
-  subject: ComposableIdempotentOperationSubject,
-  classification: TestClassification
-) -> Outcome<TestClaim> {
+  subject: v2.std.effects.ComposableIdempotentOperationSubject,
+  classification: v2.std.verification.TestClassification
+) -> Outcome<v2.std.verification.TestClaim> {
   Accepted {
     value: EqualsClaim {
       label: label,
@@ -387,14 +387,14 @@ fn testgen_emit_idempotent_operation_equals_claim(
 
 fn testgen_emit_idempotent_operation_claim(
   label: String,
-  subject: IdempotentOperationSubject,
-  classification: TestClassification
-) -> Outcome<TestClaim> {
+  subject: v2.std.effects.IdempotentOperationSubject,
+  classification: v2.std.verification.TestClassification
+) -> Outcome<v2.std.verification.TestClaim> {
   match subject {
     LabelOnlyIdempotentInhabitance { shape: _, label: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
-          d: Diagnostic {
+          d: v2.std.diagnostic.Diagnostic {
             reason: ^idempotent_operation_tautology_skip,
             at: Textual { file: ^testgen_lens_file, extent: WholeFile },
             correction: Unavailable { reason: UserInputBoundary }
@@ -410,7 +410,7 @@ fn testgen_emit_idempotent_operation_claim(
   }
 }
 
-fn testgen_scheduled_idempotent_operation_subjects() -> List<ComposableIdempotentOperationSubject> {
+fn testgen_scheduled_idempotent_operation_subjects() -> List<v2.std.effects.ComposableIdempotentOperationSubject> {
   [
     sample_read_composable,
     sample_upsert_composable,
@@ -420,10 +420,10 @@ fn testgen_scheduled_idempotent_operation_subjects() -> List<ComposableIdempoten
 }
 
 fn testgen_emit_language_behavior_equivalence_claim(
-  anchor: ManualAnchorKey,
+  anchor: v2.std.verification.ManualAnchorKey,
   label: String,
   mock: LanguageBehaviorIoMock
-) -> Outcome<TestClaim> {
+) -> Outcome<v2.std.verification.TestClaim> {
   let snap = mock.snapshot
   match anchor {
     ManualLbeConjDagSurface =>
@@ -433,7 +433,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
           anchor: manual_claim_anchor(anchor: anchor),
           input: snap.input_node,
           expected_value: snap.expected_value,
-          classification: TestClassification { tier: Tier1, layer: Unit },
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
         },
         diagnostics: None,
       }
@@ -444,7 +444,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
           anchor: manual_claim_anchor(anchor: anchor),
           input: snap.input_node,
           expected_value: snap.expected_value,
-          classification: TestClassification { tier: Tier1, layer: Unit },
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
         },
         diagnostics: None,
       }
@@ -455,7 +455,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
           anchor: manual_claim_anchor(anchor: anchor),
           input: snap.input_node,
           expected_value: snap.expected_value,
-          classification: TestClassification { tier: Tier1, layer: Unit },
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
         },
         diagnostics: None,
       }
@@ -467,16 +467,16 @@ fn testgen_emit_language_behavior_equivalence_claim(
 }
 
 fn testgen_emit_algebra_law_claim(
-  anchor: ManualAnchorKey,
+  anchor: v2.std.verification.ManualAnchorKey,
   label: String,
   lhs: Node,
   rhs: Node,
-  classification: TestClassification
-) -> Outcome<TestClaim> {
+  classification: v2.std.verification.TestClassification
+) -> Outcome<v2.std.verification.TestClaim> {
   if lhs == rhs {
     Rejected {
       diagnostics: diagnostics_singleton(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: ^t19_algebra_law_tautological_sides,
           at: Textual { file: ^testgen_lens_file, extent: WholeFile },
           correction: Unavailable { reason: UserInputBoundary }
@@ -502,7 +502,7 @@ fn testgen_emit_algebra_law_claim(
   }
 }
 
-fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase> {
+fn algebra_law_manual_claim_case(anchor: v2.std.verification.ManualAnchorKey) -> Outcome<AlgebraLawCase> {
   match algebra_law_subject_for_manual_anchor(anchor: anchor) {
     Accepted { value: subject, diagnostics: None } =>
       Accepted {
@@ -517,7 +517,7 @@ fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawC
   }
 }
 
-fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<AlgebraLawSubject> {
+fn algebra_law_subject_for_manual_anchor(anchor: v2.std.verification.ManualAnchorKey) -> Outcome<AlgebraLawSubject> {
   match anchor {
     ManualNatAddLeftIdentity =>
       Accepted {
@@ -576,7 +576,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
     _ =>
       Rejected {
         diagnostics: diagnostics_singleton(
-          d: Diagnostic {
+          d: v2.std.diagnostic.Diagnostic {
             reason: ^algebra_law_anchor_mismatch,
             at: Textual { file: ^testgen_lens_file, extent: WholeFile },
             correction: Unavailable { reason: UserInputBoundary }
@@ -586,49 +586,49 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
   }
 }
 
-fn algebra_law_subject_atom(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+fn algebra_law_subject_atom(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
 fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
-      Edge { label: Named { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
-      Edge { label: Named { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
+      v2.std.node.Edge { label: Named { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
+      v2.std.node.Edge { label: Named { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
+      v2.std.node.Edge { label: Named { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
 fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
-      Edge { label: Named { name: ^t19_algebra_law_expression_field }, target: expression },
+      v2.std.node.Edge { label: Named { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
+      v2.std.node.Edge { label: Named { name: ^t19_algebra_law_expression_field }, target: expression },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
-  Node {
+fn witness_validity_symbol_atom_node(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
-  Node {
+fn witness_validity_predicate_node(p: v2.std.find_witness.PreservationPredicate) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^witness_validity_field_algebra }, target: p.algebra },
-      Edge {
+      v2.std.node.Edge { label: Named { name: ^witness_validity_field_algebra }, target: p.algebra },
+      v2.std.node.Edge {
         label: Named { name: ^witness_validity_field_preservation_rule },
         target: witness_validity_symbol_atom_node(s: p.preservation_rule)
       }
@@ -637,22 +637,22 @@ fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
 }
 }
 
-fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
-  Node {
+fn witness_validity_witness_node(w: v2.std.witness.StructuralPropertyWitness) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^witness_validity_field_property },
         target: witness_validity_symbol_atom_node(s: w.property)
       },
-      Edge { label: Named { name: ^witness_validity_field_evidence }, target: w.evidence }
+      v2.std.node.Edge { label: Named { name: ^witness_validity_field_evidence }, target: w.evidence }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn witness_validity_byte_range_unencodable_diagnostic(at_node: Node) -> Diagnostic {
-  Diagnostic {
+fn witness_validity_byte_range_unencodable_diagnostic(at_node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^witness_validity_byte_range_unencodable,
     at: node_locus(node: at_node),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -662,8 +662,8 @@ fn witness_validity_byte_range_unencodable_diagnostic(at_node: Node) -> Diagnost
 fn witness_validity_subject_node(
   source_facts: Node,
   candidate: Node,
-  predicate: PreservationPredicate,
-  witness: StructuralPropertyWitness
+  predicate: v2.std.find_witness.PreservationPredicate,
+  witness: v2.std.witness.StructuralPropertyWitness
 ) -> Outcome<Node> {
   bind_outcome(
     o: witness_validity_outcome_node(
@@ -676,20 +676,20 @@ fn witness_validity_subject_node(
     ),
     f: fn(oracle_outcome) {
       Accepted {
-        value: Node {
+        value: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: ^witness_validity_field_source_facts }, target: source_facts },
-            Edge { label: Named { name: ^witness_validity_field_candidate }, target: candidate },
-            Edge {
+            v2.std.node.Edge { label: Named { name: ^witness_validity_field_source_facts }, target: source_facts },
+            v2.std.node.Edge { label: Named { name: ^witness_validity_field_candidate }, target: candidate },
+            v2.std.node.Edge {
               label: Named { name: ^witness_validity_field_predicate },
               target: witness_validity_predicate_node(p: predicate)
             },
-            Edge {
+            v2.std.node.Edge {
               label: Named { name: ^witness_validity_field_witness },
               target: witness_validity_witness_node(w: witness)
             },
-            Edge {
+            v2.std.node.Edge {
               label: Named { name: ^witness_validity_field_oracle_outcome },
               target: oracle_outcome
             }
@@ -702,7 +702,7 @@ fn witness_validity_subject_node(
   )
 }
 
-fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
+fn witness_validity_no_correction_reason_node(r: v2.std.diagnostic.NoCorrectionReason) -> Node {
   match r {
     UserInputBoundary =>
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_user)
@@ -715,21 +715,21 @@ fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
   }
 }
 
-fn witness_validity_correction_node(c: Correction) -> Node {
+fn witness_validity_correction_node(c: v2.std.diagnostic.Correction) -> Node {
   match c {
     Suggested { node: n } =>
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: ^witness_validity_correction_tag_suggested }, target: n }
+          v2.std.node.Edge { label: Named { name: ^witness_validity_correction_tag_suggested }, target: n }
         ],
         occurrence_id: SyntheticOccurrence
 }
     Unavailable { reason: r } =>
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^witness_validity_correction_tag_unavailable },
             target: witness_validity_no_correction_reason_node(r: r)
           }
@@ -739,7 +739,7 @@ fn witness_validity_correction_node(c: Correction) -> Node {
   }
 }
 
-fn witness_validity_extent_node(e: Extent) -> Outcome<Node> {
+fn witness_validity_extent_node(e: v2.std.diagnostic.Extent) -> Outcome<Node> {
   match e {
     WholeFile =>
       Accepted {
@@ -755,24 +755,24 @@ fn witness_validity_extent_node(e: Extent) -> Outcome<Node> {
   }
 }
 
-fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
+fn witness_validity_locus_node(l: v2.std.diagnostic.Locus) -> Outcome<Node> {
   match l {
     Textual { file: f, extent: e } =>
       bind_outcome(o: witness_validity_extent_node(e: e), f: fn(en) {
         Accepted {
-          value: Node {
+          value: v2.std.node.Node {
             kind: TypeNode { connective: Conj },
             children: [
-              Edge {
+              v2.std.node.Edge {
                 label: Named { name: ^witness_validity_locus_tag_textual },
-                target: Node {
+                target: v2.std.node.Node {
                   kind: TypeNode { connective: Conj },
                   children: [
-                    Edge {
+                    v2.std.node.Edge {
                       label: Named { name: ^witness_validity_locus_textual_file },
                       target: witness_validity_symbol_atom_node(s: f)
                     },
-                    Edge {
+                    v2.std.node.Edge {
                       label: Named { name: ^witness_validity_locus_textual_extent },
                       target: en
                     }
@@ -788,10 +788,10 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
       })
     NodeLocus { anchor: a } =>
       Accepted {
-        value: Node {
+        value: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: ^witness_validity_locus_tag_node }, target: a.at }
+            v2.std.node.Edge { label: Named { name: ^witness_validity_locus_tag_node }, target: a.at }
           ],
           occurrence_id: SyntheticOccurrence
 },
@@ -799,10 +799,10 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
       }
     PortLocus { anchor: a } =>
       Accepted {
-        value: Node {
+        value: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge {
+            v2.std.node.Edge {
               label: Named { name: ^witness_validity_locus_tag_port },
               target: witness_validity_symbol_atom_node(s: a.at)
             }
@@ -814,21 +814,21 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
   }
 }
 
-fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
+fn witness_validity_diagnostic_node(d: v2.std.diagnostic.Diagnostic) -> Outcome<Node> {
   bind_outcome(o: witness_validity_locus_node(l: d.at), f: fn(at_node) {
     Accepted {
-      value: Node {
+      value: v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^witness_validity_diag_field_reason },
             target: witness_validity_symbol_atom_node(s: d.reason)
           },
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^witness_validity_diag_field_at },
             target: at_node
           },
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^witness_validity_diag_field_correction },
             target: witness_validity_correction_node(c: d.correction)
           }
@@ -840,7 +840,7 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
   })
 }
 
-fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<Node> {
+fn witness_validity_diagnostic_list_node(xs: FreeMonoid<v2.std.diagnostic.Diagnostic>) -> Outcome<Node> {
   fold_list_right(
     xs: xs,
     empty: Accepted {
@@ -851,11 +851,11 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<
       bind_outcome(o: acc, f: fn(prev_node) {
         bind_outcome(o: witness_validity_diagnostic_node(d: h), f: fn(hn) {
           Accepted {
-            value: Node {
+            value: v2.std.node.Node {
               kind: TypeNode { connective: Conj },
               children: [
-                Edge { label: Named { name: ^witness_validity_list_cons_head }, target: hn },
-                Edge { label: Named { name: ^witness_validity_list_cons_tail }, target: prev_node }
+                v2.std.node.Edge { label: Named { name: ^witness_validity_list_cons_head }, target: hn },
+                v2.std.node.Edge { label: Named { name: ^witness_validity_list_cons_tail }, target: prev_node }
               ],
               occurrence_id: SyntheticOccurrence
 },
@@ -867,18 +867,18 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<
   )
 }
 
-fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcome<Node> {
+fn witness_validity_non_empty_diagnostics_node(d: v2.std.diagnostic.NonEmptyDiagnostics) -> Outcome<Node> {
   bind_outcome(o: witness_validity_diagnostic_node(d: d.head), f: fn(hn) {
     bind_outcome(o: witness_validity_diagnostic_list_node(xs: d.tail), f: fn(tn) {
       Accepted {
-        value: Node {
+        value: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge {
+            v2.std.node.Edge {
               label: Named { name: ^witness_validity_diags_field_head },
               target: hn
             },
-            Edge {
+            v2.std.node.Edge {
               label: Named { name: ^witness_validity_diags_field_tail },
               target: tn
             }
@@ -891,7 +891,7 @@ fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcom
   })
 }
 
-fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
+fn witness_validity_diagnostics_node(ds: v2.std.diagnostic.Diagnostics) -> Outcome<Node> {
   match ds {
     None =>
       Accepted {
@@ -901,10 +901,10 @@ fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
     Some { diagnostics: nd } =>
       bind_outcome(o: witness_validity_non_empty_diagnostics_node(d: nd), f: fn(ndn) {
         Accepted {
-          value: Node {
+          value: v2.std.node.Node {
             kind: TypeNode { connective: Conj },
             children: [
-              Edge {
+              v2.std.node.Edge {
                 label: Named { name: ^witness_validity_diagnostics_tag_some },
                 target: ndn
               }
@@ -917,24 +917,24 @@ fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
   }
 }
 
-fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outcome<Node> {
+fn witness_validity_outcome_node(o: Outcome<v2.std.witness.StructuralPropertyWitness>) -> Outcome<Node> {
   match o {
     Accepted { value: w, diagnostics: ds } =>
       bind_outcome(o: witness_validity_diagnostics_node(ds: ds), f: fn(dsn) {
         Accepted {
-          value: Node {
+          value: v2.std.node.Node {
             kind: TypeNode { connective: Conj },
             children: [
-              Edge {
+              v2.std.node.Edge {
                 label: Named { name: ^witness_validity_outcome_holds },
-                target: Node {
+                target: v2.std.node.Node {
                   kind: TypeNode { connective: Conj },
                   children: [
-                    Edge {
+                    v2.std.node.Edge {
                       label: Named { name: ^witness_validity_outcome_accepted_value },
                       target: witness_validity_witness_node(w: w)
                     },
-                    Edge {
+                    v2.std.node.Edge {
                       label: Named { name: ^witness_validity_outcome_accepted_diagnostics },
                       target: dsn
                     }
@@ -951,10 +951,10 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
     Rejected { diagnostics: d } =>
       bind_outcome(o: witness_validity_non_empty_diagnostics_node(d: d), f: fn(dn) {
         Accepted {
-          value: Node {
+          value: v2.std.node.Node {
             kind: TypeNode { connective: Conj },
             children: [
-              Edge {
+              v2.std.node.Edge {
                 label: Named { name: ^witness_validity_outcome_violates },
                 target: dn
               }
@@ -971,9 +971,9 @@ fn testgen_emit_witness_validity_claim(
   label: String,
   source_facts: Node,
   candidate: Node,
-  predicate: PreservationPredicate,
-  witness: StructuralPropertyWitness
-) -> Outcome<TestClaim> {
+  predicate: v2.std.find_witness.PreservationPredicate,
+  witness: v2.std.witness.StructuralPropertyWitness
+) -> Outcome<v2.std.verification.TestClaim> {
   bind_outcome(
     o: witness_validity_subject_node(
       source_facts: source_facts,
@@ -987,7 +987,7 @@ fn testgen_emit_witness_validity_claim(
           label: label,
           anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
           input: input_node,
-          classification: TestClassification { tier: Tier1, layer: Unit }
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
         },
         diagnostics: None
       }
@@ -999,7 +999,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
   [
     Generator {
       kind: TestClaimCompilesClaimVariant,
-      classification: TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
       anchor: manual_claim_anchor(anchor: ManualLbeConjDagSurface),
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_conj_dag_surface(),
@@ -1010,7 +1010,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
     },
     Generator {
       kind: TestClaimCompilesClaimVariant,
-      classification: TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
       anchor: manual_claim_anchor(anchor: ManualLbeDisjDagSurface),
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_disj_dag_surface(),
@@ -1021,7 +1021,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
     },
     Generator {
       kind: TestClaimCompilesClaimVariant,
-      classification: TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
       anchor: manual_claim_anchor(anchor: ManualLbeTransformDagSurface),
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_transform_dag_surface(),
@@ -1033,8 +1033,8 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
   ]
 }
 
-fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^testgen_non_algebra_law_scheduled_slot,
     at: Textual { file: ^testgen_lens_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
@@ -1046,7 +1046,7 @@ type NatAlgebraLawScheduleRow {
   anchor: v2.std.verification.ManualAnchorKey
 }
 
-fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> AlgebraLawSubject {
+fn algebra_law_subject_from_nat_obligation(o: v2.std.nat.NatAlgebraLawObligation) -> AlgebraLawSubject {
   AlgebraLawSubject {
     algebra: o.algebra,
     inhabitant: o.inhabitant,
@@ -1055,10 +1055,10 @@ fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> Algebr
 }
 
 fn append_nat_obligation_if_law_matches(
-  found: Outcome<NatAlgebraLawObligation>,
-  obligation: NatAlgebraLawObligation,
-  law: Symbol
-) -> Outcome<NatAlgebraLawObligation> {
+  found: Outcome<v2.std.nat.NatAlgebraLawObligation>,
+  obligation: v2.std.nat.NatAlgebraLawObligation,
+  law: v2.std.node.Symbol
+) -> Outcome<v2.std.nat.NatAlgebraLawObligation> {
   match found {
     Accepted { value: _, diagnostics: None } => found
     Rejected { diagnostics: _ } =>
@@ -1070,12 +1070,12 @@ fn append_nat_obligation_if_law_matches(
   }
 }
 
-fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawObligation> {
+fn nat_algebra_law_obligation_for_law(law: v2.std.node.Symbol) -> Outcome<v2.std.nat.NatAlgebraLawObligation> {
   fold_list(
     xs: nat_declared_algebra_law_obligations(),
     empty: Rejected {
       diagnostics: diagnostics_singleton(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: ^testgen_non_algebra_law_scheduled_slot,
           at: Textual { file: ^testgen_lens_file, extent: WholeFile },
           correction: Unavailable { reason: UserInputBoundary }
@@ -1092,7 +1092,7 @@ fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawOblig
   )
 }
 
-fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
+fn testgen_manual_anchor_for_law(law: v2.std.node.Symbol) -> Outcome<v2.std.verification.ManualAnchorKey> {
   if law == ^law_nat_add_left_identity {
     Accepted { value: ManualNatAddLeftIdentity, diagnostics: None }
   } else if law == ^law_nat_add_right_identity {
@@ -1115,13 +1115,13 @@ fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
 }
 
 fn testgen_manual_anchor_from_nat_obligation(
-  o: NatAlgebraLawObligation
-) -> Outcome<ManualAnchorKey> {
+  o: v2.std.nat.NatAlgebraLawObligation
+) -> Outcome<v2.std.verification.ManualAnchorKey> {
   testgen_manual_anchor_for_law(law: o.law)
 }
 
 fn nat_algebra_law_schedule_row_from_obligation(
-  obligation: NatAlgebraLawObligation
+  obligation: v2.std.nat.NatAlgebraLawObligation
 ) -> Outcome<NatAlgebraLawScheduleRow> {
   bind_outcome(
     o: testgen_manual_anchor_for_law(law: obligation.law),
@@ -1134,7 +1134,7 @@ fn nat_algebra_law_schedule_row_from_obligation(
   )
 }
 
-fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
+fn nat_manual_anchor_key_eq(a: v2.std.verification.ManualAnchorKey, b: v2.std.verification.ManualAnchorKey) -> Bool {
   match a {
     ManualNatAddLeftIdentity =>
       match b {
@@ -1172,8 +1172,8 @@ fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
 
 fn append_nat_algebra_law_schedule_row_if_anchor_matches(
   found: Outcome<NatAlgebraLawScheduleRow>,
-  obligation: NatAlgebraLawObligation,
-  anchor: ManualAnchorKey
+  obligation: v2.std.nat.NatAlgebraLawObligation,
+  anchor: v2.std.verification.ManualAnchorKey
 ) -> Outcome<NatAlgebraLawScheduleRow> {
   match found {
     Accepted { value: _, diagnostics: _ } => found
@@ -1192,7 +1192,7 @@ fn append_nat_algebra_law_schedule_row_if_anchor_matches(
 }
 
 fn nat_algebra_law_schedule_row_for_manual_anchor(
-  anchor: ManualAnchorKey
+  anchor: v2.std.verification.ManualAnchorKey
 ) -> Outcome<NatAlgebraLawScheduleRow> {
   fold_list(
     xs: nat_declared_algebra_law_obligations(),
@@ -1212,7 +1212,7 @@ fn nat_algebra_law_schedule_row_for_manual_anchor(
 }
 
 fn testgen_algebra_law_generator_from_nat_obligation(
-  obligation: NatAlgebraLawObligation
+  obligation: v2.std.nat.NatAlgebraLawObligation
 ) -> Outcome<Generator<TestgenConcept>> {
   bind_outcome(
     o: testgen_manual_anchor_from_nat_obligation(o: obligation),
@@ -1220,7 +1220,7 @@ fn testgen_algebra_law_generator_from_nat_obligation(
       Accepted {
         value: Generator {
           kind: TestClaimEqualsClaimVariant,
-          classification: TestClassification { tier: Tier1, layer: Unit },
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
           anchor: manual_claim_anchor(anchor: anchor),
           slot: AlgebraLaw {
             subject: algebra_law_subject_from_nat_obligation(o: obligation),
@@ -1236,7 +1236,7 @@ fn testgen_algebra_law_generator_from_nat_obligation(
 
 fn append_algebra_law_generator_from_nat_obligation(
   acc: Outcome<List<Generator<TestgenConcept>>>,
-  obligation: NatAlgebraLawObligation
+  obligation: v2.std.nat.NatAlgebraLawObligation
 ) -> Outcome<List<Generator<TestgenConcept>>> {
   bind_outcome(
     o: acc,
@@ -1268,8 +1268,8 @@ fn testgen_scheduled_algebra_law_generators() -> Outcome<List<Generator<TestgenC
 }
 
 fn nat_algebra_law_obligation_for_manual_anchor(
-  anchor: ManualAnchorKey
-) -> Outcome<NatAlgebraLawObligation> {
+  anchor: v2.std.verification.ManualAnchorKey
+) -> Outcome<v2.std.nat.NatAlgebraLawObligation> {
   bind_outcome(
     o: nat_algebra_law_schedule_row_for_manual_anchor(anchor: anchor),
     f: fn(row) {
@@ -1279,7 +1279,7 @@ fn nat_algebra_law_obligation_for_manual_anchor(
 }
 
 fn testgen_algebra_law_concept_for_manual_nat_anchor(
-  anchor: ManualAnchorKey
+  anchor: v2.std.verification.ManualAnchorKey
 ) -> Outcome<TestgenConcept> {
   bind_outcome(
     o: nat_algebra_law_obligation_for_manual_anchor(anchor: anchor),
@@ -1389,26 +1389,26 @@ fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> 
   )
 }
 
-fn coproduct_exhaustiveness_anchor(coproduct_type: Symbol, omitted_variant: Symbol) -> GeneratedAnchorKey {
+fn coproduct_exhaustiveness_anchor(coproduct_type: v2.std.node.Symbol, omitted_variant: v2.std.node.Symbol) -> v2.std.verification.GeneratedAnchorKey {
   GeneratedCoproductExhaustiveness { coproduct_type: coproduct_type, omitted_variant: omitted_variant }
 }
 
-fn coproduct_exhaustiveness_anchor_coproduct_type(anchor: GeneratedAnchorKey) -> Symbol {
+fn coproduct_exhaustiveness_anchor_coproduct_type(anchor: v2.std.verification.GeneratedAnchorKey) -> v2.std.node.Symbol {
   match anchor {
     GeneratedCoproductExhaustiveness { coproduct_type, omitted_variant: _ } => coproduct_type
     GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } => ^coproduct_exhaustiveness_anchor_not_exhaustiveness
   }
 }
 
-fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> Symbol {
+fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: v2.std.verification.GeneratedAnchorKey) -> v2.std.node.Symbol {
   match anchor {
     GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant } => omitted_variant
     GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } => ^coproduct_exhaustiveness_anchor_not_exhaustiveness
   }
 }
 
-fn coproduct_exhaustiveness_variant_node(omitted_variant: Symbol) -> Node {
-  Node {
+fn coproduct_exhaustiveness_variant_node(omitted_variant: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode {
       connective: Atom { identity: omitted_variant }
     },
@@ -1417,13 +1417,13 @@ fn coproduct_exhaustiveness_variant_node(omitted_variant: Symbol) -> Node {
 }
 }
 
-fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
-  Node {
+fn coproduct_exhaustiveness_input(anchor: v2.std.verification.GeneratedAnchorKey) -> Node {
+  v2.std.node.Node {
     kind: TypeNode {
       connective: Atom { identity: coproduct_exhaustiveness_anchor_coproduct_type(anchor: anchor) }
     },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^coproduct_exhaustiveness_omitted_variant_edge },
         target: coproduct_exhaustiveness_variant_node(
           omitted_variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
@@ -1434,7 +1434,7 @@ fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
 }
 }
 
-fn coproduct_exhaustiveness_label(anchor: GeneratedAnchorKey) -> String {
+fn coproduct_exhaustiveness_label(anchor: v2.std.verification.GeneratedAnchorKey) -> String {
   concat(
     "generated/diagnostic-exhaustiveness: coproduct ",
     concat(
@@ -1449,8 +1449,8 @@ fn coproduct_exhaustiveness_label(anchor: GeneratedAnchorKey) -> String {
 
 fn coproduct_exhaustiveness_diagnostic(
   input: Node
-) -> Diagnostic {
-  Diagnostic {
+) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^coproduct_exhaustiveness_missing_variant,
     at: node_locus(node: input),
     correction: Unavailable { reason: UserInputBoundary }
@@ -1458,8 +1458,8 @@ fn coproduct_exhaustiveness_diagnostic(
 }
 
 fn testgen_emit_coproduct_exhaustiveness_claim(
-  anchor: GeneratedAnchorKey
-) -> Outcome<TestClaim> {
+  anchor: v2.std.verification.GeneratedAnchorKey
+) -> Outcome<v2.std.verification.TestClaim> {
   let input = coproduct_exhaustiveness_input(anchor: anchor)
   Accepted {
     value: DiagnosticClaim {
@@ -1469,15 +1469,15 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
       expected_rejection: diagnostics_singleton(
         d: coproduct_exhaustiveness_diagnostic(input: input)
       ),
-      classification: TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     },
     diagnostics: None,
   }
 }
 
 fn coproduct_exhaustiveness_generator(
-  coproduct_type: Symbol,
-  omitted_variant: Symbol
+  coproduct_type: v2.std.node.Symbol,
+  omitted_variant: v2.std.node.Symbol
 ) -> Generator<TestgenConcept> {
   let anchor = coproduct_exhaustiveness_anchor(
     coproduct_type: coproduct_type,
@@ -1485,7 +1485,7 @@ fn coproduct_exhaustiveness_generator(
   )
   Generator {
     kind: TestClaimDiagnosticClaimVariant,
-    classification: TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     anchor: generated_claim_anchor(anchor: anchor),
     slot: DiagnosticExhaustiveness {
       coproduct_type: coproduct_type,
@@ -1497,7 +1497,7 @@ fn coproduct_exhaustiveness_generator(
 }
 
 fn coproduct_exhaustiveness_generators_for_decl(
-  decl: ConceptDecl
+  decl: v2.std.concept_index.ConceptDecl
 ) -> List<Generator<TestgenConcept>> {
   fold(
     coproduct_arm_key_list_from_node(node: decl.node),
@@ -1524,42 +1524,42 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
   )
 }
 
-data cross_repr_native_value_bool: Symbol = ^native_value_bool
-data cross_repr_native_value_null: Symbol = ^native_value_null
+data cross_repr_native_value_bool: v2.std.node.Symbol = ^native_value_bool
+data cross_repr_native_value_null: v2.std.node.Symbol = ^native_value_null
 
 fn cross_representation_equality_anchor(
-  modeled_coproduct: Symbol,
-  native_realization: Symbol
-) -> GeneratedAnchorKey {
+  modeled_coproduct: v2.std.node.Symbol,
+  native_realization: v2.std.node.Symbol
+) -> v2.std.verification.GeneratedAnchorKey {
   GeneratedCrossRepresentationEquality {
     modeled_coproduct: modeled_coproduct,
     native_realization: native_realization
   }
 }
 
-fn cross_representation_anchor_modeled_coproduct(anchor: GeneratedAnchorKey) -> Symbol {
+fn cross_representation_anchor_modeled_coproduct(anchor: v2.std.verification.GeneratedAnchorKey) -> v2.std.node.Symbol {
   match anchor {
     GeneratedCrossRepresentationEquality { modeled_coproduct, native_realization: _ } => modeled_coproduct
     GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } => ^cross_representation_anchor_not_straddle
   }
 }
 
-fn cross_representation_anchor_native_realization(anchor: GeneratedAnchorKey) -> Symbol {
+fn cross_representation_anchor_native_realization(anchor: v2.std.verification.GeneratedAnchorKey) -> v2.std.node.Symbol {
   match anchor {
     GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization } => native_realization
     GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } => ^cross_representation_anchor_not_straddle
   }
 }
 
-fn cross_representation_representation_node(identity: Symbol) -> Node {
-  Node {
+fn cross_representation_representation_node(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn cross_representation_equality_label(anchor: GeneratedAnchorKey) -> String {
+fn cross_representation_equality_label(anchor: v2.std.verification.GeneratedAnchorKey) -> String {
   concat(
     "generated/cross-representation-equality: modeled ",
     concat(
@@ -1573,8 +1573,8 @@ fn cross_representation_equality_label(anchor: GeneratedAnchorKey) -> String {
 }
 
 fn testgen_emit_cross_representation_equality_claim(
-  anchor: GeneratedAnchorKey
-) -> Outcome<TestClaim> {
+  anchor: v2.std.verification.GeneratedAnchorKey
+) -> Outcome<v2.std.verification.TestClaim> {
   Accepted {
     value: EqualsClaim {
       label: cross_representation_equality_label(anchor: anchor),
@@ -1585,15 +1585,15 @@ fn testgen_emit_cross_representation_equality_claim(
       rhs: cross_representation_representation_node(
         identity: cross_representation_anchor_native_realization(anchor: anchor)
       ),
-      classification: TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     },
     diagnostics: None,
   }
 }
 
 fn cross_representation_equality_generator(
-  modeled_coproduct: Symbol,
-  native_realization: Symbol
+  modeled_coproduct: v2.std.node.Symbol,
+  native_realization: v2.std.node.Symbol
 ) -> Generator<TestgenConcept> {
   let anchor = cross_representation_equality_anchor(
     modeled_coproduct: modeled_coproduct,
@@ -1601,7 +1601,7 @@ fn cross_representation_equality_generator(
   )
   Generator {
     kind: TestClaimEqualsClaimVariant,
-    classification: TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     anchor: generated_claim_anchor(anchor: anchor),
     slot: CrossRepresentationEquality {
       modeled_coproduct: modeled_coproduct,
@@ -1695,13 +1695,13 @@ type TestgenRunReceipt {
   generators: List<Generator<TestgenConcept>>
 }
 
-fn generator_matches_profile(g: Generator<TestgenConcept>, profile_ref: Symbol) -> Bool {
+fn generator_matches_profile(g: Generator<TestgenConcept>, profile_ref: v2.std.node.Symbol) -> Bool {
   g.profile_metadata.profile_ref == profile_ref
 }
 
 fn testgen_scheduled_generators_matching_profile(
   gens: List<Generator<TestgenConcept>>,
-  profile_ref: Symbol
+  profile_ref: v2.std.node.Symbol
 ) -> List<Generator<TestgenConcept>> {
   filter(
     xs: gens,
@@ -1711,7 +1711,7 @@ fn testgen_scheduled_generators_matching_profile(
   )
 }
 
-fn testgen_run_receipt_outcome(profile_ref: Symbol) -> Outcome<TestgenRunReceipt> {
+fn testgen_run_receipt_outcome(profile_ref: v2.std.node.Symbol) -> Outcome<TestgenRunReceipt> {
   bind_outcome(
     o: testgen_scheduled_generators_outcome(),
     f: fn(gens) {
@@ -1761,15 +1761,15 @@ fn testgen_run_receipt_carries_profile_roster(receipt: TestgenRunReceipt) -> Boo
   }
 }
 
-fn manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn manual_anchor_absent_bootstrap_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^manual_anchor_absent_bootstrap,
     at: Textual { file: ^testgen_lens_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
-fn manual_test_claim_for_manual_anchor(key: ManualAnchorKey) -> Outcome<TestClaim> {
+fn manual_test_claim_for_manual_anchor(key: v2.std.verification.ManualAnchorKey) -> Outcome<v2.std.verification.TestClaim> {
   match key {
     ManualAnchorAbsent =>
       Rejected { diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()) }
@@ -1821,7 +1821,7 @@ fn manual_test_claim_for_manual_anchor(key: ManualAnchorKey) -> Outcome<TestClai
   }
 }
 
-fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept> {
+fn testgen_concept_for_manual_claim(claim: v2.std.verification.TestClaim) -> Outcome<TestgenConcept> {
   match test_claim_anchor(c: claim) {
     ManualClaimAnchor { manual_anchor: ManualAnchorAbsent } =>
       Rejected { diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()) }
@@ -1941,7 +1941,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
 }
 
 fn bootstrap_claim_generator_for_manual_anchor(
-  key: ManualAnchorKey
+  key: v2.std.verification.ManualAnchorKey
 ) -> Outcome<Generator<TestgenConcept>> {
   match manual_test_claim_for_manual_anchor(key: key) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1965,6 +1965,6 @@ fn bootstrap_claim_generator_for_manual_anchor(
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: RatchetForever
 }

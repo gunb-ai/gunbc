@@ -23,7 +23,7 @@ type OsInstallActuatorPlan {
   steps: List<OsInstallActuatorStep>
 }
 
-fn boot_once_step(target: RedfishBootSourceOverrideTarget) -> OsInstallActuatorStep {
+fn boot_once_step(target: extdeps.bmc.types.RedfishBootSourceOverrideTarget) -> OsInstallActuatorStep {
   ActuatorBootOnce {
     target: target,
     enabled: BootOverrideOnce,
@@ -34,7 +34,7 @@ fn force_restart_step() -> OsInstallActuatorStep {
   ActuatorForceRestart { reset_type: ResetForceRestart }
 }
 
-fn nbd_proxy_serve_step(export: NbdProxyServeInterface) -> OsInstallActuatorStep {
+fn nbd_proxy_serve_step(export: extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterface) -> OsInstallActuatorStep {
   ActuatorNbdProxyServe {
     endpoint: asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
     slot: 0,
@@ -43,7 +43,7 @@ fn nbd_proxy_serve_step(export: NbdProxyServeInterface) -> OsInstallActuatorStep
   }
 }
 
-fn os_install_actuator_steps(mechanism: OsInstallMechanism, export: NbdProxyServeInterface) -> List<OsInstallActuatorStep> {
+fn os_install_actuator_steps(mechanism: gunbc.os_install_mechanism.OsInstallMechanism, export: extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterface) -> List<OsInstallActuatorStep> {
   let boot_target = install_boot_target_for(mechanism: mechanism)
   match mechanism {
     VirtualMediaInstall => [
@@ -70,23 +70,23 @@ fn os_install_actuator_steps(mechanism: OsInstallMechanism, export: NbdProxyServ
   }
 }
 
-fn os_install_actuator_plan(mechanism: OsInstallMechanism, export: NbdProxyServeInterface) -> OsInstallActuatorPlan {
+fn os_install_actuator_plan(mechanism: gunbc.os_install_mechanism.OsInstallMechanism, export: extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterface) -> OsInstallActuatorPlan {
   OsInstallActuatorPlan {
     mechanism: mechanism,
     steps: os_install_actuator_steps(mechanism: mechanism, export: export),
   }
 }
 
-data srv3_nbd_proxy_export_dissolution_trigger: Disposition = Scaffold {
+data srv3_nbd_proxy_export_dissolution_trigger: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.nbd_proxy_virtual_media_install",
     decl_name: "srv3_nbd_proxy_export_placeholder",
     field: WholeDeclaration
   }
 }
 
-data srv3_nbd_proxy_export_placeholder: NbdProxyServeInterface = NbdProxyServeInterface {
+data srv3_nbd_proxy_export_placeholder: extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterface = extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterface {
   export_byte_count: byte_size(0),
 }
 
@@ -101,8 +101,8 @@ type OsInstallActuatorPlanStanding
   | ActuatorPlanRefused { cause: OsInstallActuatorPlanRefusal }
 
 fn os_install_actuator_plan_standing_for(
-  solution: OsInstallMechanismSolution,
-  export: NbdProxyServeInterface,
+  solution: gunbc.os_install_mechanism.OsInstallMechanismSolution,
+  export: extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterface,
 ) -> OsInstallActuatorPlanStanding {
   match solution {
     OsInstallMechanismSelected { mechanism: m } =>
@@ -170,7 +170,7 @@ fn actuator_step_realization(step: OsInstallActuatorStep) -> ActuatorStepRealiza
   match step {
     ActuatorBootOnce { target: t, enabled: e } =>
       ActuatorStepReady {
-        intent: HostEffectIntent {
+        intent: gunbc.host_effect.HostEffectIntent {
           target: BmcController { node: srv3_host },
           effect: RedfishAction {
             action: SetBootSourceOverride { target: t, enabled: e }
@@ -182,7 +182,7 @@ fn actuator_step_realization(step: OsInstallActuatorStep) -> ActuatorStepRealiza
       }
     ActuatorForceRestart { reset_type: r } =>
       ActuatorStepReady {
-        intent: HostEffectIntent {
+        intent: gunbc.host_effect.HostEffectIntent {
           target: BmcController { node: srv3_host },
           effect: RedfishAction {
             action: ResetSystem { reset_type: r }
@@ -194,7 +194,7 @@ fn actuator_step_realization(step: OsInstallActuatorStep) -> ActuatorStepRealiza
       }
     ActuatorNbdProxyServe { endpoint: ep, slot: s, index: i, export: _ } =>
       ActuatorStepReady {
-        intent: HostEffectIntent {
+        intent: gunbc.host_effect.HostEffectIntent {
           target: HostOs { node: srv3_os_install_actuator_host },
           effect: Srv3NbdProxyServe {
             intent: nbd_proxy_serve_transport_intent(

@@ -12,25 +12,25 @@ type HardwareProcurementIntent {
 }
 
 // The two static reservations the operator authored on the CR1000A, transcribed verbatim from the router table they supplied (spark-a3ee 192.168.1.222 4C:BB:47:E8:A3:EE / spark-3bd5 192.168.1.223 4C:BB:47:E8:3B:D5; both MACs independently ARP-confirmed on the LAN). These are OBSERVED ROUTER FACTS and nothing more. The reservation labels are vendor-derived from the MAC tail -- they are the units' factory hotspot SSIDs -- which makes them display aliases of the box, NOT fleet identity: a label that the vendor generated cannot decide which fleet subject a machine serves, and reading one as if it could is the same presentation-as-identity error the collector-observation carrier below exists to prevent. So the join to a slot is never inferred from a label: it is the explicit OperatorAllocation recorded below.
-data spark_a3ee_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
-  mac_address: "4C:BB:47:E8:A3:EE" as MacAddress,
+data spark_a3ee_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow = extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow {
+  mac_address: "4C:BB:47:E8:A3:EE" as extdeps.dhcp.v4.MacAddress,
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
   lease: StaticDhcpReservation {
-    reservation_label: "spark-a3ee" as NonEmptyStr,
+    reservation_label: "spark-a3ee" as std.types.NonEmptyStr,
     status: Active,
   },
 }
 
-data spark_3bd5_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
-  mac_address: "4C:BB:47:E8:3B:D5" as MacAddress,
+data spark_3bd5_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow = extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow {
+  mac_address: "4C:BB:47:E8:3B:D5" as extdeps.dhcp.v4.MacAddress,
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223),
   lease: StaticDhcpReservation {
-    reservation_label: "spark-3bd5" as NonEmptyStr,
+    reservation_label: "spark-3bd5" as std.types.NonEmptyStr,
     status: Active,
   },
 }
 
-data observed_dgx_spark_router_reservations: List<Cr1000aDhcpLeaseRow> = [
+data observed_dgx_spark_router_reservations: List<extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow> = [
   spark_a3ee_reservation,
   spark_3bd5_reservation,
 ]
@@ -72,7 +72,7 @@ type DgxSparkRouterBinding
       allocation: OperatorAllocation,
     }
 
-fn router_binding_identity(binding: DgxSparkRouterBinding) -> HostIdentity {
+fn router_binding_identity(binding: DgxSparkRouterBinding) -> product.placement_supply.HostIdentity {
   match binding {
     SlotUnassigned { identity: i } => i
     SlotAssigned { identity: i, reservation: _, allocation: _ } => i
@@ -120,7 +120,7 @@ fn dgx_spark_arrival_standing() -> DgxSparkArrivalStanding {
 }
 
 // Derived, not spelled: the set of reserved identities IS the set of identities carrying a router binding row, so the two cannot disagree (§2 -- a second hand-written identity list would be the copy that drifts).
-fn dgx_spark_reserved_identities() -> List<HostIdentity> {
+fn dgx_spark_reserved_identities() -> List<product.placement_supply.HostIdentity> {
   map(dgx_spark_router_bindings, b => router_binding_identity(binding: b))
 }
 
@@ -155,7 +155,7 @@ type DgxSparkAdmissionOutcome
   = DgxSparkDeploymentAdmitted { deployment: DgxSparkDeployment }
   | DgxSparkDeploymentRefused { reason: DgxSparkAdmissionRefusalReason }
 
-fn host_identity_is_reserved(identity: HostIdentity) -> Bool {
+fn host_identity_is_reserved(identity: product.placement_supply.HostIdentity) -> Bool {
   fold(
     dgx_spark_reserved_identities(),
     init: false,
@@ -164,7 +164,7 @@ fn host_identity_is_reserved(identity: HostIdentity) -> Bool {
 }
 
 // A tool ran is not a tool succeeded. The cited envelope carries BOTH a status and an exit code and they are independent facts (a StatusWarning `Endpoint degraded` observation is documented as "tool ran successfully but returned warning or failure status due to device health signals"), so success is the conjunction, never either one alone.
-fn envelope_reports_success(envelope: FleetLifecycleEnvelope) -> Bool {
+fn envelope_reports_success(envelope: extdeps.systems.nvidia_fleet_lifecycle.FleetLifecycleEnvelope) -> Bool {
   match envelope.status {
     StatusOk => envelope.rc == 0
     StatusWarning => false
@@ -179,9 +179,9 @@ fn envelope_reports_success(envelope: FleetLifecycleEnvelope) -> Bool {
 // checked once and then trusted: the deployment is built FROM the reservation value, and an Absent
 // reservation has no value to build from.
 fn admit_selected_dgx_spark_observation(
-  identity: HostIdentity,
-  catalog: IntegratedComputeSystemCatalogRow,
-  observation: FleetLifecycleObservation,
+  identity: product.placement_supply.HostIdentity,
+  catalog: extdeps.systems.types.IntegratedComputeSystemCatalogRow,
+  observation: gunbc.fleet_lifecycle_observation.FleetLifecycleObservation,
   router_binding: DgxSparkRouterBinding,
 ) -> DgxSparkAdmissionOutcome {
   if observation.envelope.tool != fleet_lifecycle_operation_tool_name(op: DeviceIdentity) {
@@ -265,9 +265,9 @@ fn admit_selected_dgx_spark_observation(
 // deployment, never as an admission gate (SPARK-ALLOC-LAND-0). Per review 49094 the causes are a
 // closed coproduct, not free-text prose.
 fn admit_dgx_spark_deployment(
-  identity: HostIdentity,
-  catalog: IntegratedComputeSystemCatalogRow,
-  selection: ObservationSelection,
+  identity: product.placement_supply.HostIdentity,
+  catalog: extdeps.systems.types.IntegratedComputeSystemCatalogRow,
+  selection: gunbc.fleet_lifecycle_observation.ObservationSelection,
   router_binding: DgxSparkRouterBinding,
 ) -> DgxSparkAdmissionOutcome {
   match selection {
@@ -304,7 +304,7 @@ type DgxSparkProcurementConvergence
 // Two arms, not three: a unit is deployed or it is pending with a typed, located cause. There is deliberately no `Unknown` arm -- every reason a unit is not deployed is one of the closed DgxSparkAdmissionRefusalReason causes, so "we could not tell" cannot masquerade as a verdict (§5 state-space conflation). This is a diff-shaped read but NOT an instance of the gunbc.membership_reconcile spine: that spine reconciles a desired member set against an OBSERVED member set of the same type with teardown as the Removed arm, and here the two sides are different types (a reserved identity vs an admitted deployment) and there is no teardown -- you cannot retract a machine that was never present. Instantiating the spine would mean inventing an M that fits neither side, so the genericity would buy nothing and cost a fake member type.
 fn dgx_spark_unit_disposition(
   binding: DgxSparkRouterBinding,
-  observations: List<FleetLifecycleObservation>,
+  observations: List<gunbc.fleet_lifecycle_observation.FleetLifecycleObservation>,
 ) -> DgxSparkUnitDisposition {
   match admit_dgx_spark_deployment(
     identity: router_binding_identity(binding: binding),
@@ -320,7 +320,7 @@ fn dgx_spark_unit_disposition(
 
 fn converge_dgx_spark_procurement(
   bindings: List<DgxSparkRouterBinding>,
-  observations: List<FleetLifecycleObservation>,
+  observations: List<gunbc.fleet_lifecycle_observation.FleetLifecycleObservation>,
 ) -> DgxSparkProcurementConvergence {
   let dispositions = map(bindings, b => dgx_spark_unit_disposition(binding: b, observations: observations))
   let pending = flat_map(dispositions, d =>

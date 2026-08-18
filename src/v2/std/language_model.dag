@@ -9,14 +9,14 @@ type LanguageModel {
   core: v2.std.model_core.ModelCore
 }
 
-fn language_model_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge {
+fn language_model_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge {
     label: Named { name: name },
     target: target
   }
 }
 
-fn language_model_empty_canonical_symbols() -> Set<Symbol> {
+fn language_model_empty_canonical_symbols() -> Set<v2.std.node.Symbol> {
   Set {
     member: fn(_) {
       false
@@ -24,7 +24,7 @@ fn language_model_empty_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn void_language_model(identity: Symbol) -> LanguageModel {
+fn void_language_model(identity: v2.std.node.Symbol) -> LanguageModel {
   LanguageModel {
     lex: VoidLexRules,
     grammar: VoidGrammar,
@@ -34,12 +34,12 @@ fn void_language_model(identity: Symbol) -> LanguageModel {
   }
 }
 
-fn language_model_canonical_symbols_to_node(symbols: Set<Symbol>) -> Node {
+fn language_model_canonical_symbols_to_node(symbols: Set<v2.std.node.Symbol>) -> Node {
   grammar_empty_node()
 }
 
 fn language_model_to_node(lm: LanguageModel) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       language_model_named_edge(

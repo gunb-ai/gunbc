@@ -3,15 +3,15 @@ module extdeps.systemd.oomd
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.freedesktop.org/software/systemd/man/latest/oomd.conf.html"
   }
 }
 
 
-data systemd_oomd_unit: NonEmptyStr = "systemd-oomd.service"
+data systemd_oomd_unit: std.types.NonEmptyStr = "systemd-oomd.service"
 data oomd_conf_path: std.types.FilePath = "/etc/systemd/oomd.conf"
 data oomd_conf_dropin_dir: std.types.FilePath = "/etc/systemd/oomd.conf.d"
 
@@ -39,20 +39,20 @@ type UnitManagedOomPolicy {
   managed_oom_memory_pressure_duration: std.measure.Second?
 }
 
-data oomd_managed_oom_memory_pressure_property: NonEmptyStr = "ManagedOOMMemoryPressure"
-data oomd_managed_oom_memory_pressure_limit_property: NonEmptyStr = "ManagedOOMMemoryPressureLimit"
-data oomd_managed_oom_swap_property: NonEmptyStr = "ManagedOOMSwap"
+data oomd_managed_oom_memory_pressure_property: std.types.NonEmptyStr = "ManagedOOMMemoryPressure"
+data oomd_managed_oom_memory_pressure_limit_property: std.types.NonEmptyStr = "ManagedOOMMemoryPressureLimit"
+data oomd_managed_oom_swap_property: std.types.NonEmptyStr = "ManagedOOMSwap"
 
-data oomd_managed_value_kill: NonEmptyStr = "kill"
-data oomd_managed_value_auto: NonEmptyStr = "auto"
+data oomd_managed_value_kill: std.types.NonEmptyStr = "kill"
+data oomd_managed_value_auto: std.types.NonEmptyStr = "auto"
 
 data systemd_managed_oom_pressure_limit_show_scale: Int = 4294967295
 
-fn managed_oom_pressure_limit_show_value(p: Percent) -> Int {
+fn managed_oom_pressure_limit_show_value(p: std.measure.Percent) -> Int {
   percent_count(p: p) * systemd_managed_oom_pressure_limit_show_scale / 100
 }
 
-fn parse_managed_oom_pressure_limit_show(raw: String) -> Percent? {
+fn parse_managed_oom_pressure_limit_show(raw: String) -> std.measure.Percent? {
   let trimmed = trim(raw)
   if trimmed == "" {
     none
@@ -65,11 +65,11 @@ fn parse_managed_oom_pressure_limit_show(raw: String) -> Percent? {
   }
 }
 
-fn managed_oom_pressure_limit_wire_matches_percent(wire: Int, desired: Percent) -> Bool {
+fn managed_oom_pressure_limit_wire_matches_percent(wire: Int, desired: std.measure.Percent) -> Bool {
   wire == managed_oom_pressure_limit_show_value(p: desired)
 }
 
-fn managed_oom_action_value(a: ManagedOomAction) -> NonEmptyStr {
+fn managed_oom_action_value(a: ManagedOomAction) -> std.types.NonEmptyStr {
   match a {
     ManagedOomKill => oomd_managed_value_kill
     ManagedOomAuto => oomd_managed_value_auto

@@ -2,13 +2,13 @@ module test.claim.workflow_recursive_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn linearize_steps(steps: List<StageStep>) -> VerdictTree {
+fn linearize_steps(steps: List<gunbc.idea_pr_spine.StageStep>) -> std.workflow_recursive.VerdictTree {
   linearize_verdicts(
     verdicts: map(collection: steps, f: fn(s) { s.verdict })
   )
 }
 
-fn deep_unknown_tree() -> VerdictTree {
+fn deep_unknown_tree() -> std.workflow_recursive.VerdictTree {
   Decomposed { children: [
     std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 1 } },
     Decomposed { children: [
@@ -19,7 +19,7 @@ fn deep_unknown_tree() -> VerdictTree {
   ] }
 }
 
-fn all_green_tree() -> VerdictTree {
+fn all_green_tree() -> std.workflow_recursive.VerdictTree {
   Decomposed { children: [
     std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 1 } },
     Decomposed { children: [
@@ -29,7 +29,7 @@ fn all_green_tree() -> VerdictTree {
   ] }
 }
 
-fn review_tree_blocks() -> VerdictTree {
+fn review_tree_blocks() -> std.workflow_recursive.VerdictTree {
   Decomposed { children: [
     std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 1 } },
     std.workflow_recursive.Leaf { verdict: review_step(gunbc.idea_pr_spine.Review { subject: DagModel, reviewer: gunbc.review_verdict.Llm { provider: Claude }, verdict: gunbc.review_verdict.RequestChanges }).verdict },

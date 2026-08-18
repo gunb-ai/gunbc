@@ -9,17 +9,17 @@ data repository_census_placement_note: String = "This carrier is REPOSITORY-SPEC
 
 data repository_census_homonym_note: String = "Naming diligence (DESIGN section 3). The word observation carries three OTHER concepts in this tree and none is a nickname for another, so none are to be consolidated. std.observation observes a PROCESS advancing through time (run, batch, entry, dwell, attention). std.upsert_decision.ObservationVerdict classifies a desired-versus-observed STATE for reconcile and upsert. gunbc.observation_emit_census is an INSTANCE of a census, the emit-site roster, and is a candidate consumer rather than a peer authority. This module carries a MEASUREMENT OF A REPOSITORY POPULATION AT A REVISION. The distinguishing question, in the form std.observation already uses: upsert asks what is true of the world, std.observation asks how far the work has got, and this module asks what was measured, over what, at which revision, and by which executed method."
 
-type RepositoryIdentity = NonEmptyStr where brand("RepositoryIdentity")
-type SourceRootIdentity = NonEmptyStr where brand("SourceRootIdentity")
-type CensusSubjectKey = NonEmptyStr where brand("CensusSubjectKey")
+type RepositoryIdentity = std.types.NonEmptyStr where brand("RepositoryIdentity")
+type SourceRootIdentity = std.types.NonEmptyStr where brand("SourceRootIdentity")
+type CensusSubjectKey = std.types.NonEmptyStr where brand("CensusSubjectKey")
 
 data repository_census_tagged_combination_note: String = "Identities are built by TAGGED STRUCTURAL COMBINATION, field by field, and this module deliberately contains no separator characters and no string joining inside any content address. The first cut serialized population and coverage with pipe, comma, tilde and at-sign before hashing, which is a mini wire grammar invented inside a content hash: unless every component provably excludes or canonically escapes those characters, distinct field tuples collapse onto one representation. Two source roots spelled a,b as ONE root and a and b as TWO roots produced the identical joined string, so the address could not tell one population from the other. Each field is instead hashed under its own tag and combined, so a component's characters can never be mistaken for structure. This also makes the omission class from review 48109 visible: a field that no census_..._identity function reads is a field the content address does not cover."
 
-fn census_tagged_identity(tag: NonEmptyStr, value: NonEmptyStr) -> Fnv1a64Structural {
+fn census_tagged_identity(tag: std.types.NonEmptyStr, value: std.types.NonEmptyStr) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(tag: tag, payload: content_hash_atom(value: value))
 }
 
-fn census_declaration_ref_identity(reference: DeclarationRef) -> Fnv1a64Structural {
+fn census_declaration_ref_identity(reference: std.decl_ref.DeclarationRef) -> std.content_hash.Fnv1a64Structural {
   let module_part = census_tagged_identity(
     tag: "census-declaration-module",
     value: reference.module_path,
@@ -40,14 +40,14 @@ fn census_declaration_ref_identity(reference: DeclarationRef) -> Fnv1a64Structur
   )
 }
 
-fn census_revision_identity(revision: MeasurementRevision) -> Fnv1a64Structural {
+fn census_revision_identity(revision: gunbc.guarantee_measurement.MeasurementRevision) -> std.content_hash.Fnv1a64Structural {
   match revision {
     GitRevision { commit: commit } =>
-      census_tagged_identity(tag: "census-revision-git", value: commit as NonEmptyStr)
+      census_tagged_identity(tag: "census-revision-git", value: commit as std.types.NonEmptyStr)
     ContentFingerprint { digest: digest } =>
       census_tagged_identity(
         tag: "census-revision-fingerprint",
-        value: digest.digest as NonEmptyStr,
+        value: digest.digest as std.types.NonEmptyStr,
       )
   }
 }
@@ -70,10 +70,10 @@ fn repository_census_source_root_count(population: RepositoryPopulation) -> Int 
   count(repository_census_source_roots(population: population))
 }
 
-fn repository_census_population_identity(population: RepositoryPopulation) -> Fnv1a64Structural {
+fn repository_census_population_identity(population: RepositoryPopulation) -> std.content_hash.Fnv1a64Structural {
   let repository_part = census_tagged_identity(
     tag: "census-population-repository",
-    value: population.repository as NonEmptyStr,
+    value: population.repository as std.types.NonEmptyStr,
   )
   let roots_part = fold(
     repository_census_source_roots(population: population),
@@ -83,7 +83,7 @@ fn repository_census_population_identity(population: RepositoryPopulation) -> Fn
         left: acc,
         right: census_tagged_identity(
           tag: "census-population-source-root",
-          value: root as NonEmptyStr,
+          value: root as std.types.NonEmptyStr,
         ),
       )
     },
@@ -120,7 +120,7 @@ type CensusMethodRunIdentity {
   invocation_identity: std.content_hash.Fnv1a64Structural
 }
 
-fn census_method_run_identity(method: CensusMethodRunIdentity) -> Fnv1a64Structural {
+fn census_method_run_identity(method: CensusMethodRunIdentity) -> std.content_hash.Fnv1a64Structural {
   let classifier_part = content_hash_tagged_structural(
     tag: "census-method-classifier",
     payload: census_declaration_ref_identity(reference: method.classifier),
@@ -151,7 +151,7 @@ type CensusObservedRow sole_constructor {
 
 fn census_observed_row(
   subject: CensusSubjectKey,
-  fact: Fnv1a64Structural,
+  fact: std.content_hash.Fnv1a64Structural,
 ) -> CensusObservedRow {
   CensusObservedRow {
     subject: subject,
@@ -159,7 +159,7 @@ fn census_observed_row(
     identity: content_hash_combine_structural(
       left: census_tagged_identity(
         tag: "census-row-subject",
-        value: subject as NonEmptyStr,
+        value: subject as std.types.NonEmptyStr,
       ),
       right: content_hash_tagged_structural(
         tag: "census-row-fact",
@@ -179,7 +179,7 @@ type RepositoryCensusObservation sole_constructor {
   rows_identity: std.content_hash.Fnv1a64Structural
 }
 
-fn census_rows_identity(rows: List<CensusObservedRow>) -> Fnv1a64Structural {
+fn census_rows_identity(rows: List<CensusObservedRow>) -> std.content_hash.Fnv1a64Structural {
   fold(
     rows,
     init: census_tagged_identity(tag: "census-rows", value: "rows"),
@@ -197,7 +197,7 @@ fn census_rows_identity(rows: List<CensusObservedRow>) -> Fnv1a64Structural {
 
 fn repository_census_observation(
   population: RepositoryPopulation,
-  observed_at_revision: MeasurementRevision,
+  observed_at_revision: gunbc.guarantee_measurement.MeasurementRevision,
   method_run: CensusMethodRunIdentity,
   rows: List<CensusObservedRow>,
 ) -> RepositoryCensusObservation {
@@ -224,7 +224,7 @@ data repository_census_identity_note: String = "CURRENT STATE IS ALWAYS A NEW OB
 
 fn repository_census_observation_identity(
   observation: RepositoryCensusObservation,
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   let population_part = content_hash_tagged_structural(
     tag: "census-observation-population",
     payload: repository_census_population_identity(population: observation.population),

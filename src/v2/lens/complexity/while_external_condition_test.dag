@@ -1,7 +1,7 @@
 module v2.test.lens_complexity.while_external_condition
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type LensComplexityClaim {
   input: Node
@@ -9,21 +9,21 @@ type LensComplexityClaim {
   expected_complexity: v2.lens.complexity.ComplexityBound
   falsification: v2.std.diagnostic.Diagnostic
 }
-data while_loop_body_leaf: Node = Node {
+data while_loop_body_leaf: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^while_loop_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data while_external_condition_input: Node = Node {
+data while_external_condition_input: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: while_loop_body_leaf }
+    v2.std.node.Edge { label: Positional, target: while_loop_body_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data while_external_condition_loop_bound_diagnostic: Diagnostic = Diagnostic {
+data while_external_condition_loop_bound_diagnostic: v2.std.diagnostic.Diagnostic = v2.std.diagnostic.Diagnostic {
   reason: ^cardinality_loop_bound_undeclared,
   at: node_locus(node: while_external_condition_input),
   correction: Unavailable { reason: ExternalContractUnknown }
@@ -40,11 +40,11 @@ data while_external_condition_claim: LensComplexityClaim = LensComplexityClaim {
   falsification: while_external_condition_loop_bound_diagnostic
 }
 
-fn while_external_condition_actual_cost() -> Witness<SymbolicCost> {
+fn while_external_condition_actual_cost() -> Witness<v2.lens.cost.SymbolicCost> {
   cost_lens(n: while_external_condition_input)
 }
 
-fn while_external_condition_actual_complexity() -> ComplexityBound {
+fn while_external_condition_actual_complexity() -> v2.lens.complexity.ComplexityBound {
   complexity_lens(n: while_external_condition_input)
 }
 

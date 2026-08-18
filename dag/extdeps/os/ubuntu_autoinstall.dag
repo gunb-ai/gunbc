@@ -1,8 +1,8 @@
 module extdeps.os.ubuntu_autoinstall
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html"
   }
@@ -23,8 +23,8 @@ type AutoinstallStoragePolicy
   = StoragePolicyAbsent
   | StoragePolicyDirectLayout
 
-data nocloud_datasource_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data nocloud_datasource_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "cloudinit.readthedocs.io/en/latest/reference/datasources/nocloud.html"
   }

@@ -2,22 +2,22 @@ module v2.test.lens_ownership.resource_dependency
 
 data ownership_child: Node = claim_atom_node(s: ^ownership_child_symbol)
 
-data ownership_root: Node = Node {
+data ownership_root: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^ownership_root_symbol } },
   children: [
-    Edge { label: Named { name: ^ownership_edge_symbol }, target: ownership_child }
+    v2.std.node.Edge { label: Named { name: ^ownership_edge_symbol }, target: ownership_child }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data ownership_dependency: DependencyView = DependencyView {
+data ownership_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: ownership_root,
   dependent: ownership_child,
   kind: ResourceDependsOn,
   usage_site: ownership_child
 }
 
-fn ownership_claim_facts() -> InferredFacts {
+fn ownership_claim_facts() -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^ownership_type_symbol,
     algebra_symbol: ^ownership_algebra_symbol,
@@ -25,7 +25,7 @@ fn ownership_claim_facts() -> InferredFacts {
   )
 }
 
-fn ownership_claim_tree() -> InferredTree {
+fn ownership_claim_tree() -> v2.compiler.infer.InferredTree {
   claim_inferred_tree(root: ownership_root, facts: ownership_claim_facts())
 }
 
@@ -37,9 +37,9 @@ type LensOwnershipClaim {
 
 data ownership_resource_dependency_claim: LensOwnershipClaim = LensOwnershipClaim {
   input: ownership_claim_tree(),
-  expected: OwnershipFact {
+  expected: v2.lens.ownership.OwnershipFact {
     dependencies: [
-      ClassifiedDependencyView {
+      v2.std.dependency.ClassifiedDependencyView {
         dependency: ownership_dependency,
         classification: RequiresAccessWitness
       }

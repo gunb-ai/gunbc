@@ -1,9 +1,9 @@
 module gunbc.process_algebra
 
 
-type ProcessNodeId = NonEmptyStr where brand("ProcessNodeId")
-type ProcessSessionId = NonEmptyStr where brand("ProcessSessionId")
-type ProcessRuleName = NonEmptyStr where brand("ProcessRuleName")
+type ProcessNodeId = std.types.NonEmptyStr where brand("ProcessNodeId")
+type ProcessSessionId = std.types.NonEmptyStr where brand("ProcessSessionId")
+type ProcessRuleName = std.types.NonEmptyStr where brand("ProcessRuleName")
 type ProcessEventPosition = Int where range(min: 0), brand("ProcessEventPosition")
 
 type DeclaredProcessNodeMode

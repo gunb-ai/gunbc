@@ -1,15 +1,15 @@
 module extdeps.github.ci_runner
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/monitoring-and-troubleshooting-self-hosted-runners"
   }
 }
 
-data organization_self_hosted_runners_list_citation: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data organization_self_hosted_runners_list_citation: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/actions/self-hosted-runners#list-self-hosted-runners-for-an-organization"
   }
@@ -43,7 +43,7 @@ type GitHubSelfHostedRunnerRegistration {
   labels: List<std.types.NonEmptyStr>
 }
 
-data github_runner_registration_predicate_family_disposition: Disposition = Terminal {
+data github_runner_registration_predicate_family_disposition: std.disposition.Disposition = Terminal {
   reason: "github_runner_registration_is_online is a total match over the closed GitHubRunnerRegistrationStatus coproduct; github_runner_registration_is_schedulable composes is_online and not-busy without a wildcard arm. nfr_residue_sites flags only top-level param-scrutinee matches with a wildcard false arm (cli_run green_control_total_fold_is_not_residue); field-scrutinee match reg.status is out of scope for the scan — NFR rows here would stale the roster."
 }
 

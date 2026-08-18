@@ -17,7 +17,7 @@ type SourceIntegrationEvidenceLink = EvidenceLink<SourceBindingFact, SourceInteg
 
 type SourceIntegrationEvidenceInference = EvidenceInference<SourceBindingFact, SourceIntegrationClaim, SyntaxSpec, SourceIntegrationProposition, ReadBackProbe>
 
-data source_binding_capture_probe: ReadBackProbe = ReadBackProbe {
+data source_binding_capture_probe: gunbc.readback_independence.ReadBackProbe = gunbc.readback_independence.ReadBackProbe {
   label: "decode one authored source binding",
   subject: "the binding captured for one proposal occurrence",
   effect_on_subject: ProbeInert,
@@ -26,7 +26,7 @@ data source_binding_capture_probe: ReadBackProbe = ReadBackProbe {
 fn source_binding_captured_claim(
   fact: SourceBindingFact,
 ) -> SourceIntegrationClaim {
-  Claim {
+  std.claim_evidence.Claim {
     id: "source-binding-captured",
     subject: fact.binding,
     target: fact.source_read,
@@ -39,7 +39,7 @@ fn source_binding_captured_claim(
 fn source_binding_admissible_claim(
   fact: SourceBindingFact,
 ) -> SourceIntegrationClaim {
-  Claim {
+  std.claim_evidence.Claim {
     id: "source-binding-admissible",
     subject: fact.binding,
     target: fact.source_read,
@@ -50,30 +50,30 @@ fn source_binding_admissible_claim(
 }
 
 fn source_binding_capture_inference(
-  fact_id: RecordedFactId,
+  fact_id: std.claim_evidence.RecordedFactId,
   fact: SourceBindingFact,
 ) -> SourceIntegrationEvidenceInference {
   let claim = source_binding_captured_claim(
     fact: fact,
   )
   infer_probe_evidence(
-    fact: RecordedFact {
+    fact: std.claim_evidence.RecordedFact {
       id: fact_id,
       value: fact,
     },
     direction: EvidenceSupports,
     inference_rule: "decoded-binding-supports-capture-only",
     authority: dag_syntax_spec,
-    provenance: EvidenceProvenance {
+    provenance: std.claim_evidence.EvidenceProvenance {
       entity: "decoded-source-binding",
       activity: "decode-authored-proposal",
       agent: "dag-source-decoder",
     },
-    freshness: EvidenceFreshness {
+    freshness: std.claim_evidence.EvidenceFreshness {
       maximum_conclusion: claim,
       basis: "binding was decoded for the named proposal attempt",
     },
-    fidelity: EvidenceFidelity {
+    fidelity: std.claim_evidence.EvidenceFidelity {
       boundary: SourceBindingCaptured,
       losses: [
         "capture does not prove semantic compatibility",
@@ -84,4 +84,4 @@ fn source_binding_capture_inference(
   )
 }
 
-data source_integration_evidence_humility_note: NonEmptyStr = "This P−1 consumer records one typed OccurrenceBinding observed from one DagSourceReadWitness and deliberately does not introduce a proposal identity before the P0 transformation carrier exists. The source grammar is the inference authority and the decoder is only provenance. A decoded binding can support SourceBindingCaptured and no stronger conclusion. SourceBindingAdmissible remains neither supported nor challenged until semantic, authorization, and policy evidence enters through its own claim links."
+data source_integration_evidence_humility_note: std.types.NonEmptyStr = "This P−1 consumer records one typed OccurrenceBinding observed from one DagSourceReadWitness and deliberately does not introduce a proposal identity before the P0 transformation carrier exists. The source grammar is the inference authority and the decoder is only provenance. A decoded binding can support SourceBindingCaptured and no stronger conclusion. SourceBindingAdmissible remains neither supported nor challenged until semantic, authorization, and policy evidence enters through its own claim links."

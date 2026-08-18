@@ -9,24 +9,24 @@ module product.pcb.plan_view
 // those may look like a footprint. Completeness is a join of scene identities against the exact
 // text nodes the fragment fold emitted — a prefix of a longer label is not a representation, and
 // the serialized document is not the oracle.
-data attachment_label_base: Micrometer = micrometer(count: 24000)
-data attachment_label_step: Micrometer = micrometer(count: 2400)
-data attachment_label_x: Micrometer = micrometer(count: 8000)
-data legend_origin_x: Micrometer = micrometer(count: 8000)
-data legend_origin_y: Micrometer = micrometer(count: 12000)
-data established_label_lift: Micrometer = micrometer(count: 1200)
-data established_source_lift: Micrometer = micrometer(count: 2400)
-data obligation_cause_drop: Micrometer = micrometer(count: 1800)
+data attachment_label_base: std.measure.Micrometer = micrometer(count: 24000)
+data attachment_label_step: std.measure.Micrometer = micrometer(count: 2400)
+data attachment_label_x: std.measure.Micrometer = micrometer(count: 8000)
+data legend_origin_x: std.measure.Micrometer = micrometer(count: 8000)
+data legend_origin_y: std.measure.Micrometer = micrometer(count: 12000)
+data established_label_lift: std.measure.Micrometer = micrometer(count: 1200)
+data established_source_lift: std.measure.Micrometer = micrometer(count: 2400)
+data obligation_cause_drop: std.measure.Micrometer = micrometer(count: 1800)
 
 // TYPE SIZES IN THE BOARD'S OWN UNITS, because the coordinate space IS micrometres and a font size
 // expressed in it is a length like any other. Without these the document carried semantic class
 // names and no presentation, so every label rendered at the user agent's default size inside a
 // 305 millimetre wide viewBox and was effectively invisible; the artifact was only readable
 // through a stylesheet somebody wrote by hand outside it, which is not a self-contained emission.
-data label_type_size: Micrometer = micrometer(count: 4400)
-data cause_type_size: Micrometer = micrometer(count: 2600)
-data legend_type_size: Micrometer = micrometer(count: 3000)
-data legend_design_drop: Micrometer = micrometer(count: 2400)
+data label_type_size: std.measure.Micrometer = micrometer(count: 4400)
+data cause_type_size: std.measure.Micrometer = micrometer(count: 2600)
+data legend_type_size: std.measure.Micrometer = micrometer(count: 3000)
+data legend_design_drop: std.measure.Micrometer = micrometer(count: 2400)
 
 type OutlineExtent {
   x0: Int
@@ -53,11 +53,11 @@ type AttachmentLabelAcc {
   fragments: List<std.markup.Fragment>
 }
 
-fn pcb_plan_view_scene(world: PcbWorld, document: String) -> PcbPlanViewScene {
+fn pcb_plan_view_scene(world: product.pcb.world.PcbWorld, document: String) -> PcbPlanViewScene {
   PcbPlanViewScene { world: world, document: document }
 }
 
-fn outline_extent(o: AxisAlignedRectangle2) -> OutlineExtent {
+fn outline_extent(o: std.orthogonal_geometry.AxisAlignedRectangle2) -> OutlineExtent {
   let lo = rectangle2_min(r: o)
   let hi = rectangle2_max(r: o)
   OutlineExtent {
@@ -68,7 +68,7 @@ fn outline_extent(o: AxisAlignedRectangle2) -> OutlineExtent {
   }
 }
 
-fn board_outline_fragment(o: AxisAlignedRectangle2) -> Fragment {
+fn board_outline_fragment(o: std.orthogonal_geometry.AxisAlignedRectangle2) -> std.markup.Fragment {
   let e = outline_extent(o: o)
   svg_rect(
     x: e.x0, y: e.y0, width: e.x1 - e.x0, height: e.y1 - e.y0,
@@ -86,7 +86,7 @@ type BodyRenderStyle {
   stroke: String
 }
 
-fn body_render_style(s: PcbBodyLayoutStanding) -> BodyRenderStyle {
+fn body_render_style(s: product.pcb.world.PcbBodyLayoutStanding) -> BodyRenderStyle {
   match s {
     PcbBodyLayoutAdmittedOverEveryRequiredPart => BodyRenderStyle {
       class_name: "pcb-component-established",
@@ -115,7 +115,7 @@ fn body_render_style(s: PcbBodyLayoutStanding) -> BodyRenderStyle {
   }
 }
 
-fn established_body_fragments(identity: NonEmptyStr, origin_x: Int, origin_y: Int, width: Int, height: Int, source: DeclarationRef?, style: BodyRenderStyle) -> List<Fragment> {
+fn established_body_fragments(identity: std.types.NonEmptyStr, origin_x: Int, origin_y: Int, width: Int, height: Int, source: std.decl_ref.DeclarationRef?, style: BodyRenderStyle) -> List<std.markup.Fragment> {
   let body = [
     svg_rect(
       x: origin_x, y: origin_y, width: width, height: height,
@@ -144,7 +144,7 @@ fn obligation_class(tag: String) -> String {
   concat("pcb-component-", tag)
 }
 
-fn obligation_marker_fragments(identity: NonEmptyStr, origin_x: Int, origin_y: Int, cause_label: String, tag: String) -> List<Fragment> {
+fn obligation_marker_fragments(identity: std.types.NonEmptyStr, origin_x: Int, origin_y: Int, cause_label: String, tag: String) -> List<std.markup.Fragment> {
   [
     svg_text(
       x: origin_x,
@@ -161,7 +161,7 @@ fn obligation_marker_fragments(identity: NonEmptyStr, origin_x: Int, origin_y: I
   ]
 }
 
-fn body_layout_legend(s: PcbBodyLayoutStanding) -> String {
+fn body_layout_legend(s: product.pcb.world.PcbBodyLayoutStanding) -> String {
   match s {
     PcbBodyLayoutAdmittedOverEveryRequiredPart =>
       "body layout admitted over every required part"
@@ -174,7 +174,7 @@ fn body_layout_legend(s: PcbBodyLayoutStanding) -> String {
   }
 }
 
-fn envelope_reads_legend(xs: List<DeclarationRef>) -> String {
+fn envelope_reads_legend(xs: List<std.decl_ref.DeclarationRef>) -> String {
   let body = fold(xs, init: "", f: fn(acc, r) {
     if acc == "" {
       declaration_ref_display_key(ref: r)
@@ -189,7 +189,7 @@ fn envelope_reads_legend(xs: List<DeclarationRef>) -> String {
   }
 }
 
-fn legend_text(c: PcbSceneLegend) -> String {
+fn legend_text(c: product.pcb.scene.PcbSceneLegend) -> String {
   concat(
     "PCB world — ",
     concat(to_string(c.established), concat(" established / ",
@@ -206,7 +206,7 @@ fn legend_text(c: PcbSceneLegend) -> String {
   )
 }
 
-fn legend_fragments(c: PcbSceneLegend) -> List<Fragment> {
+fn legend_fragments(c: product.pcb.scene.PcbSceneLegend) -> List<std.markup.Fragment> {
   [
     svg_text(x: micrometer_count(m: legend_origin_x), y: micrometer_count(m: legend_origin_y), label: legend_text(c: c), class_name: "pcb-legend"),
     svg_text(
@@ -218,7 +218,7 @@ fn legend_fragments(c: PcbSceneLegend) -> List<Fragment> {
   ]
 }
 
-fn element_fragments(e: PcbSceneElement, attachment_index: Int, body_layout: PcbBodyLayoutStanding) -> List<Fragment> {
+fn element_fragments(e: product.pcb.scene.PcbSceneElement, attachment_index: Int, body_layout: product.pcb.world.PcbBodyLayoutStanding) -> List<std.markup.Fragment> {
   match e {
     SceneBoardOutline { outline: o } => [board_outline_fragment(o: o)]
     SceneLegend { counts: c } => legend_fragments(c: c)
@@ -267,7 +267,7 @@ fn element_fragments(e: PcbSceneElement, attachment_index: Int, body_layout: Pcb
 // 1800 below, so consecutive functional markers overlapped their own reasons. The defect arrived
 // with the clock functions when they moved off the physical roster and was visible in the first
 // emitted document anybody looked at.
-fn fold_scene_fragments(scene: PcbEngineeringScene) -> List<Fragment> {
+fn fold_scene_fragments(scene: product.pcb.scene.PcbEngineeringScene) -> List<std.markup.Fragment> {
   let body_layout = scene.world.physical.body_layout
   let acc = fold(scene.elements, init: AttachmentLabelAcc { index: 0, fragments: [] }, f: fn(state, e) {
     let next_index = match e {
@@ -286,13 +286,13 @@ fn fold_scene_fragments(scene: PcbEngineeringScene) -> List<Fragment> {
   acc.fragments
 }
 
-fn fragment_text_labels(frag: Fragment) -> List<NonEmptyStr> {
+fn fragment_text_labels(frag: std.markup.Fragment) -> List<std.types.NonEmptyStr> {
   match frag {
     FragmentText { content: c } =>
       if c == "" {
         []
       } else {
-        [c as NonEmptyStr]
+        [c as std.types.NonEmptyStr]
       }
     RawNode { content: _ } => []
     Element { tag: _, attributes: _, children: kids } =>
@@ -302,17 +302,17 @@ fn fragment_text_labels(frag: Fragment) -> List<NonEmptyStr> {
   }
 }
 
-fn scene_fragment_labels(frags: List<Fragment>) -> List<NonEmptyStr> {
+fn scene_fragment_labels(frags: List<std.markup.Fragment>) -> List<std.types.NonEmptyStr> {
   fold(frags, init: [], f: fn(acc, frag) {
     concat(acc, fragment_text_labels(frag: frag))
   })
 }
 
-fn represented_scene_labels(scene: PcbEngineeringScene) -> List<NonEmptyStr> {
+fn represented_scene_labels(scene: product.pcb.scene.PcbEngineeringScene) -> List<std.types.NonEmptyStr> {
   scene_fragment_labels(frags: fold_scene_fragments(scene: scene))
 }
 
-fn project_pcb_world(w: PcbWorld) -> PcbSceneConstruction<PcbPlanViewScene> {
+fn project_pcb_world(w: product.pcb.world.PcbWorld) -> PcbSceneConstruction<PcbPlanViewScene> {
   let scene = project_engineering_scene(w: w)
   match fold(scene.elements, init: none, f: fn(acc, e) {
     match acc {

@@ -2,9 +2,9 @@ module v2.compiler.self_host.frontier_probe_assemble_detail
 
 
 fn non_empty_symbol_chain_from_non_empty_parse_stage(
-  d: NonEmptyParseStageDiagnostics
-) -> NonEmptySymbolChain {
-  NonEmptySymbolChain {
+  d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics
+) -> v2.compiler.self_host.frontier_probe_types.NonEmptySymbolChain {
+  v2.compiler.self_host.frontier_probe_types.NonEmptySymbolChain {
     head: d.head.diagnostic.reason,
     tail: fold_list(
       xs: d.tail,
@@ -15,9 +15,9 @@ fn non_empty_symbol_chain_from_non_empty_parse_stage(
 }
 
 fn non_empty_symbol_chain_from_non_empty_diagnostics(
-  d: NonEmptyDiagnostics
-) -> NonEmptySymbolChain {
-  NonEmptySymbolChain {
+  d: v2.std.diagnostic.NonEmptyDiagnostics
+) -> v2.compiler.self_host.frontier_probe_types.NonEmptySymbolChain {
+  v2.compiler.self_host.frontier_probe_types.NonEmptySymbolChain {
     head: d.head.reason,
     tail: fold_list(
       xs: d.tail,
@@ -27,7 +27,7 @@ fn non_empty_symbol_chain_from_non_empty_diagnostics(
   }
 }
 
-fn diagnostic_module_root_missing_qn_optional(d: Diagnostic) -> Optional<QualifiedName> {
+fn diagnostic_module_root_missing_qn_optional(d: v2.std.diagnostic.Diagnostic) -> Optional<v2.std.qualified_name.QualifiedName> {
   optional_absent()
 }
 
@@ -44,11 +44,11 @@ fn diagnostic_module_root_missing_qn_optional(d: Diagnostic) -> Optional<Qualifi
 // requested }.
 
 fn assemble_rejection_cause_from_parse_stage(
-  d: NonEmptyParseStageDiagnostics
-) -> AssembleRejectionCause {
+  d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics
+) -> v2.compiler.self_host.frontier_probe_types.AssembleRejectionCause {
   if !is_empty(xs: d.tail) && (d.head.diagnostic.reason == ^parse_grammar_choice_overlap_residue) {
     match non_empty_grammar_choice_ambiguity_rows_from_parse_stage(
-      d: NonEmptyParseStageDiagnostics { head: d.head, tail: Empty }
+      d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics { head: d.head, tail: Empty }
     ) {
       Present { value: overlap_evidence } =>
         MaskedAssembleRefusal {
@@ -80,10 +80,10 @@ fn assemble_rejection_cause_from_parse_stage(
 }
 
 fn non_empty_symbol_chain_from_parse_stage_head(
-  head: ParseStageDiagnostic,
-  tail: FreeMonoid<ParseStageDiagnostic>
-) -> NonEmptySymbolChain {
-  NonEmptySymbolChain {
+  head: v2.compiler.parse_diagnostic.ParseStageDiagnostic,
+  tail: FreeMonoid<v2.compiler.parse_diagnostic.ParseStageDiagnostic>
+) -> v2.compiler.self_host.frontier_probe_types.NonEmptySymbolChain {
+  v2.compiler.self_host.frontier_probe_types.NonEmptySymbolChain {
     head: head.diagnostic.reason,
     tail: fold_list(
       xs: tail,
@@ -93,13 +93,13 @@ fn non_empty_symbol_chain_from_parse_stage_head(
   }
 }
 
-fn diagnostic_reason_is_overlap_residue(d: Diagnostic) -> Bool {
+fn diagnostic_reason_is_overlap_residue(d: v2.std.diagnostic.Diagnostic) -> Bool {
   d.reason == ^parse_grammar_choice_overlap_residue
 }
 
 fn frontier_probe_first_non_overlap_residue_diagnostic_optional(
-  d: NonEmptyDiagnostics
-) -> Optional<Diagnostic> {
+  d: v2.std.diagnostic.NonEmptyDiagnostics
+) -> Optional<v2.std.diagnostic.Diagnostic> {
   if !diagnostic_reason_is_overlap_residue(d: d.head) {
     optional_present(value: d.head)
   } else {
@@ -121,14 +121,14 @@ fn frontier_probe_first_non_overlap_residue_diagnostic_optional(
   }
 }
 
-fn frontier_probe_assemble_located_reason_from_diagnostics(d: NonEmptyDiagnostics) -> Symbol {
+fn frontier_probe_assemble_located_reason_from_diagnostics(d: v2.std.diagnostic.NonEmptyDiagnostics) -> v2.std.node.Symbol {
   match frontier_probe_first_non_overlap_residue_diagnostic_optional(d: d) {
     Present { value: diag } => diag.reason
     Absent => d.head.reason
   }
 }
 
-fn all_overlap_residue_diagnostic_list(xs: FreeMonoid<Diagnostic>) -> Bool {
+fn all_overlap_residue_diagnostic_list(xs: FreeMonoid<v2.std.diagnostic.Diagnostic>) -> Bool {
   fold_list(
     xs: xs,
     empty: true,
@@ -136,7 +136,7 @@ fn all_overlap_residue_diagnostic_list(xs: FreeMonoid<Diagnostic>) -> Bool {
   )
 }
 
-fn all_overlap_residue_non_empty_diagnostics(d: NonEmptyDiagnostics) -> Bool {
+fn all_overlap_residue_non_empty_diagnostics(d: v2.std.diagnostic.NonEmptyDiagnostics) -> Bool {
   diagnostic_reason_is_overlap_residue(d: d.head)
     && all_overlap_residue_diagnostic_list(xs: d.tail)
 }
@@ -157,15 +157,15 @@ type OverlapQueueMergeAcc {
 }
 
 fn overlap_row_queue_tail_after_pop(
-  row_queue: FreeMonoid<GrammarChoiceAmbiguityRow>
-) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
+  row_queue: FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
+) -> FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match list_tail(xs: row_queue) {
     TailAbsent => Empty
     TailFound { tail: rest } => rest
   }
 }
 
-fn overlap_queue_merge_acc_step(acc: OverlapQueueMergeAcc, diag: Diagnostic) -> OverlapQueueMergeAcc {
+fn overlap_queue_merge_acc_step(acc: OverlapQueueMergeAcc, diag: v2.std.diagnostic.Diagnostic) -> OverlapQueueMergeAcc {
   if diagnostic_reason_is_overlap_residue(d: diag) {
     match list_head(xs: acc.row_queue) {
       HeadFound { value: row } =>
@@ -197,9 +197,9 @@ fn overlap_queue_merge_acc_step(acc: OverlapQueueMergeAcc, diag: Diagnostic) -> 
 }
 
 fn parse_stage_tail_from_overlap_row_queue_and_diagnostics(
-  tail: FreeMonoid<Diagnostic>,
-  row_queue: FreeMonoid<GrammarChoiceAmbiguityRow>
-) -> FreeMonoid<ParseStageDiagnostic> {
+  tail: FreeMonoid<v2.std.diagnostic.Diagnostic>,
+  row_queue: FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
+) -> FreeMonoid<v2.compiler.parse_diagnostic.ParseStageDiagnostic> {
   fold_list(
     xs: tail,
     empty: OverlapQueueMergeAcc { stages: Empty, row_queue: row_queue },
@@ -208,9 +208,9 @@ fn parse_stage_tail_from_overlap_row_queue_and_diagnostics(
 }
 
 fn parse_stage_head_from_overlap_row_queue_and_diagnostic(
-  diag: Diagnostic,
-  row_queue: FreeMonoid<GrammarChoiceAmbiguityRow>
-) -> ParseStageDiagnostic {
+  diag: v2.std.diagnostic.Diagnostic,
+  row_queue: FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
+) -> v2.compiler.parse_diagnostic.ParseStageDiagnostic {
   if diagnostic_reason_is_overlap_residue(d: diag) {
     match list_head(xs: row_queue) {
       HeadFound { value: row } =>
@@ -223,9 +223,9 @@ fn parse_stage_head_from_overlap_row_queue_and_diagnostic(
 }
 
 fn overlap_row_queue_after_overlap_head(
-  diag: Diagnostic,
-  row_queue: FreeMonoid<GrammarChoiceAmbiguityRow>
-) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
+  diag: v2.std.diagnostic.Diagnostic,
+  row_queue: FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
+) -> FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   if diagnostic_reason_is_overlap_residue(d: diag) {
     overlap_row_queue_tail_after_pop(row_queue: row_queue)
   } else {
@@ -234,16 +234,16 @@ fn overlap_row_queue_after_overlap_head(
 }
 
 fn non_empty_parse_stage_diagnostics_from_rejection_and_overlap_stage(
-  d: NonEmptyDiagnostics,
-  overlap_stage: NonEmptyParseStageDiagnostics
-) -> NonEmptyParseStageDiagnostics {
+  d: v2.std.diagnostic.NonEmptyDiagnostics,
+  overlap_stage: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics
+) -> v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
   let row_queue = grammar_choice_ambiguity_rows_from_non_empty_parse_stage(d: overlap_stage)
   let head = parse_stage_head_from_overlap_row_queue_and_diagnostic(
     diag: d.head,
     row_queue: row_queue
   )
   let row_queue_after_head = overlap_row_queue_after_overlap_head(diag: d.head, row_queue: row_queue)
-  NonEmptyParseStageDiagnostics {
+  v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
     head: head,
     tail: parse_stage_tail_from_overlap_row_queue_and_diagnostics(
       tail: d.tail,
@@ -253,9 +253,9 @@ fn non_empty_parse_stage_diagnostics_from_rejection_and_overlap_stage(
 }
 
 fn non_empty_parse_stage_diagnostics_merged(
-  d: NonEmptyDiagnostics,
-  overlap_stage: NonEmptyParseStageDiagnostics
-) -> NonEmptyParseStageDiagnostics {
+  d: v2.std.diagnostic.NonEmptyDiagnostics,
+  overlap_stage: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics
+) -> v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
   if all_overlap_residue_non_empty_diagnostics(d: d) {
     overlap_stage
   } else {
@@ -267,8 +267,8 @@ fn non_empty_parse_stage_diagnostics_merged(
 }
 
 fn assemble_rejection_cause_from_diagnostics(
-  d: NonEmptyDiagnostics
-) -> AssembleRejectionCause {
+  d: v2.std.diagnostic.NonEmptyDiagnostics
+) -> v2.compiler.self_host.frontier_probe_types.AssembleRejectionCause {
   if !is_empty(xs: d.tail) && (d.head.reason == ^parse_grammar_choice_overlap_residue) {
     MaskedAssembleRefusalWithoutEvidence {
       remaining_chain: non_empty_symbol_chain_from_diagnostic_list(
@@ -287,10 +287,10 @@ fn assemble_rejection_cause_from_diagnostics(
 }
 
 fn non_empty_symbol_chain_from_diagnostic_list(
-  head_diag: Diagnostic,
-  tail: FreeMonoid<Diagnostic>
-) -> NonEmptySymbolChain {
-  NonEmptySymbolChain {
+  head_diag: v2.std.diagnostic.Diagnostic,
+  tail: FreeMonoid<v2.std.diagnostic.Diagnostic>
+) -> v2.compiler.self_host.frontier_probe_types.NonEmptySymbolChain {
+  v2.compiler.self_host.frontier_probe_types.NonEmptySymbolChain {
     head: head_diag.reason,
     tail: fold_list(
       xs: tail,
@@ -300,14 +300,14 @@ fn non_empty_symbol_chain_from_diagnostic_list(
   }
 }
 
-fn list_head_value_or_self(head: Diagnostic, tail: FreeMonoid<Diagnostic>) -> Diagnostic {
+fn list_head_value_or_self(head: v2.std.diagnostic.Diagnostic, tail: FreeMonoid<v2.std.diagnostic.Diagnostic>) -> v2.std.diagnostic.Diagnostic {
   match list_head(xs: tail) {
     HeadFound { value: diag } => diag
     HeadAbsent => head
   }
 }
 
-fn list_tail_or_empty_diagnostics(tail: FreeMonoid<Diagnostic>) -> FreeMonoid<Diagnostic> {
+fn list_tail_or_empty_diagnostics(tail: FreeMonoid<v2.std.diagnostic.Diagnostic>) -> FreeMonoid<v2.std.diagnostic.Diagnostic> {
   match list_tail(xs: tail) {
     TailAbsent => Empty
     TailFound { tail: rest } => rest
@@ -315,8 +315,8 @@ fn list_tail_or_empty_diagnostics(tail: FreeMonoid<Diagnostic>) -> FreeMonoid<Di
 }
 
 fn frontier_probe_assemble_detail_from_parse_stage(
-  d: NonEmptyParseStageDiagnostics
-) -> FrontierProbeAssembleDetail {
+  d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics
+) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeAssembleDetail {
   AssembleRejectionDetail {
     rejection_chain: non_empty_symbol_chain_from_non_empty_parse_stage(d: d),
     cause: assemble_rejection_cause_from_parse_stage(d: d),
@@ -325,8 +325,8 @@ fn frontier_probe_assemble_detail_from_parse_stage(
 }
 
 fn frontier_probe_assemble_detail_from_rejection(
-  d: NonEmptyDiagnostics
-) -> FrontierProbeAssembleDetail {
+  d: v2.std.diagnostic.NonEmptyDiagnostics
+) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeAssembleDetail {
   AssembleRejectionDetail {
     rejection_chain: non_empty_symbol_chain_from_non_empty_diagnostics(d: d),
     cause: assemble_rejection_cause_from_diagnostics(d: d),
@@ -335,9 +335,9 @@ fn frontier_probe_assemble_detail_from_rejection(
 }
 
 fn frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
-  d: NonEmptyDiagnostics,
-  overlap_residue_stage: Optional<NonEmptyParseStageDiagnostics>
-) -> FrontierProbeAssembleDetail {
+  d: v2.std.diagnostic.NonEmptyDiagnostics,
+  overlap_residue_stage: Optional<v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics>
+) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeAssembleDetail {
   match overlap_residue_stage {
     Absent => frontier_probe_assemble_detail_from_rejection(d: d)
     Present { value: stage } =>
@@ -353,12 +353,12 @@ fn frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
 
 fn frontier_probe_receipt_from_assemble_rejection(
   module_path: String,
-  diagnostics: NonEmptyDiagnostics,
-  detail: FrontierProbeDetail,
-  overlap_residue_stage: Optional<NonEmptyParseStageDiagnostics>
-) -> FrontierProbeReceipt {
+  diagnostics: v2.std.diagnostic.NonEmptyDiagnostics,
+  detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetail,
+  overlap_residue_stage: Optional<v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics>
+) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
   let located_reason = frontier_probe_assemble_located_reason_from_diagnostics(d: diagnostics)
-  FrontierProbeReceipt {
+  v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
     module_path: module_path,
     blocker_class: frontier_classify_rejection_reason(reason: located_reason),
     located_stage: ProbeStageAssemble,

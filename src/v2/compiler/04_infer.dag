@@ -18,8 +18,8 @@ type InferredFacts {
   descent: Witness<v2.std.cardinality.TerminationProof>
 }
 
-fn infer_grounding_not_derived_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
+fn infer_grounding_not_derived_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_grounding_not_derived,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -51,7 +51,7 @@ fn inferred_facts_canonical_admitted(facts: InferredFacts) -> Bool {
   }
 }
 
-fn inferred_facts_grounding_witness(facts: InferredFacts) -> Witness<CanonicalGrounding> {
+fn inferred_facts_grounding_witness(facts: InferredFacts) -> Witness<v2.std.constraints.CanonicalGrounding> {
   match facts.grounding {
     DerivedGrounding { grounding: g } => Holds { value: g }
     GroundingNotDerived { node: n } =>
@@ -76,7 +76,7 @@ fn inferred_facts_algebra_ref(facts: InferredFacts) -> Witness<AlgebraRef> {
   }
 }
 
-fn inferred_facts_canonical_witness(facts: InferredFacts) -> Witness<CanonicalGroundingWitness> {
+fn inferred_facts_canonical_witness(facts: InferredFacts) -> Witness<v2.std.constraints.CanonicalGroundingWitness> {
   match facts.grounding {
     DerivedGrounding { grounding: g } => Holds { value: g.witness }
     GroundingNotDerived { node: n } =>
@@ -122,111 +122,111 @@ type InferGatherFoldAcc {
   children_remaining: Int
 }
 
-fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_facts_lookup_miss_diagnostic(key: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_facts_lookup_miss,
     at: node_locus(node: key),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_canonical_grounding_incoherent,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_algebra_ref_ungrounded,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn infer_branch_shape_invalid_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_branch_shape_invalid_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_branch_shape_invalid,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn infer_branch_cond_not_bool_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_branch_cond_not_bool_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_branch_cond_not_bool,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn infer_branch_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_branch_arm_type_mismatch_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_branch_arm_type_mismatch,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn infer_loop_shape_invalid_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_loop_shape_invalid_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_loop_shape_invalid,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn infer_loop_iteration_type_mismatch_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_loop_iteration_type_mismatch_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_loop_iteration_type_mismatch,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn infer_match_shape_invalid_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_match_shape_invalid_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_match_shape_invalid,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn infer_match_scrutinee_not_bool_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_match_scrutinee_not_bool_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_match_scrutinee_not_bool,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn infer_match_pattern_not_bool_literal_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_match_pattern_not_bool_literal_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_match_pattern_not_bool_literal,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn infer_match_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_match_arm_type_mismatch_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_match_arm_type_mismatch,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn infer_match_non_exhaustive_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_match_non_exhaustive_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_match_non_exhaustive,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_match_int_scrutinee_bool_literal_scaffold,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -244,8 +244,8 @@ fn algebra_ref_is_grounded(algebra: Node) -> Bool {
   }
 }
 
-fn infer_descent_not_derived_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
+fn infer_descent_not_derived_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_descent_not_derived,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -262,7 +262,7 @@ fn infer_descent_witness_for_node(n: Node) -> Witness<v2.std.cardinality.Termina
   }
 }
 
-fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
+fn algebra_ref_from_grounding(grounding: v2.std.constraints.CanonicalGrounding) -> AlgebraRef {
   AlgebraRef {
     algebra: grounding.witness.structural.evidence,
     witness: grounding.node
@@ -271,7 +271,7 @@ fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
 
 data canonical_grounding_admission_scope_note: String = "This predicate deliberately does NOT carry an 'evidence != node' conjunct, and the reason is worth recording because that conjunct was tried and withdrawn. As a read-path backstop against hand-built self-groundings it looked free, but it is a PROXY for the property actually at issue — 'was this grounding produced by a derivation?' — and the NodeGrounding carrier already answers that exactly. Proxies are what produced the defect in the first place: algebra_ref_is_grounded is a shape test on the connective, which is precisely why Conj/Disj type-node self-groundings walked through it. The proxy also has real false positives: v2_evaluator's bool fixture uses ONE atom as both the evaluand and the runtime value's primitive_type, so resolved == algebra there is the fixture's coherent encoding of 'this atom denotes Bool', not a fabrication. Refusing it would have meant rewriting a thesis-proof fixture to make a check go green — the inversion DESIGN §5 names explicitly. The wall therefore lives where it is exact: canonical_grounding_from_derived_type refuses self-evidence for every grounding the COMPILER mints, and GroundingNotDerived is what an underived node carries. A structurally hand-written CanonicalGrounding remains writable by any module; that residue is stated, not silently covered."
 
-fn canonical_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
+fn canonical_grounding_admits_infer_facts(grounding: v2.std.constraints.CanonicalGrounding) -> Bool {
   well_formed(n: grounding.node)
     && well_formed(n: grounding.witness.structural.evidence)
     && (grounding.witness.structural.property == ^constraint_property_being_canonical)
@@ -280,7 +280,7 @@ fn canonical_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool
 }
 
 fn inferred_facts_construction(
-  grounding: CanonicalGrounding,
+  grounding: v2.std.constraints.CanonicalGrounding,
   descent: Witness<v2.std.cardinality.TerminationProof>,
 ) -> Outcome<InferredFacts> {
   if canonical_grounding_admits_infer_facts(grounding: grounding) {
@@ -299,7 +299,7 @@ fn inferred_facts_construction(
 }
 
 fn inferred_facts_from_grounding(
-  grounding: CanonicalGrounding,
+  grounding: v2.std.constraints.CanonicalGrounding,
   descent: Witness<v2.std.cardinality.TerminationProof>,
 ) -> Outcome<InferredFacts> {
   inferred_facts_construction(grounding: grounding, descent: descent)
@@ -425,7 +425,7 @@ fn inferred_facts_witness_for_node(tree: InferredTree, node: Node) -> Witness<In
 fn canonical_grounding_from_inferred_facts(
   node: Node,
   facts: InferredFacts,
-) -> Outcome<CanonicalGrounding> {
+) -> Outcome<v2.std.constraints.CanonicalGrounding> {
   match facts.grounding {
     GroundingNotDerived { node: n } =>
       outcome_rejected(infer_grounding_not_derived_diagnostic(at: node_locus(node: n)))
@@ -445,7 +445,7 @@ fn canonical_grounding_from_inferred_facts(
   }
 }
 
-fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
+fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<v2.std.constraints.CanonicalGrounding> {
   match inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
       canonical_grounding_from_inferred_facts(node: node, facts: facts)
@@ -466,21 +466,21 @@ fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<In
 }
 
 fn infer_branch_int_binding_type_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn infer_atom_binding_sym(node: Node) -> Optional<Symbol> {
+fn infer_atom_binding_sym(node: Node) -> Optional<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
     _ => Absent
   }
 }
 
-fn infer_conj_edge_named_type_for_binding(edge: Edge, binding: Symbol) -> Optional<Node> {
+fn infer_conj_edge_named_type_for_binding(edge: v2.std.node.Edge, binding: v2.std.node.Symbol) -> Optional<Node> {
   match edge.label {
     Named { name: sym } =>
       if sym == binding {
@@ -492,7 +492,7 @@ fn infer_conj_edge_named_type_for_binding(edge: Edge, binding: Symbol) -> Option
   }
 }
 
-fn infer_conj_named_type_for_binding(domain: Node, binding: Symbol) -> Optional<Node> {
+fn infer_conj_named_type_for_binding(domain: Node, binding: v2.std.node.Symbol) -> Optional<Node> {
   match domain.kind {
     TypeNode { connective: Conj } =>
       fold(domain.children, init: Absent, f: fn(acc, e) {
@@ -505,7 +505,7 @@ fn infer_conj_named_type_for_binding(domain: Node, binding: Symbol) -> Optional<
   }
 }
 
-fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional<Node> {
+fn infer_arrow_domain_type_for_binding(arrow: Node, binding: v2.std.node.Symbol) -> Optional<Node> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
       match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
@@ -519,7 +519,7 @@ fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional
 
 data infer_arrow_domain_binding_heuristic_note: String = "interim: infer_find_arrow_domain_type_in_tree DFS-walks the resolved tree for the first Arrow whose Conj domain names the atom-binding symbol — symbol-name collision across unrelated arrows picks first-visit order, not lexical scope. dissolve-on: namespace-only name resolution consumes containment-tree binding→domain (DESIGN open thread §namespace-only); delete this heuristic walker when SymbolIndex lookup lands."
 
-fn infer_find_arrow_domain_type_in_tree(root: Node, binding: Symbol) -> Optional<Node> {
+fn infer_find_arrow_domain_type_in_tree(root: Node, binding: v2.std.node.Symbol) -> Optional<Node> {
   match infer_arrow_domain_type_for_binding(arrow: root, binding: binding) {
     Present { value: ty } => Present { value: ty }
     Absent =>
@@ -609,9 +609,9 @@ data infer_match_int_scrutinee_bool_literal_body_note: String = "Int-scrutinee b
 
 fn infer_match_bool_consumer_diagnostics_with_int_scrutinee_scaffold(
   consumer: Node,
-  cd: Diagnostics,
+  cd: v2.std.diagnostic.Diagnostics,
   scrutinee_type: Node
-) -> Diagnostics {
+) -> v2.std.diagnostic.Diagnostics {
   if infer_branch_type_is_int(type_node: scrutinee_type) {
     diagnostics_merge(
       outer: cd,
@@ -651,7 +651,7 @@ fn infer_match_bool_arm_rows_accept(
   entries: List<InferredFactsEntry>,
   first_arm_target: Node,
   second_arm_target: Node,
-  cd: Diagnostics,
+  cd: v2.std.diagnostic.Diagnostics,
   scrutinee_type: Node
 ) -> Outcome<InferredFacts> {
   match infer_match_bool_arm_row(
@@ -1075,7 +1075,7 @@ fn infer_loop_iteration(
 
 fn infer_gather_fold_acc_failed(
   node: Node,
-  pending: NonEmptyDiagnostics,
+  pending: v2.std.diagnostic.NonEmptyDiagnostics,
   await_branch_row: Bool,
   await_match_row: Bool,
   await_loop_row: Bool,
@@ -1096,7 +1096,7 @@ fn infer_gather_fold_acc_failed(
 fn infer_gather_fold_acc_ok(
   node: Node,
   entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
+  pending: v2.std.diagnostic.Diagnostics,
   await_branch_row: Bool,
   await_match_row: Bool,
   await_loop_row: Bool,
@@ -1134,7 +1134,7 @@ fn infer_gather_acc_to_outcome(acc: InferGatherFoldAcc) -> Outcome<List<Inferred
 }
 
 fn infer_gather_fold_failure_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^infer_gather_fold_failure } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -1144,7 +1144,7 @@ fn infer_gather_fold_failure_node() -> Node {
 fn infer_gather_branch_row_on_entries(
   node: Node,
   entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
+  pending: v2.std.diagnostic.Diagnostics,
   partials: List<Node>,
 ) -> InferGatherFoldAcc {
   match infer_branch_bool_if_else(node: node, partials: partials, entries: entries) {
@@ -1188,7 +1188,7 @@ fn infer_gather_branch_row_on_entries(
 fn infer_gather_match_row_on_entries(
   node: Node,
   entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
+  pending: v2.std.diagnostic.Diagnostics,
   partials: List<Node>,
   tree: Node,
 ) -> InferGatherFoldAcc {
@@ -1233,7 +1233,7 @@ fn infer_gather_match_row_on_entries(
 fn infer_gather_loop_row_on_entries(
   node: Node,
   entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
+  pending: v2.std.diagnostic.Diagnostics,
   partials: List<Node>,
 ) -> InferGatherFoldAcc {
   match infer_loop_iteration(node: node, partials: partials, entries: entries) {
@@ -1356,7 +1356,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
   }
 }
 
-fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics {
+fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> v2.std.diagnostic.NonEmptyDiagnostics {
   match acc.pending {
     Some { diagnostics: nds } => nds
     None =>
@@ -1368,7 +1368,7 @@ fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics
 
 data infer_literal_subtree_diagnostic_discharge_note: String = "An integer literal's modeled type derives from its canonical representation, including its sole named magnitude subtree. Its derivation discharges only that edge's local type frontier; propagating it past the literal would report GroundingNotDerived after Int was derived. Boolean literals are canonical only with no children, so no boolean payload can be discharged. Malformed literals remain GroundingNotDerived and retain every child diagnostic."
 
-fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
+fn infer_literal_edge_diagnostics_derived(parent: Node, edge: v2.std.node.Edge) -> Bool {
   match dag_canonical_literal_from_node(node: parent) {
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
       match edge.label {
@@ -1382,7 +1382,7 @@ fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
 
 fn infer_gather_fold_step(
   acc: InferGatherFoldAcc,
-  edge: Edge,
+  edge: v2.std.node.Edge,
   child: InferGatherFoldAcc,
   partials: List<Node>,
   tree: Node,
@@ -1446,7 +1446,7 @@ fn infer_gather_fold_step(
 }
 
 fn infer_gather_fold_algebra(partials: List<Node>, tree: Node) -> NodeFold<InferGatherFoldAcc> {
-  NodeFold {
+  v2.std.node.NodeFold {
     init: fn(n0) {
       infer_gather_fold_init(n: n0, partials: partials)
     },
@@ -1456,17 +1456,17 @@ fn infer_gather_fold_algebra(partials: List<Node>, tree: Node) -> NodeFold<Infer
   }
 }
 
-fn infer_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
+fn infer_grounding_admits_infer_facts(grounding: v2.std.constraints.CanonicalGrounding) -> Bool {
   canonical_grounding_admits_infer_facts(grounding: grounding)
 }
 
-fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
+fn infer_entries_for_tree(tree: v2.compiler.resolve.ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
   infer_gather_acc_to_outcome(
     acc: fold_node(n: tree, algebra: infer_gather_fold_algebra(partials: partials, tree: tree))
   )
 }
-fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
+fn infer(tree: v2.compiler.resolve.ResolvedTree) -> Outcome<InferredTree> {
   match infer_entries_for_tree(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: entries, diagnostics: d } =>

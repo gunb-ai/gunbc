@@ -1,7 +1,7 @@
 module gunbc.served_surface_browser_observation
 
 
-type LinuxKernelRelease = NonEmptyStr where brand("LinuxKernelRelease")
+type LinuxKernelRelease = std.types.NonEmptyStr where brand("LinuxKernelRelease")
 
 type ContainerVisibleHostKernel {
   visible_release: LinuxKernelRelease
@@ -135,11 +135,11 @@ type PlaywrightChromium151DiscriminatorRun {
   specimens: Chromium151DiscriminatorSpecimens
 }
 
-fn local_http_url(locator: NonEmptyStr) -> Uri {
-  Uri { scheme: Http, locator: locator }
+fn local_http_url(locator: std.types.NonEmptyStr) -> extdeps.uri.Uri {
+  extdeps.uri.Uri { scheme: Http, locator: locator }
 }
 
-fn explicit_reload_recovery(body: NonEmptyStr) -> RecoveryTrial {
+fn explicit_reload_recovery(body: std.types.NonEmptyStr) -> RecoveryTrial {
   RecoveryTrial {
     healthy_transition: RouteChangedToHealthyHttpResponse {
       status: 200,
@@ -196,7 +196,7 @@ fn sentinel_body_502_presentation(specimen: SentinelBody502ExactSpecimen) -> Nav
         Sentinel502SpecimenHeader,
       ],
       body: Utf8NavigationResponseBody {
-        text: "GUNBC_TYPED_ERROR_SENTINEL" as NonEmptyStr,
+        text: "GUNBC_TYPED_ERROR_SENTINEL" as std.types.NonEmptyStr,
         bytes: byte_size(26),
       },
     },
@@ -220,39 +220,39 @@ data playwright_chromium_151_linux_arm64_headless_navigation_run: PlaywrightChro
       executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as std.types.FilePath,
     },
   },
-  observed_on: "2026-08-01T04:58:15Z" as Rfc3339Timestamp,
+  observed_on: "2026-08-01T04:58:15Z" as extdeps.time.rfc3339.Rfc3339Timestamp,
   specimens: Chromium151DiscriminatorSpecimens {
     connection_refused: ConnectionRefusedExactSpecimen {
-      requested_url: local_http_url(locator: "127.0.0.1:43822/refused" as NonEmptyStr),
+      requested_url: local_http_url(locator: "127.0.0.1:43822/refused" as std.types.NonEmptyStr),
       origin: LocalSyntheticHarness,
       screenshot: ScreenshotArtifact {
-        path: "dag/test/fixtures/browser/chromium_151_connection_refused.png" as BinaryFilePath,
-        digest: sha256_digest(hex: "637bf51bb5163ec58e6f325d1ed304bfa3618940ac75cb493ddd81d4895b29d3" as NonEmptyStr),
+        path: "dag/test/fixtures/browser/chromium_151_connection_refused.png" as std.types.BinaryFilePath,
+        digest: sha256_digest(hex: "637bf51bb5163ec58e6f325d1ed304bfa3618940ac75cb493ddd81d4895b29d3" as std.types.NonEmptyStr),
         bytes: byte_size(19520),
       },
-      recovery_trials: [explicit_reload_recovery(body: "RECOVERED_REFUSED" as NonEmptyStr)],
+      recovery_trials: [explicit_reload_recovery(body: "RECOVERED_REFUSED" as std.types.NonEmptyStr)],
     },
     empty_502: EmptyBody502ExactSpecimen {
-      requested_url: local_http_url(locator: "127.0.0.1:43821/empty" as NonEmptyStr),
+      requested_url: local_http_url(locator: "127.0.0.1:43821/empty" as std.types.NonEmptyStr),
       origin: LocalSyntheticHarness,
       screenshot: ScreenshotArtifact {
-        path: "dag/test/fixtures/browser/chromium_151_empty_502.png" as BinaryFilePath,
-        digest: sha256_digest(hex: "f8a0b51701f18c0ff3ea22825103e5016fe68e69c7eca1190ed8162c05df22c6" as NonEmptyStr),
+        path: "dag/test/fixtures/browser/chromium_151_empty_502.png" as std.types.BinaryFilePath,
+        digest: sha256_digest(hex: "f8a0b51701f18c0ff3ea22825103e5016fe68e69c7eca1190ed8162c05df22c6" as std.types.NonEmptyStr),
         bytes: byte_size(14089),
       },
-      recovery_trials: [explicit_reload_recovery(body: "RECOVERED_EMPTY" as NonEmptyStr)],
+      recovery_trials: [explicit_reload_recovery(body: "RECOVERED_EMPTY" as std.types.NonEmptyStr)],
     },
     sentinel_502: SentinelBody502ExactSpecimen {
-      requested_url: local_http_url(locator: "127.0.0.1:43821/body" as NonEmptyStr),
+      requested_url: local_http_url(locator: "127.0.0.1:43821/body" as std.types.NonEmptyStr),
       origin: LocalSyntheticHarness,
       screenshot: ScreenshotArtifact {
-        path: "dag/test/fixtures/browser/chromium_151_bodied_502.png" as BinaryFilePath,
-        digest: sha256_digest(hex: "165dea20b5ecdaa9a864ff11c3924e9e6d3bbd956fa94f6b7827d948acc5bf71" as NonEmptyStr),
+        path: "dag/test/fixtures/browser/chromium_151_bodied_502.png" as std.types.BinaryFilePath,
+        digest: sha256_digest(hex: "165dea20b5ecdaa9a864ff11c3924e9e6d3bbd956fa94f6b7827d948acc5bf71" as std.types.NonEmptyStr),
         bytes: byte_size(6337),
       },
-      recovery_trials: [explicit_reload_recovery(body: "RECOVERED_BODY" as NonEmptyStr)],
+      recovery_trials: [explicit_reload_recovery(body: "RECOVERED_BODY" as std.types.NonEmptyStr)],
     },
   },
 }
 
-data evidence_grain_note: NonEmptyStr = "The one PlaywrightChromium151DiscriminatorRun receipt owns three distinct exact specimen types. Each type derives its empirical stimulus, navigation outcome, and presented document together, so a contradictory exact-coverage label cannot be constructed independently; its screenshot and recovery trials remain nested historical values. Chromium151DiscriminatorSpecimens fixes the three-case denominator without turning the observed result into a timeless decision table; a future build or environment carries its own receipt. Debian12Bookworm records the container userland reported by /etc/os-release; ContainerVisibleHostKernel separately records the host kernel release exposed by uname inside that container and does not infer a host operating-system distribution from its suffix. LocalSyntheticHarness prevents these responses from standing in for a production proxy or operational cause. EmptyBody502ExactSpecimen cannot widen one specimen into all empty HTTP errors. RecoveryTrial records that ExplicitReload was performed and a healthy response document followed; it carries no reload-necessity constructor. The run names no browser support roster, production response chain, continuity guarantee, or roadmap implementation lane." as NonEmptyStr
+data evidence_grain_note: std.types.NonEmptyStr = "The one PlaywrightChromium151DiscriminatorRun receipt owns three distinct exact specimen types. Each type derives its empirical stimulus, navigation outcome, and presented document together, so a contradictory exact-coverage label cannot be constructed independently; its screenshot and recovery trials remain nested historical values. Chromium151DiscriminatorSpecimens fixes the three-case denominator without turning the observed result into a timeless decision table; a future build or environment carries its own receipt. Debian12Bookworm records the container userland reported by /etc/os-release; ContainerVisibleHostKernel separately records the host kernel release exposed by uname inside that container and does not infer a host operating-system distribution from its suffix. LocalSyntheticHarness prevents these responses from standing in for a production proxy or operational cause. EmptyBody502ExactSpecimen cannot widen one specimen into all empty HTTP errors. RecoveryTrial records that ExplicitReload was performed and a healthy response document followed; it carries no reload-necessity constructor. The run names no browser support roster, production response chain, continuity guarantee, or roadmap implementation lane." as std.types.NonEmptyStr

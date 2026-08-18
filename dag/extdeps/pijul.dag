@@ -2,43 +2,43 @@ module extdeps.pijul
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "static.crates.io/crates/pijul/pijul-1.0.0-beta.20.crate#pijul-1.0.0-beta.20/README.md"
   }
 }
 
-data pijul_channels_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data pijul_channels_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "static.crates.io/crates/pijul/pijul-1.0.0-beta.20.crate#pijul-1.0.0-beta.20/src/commands/channel.rs"
   }
 }
 
-data pijul_theory_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data pijul_theory_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "static.crates.io/crates/pijul-core/pijul-core-1.0.0-beta.20.crate#pijul-core-1.0.0-beta.20/src/change.rs"
   }
 }
 
-data pijul_conflicts_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data pijul_conflicts_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "static.crates.io/crates/pijul-core/pijul-core-1.0.0-beta.20.crate#pijul-core-1.0.0-beta.20/src/alive/output.rs"
   }
 }
 
-data pijul_apply_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data pijul_apply_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "static.crates.io/crates/pijul-core/pijul-core-1.0.0-beta.20.crate#pijul-core-1.0.0-beta.20/src/apply.rs"
   }
 }
 
-data pijul_partial_clone_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data pijul_partial_clone_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "static.crates.io/crates/pijul/pijul-1.0.0-beta.20.crate#pijul-1.0.0-beta.20/src/commands/clone.rs"
   }
@@ -58,16 +58,16 @@ data pijul_upstream_version: PijulUpstreamVersion = PijulUpstreamVersion {
   beta: 20
 }
 
-data pijul_upstream_cli_version: NonEmptyStr = "pijul 1.0.0-beta.20"
+data pijul_upstream_cli_version: std.types.NonEmptyStr = "pijul 1.0.0-beta.20"
 
-data pijul_upstream_version_note: NonEmptyStr = "This R0 authority models Pijul CLI and pijul-core 1.0.0-beta.20. Every external anchor resolves into an immutable exact-version crates.io archive, and the wet receipt refuses any CLI version other than pijul 1.0.0-beta.20."
+data pijul_upstream_version_note: std.types.NonEmptyStr = "This R0 authority models Pijul CLI and pijul-core 1.0.0-beta.20. Every external anchor resolves into an immutable exact-version crates.io archive, and the wet receipt refuses any CLI version other than pijul 1.0.0-beta.20."
 
-data pijul_timestamp_non_authority_note: NonEmptyStr = "Pijul change timestamps are retained as authored metadata and provenance only. They never order delivery, choose a channel state, satisfy a dependency, or break a tie."
+data pijul_timestamp_non_authority_note: std.types.NonEmptyStr = "Pijul change timestamps are retained as authored metadata and provenance only. They never order delivery, choose a channel state, satisfy a dependency, or break a tie."
 
-type PijulChangeHash = NonEmptyStr where brand("PijulChangeHash")
-type PijulStateHash = NonEmptyStr where brand("PijulStateHash")
-type PijulChannelName = NonEmptyStr where brand("PijulChannelName")
-type PijulInode = NonEmptyStr where brand("PijulInode")
+type PijulChangeHash = std.types.NonEmptyStr where brand("PijulChangeHash")
+type PijulStateHash = std.types.NonEmptyStr where brand("PijulStateHash")
+type PijulChannelName = std.types.NonEmptyStr where brand("PijulChannelName")
+type PijulInode = std.types.NonEmptyStr where brand("PijulInode")
 
 type PijulPath {
   octets: List<std.integer.UInt8>
@@ -1212,7 +1212,7 @@ type PijulPrefixedLine {
 
 fn pijul_prefixed_lines(
   text: String,
-  prefix: NonEmptyStr,
+  prefix: std.types.NonEmptyStr,
 ) -> List<PijulPrefixedLine> {
   split(s: text, delimiter: "\n")
     |> map(line => trim(s: line))
@@ -1225,7 +1225,7 @@ fn pijul_prefixed_lines(
         s: line,
         start: prefix.length(),
         end: line.length(),
-      ) as NonEmptyStr,
+      ) as std.types.NonEmptyStr,
     })
 }
 
@@ -1637,6 +1637,6 @@ fn pijul_r0_conditional_advance() -> PijulConditionalAdvanceCapability {
   }
 }
 
-data pijul_conflict_boundary_note: NonEmptyStr = "Pijul graph conflicts are preserved as upstream facts. Their presence proves neither Daglang semantic contradiction nor a user preference; later source-intent admission must assess its own claims."
+data pijul_conflict_boundary_note: std.types.NonEmptyStr = "Pijul graph conflicts are preserved as upstream facts. Their presence proves neither Daglang semantic contradiction nor a user preference; later source-intent admission must assess its own claims."
 
-data pijul_execution_boundary_note: NonEmptyStr = "PijulRepositoryProjection is the raw availability boundary: complete and partial arms carry accessible facts, while the inaccessible arm cannot carry them; partial present/missing overlap is refused. PijulDecodedRepository is an informational decode result, never an admission token. pijul_plan_delivery consumes and re-decodes the raw projection itself, and a dependency must be both a resulting-channel member and an available recorded change. pijul_project_repository and pijul_plan_delivery remain pure R0 models: they mint no applied or independent-execution receipt. Only a separately executed upstream Pijul fixture may establish observation, and managed target advance remains unavailable."
+data pijul_execution_boundary_note: std.types.NonEmptyStr = "PijulRepositoryProjection is the raw availability boundary: complete and partial arms carry accessible facts, while the inaccessible arm cannot carry them; partial present/missing overlap is refused. PijulDecodedRepository is an informational decode result, never an admission token. pijul_plan_delivery consumes and re-decodes the raw projection itself, and a dependency must be both a resulting-channel member and an available recorded change. pijul_project_repository and pijul_plan_delivery remain pure R0 models: they mint no applied or independent-execution receipt. Only a separately executed upstream Pijul fixture may establish observation, and managed target advance remains unavailable."

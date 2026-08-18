@@ -1,6 +1,6 @@
 module v2.test.emit.decl_emit_consolidated
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data dc_bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
 data dc_execmode_golden: String = concat(rust_enum_derives_copy, "\nenum ExecutionMode { Hermetic, Wet, Record }")
@@ -13,11 +13,11 @@ data dc_occ_golden: String = concat(rust_struct_derives, "\nstruct OccurrenceIdA
 data dc_vendor_golden: String = concat(rust_struct_derives, "\nstruct Vendor<Domain> { legal_name: String }")
 data dc_pair_golden: String = concat(rust_struct_derives, "\nstruct Pair<K, V> { key: K, value: V }")
 
-fn dc_conj(children: List<Edge>) -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
+fn dc_conj(children: List<v2.std.node.Edge>) -> Node {
+  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
 }
 
-fn dc_pos(target: Node) -> Edge { Edge { label: Positional, target: target } }
+fn dc_pos(target: Node) -> v2.std.node.Edge { v2.std.node.Edge { label: Positional, target: target } }
 
 fn dc_nil() -> Node { dc_conj(children: []) }
 
@@ -67,31 +67,31 @@ fn dc_variant_block(variants: List<Node>) -> Node {
   dc_conj(children: [ dc_pos(target: dc_variant_list(variants: variants)) ])
 }
 
-fn dc_named_edge(name: String, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn dc_named_edge(name: String, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
-fn dc_coproduct_variant_edge_nullary(name: String) -> Edge {
+fn dc_coproduct_variant_edge_nullary(name: String) -> v2.std.node.Edge {
   dc_named_edge(name: name, target: dc_conj(children: []))
 }
 
-data dc_empty_variant_edges: List<Edge> = []
+data dc_empty_variant_edges: List<v2.std.node.Edge> = []
 
 data dc_empty_variant_nodes: List<Node> = []
 
-fn dc_coproduct_enum(variant_edges: List<Edge>) -> Node {
-  Node {
+fn dc_coproduct_enum(variant_edges: List<v2.std.node.Edge>) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Disj },
     children: variant_edges,
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn dc_derive_attr(binding: Symbol) -> Node {
+fn dc_derive_attr(binding: v2.std.node.Symbol) -> Node {
   dc_conj(children: [ dc_pos(target: rust_inhabitant_atom(id: binding)) ])
 }
 
-fn dc_enum_derive_binding_row(coproduct: Node) -> Edge {
+fn dc_enum_derive_binding_row(coproduct: Node) -> v2.std.node.Edge {
   match rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct) {
     Accepted { value: binding, diagnostics: _ } =>
       dc_pos(target: dc_derive_attr(binding: binding))
@@ -134,7 +134,7 @@ fn dc_struct_generic(name: String, params: List<String>, fields: List<Node>) -> 
   ])
 }
 
-fn dc_emit(rules: Node, target: TargetModel, emitted: Node) -> Outcome<String> {
+fn dc_emit(rules: Node, target: v2.std.compilers.target_model.TargetModel, emitted: Node) -> Outcome<String> {
   bind_outcome(
     o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
     f: fn(row) {
@@ -201,14 +201,14 @@ fn dc_struct_refused(emitted: Node) -> Bool {
 }
 
 fn dc_atom_type(t: String) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: t } }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: t } }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
-fn dc_coproduct_field_edge(name: String, t: String) -> Edge {
+fn dc_coproduct_field_edge(name: String, t: String) -> v2.std.node.Edge {
   dc_named_edge(name: name, target: dc_atom_type(t: t))
 }
 
-fn dc_coproduct_variant_edge_payload(name: String, fields: List<Edge>) -> Edge {
+fn dc_coproduct_variant_edge_payload(name: String, fields: List<v2.std.node.Edge>) -> v2.std.node.Edge {
   dc_named_edge(name: name, target: dc_conj(children: fields))
 }
 

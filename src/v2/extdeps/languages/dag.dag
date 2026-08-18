@@ -37,7 +37,7 @@ type DagBodiedFnFamilySpec {
   scaffold: v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold
 }
 
-fn dag_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^dag_token_kw_fn },
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_add },
@@ -60,7 +60,7 @@ fn dag_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn dag_pick_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_pick_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^dag_token_kw_fn },
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one_or_two },
@@ -79,7 +79,7 @@ fn dag_pick_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn dag_loop_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_loop_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^dag_token_kw_fn },
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one },
@@ -94,7 +94,7 @@ fn dag_loop_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn dag_bind_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_bind_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^dag_token_kw_fn },
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one },
@@ -113,7 +113,7 @@ fn dag_bind_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn dag_match_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_match_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^dag_token_kw_fn },
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one_or_two },
@@ -139,7 +139,7 @@ fn dag_match_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn dag_rec_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_rec_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^dag_token_kw_fn },
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_mk },
@@ -158,7 +158,7 @@ fn dag_rec_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn dag_field_access_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_field_access_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^dag_token_kw_fn },
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_get },
@@ -177,15 +177,15 @@ fn dag_field_access_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn dag_surface_operator_canonicalization_miss_diagnostic(surface_token: Symbol) -> Diagnostic {
-  Diagnostic {
+fn dag_surface_operator_canonicalization_miss_diagnostic(surface_token: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^dag_surface_operator_canonicalization_miss,
     at: port_locus(port: ^dag_surface_operator_canonicalization_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcome<CanonicalOperation> {
+fn dag_surface_operator_canonicalization_member(surface_token: v2.std.node.Symbol) -> Outcome<v2.std.compilers.target_model.CanonicalOperation> {
   if surface_token == ^dag_token_or_or {
     outcome_accepted(canonical_operation_op_or())
   } else if surface_token == ^dag_token_and_and {
@@ -218,48 +218,48 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
 }
 
 fn dag_surface_operator_canonicalization_lookup(
-  lm: LanguageModel,
-  surface_token: Symbol
-) -> Outcome<CanonicalOperation> {
+  lm: v2.std.language_model.LanguageModel,
+  surface_token: v2.std.node.Symbol
+) -> Outcome<v2.std.compilers.target_model.CanonicalOperation> {
   dag_surface_operator_canonicalization_member(surface_token: surface_token)
 }
 
-fn dag_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
+fn dag_keyword_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: token_class,
     pattern: KeywordPattern { text: text }
   }
 }
 
-fn dag_literal_lex_rule(token_class: Symbol, text: String) -> LexRule {
+fn dag_literal_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: token_class,
     pattern: LiteralPattern { text: text }
   }
 }
 
-fn dag_ident_lex_pattern() -> LexPattern {
+fn dag_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
     right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
 
-fn dag_ident_lex_rule() -> LexRule {
+fn dag_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: ^dag_token_ident,
     pattern: dag_ident_lex_pattern()
   }
 }
 
-fn dag_int_literal_lex_rule() -> LexRule {
+fn dag_int_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: ^dag_token_int_literal,
     pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
   }
 }
 
-fn dag_string_escape_char_pattern() -> LexPattern {
+fn dag_string_escape_char_pattern() -> v2.std.compilers.lexing.LexPattern {
   ChoicePattern {
     left: CharPattern { char: 34 },
     right: ChoicePattern {
@@ -278,21 +278,21 @@ fn dag_string_escape_char_pattern() -> LexPattern {
   }
 }
 
-fn dag_string_escape_sequence_pattern() -> LexPattern {
+fn dag_string_escape_sequence_pattern() -> v2.std.compilers.lexing.LexPattern {
   SequencePattern {
     left: CharPattern { char: 92 },
     right: dag_string_escape_char_pattern()
   }
 }
 
-fn dag_string_body_element_pattern() -> LexPattern {
+fn dag_string_body_element_pattern() -> v2.std.compilers.lexing.LexPattern {
   ChoicePattern {
     left: dag_string_escape_sequence_pattern(),
     right: CharClassPattern { class: StringTextChar }
   }
 }
 
-fn dag_string_literal_lex_rule() -> LexRule {
+fn dag_string_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: ^dag_token_string_literal,
     pattern: DelimitedPattern {
@@ -303,13 +303,13 @@ fn dag_string_literal_lex_rule() -> LexRule {
   }
 }
 
-fn dag_whitespace_trivia_rule() -> LexRule {
+fn dag_whitespace_trivia_rule() -> v2.std.compilers.lexing.LexRule {
   TriviaRule {
     pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
   }
 }
 
-fn dag_line_comment_annotation_rule() -> LexRule {
+fn dag_line_comment_annotation_rule() -> v2.std.compilers.lexing.LexRule {
   AnnotationRule {
     annotation_class: ^line_comment,
     pattern: SequencePattern {
@@ -319,9 +319,9 @@ fn dag_line_comment_annotation_rule() -> LexRule {
   }
 }
 
-fn dag_lex_rules() -> LexRuleSet {
+fn dag_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 
-  LexRuleSet {
+  v2.std.compilers.lexing.LexRuleSet {
     rules: [
       dag_whitespace_trivia_rule(),
       dag_string_literal_lex_rule(),
@@ -378,12 +378,12 @@ fn dag_lex_rules() -> LexRuleSet {
   }
 }
 
-fn dag_lex() -> LexRules {
+fn dag_lex() -> v2.std.compilers.lexing.LexRules {
   ModeledLexRules { root: dag_lex_rules() }
 }
 
-fn dag_grammar_atom(id: Symbol) -> Node {
-  Node {
+fn dag_grammar_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode {
       connective: Atom { identity: id }
     },
@@ -392,36 +392,36 @@ fn dag_grammar_atom(id: Symbol) -> Node {
 }
 }
 
-fn dag_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge {
+fn dag_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge {
     label: Named { name: name },
     target: target
   }
 }
 
-fn dag_positional_edge(target: Node) -> Edge {
-  Edge {
+fn dag_positional_edge(target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge {
     label: Positional,
     target: target
   }
 }
 
-fn emit_fixed_token(token_class: Symbol) -> Node {
+fn emit_fixed_token(token_class: v2.std.node.Symbol) -> Node {
   concrete_syntax_token_to_node(token: FixedToken { token_class: token_class })
 }
 
-fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
+fn emit_bound_token(token_class: v2.std.node.Symbol, binding: v2.std.node.Symbol) -> Node {
   concrete_syntax_token_to_node(
     token: BoundToken { token_class: token_class, binding: binding }
   )
 }
 
 fn emit_grammar_relation_row(
-  production: GrammarProduction,
+  production: v2.std.grammar.GrammarProduction,
   emitted: Node,
   tokens: List<Node>
 ) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -444,7 +444,7 @@ fn emit_grammar_relation_row(
 }
 }
 
-fn dag_formal_productions() -> List<FormalProduction> {
+fn dag_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^dag_production_module_header,
@@ -1785,39 +1785,39 @@ fn dag_formal_productions() -> List<FormalProduction> {
   ]
 }
 
-fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+fn dag_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
   grammar_expr_terminal(token_class: token_class)
 }
 
-fn dag_grammar_terminal_bound(token_class: Symbol, binding: Symbol) -> GrammarExpr {
+fn dag_grammar_terminal_bound(token_class: v2.std.node.Symbol, binding: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
   grammar_expr_terminal_bound(token_class: token_class, binding: binding)
 }
 
-fn dag_grammar_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
+fn dag_grammar_terminal_lexeme(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
   grammar_expr_terminal_lexeme(token_class: token_class)
 }
 
-fn dag_grammar_nonterminal(production: Symbol) -> GrammarExpr {
+fn dag_grammar_nonterminal(production: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
   Nonterminal { production: production }
 }
 
-fn dag_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+fn dag_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
   Sequence { left: left, right: right }
 }
 
-fn dag_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+fn dag_grammar_choice(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
   Choice { left: left, right: right }
 }
 
-fn dag_grammar_optional(element: GrammarExpr) -> GrammarExpr {
+fn dag_grammar_optional(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
   grammar_expr_optional(element: element)
 }
 
-fn dag_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
+fn dag_grammar_repeat(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
   Repeat { element: element }
 }
 
-fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
+fn dag_grammar_comma_list_expr(item: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: item,
     right: dag_grammar_sequence(
@@ -1832,14 +1832,14 @@ fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
   )
 }
 
-fn dag_grammar_module_header_expr() -> GrammarExpr {
+fn dag_grammar_module_header_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_module),
     right: dag_grammar_nonterminal(production: ^dag_production_qualified_name)
   )
 }
 
-fn dag_grammar_qualified_name_expr() -> GrammarExpr {
+fn dag_grammar_qualified_name_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
     right: dag_grammar_repeat(
@@ -1851,7 +1851,7 @@ fn dag_grammar_qualified_name_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_generic_params_expr() -> GrammarExpr {
+fn dag_grammar_generic_params_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lt),
     right: dag_grammar_sequence(
@@ -1861,7 +1861,7 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_typed_param_expr() -> GrammarExpr {
+fn dag_grammar_typed_param_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_binding_name_terminal(),
     right: dag_grammar_sequence(
@@ -1871,7 +1871,7 @@ fn dag_grammar_typed_param_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_param_list_expr() -> GrammarExpr {
+fn dag_grammar_param_list_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lparen),
     right: dag_grammar_sequence(
@@ -1883,7 +1883,7 @@ fn dag_grammar_param_list_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_qualified_type_expr() -> GrammarExpr {
+fn dag_grammar_qualified_type_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_sequence(
       left: dag_grammar_nonterminal(production: ^dag_production_qualified_name),
@@ -1907,13 +1907,13 @@ fn dag_grammar_qualified_type_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_type_list_expr() -> GrammarExpr {
+fn dag_grammar_type_list_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_comma_list_expr(
     item: dag_grammar_nonterminal(production: ^dag_production_type_expr)
   )
 }
 
-fn dag_grammar_fn_type_expr() -> GrammarExpr {
+fn dag_grammar_fn_type_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_fn),
     right: dag_grammar_sequence(
@@ -1932,14 +1932,14 @@ fn dag_grammar_fn_type_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_type_expr() -> GrammarExpr {
+fn dag_grammar_type_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_qualified_type_expr(),
     right: dag_grammar_nonterminal(production: ^dag_production_fn_type)
   )
 }
 
-fn dag_grammar_import_block_expr() -> GrammarExpr {
+fn dag_grammar_import_block_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
     right: dag_grammar_sequence(
@@ -1949,7 +1949,7 @@ fn dag_grammar_import_block_expr() -> GrammarExpr {
   )
 }
 
-fn dag_binding_name_keyword_tokens() -> List<Symbol> {
+fn dag_binding_name_keyword_tokens() -> List<v2.std.node.Symbol> {
   [
     ^dag_token_kw_module,
     ^dag_token_kw_import,
@@ -1969,7 +1969,7 @@ fn dag_binding_name_keyword_tokens() -> List<Symbol> {
   ]
 }
 
-fn dag_grammar_binding_name_terminal() -> GrammarExpr {
+fn dag_grammar_binding_name_terminal() -> v2.std.grammar.GrammarExpr {
   fold_list(
     xs: dag_binding_name_keyword_tokens(),
     empty: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
@@ -1982,7 +1982,7 @@ fn dag_grammar_binding_name_terminal() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_field_decl_expr() -> GrammarExpr {
+fn dag_grammar_field_decl_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_binding_name_terminal(),
     right: dag_grammar_sequence(
@@ -1992,13 +1992,13 @@ fn dag_grammar_field_decl_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_field_decl_list_helper() -> GrammarExpr {
+fn dag_grammar_field_decl_list_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(item: dag_grammar_field_decl_expr())
   )
 }
 
-fn dag_grammar_field_decl_block_expr() -> GrammarExpr {
+fn dag_grammar_field_decl_block_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
     right: dag_grammar_sequence(
@@ -2008,7 +2008,7 @@ fn dag_grammar_field_decl_block_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_fn_body_expr() -> GrammarExpr {
+fn dag_grammar_fn_body_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
     right: dag_grammar_sequence(
@@ -2018,18 +2018,18 @@ fn dag_grammar_fn_body_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_stmt_seq_expr() -> GrammarExpr {
+fn dag_grammar_stmt_seq_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_stmt))
 }
 
-fn dag_grammar_stmt_expr() -> GrammarExpr {
+fn dag_grammar_stmt_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_let_expr),
     right: dag_grammar_nonterminal(production: ^dag_production_expr)
   )
 }
 
-fn dag_grammar_let_expr() -> GrammarExpr {
+fn dag_grammar_let_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_kw_let),
@@ -2072,7 +2072,7 @@ fn dag_grammar_let_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_expr_expr() -> GrammarExpr {
+fn dag_grammar_expr_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_match_expr),
     right: dag_grammar_choice(
@@ -2094,7 +2094,7 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_multiplicative_op_choice() -> GrammarExpr {
+fn dag_grammar_multiplicative_op_choice() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_star),
     right: dag_grammar_choice(
@@ -2104,14 +2104,14 @@ fn dag_grammar_multiplicative_op_choice() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_additive_op_choice() -> GrammarExpr {
+fn dag_grammar_additive_op_choice() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_plus),
     right: dag_grammar_terminal(token_class: ^dag_token_minus)
   )
 }
 
-fn dag_grammar_comparison_op_choice() -> GrammarExpr {
+fn dag_grammar_comparison_op_choice() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_gte),
     right: dag_grammar_choice(
@@ -2124,14 +2124,14 @@ fn dag_grammar_comparison_op_choice() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_equality_op_choice() -> GrammarExpr {
+fn dag_grammar_equality_op_choice() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_eq_eq),
     right: dag_grammar_terminal(token_class: ^dag_token_neq)
   )
 }
 
-fn dag_grammar_multiplicative_expr_helper() -> GrammarExpr {
+fn dag_grammar_multiplicative_expr_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_unary_expr),
     right: dag_grammar_repeat(
@@ -2143,7 +2143,7 @@ fn dag_grammar_multiplicative_expr_helper() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_additive_expr_helper() -> GrammarExpr {
+fn dag_grammar_additive_expr_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_multiplicative_expr_helper(),
     right: dag_grammar_repeat(
@@ -2155,7 +2155,7 @@ fn dag_grammar_additive_expr_helper() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_comparison_expr_helper() -> GrammarExpr {
+fn dag_grammar_comparison_expr_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_additive_expr_helper(),
     right: dag_grammar_optional(
@@ -2167,7 +2167,7 @@ fn dag_grammar_comparison_expr_helper() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_equality_expr_helper() -> GrammarExpr {
+fn dag_grammar_equality_expr_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_comparison_expr_helper(),
     right: dag_grammar_optional(
@@ -2179,7 +2179,7 @@ fn dag_grammar_equality_expr_helper() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_and_expr_helper() -> GrammarExpr {
+fn dag_grammar_and_expr_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_equality_expr_helper(),
     right: dag_grammar_repeat(
@@ -2191,7 +2191,7 @@ fn dag_grammar_and_expr_helper() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_or_expr_helper() -> GrammarExpr {
+fn dag_grammar_or_expr_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_and_expr_helper(),
     right: dag_grammar_repeat(
@@ -2203,7 +2203,7 @@ fn dag_grammar_or_expr_helper() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_pipe_expr_helper() -> GrammarExpr {
+fn dag_grammar_pipe_expr_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_or_expr_helper(),
     right: dag_grammar_repeat(
@@ -2215,11 +2215,11 @@ fn dag_grammar_pipe_expr_helper() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_binary_expr_expr() -> GrammarExpr {
+fn dag_grammar_binary_expr_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_pipe_expr_helper()
 }
 
-fn dag_grammar_unary_expr_expr() -> GrammarExpr {
+fn dag_grammar_unary_expr_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_bang),
@@ -2229,13 +2229,13 @@ fn dag_grammar_unary_expr_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_arg_list_helper() -> GrammarExpr {
+fn dag_grammar_arg_list_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_arg))
   )
 }
 
-fn dag_grammar_field_init_list_helper() -> GrammarExpr {
+fn dag_grammar_field_init_list_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(
       item: dag_grammar_nonterminal(production: ^dag_production_field_init)
@@ -2243,7 +2243,7 @@ fn dag_grammar_field_init_list_helper() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_pattern_list_helper() -> GrammarExpr {
+fn dag_grammar_pattern_list_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(
       item: dag_grammar_nonterminal(production: ^dag_production_pattern)
@@ -2251,7 +2251,7 @@ fn dag_grammar_pattern_list_helper() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_field_pattern_list_helper() -> GrammarExpr {
+fn dag_grammar_field_pattern_list_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(
       item: dag_grammar_nonterminal(production: ^dag_production_field_pattern)
@@ -2259,17 +2259,17 @@ fn dag_grammar_field_pattern_list_helper() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_expr_list_helper() -> GrammarExpr {
+fn dag_grammar_expr_list_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_expr))
   )
 }
 
-fn dag_grammar_untyped_params_helper() -> GrammarExpr {
+fn dag_grammar_untyped_params_helper() -> v2.std.grammar.GrammarExpr {
   dag_grammar_comma_list_expr(item: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident))
 }
 
-fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
+fn dag_grammar_postfix_call_suffix_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lparen),
     right: dag_grammar_sequence(
@@ -2279,7 +2279,7 @@ fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
+fn dag_grammar_postfix_expr_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_primary_expr),
     right: dag_grammar_repeat(
@@ -2294,7 +2294,7 @@ fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
+fn dag_grammar_primary_ident_suffix_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_choice(
       left: dag_grammar_postfix_call_suffix_expr(),
@@ -2309,14 +2309,14 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_caret_symbol_expr() -> GrammarExpr {
+fn dag_grammar_caret_symbol_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_caret),
     right: dag_grammar_terminal(token_class: ^dag_token_ident)
   )
 }
 
-fn dag_grammar_primary_expr_expr() -> GrammarExpr {
+fn dag_grammar_primary_expr_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_caret_symbol_expr(),
     right: dag_grammar_primary_expr_core()
@@ -2325,7 +2325,7 @@ fn dag_grammar_primary_expr_expr() -> GrammarExpr {
 
 data dag_grammar_int_literal_stamp_lexeme_scaffold_note: String = "Interim: primary_expr_core and pattern_expr stamp int_literal with StampLexeme (was StampClass) so census-path operands carry distinct lexeme identities resolvable through body lowering. dissolve-on: ^migrate_when_general_body_producer_lands — general integer-literal ingestion supersedes grammar-level lexeme stamping. Fixture pick tokens (dag_pick_concrete_tokens) retain dag_grammar_pick_arm_literal_terminal with StampClass + branded bindings."
 
-fn dag_grammar_primary_expr_core() -> GrammarExpr {
+fn dag_grammar_primary_expr_core() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
       left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
@@ -2371,11 +2371,11 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_block_expr_expr() -> GrammarExpr {
+fn dag_grammar_block_expr_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_nonterminal(production: ^dag_production_fn_body)
 }
 
-fn dag_grammar_arg_expr() -> GrammarExpr {
+fn dag_grammar_arg_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_ident),
@@ -2388,7 +2388,7 @@ fn dag_grammar_arg_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_field_init_expr() -> GrammarExpr {
+fn dag_grammar_field_init_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_ident),
     right: dag_grammar_sequence(
@@ -2398,7 +2398,7 @@ fn dag_grammar_field_init_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_match_expr_expr() -> GrammarExpr {
+fn dag_grammar_match_expr_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_match),
     right: dag_grammar_sequence(
@@ -2416,14 +2416,14 @@ fn dag_grammar_match_expr_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_match_arm_stmt_body_expr() -> GrammarExpr {
+fn dag_grammar_match_arm_stmt_body_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_stmt),
     right: dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_stmt))
   )
 }
 
-fn dag_grammar_match_arm_expr() -> GrammarExpr {
+fn dag_grammar_match_arm_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_pattern),
     right: dag_grammar_sequence(
@@ -2436,7 +2436,7 @@ fn dag_grammar_match_arm_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_constructor_pattern_suffix_expr() -> GrammarExpr {
+fn dag_grammar_constructor_pattern_suffix_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_choice(
       left: dag_grammar_sequence(
@@ -2457,14 +2457,14 @@ fn dag_grammar_constructor_pattern_suffix_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_constructor_pattern_expr() -> GrammarExpr {
+fn dag_grammar_constructor_pattern_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_qualified_name),
     right: dag_grammar_constructor_pattern_suffix_expr()
   )
 }
 
-fn dag_grammar_pattern_expr() -> GrammarExpr {
+fn dag_grammar_pattern_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_constructor_pattern_expr(),
     right: dag_grammar_choice(
@@ -2480,7 +2480,7 @@ fn dag_grammar_pattern_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_field_pattern_expr() -> GrammarExpr {
+fn dag_grammar_field_pattern_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_ident),
@@ -2493,7 +2493,7 @@ fn dag_grammar_field_pattern_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_if_block_expr() -> GrammarExpr {
+fn dag_grammar_if_block_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_if),
     right: dag_grammar_sequence(
@@ -2512,7 +2512,7 @@ fn dag_grammar_if_block_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_if_then_expr() -> GrammarExpr {
+fn dag_grammar_if_then_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_if),
     right: dag_grammar_sequence(
@@ -2531,21 +2531,21 @@ fn dag_grammar_if_then_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_loop_expr_expr() -> GrammarExpr {
+fn dag_grammar_loop_expr_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_loop),
     right: dag_grammar_nonterminal(production: ^dag_production_expr)
   )
 }
 
-fn dag_grammar_if_expr_expr() -> GrammarExpr {
+fn dag_grammar_if_expr_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_if_then_expr(),
     right: dag_grammar_if_block_expr()
   )
 }
 
-fn dag_grammar_fn_literal_expr() -> GrammarExpr {
+fn dag_grammar_fn_literal_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_fn),
     right: dag_grammar_sequence(
@@ -2577,7 +2577,7 @@ fn dag_grammar_fn_literal_expr() -> GrammarExpr {
 // is a grammar-shaped surface for normalize to wrapper-retain, never a fabricated
 // semantic form. The single-ident form's FIRST set overlaps binary_expr's, so the
 // expr-level choice routes through the ordered backtrack residue by construction.
-fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
+fn dag_grammar_arrow_lambda_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
       left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
@@ -2616,7 +2616,7 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_import_decl_expr() -> GrammarExpr {
+fn dag_grammar_import_decl_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_import),
     right: dag_grammar_sequence(
@@ -2626,7 +2626,7 @@ fn dag_grammar_import_decl_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_alias_decl_expr() -> GrammarExpr {
+fn dag_grammar_alias_decl_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_alias),
     right: dag_grammar_sequence(
@@ -2639,14 +2639,14 @@ fn dag_grammar_alias_decl_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_type_variant_expr() -> GrammarExpr {
+fn dag_grammar_type_variant_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
     right: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_field_decl_block))
   )
 }
 
-fn dag_grammar_type_alias_rhs_expr() -> GrammarExpr {
+fn dag_grammar_type_alias_rhs_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_type_variant),
     right: dag_grammar_repeat(
@@ -2658,7 +2658,7 @@ fn dag_grammar_type_alias_rhs_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_type_decl_expr() -> GrammarExpr {
+fn dag_grammar_type_decl_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_type),
     right: dag_grammar_sequence(
@@ -2679,7 +2679,7 @@ fn dag_grammar_type_decl_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_data_decl_expr() -> GrammarExpr {
+fn dag_grammar_data_decl_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_data),
     right: dag_grammar_sequence(
@@ -2698,7 +2698,7 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_fn_decl_expr() -> GrammarExpr {
+fn dag_grammar_fn_decl_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_fn),
     right: dag_grammar_sequence(
@@ -2722,7 +2722,7 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_top_level_item_expr() -> GrammarExpr {
+fn dag_grammar_top_level_item_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_import_decl),
     right: dag_grammar_choice(
@@ -2738,22 +2738,22 @@ fn dag_grammar_top_level_item_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_module_expr() -> GrammarExpr {
+fn dag_grammar_module_expr() -> v2.std.grammar.GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_module_header),
     right: dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_top_level_item))
   )
 }
 
-fn dag_grammar_production(name: Symbol, expression: GrammarExpr, emitted: Symbol) -> GrammarProduction {
-  GrammarProduction {
+fn dag_grammar_production(name: v2.std.node.Symbol, expression: v2.std.grammar.GrammarExpr, emitted: v2.std.node.Symbol) -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: name,
     expression: expression,
     emitted: dag_grammar_atom(id: emitted)
   }
 }
 
-fn dag_grammar_module_production() -> GrammarProduction {
+fn dag_grammar_module_production() -> v2.std.grammar.GrammarProduction {
   dag_grammar_production(
     name: ^dag_production_module,
     expression: dag_grammar_module_expr(),
@@ -2762,7 +2762,7 @@ fn dag_grammar_module_production() -> GrammarProduction {
 }
 
 fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -2807,7 +2807,7 @@ fn emit_import_decl_emitted_node(
       target: qualified_name
     )
   ]
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: match import_block {
       Present { value: block } =>
@@ -2849,7 +2849,7 @@ fn emit_row_import_decl(
 }
 
 fn emit_alias_decl_emitted_node(binding: Node, target: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -2887,11 +2887,11 @@ fn emit_row_alias_decl(binding: Node, target: Node) -> Node {
 }
 
 fn emit_data_decl_emitted_node(
-  name_binding: Symbol,
+  name_binding: v2.std.node.Symbol,
   type_expr: Node,
   expr: Node
 ) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -2916,7 +2916,7 @@ fn emit_data_decl_emitted_node(
 }
 
 fn emit_row_data_decl(
-  name_binding: Symbol,
+  name_binding: v2.std.node.Symbol,
   type_expr: Node,
   expr: Node
 ) -> Node {
@@ -2942,7 +2942,7 @@ fn emit_row_data_decl(
   )
 }
 
-fn dag_grammar_root() -> GrammarRoot {
+fn dag_grammar_root() -> v2.std.grammar.GrammarRoot {
   let module_prod = dag_grammar_module_production()
   let module_header = dag_grammar_production(
     name: ^dag_production_module_header,
@@ -3129,7 +3129,7 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_arrow_lambda_expr(),
     emitted: ^dag_surface_arrow_lambda
   )
-  GrammarRoot {
+  v2.std.grammar.GrammarRoot {
     start: ^dag_production_module,
     productions: [
       module_prod,
@@ -3175,15 +3175,15 @@ fn dag_grammar_root() -> GrammarRoot {
   }
 }
 
-fn dag_g0_void_grammar() -> ParseGrammar {
+fn dag_g0_void_grammar() -> v2.std.grammar.ParseGrammar {
   VoidGrammar
 }
 
-fn dag_grammar() -> ParseGrammar {
+fn dag_grammar() -> v2.std.grammar.ParseGrammar {
   ModeledGrammar { root: dag_grammar_root() }
 }
 
-fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
+fn dag_language_model_surface_prelude_atoms() -> Set<v2.std.node.Symbol> {
   Set {
     member: fn(sym) {
       sym == ^dag_c3_surface_sugar_service ||
@@ -3195,7 +3195,7 @@ fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
   }
 }
 
-fn dag_language_model_empty_canonical_symbol_set() -> Set<Symbol> {
+fn dag_language_model_empty_canonical_symbol_set() -> Set<v2.std.node.Symbol> {
   Set {
     member: fn(_) {
       false
@@ -3203,7 +3203,7 @@ fn dag_language_model_empty_canonical_symbol_set() -> Set<Symbol> {
   }
 }
 
-fn dag_language_model_binding_canonical(sym: Symbol) -> Bool {
+fn dag_language_model_binding_canonical(sym: v2.std.node.Symbol) -> Bool {
   sym == ^dag_binding_fn_add
     || sym == ^dag_binding_param_x
     || sym == ^dag_binding_param_y
@@ -3218,7 +3218,7 @@ fn dag_language_model_binding_canonical(sym: Symbol) -> Bool {
     || sym == ^dag_loop_measure_sym
 }
 
-fn dag_canonical_symbols() -> Set<Symbol> {
+fn dag_canonical_symbols() -> Set<v2.std.node.Symbol> {
   Set {
     member: fn(sym) {
       dag_language_model_surface_prelude_atoms().member(sym) ||
@@ -3228,8 +3228,8 @@ fn dag_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn dag_language_model_void() -> LanguageModel {
-  LanguageModel {
+fn dag_language_model_void() -> v2.std.language_model.LanguageModel {
+  v2.std.language_model.LanguageModel {
     lex: dag_lex(),
     grammar: dag_g0_void_grammar(),
     language_identity: ^dag_language_model_surface_id,
@@ -3238,8 +3238,8 @@ fn dag_language_model_void() -> LanguageModel {
   }
 }
 
-fn dag_language_model() -> LanguageModel {
-  LanguageModel {
+fn dag_language_model() -> v2.std.language_model.LanguageModel {
+  v2.std.language_model.LanguageModel {
     lex: dag_lex(),
     grammar: dag_grammar(),
     language_identity: ^dag_language_model_surface_id,
@@ -3248,8 +3248,8 @@ fn dag_language_model() -> LanguageModel {
   }
 }
 
-fn dag_language_model_surface_empty_prelude() -> LanguageModel {
-  LanguageModel {
+fn dag_language_model_surface_empty_prelude() -> v2.std.language_model.LanguageModel {
+  v2.std.language_model.LanguageModel {
     lex: dag_lex(),
     grammar: dag_g0_void_grammar(),
     language_identity: ^dag_language_model_surface_id,
@@ -3258,18 +3258,18 @@ fn dag_language_model_surface_empty_prelude() -> LanguageModel {
   }
 }
 
-fn dag_language_model_canonical_symbols(lm: LanguageModel) -> Set<Symbol> {
+fn dag_language_model_canonical_symbols(lm: v2.std.language_model.LanguageModel) -> Set<v2.std.node.Symbol> {
   lm.canonical_symbols
 }
 
-fn dag_lex_token_symbol(sym: Symbol) -> Bool {
+fn dag_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
   lex_rule_set_token_class_member(
     rules: dag_lex_rules(),
     token_class: sym
   )
 }
 
-fn dag_sync_tokens() -> Set<Symbol> {
+fn dag_sync_tokens() -> Set<v2.std.node.Symbol> {
   Set {
     member: fn(sym) {
       sym == ^dag_token_kw_module ||
@@ -3318,7 +3318,7 @@ fn dag_fidelity_disposition_node(
     Modeled =>
       dag_grammar_atom(id: ^dag_fidelity_disposition_kind_modeled)
     DeclaredNormalized { feature: feature } =>
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
           dag_named_edge(
@@ -3333,7 +3333,7 @@ fn dag_fidelity_disposition_node(
         occurrence_id: SyntheticOccurrence
       }
     FailClosed { feature: feature } =>
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
           dag_named_edge(
@@ -3351,7 +3351,7 @@ fn dag_fidelity_disposition_node(
 }
 
 fn dag_fidelity_quotient_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -3372,7 +3372,7 @@ fn dag_fidelity_quotient_node() -> Node {
 }
 
 fn dag_fidelity_quotient_all_modeled_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -3393,7 +3393,7 @@ fn dag_fidelity_quotient_all_modeled_node() -> Node {
 }
 
 fn dag_target_model_bundle_with_fidelity_quotient(quotient: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -3421,8 +3421,8 @@ fn dag_target_model_bundle_with_fidelity_quotient(quotient: Node) -> Node {
   }
 }
 
-fn dag_target_model_with_fidelity_quotient(quotient: Node) -> TargetModel {
-  TargetModel {
+fn dag_target_model_with_fidelity_quotient(quotient: Node) -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: dag_target_model_bundle_with_fidelity_quotient(quotient: quotient),
     lex: dag_lex(),
@@ -3433,13 +3433,13 @@ fn dag_target_model_with_fidelity_quotient(quotient: Node) -> TargetModel {
   }
 }
 
-fn dag_target_model_lossless_fidelity_quotient() -> TargetModel {
+fn dag_target_model_lossless_fidelity_quotient() -> v2.std.compilers.target_model.TargetModel {
   dag_target_model_with_fidelity_quotient(
     quotient: dag_fidelity_quotient_all_modeled_node()
   )
 }
 
-fn dag_surface_module_header_metadata_edge(name: Symbol) -> Bool {
+fn dag_surface_module_header_metadata_edge(name: v2.std.node.Symbol) -> Bool {
   (name == ^dag_surface_module_header)
     || (name == ^dag_surface_module_header_qualified_name)
 }
@@ -3477,8 +3477,8 @@ fn dag_node_is_module_root_conj(n: Node) -> Bool {
   }
 }
 
-fn dag_inhabitant_atom(id: Symbol) -> Node {
-  Node {
+fn dag_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -3486,7 +3486,7 @@ fn dag_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn dag_int_inhabitant_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(name: ^dag_inhabitant_field_atom, target: dag_inhabitant_atom(id: ^dag_inhabitant_int)),
@@ -3500,7 +3500,7 @@ fn dag_int_inhabitant_node() -> Node {
 }
 
 fn dag_declared_inhabitants_core() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node())
@@ -3511,17 +3511,17 @@ fn dag_declared_inhabitants_core() -> Node {
 
 data dag_fixture_int_inhabitant: Node = dag_int_inhabitant_node()
 
-data dag_fixture_emitted_add_fn: Node = Node {
+data dag_fixture_emitted_add_fn: Node = v2.std.node.Node {
   kind: TypeNode { connective: Arrow },
   children: [
-    Edge { label: Positional, target: dag_fixture_int_inhabitant },
-    Edge { label: Positional, target: dag_fixture_int_inhabitant },
-    Edge { label: Positional, target: dag_fixture_int_inhabitant }
+    v2.std.node.Edge { label: Positional, target: dag_fixture_int_inhabitant },
+    v2.std.node.Edge { label: Positional, target: dag_fixture_int_inhabitant },
+    v2.std.node.Edge { label: Positional, target: dag_fixture_int_inhabitant }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-fn dag_pick_zip_fold_closure_edges() -> List<Edge> {
+fn dag_pick_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_pick_family_spec())
 }
 
@@ -3529,7 +3529,7 @@ fn dag_pick_declared_inhabitants_root() -> Node {
   dag_bodied_fn_declared_inhabitants_root(spec: dag_pick_family_spec())
 }
 
-fn dag_bind_zip_fold_closure_edges() -> List<Edge> {
+fn dag_bind_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_bind_family_spec())
 }
 
@@ -3537,7 +3537,7 @@ fn dag_bind_declared_inhabitants_root() -> Node {
   dag_bodied_fn_declared_inhabitants_root(spec: dag_bind_family_spec())
 }
 
-fn dag_loop_zip_fold_closure_edges() -> List<Edge> {
+fn dag_loop_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_loop_family_spec())
 }
 
@@ -3545,9 +3545,9 @@ fn dag_loop_declared_inhabitants_root() -> Node {
   dag_bodied_fn_declared_inhabitants_root(spec: dag_loop_family_spec())
 }
 
-data dag_inhabitant_field_match_fn: Symbol = dag_inhabitant_field_match_fn
+data dag_inhabitant_field_match_fn: v2.std.node.Symbol = dag_inhabitant_field_match_fn
 
-fn dag_match_zip_fold_closure_edges() -> List<Edge> {
+fn dag_match_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_match_family_spec())
 }
 
@@ -3555,9 +3555,9 @@ fn dag_match_declared_inhabitants_root() -> Node {
   dag_bodied_fn_declared_inhabitants_root(spec: dag_match_family_spec())
 }
 
-data dag_inhabitant_field_rec_fn: Symbol = dag_inhabitant_field_rec_fn
+data dag_inhabitant_field_rec_fn: v2.std.node.Symbol = dag_inhabitant_field_rec_fn
 
-fn dag_rec_zip_fold_closure_edges() -> List<Edge> {
+fn dag_rec_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_rec_family_spec())
 }
 
@@ -3565,9 +3565,9 @@ fn dag_rec_declared_inhabitants_root() -> Node {
   dag_bodied_fn_declared_inhabitants_root(spec: dag_rec_family_spec())
 }
 
-data dag_inhabitant_field_field_access_fn: Symbol = dag_inhabitant_field_field_access_fn
+data dag_inhabitant_field_field_access_fn: v2.std.node.Symbol = dag_inhabitant_field_field_access_fn
 
-fn dag_field_access_zip_fold_closure_edges() -> List<Edge> {
+fn dag_field_access_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_field_access_family_spec())
 }
 
@@ -3575,7 +3575,7 @@ fn dag_field_access_declared_inhabitants_root() -> Node {
   dag_bodied_fn_declared_inhabitants_root(spec: dag_field_access_family_spec())
 }
 
-fn dag_zip_fold_closure_edges() -> List<Edge> {
+fn dag_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   [
     dag_named_edge(
       name: ^dag_inhabitant_field_add_fn,
@@ -3593,7 +3593,7 @@ fn dag_zip_fold_closure_edges() -> List<Edge> {
 }
 
 fn dag_declared_inhabitants_root() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: list_append(
       left: dag_declared_inhabitants_core().children,
@@ -3611,11 +3611,11 @@ fn dag_emitted_add_fn_node() -> Node {
   dag_fixture_emitted_add_fn
 }
 
-fn dag_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+fn dag_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn dag_serialize_source_prefix_edges() -> List<Edge> {
+fn dag_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
   [
     dag_named_edge(
       name: ^serialize_source_field_source_text,
@@ -3628,7 +3628,7 @@ fn dag_serialize_source_prefix_edges() -> List<Edge> {
   ]
 }
 
-fn dag_serialize_source_children() -> List<Edge> {
+fn dag_serialize_source_children() -> List<v2.std.node.Edge> {
   list_append(
     left: dag_serialize_source_prefix_edges(),
     right: [
@@ -3652,7 +3652,7 @@ fn dag_serialize_source_node() -> Node {
   )
 }
 
-fn dag_formal_grammar_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
+fn dag_formal_grammar_symbol_from_token(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.grammar.FormalGrammarSymbol {
   match token {
     FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
     BoundToken { token_class: c, binding: b } =>
@@ -3660,7 +3660,7 @@ fn dag_formal_grammar_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGra
   }
 }
 
-fn dag_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn dag_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -3673,49 +3673,49 @@ fn dag_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalG
   )
 }
 
-fn dag_formal_production_fn_add() -> FormalProduction {
+fn dag_formal_production_fn_add() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^dag_production_fn_add,
     rhs: dag_formal_rhs_from_tokens(tokens: dag_concrete_tokens())
   )
 }
 
-fn dag_formal_production_fn_pick() -> FormalProduction {
+fn dag_formal_production_fn_pick() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^dag_production_fn_pick,
     rhs: dag_formal_rhs_from_tokens(tokens: dag_pick_concrete_tokens())
   )
 }
 
-fn dag_formal_production_fn_loop() -> FormalProduction {
+fn dag_formal_production_fn_loop() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^dag_production_fn_loop,
     rhs: dag_formal_rhs_from_tokens(tokens: dag_loop_concrete_tokens())
   )
 }
 
-fn dag_formal_production_fn_match() -> FormalProduction {
+fn dag_formal_production_fn_match() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^dag_production_fn_match,
     rhs: dag_formal_rhs_from_tokens(tokens: dag_match_concrete_tokens())
   )
 }
 
-fn dag_formal_production_fn_rec() -> FormalProduction {
+fn dag_formal_production_fn_rec() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^dag_production_fn_rec,
     rhs: dag_formal_rhs_from_tokens(tokens: dag_rec_concrete_tokens())
   )
 }
 
-fn dag_formal_production_fn_field_access() -> FormalProduction {
+fn dag_formal_production_fn_field_access() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^dag_production_fn_field_access,
     rhs: dag_formal_rhs_from_tokens(tokens: dag_field_access_concrete_tokens())
   )
 }
 
-fn dag_type_decl_structural_formal_productions() -> List<FormalProduction> {
+fn dag_type_decl_structural_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^dag_production_qualified_name,
@@ -3764,7 +3764,7 @@ fn dag_type_decl_structural_formal_productions() -> List<FormalProduction> {
 }
 
 fn dag_type_decl_productions_only_translation_rules() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -3778,9 +3778,9 @@ fn dag_type_decl_productions_only_translation_rules() -> Node {
   }
 }
 
-fn dag_type_decl_structural_lex_rules() -> LexRuleSet {
+fn dag_type_decl_structural_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 
-  LexRuleSet {
+  v2.std.compilers.lexing.LexRuleSet {
     rules: [
       dag_whitespace_trivia_rule(),
       dag_string_literal_lex_rule(),
@@ -3795,14 +3795,14 @@ fn dag_type_decl_structural_lex_rules() -> LexRuleSet {
   }
 }
 
-fn dag_type_decl_structural_lex() -> LexRules {
+fn dag_type_decl_structural_lex() -> v2.std.compilers.lexing.LexRules {
   ModeledLexRules { root: dag_type_decl_structural_lex_rules() }
 }
 
-fn dag_type_decl_structural_target_model() -> TargetModel {
-  TargetModel {
+fn dag_type_decl_structural_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
-    bundle: Node {
+    bundle: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
         dag_named_edge(
@@ -3831,7 +3831,7 @@ fn dag_add_grammar_relation_row_node() -> Node {
 }
 
 fn dag_translation_rules_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -3844,7 +3844,7 @@ fn dag_translation_rules_node() -> Node {
 }
 
 fn dag_target_model_bundle_core() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -3876,7 +3876,7 @@ fn dag_target_model_node() -> Node {
   dag_target_model_bundle_core()
 }
 
-fn dag_binding_spellings() -> Map<Symbol, String> {
+fn dag_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   let m0 = map_insert(empty_map(), ^dag_binding_fn_add, "add")
   let m1 = map_insert(m0, ^dag_binding_param_x, "x")
   let m2 = map_insert(m1, ^dag_binding_param_y, "y")
@@ -3896,15 +3896,15 @@ fn dag_binding_spellings() -> Map<Symbol, String> {
   map_insert(m15, ^dag_binding_field_variant_value, "value")
 }
 
-fn dag_add_param_binding_ids() -> List<Symbol> {
+fn dag_add_param_binding_ids() -> List<v2.std.node.Symbol> {
   [^dag_binding_param_x, ^dag_binding_param_y]
 }
 
-fn dag_int_type_binding() -> Symbol {
+fn dag_int_type_binding() -> v2.std.node.Symbol {
   ^dag_binding_type_int
 }
 
-fn dag_binding_branded_atom_identity(node: Node) -> Optional<Symbol> {
+fn dag_binding_branded_atom_identity(node: Node) -> Optional<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       match id == ^dag_token_ident {
@@ -3920,14 +3920,14 @@ fn dag_loop_measure_node() -> Node {
 }
 
 fn dag_loop_body_from_literal(lit: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: lit
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^loop_bound_edge },
         target: dag_loop_measure_node()
       }
@@ -3988,24 +3988,24 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
 
 data dag_eval_literal_atom_authority_note: String = "Single authority for eval literal-vs-binding dispatch (v2_eval_is_literal_shaped_node projects this). Fixture pick literals admit both token_class (^dag_pick_lit_*) and branded binding (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement bool literals (^dag_complement_lit_*) are logic-ingest tokens used as scrutinee/body literals in complement fixtures. dissolve-on: general body producer lands grammar-owned literal classification and this roster folds into it."
 
-fn dag_symbol_is_fixture_pick_literal(id: Symbol) -> Bool {
+fn dag_symbol_is_fixture_pick_literal(id: v2.std.node.Symbol) -> Bool {
   (id == ^dag_pick_lit_one)
     || (id == ^dag_pick_lit_two)
     || (id == ^dag_binding_pick_lit_one)
     || (id == ^dag_binding_pick_lit_two)
 }
 
-fn dag_symbol_is_complement_bool_literal(id: Symbol) -> Bool {
+fn dag_symbol_is_complement_bool_literal(id: v2.std.node.Symbol) -> Bool {
   (id == ^dag_complement_lit_true) || (id == ^dag_complement_lit_false)
 }
 
-fn dag_symbol_is_fixture_record_literal_atom(id: Symbol) -> Bool {
+fn dag_symbol_is_fixture_record_literal_atom(id: v2.std.node.Symbol) -> Bool {
   (id == ^dag_binding_rec_v)
     || (id == ^dag_rec_lit_nine)
     || (id == ^dag_binding_type_variant_true)
 }
 
-fn dag_symbol_is_fixture_body_literal_atom(id: Symbol) -> Bool {
+fn dag_symbol_is_fixture_body_literal_atom(id: v2.std.node.Symbol) -> Bool {
   dag_symbol_is_fixture_pick_literal(id: id)
     || dag_symbol_is_complement_bool_literal(id: id)
     || dag_symbol_is_fixture_record_literal_atom(id: id)
@@ -4022,11 +4022,11 @@ fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
        }
 }
 
-fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: std.occurrence_identity.OccurrenceId) -> Node {
-  Node {
+fn dag_int_literal_node_from_magnitude(magnitude: v2.std.integer.DecimalMagnitude, occurrence_id: std.occurrence_identity.OccurrenceId) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^integer_literal_magnitude_field },
         target: integer_decimal_magnitude_node(magnitude: magnitude)
       }
@@ -4046,7 +4046,7 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: std.occurrenc
       )
     Absent =>
       outcome_rejected(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: ^dag_int_literal_lexeme_invalid,
           at: port_locus(port: ^dag_int_literal_lexeme_invalid),
           correction: None
@@ -4055,7 +4055,7 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: std.occurrenc
   }
 }
 
-fn dag_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> {
+fn dag_int_literal_magnitude_edge_target_optional(edge: v2.std.node.Edge) -> Optional<Node> {
   match edge {
     Edge { label: Named { name: field }, target: magnitude } =>
       if field == ^integer_literal_magnitude_field {
@@ -4087,7 +4087,7 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
         integer_decimal_magnitude_node_to_int(node: magnitude_node)
       Absent =>
         outcome_rejected(
-          d: Diagnostic {
+          d: v2.std.diagnostic.Diagnostic {
             reason: ^dag_int_literal_lexeme_invalid,
             at: node_locus(node: node),
             correction: None
@@ -4096,7 +4096,7 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
     }
   } else {
     outcome_rejected(
-      d: Diagnostic {
+      d: v2.std.diagnostic.Diagnostic {
         reason: ^dag_int_literal_lexeme_invalid,
         at: node_locus(node: node),
         correction: None
@@ -4109,8 +4109,8 @@ type DagCanonicalLiteral
   = DagCanonicalBoolLiteral { value: Bool }
   | DagCanonicalIntLiteral { magnitude: Int }
 
-fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn dag_canonical_literal_shape_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^dag_literal_shape_invalid,
     at: node_locus(node: node),
     correction: None
@@ -4139,8 +4139,8 @@ fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
   }
 }
 
-fn dag_type_atom_node(identity: Symbol) -> Node {
-  Node {
+fn dag_type_atom_node(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -4149,22 +4149,22 @@ fn dag_type_atom_node(identity: Symbol) -> Node {
 
 fn dag_arrow_with_body_node(
   domain: Node,
-  return_type_binding: Symbol,
+  return_type_binding: v2.std.node.Symbol,
   body: Node
 ) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: domain },
-      Edge {
+      v2.std.node.Edge { label: Positional, target: domain },
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: return_type_binding)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: return_type_binding)
       },
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      v2.std.node.Edge { label: Named { name: ^arrow_body_edge }, target: body }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4181,30 +4181,30 @@ fn dag_arrow_domain_conj_node() -> Node {
     cons: fn(acc, binding_id) {
       list_snoc_item(
         xs: acc,
-        item: Edge {
+        item: v2.std.node.Edge {
           label: Named { name: binding_id },
           target: dag_type_atom_node(identity: dag_int_type_binding())
         }
       )
     }
   )
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: children,
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Symbol) -> Node {
-  Node {
+fn dag_binary_body_node(operator: Node, left_binding: v2.std.node.Symbol, right_binding: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: operator },
-      Edge {
+      v2.std.node.Edge { label: Positional, target: operator },
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: left_binding)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: right_binding)
       }
@@ -4214,18 +4214,18 @@ fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Sym
 }
 
 fn dag_add_arrow_signature_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_arrow_domain_conj_node()
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_binding_type_int)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_binding_type_int)
       }
@@ -4273,7 +4273,7 @@ data dag_add_arrow_with_body_fixture: Node = dag_add_arrow_with_body_node()
 data dag_add_arrow_with_body_swapped_operands_fixture: Node = dag_add_arrow_with_body_swapped_operands_node()
 
 fn dag_pick_arrow_domain_conj_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -4285,12 +4285,12 @@ fn dag_pick_if_body_from_arms(
   then_arm: Node,
   else_arm: Node
 ) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: condition },
-      Edge { label: Positional, target: then_arm },
-      Edge { label: Positional, target: else_arm }
+      v2.std.node.Edge { label: Positional, target: condition },
+      v2.std.node.Edge { label: Positional, target: then_arm },
+      v2.std.node.Edge { label: Positional, target: else_arm }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4299,7 +4299,7 @@ fn dag_pick_if_body_from_arms(
 fn dag_int_literal_fixture_one() -> Node {
   dag_int_literal_node_from_magnitude(
     magnitude: DecimalNonZero {
-      magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }
+      magnitude: v2.std.integer.DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }
     },
     occurrence_id: SyntheticOccurrence
   )
@@ -4308,7 +4308,7 @@ fn dag_int_literal_fixture_one() -> Node {
 fn dag_int_literal_fixture_two() -> Node {
   dag_int_literal_node_from_magnitude(
     magnitude: DecimalNonZero {
-      magnitude: DecimalNonZeroMagnitude { lead: NonZeroD2, tail: Empty }
+      magnitude: v2.std.integer.DecimalNonZeroMagnitude { lead: NonZeroD2, tail: Empty }
     },
     occurrence_id: SyntheticOccurrence
   )
@@ -4374,8 +4374,8 @@ data dag_pick_arrow_with_body_swapped_arms_fixture: Node = dag_pick_arrow_with_b
 
 data dag_fixture_emitted_pick_fn: Node = dag_pick_arrow_with_body_fixture
 
-fn dag_match_arm_node(pattern_lit: Symbol, body_lit: Symbol) -> Node {
-  Node {
+fn dag_match_arm_node(pattern_lit: v2.std.node.Symbol, body_lit: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -4396,12 +4396,12 @@ fn dag_match_body_from_arms(
   true_arm: Node,
   false_arm: Node
 ) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Match },
     children: [
-      Edge { label: Positional, target: scrutinee },
-      Edge { label: Positional, target: true_arm },
-      Edge { label: Positional, target: false_arm }
+      v2.std.node.Edge { label: Positional, target: scrutinee },
+      v2.std.node.Edge { label: Positional, target: true_arm },
+      v2.std.node.Edge { label: Positional, target: false_arm }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4458,7 +4458,7 @@ data dag_match_arrow_with_body_swapped_arms_fixture: Node = dag_match_arrow_with
 data dag_fixture_emitted_match_fn: Node = dag_match_arrow_with_body_fixture
 
 fn dag_rec_construct_body_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -4486,8 +4486,8 @@ data dag_rec_construct_body_fixture: Node = dag_rec_construct_body_node()
 data dag_rec_arrow_with_body_fixture: Node = dag_rec_arrow_with_body_node()
 data dag_fixture_emitted_rec_fn: Node = dag_rec_arrow_with_body_fixture
 
-fn dag_variant_holds_construct_node(value_lit: Symbol) -> Node {
-  Node {
+fn dag_variant_holds_construct_node(value_lit: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -4507,8 +4507,8 @@ fn dag_variant_holds_pattern_node() -> Node {
   dag_variant_holds_construct_node(value_lit: ^dag_binding_rec_v)
 }
 
-fn dag_variant_match_arm_node(pattern_target: Node, body_lit: Symbol) -> Node {
-  Node {
+fn dag_variant_match_arm_node(pattern_target: Node, body_lit: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(name: ^match_arm_pattern, target: pattern_target),
@@ -4521,7 +4521,7 @@ fn dag_variant_match_arm_node(pattern_target: Node, body_lit: Symbol) -> Node {
   }
 }
 
-fn dag_variant_construct_body_from_value(value_lit: Symbol) -> Node {
+fn dag_variant_construct_body_from_value(value_lit: v2.std.node.Symbol) -> Node {
   dag_match_body_from_arms(
     scrutinee: dag_variant_holds_construct_node(value_lit: value_lit),
     true_arm: dag_variant_match_arm_node(
@@ -4567,8 +4567,8 @@ data dag_fixture_emitted_variant_construct_fn: Node = dag_variant_construct_arro
 
 fn dag_complement_match_body(
   scrutinee: Node,
-  true_body_lit: Symbol,
-  false_body_lit: Symbol
+  true_body_lit: v2.std.node.Symbol,
+  false_body_lit: v2.std.node.Symbol
 ) -> Node {
   dag_match_body_from_arms(
     scrutinee: scrutinee,
@@ -4588,10 +4588,10 @@ fn dag_complement_param_scrutinee_node() -> Node {
 }
 
 fn dag_complement_arrow_domain_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^dag_binding_param_a },
         target: dag_type_atom_node(identity: ^dag_binding_type_bool)
       }
@@ -4646,14 +4646,14 @@ data dag_complement_arrow_with_body_swapped_arms_fixture: Node = dag_complement_
 data dag_complement_eval_subgraph_fixture: Node = dag_complement_eval_subgraph_node()
 
 fn dag_bool_binop_arrow_domain_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^dag_binding_param_a },
         target: dag_type_atom_node(identity: ^dag_binding_type_bool)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^dag_binding_param_b },
         target: dag_type_atom_node(identity: ^dag_binding_type_bool)
       }
@@ -4726,18 +4726,18 @@ data dag_join_arrow_with_body_swapped_arms_fixture: Node = dag_bool_binop_arrow_
 data dag_join_eval_subgraph_fixture: Node = dag_join_eval_subgraph_node()
 
 fn dag_field_access_body_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_token_dot)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_binding_param_r)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_binding_rec_v)
       }
@@ -4747,10 +4747,10 @@ fn dag_field_access_body_node() -> Node {
 }
 
 fn dag_field_access_arrow_domain_conj_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^dag_binding_param_r },
         target: dag_type_atom_node(identity: ^dag_binding_type_rec)
       }
@@ -4772,22 +4772,22 @@ data dag_field_access_arrow_with_body_fixture: Node = dag_field_access_arrow_wit
 data dag_fixture_emitted_field_access_fn: Node = dag_field_access_arrow_with_body_fixture
 
 fn dag_bind_let_body_from_parts(
-  key_binding: Symbol,
+  key_binding: v2.std.node.Symbol,
   value: Node,
-  body_binding: Symbol
+  body_binding: v2.std.node.Symbol
 ) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Bind },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: key_binding)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: value
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: body_binding)
       }
@@ -4833,7 +4833,7 @@ data dag_bind_arrow_with_body_fixture: Node = dag_bind_arrow_with_body_node()
 data dag_bind_arrow_with_body_wrong_value_fixture: Node = dag_bind_arrow_with_body_wrong_value_node()
 data dag_fixture_emitted_bind_fn: Node = dag_bind_arrow_with_body_fixture
 
-fn dag_formal_production_fn_bind() -> FormalProduction {
+fn dag_formal_production_fn_bind() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^dag_production_fn_bind,
     rhs: dag_formal_rhs_from_tokens(tokens: dag_bind_concrete_tokens())
@@ -4845,21 +4845,21 @@ fn dag_formal_production_fn_bind() -> FormalProduction {
 // there is no closing token, and ConditionalSelfDelimiting carries no field in
 // which one could be invented. The loop form is self-delimiting for the same
 // reason.
-fn dag_value_expression_projection() -> TargetValueExpressionProjection {
-  TargetValueExpressionProjection {
-    binding_ref_form: TargetBindingRefShape { ident_token: ^dag_token_ident },
-    primitive_apply_form: TargetPrimitiveApplyShape {
+fn dag_value_expression_projection() -> v2.std.compilers.target_model.TargetValueExpressionProjection {
+  v2.std.compilers.target_model.TargetValueExpressionProjection {
+    binding_ref_form: v2.std.compilers.target_model.TargetBindingRefShape { ident_token: ^dag_token_ident },
+    primitive_apply_form: v2.std.compilers.target_model.TargetPrimitiveApplyShape {
       open: ^dag_token_lparen,
       close: ^dag_token_rparen,
       separator: ^dag_token_comma
     },
-    callable_apply_form: TargetCallApplyShape {
+    callable_apply_form: v2.std.compilers.target_model.TargetCallApplyShape {
       callee_ident_token: ^dag_token_ident,
       open: ^dag_token_lparen,
       separator: ^dag_token_comma,
       close: ^dag_token_rparen
     },
-    closure_form: TargetClosureShape {
+    closure_form: v2.std.compilers.target_model.TargetClosureShape {
       fn_token: ^dag_token_kw_fn,
       open: ^dag_token_lparen,
       separator: ^dag_token_comma,
@@ -4868,37 +4868,37 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       body_close: ^dag_token_rbrace,
       param_ident_token: ^dag_token_ident
     },
-    effect_apply_form: TargetEffectApplyShape {
+    effect_apply_form: v2.std.compilers.target_model.TargetEffectApplyShape {
       callees: [],
       open: ^dag_token_lparen,
       close: ^dag_token_rparen,
       separator: ^dag_token_comma
     },
-    conditional_form: TargetConditionalShape {
+    conditional_form: v2.std.compilers.target_model.TargetConditionalShape {
       if_token: ^dag_token_kw_if,
       then_token: ^dag_token_kw_then,
       else_token: ^dag_token_kw_else,
       delimiting: ConditionalSelfDelimiting
     },
-    let_form: TargetBindLetShape {
+    let_form: v2.std.compilers.target_model.TargetBindLetShape {
       let_token: ^dag_token_kw_let,
       assign_token: ^dag_token_eq,
       in_token: ^dag_token_kw_in
     },
-    loop_form: TargetLoopShape {
+    loop_form: v2.std.compilers.target_model.TargetLoopShape {
       loop_token: ^dag_token_kw_loop
     },
-    record_construct_form: TargetRecordConstructShape {
+    record_construct_form: v2.std.compilers.target_model.TargetRecordConstructShape {
       open: ^dag_token_lbrace,
       close: ^dag_token_rbrace,
       separator: ^dag_token_comma,
       assign: ^dag_token_colon,
       record_literal_names_type: Prepend
     },
-    field_access_form: TargetFieldAccessShape {
+    field_access_form: v2.std.compilers.target_model.TargetFieldAccessShape {
       dot: ^dag_token_dot
     },
-    match_form: TargetMatchShape {
+    match_form: v2.std.compilers.target_model.TargetMatchShape {
       match_token: ^dag_token_kw_match,
       scrutinee_open: ^dag_token_match_scrutinee_nop,
       scrutinee_close: ^dag_token_match_scrutinee_nop,
@@ -4907,7 +4907,7 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       fat_arrow: ^dag_token_fat_arrow,
       arm_separator: ^dag_token_comma
     },
-    bool_literal_form: TargetBoolLiteralShape {
+    bool_literal_form: v2.std.compilers.target_model.TargetBoolLiteralShape {
       true_token: ^dag_token_kw_true,
       false_token: ^dag_token_kw_false
     },
@@ -4915,7 +4915,7 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
   }
 }
 
-fn dag_block_evaluation_mode() -> BlockEvaluationMode {
+fn dag_block_evaluation_mode() -> v2.std.compilers.target_model.BlockEvaluationMode {
   ValueProducing
 }
 
@@ -4934,13 +4934,13 @@ fn dag_grammar_relation_row_node(row: DagGrammarRelationRow) -> Node {
 }
 
 fn dag_family_serialize_source_node(
-  source_literal: Symbol,
-  production_binding: Symbol,
-  tokens: List<ConcreteSyntaxToken>,
+  source_literal: v2.std.node.Symbol,
+  production_binding: v2.std.node.Symbol,
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   authority_source_text: String
 ) -> Node {
   let _authority = authority_source_text
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: list_append(
       left: [
@@ -4967,7 +4967,7 @@ fn dag_family_serialize_source_node(
   }
 }
 
-fn dag_bodied_fn_zip_fold_closure_edges(spec: DagBodiedFnFamilySpec) -> List<Edge> {
+fn dag_bodied_fn_zip_fold_closure_edges(spec: DagBodiedFnFamilySpec) -> List<v2.std.node.Edge> {
   [
     dag_named_edge(
       name: spec.inhabitant_field,
@@ -4977,7 +4977,7 @@ fn dag_bodied_fn_zip_fold_closure_edges(spec: DagBodiedFnFamilySpec) -> List<Edg
 }
 
 fn dag_bodied_fn_declared_inhabitants_root(spec: DagBodiedFnFamilySpec) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: list_append(
       left: list_append(
@@ -4995,7 +4995,7 @@ fn dag_bodied_fn_grammar_relation_row_node(spec: DagBodiedFnFamilySpec) -> Node 
 }
 
 fn dag_bodied_fn_translation_rules_node(spec: DagBodiedFnFamilySpec) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -5020,7 +5020,7 @@ fn dag_bodied_fn_serialize_source_node(spec: DagBodiedFnFamilySpec) -> Node {
 }
 
 fn dag_bodied_fn_target_model_bundle_node(spec: DagBodiedFnFamilySpec) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -5060,11 +5060,11 @@ fn dag_bodied_fn_target_model_bundle_node(spec: DagBodiedFnFamilySpec) -> Node {
 
 fn dag_bodied_fn_target_model(
   spec: DagBodiedFnFamilySpec,
-  runtime_row: Optional<TargetEmitHostRuntimeRow>
-) -> TargetModel {
+  runtime_row: Optional<v2.std.host_transport.TargetEmitHostRuntimeRow>
+) -> v2.std.compilers.target_model.TargetModel {
   match runtime_row {
     Present { value: row } =>
-      TargetModel {
+      v2.std.compilers.target_model.TargetModel {
         produced_decl_support: ProducedDeclUnwired,
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
         lex: dag_lex(),
@@ -5074,7 +5074,7 @@ fn dag_bodied_fn_target_model(
         runtime_row: row
       }
     Absent =>
-      TargetModel {
+      v2.std.compilers.target_model.TargetModel {
         produced_decl_support: ProducedDeclUnwired,
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
         lex: dag_lex(),
@@ -5087,9 +5087,9 @@ fn dag_bodied_fn_target_model(
 }
 
 fn dag_nullary_fn_statement_prefix_tokens(
-  fn_name_binding: Symbol,
-  return_type_binding: Symbol
-) -> List<ConcreteSyntaxToken> {
+  fn_name_binding: v2.std.node.Symbol,
+  return_type_binding: v2.std.node.Symbol
+) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^dag_token_kw_fn },
     BoundToken { token_class: ^dag_token_ident, binding: fn_name_binding },
@@ -5101,18 +5101,18 @@ fn dag_nullary_fn_statement_prefix_tokens(
   ]
 }
 
-fn dag_pick_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_pick_statement_prefix_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   dag_nullary_fn_statement_prefix_tokens(
     fn_name_binding: ^dag_binding_fn_one_or_two,
     return_type_binding: ^dag_binding_type_int
   )
 }
 
-fn dag_pick_statement_suffix_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_pick_statement_suffix_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [FixedToken { token_class: ^dag_token_rbrace }]
 }
 
-fn dag_pick_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
+fn dag_pick_bodied_arrow_statement_scaffold() -> v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold {
   derive_bodied_arrow_scaffold(
     signature_with_open: dag_pick_statement_prefix_tokens(),
     block_close: dag_pick_statement_suffix_tokens(),
@@ -5153,21 +5153,21 @@ fn dag_pick_target_model_bundle_node() -> Node {
   dag_bodied_fn_target_model_bundle_node(spec: dag_pick_family_spec())
 }
 
-fn dag_pick_target_model() -> TargetModel {
+fn dag_pick_target_model() -> v2.std.compilers.target_model.TargetModel {
   dag_bodied_fn_target_model(
     spec: dag_pick_family_spec(),
     runtime_row: Present { value: target_emit_host_runtime_row_unconfigured }
   )
 }
 
-fn dag_bind_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_bind_statement_prefix_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   dag_nullary_fn_statement_prefix_tokens(
     fn_name_binding: ^dag_binding_fn_one,
     return_type_binding: ^dag_binding_type_int
   )
 }
 
-fn dag_bind_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
+fn dag_bind_bodied_arrow_statement_scaffold() -> v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold {
   derive_bodied_arrow_scaffold(
     signature_with_open: dag_bind_statement_prefix_tokens(),
     block_close: dag_pick_statement_suffix_tokens(),
@@ -5208,21 +5208,21 @@ fn dag_bind_target_model_bundle_node() -> Node {
   dag_bodied_fn_target_model_bundle_node(spec: dag_bind_family_spec())
 }
 
-fn dag_bind_target_model() -> TargetModel {
+fn dag_bind_target_model() -> v2.std.compilers.target_model.TargetModel {
   dag_bodied_fn_target_model(
     spec: dag_bind_family_spec(),
     runtime_row: Present { value: target_emit_host_runtime_row_unconfigured }
   )
 }
 
-fn dag_loop_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_loop_statement_prefix_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   dag_nullary_fn_statement_prefix_tokens(
     fn_name_binding: ^dag_binding_fn_one,
     return_type_binding: ^dag_binding_type_int
   )
 }
 
-fn dag_loop_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
+fn dag_loop_bodied_arrow_statement_scaffold() -> v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold {
   derive_bodied_arrow_scaffold(
     signature_with_open: dag_loop_statement_prefix_tokens(),
     block_close: dag_pick_statement_suffix_tokens(),
@@ -5263,7 +5263,7 @@ fn dag_loop_target_model_bundle_node() -> Node {
   dag_bodied_fn_target_model_bundle_node(spec: dag_loop_family_spec())
 }
 
-fn dag_loop_target_model() -> TargetModel {
+fn dag_loop_target_model() -> v2.std.compilers.target_model.TargetModel {
   dag_bodied_fn_target_model(
     spec: dag_loop_family_spec(),
     runtime_row: Present { value: target_emit_host_runtime_row_unconfigured }
@@ -5303,21 +5303,21 @@ fn dag_match_target_model_bundle_node() -> Node {
   dag_bodied_fn_target_model_bundle_node(spec: dag_match_family_spec())
 }
 
-fn dag_match_target_model() -> TargetModel {
+fn dag_match_target_model() -> v2.std.compilers.target_model.TargetModel {
   dag_bodied_fn_target_model(
     spec: dag_match_family_spec(),
     runtime_row: Absent
   )
 }
 
-fn dag_rec_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_rec_statement_prefix_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   dag_nullary_fn_statement_prefix_tokens(
     fn_name_binding: ^dag_binding_fn_mk,
     return_type_binding: ^dag_binding_type_rec
   )
 }
 
-fn dag_rec_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
+fn dag_rec_bodied_arrow_statement_scaffold() -> v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold {
   derive_bodied_arrow_scaffold(
     signature_with_open: dag_rec_statement_prefix_tokens(),
     block_close: dag_pick_statement_suffix_tokens(),
@@ -5358,14 +5358,14 @@ fn dag_rec_target_model_bundle_node() -> Node {
   dag_bodied_fn_target_model_bundle_node(spec: dag_rec_family_spec())
 }
 
-fn dag_rec_target_model() -> TargetModel {
+fn dag_rec_target_model() -> v2.std.compilers.target_model.TargetModel {
   dag_bodied_fn_target_model(
     spec: dag_rec_family_spec(),
     runtime_row: Absent
   )
 }
 
-fn dag_field_access_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
+fn dag_field_access_statement_prefix_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^dag_token_kw_fn },
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_get },
@@ -5380,7 +5380,7 @@ fn dag_field_access_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn dag_field_access_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
+fn dag_field_access_bodied_arrow_statement_scaffold() -> v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold {
   derive_bodied_arrow_scaffold(
     signature_with_open: dag_field_access_statement_prefix_tokens(),
     block_close: dag_pick_statement_suffix_tokens(),
@@ -5421,15 +5421,15 @@ fn dag_field_access_target_model_bundle_node() -> Node {
   dag_bodied_fn_target_model_bundle_node(spec: dag_field_access_family_spec())
 }
 
-fn dag_field_access_target_model() -> TargetModel {
+fn dag_field_access_target_model() -> v2.std.compilers.target_model.TargetModel {
   dag_bodied_fn_target_model(
     spec: dag_field_access_family_spec(),
     runtime_row: Absent
   )
 }
 
-fn dag_target_model() -> TargetModel {
-  TargetModel {
+fn dag_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: dag_target_model_node(),
     lex: dag_lex(),
@@ -5440,14 +5440,14 @@ fn dag_target_model() -> TargetModel {
   }
 }
 
-fn dag_round_trip_atom(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+fn dag_round_trip_atom(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn dag_round_trip_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn dag_round_trip_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
 fn dag_round_trip_bool_node(pass: Bool) -> Node {
@@ -5475,7 +5475,7 @@ fn dag_round_trip_lex_ready() -> Bool {
   dag_lex_token_symbol(sym: ^dag_token_arrow)
 }
 
-fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
+fn dag_round_trip_grammar_ready(lm: v2.std.language_model.LanguageModel) -> Bool {
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module_header) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_import_decl) &&
@@ -5497,7 +5497,7 @@ fn dag_round_trip_authorities_ready() -> Bool {
   dag_round_trip_trivia_fidelity_resolved()
 }
 
-fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
+fn parse_production_emitted_identity_optional(node: Node) -> Optional<v2.std.node.Symbol> {
   match find_named_child(root: node, name: ^grammar_production_identity_node_projection) {
     Accepted { value: id_node, diagnostics: _ } => node_atom_identity_optional(node: id_node)
     Rejected { diagnostics: _ } => Absent
@@ -5524,7 +5524,7 @@ type ParseSubtreeFind
 
 fn parse_subtree_find_production_captured_under_children(
   root: Node,
-  emitted: Symbol
+  emitted: v2.std.node.Symbol
 ) -> ParseSubtreeFind {
   fold(
     root.children,
@@ -5539,7 +5539,7 @@ fn parse_subtree_find_production_captured_under_children(
   )
 }
 
-fn parse_subtree_find_production_captured(root: Node, emitted: Symbol) -> ParseSubtreeFind {
+fn parse_subtree_find_production_captured(root: Node, emitted: v2.std.node.Symbol) -> ParseSubtreeFind {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       if id == emitted {
@@ -5556,17 +5556,17 @@ fn parse_subtree_find_production_captured(root: Node, emitted: Symbol) -> ParseS
   }
 }
 
-fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<Symbol> {
+fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<v2.std.node.Symbol> {
   match node_atom_identity_optional(node: sym_node) {
     Present { value: id } =>
       if id == ^dag_token_ident {
-        outcome_rejected(Diagnostic {
+        outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_projection_gated,
           at: node_locus(node: root),
           correction: Unavailable { reason: ExternalContractUnknown }
         })
       } else if id == ^dag_token_dot {
-        outcome_rejected(Diagnostic {
+        outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: root),
           correction: Unavailable { reason: ExternalContractUnknown }
@@ -5575,7 +5575,7 @@ fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<Symbol> {
         outcome_accepted(value: id)
       }
     Absent =>
-      outcome_rejected(Diagnostic {
+      outcome_rejected(v2.std.diagnostic.Diagnostic {
         reason: ^qualified_name_structure_invalid,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -5583,7 +5583,7 @@ fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<Symbol> {
   }
 }
 
-fn parse_qn_repeat_suffix_ident(sequence_capture: Node, root: Node) -> Outcome<Symbol> {
+fn parse_qn_repeat_suffix_ident(sequence_capture: Node, root: Node) -> Outcome<v2.std.node.Symbol> {
   match find_named_child(
     root: sequence_capture,
     name: ^grammar_sequence_right_node_projection
@@ -5594,7 +5594,7 @@ fn parse_qn_repeat_suffix_ident(sequence_capture: Node, root: Node) -> Outcome<S
   }
 }
 
-fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Symbol>> {
+fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<v2.std.node.Symbol>> {
 
   if is_empty_conj_root(n: repeat_capture) {
     outcome_accepted(value: Empty)
@@ -5631,7 +5631,7 @@ fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Sy
   }
 }
 
-fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> Outcome<List<Symbol>> {
+fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> Outcome<List<v2.std.node.Symbol>> {
   match find_named_child(root: qn_capture, name: ^grammar_sequence_left_node_projection) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: head_node, diagnostics: _ } =>
@@ -5663,7 +5663,7 @@ fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> O
 fn parse_comma_ident_list_items(
   comma_list_capture: Node,
   root: Node
-) -> Outcome<List<Symbol>> {
+) -> Outcome<List<v2.std.node.Symbol>> {
   match find_named_child(root: comma_list_capture, name: ^grammar_sequence_left_node_projection) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: head_node, diagnostics: _ } =>
@@ -5702,7 +5702,7 @@ fn parse_comma_ident_list_items(
 fn parse_import_block_idents(
   import_decl_node: Node,
   root: Node
-) -> Outcome<List<Symbol>> {
+) -> Outcome<List<v2.std.node.Symbol>> {
   match parse_subtree_find_production_captured(
     root: import_decl_node,
     emitted: ^dag_surface_import_block
@@ -5730,9 +5730,9 @@ fn parse_import_block_idents(
   }
 }
 
-data alias_binding_row_not_alias_decl: Symbol = ^alias_binding_row_not_alias_decl
+data alias_binding_row_not_alias_decl: v2.std.node.Symbol = ^alias_binding_row_not_alias_decl
 
-fn alias_binding_row_binding_from_decl(decl: Node, module_root: Node) -> Outcome<Symbol> {
+fn alias_binding_row_binding_from_decl(decl: Node, module_root: Node) -> Outcome<v2.std.node.Symbol> {
   match parse_production_captured_child_optional(node: decl) {
     Present { value: captured } =>
       match find_named_child(root: captured, name: ^grammar_sequence_right_node_projection) {
@@ -5753,7 +5753,7 @@ fn alias_binding_row_binding_from_decl(decl: Node, module_root: Node) -> Outcome
   }
 }
 
-fn alias_binding_row_target_from_decl(decl: Node, module_root: Node) -> Outcome<QualifiedName> {
+fn alias_binding_row_target_from_decl(decl: Node, module_root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
   match parse_subtree_find_production_captured(
     root: decl,
     emitted: ^dag_surface_qualified_name
@@ -5773,11 +5773,11 @@ fn alias_binding_row_target_from_decl(decl: Node, module_root: Node) -> Outcome<
   }
 }
 
-fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<AliasBindingRow> {
+fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<v2.std.namespace_alias.AliasBindingRow> {
   match parse_production_emitted_identity_optional(node: decl) {
     Present { value: id } =>
       if id != ^dag_surface_alias_decl {
-        outcome_rejected(Diagnostic {
+        outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^alias_binding_row_not_alias_decl,
           at: node_locus(node: decl),
           correction: Unavailable { reason: ExternalContractUnknown }
@@ -5790,7 +5790,7 @@ fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<Al
               Rejected { diagnostics: d } => Rejected { diagnostics: d }
               Accepted { value: target, diagnostics: td } =>
                 Accepted {
-                  value: AliasBindingRow { binding: binding, target: target },
+                  value: v2.std.namespace_alias.AliasBindingRow { binding: binding, target: target },
                   diagnostics: diagnostics_merge(outer: bd, inner: td)
                 }
             }
@@ -5806,13 +5806,13 @@ fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<Al
                 Rejected { diagnostics: d } => Rejected { diagnostics: d }
                 Accepted { value: target, diagnostics: td } =>
                   Accepted {
-                    value: AliasBindingRow { binding: binding, target: target },
+                    value: v2.std.namespace_alias.AliasBindingRow { binding: binding, target: target },
                     diagnostics: diagnostics_merge(outer: bd, inner: td)
                   }
               }
           }
         Rejected { diagnostics: _ } =>
-          outcome_rejected(Diagnostic {
+          outcome_rejected(v2.std.diagnostic.Diagnostic {
             reason: ^alias_binding_row_not_alias_decl,
             at: node_locus(node: decl),
             correction: Unavailable { reason: ExternalContractUnknown }
@@ -5821,7 +5821,7 @@ fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<Al
   }
 }
 
-fn qualified_name_append_segment(qn: QualifiedName, sym: Symbol) -> QualifiedName {
+fn qualified_name_append_segment(qn: v2.std.qualified_name.QualifiedName, sym: v2.std.node.Symbol) -> v2.std.qualified_name.QualifiedName {
   match qn {
     Empty => Cons { head: sym, tail: Empty }
     Cons { head: h, tail: t } =>
@@ -5829,7 +5829,7 @@ fn qualified_name_append_segment(qn: QualifiedName, sym: Symbol) -> QualifiedNam
   }
 }
 
-fn qualified_name_from_symbol_segments(segments: List<Symbol>, root: Node) -> Outcome<QualifiedName> {
+fn qualified_name_from_symbol_segments(segments: List<v2.std.node.Symbol>, root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
   let qn = fold_list(
     xs: segments,
     empty: Empty,
@@ -5839,7 +5839,7 @@ fn qualified_name_from_symbol_segments(segments: List<Symbol>, root: Node) -> Ou
   )
   match qn {
     Empty =>
-      outcome_rejected(Diagnostic {
+      outcome_rejected(v2.std.diagnostic.Diagnostic {
         reason: ^qualified_name_structure_invalid,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -5848,7 +5848,7 @@ fn qualified_name_from_symbol_segments(segments: List<Symbol>, root: Node) -> Ou
       if for_all(xs: qn, predicate: fn(sym) { sym != ^dag_token_ident }) {
         outcome_accepted(value: qn)
       } else {
-        outcome_rejected(Diagnostic {
+        outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_projection_gated,
           at: node_locus(node: root),
           correction: Unavailable { reason: ExternalContractUnknown }
@@ -5857,7 +5857,7 @@ fn qualified_name_from_symbol_segments(segments: List<Symbol>, root: Node) -> Ou
   }
 }
 
-fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<QualifiedName> {
+fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
   match find_named_child(root: root, name: ^dag_surface_module_header) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: _, diagnostics: _ } =>
@@ -5869,7 +5869,7 @@ fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<QualifiedN
             Accepted { value: qn, diagnostics: _ } =>
               match qn {
                 Empty =>
-                  outcome_rejected(Diagnostic {
+                  outcome_rejected(v2.std.diagnostic.Diagnostic {
                     reason: ^qualified_name_structure_invalid,
                     at: node_locus(node: root),
                     correction: Unavailable { reason: ExternalContractUnknown }
@@ -5878,7 +5878,7 @@ fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<QualifiedN
                   if for_all(xs: qn, predicate: fn(sym) { sym != ^dag_token_ident }) {
                     outcome_accepted(value: qn)
                   } else {
-                    outcome_rejected(Diagnostic {
+                    outcome_rejected(v2.std.diagnostic.Diagnostic {
                       reason: ^qualified_name_projection_gated,
                       at: node_locus(node: root),
                       correction: Unavailable { reason: ExternalContractUnknown }
@@ -5890,10 +5890,10 @@ fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<QualifiedN
   }
 }
 
-fn qualified_name_from_parsed_module_root(root: Node) -> Outcome<QualifiedName> {
+fn qualified_name_from_parsed_module_root(root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
   match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_qualified_name) {
     ParseSubtreeAbsent =>
-      outcome_rejected(Diagnostic {
+      outcome_rejected(v2.std.diagnostic.Diagnostic {
         reason: ^named_child_missing,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -5936,7 +5936,7 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
   }
 }
 
-fn namespace_graft_spine_segment_edge_optional(node: Node) -> Optional<Edge> {
+fn namespace_graft_spine_segment_edge_optional(node: Node) -> Optional<v2.std.node.Edge> {
   match node.kind {
     TypeNode { connective: Conj } =>
       if count(node.children) != 1 {
@@ -5969,10 +5969,10 @@ fn namespace_graft_graft_captured_spine(root: Node) -> Optional<Node> {
   }
 }
 
-fn qualified_name_from_graft_spine(root: Node) -> Outcome<QualifiedName> {
+fn qualified_name_from_graft_spine(root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
   match namespace_graft_graft_captured_spine(root: root) {
     Absent =>
-      outcome_rejected(Diagnostic {
+      outcome_rejected(v2.std.diagnostic.Diagnostic {
         reason: ^qualified_name_structure_invalid,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -5982,7 +5982,7 @@ fn qualified_name_from_graft_spine(root: Node) -> Outcome<QualifiedName> {
   }
 }
 
-fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: QualifiedName) -> Outcome<QualifiedName> {
+fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: v2.std.qualified_name.QualifiedName) -> Outcome<v2.std.qualified_name.QualifiedName> {
   match namespace_graft_spine_segment_edge_optional(node: node) {
     Present { value: edge } =>
       match edge.label {
@@ -5992,7 +5992,7 @@ fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: QualifiedName
             acc: qualified_name_snoc(qn: acc, segment: seg)
           )
         Positional =>
-          outcome_rejected(Diagnostic {
+          outcome_rejected(v2.std.diagnostic.Diagnostic {
             reason: ^qualified_name_structure_invalid,
             at: node_locus(node: node),
             correction: Unavailable { reason: ExternalContractUnknown }
@@ -6000,7 +6000,7 @@ fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: QualifiedName
       }
     Absent =>
       if is_empty(xs: acc) {
-        outcome_rejected(Diagnostic {
+        outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: node),
           correction: Unavailable { reason: ExternalContractUnknown }
@@ -6025,7 +6025,7 @@ fn namespace_graft_already_grafted(root: Node) -> Bool {
 
 data qualified_name_from_module_node_collapsed_note: String = "SINGLE-AUTHORITY QN reader (dissolves the interim compiler-layer dual-arm wrapper qualified_name_from_module_node_graft_aware, namespace-resolution-design.md section 10 dissolve 1). Grafted roots: QN from containment nesting position (qualified_name_from_graft_spine — the section 10/13 single naming authority; the spine cluster homes here so the reader needs no compiler-layer import). Pre-graft ingress: header-path read (parsed capture or emit-shaped Named edges — parse emits header metadata until the normalize graft fires; no header shim re-stamped onto grafted trees). Wet-ingest RED controls: program_assembly_real_ingest_module_roots_parse_holds + validate_module_roots_red_on_parsed_roots."
 
-fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
+fn qualified_name_from_module_node(root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
   if namespace_graft_already_grafted(root: root) {
     qualified_name_from_graft_spine(root: root)
   } else {

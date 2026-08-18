@@ -11,8 +11,8 @@ data ice40_configuration_note: String = "THE CONFIGURATION PORT, from Table 4.28
 // This module's own citation of the same data sheet. It is a literal because the corpus wall reads
 // the anchor structurally and cannot see a binding to a sibling's value - see the note in
 // extdeps.programmable_logic.ice40.subject.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/iCE/FPGA-DS-02029-4-3-iCE40-LP-HX-Family-Data-Sheet.ashx?document_id=49312"
   }
@@ -26,7 +26,7 @@ type Ice40ConfigurationSignal
   | SpiDataIn
   | SpiDataOut
 
-fn configuration_signal_name(s: Ice40ConfigurationSignal) -> NonEmptyStr {
+fn configuration_signal_name(s: Ice40ConfigurationSignal) -> std.types.NonEmptyStr {
   match s {
     ConfigurationReset => "CRESET_B"
     ConfigurationDone => "CDONE"
@@ -44,7 +44,7 @@ type TimingScope
   = AllConfigurationModes
   | OnlyUnderMode { mode: extdeps.programmable_logic.ice40.supply.Ice40ConfigurationMode }
 
-fn scope_admits(s: TimingScope, m: Ice40ConfigurationMode) -> Bool {
+fn scope_admits(s: TimingScope, m: extdeps.programmable_logic.ice40.supply.Ice40ConfigurationMode) -> Bool {
   match s {
     AllConfigurationModes => true
     OnlyUnderMode { mode: only } =>
@@ -128,7 +128,7 @@ data ice40_configuration_timings: List<ConfigurationTiming> = [
   ice40_cclk_write_maximum,
 ]
 
-fn timings_for_mode(m: Ice40ConfigurationMode) -> List<ConfigurationTiming> {
+fn timings_for_mode(m: extdeps.programmable_logic.ice40.supply.Ice40ConfigurationMode) -> List<ConfigurationTiming> {
   fold(ice40_configuration_timings, init: [], f: fn(acc, t) {
     if scope_admits(s: t.scope, m: m) { concat(acc, [t]) } else { acc }
   })
@@ -160,9 +160,9 @@ fn hx1k_configuration_time(c: ConfigurationClockSelection) -> ConfigurationTimeS
   }
 }
 
-data ice40_configuration_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data ice40_configuration_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.programmable_logic.ice40.configuration",
       decl_name: "ice40_configuration_timings",
       field: WholeDeclaration
@@ -172,4 +172,4 @@ data ice40_configuration_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data extdeps_model_scope: ExternalModelScope = ice40_configuration_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = ice40_configuration_model_scope

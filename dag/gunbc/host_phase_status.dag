@@ -19,7 +19,7 @@ type HostPhaseCellStatus {
 
 data host_phase_no_producer_is_unknown_not_converged_note: String = "THE fail-closed hinge of this module (DESIGN §5). When a modeled phase has NO live observation producer for a host, the derived verdict is UnknownRefused — never Converged, and never silently omitted from the matrix. The tempting arm is the absorbing fallback in its purest form: nothing is known to be wrong, so report converged; the matrix goes green, the coverage deficit's frequency drops to zero by construction, and the status read becomes a fabricated plausible output exactly like a stats probe that auto-starts the server it is measuring (the DaemonUnsupervised finding, #7213). It is also why UnknownRefused and Inaccessible must stay DISTINCT arms rather than one 'not converged': Inaccessible means we asked the host and could not reach it (remedy: fix reach — the A1 materialized-secret lane); UnknownRefused means we have no way to ask at all (remedy: build the producer). Different states, different owners, different work — and the count of each is the honest measure of how far subsumption actually is. host_phase_verdict_absorbing_fallback_widen_sketch models the forbidden arm as a RED control so the fold cannot drift back into it unnoticed. Note the separation this correction forced: 'has a live producer' is now read from the OBSERVATION being Present, not from the verdict being something other than UnknownRefused — a producer that runs and honestly refuses (an unreadable lease table) is coverage, while no producer at all is not, and the earlier version conflated the two."
 
-fn host_phase_verdict_from(observation: ObservationVerdict?) -> ObservationVerdict {
+fn host_phase_verdict_from(observation: std.upsert_decision.ObservationVerdict?) -> std.upsert_decision.ObservationVerdict {
   match observation {
     Present { value: v } => v
     Absent => UnknownRefused
@@ -27,8 +27,8 @@ fn host_phase_verdict_from(observation: ObservationVerdict?) -> ObservationVerdi
 }
 
 fn host_phase_verdict_absorbing_fallback_widen_sketch(
-  observation: ObservationVerdict?,
-) -> ObservationVerdict {
+  observation: std.upsert_decision.ObservationVerdict?,
+) -> std.upsert_decision.ObservationVerdict {
   match observation {
     Present { value: v } => v
     Absent => Converged
@@ -36,8 +36,8 @@ fn host_phase_verdict_absorbing_fallback_widen_sketch(
 }
 
 fn host_phase_verdict_gate_accepts(
-  verdict: ObservationVerdict,
-  observation: ObservationVerdict?,
+  verdict: std.upsert_decision.ObservationVerdict,
+  observation: std.upsert_decision.ObservationVerdict?,
 ) -> Bool {
   match observation {
     Present { value: _ } => true
@@ -53,7 +53,7 @@ fn host_phase_verdict_gate_accepts(
   }
 }
 
-fn host_phase_cell_verdict(c: HostPhaseCellStatus) -> ObservationVerdict {
+fn host_phase_cell_verdict(c: HostPhaseCellStatus) -> std.upsert_decision.ObservationVerdict {
   host_phase_verdict_from(observation: c.observation)
 }
 
@@ -83,10 +83,10 @@ data host_phase_observation_frontier_note: String = "The live-observation produc
 // repairs anything. A phase with no producer row returns none, which the verdict fold
 // renders UnknownRefused: absence of a producer is a counted debt, never a silent green.
 fn observe_host_phase(
-  subject: HostEnrollmentIntent,
-  host: HostIdentity,
+  subject: gunbc.host_assimilation_program.HostEnrollmentIntent,
+  host: product.placement_supply.HostIdentity,
   phase_label: String,
-) -> ObservationVerdict? {
+) -> std.upsert_decision.ObservationVerdict? {
   if phase_label == "prefix:os-install-actuated" {
     if host == operator_host_srv3 {
       Present { value: srv3_post_install_actuation_verdict(elapsed: millisecond(count: 0)) }
@@ -106,11 +106,11 @@ fn observe_host_phase(
   }
 }
 
-fn host_phase_observation(subject: HostEnrollmentIntent, host: HostIdentity, step: HostStandupStep) -> ObservationVerdict? {
+fn host_phase_observation(subject: gunbc.host_assimilation_program.HostEnrollmentIntent, host: product.placement_supply.HostIdentity, step: gunbc.host_standup.HostStandupStep) -> std.upsert_decision.ObservationVerdict? {
   observe_host_phase(subject: subject, host: host, phase_label: step.label as String)
 }
 
-fn host_phase_cell_status(subject: HostEnrollmentIntent, host: HostIdentity, step: HostStandupStep) -> HostPhaseCellStatus {
+fn host_phase_cell_status(subject: gunbc.host_assimilation_program.HostEnrollmentIntent, host: product.placement_supply.HostIdentity, step: gunbc.host_standup.HostStandupStep) -> HostPhaseCellStatus {
   HostPhaseCellStatus {
     cell: HostPhaseCell { host: host, phase_label: step.label as String },
     disposition: step.disposition,
@@ -120,31 +120,31 @@ fn host_phase_cell_status(subject: HostEnrollmentIntent, host: HostIdentity, ste
 
 data host_phase_program_scoping_note: String = "The cells of a host are the steps of ITS OWN assimilation program, not the universal spine. The previous shape crossed every enrolled host with host_standup_spine, which was right while every enrolled host was the same kind of thing and becomes a fabrication the moment one is not: an inference appliance has no BMC to converge and no Actions runner slot to deploy, so those cells could never be satisfied and could never honestly be marked converged. The global-spine path is DELETED rather than kept beside this one -- a retained cross-product would be an inert second answer that some consumer eventually reads (DESIGN section 6, coverage by illusion). A host enrolled for CI participation alone still selects the entire spine, so srv1 through srv4 are unchanged; that is asserted by an executing witness, not assumed here."
 
-fn host_phase_cells_for_enrollment(intent: HostEnrollmentIntent) -> List<HostPhaseCellStatus> {
+fn host_phase_cells_for_enrollment(intent: gunbc.host_assimilation_program.HostEnrollmentIntent) -> List<HostPhaseCellStatus> {
   map(
     assimilation_program_for(intent: intent).steps,
     s => host_phase_cell_status(subject: intent, host: intent.host, step: s),
   )
 }
 
-fn host_fleet_phase_matrix(enrollments: List<HostEnrollmentIntent>) -> List<HostPhaseCellStatus> {
+fn host_fleet_phase_matrix(enrollments: List<gunbc.host_assimilation_program.HostEnrollmentIntent>) -> List<HostPhaseCellStatus> {
   flat_map(enrollments, e => host_phase_cells_for_enrollment(intent: e))
 }
 
 data fleet_subsumption_hosts_note: String = "The enrolled fleet, read from gunbc.fleet_intent_network's host rows rather than re-listed here — the matrix must never be able to disagree with the intent about WHICH hosts exist. This is also the enrollment prerequisite the srv4 OOM incident priced (fleet_subsumption_manual_gaps section C): a host takes no fleet work until it is an intent row, so a host absent from this list has no cells at all, and one that appears gains a full column of UnknownRefused cells — the work becoming visible the moment the host is enrolled, which is the behaviour the incident wanted."
 
-data fleet_subsumption_enrollments: List<HostEnrollmentIntent> = [
-  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_enrollment_participation },
-  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_enrollment_participation },
-  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_enrollment_participation },
-  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_enrollment_participation },
-  HostEnrollmentIntent { host: operator_host_srv5, participation: inference_serving_enrollment_participation },
-  HostEnrollmentIntent { host: operator_host_srv6, participation: inference_serving_enrollment_participation },
+data fleet_subsumption_enrollments: List<gunbc.host_assimilation_program.HostEnrollmentIntent> = [
+  gunbc.host_assimilation_program.HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_enrollment_participation },
+  gunbc.host_assimilation_program.HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_enrollment_participation },
+  gunbc.host_assimilation_program.HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_enrollment_participation },
+  gunbc.host_assimilation_program.HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_enrollment_participation },
+  gunbc.host_assimilation_program.HostEnrollmentIntent { host: operator_host_srv5, participation: inference_serving_enrollment_participation },
+  gunbc.host_assimilation_program.HostEnrollmentIntent { host: operator_host_srv6, participation: inference_serving_enrollment_participation },
 ]
 
 data fleet_subsumption_hosts_projection_note: String = "The bare host list is DERIVED from the enrollments, never authored beside them. Consumers that legitimately care only about WHICH hosts exist -- toolchain components, network diagnosis, swap backing -- keep reading a List of HostIdentity and are untouched by program scoping, while the enrollment rows stay the single authority for who is in the fleet and what they are in it for. Authoring both lists would rebuild the parallel representation this refactor removes."
 
-data fleet_subsumption_hosts: List<HostIdentity> = map(
+data fleet_subsumption_hosts: List<product.placement_supply.HostIdentity> = map(
   fleet_subsumption_enrollments,
   e => e.host,
 )
@@ -166,11 +166,11 @@ fn host_phase_status_eq(a: HostPhaseCellStatus, b: HostPhaseCellStatus) -> Bool 
   modeled_agrees && verdict_agrees
 }
 
-fn observation_verdict_eq(a: ObservationVerdict, b: ObservationVerdict) -> Bool {
+fn observation_verdict_eq(a: std.upsert_decision.ObservationVerdict, b: std.upsert_decision.ObservationVerdict) -> Bool {
   observation_verdict_rank(v: a) == observation_verdict_rank(v: b)
 }
 
-fn observation_verdict_rank(v: ObservationVerdict) -> Int {
+fn observation_verdict_rank(v: std.upsert_decision.ObservationVerdict) -> Int {
   match v {
     Converged => 0
     std.upsert_decision.Absent => 1
@@ -186,13 +186,13 @@ fn host_phase_cell_status_eq(a: HostPhaseCellStatus, b: HostPhaseCellStatus) -> 
   same_cell && host_phase_status_eq(a: a, b: b)
 }
 
-fn host_phase_cell_ownership(c: HostPhaseCellStatus) -> Ownership? {
+fn host_phase_cell_ownership(c: HostPhaseCellStatus) -> gunbc.ownership.Ownership? {
   Present { value: Owned }
 }
 
 data host_phase_reconcile_instantiation_note: String = "The status matrix reconciled as a MEMBERSHIP DIFF — one more (key_of, key_eq, value_eq, ownership_of) bundle handed to the single generic gunbc.membership_reconcile.membership_reconcile, never a forked diff (a forked reconcile means the genericity bought nothing). Desired is every cell modeled AND observed Converged: that is the end state of the whole subsumption lane — every phase modeled AND every enrolled host converged on it — so a Modified hunk is precisely one unit of remaining work, and membership_write_count is the answer to 'how much is left' as a NUMBER rather than a prose reconstruction. Removed is a real arm, not a degenerate pole: a cell observed for a host no longer in fleet_intent is a host that left the fleet, and cells are Owned, so it tears down rather than refusing. The witness exercises that arm synthetically because the live fleet has no departed host today — an instantiation whose interesting hunks are all unreachable in practice is an instantiation nobody has actually tested."
 
-fn host_phase_desired(enrollments: List<HostEnrollmentIntent>) -> List<HostPhaseCellStatus> {
+fn host_phase_desired(enrollments: List<gunbc.host_assimilation_program.HostEnrollmentIntent>) -> List<HostPhaseCellStatus> {
   map(
     host_fleet_phase_matrix(enrollments: enrollments),
     c => HostPhaseCellStatus {
@@ -205,10 +205,10 @@ fn host_phase_desired(enrollments: List<HostEnrollmentIntent>) -> List<HostPhase
 
 data host_phase_desired_disposition_note: String = "Desired pins BOTH axes to their end state, not just the verdict: a modeled authority AND an observed Converged. Pinning only the verdict would make a DeclaredGap phase whose host happens to be Converged compare equal to desired — which is exactly srv3 and prefix:os-install-actuated today, a host that IS installed while the actuation that installed it is not reproducible. That cell is real remaining work (the model cannot rebuild the host), so it must produce a hunk; a desired row that ignored the disposition would silently retire it."
 
-fn host_phase_desired_disposition() -> PhaseDisposition {
+fn host_phase_desired_disposition() -> gunbc.host_standup.PhaseDisposition {
   ModeledCompose {
     authorities: [
-      DeclarationRef {
+      std.decl_ref.DeclarationRef {
         module_path: "gunbc.host_phase_status",
         decl_name: "host_phase_desired_disposition",
         field: WholeDeclaration,
@@ -233,18 +233,18 @@ fn host_phase_reconcile(
   )
 }
 
-fn host_phase_fleet_reconcile(enrollments: List<HostEnrollmentIntent>) -> MembershipPlan<HostPhaseCellStatus, HostPhaseCellMemberAt> {
+fn host_phase_fleet_reconcile(enrollments: List<gunbc.host_assimilation_program.HostEnrollmentIntent>) -> MembershipPlan<HostPhaseCellStatus, HostPhaseCellMemberAt> {
   host_phase_reconcile(
     desired: host_phase_desired(enrollments: enrollments),
     observed: host_fleet_phase_matrix(enrollments: enrollments),
   )
 }
 
-fn host_phase_remaining_work_count(enrollments: List<HostEnrollmentIntent>) -> Int {
+fn host_phase_remaining_work_count(enrollments: List<gunbc.host_assimilation_program.HostEnrollmentIntent>) -> Int {
   membership_write_count(plan: host_phase_fleet_reconcile(enrollments: enrollments))
 }
 
-fn host_phase_observation_coverage_count(enrollments: List<HostEnrollmentIntent>) -> Int {
+fn host_phase_observation_coverage_count(enrollments: List<gunbc.host_assimilation_program.HostEnrollmentIntent>) -> Int {
   filter(host_fleet_phase_matrix(enrollments: enrollments), c => host_phase_cell_has_live_producer(c: c)).length()
 }
 
@@ -259,7 +259,7 @@ fn host_phase_cell_is_converged(c: HostPhaseCellStatus) -> Bool {
   }
 }
 
-fn host_phase_converged_cell_count(enrollments: List<HostEnrollmentIntent>) -> Int {
+fn host_phase_converged_cell_count(enrollments: List<gunbc.host_assimilation_program.HostEnrollmentIntent>) -> Int {
   filter(host_fleet_phase_matrix(enrollments: enrollments), c => host_phase_cell_is_converged(c: c)).length()
 }
 
@@ -269,10 +269,10 @@ fn host_phase_cell_is_finished(c: HostPhaseCellStatus) -> Bool {
   host_phase_cell_is_modeled(c: c) && host_phase_cell_is_converged(c: c)
 }
 
-fn host_phase_finished_cell_count(enrollments: List<HostEnrollmentIntent>) -> Int {
+fn host_phase_finished_cell_count(enrollments: List<gunbc.host_assimilation_program.HostEnrollmentIntent>) -> Int {
   filter(host_fleet_phase_matrix(enrollments: enrollments), c => host_phase_cell_is_finished(c: c)).length()
 }
 
-fn host_phase_unmodeled_count(enrollments: List<HostEnrollmentIntent>) -> Int {
+fn host_phase_unmodeled_count(enrollments: List<gunbc.host_assimilation_program.HostEnrollmentIntent>) -> Int {
   filter(host_fleet_phase_matrix(enrollments: enrollments), c => !host_phase_cell_is_modeled(c: c)).length()
 }

@@ -5,15 +5,15 @@ data roadmap_style_note: String = "The srv1 roadmap dashboard re-grounded on the
 
 data island_venom_note: String = "The workspace's danger completion (operator-directed 2026-07-24, remodel W1b): island-pastel carries no danger hue by design and the base set stays pure — the completion lives HERE, at the consuming layer (gunbc.design.palette swatch_set_for_use_note). venom is the ACNH scorpion's tail — a venom red-brown sampled from the tail stinger (inspiration, not citation, the same standing as the island set itself). It is a FILL material for the loud/fail bands with ivory ink (graded AAA by the palette witnesses); venom-on-loam grades DecorationOnly, so venom is never a text color on the workspace's dark inks. Consumed by the band→material binding (W1c) and the /sandbox swatch auditioner (W1f)."
 
-data island_venom: Swatch = Swatch { name: "venom", color: Srgb8 { r: 138, g: 47, b: 35 } }
+data island_venom: gunbc.design.palette.Swatch = gunbc.design.palette.Swatch { name: "venom", color: extdeps.color.srgb.Srgb8 { r: 138, g: 47, b: 35 } }
 
 data in_family_ink_note: String = "The ink rule, generalized from loam (operator ruling 2026-07-24, after the first band cut shipped loam on every light fill and the operator read mint's warm-brown ink as venom-family): a fill's ink is the fill's OWN hue at ink depth, so ink never borrows another band's temperature — mint carries a deep green, butter a dark olive, aqua a deep teal, venom keeps ivory (a dark fill takes the light ink). Each is a Derived member anchored on its fill, and the palette witnesses hold every ink >= AA on its own fill by the WCAG kernel."
 
-data island_mint_ink: Swatch = Swatch { name: "mint-ink", color: Srgb8 { r: 26, g: 74, b: 43 } }
-data island_butter_ink: Swatch = Swatch { name: "butter-ink", color: Srgb8 { r: 74, g: 60, b: 10 } }
-data island_aqua_ink: Swatch = Swatch { name: "aqua-ink", color: Srgb8 { r: 14, g: 62, b: 66 } }
+data island_mint_ink: gunbc.design.palette.Swatch = gunbc.design.palette.Swatch { name: "mint-ink", color: extdeps.color.srgb.Srgb8 { r: 26, g: 74, b: 43 } }
+data island_butter_ink: gunbc.design.palette.Swatch = gunbc.design.palette.Swatch { name: "butter-ink", color: extdeps.color.srgb.Srgb8 { r: 74, g: 60, b: 10 } }
+data island_aqua_ink: gunbc.design.palette.Swatch = gunbc.design.palette.Swatch { name: "aqua-ink", color: extdeps.color.srgb.Srgb8 { r: 14, g: 62, b: 66 } }
 
-data island_pastel_for_workspace: SwatchSetForUse = SwatchSetForUse {
+data island_pastel_for_workspace: gunbc.design.palette.SwatchSetForUse = gunbc.design.palette.SwatchSetForUse {
   name: "island-pastel-for-workspace",
   base: island_pastel,
   completions: [
@@ -43,8 +43,8 @@ data pressed_stop_note: String = "The press stop, DERIVED and TOTAL (round-5 fix
 
 data press_stop_per_mille: Int = 842
 
-fn pressed_stop(c: Srgb8) -> Srgb8 {
-  Srgb8 {
+fn pressed_stop(c: extdeps.color.srgb.Srgb8) -> extdeps.color.srgb.Srgb8 {
+  extdeps.color.srgb.Srgb8 {
     r: (c.r * press_stop_per_mille) / 1000,
     g: (c.g * press_stop_per_mille) / 1000,
     b: (c.b * press_stop_per_mille) / 1000,
@@ -52,16 +52,16 @@ fn pressed_stop(c: Srgb8) -> Srgb8 {
 }
 
 fn band_pressed_paint(r: BandPaint) -> String {
-  swatch_paint(sw: Swatch { name: join([r.key, "-pressed"], ""), color: pressed_stop(c: r.fill.color) })
+  swatch_paint(sw: gunbc.design.palette.Swatch { name: join([r.key, "-pressed"], ""), color: pressed_stop(c: r.fill.color) })
 }
 
-fn band_paints_for_theme(t: Theme) -> List<BandPaint> {
+fn band_paints_for_theme(t: gunbc.design.theme.Theme) -> List<BandPaint> {
   workspace_band_paints()
 }
 
 data band_var_grammar_note: String = "The band var NAMES route through gunbc.design.state_response.state_var_name with the family's own prefix (composition slice 1): the prefix and role-suffix grammar was previously spelled here AND in every consumer that referenced a var — the census, the receipt values, the paint rules — so a rename would have been a hunt. Now the family row owns the prefix and the role enum owns the suffixes; this fold and every reference derive from the same two authorities."
 
-fn band_var_decls(rows: List<BandPaint>) -> List<CssDecl> {
+fn band_var_decls(rows: List<BandPaint>) -> List<gunbc.design.material.CssDecl> {
   fold(rows, init: [], f: (acc, r) => concat(acc, [
     decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: FillVar) }, value: swatch_paint(sw: r.fill)),
     decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: InkVar) }, value: swatch_paint(sw: r.ink)),
@@ -120,11 +120,11 @@ data audition_solarized: AuditionSet = AuditionSet {
 
 data audition_sets: List<AuditionSet> = [audition_island, audition_solarized]
 
-fn swatch_named(s: SwatchSet, name: String) -> Swatch? {
+fn swatch_named(s: gunbc.design.palette.SwatchSet, name: String) -> gunbc.design.palette.Swatch? {
   swatches_of(s: s) |> filter(sw => sw.name == name) |> first
 }
 
-fn audition_ink_for(s: SwatchSet, fill: Swatch) -> Swatch? {
+fn audition_ink_for(s: gunbc.design.palette.SwatchSet, fill: gunbc.design.palette.Swatch) -> gunbc.design.palette.Swatch? {
   match uint8_channel_inclusive_max_value_derived() {
     Absent => none
     Present { value: maxv } => Present {
@@ -174,13 +174,13 @@ fn band_root_css() -> String {
   )
 }
 
-fn roadmap_rules() -> List<BuildRule> {
+fn roadmap_rules() -> List<gunbc.design.material.BuildRule> {
   concat(roadmap_instance_rules(),
     concat(figure_rules(), roadmap_behavior_rules(rows: roadmap_behaviors)))
 }
 
 // The instrument's base rule, with its rest-state paint DERIVED (composition slice 1): the ink/fill/border decls splice in from the family roster's rest member via state_rest_decl at the exact positions the authored order demands, so the rest-to-invite binding is spelled only in dispatch_state_family — the base rule can no longer disagree with the roster it used to restate. Geometry decls stay authored here; they are the button's own facts, not state functions.
-fn dispatch_btn_base_decls() -> List<CssDecl> {
+fn dispatch_btn_base_decls() -> List<gunbc.design.material.CssDecl> {
   concat([
     decl(prop: FontSize, value: scale_var(t: text_13)),
     decl(prop: FontFamily, value: scale_var(t: font_sans)),
@@ -211,7 +211,7 @@ data row_actuator_scale_note: String = "The in-row actuator at chip scale (compo
 
 data activity_region_style_note: String = "The under-head activity region's materials (A2, replacing workflow lamps v0 — the lamp/stage chip rules deleted with their DOM): the summary is a text-role sentence, the ledger and evidence rows are dim mono lines, and obligation state paints by TEXT COLOR from the same band vocabulary the chips used (pending dims, active in-progress, failed fail-band, refused loud-band) — state stays text-and-material distinguishable without borders fighting the row rhythm. A refused or anomalous container carries the loud left border the reason surfaces already use, so anomaly reads at a glance without a new material. The workflow-controls wrapper remains the one ActuatorRegion grid item, now holding actions only."
 
-data workflow_controls_compact_breakpoint: CssLength = css_px(n: 640)
+data workflow_controls_compact_breakpoint: extdeps.languages.css.values.CssLength = css_px(n: 640)
 
 fn workflow_controls_compact_css() -> String {
   join([
@@ -240,7 +240,7 @@ fn dispatch_rest_band_key() -> String {
   })
 }
 
-fn action_prominence_rules() -> List<BuildRule> {
+fn action_prominence_rules() -> List<gunbc.design.material.BuildRule> {
   [
     StaticRule {
       selector: RawSelector { text: ".dispatch-btn.action-primary, .dispatch-btn.action-secondary" },
@@ -267,14 +267,14 @@ fn action_prominence_rules() -> List<BuildRule> {
   ]
 }
 
-fn roadmap_instance_rules() -> List<BuildRule> {
+fn roadmap_instance_rules() -> List<gunbc.design.material.BuildRule> {
   concat(roadmap_instance_rules_head(),
     concat(action_prominence_rules(),
       concat(state_paint_rules(f: dispatch_state_family, channels: dispatch_stateful_channels),
         roadmap_instance_rules_tail())))
 }
 
-fn roadmap_instance_rules_head() -> List<BuildRule> {
+fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
   [
     StaticRule { selector: RawSelector { text: "*" }, decls: [
       decl(prop: BoxSizing, value: "border-box"),
@@ -828,7 +828,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
   ]
 }
 
-fn roadmap_instance_rules_tail() -> List<BuildRule> {
+fn roadmap_instance_rules_tail() -> List<gunbc.design.material.BuildRule> {
   [
     StaticRule { selector: ClassSelector { name: swatch_toggle_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),

@@ -13,7 +13,7 @@ type RunnerReplacementCause
   | ReplacementCauseWedgedBroker {}
   | ReplacementCauseOperatorForced { detail: String }
 
-data runner_lifecycle_authority_disposition: Disposition = SingleAuthority
+data runner_lifecycle_authority_disposition: std.disposition.Disposition = SingleAuthority
 
 data runner_lifecycle_ctrl_void_note: String = "gunbc citations must not treat ctrl as a live upstream repo (operator ruling 2026-08-06). On hosts ctrl IS still deployed: install-actions-runner.sh lives at /home/briansrls/ctrl/scripts/session-dashboard/host/install-actions-runner.sh; ctrl-runner-reclaim.timer is active. gunbc.runner_lifecycle ADD path must READ that installer as ground truth for what creates a runner, then subsume it through HostEffect arms — never invoke ctrl from gunbc run, never fork runner-liveness-reconcile (timer active on srv1 every 2 min; /opt/actions-runner/runner-liveness-reconcile.sh documents the Aug-6 outage — #7940 subsumes it). runner_host_deploy ctrl path literals remain void legacy pointers only."
 
@@ -69,25 +69,25 @@ fn runner_slot_caps_precede_start() -> Bool {
   runner_slot_add_step_index(step: AddStepMemoryCaps) < runner_slot_add_step_index(step: AddStepStartUnit)
 }
 
-fn runner_slot_instance_name(slot: RunnerSlotIdentity) -> String {
+fn runner_slot_instance_name(slot: gunbc.build_cache_instance.RunnerSlotIdentity) -> String {
   let idx = slot.slot_index
   let two = if idx < 10 { join(["0", to_string(idx)], "") } else { to_string(idx) }
   join([slot.host as String, "-", two], "")
 }
 
-fn runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
-  join(["actions-runner@", runner_slot_instance_name(slot: slot), ".service"], "") as NonEmptyStr
+fn runner_slot_unit_name(slot: gunbc.build_cache_instance.RunnerSlotIdentity) -> std.types.NonEmptyStr {
+  join(["actions-runner@", runner_slot_instance_name(slot: slot), ".service"], "") as std.types.NonEmptyStr
 }
 
-fn runner_slot_dir_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
-  join([actions_runner_base_dir, "/", runner_slot_instance_name(slot: slot)], "") as NonEmptyStr
+fn runner_slot_dir_path(slot: gunbc.build_cache_instance.RunnerSlotIdentity) -> std.types.NonEmptyStr {
+  join([actions_runner_base_dir, "/", runner_slot_instance_name(slot: slot)], "") as std.types.NonEmptyStr
 }
 
 data runner_slot_disk_budget_per_slot_note: String = "Conservative per-slot disk charge for width preflight on srv4 (operator 2026-08-06): seven slots on 500GB NVMe cannot silently fall back to the historical five-slot pin. Derived from srv4_runner_count_disk_cap_note arithmetic (~38GB per slot at width 7 on 500GB class disk). Unobservable disk REFUSES; insufficient headroom REFUSES — never absorbs to width 5."
 
-data runner_slot_disk_budget_per_slot: ByteSize = byte_size(40960000000)
+data runner_slot_disk_budget_per_slot: std.measure.ByteSize = byte_size(40960000000)
 
-fn runner_width_disk_required(requested_width: Int) -> ByteSize {
+fn runner_width_disk_required(requested_width: Int) -> std.measure.ByteSize {
   byte_size(count: requested_width * byte_size_count(b: runner_slot_disk_budget_per_slot))
 }
 
@@ -98,7 +98,7 @@ type RunnerWidthDiskPreflight
 
 fn runner_width_disk_preflight(
   requested_width: Int,
-  disk: HostDiskObservation,
+  disk: gunbc.host_disk_observation.HostDiskObservation,
 ) -> RunnerWidthDiskPreflight {
   let required = runner_width_disk_required(requested_width: requested_width)
   match disk {
@@ -172,20 +172,20 @@ type GitHubRunnerRegistrationObservation
 // Aspiration bind: runner_lifecycle_realize is not yet a single top-level decl; names the realize
 // module's per-effect dissolve targets (runner_lifecycle_realize_*), not a live symbol (review 49698).
 
-data runner_lifecycle_effects_scaffold: Disposition = Scaffold {
+data runner_lifecycle_effects_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.runner_lifecycle_realize",
     decl_name: "runner_lifecycle_realize_wet_transport_dissolve_on",
     field: WholeDeclaration,
   }
 }
 
-data runner_lifecycle_cited_release: ActionsRunnerRelease = actions_runner_release_2_334_0
+data runner_lifecycle_cited_release: extdeps.github.actions_runner.ActionsRunnerRelease = actions_runner_release_2_334_0
 
-data runner_lifecycle_ci_org: NonEmptyStr = gunbai_ci_declared.owner_login
+data runner_lifecycle_ci_org: std.types.NonEmptyStr = gunbai_ci_declared.owner_login
 
-data runner_lifecycle_ci_installation_id: GitHubAppInstallationId = gunbai_ci_declared_installation_id
+data runner_lifecycle_ci_installation_id: extdeps.github.app.GitHubAppInstallationId = gunbai_ci_declared_installation_id
 
 type RunnerPerSlotMemoryCaps {
   memory_max: std.measure.ByteSize

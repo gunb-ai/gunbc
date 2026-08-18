@@ -3,7 +3,7 @@ module gunbc.bmc_fan_converge
 
 
 
-data bmc_fan_atomic_transaction_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: replace the phase-partial mutation refusal when one atomically published content-addressed backup manifest binds manifest identity, exact target and stable BMC identity, firmware, config path, before/backup digests, and creation generation; restore proves the manifest identity, restored-byte digest, controller readback, and bounded thermal/tach monitoring receipt. Until then the live actuator is observation-only and cannot mutate.")
+data bmc_fan_atomic_transaction_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: replace the phase-partial mutation refusal when one atomically published content-addressed backup manifest binds manifest identity, exact target and stable BMC identity, firmware, config path, before/backup digests, and creation generation; restore proves the manifest identity, restored-byte digest, controller readback, and bounded thermal/tach monitoring receipt. Until then the live actuator is observation-only and cannot mutate.")
 
 type BmcFanConvergeTarget {
   host: gunbc.fleet_intent.ComputeHost
@@ -24,8 +24,8 @@ type BmcFanSshIdentityAdmission {
 }
 
 fn bmc_fan_exact_target_admission_matches(
-  target: HostIdentity,
-  admission_target: HostIdentity,
+  target: product.placement_supply.HostIdentity,
+  admission_target: product.placement_supply.HostIdentity,
 ) -> Bool {
   target == admission_target
 }
@@ -35,14 +35,14 @@ fn bmc_fan_exact_target_admission_matches(
 // InstalledCoolingUnobserved — absence is never read as compatibility.
 fn bmc_fan_installed_cooling_verdict(
   target: BmcFanConvergeTarget,
-) -> CoolingCatalogVerdict {
+) -> product.cooling_qualification.CoolingCatalogVerdict {
   installed_cooling_verdict_for_host(
     host: target.host.identity,
     realizations: installed_cooling_realizations,
   )
 }
 
-fn bmc_fan_cooling_refusal_reason(verdict: CoolingCatalogVerdict) -> String {
+fn bmc_fan_cooling_refusal_reason(verdict: product.cooling_qualification.CoolingCatalogVerdict) -> String {
   join(
     [
       "BMC fan convergence refused: ",
@@ -61,8 +61,8 @@ type BmcFanTypedObservationPlan {
 }
 
 fn bmc_fan_typed_observation_plan(
-  projection: BmcFanPolicyProjectionCapability,
-  intent: BmcControlPlaneIntent,
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability,
+  intent: gunbc.bmc_intent.BmcControlPlaneIntent,
 ) -> BmcFanTypedObservationPlan {
   BmcFanTypedObservationPlan {
     config_path: projection.config_path,
@@ -89,7 +89,7 @@ data srv3_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
     known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv3",
     expected_machine_id_path: "/etc/gunbc/bmc-identities/srv3-machine-id",
   },
-  credential_ref: SecretRef {
+  credential_ref: extdeps.cloud.gcp.secret_ref.SecretRef {
     project: fleet_secrets_gcp_project,
     secret: "bmc-srv3-admin",
     version: "latest",
@@ -112,7 +112,7 @@ data srv4_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
     known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv4",
     expected_machine_id_path: "/etc/gunbc/bmc-identities/srv4-machine-id",
   },
-  credential_ref: SecretRef {
+  credential_ref: extdeps.cloud.gcp.secret_ref.SecretRef {
     project: fleet_secrets_gcp_project,
     secret: "bmc-srv4-admin",
     version: "latest",
@@ -203,8 +203,8 @@ type BmcFanBackupManifest {
 }
 
 fn bmc_firmware_family_content_hash(
-  family: BmcFirmwareFamily,
-) -> ContentHash {
+  family: std.bmc.BmcFirmwareFamily,
+) -> std.content_hash.ContentHash {
   match family {
     OpenBmc => content_hash_atom(value: "OpenBmc"),
   }
@@ -212,26 +212,26 @@ fn bmc_firmware_family_content_hash(
 
 fn bmc_fan_backup_manifest_identity(
   manifest: BmcFanBackupManifest,
-) -> ContentHash {
+) -> std.content_hash.ContentHash {
   content_hash_tagged(
     tag: "BmcFanBackupManifest",
     payload: content_hash_combine_structural(
-      content_hash_atom(value: manifest.target as NonEmptyStr),
+      content_hash_atom(value: manifest.target as std.types.NonEmptyStr),
       content_hash_combine_structural(
         content_hash_atom(value: manifest.stable_bmc_identity),
         content_hash_combine_structural(
           bmc_firmware_family_content_hash(family: manifest.firmware.family),
           content_hash_combine_structural(
             content_hash_atom(
-              value: to_string(manifest.firmware.version.major) as NonEmptyStr,
+              value: to_string(manifest.firmware.version.major) as std.types.NonEmptyStr,
             ),
             content_hash_combine_structural(
               content_hash_atom(
-                value: to_string(manifest.firmware.version.minor) as NonEmptyStr,
+                value: to_string(manifest.firmware.version.minor) as std.types.NonEmptyStr,
               ),
               content_hash_combine_structural(
                 content_hash_atom(
-                  value: to_string(manifest.firmware.version.patch) as NonEmptyStr,
+                  value: to_string(manifest.firmware.version.patch) as std.types.NonEmptyStr,
                 ),
                 content_hash_combine_structural(
                   content_hash_atom(value: manifest.config_path),
@@ -241,10 +241,10 @@ fn bmc_fan_backup_manifest_identity(
                       content_hash_atom(value: manifest.backup_digest.hex),
                       content_hash_combine_structural(
                         content_hash_atom(
-                          value: to_string(manifest.creation_generation) as NonEmptyStr,
+                          value: to_string(manifest.creation_generation) as std.types.NonEmptyStr,
                         ),
                         content_hash_atom(
-                          value: to_string(manifest.created_at) as NonEmptyStr,
+                          value: to_string(manifest.created_at) as std.types.NonEmptyStr,
                         ),
                       ),
                     ),
@@ -260,14 +260,14 @@ fn bmc_fan_backup_manifest_identity(
 }
 
 fn bmc_fan_backup_manifest(
-  target: HostIdentity,
-  stable_bmc_identity: NonEmptyStr,
-  firmware: BmcFirmwareVersion,
-  config_path: NonEmptyStr,
-  before_digest: Digest,
-  backup_digest: Digest,
-  creation_generation: StatePerturbationGeneration,
-  created_at: EpochMs,
+  target: product.placement_supply.HostIdentity,
+  stable_bmc_identity: std.types.NonEmptyStr,
+  firmware: extdeps.bmc.capability.BmcFirmwareVersion,
+  config_path: std.types.NonEmptyStr,
+  before_digest: extdeps.crypto.hash.Digest,
+  backup_digest: extdeps.crypto.hash.Digest,
+  creation_generation: std.state_durability.StatePerturbationGeneration,
+  created_at: std.types.EpochMs,
 ) -> BmcFanBackupManifest {
   BmcFanBackupManifest {
     target: target,
@@ -298,12 +298,12 @@ type BmcFanRestoredReceipt {
 
 fn bmc_fan_backup_manifest_matches_request(
   manifest: BmcFanBackupManifest,
-  target: HostIdentity,
-  stable_bmc_identity: NonEmptyStr,
-  firmware: BmcFirmwareVersion,
-  config_path: NonEmptyStr,
-  before_digest: Digest,
-  creation_generation: StatePerturbationGeneration,
+  target: product.placement_supply.HostIdentity,
+  stable_bmc_identity: std.types.NonEmptyStr,
+  firmware: extdeps.bmc.capability.BmcFirmwareVersion,
+  config_path: std.types.NonEmptyStr,
+  before_digest: extdeps.crypto.hash.Digest,
+  creation_generation: std.state_durability.StatePerturbationGeneration,
 ) -> Bool {
   manifest.target == target
     && manifest.stable_bmc_identity == stable_bmc_identity
@@ -382,7 +382,7 @@ fn bmc_fan_unquote_os_release_value(raw: String) -> String {
 
 fn bmc_fan_parse_os_release_identity(
   content: String,
-  stable_machine_id: NonEmptyStr,
+  stable_machine_id: std.types.NonEmptyStr,
 ) -> BmcFanLiveIdentityResult {
   let lines = split(s: content, delimiter: "\n")
   let firmware = bmc_fan_observation_value_or_empty(
@@ -406,11 +406,11 @@ fn bmc_fan_parse_os_release_identity(
   } else {
     BmcFanLiveIdentityObserved {
       identity: BmcFanLiveIdentity {
-        firmware: BmcFirmwareVersion {
+        firmware: extdeps.bmc.capability.BmcFirmwareVersion {
           family: OpenBmc,
-          version: unquoted_firmware as NonEmptyStr,
+          version: unquoted_firmware as std.types.NonEmptyStr,
         },
-        machine: unquoted_machine as NonEmptyStr,
+        machine: unquoted_machine as std.types.NonEmptyStr,
         stable_machine_id: stable_machine_id,
       },
     }
@@ -418,8 +418,8 @@ fn bmc_fan_parse_os_release_identity(
 }
 
 fn bmc_fan_observe_live_identity(
-  session: PasswordSshSession,
-  expected_machine_id_path: NonEmptyStr,
+  session: extdeps.ssh.password_session.PasswordSshSession,
+  expected_machine_id_path: std.types.NonEmptyStr,
 ) -> BmcFanLiveIdentityResult {
   let os_release = openbmc_read_file(session: session, path: "/etc/os-release")
   let remote_machine_id = openbmc_read_file(session: session, path: "/etc/machine-id")
@@ -445,12 +445,12 @@ fn bmc_fan_observe_live_identity(
   } else {
     bmc_fan_parse_os_release_identity(
       content: os_release.stdout,
-      stable_machine_id: trim(remote_machine_id.stdout) as NonEmptyStr,
+      stable_machine_id: trim(remote_machine_id.stdout) as std.types.NonEmptyStr,
     )
   }
 }
 
-fn bmc_fan_firmware_intent_requirement(intent: BmcFirmwareIntent) -> String {
+fn bmc_fan_firmware_intent_requirement(intent: extdeps.bmc.capability.BmcFirmwareIntent) -> String {
   match intent {
     BmcFirmwareUnpinned => "a pinned OpenBMC firmware track"
     BmcFirmwareTrackRequired { track: track } =>
@@ -462,9 +462,9 @@ fn bmc_fan_firmware_intent_requirement(intent: BmcFirmwareIntent) -> String {
 }
 
 fn bmc_fan_build_curve_steps_rec(
-  readings: List<Celsius>,
-  outputs: List<Percent>,
-  built: List<BmcFanCurveStep>,
+  readings: List<std.measure.Celsius>,
+  outputs: List<std.measure.Percent>,
+  built: List<extdeps.bmc.types.BmcFanCurveStep>,
 ) -> ParsedCurveSteps {
   if readings.length() == 0 {
     if outputs.length() == 0 {
@@ -487,7 +487,7 @@ fn bmc_fan_build_curve_steps_rec(
         built: append(
           built,
           items: [
-            BmcFanCurveStep {
+            extdeps.bmc.types.BmcFanCurveStep {
               at_or_above: reading,
               duty: output,
             },
@@ -498,8 +498,8 @@ fn bmc_fan_build_curve_steps_rec(
 }
 
 fn bmc_fan_build_curve_steps(
-  readings: List<Celsius>,
-  outputs: List<Percent>,
+  readings: List<std.measure.Celsius>,
+  outputs: List<std.measure.Percent>,
 ) -> ParsedCurveSteps {
   bmc_fan_build_curve_steps_rec(
     readings: readings,
@@ -509,13 +509,13 @@ fn bmc_fan_build_curve_steps(
 }
 
 fn bmc_fan_observe_temperature(
-  session: PasswordSshSession,
-  sensor_name: NonEmptyStr,
+  session: extdeps.ssh.password_session.PasswordSshSession,
+  sensor_name: std.types.NonEmptyStr,
 ) -> BmcFanTemperatureObservation {
   let sensor_path = join(
     ["/xyz/openbmc_project/sensors/temperature/", sensor_name as String],
     "",
-  ) as NonEmptyStr
+  ) as std.types.NonEmptyStr
   let service_result = openbmc_sensor_service(
     session: session,
     sensor_path: sensor_path,
@@ -549,8 +549,8 @@ fn bmc_fan_observe_temperature(
 }
 
 fn bmc_fan_observe_temperatures(
-  session: PasswordSshSession,
-  sensor_names: List<NonEmptyStr>,
+  session: extdeps.ssh.password_session.PasswordSshSession,
+  sensor_names: List<std.types.NonEmptyStr>,
 ) -> List<BmcFanTemperatureObservation> {
   sensor_names |> map(sensor =>
     bmc_fan_observe_temperature(
@@ -565,9 +565,9 @@ type BmcFanTachHealthListResult
   | BmcFanTachHealthListRefused { reason: String }
 
 fn bmc_fan_observe_tach_health_rec(
-  session: PasswordSshSession,
-  sensors: List<NonEmptyStr>,
-  built: List<OpenBmcTachHealth>,
+  session: extdeps.ssh.password_session.PasswordSshSession,
+  sensors: List<std.types.NonEmptyStr>,
+  built: List<extdeps.bmc.openbmc_fan_control.OpenBmcTachHealth>,
 ) -> BmcFanTachHealthListResult {
   if sensors.length() == 0 {
     BmcFanTachHealthListObserved { values: built }
@@ -586,8 +586,8 @@ fn bmc_fan_observe_tach_health_rec(
 }
 
 fn bmc_fan_observe_tach_health(
-  session: PasswordSshSession,
-  sensors: List<NonEmptyStr>,
+  session: extdeps.ssh.password_session.PasswordSshSession,
+  sensors: List<std.types.NonEmptyStr>,
 ) -> BmcFanTachHealthListResult {
   bmc_fan_observe_tach_health_rec(
     session: session,
@@ -597,7 +597,7 @@ fn bmc_fan_observe_tach_health(
 }
 
 fn bmc_fan_observe_typed_parts(
-  session: PasswordSshSession,
+  session: extdeps.ssh.password_session.PasswordSshSession,
   plan: BmcFanTypedObservationPlan,
 ) -> BmcFanObservedPartsResult {
   let selected = openbmc_resolve_path(
@@ -696,7 +696,7 @@ fn bmc_fan_observe_typed_parts(
           path: join(
             [overlay.upper_directory as String, plan.config_path as String],
             "",
-          ) as NonEmptyStr,
+          ) as std.types.NonEmptyStr,
         )
         match writable {
           OpenBmcBoolRefused { reason } =>
@@ -754,7 +754,7 @@ fn bmc_fan_observe_typed_parts(
   }
 }
 
-fn bmc_fan_parse_curve(config: OpenBmcFanConfigObservation) -> ParsedFanCurve {
+fn bmc_fan_parse_curve(config: extdeps.bmc.openbmc_fan_control.OpenBmcFanConfigObservation) -> ParsedFanCurve {
   match config.stepwise {
     OpenBmcSelectionZero =>
       FanCurveParseRefused { reason: "TEMP_SOC stepwise controller is absent" }
@@ -775,7 +775,7 @@ fn bmc_fan_parse_curve(config: OpenBmcFanConfigObservation) -> ParsedFanCurve {
         ) {
           CurveStepsParseRefused { reason } => FanCurveParseRefused { reason: reason }
           CurveStepsParsed { steps } => {
-            let raw_curve = BmcFanCurve {
+            let raw_curve = extdeps.bmc.types.BmcFanCurve {
                 control_sensor: "TEMP_SOC",
                 steps: steps,
                 minimum_duty: controller.minimum_duty,
@@ -799,7 +799,7 @@ fn bmc_fan_parse_curve(config: OpenBmcFanConfigObservation) -> ParsedFanCurve {
 }
 
 fn bmc_fan_parse_controller_shape(
-  config: OpenBmcFanConfigObservation,
+  config: extdeps.bmc.openbmc_fan_control.OpenBmcFanConfigObservation,
 ) -> ParsedFanControllerShape {
   match config.fan_controllers {
     OpenBmcCollectionZero =>
@@ -826,20 +826,20 @@ fn bmc_fan_parse_controller_shape(
 
 fn bmc_fan_build_live_observation(
   identity: BmcFanLiveIdentity,
-  selected_config_path: NonEmptyStr,
-  board_config_path: NonEmptyStr,
-  controller_service: NonEmptyStr,
-  controller_binary: NonEmptyStr,
-  zone_control_path: NonEmptyStr,
+  selected_config_path: std.types.NonEmptyStr,
+  board_config_path: std.types.NonEmptyStr,
+  controller_service: std.types.NonEmptyStr,
+  controller_binary: std.types.NonEmptyStr,
+  zone_control_path: std.types.NonEmptyStr,
   zone_failsafe_active: Bool,
   writable: Bool,
   upper_override_present: Bool,
-  available_bytes: ByteSize,
-  observed_at: EpochMs,
-  overlay: LinuxOverlayObservation,
-  config: OpenBmcFanConfigObservation,
-  config_digest: Digest,
-  tach_health: List<OpenBmcTachHealth>,
+  available_bytes: std.measure.ByteSize,
+  observed_at: std.types.EpochMs,
+  overlay: extdeps.filesystem.linux.LinuxOverlayObservation,
+  config: extdeps.bmc.openbmc_fan_control.OpenBmcFanConfigObservation,
+  config_digest: extdeps.crypto.hash.Digest,
+  tach_health: List<extdeps.bmc.openbmc_fan_control.OpenBmcTachHealth>,
   temperatures: List<BmcFanTemperatureObservation>,
 ) -> BmcFanLiveObservationResult {
   if identity.machine != "altrad8ud-1l2t" {
@@ -865,7 +865,7 @@ fn bmc_fan_build_live_observation(
                   } else {
                     BmcFanLiveObserved {
                       observation: BmcFanLiveObservation {
-                        policy: BmcFanPolicyObservation {
+                        policy: extdeps.bmc.types.BmcFanPolicyObservation {
                           firmware: identity.firmware,
                           evidence_scope: CurrentEvidenceUnclaimed,
                           curve: curve,
@@ -902,7 +902,7 @@ fn bmc_fan_build_live_observation(
 
 fn bmc_fan_temperature_for_sensor(
   temperatures: List<BmcFanTemperatureObservation>,
-  sensor: NonEmptyStr,
+  sensor: std.types.NonEmptyStr,
 ) -> BmcFanTemperatureValueResult? {
   if temperatures.length() == 0 {
     none
@@ -923,9 +923,9 @@ fn bmc_fan_temperature_for_sensor(
 }
 
 fn bmc_fan_tach_health_for_sensor(
-  health: List<OpenBmcTachHealth>,
-  sensor: NonEmptyStr,
-) -> OpenBmcTachHealth? {
+  health: List<extdeps.bmc.openbmc_fan_control.OpenBmcTachHealth>,
+  sensor: std.types.NonEmptyStr,
+) -> extdeps.bmc.openbmc_fan_control.OpenBmcTachHealth? {
   if health.length() == 0 {
     none
   } else {
@@ -946,8 +946,8 @@ fn bmc_fan_tach_health_for_sensor(
 }
 
 fn bmc_fan_first_unhealthy_tach(
-  health: List<OpenBmcTachHealth>,
-  required: List<NonEmptyStr>,
+  health: List<extdeps.bmc.openbmc_fan_control.OpenBmcTachHealth>,
+  required: List<std.types.NonEmptyStr>,
 ) -> String? {
   if required.length() == 0 {
     none
@@ -993,8 +993,8 @@ fn bmc_fan_first_unhealthy_tach(
 
 fn bmc_fan_first_unhealthy_component(
   temperatures: List<BmcFanTemperatureObservation>,
-  required: List<NonEmptyStr>,
-  rollback_temperature: Celsius,
+  required: List<std.types.NonEmptyStr>,
+  rollback_temperature: std.measure.Celsius,
 ) -> String? {
   if required.length() == 0 {
     none
@@ -1048,8 +1048,8 @@ fn bmc_fan_first_unhealthy_component(
 
 fn bmc_fan_live_thermal_tach_safety_refusal(
   observation: BmcFanLiveObservation,
-  intent: BmcControlPlaneIntent,
-  projection: BmcFanPolicyProjectionCapability,
+  intent: gunbc.bmc_intent.BmcControlPlaneIntent,
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability,
 ) -> String? {
   let processor_rollback = intent.fan_policy.thermal_guard.processor_rollback_temperature
   let component_rollback = intent.fan_policy.thermal_guard.component_rollback_temperature
@@ -1088,16 +1088,16 @@ fn bmc_fan_live_thermal_tach_safety_refusal(
 }
 
 fn bmc_fan_live_digest_matches(
-  live_digest: Digest,
-  admitted_digest: Digest,
+  live_digest: extdeps.crypto.hash.Digest,
+  admitted_digest: extdeps.crypto.hash.Digest,
 ) -> Bool {
   live_digest == admitted_digest
 }
 
 fn bmc_fan_live_safety_refusal(
   observation: BmcFanLiveObservation,
-  intent: BmcControlPlaneIntent,
-  projection: BmcFanPolicyProjectionCapability,
+  intent: gunbc.bmc_intent.BmcControlPlaneIntent,
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability,
 ) -> String? {
   if !bmc_fan_live_digest_matches(
     live_digest: observation.active_config_digest,
@@ -1119,7 +1119,7 @@ fn bmc_fan_live_safety_refusal(
 
 fn bmc_fan_record_cleanup_debt(
   result: BmcFanTypedMutationResult,
-  cleanup_debt: NonEmptyStr,
+  cleanup_debt: std.types.NonEmptyStr,
 ) -> BmcFanTypedMutationResult {
   match result {
     BmcFanAppliedAndVerified { receipt } =>
@@ -1135,17 +1135,17 @@ fn bmc_fan_record_cleanup_debt(
     BmcFanAppliedWithCleanupDebt { receipt, cleanup_debt: prior } =>
       BmcFanAppliedWithCleanupDebt {
         receipt: receipt,
-        cleanup_debt: join([prior, "; ", cleanup_debt], "") as NonEmptyStr,
+        cleanup_debt: join([prior, "; ", cleanup_debt], "") as std.types.NonEmptyStr,
       }
     BmcFanRestoredWithCleanupDebt { receipt, cleanup_debt: prior } =>
       BmcFanRestoredWithCleanupDebt {
         receipt: receipt,
-        cleanup_debt: join([prior, "; ", cleanup_debt], "") as NonEmptyStr,
+        cleanup_debt: join([prior, "; ", cleanup_debt], "") as std.types.NonEmptyStr,
       }
     BmcFanApplyFailedAndRestored { apply_reason, receipt } =>
       BmcFanRestoredWithCleanupDebt {
         receipt: receipt,
-        cleanup_debt: join([apply_reason, "; ", cleanup_debt], "") as NonEmptyStr,
+        cleanup_debt: join([apply_reason, "; ", cleanup_debt], "") as std.types.NonEmptyStr,
       }
     BmcFanApplyFailedAndRestoreFailed {
       apply_reason,
@@ -1174,7 +1174,7 @@ fn bmc_fan_observe_with_credential(
       reason: "BMC SSH identity admission is bound to a different host target",
     }
   } else {
-  let session = PasswordSshSession {
+  let session = extdeps.ssh.password_session.PasswordSshSession {
     host: target.onboarding.bmc.host,
     username: target.onboarding.factory_login.username,
     password: credential,
@@ -1312,7 +1312,7 @@ fn bmc_fan_observe_with_credential(
 fn bmc_fan_observe_only_with_credential(
   target: BmcFanConvergeTarget,
   credential: Secret,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   match bmc_fan_observe_with_credential(
     target: target,
     credential: credential,
@@ -1378,7 +1378,7 @@ fn bmc_fan_observe_only_with_credential(
 fn bmc_fan_rollback_previous_with_credential(
   target: BmcFanConvergeTarget,
   credential: Secret,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   exit_failure(
     reason: "BMC fan rollback is phase-partial: no atomic content-addressed backup manifest and verified restoration receipt are admitted",
   )
@@ -1387,7 +1387,7 @@ fn bmc_fan_rollback_previous_with_credential(
 fn bmc_fan_converge_with_credential(
   target: BmcFanConvergeTarget,
   credential: Secret,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   match bmc_fan_observe_with_credential(
     target: target,
     credential: credential,
@@ -1466,7 +1466,7 @@ fn bmc_fan_converge_with_credential(
 func bmc_fan_run(
   target: BmcFanConvergeTarget,
   action: BmcFanRequestedAction,
-) -> ProcessExit
+) -> std.process.ProcessExit
   uses net: Network
 {
   let sshpass = shell.Which.Check(command: "sshpass")
@@ -1530,7 +1530,7 @@ func bmc_fan_run(
   }
 }
 
-func srv3_bmc_fan_observe() -> ProcessExit
+func srv3_bmc_fan_observe() -> std.process.ProcessExit
   uses net: Network
 {
   bmc_fan_run(
@@ -1539,7 +1539,7 @@ func srv3_bmc_fan_observe() -> ProcessExit
   )
 }
 
-func srv3_bmc_fan_converge() -> ProcessExit
+func srv3_bmc_fan_converge() -> std.process.ProcessExit
   uses net: Network
 {
   bmc_fan_run(
@@ -1548,7 +1548,7 @@ func srv3_bmc_fan_converge() -> ProcessExit
   )
 }
 
-func srv4_bmc_fan_observe() -> ProcessExit
+func srv4_bmc_fan_observe() -> std.process.ProcessExit
   uses net: Network
 {
   bmc_fan_run(
@@ -1557,7 +1557,7 @@ func srv4_bmc_fan_observe() -> ProcessExit
   )
 }
 
-func srv4_bmc_fan_converge() -> ProcessExit
+func srv4_bmc_fan_converge() -> std.process.ProcessExit
   uses net: Network
 {
   bmc_fan_run(
@@ -1566,7 +1566,7 @@ func srv4_bmc_fan_converge() -> ProcessExit
   )
 }
 
-func srv4_bmc_fan_rollback_previous() -> ProcessExit
+func srv4_bmc_fan_rollback_previous() -> std.process.ProcessExit
   uses net: Network
 {
   bmc_fan_run(

@@ -7,9 +7,9 @@ data schedule_method_note: String = "This is a roadmap instantiation of the cite
 
 data remaining_cost_relative_sizing_follow_on_note: String = "FOLLOW-ON DERIVED READ, not slice 1 and never an authored field on RoadmapNode or NodeSizing: remaining-cost-to-complete-from-here is a node's own calibrated work plus the unfinished dependency closure, bucketed relative to the historical plus active task population by a separately grounded order-of-magnitude or quantile policy. It must project from this module's TotalWork and dependency-closure facts, so the label recalibrates as history accumulates and shrinks as prerequisites gain acceptance evidence. dissolve-on: a consumer needs relative portfolio sizing and grounds one population-bucketing policy; then one fold derives the label without creating a second sizing authority."
 
-data critical_path_method_used: CriticalPathMethod = critical_path_method
-data three_point_estimate_method_used: ThreePointEstimateMethod = three_point_estimate_method
-data resource_capacity_lower_bound_method_used: ResourceCapacityLowerBoundMethod = resource_capacity_lower_bound_method
+data critical_path_method_used: extdeps.project_schedule.cpm_pert.CriticalPathMethod = critical_path_method
+data three_point_estimate_method_used: extdeps.project_schedule.cpm_pert.ThreePointEstimateMethod = three_point_estimate_method
+data resource_capacity_lower_bound_method_used: extdeps.project_schedule.cpm_pert.ResourceCapacityLowerBoundMethod = resource_capacity_lower_bound_method
 
 type SizingCell {
   intricacy: gunbc.roadmap_model.Intricacy
@@ -20,7 +20,7 @@ fn sizing_cell_eq(a: SizingCell, b: SizingCell) -> Bool {
   a.intricacy == b.intricacy && a.volume == b.volume
 }
 
-fn sizing_cell_of(sizing: NodeSizing) -> SizingCell? {
+fn sizing_cell_of(sizing: gunbc.roadmap_model.NodeSizing) -> SizingCell? {
   match sizing {
     Unsized => Absent
     Sized { intricacy, volume, repo: _, acceptance: _ } =>
@@ -50,7 +50,7 @@ fn accepted_node_pull_links() -> List<AcceptedNodePullLink> {
   ]
 }
 
-fn cited_pull_timings() -> List<PullTimingObservation> {
+fn cited_pull_timings() -> List<extdeps.github.pulls.PullTimingObservation> {
   [
     gunbc_pr_7393_timing,
     gunbc_pr_7405_timing,
@@ -98,9 +98,9 @@ type CycleTimeObservationBuild
 
 fn observation_for_link(
   link: AcceptedNodePullLink,
-  nodes: List<RoadmapNode>,
-  receipts: List<RoadmapAcceptanceReceipt>,
-  pulls: List<PullTimingObservation>,
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>,
+  pulls: List<extdeps.github.pulls.PullTimingObservation>,
   links: List<AcceptedNodePullLink>,
 ) -> CycleTimeObservationBuild {
   let bundled_links = links |> filter(candidate => candidate.pull_number == link.pull_number)
@@ -406,7 +406,7 @@ fn unique_cells(cells: List<SizingCell>) -> List<SizingCell> {
   )
 }
 
-fn calibration_gaps(nodes: List<RoadmapNode>, observations: List<CycleTimeObservation>) -> List<CalibrationGap> {
+fn calibration_gaps(nodes: List<gunbc.roadmap_model.RoadmapNode>, observations: List<CycleTimeObservation>) -> List<CalibrationGap> {
   let cells = unique_cells(cells: nodes |> flat_map(n => match sizing_cell_of(sizing: n.sizing) {
     Absent => []
     Present { value } => [value]
@@ -425,20 +425,20 @@ fn calibration_gaps(nodes: List<RoadmapNode>, observations: List<CycleTimeObserv
   })
 }
 
-fn dependency_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> CallGraph {
-  CallGraph {
-    edges: edges |> map(e => GraphEdge { caller: e.child as String, callee: e.parent as String })
+fn dependency_graph(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> std.graph.CallGraph {
+  std.graph.CallGraph {
+    edges: edges |> map(e => std.graph.GraphEdge { caller: e.child as String, callee: e.parent as String })
   }
 }
 
-fn dependency_cycle_nodes(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<RoadmapNodeId> {
+fn dependency_cycle_nodes(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> List<gunbc.roadmap_model.RoadmapNodeId> {
   graph_cycle_members(
     names: nodes |> map(n => n.node as String),
     graph: dependency_graph(nodes: nodes, edges: edges),
-  ) |> map(n => n as RoadmapNodeId)
+  ) |> map(n => n as gunbc.roadmap_model.RoadmapNodeId)
 }
 
-fn unknown_dependency_endpoints(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<RoadmapNodeId> {
+fn unknown_dependency_endpoints(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> List<gunbc.roadmap_model.RoadmapNodeId> {
   let ids = nodes |> map(n => n.node)
   concat(
     edges |> filter(e => !any(ids, id => id == e.child)) |> map(e => e.child),
@@ -459,7 +459,7 @@ fn interval_bound(interval: CycleTimeInterval, bound: ForecastBound) -> Int {
 fn baseline_node_duration(
   interval: CycleTimeInterval,
   bound: ForecastBound,
-) -> Millisecond {
+) -> std.measure.Millisecond {
   millisecond(count: interval_bound(interval: interval, bound: bound))
 }
 
@@ -477,9 +477,9 @@ fn longer_path(a: PathEstimate, b: PathEstimate) -> PathEstimate {
 }
 
 fn path_to_node(
-  node: RoadmapNode,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
+  node: gunbc.roadmap_model.RoadmapNode,
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
   observations: List<CycleTimeObservation>,
   bound: ForecastBound,
 ) -> PathEstimateResult {
@@ -540,14 +540,14 @@ type CriticalPathChoice {
   path: List<gunbc.roadmap_model.RoadmapNodeId>
 }
 
-fn forecast_instant(anchor: ForecastAnchorObservation, duration: Millisecond) -> ForecastInstant {
+fn forecast_instant(anchor: ForecastAnchorObservation, duration: std.measure.Millisecond) -> ForecastInstant {
   ForecastInstant { epoch_ms: anchor.observed_at + millisecond_count(m: duration) }
 }
 
 fn build_node_forecast(
-  node: RoadmapNode,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
+  node: gunbc.roadmap_model.RoadmapNode,
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
   observations: List<CycleTimeObservation>,
   anchor: ForecastAnchorObservation,
 ) -> NodeForecastBuild {
@@ -603,7 +603,7 @@ fn dependency_completion_lower_bound(nodes: List<NodeScheduleForecast>, anchor: 
 fn total_work_duration(
   nodes: List<NodeScheduleForecast>,
   bound: ForecastBound,
-) -> Millisecond {
+) -> std.measure.Millisecond {
   let total = nodes |> fold(init: 0, f: (acc, node) =>
     acc + millisecond_count(m: baseline_node_duration(
       interval: node.calibrated_cycle_time,
@@ -663,15 +663,15 @@ fn completion_lower_bound_from_duration(
 
 fn parallelism_headroom(total: TotalWork, critical: CriticalPathMinimum) -> ParallelismHeadroom {
   ParallelismHeadroom { ratio: ParallelismHeadroomInterval {
-    minimum: FieldOfFractions { num: total.duration.minimum, denom: critical.duration.minimum },
-    median: FieldOfFractions { num: total.duration.median, denom: critical.duration.median },
-    maximum: FieldOfFractions { num: total.duration.maximum, denom: critical.duration.maximum },
+    minimum: std.algebra.FieldOfFractions { num: total.duration.minimum, denom: critical.duration.minimum },
+    median: std.algebra.FieldOfFractions { num: total.duration.median, denom: critical.duration.median },
+    maximum: std.algebra.FieldOfFractions { num: total.duration.maximum, denom: critical.duration.maximum },
   } }
 }
 
 fn schedule_forecast(
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
   observations: List<CycleTimeObservation>,
   history_refusals: List<CycleTimeHistoryRefusal>,
   population_exclusions: List<CycleTimePopulationExclusion>,

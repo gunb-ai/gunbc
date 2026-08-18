@@ -1,7 +1,7 @@
 module gunbc.fleet_runner_connectivity
 
 
-data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
+data fleet_runner_connectivity_authority_disposition: std.disposition.Disposition = Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
 }
 
@@ -39,38 +39,38 @@ data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from th
 
 data incident_srv4_committed_width_at_outage: Int = 5
 
-data incident_runner_version: NonEmptyStr = "2.334.0"
+data incident_runner_version: std.types.NonEmptyStr = "2.334.0"
 
-data incident_runner_labels: List<NonEmptyStr> = [
-  "self-hosted" as NonEmptyStr,
-  "linux" as NonEmptyStr,
-  "arm64" as NonEmptyStr,
-  "gunbc-heavy" as NonEmptyStr,
+data incident_runner_labels: List<std.types.NonEmptyStr> = [
+  "self-hosted" as std.types.NonEmptyStr,
+  "linux" as std.types.NonEmptyStr,
+  "arm64" as std.types.NonEmptyStr,
+  "gunbc-heavy" as std.types.NonEmptyStr,
 ]
 
-fn github_organization_ref() -> GitHubOrganizationRef {
-  GitHubOrganizationRef { login: gunbai_ci_declared.owner_login }
+fn github_organization_ref() -> extdeps.github.effect.GitHubOrganizationRef {
+  extdeps.github.effect.GitHubOrganizationRef { login: gunbai_ci_declared.owner_login }
 }
 
 fn incident_registration(
   id: std.nat.Nat,
-  name: NonEmptyStr,
-  status: GitHubRunnerRegistrationStatus,
+  name: std.types.NonEmptyStr,
+  status: extdeps.github.ci_runner.GitHubRunnerRegistrationStatus,
   busy: Bool,
-) -> GitHubSelfHostedRunnerRegistration {
-  GitHubSelfHostedRunnerRegistration {
+) -> extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration {
+  extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration {
     id: id,
     name: name,
     status: status,
     busy: busy,
     ephemeral: true,
     version: incident_runner_version,
-    os: "Linux" as NonEmptyStr,
+    os: "Linux" as std.types.NonEmptyStr,
     labels: incident_runner_labels,
   }
 }
 
-data incident_2026_08_06_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+data incident_2026_08_06_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
   incident_registration(id: 1, name: "srv1-01", status: GitHubRunnerOnline, busy: true),
   incident_registration(id: 2, name: "srv1-02", status: GitHubRunnerOffline, busy: false),
   incident_registration(id: 3, name: "srv1-03", status: GitHubRunnerOffline, busy: false),
@@ -91,14 +91,14 @@ data incident_2026_08_06_registrations: List<GitHubSelfHostedRunnerRegistration>
 
 fn organization_runner_roster_evidence() -> OrganizationRunnerRosterEvidence {
   RosterObserved {
-    observed_on: "2026-08-06" as NonEmptyStr,
+    observed_on: "2026-08-06" as std.types.NonEmptyStr,
     registrations: incident_2026_08_06_registrations,
   }
 }
 
-data organization_runner_roster_producer_scaffold: Disposition = Scaffold {
+data organization_runner_roster_producer_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_runner_connectivity",
     decl_name: "organization_runner_roster_show_effective_read",
     field: WholeDeclaration,
@@ -110,16 +110,16 @@ data organization_runner_roster_show_effective_read: ShowEffectiveRead<Organizat
 }
 
 fn registration_matches_name(
-  reg: GitHubSelfHostedRunnerRegistration,
-  name: NonEmptyStr,
+  reg: extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration,
+  name: std.types.NonEmptyStr,
 ) -> Bool {
   (reg.name as String) == (name as String)
 }
 
 fn find_registration_by_name(
-  registrations: List<GitHubSelfHostedRunnerRegistration>,
-  name: NonEmptyStr,
-) -> GitHubSelfHostedRunnerRegistration? {
+  registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>,
+  name: std.types.NonEmptyStr,
+) -> extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration? {
   fold(
     registrations,
     init: none,
@@ -134,7 +134,7 @@ fn find_registration_by_name(
 
 data incident_local_materialized_width_note: String = "ACTIVATED WIDTH vs INSTALL-TREE COUNT (operator correction 2026-08-07): counts ACTIVATED units, not install trees. srv1: 50 trees / 5 active; srv3: 8 materialized trees (includes 08) / 5 active — committed width 7 is memory ceiling, not materialization cap. Dormant trees are SlotMaterializedNotActive; stale .runner does not block ADD."
 
-fn materialized_width_for_host(host: HostIdentity) -> Int {
+fn materialized_width_for_host(host: product.placement_supply.HostIdentity) -> Int {
   if (host as String) == (operator_host_srv1 as String) {
     5
   } else if (host as String) == (operator_host_srv2 as String) {
@@ -148,7 +148,7 @@ fn materialized_width_for_host(host: HostIdentity) -> Int {
   }
 }
 
-fn unit_active_width_for_host(host: HostIdentity) -> Int {
+fn unit_active_width_for_host(host: product.placement_supply.HostIdentity) -> Int {
   materialized_width_for_host(host: host)
 }
 
@@ -160,10 +160,10 @@ data one_slot_index: List<std.nat.Nat> = [1]
 
 data empty_nat_list: List<std.nat.Nat> = []
 
-data converged_seven_roster_observed_on: NonEmptyStr = "converged-seven-fixture" as NonEmptyStr
+data converged_seven_roster_observed_on: std.types.NonEmptyStr = "converged-seven-fixture" as std.types.NonEmptyStr
 
-fn host_registration_name_for_slot(host: HostIdentity, slot_index: std.nat.Nat) -> NonEmptyStr {
-  join([host as String, "-", slot_suffix(slot_index: slot_index)], "") as NonEmptyStr
+fn host_registration_name_for_slot(host: product.placement_supply.HostIdentity, slot_index: std.nat.Nat) -> std.types.NonEmptyStr {
+  join([host as String, "-", slot_suffix(slot_index: slot_index)], "") as std.types.NonEmptyStr
 }
 
 fn slot_indices_for_managed_width(width: Int) -> List<std.nat.Nat> {
@@ -179,9 +179,9 @@ fn slot_indices_for_managed_width(width: Int) -> List<std.nat.Nat> {
 }
 
 fn count_host_registrations_at_width(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   width: Int,
-  registrations: List<GitHubSelfHostedRunnerRegistration>,
+  registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>,
 ) -> Int {
   fold(
     slot_indices_for_managed_width(width: width),
@@ -198,9 +198,9 @@ fn count_host_registrations_at_width(
 }
 
 fn count_host_online_at_width(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   width: Int,
-  registrations: List<GitHubSelfHostedRunnerRegistration>,
+  registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>,
 ) -> Int {
   fold(
     slot_indices_for_managed_width(width: width),
@@ -229,27 +229,27 @@ fn roster_is_converged_seven_fixture(roster: OrganizationRunnerRosterEvidence) -
   }
 }
 
-data converged_seven_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 101, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 102, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 103, name: "srv3-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 104, name: "srv3-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 105, name: "srv3-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 106, name: "srv3-06" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 107, name: "srv3-07" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+data converged_seven_srv3_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 101, name: "srv3-01" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 102, name: "srv3-02" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 103, name: "srv3-03" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 104, name: "srv3-04" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 105, name: "srv3-05" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 106, name: "srv3-06" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 107, name: "srv3-07" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
 ]
 
-data converged_seven_srv4_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 201, name: "srv4-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 202, name: "srv4-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 203, name: "srv4-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 204, name: "srv4-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 205, name: "srv4-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 206, name: "srv4-06" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 207, name: "srv4-07" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+data converged_seven_srv4_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 201, name: "srv4-01" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 202, name: "srv4-02" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 203, name: "srv4-03" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 204, name: "srv4-04" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 205, name: "srv4-05" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 206, name: "srv4-06" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 207, name: "srv4-07" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
 ]
 
-data converged_seven_managed_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
+data converged_seven_managed_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = concat(
   converged_seven_srv3_registrations,
   converged_seven_srv4_registrations,
 )
@@ -261,35 +261,35 @@ fn organization_runner_roster_converged_seven_evidence() -> OrganizationRunnerRo
   }
 }
 
-data width_five_online_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 301, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 302, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 303, name: "srv3-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 304, name: "srv3-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 305, name: "srv3-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+data width_five_online_srv3_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 301, name: "srv3-01" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 302, name: "srv3-02" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 303, name: "srv3-03" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 304, name: "srv3-04" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 305, name: "srv3-05" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
 ]
 
-data width_five_online_srv4_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 401, name: "srv4-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 402, name: "srv4-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 403, name: "srv4-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 404, name: "srv4-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 405, name: "srv4-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+data width_five_online_srv4_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 401, name: "srv4-01" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 402, name: "srv4-02" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 403, name: "srv4-03" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 404, name: "srv4-04" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 405, name: "srv4-05" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
 ]
 
-data width_five_online_managed_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
+data width_five_online_managed_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = concat(
   width_five_online_srv3_registrations,
   width_five_online_srv4_registrations,
 )
 
 fn organization_runner_roster_materialized_slots_online_evidence() -> OrganizationRunnerRosterEvidence {
   RosterObserved {
-    observed_on: "2026-08-07" as NonEmptyStr,
+    observed_on: "2026-08-07" as std.types.NonEmptyStr,
     registrations: width_five_online_managed_registrations,
   }
 }
 
-fn local_incarnations_for_host(host: HostIdentity, width: Int) -> List<LocalRunnerSlotIncarnation> {
+fn local_incarnations_for_host(host: product.placement_supply.HostIdentity, width: Int) -> List<gunbc.runner_incarnation.LocalRunnerSlotIncarnation> {
   if width == 7 {
     map(
       seven_slot_indices,
@@ -305,7 +305,7 @@ fn local_incarnations_for_host(host: HostIdentity, width: Int) -> List<LocalRunn
   }
 }
 
-fn local_runner_slot_incarnations() -> List<LocalRunnerSlotIncarnation> {
+fn local_runner_slot_incarnations() -> List<gunbc.runner_incarnation.LocalRunnerSlotIncarnation> {
   concat(
     local_incarnations_for_host(host: operator_host_srv1, width: materialized_width_for_host(host: operator_host_srv1)),
     concat(
@@ -319,7 +319,7 @@ fn local_runner_slot_incarnations() -> List<LocalRunnerSlotIncarnation> {
 }
 
 fn runner_slot_connectivity_verdict_for_incarnation(
-  incarnation: LocalRunnerSlotIncarnation,
+  incarnation: gunbc.runner_incarnation.LocalRunnerSlotIncarnation,
   roster: OrganizationRunnerRosterEvidence,
 ) -> RunnerSlotConnectivityVerdict {
   if !incarnation.unit_active {
@@ -346,7 +346,7 @@ fn runner_slot_connectivity_verdict_for_incarnation(
   }
 }
 
-fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity) -> RunnerSlotConnectivityVerdict {
+fn runner_slot_connectivity_verdict(slot: gunbc.build_cache_instance.RunnerSlotIdentity) -> RunnerSlotConnectivityVerdict {
   let roster = organization_runner_roster_evidence()
   let incarnations = local_runner_slot_incarnations()
   match fold(
@@ -370,7 +370,7 @@ fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity) -> RunnerSlotConne
   }
 }
 
-fn count_online_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
+fn count_online_registrations(registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>) -> Int {
   fold(
     registrations,
     init: 0,
@@ -378,7 +378,7 @@ fn count_online_registrations(registrations: List<GitHubSelfHostedRunnerRegistra
   )
 }
 
-fn count_schedulable_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
+fn count_schedulable_registrations(registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>) -> Int {
   fold(
     registrations,
     init: 0,
@@ -386,7 +386,7 @@ fn count_schedulable_registrations(registrations: List<GitHubSelfHostedRunnerReg
   )
 }
 
-fn count_executing_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
+fn count_executing_registrations(registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>) -> Int {
   fold(
     registrations,
     init: 0,
@@ -394,7 +394,7 @@ fn count_executing_registrations(registrations: List<GitHubSelfHostedRunnerRegis
   )
 }
 
-fn fleet_hosts() -> List<HostIdentity> {
+fn fleet_hosts() -> List<product.placement_supply.HostIdentity> {
   [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
 }
 
@@ -406,7 +406,7 @@ data incident_srv2_committed_width_at_outage: Int = 5
 
 data incident_srv3_committed_width_at_outage: Int = 7
 
-fn incident_committed_width_at_outage_for(host: HostIdentity) -> Int {
+fn incident_committed_width_at_outage_for(host: product.placement_supply.HostIdentity) -> Int {
   if (host as String) == (operator_host_srv1 as String) {
     incident_srv1_committed_width_at_outage
   } else if (host as String) == (operator_host_srv2 as String) {

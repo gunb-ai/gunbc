@@ -56,7 +56,7 @@ fn read_pids_file(control_group: String, leaf: String) -> String {
   filesystem_read(path: join([srv1_tasks_preapply_cgroupfs_root, control_group, "/", leaf], "")).content
 }
 
-fn observe_unit_tasks(unit: NonEmptyStr) -> Srv1TasksUnitObservation {
+fn observe_unit_tasks(unit: std.types.NonEmptyStr) -> Srv1TasksUnitObservation {
   match host_converge_slice1_read_tasks_max_raw(unit: unit) {
     Present { value: tmax } =>
       match host_converge_slice1_read_tasks_current_raw(unit: unit) {
@@ -112,7 +112,7 @@ fn observe_srv1_tasks_preapply() -> Srv1TasksPreApplyReceipt {
 // exit codes (the ruling's success criterion applies to the later apply the same way).
 data srv1_tasks_preapply_receipt_path: String = "target/srv1-tasks-preapply-receipt.txt"
 
-func observe_srv1_tasks_preapply_wet() -> ProcessExit {
+func observe_srv1_tasks_preapply_wet() -> std.process.ProcessExit {
   let receipt = observe_srv1_tasks_preapply()
   let w = Filesystem.Write(path: srv1_tasks_preapply_receipt_path, content: to_string(receipt))
   if !w.success {

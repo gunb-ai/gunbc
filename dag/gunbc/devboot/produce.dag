@@ -225,7 +225,7 @@ fn observe_toolchain_from_text(version_text: String, verbose_text: String) -> Ob
         }
       Present { value: triple } =>
         ToolchainObserved {
-          toolchain: ToolchainRequirement { name: "rustc" as NonEmptyStr, version: version as NonEmptyStr },
+          toolchain: extdeps.toolchain.types.ToolchainRequirement { name: "rustc" as std.types.NonEmptyStr, version: version as std.types.NonEmptyStr },
           host: triple,
         }
     }
@@ -299,8 +299,8 @@ fn devboot_produce_with_toolchain(
   work_root: String,
   caller: String,
   tree_hex: String,
-  toolchain: ToolchainRequirement,
-  host: TargetTriple,
+  toolchain: extdeps.toolchain.types.ToolchainRequirement,
+  host: extdeps.toolchain.types.TargetTriple,
 ) -> ProduceReport {
   match git_object_id_from_untagged_hex(hex: tree_hex) {
     Absent => ProduceRefused { reason: concat("unusable tree oid from git write-tree: ", tree_hex) }
@@ -341,7 +341,7 @@ fn devboot_produce_with_toolchain(
 // THE TYPED CAUSE SURVIVES TO THE CALLER. An earlier revision matched SubjectRefused and threw the cause away, rendering every admission failure as the same sentence -- so a duplicate feature, an empty profile and an empty package name were indistinguishable to whoever had to fix one. That is the located half of a located refusal discarded at the last step, in a module whose whole subject is that refusals carry their reason.
 //
 // The match below is total, so a new refusal cause cannot inherit a generic sentence by omission.
-fn build_subject_refusal_reason(cause: BuildSubjectRefusalCause) -> String {
+fn build_subject_refusal_reason(cause: gunbc.devboot.subject.BuildSubjectRefusalCause) -> String {
   match cause {
     FeatureNameEmpty => "a requested feature name was empty"
     DuplicateFeature { name } => concat("a feature was requested twice: ", name)
@@ -445,7 +445,7 @@ fn stored_record_text(store_root: String, repo_root: String, token: String) -> S
 // BOTH SIDES ARE TRIMMED because the stored side crosses a transport that strips a trailing newline, so an untrimmed comparison would answer differs for a record that is byte-identical in the store. Trimming is a property of the transport seam, not a weakening of the comparison: no interior byte is touched, and two renderings that differ anywhere still differ.
 //
 // THE RENDERING'S INJECTIVITY IS WHAT THIS RESTS ON, and it is a real obligation rather than an assumption -- render_build_subject delimits every axis and every list element, so no two distinct subjects render alike. Its discriminating control lives with the identity witnesses.
-fn stored_subject_match(record_text: String, subject: BuildSubject) -> SubjectMatch {
+fn stored_subject_match(record_text: String, subject: gunbc.devboot.subject.BuildSubject) -> gunbc.devboot.outcome.SubjectMatch {
   if record_text == "" {
     SubjectDiffers
   } else {
@@ -498,7 +498,7 @@ fn observed_artifact_sha256(store_root: String, repo_root: String, oid: String) 
 //
 // If either digest fails to parse as a sha256 the observation refuses as unreadable instead, because a corruption report that cannot name what it compared is not a report.
 
-fn corrupt_artifact_observation(expected_hex: String, observed_hex: String) -> ArtifactAvailability {
+fn corrupt_artifact_observation(expected_hex: String, observed_hex: String) -> gunbc.devboot.outcome.ArtifactAvailability {
   match sha256_hex_digest(hex: expected_hex) {
     Absent =>
       ArtifactUnreadable {
@@ -520,8 +520,8 @@ fn observe_artifact_availability(
   repo_root: String,
   oid: String,
   token: String,
-  subject: BuildSubject,
-) -> ArtifactAvailability {
+  subject: gunbc.devboot.subject.BuildSubject,
+) -> gunbc.devboot.outcome.ArtifactAvailability {
   let present = devboot_witness_run(
     site: retained_devboot_git_object_exists,
     workdir: repo_root,
@@ -584,11 +584,11 @@ fn size_text_is_digits(text: String) -> Bool {
 }
 
 fn observed_stored_artifact(
-  subject: BuildSubject,
+  subject: gunbc.devboot.subject.BuildSubject,
   oid: String,
   sha256_hex: String,
   bytes_text: String,
-) -> ArtifactAvailability {
+) -> gunbc.devboot.outcome.ArtifactAvailability {
   match git_object_id_from_untagged_hex(hex: oid) {
     Absent => ArtifactUnreadable { detail: concat("the store returned an unusable object id: ", oid) }
     Present { value: blob } =>
@@ -601,7 +601,7 @@ fn observed_stored_artifact(
             }
           } else {
             ArtifactAvailable {
-              artifact: StoredArtifact {
+              artifact: gunbc.devboot.outcome.StoredArtifact {
                 subject_digest: build_subject_digest(subject: subject),
                 blob_oid: blob,
                 sha256: digest,
@@ -613,7 +613,7 @@ fn observed_stored_artifact(
   }
 }
 
-fn devboot_produce_admitted(store_root: String, repo_root: String, work_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
+fn devboot_produce_admitted(store_root: String, repo_root: String, work_root: String, caller: String, host: extdeps.toolchain.types.TargetTriple, subject: gunbc.devboot.subject.BuildSubject, token: String) -> ProduceReport {
   match artifact_lookup(store_root: store_root, repo_root: repo_root, token: token) {
     ArtifactLookupRefused { detail } => ProduceRefused { reason: detail }
     ArtifactRefPresent { oid } =>
@@ -655,7 +655,7 @@ fn devboot_produce_admitted(store_root: String, repo_root: String, work_root: St
 //
 // std.measure already carries Second, so the value is a Second, the budget is derived by multiplying it by the attempt count, and the STRING only appears at the transport boundary where sleep's argv demands text. That is the right place for a rendering: the unit survives every arithmetic step and is erased exactly once, at the seam that cannot carry it.
 
-fn attach_wait_interval() -> Second {
+fn attach_wait_interval() -> std.measure.Second {
   second(count: 9)
 }
 
@@ -675,7 +675,7 @@ fn attach_wait_attempts() -> List<Int> {
   )
 }
 
-fn attach_wait_budget() -> Second {
+fn attach_wait_budget() -> std.measure.Second {
   second(count: (attach_wait_attempts() |> count) * second_count(attach_wait_interval()))
 }
 
@@ -731,8 +731,8 @@ fn attach_then_reuse(
   repo_root: String,
   work_root: String,
   caller: String,
-  host: TargetTriple,
-  subject: BuildSubject,
+  host: extdeps.toolchain.types.TargetTriple,
+  subject: gunbc.devboot.subject.BuildSubject,
   token: String,
   holder: String,
 ) -> ProduceReport {
@@ -767,8 +767,8 @@ fn lease_failure_report(
   repo_root: String,
   work_root: String,
   caller: String,
-  host: TargetTriple,
-  subject: BuildSubject,
+  host: extdeps.toolchain.types.TargetTriple,
+  subject: gunbc.devboot.subject.BuildSubject,
   token: String,
   detail: String,
 ) -> ProduceReport {
@@ -792,7 +792,7 @@ fn lease_failure_report(
   }
 }
 
-fn devboot_produce_build(store_root: String, repo_root: String, work_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
+fn devboot_produce_build(store_root: String, repo_root: String, work_root: String, caller: String, host: extdeps.toolchain.types.TargetTriple, subject: gunbc.devboot.subject.BuildSubject, token: String) -> ProduceReport {
   let claim_path = join([store_root, "/devboot-lease-claim-", token], "")
   let claim_written = Filesystem.Write(path: claim_path, content: concat("producer=", caller))
 
@@ -832,7 +832,7 @@ type BuildPlan
   = BuildPlanReady { args: List<String>, artifact_path: String }
   | BuildPlanRefused { cause: BuildPlanRefusalCause }
 
-fn cargo_target_flags(target: CargoTarget) -> List<String> {
+fn cargo_target_flags(target: extdeps.cargo.CargoTarget) -> List<String> {
   match target {
     Lib => ["--lib"]
     Bin { name } => ["--bin", name]
@@ -842,7 +842,7 @@ fn cargo_target_flags(target: CargoTarget) -> List<String> {
   }
 }
 
-fn cargo_target_artifact_name(target: CargoTarget) -> String {
+fn cargo_target_artifact_name(target: extdeps.cargo.CargoTarget) -> String {
   match target {
     Lib => ""
     Bin { name } => name
@@ -852,7 +852,7 @@ fn cargo_target_artifact_name(target: CargoTarget) -> String {
   }
 }
 
-fn features_flags(features: List<NonEmptyStr>) -> List<String> {
+fn features_flags(features: List<std.types.NonEmptyStr>) -> List<String> {
   if is_empty(features) {
     []
   } else {
@@ -860,7 +860,7 @@ fn features_flags(features: List<NonEmptyStr>) -> List<String> {
   }
 }
 
-fn environment_refusal_detail(environment: BuildEnvironmentSpec) -> String {
+fn environment_refusal_detail(environment: gunbc.devboot.subject.BuildEnvironmentSpec) -> String {
   if !is_empty(environment.rustflags) {
     "rustflags are carried in the subject identity but not yet threaded into the invocation"
   } else {
@@ -888,7 +888,7 @@ fn profile_flags(profile: String) -> List<String> {
   if profile == "release" { ["--release"] } else { [] }
 }
 
-fn build_plan_for_subject(subject: BuildSubject, host: TargetTriple) -> BuildPlan {
+fn build_plan_for_subject(subject: gunbc.devboot.subject.BuildSubject, host: extdeps.toolchain.types.TargetTriple) -> BuildPlan {
   let env_detail = environment_refusal_detail(environment: subject.environment)
   let artifact_name = cargo_target_artifact_name(target: subject.product.target)
   let profile = subject.profile as String
@@ -943,7 +943,7 @@ fn build_plan_refusal_reason(cause: BuildPlanRefusalCause) -> String {
   }
 }
 
-fn devboot_store_built_artifact(store_root: String, repo_root: String, work_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
+fn devboot_store_built_artifact(store_root: String, repo_root: String, work_root: String, caller: String, host: extdeps.toolchain.types.TargetTriple, subject: gunbc.devboot.subject.BuildSubject, token: String) -> ProduceReport {
   match build_plan_for_subject(subject: subject, host: host) {
     BuildPlanRefused { cause } =>
       ProduceRefused { reason: build_plan_refusal_reason(cause: cause) }
@@ -977,7 +977,7 @@ fn devboot_run_build_plan(
   source_dir: String,
   target_dir: String,
   caller: String,
-  subject: BuildSubject,
+  subject: gunbc.devboot.subject.BuildSubject,
   token: String,
   args: List<String>,
   artifact_path: String,
@@ -1036,7 +1036,7 @@ fn bind_step_refusal(step: String, exit_code: Int, detail: String) -> String {
 fn devboot_bind_produced_artifact(
   store_root: String,
   repo_root: String,
-  subject: BuildSubject,
+  subject: gunbc.devboot.subject.BuildSubject,
   token: String,
   blob_oid: String,
 ) -> ProduceReport {
@@ -1156,7 +1156,7 @@ fn devboot_materialize(store_root: String, repo_root: String, artifact_oid: Stri
 // The verdict is derived from what was measured rather than from reaching the end of the function: the fetched bytes must hash to the digest the caller was promised AND the binary must execute successfully. Either failing is a refusal, so a consumer cannot report success on bytes it could not verify or could not run.
 
 // A FAILED RECEIPT WRITE REFUSES, because the receipt is the ONLY caller-visible output either entry point has -- neither writes to stdout, so a run whose receipt did not land has reported nothing while exiting zero. That is success claimed without the output the caller reads, which is the same fail-open this vertical deleted from its build path and then reproduced at its own exit. The binding path in this file already checks its writes; these two did not, and the inconsistency is what made it invisible.
-fn receipt_write_refusal(receipt_path: String, detail: String) -> ProcessExit {
+fn receipt_write_refusal(receipt_path: String, detail: String) -> std.process.ProcessExit {
   exit_failure(
     reason: join([
       "the run completed but its receipt could not be written to ",
@@ -1174,7 +1174,7 @@ fn devboot_materialize_entry(
   out_path: String,
   expected_sha256: String,
   receipt_path: String,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   let report = devboot_materialize(
     store_root: store_root,
     repo_root: repo_root,
@@ -1233,7 +1233,7 @@ fn render_produce_report(report: ProduceReport, caller: String) -> String {
   }
 }
 
-fn produce_report_exit(report: ProduceReport) -> ProcessExit {
+fn produce_report_exit(report: ProduceReport) -> std.process.ProcessExit {
   match report {
     ProduceProduced { token, artifact } => ExitSuccess
     ProduceReused { token, artifact } => ExitSuccess
@@ -1248,7 +1248,7 @@ fn devboot_produce_entry(
   work_root: String,
   caller: String,
   receipt_path: String,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   let report = devboot_produce_report(
     store_root: store_root,
     repo_root: repo_root,
@@ -1267,7 +1267,7 @@ fn devboot_produce_entry(
 }
 
 // THE AVAILABILITY ARM SURVIVES INTO THE MESSAGE. An earlier revision rendered every unavailable outcome as the same sentence about bytes not being retrievable, which flattened the one distinction that matters most here: bytes that are ABSENT are a routine prune and a rebuild fixes them, while bytes that are PRESENT AND WRONG are an integrity failure and rebuilding over them without saying so would bury it. The match is total, so a new availability arm cannot inherit a generic sentence.
-fn availability_refusal_reason(availability: ArtifactAvailability) -> String {
+fn availability_refusal_reason(availability: gunbc.devboot.outcome.ArtifactAvailability) -> String {
   match availability {
     ArtifactAvailable { artifact } => "the artifact is available"
     ArtifactMissing => "the artifact ref exists but its bytes are absent from the store"
@@ -1281,8 +1281,8 @@ fn live_reuse_report(
   repo_root: String,
   work_root: String,
   caller: String,
-  host: TargetTriple,
-  subject: BuildSubject,
+  host: extdeps.toolchain.types.TargetTriple,
+  subject: gunbc.devboot.subject.BuildSubject,
   token: String,
   oid: String,
 ) -> ProduceReport {
@@ -1425,7 +1425,7 @@ fn libc_version_from_ldd_text(text: String) -> String {
   ).found
 }
 
-fn observe_platform_c_library(repo_root: String) -> PlatformCLibrary {
+fn observe_platform_c_library(repo_root: String) -> extdeps.gnu.libc.PlatformCLibrary {
   let reported = devboot_witness_run(
     site: retained_devboot_ldd,
     workdir: repo_root, bin_path: "ldd", args: ["--version"]
@@ -1434,6 +1434,6 @@ fn observe_platform_c_library(repo_root: String) -> PlatformCLibrary {
     LibcUnobserved
   } else {
     let version = libc_version_from_ldd_text(text: reported.stdout)
-    if version == "" { LibcUnobserved } else { GnuLibc { version: version as NonEmptyStr } }
+    if version == "" { LibcUnobserved } else { GnuLibc { version: version as std.types.NonEmptyStr } }
   }
 }

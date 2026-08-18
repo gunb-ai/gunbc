@@ -11,7 +11,7 @@ type CursorSdkLocalCredentialAdmission
   | CursorSdkLocalCredentialRefused { reason: std.types.NonEmptyStr }
 
 fn cursor_sdk_local_credential_from_dispatch(
-  credential: CursorCredentialRef,
+  credential: gunbc.dispatch_selection.CursorCredentialRef,
 ) -> CursorSdkLocalCredentialAdmission {
   match credential {
     CursorApiKeySecretRef { secret_ref: ref } =>
@@ -28,17 +28,17 @@ fn cursor_sdk_local_credential_from_dispatch(
       }
     CursorLocalLoginRef =>
       CursorSdkLocalCredentialRefused {
-        reason: "Cursor SDK local automation requires CursorApiKeySecretRef, not interactive login" as NonEmptyStr,
+        reason: "Cursor SDK local automation requires CursorApiKeySecretRef, not interactive login" as std.types.NonEmptyStr,
       }
   }
 }
 
-fn cursor_sdk_local_usage_standing() -> CursorSdkLocalAccountUsageUnobservable {
+fn cursor_sdk_local_usage_standing() -> extdeps.llm.cursor_sdk_facts.CursorSdkLocalAccountUsageUnobservable {
   cursor_sdk_local_account_usage_unobservable()
 }
 
 fn cursor_sdk_materialization_uses_secret_ref(
-  materialization: CursorSdkApiKeyMaterialization,
+  materialization: extdeps.llm.cursor_sdk.CursorSdkApiKeyMaterialization,
 ) -> Bool {
   match materialization {
     CursorSdkApiKeyFromSecretRef { secret_ref: _ } => true

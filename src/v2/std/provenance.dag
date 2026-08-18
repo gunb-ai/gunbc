@@ -6,7 +6,7 @@ type OriginEvent
   | DerivedBy { producer: v2.std.node.Symbol, from: List<std.occurrence_identity.OccurrenceId> }
   | GeneratedBy { generator: v2.std.artifact.GeneratorId, from: List<std.occurrence_identity.OccurrenceId> }
 
-fn origin_event_from_source(locus: Locus) -> OriginEvent {
+fn origin_event_from_source(locus: v2.std.diagnostic.Locus) -> OriginEvent {
   FromSource { locus: locus }
 }
 
@@ -24,8 +24,8 @@ fn span_index_record(index: SpanIndex, id: std.occurrence_identity.OccurrenceId,
   }
 }
 
-fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn span_index_occurrence_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^span_index_occurrence_absent,
     at: port_locus(port: ^span_index_lookup_port),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -55,8 +55,8 @@ fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
   }
 }
 
-fn span_index_origin_chain_exhausted_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn span_index_origin_chain_exhausted_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^span_index_origin_chain_exhausted,
     at: port_locus(port: ^span_index_lookup_port),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -66,7 +66,7 @@ fn span_index_origin_chain_exhausted_diagnostic() -> Diagnostic {
 fn span_index_resolve_textual_locus_from_ids(
   index: SpanIndex,
   ids: List<std.occurrence_identity.OccurrenceId>
-) -> Witness<Locus> {
+) -> Witness<v2.std.diagnostic.Locus> {
   fold_list(
     xs: ids,
     empty: Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() },
@@ -80,7 +80,7 @@ fn span_index_resolve_textual_locus_from_ids(
   )
 }
 
-fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> Witness<Locus> {
+fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> Witness<v2.std.diagnostic.Locus> {
   match span_index_lookup(index: index, id: id) {
     Holds { value: event } =>
       match event {
@@ -98,6 +98,6 @@ fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identit
   }
 }
 
-fn node_artifact_provenance(node: Node, artifact: Artifact) -> NodeArtifactProvenance {
-  NodeArtifactProvenance { node: node, artifact: artifact }
+fn node_artifact_provenance(node: Node, artifact: v2.std.artifact.Artifact) -> v2.std.artifact.NodeArtifactProvenance {
+  v2.std.artifact.NodeArtifactProvenance { node: node, artifact: artifact }
 }

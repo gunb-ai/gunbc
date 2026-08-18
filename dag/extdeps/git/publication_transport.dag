@@ -1,23 +1,23 @@
 module extdeps.git.publication_transport
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/git-push"
   }
 }
 
-data git_commit_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_commit_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/git-commit"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.git.publication_transport",
       decl_name: "PublicationTransport",
       field: WholeDeclaration
@@ -47,8 +47,8 @@ type GitCommitRequest {
 service git.PublicationTransport {
   operation PushRefUpdate {
     input {
-      remote: NonEmptyStr
-      refspec: NonEmptyStr
+      remote: std.types.NonEmptyStr
+      refspec: std.types.NonEmptyStr
     }
     output {
       exit_code: Int from "exit_code"
@@ -64,10 +64,10 @@ service git.PublicationTransport {
 
   operation RecordCommit {
     input {
-      message: NonEmptyStr
+      message: std.types.NonEmptyStr
     }
     output {
-      sha: CommitSha from "stdout"
+      sha: std.types.CommitSha from "stdout"
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
@@ -80,10 +80,10 @@ service git.PublicationTransport {
 
   operation RecordEmptyCommit {
     input {
-      message: NonEmptyStr
+      message: std.types.NonEmptyStr
     }
     output {
-      sha: CommitSha from "stdout"
+      sha: std.types.CommitSha from "stdout"
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }

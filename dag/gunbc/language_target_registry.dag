@@ -13,7 +13,7 @@ data registry_revision_note: String = "WHY THERE IS NO PINNED REVISION STAMP HER
 
 data subject_ref_derivation_note: String = "EVERY SUBJECT REF BELOW IS A PROJECTION OF ITS SCOPE, never re-authored beside it. An earlier revision declared gnu_bash_subject_ref as a hand-written DeclarationRef repeating the module path and decl name the scope already carries — two writable representations of one identity, which can disagree exactly the way target_grounding_law describes. Reading scope.subject instead makes the disagreeing state unrepresentable: there is only one place the subject is stated, and it is the carrier that also holds the citations. Verified by execution 2026-08-04 that a top-level data declaration may project a field of an imported scope, so this costs nothing."
 
-data gnu_bash_subject_ref: DeclarationRef = gnu_bash_model_scope.subject.declaration
+data gnu_bash_subject_ref: std.decl_ref.DeclarationRef = gnu_bash_model_scope.subject.declaration
 
 data d0_subject_registration_note: String = "D0 IS THE ROWS, AND THIS IS WHAT REPLACED THE BLOCKER NOTE THAT STOOD HERE. The previous revision recorded that registering TypeScript, C, C++, Verilog, SPICE, Python, Go, Java, Kotlin, Swift, LLVM IR, WebAssembly, PTX, machine code, Lean, SQL, HTML, CSS, ECMAScript, JSON, YAML and Markdown was impossible because the construction wall requires a TargetGrounding and NONE of them had a cited subject declaration — Bash was the only one, and it had only just been authored. Twenty-three cited subject carriers now exist under dag/extdeps/languages/*/subject.dag, each enrolled in scope_carrier_paths, and the registry registers 26 targets: 24 external plus the two project-grounded ones. THE CITATION RULE THIS BATCH FOLLOWED, because it is the whole value of the rows: every locator was FETCHED LIVE on 2026-08-04 and its title and publisher confirmed from the response before it was written down. None was recalled. Where an upstream could not be read, the target was NOT registered and the cause was recorded in unregistered_target_findings — three of them — because a plausible URL for an unverified authority would make the wall green while grounding it in nothing, which is worse than the honest absence the blocker note described."
 
@@ -97,108 +97,108 @@ data d0_scope_boundary_note: String = "WHAT THIS REGISTRY IS AND IS NOT, so it i
 data governing_contract_id_resolution_note: String = "WHY THIS ROW CARRIES A MODULE NAME AND NOT THE GOVERNING CONTRACT IDENTIFIERS, and the answer is a publication boundary rather than a citation gap. The strategy authority that governs Rust is not in this repository: it lives in a separate private overlay, so its contract identifiers cannot be resolved — or verified — from here, and a sweep of this tree finds nothing no matter how thorough. THAT IS A FIFTH FAILURE SHAPE, worth naming because it is NOT the hand-carried-string class this lane spent the day fixing: those strings named nothing anywhere, while these name something real that is invisible from where the check stands. A measurement that cannot reach an authority must not conclude the authority is absent. WHY THE IDS ARE NOT SIMPLY COPIED IN: the private overlay runs an opt-in-public model in which publishing is an explicit act, so transcribing its identifiers into a public row would be a PUBLICATION DECISION taken by a registry edit — above this lane, and not repaired by the identifiers looking innocuous. The interim carried here is v2.compiler.self_host.emitter_producer_provenance, a real module in this repository that a reader can open, which is weaker than the governing contract but resolvable rather than dangling. It replaced v2.compiler.self_host.frontier when the self-host frontier roster was deleted; the first repoint went to emit_coverage_frontier and was wrong, because that module answers whether a witness body runs native (its axis a) and explicitly disclaims module self-emission (its axis b) — the name resembled the deleted one, which is not a reason. Rust is genuinely governed by MORE THAN ONE contract, which is why the carrier is plural and why this single entry is an interim rather than the truth. NEXT TRIGGER: the operator rules on whether the strategy keys are published; if they are, this field takes the exact governing identifiers and this note deletes. THE ECMASCRIPT AND C++ DECISION IDS ARE A DIFFERENT CASE: they name a document section in THIS repository, which is a positional citation — weaker than a symbol, but openable."
 
 
-data registered_language_targets: List<LanguageTargetRegistration> = [
-  LanguageTargetRegistration {
+data registered_language_targets: List<std.language_target_identity.LanguageTargetRegistration> = [
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: gnu_bash_model_scope },
     disposition: TargetActive
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: typescript_language_model_scope },
     disposition: TargetActive
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: html_language_model_scope },
     disposition: TargetActive
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: css_language_model_scope },
     disposition: TargetActive
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: c_language_model_scope },
     disposition: TargetActive
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: python_language_model_scope },
     disposition: TargetActive
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: verilog_language_model_scope },
     disposition: TargetActive
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: spice_netlist_language_model_scope },
     disposition: TargetActive
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: rust_language_model_scope },
     disposition: TargetGovernedByContracts { contract_ids: ["v2.compiler.self_host.emitter_producer_provenance"] }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: ecmascript_language_model_scope },
     disposition: TargetDecisionPending { decision_id: "docs/plans/language-support-completion-design.md#7 decision 1 — ECMAScript authority" }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: cpp_language_model_scope },
     disposition: TargetDecisionPending { decision_id: "docs/plans/language-support-completion-design.md#7 decision 2 — C++ profile" }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: go_language_model_scope },
     disposition: TargetParked { reason: "P2 second compiled general target; frontier row records the TargetModel as a skeleton needing buildout, so no work is in progress" }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: llvm_ir_language_model_scope },
     disposition: TargetParked { reason: "P2 backend/validator profile; frontier row records no committed TargetModel" }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: webassembly_language_model_scope },
     disposition: TargetParked { reason: "P2 backend/runtime profile; a TargetModel exists but bar-c is unreachable until the wasmtime runtime row is configured" }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: lean_language_model_scope },
     disposition: TargetParked { reason: "P2 proof/checker profile; frontier row records no committed TargetModel, and the expression spine it would stress is itself unbuilt" }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: ptx_language_model_scope },
     disposition: TargetParked { reason: "P1 accelerator seam, but deliberately last in that seam: the existing plan orders CPU fused-kernel oracle then PTX validation then CUDA execution, so PTX is not startable work today" }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: java_language_model_scope },
     disposition: TargetParked { reason: "P3 confirm-only fan-out; earns a slot only after the compiled-family self-host proof lands" }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: kotlin_language_model_scope },
     disposition: TargetParked { reason: "P3 confirm-only fan-out; same gate as Java" }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: swift_language_model_scope },
     disposition: TargetParked { reason: "P3 confirm-only fan-out; same gate as Java" }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: jsx_language_model_scope },
     disposition: TargetDecisionPending { decision_id: "jsx registry role — independently supported target medium, or syntax capability of the web/ECMAScript path (see jsx_registry_role_note)" }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: riscv_isa_model_scope },
     disposition: TargetParked { reason: "P3 ISA target; registered because its authority verified, but the surface that would consume it fuses three ISAs and must be decomposed first" }
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: json_format_model_scope },
     disposition: TargetMaintenanceOnly
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: yaml_format_model_scope },
     disposition: TargetMaintenanceOnly
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: commonmark_format_model_scope },
     disposition: TargetMaintenanceOnly
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ProjectGrounding { authority: dag_syntax_authority },
     disposition: TargetActive
   },
-  LanguageTargetRegistration {
+  std.language_target_identity.LanguageTargetRegistration {
     grounding: ProjectGrounding { authority: english_formal_sentence_authority },
     disposition: TargetParked {
       reason: "controlled-English medium: bounded formal-subset profile, P3 priority; registered so the strategy row stays visible while implementation has not begun"
@@ -206,42 +206,42 @@ data registered_language_targets: List<LanguageTargetRegistration> = [
   }
 ]
 
-data dag_syntax_authority: DeclarationRef = DeclarationRef {
+data dag_syntax_authority: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "extdeps.languages.dag.syntax",
   decl_name: "dag_item_forms",
   field: WholeDeclaration
 }
 
-data english_formal_sentence_authority: DeclarationRef = DeclarationRef {
+data english_formal_sentence_authority: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.extdeps.languages.english",
   decl_name: "FormalSentence",
   field: WholeDeclaration
 }
 
-data dag_subject_ref: DeclarationRef = dag_syntax_authority
+data dag_subject_ref: std.decl_ref.DeclarationRef = dag_syntax_authority
 
-data c_language_subject_ref: DeclarationRef = c_language_model_scope.subject.declaration
-data cpp_language_subject_ref: DeclarationRef = cpp_language_model_scope.subject.declaration
-data css_language_subject_ref: DeclarationRef = css_language_model_scope.subject.declaration
-data ecmascript_language_subject_ref: DeclarationRef = ecmascript_language_model_scope.subject.declaration
-data go_language_subject_ref: DeclarationRef = go_language_model_scope.subject.declaration
-data html_language_subject_ref: DeclarationRef = html_language_model_scope.subject.declaration
-data java_language_subject_ref: DeclarationRef = java_language_model_scope.subject.declaration
-data json_format_subject_ref: DeclarationRef = json_format_model_scope.subject.declaration
-data jsx_language_subject_ref: DeclarationRef = jsx_language_model_scope.subject.declaration
-data kotlin_language_subject_ref: DeclarationRef = kotlin_language_model_scope.subject.declaration
-data lean_language_subject_ref: DeclarationRef = lean_language_model_scope.subject.declaration
-data llvm_ir_language_subject_ref: DeclarationRef = llvm_ir_language_model_scope.subject.declaration
-data commonmark_format_subject_ref: DeclarationRef = commonmark_format_model_scope.subject.declaration
-data ptx_language_subject_ref: DeclarationRef = ptx_language_model_scope.subject.declaration
-data python_language_subject_ref: DeclarationRef = python_language_model_scope.subject.declaration
-data riscv_isa_subject_ref: DeclarationRef = riscv_isa_model_scope.subject.declaration
-data rust_language_subject_ref: DeclarationRef = rust_language_model_scope.subject.declaration
-data spice_netlist_language_subject_ref: DeclarationRef = spice_netlist_language_model_scope.subject.declaration
+data c_language_subject_ref: std.decl_ref.DeclarationRef = c_language_model_scope.subject.declaration
+data cpp_language_subject_ref: std.decl_ref.DeclarationRef = cpp_language_model_scope.subject.declaration
+data css_language_subject_ref: std.decl_ref.DeclarationRef = css_language_model_scope.subject.declaration
+data ecmascript_language_subject_ref: std.decl_ref.DeclarationRef = ecmascript_language_model_scope.subject.declaration
+data go_language_subject_ref: std.decl_ref.DeclarationRef = go_language_model_scope.subject.declaration
+data html_language_subject_ref: std.decl_ref.DeclarationRef = html_language_model_scope.subject.declaration
+data java_language_subject_ref: std.decl_ref.DeclarationRef = java_language_model_scope.subject.declaration
+data json_format_subject_ref: std.decl_ref.DeclarationRef = json_format_model_scope.subject.declaration
+data jsx_language_subject_ref: std.decl_ref.DeclarationRef = jsx_language_model_scope.subject.declaration
+data kotlin_language_subject_ref: std.decl_ref.DeclarationRef = kotlin_language_model_scope.subject.declaration
+data lean_language_subject_ref: std.decl_ref.DeclarationRef = lean_language_model_scope.subject.declaration
+data llvm_ir_language_subject_ref: std.decl_ref.DeclarationRef = llvm_ir_language_model_scope.subject.declaration
+data commonmark_format_subject_ref: std.decl_ref.DeclarationRef = commonmark_format_model_scope.subject.declaration
+data ptx_language_subject_ref: std.decl_ref.DeclarationRef = ptx_language_model_scope.subject.declaration
+data python_language_subject_ref: std.decl_ref.DeclarationRef = python_language_model_scope.subject.declaration
+data riscv_isa_subject_ref: std.decl_ref.DeclarationRef = riscv_isa_model_scope.subject.declaration
+data rust_language_subject_ref: std.decl_ref.DeclarationRef = rust_language_model_scope.subject.declaration
+data spice_netlist_language_subject_ref: std.decl_ref.DeclarationRef = spice_netlist_language_model_scope.subject.declaration
 
-data ngspice_simulator_subject_ref: DeclarationRef = ngspice_simulator_model_scope.subject.declaration
+data ngspice_simulator_subject_ref: std.decl_ref.DeclarationRef = ngspice_simulator_model_scope.subject.declaration
 
-data icarus_verilog_simulator_subject_ref: DeclarationRef = icarus_verilog_simulator_model_scope.subject.declaration
+data icarus_verilog_simulator_subject_ref: std.decl_ref.DeclarationRef = icarus_verilog_simulator_model_scope.subject.declaration
 
 data target_runtime_binding_note: String = "WHICH RUNTIME EXECUTES A TARGET IS A SEPARATE FACT FROM WHAT THE TARGET IS (cursor review 48122, P0). Fusing them is what made ngspice look like a language: the registry registered the simulator, gave it the netlist's file extensions, and joined it to a surface that models a generic SpiceNetlist. Split here into two subjects plus this binding, so the medium can gain a second runtime without either subject changing — which is the whole test of whether the split was real. A binding is NOT a support claim: it says which tool WOULD execute this target, not that any execution receipt exists. SPICE's frontier row is bar-b, meaning the witness compares emitted text to a golden file and never runs ngspice at all, so this binding is precisely the thing an execution receipt would later discharge. THIS BINDING ALSO CARRIES THE DIALECT FACT, which belongs here and not on either subject's scope (cursor review 48361). SPICE has no normative netlist specification, so the readable authority for the concrete syntax this repository would emit is the ngspice manual — but that manual is ngspice's own governing document, and citing it on the SPICE medium's scope would claim one upstream grounds another. An earlier revision did exactly that and re-forked the fact this split had just separated. The binding is the honest home: it names both subjects by reference, each keeping its own authority, and says which runtime's dialect an emission would target. That is why a support claim for SPICE must resolve THROUGH this binding to state a dialect, rather than reading one off the medium's citation list."
 
@@ -264,27 +264,27 @@ data target_runtime_bindings: List<TargetRuntimeBinding> = [
 fn target_runtime_binding_count() -> Int {
   fold(target_runtime_bindings, init: 0, f: fn(acc, b) { acc + 1 })
 }
-data swift_language_subject_ref: DeclarationRef = swift_language_model_scope.subject.declaration
-data typescript_language_subject_ref: DeclarationRef = typescript_language_model_scope.subject.declaration
-data verilog_language_subject_ref: DeclarationRef = verilog_language_model_scope.subject.declaration
-data webassembly_language_subject_ref: DeclarationRef = webassembly_language_model_scope.subject.declaration
-data yaml_format_subject_ref: DeclarationRef = yaml_format_model_scope.subject.declaration
+data swift_language_subject_ref: std.decl_ref.DeclarationRef = swift_language_model_scope.subject.declaration
+data typescript_language_subject_ref: std.decl_ref.DeclarationRef = typescript_language_model_scope.subject.declaration
+data verilog_language_subject_ref: std.decl_ref.DeclarationRef = verilog_language_model_scope.subject.declaration
+data webassembly_language_subject_ref: std.decl_ref.DeclarationRef = webassembly_language_model_scope.subject.declaration
+data yaml_format_subject_ref: std.decl_ref.DeclarationRef = yaml_format_model_scope.subject.declaration
 
-data english_subject_ref: DeclarationRef = english_formal_sentence_authority
+data english_subject_ref: std.decl_ref.DeclarationRef = english_formal_sentence_authority
 
 fn registered_target_count() -> Int {
   fold(registered_language_targets, init: 0, f: fn(a, _r) { a + 1 })
 }
 
 fn unidentified_decl_row(
-  authority: LanguageTargetSurfaceAuthority,
+  authority: std.language_target_identity.LanguageTargetSurfaceAuthority,
   module_path: String,
   decl_name: String
-) -> LanguageTargetSurfaceRow {
-  LanguageTargetSurfaceRow {
+) -> std.language_target_identity.LanguageTargetSurfaceRow {
+  std.language_target_identity.LanguageTargetSurfaceRow {
     authority: authority,
     surface: SurfaceDeclaration {
-      ref: DeclarationRef {
+      ref: std.decl_ref.DeclarationRef {
         module_path: module_path,
         decl_name: decl_name,
         field: WholeDeclaration
@@ -295,17 +295,17 @@ fn unidentified_decl_row(
 }
 
 fn unidentified_module_row(
-  authority: LanguageTargetSurfaceAuthority,
+  authority: std.language_target_identity.LanguageTargetSurfaceAuthority,
   module_path: String
-) -> LanguageTargetSurfaceRow {
-  LanguageTargetSurfaceRow {
+) -> std.language_target_identity.LanguageTargetSurfaceRow {
+  std.language_target_identity.LanguageTargetSurfaceRow {
     authority: authority,
     surface: SurfaceModule { module_path: module_path },
     target: none
   }
 }
 
-data std_language_catalogue_rows: List<LanguageTargetSurfaceRow> = [
+data std_language_catalogue_rows: List<std.language_target_identity.LanguageTargetSurfaceRow> = [
   identified_decl_row(authority: StdLanguageCatalogue, module_path: "std.languages", decl_name: "rust_language", subject: rust_language_subject_ref),
   identified_decl_row(authority: StdLanguageCatalogue, module_path: "std.languages", decl_name: "go_language", subject: go_language_subject_ref),
   identified_decl_row(authority: StdLanguageCatalogue, module_path: "std.languages", decl_name: "python_language", subject: python_language_subject_ref),
@@ -314,7 +314,7 @@ data std_language_catalogue_rows: List<LanguageTargetSurfaceRow> = [
 
 data emit_host_node_smoke_subject_note: String = "run_node_http_serve_smoke joins the ECMASCRIPT subject, not TypeScript, and the distinction is the point. The smoke writes a server.js heredoc and executes it with node; DESIGN describes the same artifact as 'an emitted-JS static server'. So the LANGUAGE OF THE ARTIFACT is JavaScript. Two things this row deliberately does NOT claim: Node.js is the RUNTIME, an independently governed upstream product that would take its own subject if it were ever registered as a target, so it is not fused into this language identity; and this is not evidence that the v2.extdeps.languages.ecmascript MODULE has consumers — measured 2026-08-04, that module still has zero importers anywhere in the tree, exactly as the legacy frontier table says. A surface emitting a language is a different fact from a module being imported, and only the first is what this census row records."
 
-data emit_host_execution_rows: List<LanguageTargetSurfaceRow> = [
+data emit_host_execution_rows: List<std.language_target_identity.LanguageTargetSurfaceRow> = [
   identified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_rust_smoke", subject: rust_language_subject_ref),
   identified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_python_smoke", subject: python_language_subject_ref),
   identified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_go_smoke", subject: go_language_subject_ref),
@@ -327,7 +327,7 @@ data react_jsx_surface_naming_note: String = "extdeps.languages.react_jsx joins 
 
 data machine_code_fusion_note: String = "v2.extdeps.languages.machine_code is the one TargetModel surface that stays UNIDENTIFIED, and it is a finding rather than an omission. It carries a single Isa coproduct with three arms — X86_64Isa, Aarch64Isa, RiscV64Isa — which places three independently governed upstreams in one carrier. DESIGN section 3's external-upstream decomposition forbids exactly that: 'one concept, one authority unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit that shape', and its worked rule is that adding a product must not widen a generic enum. So there is no single subject this surface could honestly join, and joining it to any one of the three would be the fusion asserting itself as an identity. RISC-V is registered as its own subject because its authority verified; the other two are recorded in unregistered_target_findings with their causes. DECOMPOSING machine_code is deliberately NOT done here — this change registers subjects, it does not restructure target surfaces."
 
-data target_model_declaration_rows: List<LanguageTargetSurfaceRow> = [
+data target_model_declaration_rows: List<std.language_target_identity.LanguageTargetSurfaceRow> = [
   identified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.rust", subject: rust_language_subject_ref),
   identified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.typescript", subject: typescript_language_subject_ref),
   identified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.python", subject: python_language_subject_ref),
@@ -359,27 +359,27 @@ data census_path_resolution_note: String = "EVERY module_path IN THIS CENSUS WAS
 data runtime_checker_subject_note: String = "THE CHECKER ROWS BIND TO THE TARGET THEY REALIZE, AND THIS REVERSES THIS FILE'S EARLIER REASONING (cursor review 48122, P0; the lane owner, whose rows these are, agreed and asked that their original intent be overruled). An earlier revision left them unidentified on the argument that a toolchain is not a language. That argument is TRUE AND IRRELEVANT, and mistaking one for the other is the actual defect: LanguageTargetSurfaceRow.target answers WHICH TARGET THIS SURFACE REALIZES, not whether the tool IS the language. This registry already treats run_rust_smoke and run_python_smoke exactly that way — nobody claimed those smoke functions were the Rust and Python languages — so leaving cargo and the interpreter unidentified was inconsistent within one file. Bound: cargo realizes Rust, the Python interpreter realizes Python. Cargo and CPython keep their own separate upstream identities and would take their own cited subject declarations if either is ever registered in its own right; binding a surface to a target does not merge the two. Leaving them unidentified would have permanently conflated tool identity with associated target and stopped the unidentified population reaching zero for a reason that was never real."
 
 
-data runtime_checker_rows: List<LanguageTargetSurfaceRow> = [
+data runtime_checker_rows: List<std.language_target_identity.LanguageTargetSurfaceRow> = [
   identified_module_row(authority: RuntimeChecker, module_path: "extdeps.cargo", subject: rust_language_subject_ref),
   identified_module_row(authority: RuntimeChecker, module_path: "extdeps.python", subject: python_language_subject_ref),
 ]
 
 data legacy_frontier_row_note: String = "The legacy frontier surface stays unidentified because it is a MULTI-TARGET prose table, not a surface belonging to one subject: gunbc.plans.language_target_self_host_frontier carries a row per target for a dozen targets at once. It cannot join a single subject, and the join kernel is right to report it. Its dissolution is the migration of those prose rows onto per-subject carriers — now possible for the first time, because until this change there were no subjects to migrate them ONTO. That migration is not done here; what this change removes is the reason it was blocked. The projections below carry legacy_frontier_label so each prose row can be matched to its canonical subject by name rather than by eye when that work happens."
 
-data legacy_frontier_rows: List<LanguageTargetSurfaceRow> = [
+data legacy_frontier_rows: List<std.language_target_identity.LanguageTargetSurfaceRow> = [
   unidentified_module_row(authority: LegacyFrontier, module_path: "gunbc.plans.language_target_self_host_frontier"),
 ]
 
 fn identified_decl_row(
-  authority: LanguageTargetSurfaceAuthority,
+  authority: std.language_target_identity.LanguageTargetSurfaceAuthority,
   module_path: String,
   decl_name: String,
-  subject: DeclarationRef
-) -> LanguageTargetSurfaceRow {
-  LanguageTargetSurfaceRow {
+  subject: std.decl_ref.DeclarationRef
+) -> std.language_target_identity.LanguageTargetSurfaceRow {
+  std.language_target_identity.LanguageTargetSurfaceRow {
     authority: authority,
     surface: SurfaceDeclaration {
-      ref: DeclarationRef {
+      ref: std.decl_ref.DeclarationRef {
         module_path: module_path,
         decl_name: decl_name,
         field: WholeDeclaration
@@ -390,11 +390,11 @@ fn identified_decl_row(
 }
 
 fn identified_module_row(
-  authority: LanguageTargetSurfaceAuthority,
+  authority: std.language_target_identity.LanguageTargetSurfaceAuthority,
   module_path: String,
-  subject: DeclarationRef
-) -> LanguageTargetSurfaceRow {
-  LanguageTargetSurfaceRow {
+  subject: std.decl_ref.DeclarationRef
+) -> std.language_target_identity.LanguageTargetSurfaceRow {
+  std.language_target_identity.LanguageTargetSurfaceRow {
     authority: authority,
     surface: SurfaceModule { module_path: module_path },
     target: Present { value: subject }
@@ -403,13 +403,13 @@ fn identified_module_row(
 
 data bash_vocabulary_join_note: String = "The two Bash vocabulary rows below are identified, and their significance CHANGED when the other subjects landed (this note previously said Bash was 'the registry's only live join today' and that 'everything else is unidentified because Bash is the only subject that exists yet' — both true when written, both false the moment D0 registered 26 subjects, and left standing they made this module assert its own emptiness while listing a full registry; corrected after review 48113). What these rows demonstrate now is narrower and still worth stating: they are the join for a target whose surfaces are confined by MODULE PREFIX rather than by a target-model declaration, so they exercise the SurfaceModule locus grain against a real registered subject rather than a fixture. The interesting Bash fact today is not that it is the only join — it is the projection two rows down, where GNU Bash is a fully registered, cited subject with NO legacy language id at all, because std.languages carries rust, go, python and typescript rows and no bash row."
 
-data target_vocabulary_rows: List<LanguageTargetSurfaceRow> = [
+data target_vocabulary_rows: List<std.language_target_identity.LanguageTargetSurfaceRow> = [
   identified_module_row(authority: TargetVocabulary, module_path: "extdeps.languages.typescript.program", subject: typescript_language_subject_ref),
   identified_module_row(authority: TargetVocabulary, module_path: "v2.extdeps.languages.bash", subject: gnu_bash_subject_ref),
   identified_module_row(authority: TargetVocabulary, module_path: "v2.workflow.bash", subject: gnu_bash_subject_ref),
 ]
 
-data language_target_surface_census: List<LanguageTargetSurfaceRow> = concat(
+data language_target_surface_census: List<std.language_target_identity.LanguageTargetSurfaceRow> = concat(
   concat(
     concat(std_language_catalogue_rows, emit_host_execution_rows),
     concat(target_model_declaration_rows, runtime_checker_rows)
@@ -419,176 +419,176 @@ data language_target_surface_census: List<LanguageTargetSurfaceRow> = concat(
 
 data language_target_projection_note: String = "Requirement D. Twenty-five projections — one per external subject, PLUS the .dag language, which only became projectable when the neutral DeclarationRef join key landed: under the old ExternalSubjectRef key the .dag language and the controlled-English medium would have had to be wrapped in a carrier documented as a reference to an independently governed upstream subject, which is exactly what it is not. The controlled-English medium is deliberately left UNPROJECTED: a registered subject with no projection is a real state the registry must report as Absent rather than fabricate a name for, and it is the live row that keeps that control exercised instead of hypothetical. Each projection is a set of ATTRIBUTES each a set of ATTRIBUTES hanging off the canonical subject rather than a second identity — the direction rule in language_target_projection_law is what makes them safe: projecting a subject to its LanguageId is total, while looking a LanguageId up REFUSES when no registered subject claims it. THE ABSENCES ARE THE FINDINGS AND THEY ARE LOAD-BEARING. legacy_language_id is Present on exactly four rows — rust, go, python, typescript — because std.languages contains exactly those four Language rows; every other registered subject, INCLUDING BASH, has no legacy id at all, which is why a LanguageId could never have served as the identity key for this registry. legacy_frontier_label is absent for html, css, json, yaml, commonmark and jsx because the prose self-host frontier table never carried rows for them: it is a table about compilation targets, and the structured media were outside its scope. Where a label IS carried it is the frontier's exact spelling, including the two rows whose spelling is itself a finding — C and C++ appear there as 'cpp — Phase-0-C' and 'cpp — full C target', two rows of one prose table for what are two DIFFERENT languages under one fused label, and PTX and RISC-V both map to the single label 'machine_code / ptx'. Those fused labels are precisely what per-subject carriers replace."
 
-data language_target_projections: List<LanguageTargetProjection> = [
-  LanguageTargetProjection {
+data language_target_projections: List<std.language_target_identity.LanguageTargetProjection> = [
+  std.language_target_identity.LanguageTargetProjection {
     subject: dag_subject_ref,
     display_name: "dag",
     file_extensions: [".dag"],
     legacy_language_id: none,
     legacy_frontier_label: none
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: gnu_bash_subject_ref,
     display_name: "GNU Bash",
     file_extensions: [".sh", ".bash"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "bash" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: rust_language_subject_ref,
     display_name: "Rust",
     file_extensions: [".rs"],
     legacy_language_id: Present { value: "rust" },
     legacy_frontier_label: Present { value: "rust" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: typescript_language_subject_ref,
     display_name: "TypeScript",
     file_extensions: [".ts", ".tsx"],
     legacy_language_id: Present { value: "typescript" },
     legacy_frontier_label: Present { value: "typescript" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: ecmascript_language_subject_ref,
     display_name: "ECMAScript",
     file_extensions: [".js", ".mjs"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "ecmascript" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: python_language_subject_ref,
     display_name: "Python",
     file_extensions: [".py"],
     legacy_language_id: Present { value: "python" },
     legacy_frontier_label: Present { value: "python" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: go_language_subject_ref,
     display_name: "Go",
     file_extensions: [".go"],
     legacy_language_id: Present { value: "go" },
     legacy_frontier_label: Present { value: "go" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: c_language_subject_ref,
     display_name: "C",
     file_extensions: [".c", ".h"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "cpp — Phase-0-C" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: cpp_language_subject_ref,
     display_name: "C++",
     file_extensions: [".cpp", ".hpp", ".cc"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "cpp — full C target" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: java_language_subject_ref,
     display_name: "Java",
     file_extensions: [".java"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "java" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: kotlin_language_subject_ref,
     display_name: "Kotlin",
     file_extensions: [".kt", ".kts"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "kotlin" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: swift_language_subject_ref,
     display_name: "Swift",
     file_extensions: [".swift"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "swift" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: verilog_language_subject_ref,
     display_name: "Verilog",
     file_extensions: [".v", ".sv"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "verilog" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: spice_netlist_language_subject_ref,
     display_name: "SPICE",
     file_extensions: [".cir", ".sp"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "spice" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: llvm_ir_language_subject_ref,
     display_name: "LLVM IR",
     file_extensions: [".ll"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "llvm_ir" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: webassembly_language_subject_ref,
     display_name: "WebAssembly",
     file_extensions: [".wasm", ".wat"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "wasm" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: ptx_language_subject_ref,
     display_name: "PTX",
     file_extensions: [".ptx"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "machine_code / ptx" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: lean_language_subject_ref,
     display_name: "Lean",
     file_extensions: [".lean"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "lean" }
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: html_language_subject_ref,
     display_name: "HTML",
     file_extensions: [".html", ".htm"],
     legacy_language_id: none,
     legacy_frontier_label: none
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: css_language_subject_ref,
     display_name: "CSS",
     file_extensions: [".css"],
     legacy_language_id: none,
     legacy_frontier_label: none
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: json_format_subject_ref,
     display_name: "JSON",
     file_extensions: [".json"],
     legacy_language_id: none,
     legacy_frontier_label: none
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: yaml_format_subject_ref,
     display_name: "YAML",
     file_extensions: [".yaml", ".yml"],
     legacy_language_id: none,
     legacy_frontier_label: none
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: commonmark_format_subject_ref,
     display_name: "CommonMark",
     file_extensions: [".md"],
     legacy_language_id: none,
     legacy_frontier_label: none
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: jsx_language_subject_ref,
     display_name: "JSX",
     file_extensions: [".jsx"],
     legacy_language_id: none,
     legacy_frontier_label: none
   },
-  LanguageTargetProjection {
+  std.language_target_identity.LanguageTargetProjection {
     subject: riscv_isa_subject_ref,
     display_name: "RISC-V",
     file_extensions: [".s"],
@@ -609,7 +609,7 @@ fn english_display_name() -> String? {
   display_name_for_subject(subject: english_subject_ref, projections: language_target_projections)
 }
 
-fn lookup_language_id(language_id: String) -> LanguageIdLookup {
+fn lookup_language_id(language_id: String) -> std.language_target_identity.LanguageIdLookup {
   language_id_to_subject(language_id: language_id, projections: language_target_projections)
 }
 
@@ -619,7 +619,7 @@ fn every_projection_subject_is_registered() -> Bool {
   })
 }
 
-fn language_target_registry_violations() -> List<LanguageTargetJoinViolation> {
+fn language_target_registry_violations() -> List<std.language_target_identity.LanguageTargetJoinViolation> {
   language_target_join_violations(
     rows: language_target_surface_census,
     registry: registered_language_targets

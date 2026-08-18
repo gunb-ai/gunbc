@@ -2,8 +2,8 @@ module extdeps.pricing.hetzner_dedicated
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/"
   }
@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data hetzner_dedicated_pricing_provenance_note: String = "Monthly prices excl. VAT live-fetched 2026-07-21 from Hetzner price-adjustment doc GE-D9256 (anchor above, Limited offerings table). Hardware specs cross-checked against robot.hetzner.com/order (same date). EUR only — no currency conversion."
 
-data cpu_description_string_leaf_frontier_rows: List<FrontierRow> = [
+data cpu_description_string_leaf_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_field_ref(
       module_path: "extdeps.pricing.hetzner_dedicated",
@@ -48,11 +48,11 @@ data hetzner_ax41_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicated
   cpu_description: "AMD Ryzen 5 3600 Hexa-Core Matisse (Zen2)",
   memory_bytes: byte_size(68719476736),
   storage_bytes: byte_size(1099511627776),
-  monthly: MoneyPerMonth {
+  monthly: std.measure.MoneyPerMonth {
     amount: money_amount_micro(count: 57300000),
     currency: Eur,
   },
-  setup_fee: MoneyOnce {
+  setup_fee: std.measure.MoneyOnce {
     amount: money_amount_micro(count: 0),
     currency: Eur,
   },
@@ -66,11 +66,11 @@ data hetzner_ax42_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicated
   cpu_description: "AMD Ryzen 7 PRO 8700GE Octa-Core Phoenix 1 (Zen4)",
   memory_bytes: byte_size(68719476736),
   storage_bytes: byte_size(1099511627776),
-  monthly: MoneyPerMonth {
+  monthly: std.measure.MoneyPerMonth {
     amount: money_amount_micro(count: 77300000),
     currency: Eur,
   },
-  setup_fee: MoneyOnce {
+  setup_fee: std.measure.MoneyOnce {
     amount: money_amount_micro(count: 39000000),
     currency: Eur,
   },
@@ -84,11 +84,11 @@ data hetzner_ax42_1_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServ
   cpu_description: "AMD Ryzen 7 PRO 8700GE Octa-Core Phoenix 1 (Zen4)",
   memory_bytes: byte_size(68719476736),
   storage_bytes: byte_size(1099511627776),
-  monthly: MoneyPerMonth {
+  monthly: std.measure.MoneyPerMonth {
     amount: money_amount_micro(count: 97300000),
     currency: Eur,
   },
-  setup_fee: MoneyOnce {
+  setup_fee: std.measure.MoneyOnce {
     amount: money_amount_micro(count: 49000000),
     currency: Eur,
   },
@@ -102,11 +102,11 @@ data hetzner_ax102_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicate
   cpu_description: "AMD Ryzen 9 7950X3D 16-Core Raphael (Zen4)",
   memory_bytes: byte_size(137438953472),
   storage_bytes: byte_size(4123168604160),
-  monthly: MoneyPerMonth {
+  monthly: std.measure.MoneyPerMonth {
     amount: money_amount_micro(count: 157300000),
     currency: Eur,
   },
-  setup_fee: MoneyOnce {
+  setup_fee: std.measure.MoneyOnce {
     amount: money_amount_micro(count: 39000000),
     currency: Eur,
   },
@@ -126,6 +126,6 @@ fn hetzner_dedicated_setup_fee_micros(row: HetznerDedicatedServerPriceRow) -> st
   money_once_micros(q: row.setup_fee)
 }
 
-fn hetzner_dedicated_server_threads(row: HetznerDedicatedServerPriceRow) -> HardwareThreadCount {
+fn hetzner_dedicated_server_threads(row: HetznerDedicatedServerPriceRow) -> std.measure.HardwareThreadCount {
   cpu_facts_threads(cpu: row.cpu)
 }

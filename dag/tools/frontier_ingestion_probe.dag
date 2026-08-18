@@ -5,21 +5,21 @@ data frontier_read_refusal_disposition_note: String = "WHY THERE IS NO READ-REFU
 
 data frontier_ingestion_probe_note: String = "THE REPRODUCTION INSTRUMENT for docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md, deliberately homed OUTSIDE a *_test.dag module. take_frontend_census reads the live tree and reports, for each rostered member, which frontend stage it currently reaches. That reading is a revision-scoped OBSERVATION of the present frontier, not a claim that must hold: promoting it to a test declaration would enroll an assertion whose success depends on the current defects continuing to exist, so it would go RED on the repair and GREEN on a regression. The durable claims — that the stage classifier separates its states, that reasons are read by containment, and that census reconciliation is a two-directional join over the roster — live in gunbc.test.claim.normalize_retention_contract_probe_test and import classify_source from here, so there is one classifier authority and not two.\n\nReason reads are CONTAINMENT reads, never head reads: rejected_with_pending PREPENDS accepted-carrier diagnostics (the wrapper-retention carriers, which are not failures) to a later rejection, so the head of the list is systematically the retention carrier rather than the cause.\n\nStages are DISTINCT STATES. An earlier draft returned an empty reason list for both 'normalize accepted' and 'lex/parse rejected', which is the empty-observation narrow: an unlexable member read as an accepted one. classify_source matches each stage's Outcome in sequence so that collapse is unrepresentable."
 
-fn artifact_tree(artifact: ParseArtifact) -> ParseTree {
+fn artifact_tree(artifact: v2.compiler.parse.ParseArtifact) -> v2.std.grammar.ParseTree {
   artifact.tree
 }
 
-fn diagnostic_reason(d: Diagnostic) -> Symbol {
+fn diagnostic_reason(d: v2.std.diagnostic.Diagnostic) -> v2.std.node.Symbol {
   d.reason
 }
 
-fn all_reasons(d: NonEmptyDiagnostics) -> List<Symbol> {
+fn all_reasons(d: v2.std.diagnostic.NonEmptyDiagnostics) -> List<v2.std.node.Symbol> {
   fold_list(xs: d.tail, empty: [diagnostic_reason(d: d.head)], cons: fn(acc, item) {
     concat(acc, [diagnostic_reason(d: item)])
   })
 }
 
-fn reasons_contain(reasons: List<Symbol>, sym: Symbol) -> Bool {
+fn reasons_contain(reasons: List<v2.std.node.Symbol>, sym: v2.std.node.Symbol) -> Bool {
   fold_list(xs: reasons, empty: false, cons: fn(acc, r) {
     acc || (r == sym)
   })
@@ -117,7 +117,7 @@ fn frontend_stage_eq(a: FrontendStage, b: FrontendStage) -> Bool {
   }
 }
 
-fn classify_normalize_diagnostics(d: NonEmptyDiagnostics) -> FrontendStage {
+fn classify_normalize_diagnostics(d: v2.std.diagnostic.NonEmptyDiagnostics) -> FrontendStage {
   let rs = all_reasons(d: d)
   if reasons_contain(reasons: rs, sym: ^namespace_graft_body_dissolved_refused) {
     NormalizeGraftRefused
@@ -153,9 +153,9 @@ fn prepare_frontend_world() -> v2.std.diagnostic.Outcome<FrontendWorld> {
 }
 
 fn classify_after_lex(
-  prepared: PreparedGrammar,
-  residue: Diagnostics,
-  artifact: LexArtifact
+  prepared: v2.compiler.parse.PreparedGrammar,
+  residue: v2.std.diagnostic.Diagnostics,
+  artifact: v2.std.compilers.lexing.LexArtifact
 ) -> FrontendStage {
   match parse_module_prepared(
     tokens: lex_artifact_semantic_tokens(artifact: artifact),
@@ -253,19 +253,19 @@ type FrontendCensusReceipt
 // verify_roster refuses a duplicated label, so labels cannot collide within one roster, and two
 // rosters differing ONLY by a permutation of labels over identical paths in identical order are
 // the one case this identity does not separate. Recorded as a known limit, not a solved problem.
-fn roster_identity(rows: List<FrontierMember>) -> ContentHash {
+fn roster_identity(rows: List<FrontierMember>) -> std.content_hash.ContentHash {
   as_content_hash_structural(
     structural: fold_list(
       xs: rows,
-      empty: content_hash_atom(value: "gunbc.tools.frontier_ingestion_probe.frontier_roster" as NonEmptyStr),
+      empty: content_hash_atom(value: "gunbc.tools.frontier_ingestion_probe.frontier_roster" as std.types.NonEmptyStr),
       cons: fn(acc, m) {
-        content_hash_combine_structural(left: acc, right: content_hash_atom(value: m.path as NonEmptyStr))
+        content_hash_combine_structural(left: acc, right: content_hash_atom(value: m.path as std.types.NonEmptyStr))
       }
     )
   )
 }
 
-fn frontier_roster_identity() -> ContentHash {
+fn frontier_roster_identity() -> std.content_hash.ContentHash {
   roster_identity(rows: frontier_roster)
 }
 
@@ -321,7 +321,7 @@ type FrontierRosterVerdict
 // verify_roster takes the rows rather than reading frontier_roster, so a malformed roster is a
 // constructible input. A validator that could only ever see the one live roster would be
 // unfalsifiable: it would report valid, and nothing could establish that it reports anything else.
-fn count_roster_label(rows: List<FrontierMember>, label: Symbol) -> Int {
+fn count_roster_label(rows: List<FrontierMember>, label: v2.std.node.Symbol) -> Int {
   fold_list(xs: rows, empty: 0, cons: fn(acc, m) {
     if m.label == label { acc + 1 } else { acc }
   })
@@ -355,17 +355,17 @@ fn verify_frontier_roster() -> FrontierRosterVerdict {
   verify_roster(rows: frontier_roster)
 }
 
-fn count_label(obs: List<MemberObservation>, label: Symbol) -> Int {
+fn count_label(obs: List<MemberObservation>, label: v2.std.node.Symbol) -> Int {
   fold_list(xs: obs, empty: 0, cons: fn(acc, o) {
     if o.label == label { acc + 1 } else { acc }
   })
 }
 
-fn roster_contains(label: Symbol) -> Bool {
+fn roster_contains(label: v2.std.node.Symbol) -> Bool {
   rows_contain_label(rows: frontier_roster, label: label)
 }
 
-fn rows_contain_label(rows: List<FrontierMember>, label: Symbol) -> Bool {
+fn rows_contain_label(rows: List<FrontierMember>, label: v2.std.node.Symbol) -> Bool {
   fold_list(xs: rows, empty: false, cons: fn(acc, m) {
     acc || (m.label == label)
   })

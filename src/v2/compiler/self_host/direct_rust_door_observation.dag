@@ -17,7 +17,7 @@ type DirectRustDoorObservation
   | DirectRustDoorSourceProduced
 
 fn project_direct_rust_door_observation(
-  group: DirectRustDoorProductionGroup
+  group: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorProductionGroup
 ) -> DirectRustDoorObservation {
   match group.emission {
     AssemblyRejected { diagnostics: ds } => AssemblyRefused { reason: ds.head.reason }

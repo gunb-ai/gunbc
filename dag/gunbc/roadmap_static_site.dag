@@ -32,9 +32,9 @@ type StaticSiteAllocation {
   route: DomainRoute
 }
 
-data roadmap_site_readback_script_scaffold: Disposition = Scaffold {
+data roadmap_site_readback_script_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.emit",
     decl_name: "live_deploy_emit_shell_dissolution_trigger",
     field: WholeDeclaration,
@@ -103,15 +103,15 @@ fn roadmap_site_static_allocation() -> StaticSiteAllocation {
   }
 }
 
-fn roadmap_site_path_template(raw: String) -> PathTemplate {
+fn roadmap_site_path_template(raw: String) -> std.http_path.PathTemplate {
   match parse_path_template(raw: raw) {
     ParsedPathTemplate { template: t } => t
     MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
-      PathTemplate { tokens: [LiteralToken { text: raw }] }
+      std.http_path.PathTemplate { tokens: [LiteralToken { text: raw }] }
   }
 }
 
-fn served_surface_digest_kv(url_path: NonEmptyStr, body: String) -> JsonKeyValue {
+fn served_surface_digest_kv(url_path: std.types.NonEmptyStr, body: String) -> extdeps.languages.json.emit.JsonKeyValue {
   json_kv(key: url_path as String, value: json_string(s: site_artifact_digest(body: body).digest as String))
 }
 
@@ -119,7 +119,7 @@ fn roadmap_site_healthz_body() -> String {
   materialize_live_roadmap_site_surface_bundle().healthz_body
 }
 
-fn roadmap_site_healthz_body_for_release(release_revision: CommitSha) -> String {
+fn roadmap_site_healthz_body_for_release(release_revision: std.types.CommitSha) -> String {
   let bundle = materialize_live_roadmap_site_surface_bundle()
   healthz_body_with_release_identity(
     roadmap: bundle.roadmap_md,
@@ -134,8 +134,8 @@ fn roadmap_site_healthz_body_for_release(release_revision: CommitSha) -> String 
 
 data roadmap_site_healthz_body_for_release_note: String = "THE SERVED /healthz DOCUMENT, AND THE ONLY ONE A CLIENT EVER SEES. It is the bundle's surface members plus the two launch-identity members, assembled from the SAME materialized bundle the route renders from — so the digests published here are digests of the bodies this process actually serves, not of a second rendering that could differ. roadmap_site_healthz_body (surface only) is retained as the deploy-side EXPECTED projection: the deploying tree computes it to answer 'what should the surface be', while the running process answers 'what is the surface, and which release am I'. Those are two different questions asked of two different parties, which is why both functions exist and why neither is a copy of the other."
 
-fn roadmap_site_healthz_route() -> ServedStaticRoute {
-  ServedStaticRoute {
+fn roadmap_site_healthz_route() -> extdeps.http.server.ServedStaticRoute {
+  extdeps.http.server.ServedStaticRoute {
     method: std.types.GET,
     path_pattern: roadmap_site_path_template(raw: roadmap_site_health_path),
     body: roadmap_site_healthz_body(),
@@ -144,8 +144,8 @@ fn roadmap_site_healthz_route() -> ServedStaticRoute {
   }
 }
 
-fn roadmap_site_text_route(artifact: SiteArtifact, content_type: MediaType) -> ServedStaticRoute {
-  ServedStaticRoute {
+fn roadmap_site_text_route(artifact: SiteArtifact, content_type: extdeps.http.server.MediaType) -> extdeps.http.server.ServedStaticRoute {
+  extdeps.http.server.ServedStaticRoute {
     method: std.types.GET,
     path_pattern: roadmap_site_path_template(raw: artifact.url_path),
     body: artifact.body,
@@ -154,7 +154,7 @@ fn roadmap_site_text_route(artifact: SiteArtifact, content_type: MediaType) -> S
   }
 }
 
-fn roadmap_site_text_static_routes() -> List<ServedStaticRoute> {
+fn roadmap_site_text_static_routes() -> List<extdeps.http.server.ServedStaticRoute> {
   [
     roadmap_site_text_route(
       artifact: roadmap_site_roadmap_md_artifact(),
@@ -175,7 +175,7 @@ fn roadmap_site_static_route_authority_paths() -> List<String> {
   )
 }
 
-fn served_static_route_literal_path(route: ServedStaticRoute) -> String {
+fn served_static_route_literal_path(route: extdeps.http.server.ServedStaticRoute) -> String {
   fold(route.path_pattern.tokens, init: "", f: (acc, tok) => match tok {
     LiteralToken { text: t } => concat(acc, t)
     ParamToken { name: _ } => acc
@@ -193,7 +193,7 @@ fn roadmap_site_fnv1a_digest_script() -> String {
   )
 }
 
-fn roadmap_site_readback_curl_digest_check(url: String, expected: Fnv1a64Structural) -> String {
+fn roadmap_site_readback_curl_digest_check(url: String, expected: std.content_hash.Fnv1a64Structural) -> String {
   let curl_part = concat(
     concat("ACTUAL=$(", curl_localhost_bounded_get_argv_prefix()),
     concat(" ", sh_single_quote(s: url)),
@@ -220,7 +220,7 @@ fn sh_single_quote(s: String) -> String {
 fn roadmap_site_deploy_receipt_line(host: String, port: Int) -> String {
   let roadmap = roadmap_site_roadmap_md_artifact()
   let dispatch = roadmap_site_dispatch_json_artifact()
-  let model_hash = content_hash_atom(value: "gunbc.roadmap_static_site/v1" as NonEmptyStr)
+  let model_hash = content_hash_atom(value: "gunbc.roadmap_static_site/v1" as std.types.NonEmptyStr)
   concat(
     concat(
       concat(concat("echo roadmap-site-receipt host=", host), concat(" port=", to_string(port))),

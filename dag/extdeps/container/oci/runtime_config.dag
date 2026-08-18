@@ -1,8 +1,8 @@
 module extdeps.container.oci.runtime_config
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/opencontainers/runtime-spec/blob/main/config.md"
   }

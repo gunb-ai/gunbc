@@ -135,18 +135,18 @@ type ProviderStanding
       fact: RecordedFact<ProviderStandingObservationFact>,
     }
 
-data inventory_declared_standing_unobserved_reason: NonEmptyStr = "inventory row is declared, not observed at selection time" as NonEmptyStr
+data inventory_declared_standing_unobserved_reason: std.types.NonEmptyStr = "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr
 
-data selection_fixture_standing_fact_id: RecordedFactId = "dispatch-selection-standing-fixture" as RecordedFactId
+data selection_fixture_standing_fact_id: std.claim_evidence.RecordedFactId = "dispatch-selection-standing-fixture" as std.claim_evidence.RecordedFactId
 
-data provider_standing_live_probe_fact_id: RecordedFactId = "provider-standing-live-dashboard-probe" as RecordedFactId
+data provider_standing_live_probe_fact_id: std.claim_evidence.RecordedFactId = "provider-standing-live-dashboard-probe" as std.claim_evidence.RecordedFactId
 
 fn provider_standing_inventory_unobserved() -> ProviderStanding {
   ProviderStandingUnobserved { reason: inventory_declared_standing_unobserved_reason }
 }
 
 fn provider_standing_from_fixture_bundle(
-  provider: ProviderInstance,
+  provider: extdeps.llm.cli_lifecycle.ProviderInstance,
   bundle: ProviderStandingBundle,
 ) -> ProviderStanding {
   provider_standing_from_observed_bundle(
@@ -157,12 +157,12 @@ fn provider_standing_from_fixture_bundle(
 }
 
 fn provider_standing_from_observed_bundle(
-  fact_id: RecordedFactId,
-  provider: ProviderInstance,
+  fact_id: std.claim_evidence.RecordedFactId,
+  provider: extdeps.llm.cli_lifecycle.ProviderInstance,
   bundle: ProviderStandingBundle,
 ) -> ProviderStanding {
   ProviderStandingFromFact {
-    fact: RecordedFact {
+    fact: std.claim_evidence.RecordedFact {
       id: fact_id,
       value: ProviderStandingObservationFact {
         provider: provider,
@@ -394,7 +394,7 @@ fn provider_standing_is_selection_eligible(
 
 fn first_blocking_native_limit_bucket_for_automatic_draw(
   observations: List<ProviderLimitObservation>,
-) -> NonEmptyStr? {
+) -> std.types.NonEmptyStr? {
   fold(
     observations,
     init: none,
@@ -437,16 +437,16 @@ fn first_blocking_native_limit_bucket_for_automatic_draw(
 
 data dispatch_automatic_provider_preference_note: String = "AUTHORED preference order for automatic provider selection. Incidental inventory list order must never decide; this row is the sole authority. Filter ineligible offers by standing first, then walk this preference list and select the first eligible match, or refuse typed when none qualify."
 
-data dispatch_automatic_provider_preference: List<ProviderKind> = [
+data dispatch_automatic_provider_preference: List<extdeps.llm.cli_lifecycle.ProviderKind> = [
   ClaudeCliProvider,
   CursorCliProvider,
   CodexCliProvider,
 ]
 
 fn optional_kind_when_eligible(
-  kind: ProviderKind,
-  eligible_kinds: List<ProviderKind>,
-) -> ProviderKind? {
+  kind: extdeps.llm.cli_lifecycle.ProviderKind,
+  eligible_kinds: List<extdeps.llm.cli_lifecycle.ProviderKind>,
+) -> extdeps.llm.cli_lifecycle.ProviderKind? {
   if any(eligible_kinds, eligible => eligible == kind) {
     optional_present(value: kind)
   } else {
@@ -455,9 +455,9 @@ fn optional_kind_when_eligible(
 }
 
 fn select_first_preferred_kind(
-  preference: List<ProviderKind>,
-  eligible_kinds: List<ProviderKind>,
-) -> ProviderKind? {
+  preference: List<extdeps.llm.cli_lifecycle.ProviderKind>,
+  eligible_kinds: List<extdeps.llm.cli_lifecycle.ProviderKind>,
+) -> extdeps.llm.cli_lifecycle.ProviderKind? {
   fold(
     preference,
     init: none,
@@ -493,9 +493,9 @@ fn fixture_standing_bundle_authenticated_unavailable_until_reset() -> ProviderSt
     limits: [
       LimitUnavailableUntilReset {
         subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
-        cause: NativeCauseReported { token: "seven_day" as NonEmptyStr },
+        cause: NativeCauseReported { token: "seven_day" as std.types.NonEmptyStr },
         reset: LimitResetInstantUnobserved,
-        reason: "weekly cap exhausted until reset" as NonEmptyStr,
+        reason: "weekly cap exhausted until reset" as std.types.NonEmptyStr,
       },
     ],
     turn: TurnNotStarted,
@@ -510,7 +510,7 @@ fn fixture_standing_bundle_cursor_capability_gap() -> ProviderStandingBundle {
     entitlement: EntitlementObservedAvailable,
     limits: [
       LimitCapabilityGapUnobservable {
-        reason: "cursor local has no account-level headroom surface" as NonEmptyStr,
+        reason: "cursor local has no account-level headroom surface" as std.types.NonEmptyStr,
       },
     ],
     turn: TurnNotStarted,
@@ -524,8 +524,8 @@ fn fixture_standing_bundle_claude_profile_present_token_absent() -> ProviderStan
   ProviderStandingBundle {
     installation: InstallationReady,
     authentication: AuthenticationProfilePresentTokenAbsent {
-      subscription_tier: "claude_max" as NonEmptyStr,
-      token_source: "none" as NonEmptyStr,
+      subscription_tier: "claude_max" as std.types.NonEmptyStr,
+      token_source: "none" as std.types.NonEmptyStr,
     },
     entitlement: EntitlementObservedAvailable,
     limits: [
@@ -534,7 +534,7 @@ fn fixture_standing_bundle_claude_profile_present_token_absent() -> ProviderStan
       },
     ],
     turn: TurnFailed {
-      reason: "authentication_failed" as NonEmptyStr,
+      reason: "authentication_failed" as std.types.NonEmptyStr,
     },
     tool_environment: ToolEnvironmentReady,
   }

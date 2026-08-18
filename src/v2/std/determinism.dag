@@ -8,6 +8,6 @@ fn determinism_fact_classification(fact: DeterminismFact) -> std.determinism.Det
   fact.classification
 }
 
-fn determinism_fact_signature(fact: DeterminismFact) -> Symbol {
+fn determinism_fact_signature(fact: DeterminismFact) -> v2.std.node.Symbol {
   fact.signature
 }

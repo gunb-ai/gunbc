@@ -2,22 +2,22 @@ module v2.test.lens_unused_parameters.rollup_unused_declaration
 
 data rollup_parameter: Node = claim_atom_node(s: ^rollup_parameter_symbol)
 
-data rollup_function: Node = Node {
+data rollup_function: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^rollup_function_symbol } },
   children: [
-    Edge { label: Named { name: ^rollup_edge_symbol }, target: rollup_parameter }
+    v2.std.node.Edge { label: Named { name: ^rollup_edge_symbol }, target: rollup_parameter }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data rollup_contains_dependency: DependencyView = DependencyView {
+data rollup_contains_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: rollup_function,
   dependent: rollup_parameter,
   kind: Contains,
   usage_site: rollup_parameter
 }
 
-fn rollup_facts() -> InferredFacts {
+fn rollup_facts() -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^rollup_type_symbol,
     algebra_symbol: ^rollup_algebra_symbol,
@@ -25,7 +25,7 @@ fn rollup_facts() -> InferredFacts {
   )
 }
 
-fn rollup_tree() -> InferredTree {
+fn rollup_tree() -> v2.compiler.infer.InferredTree {
   claim_inferred_tree(root: rollup_function, facts: rollup_facts())
 }
 
@@ -37,9 +37,9 @@ type LensRollupUnusedClaim {
 
 data unused_parameters_rollup_claim: LensRollupUnusedClaim = LensRollupUnusedClaim {
   input: rollup_tree(),
-  expected: UnusedParametersFact {
+  expected: v2.lens.unused_parameters.UnusedParametersFact {
     unused: [
-      UnusedParameterFact {
+      v2.lens.unused_parameters.UnusedParameterFact {
         declaration: rollup_parameter
       }
     ]

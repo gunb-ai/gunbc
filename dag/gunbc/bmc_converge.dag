@@ -58,11 +58,11 @@ type BmcFanConfigPersistenceApplySuitability
       cause: BmcFanConfigPersistenceApplyRefusalCause,
     }
 
-fn bmc_fan_config_persistence_unsupported_detail(reason: String) -> NonEmptyStr {
+fn bmc_fan_config_persistence_unsupported_detail(reason: String) -> std.types.NonEmptyStr {
   if string_length(s: reason) > 0 {
-    reason as NonEmptyStr
+    reason as std.types.NonEmptyStr
   } else {
-    "bmc config persistence unsupported without detail" as NonEmptyStr
+    "bmc config persistence unsupported without detail" as std.types.NonEmptyStr
   }
 }
 
@@ -109,8 +109,8 @@ fn bmc_fan_policy_suitability_refusal_reason(
 
 // BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and std.realization_reconcile for apply/read-back. Fan-policy reconciliation is three separable questions: apply suitability, post-apply durability qualification, and ordinary convergence after qualification. Apply may proceed without prior durability evidence; Noop requires qualification plus a live canonical digest equal to the admitted digest.
 fn bmc_firmware_intent_mismatch_reason(
-  required: BmcFirmwareTrack,
-  observed: BmcFirmwareVersion,
+  required: extdeps.bmc.capability.BmcFirmwareTrack,
+  observed: extdeps.bmc.capability.BmcFirmwareVersion,
 ) -> String {
   concat(
     "bmc firmware observation does not satisfy declared track: required major ",
@@ -125,16 +125,16 @@ fn bmc_firmware_intent_mismatch_reason(
 }
 
 fn bmc_firmware_classification(
-  host: HostIdentity,
-  board: BaseboardModel,
-  intent: BmcFirmwareIntent,
-  observation: BmcFirmwareObservation?,
+  host: product.placement_supply.HostIdentity,
+  board: extdeps.boards.types.BaseboardModel,
+  intent: extdeps.bmc.capability.BmcFirmwareIntent,
+  observation: extdeps.bmc.capability.BmcFirmwareObservation?,
   artifact: ApprovedBmcFirmwareArtifact?,
-  update_service: BmcUpdateServiceObservation?,
+  update_service: extdeps.bmc.types.BmcUpdateServiceObservation?,
 ) -> UpsertClassification<BmcFirmwareUpdatePlan> {
   match observation {
     Absent =>
-      UpsertClassification {
+      std.upsert_decision.UpsertClassification {
         verdict: UnknownRefused,
         decision: Refuse {
           reason: "bmc firmware observation absent; refuse both noop and update",
@@ -146,14 +146,14 @@ fn bmc_firmware_classification(
         observation: observed,
       ) {
         BmcFirmwareIntentSatisfied =>
-          UpsertClassification {
+          std.upsert_decision.UpsertClassification {
             verdict: Converged,
             decision: Noop,
           }
         BmcFirmwareIntentMismatch { required: required, observed: mismatch_observed } =>
           match artifact {
             Absent =>
-              UpsertClassification {
+              std.upsert_decision.UpsertClassification {
                 verdict: Drifted,
                 decision: Refuse {
                   reason: concat(
@@ -167,7 +167,7 @@ fn bmc_firmware_classification(
               }
             Present { value: approved } =>
               if approved.board != board {
-                UpsertClassification {
+                std.upsert_decision.UpsertClassification {
                   verdict: Conflict,
                   decision: Refuse {
                     reason: concat(
@@ -185,7 +185,7 @@ fn bmc_firmware_classification(
                   intent: intent,
                 ) {
                   BmcFirmwareIntentMismatch { required: _, observed: _ } =>
-                    UpsertClassification {
+                    std.upsert_decision.UpsertClassification {
                       verdict: Conflict,
                       decision: Refuse {
                         reason: concat(
@@ -200,7 +200,7 @@ fn bmc_firmware_classification(
                   BmcFirmwareIntentSatisfied =>
                     match update_service {
                       Absent =>
-                        UpsertClassification {
+                        std.upsert_decision.UpsertClassification {
                           verdict: Drifted,
                           decision: Refuse {
                             reason: concat(
@@ -216,7 +216,7 @@ fn bmc_firmware_classification(
                         if update_surface.firmware.endpoint == observed.endpoint
                           && update_surface.firmware.firmware == observed.firmware
                           && update_surface.active_bmc_image_updateable {
-                          UpsertClassification {
+                          std.upsert_decision.UpsertClassification {
                             verdict: Drifted,
                             decision: Apply {
                               plan: BmcFirmwareUpdatePlan {
@@ -228,7 +228,7 @@ fn bmc_firmware_classification(
                             },
                           }
                         } else {
-                          UpsertClassification {
+                          std.upsert_decision.UpsertClassification {
                             verdict: Conflict,
                             decision: Refuse {
                               reason: concat(
@@ -250,9 +250,9 @@ fn bmc_firmware_classification(
 }
 
 fn bmc_fan_config_persistence_apply_suitability(
-  observation: BmcConfigPersistenceObservation,
-  expected_firmware: BmcFirmwareVersion,
-  config_path: NonEmptyStr,
+  observation: extdeps.bmc.types.BmcConfigPersistenceObservation,
+  expected_firmware: extdeps.bmc.capability.BmcFirmwareVersion,
+  config_path: std.types.NonEmptyStr,
 ) -> BmcFanConfigPersistenceApplySuitability {
   match observation {
     BmcOverlayConfigObserved {
@@ -291,12 +291,12 @@ fn bmc_fan_config_persistence_apply_suitability(
 }
 
 fn bmc_fan_policy_apply_suitability(
-  host: HostIdentity,
-  board: BaseboardModel,
-  intent: BmcControlPlaneIntent,
-  observation: BmcFanPolicyObservation,
-  persistence: BmcConfigPersistenceObservation?,
-  projection: BmcFanPolicyProjectionCapability,
+  host: product.placement_supply.HostIdentity,
+  board: extdeps.boards.types.BaseboardModel,
+  intent: gunbc.bmc_intent.BmcControlPlaneIntent,
+  observation: extdeps.bmc.types.BmcFanPolicyObservation,
+  persistence: extdeps.bmc.types.BmcConfigPersistenceObservation?,
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability,
 ) -> BmcFanPolicySuitability {
   if bmc_fan_firmware_blocks_realizer(
     intent_firmware: intent.firmware,
@@ -503,11 +503,11 @@ fn bmc_fan_durability_refusal_reason(
 }
 
 fn bmc_fan_policy_durability_qualification(
-  intent: BmcControlPlaneIntent,
-  host: HostIdentity,
-  projection: BmcFanPolicyProjectionCapability,
-  durability_generation: StatePerturbationGeneration,
-  durability_evidence: List<BmcFanDurabilityEvidence>,
+  intent: gunbc.bmc_intent.BmcControlPlaneIntent,
+  host: product.placement_supply.HostIdentity,
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability,
+  durability_generation: std.state_durability.StatePerturbationGeneration,
+  durability_evidence: List<gunbc.bmc_fan_projection.BmcFanDurabilityEvidence>,
 ) -> StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject> {
   state_durability_verdict(
     intent: intent.fan_policy.durability,
@@ -526,10 +526,10 @@ fn bmc_fan_policy_durability_qualification(
 }
 
 fn bmc_fan_policy_ordinary_convergence(
-  host: HostIdentity,
-  observation: BmcFanPolicyObservation,
-  desired_curve: BmcFanCurve,
-  projection: BmcFanPolicyProjectionCapability,
+  host: product.placement_supply.HostIdentity,
+  observation: extdeps.bmc.types.BmcFanPolicyObservation,
+  desired_curve: extdeps.bmc.types.BmcFanCurve,
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability,
 ) -> UpsertClassification<BmcFanPolicyApplyPlan> {
   match bmc_fan_policy_drift_assessment(
     desired_curve: desired_curve,
@@ -537,7 +537,7 @@ fn bmc_fan_policy_ordinary_convergence(
     projection: projection,
   ) {
     BmcFanPolicyDrifted { cause: _ } =>
-      UpsertClassification {
+      std.upsert_decision.UpsertClassification {
         verdict: Drifted,
         decision: Apply {
           plan: BmcFanPolicyApplyPlan {
@@ -551,7 +551,7 @@ fn bmc_fan_policy_ordinary_convergence(
         },
       }
     BmcFanPolicyConverged =>
-      UpsertClassification {
+      std.upsert_decision.UpsertClassification {
         verdict: Converged,
         decision: Noop,
       }
@@ -559,12 +559,12 @@ fn bmc_fan_policy_ordinary_convergence(
 }
 
 fn bmc_fan_policy_durability_gate(
-  intent: BmcControlPlaneIntent,
-  host: HostIdentity,
-  projection: BmcFanPolicyProjectionCapability,
-  durability_generation: StatePerturbationGeneration,
-  durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?,
-  durability_evidence: List<BmcFanDurabilityEvidence>,
+  intent: gunbc.bmc_intent.BmcControlPlaneIntent,
+  host: product.placement_supply.HostIdentity,
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability,
+  durability_generation: std.state_durability.StatePerturbationGeneration,
+  durability_evidence_construction: gunbc.fleet_bmc_state.BmcFanDurabilityEvidenceConstruction?,
+  durability_evidence: List<gunbc.bmc_fan_projection.BmcFanDurabilityEvidence>,
 ) -> BmcFanPolicyDurabilityGate {
   let qualification_evidence = match durability_evidence_construction {
     Present {
@@ -592,15 +592,15 @@ fn bmc_fan_policy_durability_gate(
 }
 
 fn bmc_fan_policy_durability_gated_convergence(
-  host: HostIdentity,
-  observed: BmcFanPolicyObservation,
-  desired_curve: BmcFanCurve,
-  projection: BmcFanPolicyProjectionCapability,
+  host: product.placement_supply.HostIdentity,
+  observed: extdeps.bmc.types.BmcFanPolicyObservation,
+  desired_curve: extdeps.bmc.types.BmcFanCurve,
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability,
   durability_gate: BmcFanPolicyDurabilityGate,
 ) -> UpsertClassification<BmcFanPolicyApplyPlan> {
   match durability_gate {
     BmcFanPolicyDurabilityVerdictRefused { verdict: verdict } =>
-      UpsertClassification {
+      std.upsert_decision.UpsertClassification {
         verdict: UnknownRefused,
         decision: Refuse {
           reason: concat(
@@ -615,7 +615,7 @@ fn bmc_fan_policy_durability_gated_convergence(
         observation: observed,
       ) {
         BmcFanProjectionLiveDigestRefused { cause: cause } =>
-          UpsertClassification {
+          std.upsert_decision.UpsertClassification {
             verdict: UnknownRefused,
             decision: Refuse {
               reason: bmc_fan_projection_live_digest_refusal_reason(
@@ -635,14 +635,14 @@ fn bmc_fan_policy_durability_gated_convergence(
 }
 
 fn bmc_fan_policy_durability_gated_convergence_from_inputs(
-  intent: BmcControlPlaneIntent,
-  host: HostIdentity,
-  observed: BmcFanPolicyObservation,
-  desired_curve: BmcFanCurve,
-  projection: BmcFanPolicyProjectionCapability,
-  durability_generation: StatePerturbationGeneration,
-  durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?,
-  durability_evidence: List<BmcFanDurabilityEvidence>,
+  intent: gunbc.bmc_intent.BmcControlPlaneIntent,
+  host: product.placement_supply.HostIdentity,
+  observed: extdeps.bmc.types.BmcFanPolicyObservation,
+  desired_curve: extdeps.bmc.types.BmcFanCurve,
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability,
+  durability_generation: std.state_durability.StatePerturbationGeneration,
+  durability_evidence_construction: gunbc.fleet_bmc_state.BmcFanDurabilityEvidenceConstruction?,
+  durability_evidence: List<gunbc.bmc_fan_projection.BmcFanDurabilityEvidence>,
 ) -> UpsertClassification<BmcFanPolicyApplyPlan> {
   bmc_fan_policy_durability_gated_convergence(
     host: host,
@@ -663,8 +663,8 @@ fn bmc_fan_policy_durability_gated_convergence_from_inputs(
 data bmc_fan_firmware_unpinned_realizer_note: String = "The fan realizer needs a firmware-matched projection (the projection's config bytes and digest are firmware-version-specific). It does NOT require the fleet to pin a single firmware track: an unpinned firmware intent is admitted, and each host qualifies against a projection whose firmware matches that host's observed firmware (bmc_fan_policy_apply_suitability rejects a firmware mismatch). What is refused is a PINNED track that the host has not yet converged to (FanPolicyFirmwareMustConvergeBeforeRealizer) -- a firmware update would replace the flash and wipe the fan config, so fans must not be realized until that update lands. Unpinned means no update is intended, so realization is safe."
 
 fn bmc_fan_firmware_blocks_realizer(
-  intent_firmware: BmcFirmwareIntent,
-  observed_firmware: BmcFirmwareVersion,
+  intent_firmware: extdeps.bmc.capability.BmcFirmwareIntent,
+  observed_firmware: extdeps.bmc.capability.BmcFirmwareVersion,
 ) -> Bool {
   match intent_firmware {
     BmcFirmwareUnpinned => false
@@ -680,20 +680,20 @@ fn bmc_fan_firmware_blocks_realizer(
 }
 
 fn bmc_fan_policy_qualify_with_projection(
-  host: HostIdentity,
-  board: BaseboardModel,
-  intent: BmcControlPlaneIntent,
-  observed: BmcFanPolicyObservation,
-  persistence: BmcConfigPersistenceObservation?,
-  projection: BmcFanPolicyProjectionCapability?,
-  durability_generation: StatePerturbationGeneration,
-  durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?,
-  durability_evidence: List<BmcFanDurabilityEvidence>,
+  host: product.placement_supply.HostIdentity,
+  board: extdeps.boards.types.BaseboardModel,
+  intent: gunbc.bmc_intent.BmcControlPlaneIntent,
+  observed: extdeps.bmc.types.BmcFanPolicyObservation,
+  persistence: extdeps.bmc.types.BmcConfigPersistenceObservation?,
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability?,
+  durability_generation: std.state_durability.StatePerturbationGeneration,
+  durability_evidence_construction: gunbc.fleet_bmc_state.BmcFanDurabilityEvidenceConstruction?,
+  durability_evidence: List<gunbc.bmc_fan_projection.BmcFanDurabilityEvidence>,
 ) -> UpsertClassification<BmcFanPolicyApplyPlan> {
   let desired = intent.fan_policy.curve
   match projection {
                 Absent =>
-                  UpsertClassification {
+                  std.upsert_decision.UpsertClassification {
                     verdict: UnknownRefused,
                     decision: Refuse {
                       reason: "bmc fan state cannot converge without an exact board-and-firmware projection for both curve and installed-tach topology",
@@ -709,7 +709,7 @@ fn bmc_fan_policy_qualify_with_projection(
                     projection: projector,
                   ) {
                     FanPolicySuitabilityRefused { cause: cause } =>
-                      UpsertClassification {
+                      std.upsert_decision.UpsertClassification {
                         verdict: UnknownRefused,
                         decision: Refuse {
                           reason: bmc_fan_policy_suitability_refusal_reason(
@@ -735,7 +735,7 @@ fn bmc_fan_policy_qualify_with_projection(
                           Present {
                             value: BmcFanDurabilityEvidenceConstructionRefused { cause: cause },
                           } =>
-                            UpsertClassification {
+                            std.upsert_decision.UpsertClassification {
                               verdict: UnknownRefused,
                               decision: Refuse {
                                 reason: concat(
@@ -777,19 +777,19 @@ fn bmc_fan_policy_qualify_with_projection(
 }
 
 fn bmc_fan_policy_classification(
-  host: HostIdentity,
-  board: BaseboardModel,
-  intent: BmcControlPlaneIntent,
-  observation: BmcFanPolicyObservation?,
-  persistence: BmcConfigPersistenceObservation?,
-  projection: BmcFanPolicyProjectionCapability?,
-  durability_generation: StatePerturbationGeneration,
-  durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?,
-  durability_evidence: List<BmcFanDurabilityEvidence>,
+  host: product.placement_supply.HostIdentity,
+  board: extdeps.boards.types.BaseboardModel,
+  intent: gunbc.bmc_intent.BmcControlPlaneIntent,
+  observation: extdeps.bmc.types.BmcFanPolicyObservation?,
+  persistence: extdeps.bmc.types.BmcConfigPersistenceObservation?,
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability?,
+  durability_generation: std.state_durability.StatePerturbationGeneration,
+  durability_evidence_construction: gunbc.fleet_bmc_state.BmcFanDurabilityEvidenceConstruction?,
+  durability_evidence: List<gunbc.bmc_fan_projection.BmcFanDurabilityEvidence>,
 ) -> UpsertClassification<BmcFanPolicyApplyPlan> {
   match observation {
     Absent =>
-      UpsertClassification {
+      std.upsert_decision.UpsertClassification {
         verdict: UnknownRefused,
         decision: Refuse {
           reason: "bmc fan-policy observation absent; Redfish InitialDuty is not curve evidence",
@@ -800,7 +800,7 @@ fn bmc_fan_policy_classification(
         intent_firmware: intent.firmware,
         observed_firmware: observed.firmware,
       ) {
-        UpsertClassification {
+        std.upsert_decision.UpsertClassification {
           verdict: Conflict,
           decision: Refuse {
             reason: bmc_fan_policy_suitability_refusal_reason(

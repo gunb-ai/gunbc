@@ -23,15 +23,15 @@ type CanonicalGroundingWitness {
 
   closedness: v2.std.witness.StructuralPropertyWitness
 }
-fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
-  Diagnostic {
+fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^constraints_not_realized,
     at: node_locus(node: graph.root),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn constraints_ill_formed_root_diagnostic(graph: ConstraintGraph) -> Diagnostic {
-  Diagnostic {
+fn constraints_ill_formed_root_diagnostic(graph: ConstraintGraph) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^constraints_ill_formed_root,
     at: node_locus(node: graph.root),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -39,8 +39,8 @@ fn constraints_ill_formed_root_diagnostic(graph: ConstraintGraph) -> Diagnostic 
 }
 
 // v2.std.constraints.canonical_grounding_from_derived_type is the SINGLE construction authority for CanonicalGrounding: a grounding's structural evidence IS the node's resolved type (v2.compiler.infer.inferred_facts_resolved_type reads exactly this field), so a grounding whose evidence is the source node states 'this expression's type is itself' — source identity standing where a derivation belongs. That state is refused here rather than checked downstream (DESIGN §5 construction, not validation), which is why the refusal lives on the constructor and not in a lens. The derivations that legitimately inhabit it pass a type derived from the node's children (v2.compiler.infer's branch/match/loop derivations pass the unified arm type, the match body type, and the loop carrier type respectively, all via inferred_facts_from_derived_type; the claim fixtures in v2.lens.common.infer_fixture pass the declared i64/bool type node).
-fn grounding_evidence_is_source_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
+fn grounding_evidence_is_source_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^grounding_evidence_is_source,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -58,11 +58,11 @@ fn canonical_grounding_from_derived_type(
       value: CanonicalGrounding {
         node: node,
         witness: CanonicalGroundingWitness {
-          structural: StructuralPropertyWitness {
+          structural: v2.std.witness.StructuralPropertyWitness {
             property: ^constraint_property_being_canonical,
             evidence: derived_type
           },
-          closedness: StructuralPropertyWitness {
+          closedness: v2.std.witness.StructuralPropertyWitness {
             property: ^constraint_property_candidate_set_closedness,
             evidence: node
           }
@@ -89,14 +89,14 @@ fn constraint_satisfaction_predicate(algebra: Node) -> ConstraintSatisfactionPre
 }
 fn constraint_satisfaction_preservation_predicate(
   predicate: ConstraintSatisfactionPredicate,
-) -> PreservationPredicate {
-  PreservationPredicate {
+) -> v2.std.find_witness.PreservationPredicate {
+  v2.std.find_witness.PreservationPredicate {
     algebra: predicate.algebra,
     preservation_rule: ^preservation_rule_constraint_satisfaction
   }
 }
-fn canonical_grounding_candidate_set_closedness(root: Node) -> StructuralPropertyWitness {
-  StructuralPropertyWitness {
+fn canonical_grounding_candidate_set_closedness(root: Node) -> v2.std.witness.StructuralPropertyWitness {
+  v2.std.witness.StructuralPropertyWitness {
     property: ^constraint_property_candidate_set_closedness,
     evidence: root
   }
@@ -108,7 +108,7 @@ fn canonical_grounding_candidates(
   if well_formed(n: policy.graph.root) {
     Accepted {
       value: CanonicalGroundingCandidateSet {
-        set: CandidateSet {
+        set: v2.std.find_witness.CandidateSet {
           candidates: [policy.graph.root],
           closedness: canonical_grounding_candidate_set_closedness(root: policy.graph.root)
         }

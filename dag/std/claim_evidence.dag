@@ -1,18 +1,18 @@
 module std.claim_evidence
 
 
-data claim_evidence_grounding_authorities: List<ExternalAuthority> = [
+data claim_evidence_grounding_authorities: List<extdeps.external_authority.ExternalAuthority> = [
   sacm_claim_evidence_authority,
   w3c_prov_dm_authority,
   belnap_four_valued_information_authority,
 ]
 
-type RecordedFactId = NonEmptyStr where brand("RecordedFactId")
-type ClaimId = NonEmptyStr where brand("ClaimId")
-type InferenceRuleId = NonEmptyStr where brand("InferenceRuleId")
-type ProvEntityId = NonEmptyStr where brand("ProvEntityId")
-type ProvActivityId = NonEmptyStr where brand("ProvActivityId")
-type ProvAgentId = NonEmptyStr where brand("ProvAgentId")
+type RecordedFactId = std.types.NonEmptyStr where brand("RecordedFactId")
+type ClaimId = std.types.NonEmptyStr where brand("ClaimId")
+type InferenceRuleId = std.types.NonEmptyStr where brand("InferenceRuleId")
+type ProvEntityId = std.types.NonEmptyStr where brand("ProvEntityId")
+type ProvActivityId = std.types.NonEmptyStr where brand("ProvActivityId")
+type ProvAgentId = std.types.NonEmptyStr where brand("ProvAgentId")
 
 type RecordedFact<F> {
   id: RecordedFactId
@@ -592,4 +592,4 @@ fn claim_readiness_receipt<F, C, A, FidelityBoundary, Independence>(
   }
 }
 
-data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact becomes descriptive claim evidence only through an explicit EvidenceLink. Freshness owns the exact maximum conclusion it qualifies, so there is no independently writable attempt bound that can disagree with the claim's bound. ClaimAssessment is the four-valued information view and is not an admission receipt: final readiness consumes raw links and re-admits every link through the named domain EvidenceAdmissionPolicy, which must check fact relation, inference rule, authority, provenance, freshness, fidelity, probe independence, and their whole-link relation. A caller-authored EvidenceApplicable or ClaimReadinessSatisfied wrapper therefore cannot satisfy the relational ClaimReadinessReceipt. EvidenceAdmissionAssessment preserves the exact refused dimension. ClaimRequirementReadiness preserves support-only, challenge-only, both, neither, and admission-refused as distinct variants together with the complete claim and admitted links. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. The older ClaimReadinessAssessment remains a convenience projection; consumers that establish a cross-stage construction boundary must consume ClaimReadinessReceipt."
+data claim_evidence_boundary_note: std.types.NonEmptyStr = "A recorded fact becomes descriptive claim evidence only through an explicit EvidenceLink. Freshness owns the exact maximum conclusion it qualifies, so there is no independently writable attempt bound that can disagree with the claim's bound. ClaimAssessment is the four-valued information view and is not an admission receipt: final readiness consumes raw links and re-admits every link through the named domain EvidenceAdmissionPolicy, which must check fact relation, inference rule, authority, provenance, freshness, fidelity, probe independence, and their whole-link relation. A caller-authored EvidenceApplicable or ClaimReadinessSatisfied wrapper therefore cannot satisfy the relational ClaimReadinessReceipt. EvidenceAdmissionAssessment preserves the exact refused dimension. ClaimRequirementReadiness preserves support-only, challenge-only, both, neither, and admission-refused as distinct variants together with the complete claim and admitted links. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. The older ClaimReadinessAssessment remains a convenience projection; consumers that establish a cross-stage construction boundary must consume ClaimReadinessReceipt."

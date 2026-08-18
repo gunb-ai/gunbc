@@ -99,9 +99,9 @@ fn prior_run_disposition(outcome: HealOutcome) -> PriorRunDisposition {
 }
 
 fn classify_workflow_dispatch_preflight(
-  expected_healed_head: CommitSha?,
-  checkout_head: CommitSha,
-  run_subject_head: CommitSha,
+  expected_healed_head: std.types.CommitSha?,
+  checkout_head: std.types.CommitSha,
+  run_subject_head: std.types.CommitSha,
 ) -> WorkflowDispatchPreflight {
   match expected_healed_head {
     Absent => OrdinaryWorkflowDispatch {
@@ -129,8 +129,8 @@ fn classify_workflow_dispatch_preflight(
 
 fn classify_heal_revalidation_admission(
   state: HealRevalidationState,
-  required_roster: Fnv1a64Structural,
-  required_gates: List<Fnv1a64Structural>,
+  required_roster: std.content_hash.Fnv1a64Structural,
+  required_gates: List<std.content_hash.Fnv1a64Structural>,
 ) -> HealRevalidationAdmissionVerdict {
   match state {
     HealRevalidationNotRequired { head } =>
@@ -160,8 +160,8 @@ fn classify_heal_revalidation_admission(
 
 fn heal_revalidation_admits(
   state: HealRevalidationState,
-  required_roster: Fnv1a64Structural,
-  required_gates: List<Fnv1a64Structural>,
+  required_roster: std.content_hash.Fnv1a64Structural,
+  required_gates: List<std.content_hash.Fnv1a64Structural>,
 ) -> Bool {
   match classify_heal_revalidation_admission(
     state: state,

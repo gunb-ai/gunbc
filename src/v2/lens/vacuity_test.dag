@@ -1,10 +1,10 @@
 module v2.test.lens_vacuity.vacuity_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn vacuity_test_atom(identity: Symbol) -> Node {
-  Node {
+fn vacuity_test_atom(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -16,43 +16,43 @@ data vacuity_test_literal_y: Node = vacuity_test_atom(identity: ^vacuity_test_li
 data vacuity_test_readback_lhs: Node = vacuity_test_atom(identity: ^vacuity_test_readback_field)
 data vacuity_test_literal_rhs: Node = vacuity_test_atom(identity: ^vacuity_test_literal_oracle)
 
-data vacuity_test_emit_vs_eval_claim: TestClaim = claim_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval
+data vacuity_test_emit_vs_eval_claim: v2.std.verification.TestClaim = claim_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval
 
-data vacuity_test_single_eval_readback_claim: TestClaim = EqualsClaim {
+data vacuity_test_single_eval_readback_claim: v2.std.verification.TestClaim = EqualsClaim {
   label: "vacuity_test: single-eval read-back duplicate",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: vacuity_test_readback_lhs,
   rhs: vacuity_test_literal_rhs,
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data vacuity_test_constant_inequality_claim: TestClaim = EqualsClaim {
+data vacuity_test_constant_inequality_claim: v2.std.verification.TestClaim = EqualsClaim {
   label: "vacuity_test: constant inequality taxonomy witness",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: vacuity_test_literal_x,
   rhs: vacuity_test_literal_y,
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data vacuity_test_unknown_provenance_claim: TestClaim = EqualsClaim {
+data vacuity_test_unknown_provenance_claim: v2.std.verification.TestClaim = EqualsClaim {
   label: "vacuity_test: unknown provenance residue",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: vacuity_test_literal_x,
   rhs: vacuity_test_literal_x,
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data vacuity_test_rendering_transform_claim: TestClaim = EqualsClaim {
+data vacuity_test_rendering_transform_claim: v2.std.verification.TestClaim = EqualsClaim {
   label: "vacuity_test: rendering transform independent oracle",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: vacuity_test_readback_lhs,
   rhs: vacuity_test_literal_rhs,
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-fn vacuity_test_diagnostic_rejection() -> NonEmptyDiagnostics {
-  NonEmptyDiagnostics {
-    head: Diagnostic {
+fn vacuity_test_diagnostic_rejection() -> v2.std.diagnostic.NonEmptyDiagnostics {
+  v2.std.diagnostic.NonEmptyDiagnostics {
+    head: v2.std.diagnostic.Diagnostic {
       reason: ^vacuity_test_diagnostic_reason,
       at: node_locus(node: vacuity_test_literal_x),
       correction: Unavailable { reason: ExternalContractUnknown }
@@ -61,46 +61,46 @@ fn vacuity_test_diagnostic_rejection() -> NonEmptyDiagnostics {
   }
 }
 
-data vacuity_test_diagnostic_claim: TestClaim = DiagnosticClaim {
+data vacuity_test_diagnostic_claim: v2.std.verification.TestClaim = DiagnosticClaim {
   label: "vacuity_test: diagnostic behavioral claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: vacuity_test_literal_x,
   expected_rejection: vacuity_test_diagnostic_rejection(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data vacuity_test_round_trip_claim: TestClaim = RoundTripClaim {
+data vacuity_test_round_trip_claim: v2.std.verification.TestClaim = RoundTripClaim {
   label: "vacuity_test: round-trip behavioral claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: vacuity_test_literal_x,
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data vacuity_test_compiles_claim: TestClaim = CompilesClaim {
+data vacuity_test_compiles_claim: v2.std.verification.TestClaim = CompilesClaim {
   label: "vacuity_test: compiles claim with unknown provenance",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: vacuity_test_literal_x,
   expected_value: vacuity_test_literal_y,
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data vacuity_test_structural_equals_claim: TestClaim = StructuralEqualsClaim {
+data vacuity_test_structural_equals_claim: v2.std.verification.TestClaim = StructuralEqualsClaim {
   label: "vacuity_test: structural equals single-eval duplicate",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: vacuity_test_literal_x,
   rhs: vacuity_test_literal_x,
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data vacuity_test_datasheet_transcription_claim: TestClaim = EqualsClaim {
+data vacuity_test_datasheet_transcription_claim: v2.std.verification.TestClaim = EqualsClaim {
   label: "vacuity_test: independent datasheet transcriptions",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: vacuity_test_readback_lhs,
   rhs: vacuity_test_literal_rhs,
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data vacuity_case_row_rung_5_emit_vs_eval: VacuityCensusRow = vacuity_census_row(
+data vacuity_case_row_rung_5_emit_vs_eval: v2.lens.vacuity.VacuityCensusRow = vacuity_census_row(
   label: "rung_5_emit_vs_eval",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_emit_vs_eval_claim,
@@ -112,7 +112,7 @@ data vacuity_case_row_rung_5_emit_vs_eval: VacuityCensusRow = vacuity_census_row
   carries_parallel_authority_debt: false
 )
 
-data vacuity_case_row_single_eval_readback: VacuityCensusRow = vacuity_census_row(
+data vacuity_case_row_single_eval_readback: v2.lens.vacuity.VacuityCensusRow = vacuity_census_row(
   label: "single_eval_readback",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_single_eval_readback_claim,
@@ -124,7 +124,7 @@ data vacuity_case_row_single_eval_readback: VacuityCensusRow = vacuity_census_ro
   carries_parallel_authority_debt: false
 )
 
-data vacuity_case_row_unknown_provenance: VacuityCensusRow = vacuity_census_row(
+data vacuity_case_row_unknown_provenance: v2.lens.vacuity.VacuityCensusRow = vacuity_census_row(
   label: "unknown_provenance",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_unknown_provenance_claim,
@@ -136,7 +136,7 @@ data vacuity_case_row_unknown_provenance: VacuityCensusRow = vacuity_census_row(
   carries_parallel_authority_debt: false
 )
 
-data vacuity_case_row_constant_inequality_taxonomy: VacuityCensusRow = vacuity_census_row(
+data vacuity_case_row_constant_inequality_taxonomy: v2.lens.vacuity.VacuityCensusRow = vacuity_census_row(
   label: "constant_inequality_taxonomy",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_constant_inequality_claim,
@@ -148,7 +148,7 @@ data vacuity_case_row_constant_inequality_taxonomy: VacuityCensusRow = vacuity_c
   carries_parallel_authority_debt: false
 )
 
-data vacuity_case_row_datasheet_independent_transcriptions: VacuityCensusRow = vacuity_census_row(
+data vacuity_case_row_datasheet_independent_transcriptions: v2.lens.vacuity.VacuityCensusRow = vacuity_census_row(
   label: "datasheet_independent_transcriptions",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_datasheet_transcription_claim,
@@ -163,7 +163,7 @@ data vacuity_case_row_datasheet_independent_transcriptions: VacuityCensusRow = v
   )
 )
 
-data vacuity_case_row_rendering_transform_oracle: VacuityCensusRow = vacuity_census_row(
+data vacuity_case_row_rendering_transform_oracle: v2.lens.vacuity.VacuityCensusRow = vacuity_census_row(
   label: "rendering_transform_oracle",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_rendering_transform_claim,
@@ -175,7 +175,7 @@ data vacuity_case_row_rendering_transform_oracle: VacuityCensusRow = vacuity_cen
   carries_parallel_authority_debt: false
 )
 
-data vacuity_case_row_temporal_external_authority: VacuityCensusRow = vacuity_census_row(
+data vacuity_case_row_temporal_external_authority: v2.lens.vacuity.VacuityCensusRow = vacuity_census_row(
   label: "temporal_external_authority",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_single_eval_readback_claim,
@@ -187,7 +187,7 @@ data vacuity_case_row_temporal_external_authority: VacuityCensusRow = vacuity_ce
   carries_parallel_authority_debt: false
 )
 
-data vacuity_case_row_helper_alias_duplicate: VacuityCensusRow = vacuity_census_row(
+data vacuity_case_row_helper_alias_duplicate: v2.lens.vacuity.VacuityCensusRow = vacuity_census_row(
   label: "helper_alias_duplicate",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_single_eval_readback_claim,
@@ -199,7 +199,7 @@ data vacuity_case_row_helper_alias_duplicate: VacuityCensusRow = vacuity_census_
   carries_parallel_authority_debt: false
 )
 
-data vacuity_case_row_diagnostic_behavioral: VacuityCensusRow = vacuity_census_row(
+data vacuity_case_row_diagnostic_behavioral: v2.lens.vacuity.VacuityCensusRow = vacuity_census_row(
   label: "diagnostic_behavioral",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_diagnostic_claim,
@@ -211,7 +211,7 @@ data vacuity_case_row_diagnostic_behavioral: VacuityCensusRow = vacuity_census_r
   carries_parallel_authority_debt: false
 )
 
-data vacuity_case_row_round_trip_behavioral: VacuityCensusRow = vacuity_census_row(
+data vacuity_case_row_round_trip_behavioral: v2.lens.vacuity.VacuityCensusRow = vacuity_census_row(
   label: "round_trip_behavioral",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_round_trip_claim,
@@ -223,7 +223,7 @@ data vacuity_case_row_round_trip_behavioral: VacuityCensusRow = vacuity_census_r
   carries_parallel_authority_debt: false
 )
 
-data vacuity_case_row_compiles_unknown_provenance: VacuityCensusRow = vacuity_census_row(
+data vacuity_case_row_compiles_unknown_provenance: v2.lens.vacuity.VacuityCensusRow = vacuity_census_row(
   label: "compiles_unknown_provenance",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_compiles_claim,
@@ -235,7 +235,7 @@ data vacuity_case_row_compiles_unknown_provenance: VacuityCensusRow = vacuity_ce
   carries_parallel_authority_debt: false
 )
 
-data vacuity_case_row_structural_equals_single_eval: VacuityCensusRow = vacuity_census_row(
+data vacuity_case_row_structural_equals_single_eval: v2.lens.vacuity.VacuityCensusRow = vacuity_census_row(
   label: "structural_equals_single_eval",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_structural_equals_claim,
@@ -270,8 +270,8 @@ type VacuityFalsificationCase {
 
 fn vacuity_falsification_case(
   id: VacuityFalsificationCaseId,
-  row: VacuityCensusRow,
-  expected: VacuityEvidence
+  row: v2.lens.vacuity.VacuityCensusRow,
+  expected: v2.lens.vacuity.VacuityEvidence
 ) -> VacuityFalsificationCase {
   VacuityFalsificationCase { id: id, row: row, expected: expected }
 }
@@ -293,7 +293,7 @@ data vacuity_falsification_suite_cases: List<VacuityFalsificationCase> = [
 
 data vacuity_falsification_suite_rows_derivation_note: String = "review 47215 (PR #7620): vacuity_falsification_suite_rows was a manually maintained roster listing the same 12 VacuityCensusRow values already carried by vacuity_falsification_suite_cases's own `row` field — a second membership representation of the identical fact, exactly the DESIGN.md §2/§3 single-authority violation this lens exists to flag elsewhere. Fixed by deriving vacuity_falsification_suite_rows from vacuity_falsification_suite_cases via list_map(f: fn(c) { c.row }), so vacuity_advisory_census_partitions_falsification_suite's census-over-rows and the cases roster's expected-evidence dispositions can no longer independently drift; adding, removing, or reordering a case now changes both consumers from one edit."
 
-data vacuity_falsification_suite_rows: List<VacuityCensusRow> = list_map(
+data vacuity_falsification_suite_rows: List<v2.lens.vacuity.VacuityCensusRow> = list_map(
   xs: vacuity_falsification_suite_cases,
   f: fn(c) { c.row }
 )
@@ -302,7 +302,7 @@ fn vacuity_falsification_case_matches_expected(case: VacuityFalsificationCase) -
   vacuity_evidence_eq(a: case.row.evidence, b: case.expected)
 }
 
-fn vacuity_falsification_expected_count(cases: List<VacuityFalsificationCase>, target: VacuityEvidence) -> Int {
+fn vacuity_falsification_expected_count(cases: List<VacuityFalsificationCase>, target: v2.lens.vacuity.VacuityEvidence) -> Int {
   count_where(xs: cases, predicate: fn(c) { vacuity_evidence_eq(a: c.expected, b: target) })
 }
 

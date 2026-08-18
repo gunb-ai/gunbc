@@ -37,11 +37,11 @@ type SpiceProjection
 // printer was deleted. What remains here is the only thing that is genuinely a projection fact:
 // which target scale each modelled quantity is spelled at.
 fn component_node(
-  intent: AnalogCircuitIntent,
-  reference: NetIdentity,
-  c: ElectricalComponentInstance,
+  intent: product.compute_board.analog.AnalogCircuitIntent,
+  reference: product.electrical.connectivity.NetIdentity,
+  c: product.compute_board.analog.ElectricalComponentInstance,
   positive: Bool
-) -> NodeRef {
+) -> v2.extdeps.formats.spice.NodeRef {
   let t = if positive {
     terminal_ref(component: component_identity(c: c), terminal: component_positive_terminal(c: c))
   } else {
@@ -53,15 +53,15 @@ fn component_node(
       if net_identity_eq(a: n, b: reference) {
         Ground
       } else {
-        Named { node: NamedNode { name: net_local_label(n: n) as String } }
+        Named { node: v2.extdeps.formats.spice.NamedNode { name: net_local_label(n: n) as String } }
       }
   }
 }
 
 fn spice_component(
-  intent: AnalogCircuitIntent,
-  reference: NetIdentity,
-  c: ElectricalComponentInstance
+  intent: product.compute_board.analog.AnalogCircuitIntent,
+  reference: product.electrical.connectivity.NetIdentity,
+  c: product.compute_board.analog.ElectricalComponentInstance
 ) -> Component {
   let plus = component_node(intent: intent, reference: reference, c: c, positive: true)
   let minus = component_node(intent: intent, reference: reference, c: c, positive: false)
@@ -76,8 +76,8 @@ fn spice_component(
   }
 }
 
-fn spice_netlist(intent: AnalogCircuitIntent, reference: NetIdentity) -> SpiceNetlist {
-  SpiceNetlist {
+fn spice_netlist(intent: product.compute_board.analog.AnalogCircuitIntent, reference: product.electrical.connectivity.NetIdentity) -> v2.extdeps.formats.spice.SpiceNetlist {
+  v2.extdeps.formats.spice.SpiceNetlist {
     title: intent.title as String,
     body: fold(intent.components, init: Empty, f: fn(acc, c) {
       list_snoc_item(xs: acc, item: DeckComponent { component: spice_component(intent: intent, reference: reference, c: c) })
@@ -85,7 +85,7 @@ fn spice_netlist(intent: AnalogCircuitIntent, reference: NetIdentity) -> SpiceNe
   }
 }
 
-fn binding_for(bindings: List<ComponentModelBinding>, c: ElectricalComponentInstance) -> ElectricalModelStanding? {
+fn binding_for(bindings: List<product.compute_board.analog.ComponentModelBinding>, c: product.compute_board.analog.ElectricalComponentInstance) -> product.compute_board.analog.ElectricalModelStanding? {
   fold(bindings, init: none, f: fn(acc, b) {
     match acc {
       Present { value: v } => Present { value: v }
@@ -100,13 +100,13 @@ fn binding_for(bindings: List<ComponentModelBinding>, c: ElectricalComponentInst
 // and a vendor-subcircuit row for the same part emit or refuse depending on which was authored
 // first, which is a verdict decided by an editing accident. Ambiguity is not a model standing
 // and is refused rather than resolved.
-fn binding_count(bindings: List<ComponentModelBinding>, c: ElectricalComponentInstance) -> std.nat.Nat {
+fn binding_count(bindings: List<product.compute_board.analog.ComponentModelBinding>, c: product.compute_board.analog.ElectricalComponentInstance) -> std.nat.Nat {
   fold(bindings, init: 0, f: fn(acc, b) {
     if component_identity_eq(a: b.component, b: component_identity(c: c)) { acc + 1 } else { acc }
   })
 }
 
-fn standing_refusal(c: ElectricalComponentInstance, s: ElectricalModelStanding) -> SpiceProjectionRefusal? {
+fn standing_refusal(c: product.compute_board.analog.ElectricalComponentInstance, s: product.compute_board.analog.ElectricalModelStanding) -> SpiceProjectionRefusal? {
   match s {
     ElectricalModelAbsent => Present { value: ElectricalModelUnavailable { part: component_part(c: c) } }
     ElectricalModelCited { model_card: mc, fidelity: f } =>
@@ -125,9 +125,9 @@ fn standing_refusal(c: ElectricalComponentInstance, s: ElectricalModelStanding) 
 // exact failure this module's note claims to prevent for the floating case, left open for the
 // shorted one.
 fn terminal_netting_refusal(
-  intent: AnalogCircuitIntent,
-  c: ElectricalComponentInstance,
-  t: ElectricalTerminalRef
+  intent: product.compute_board.analog.AnalogCircuitIntent,
+  c: product.compute_board.analog.ElectricalComponentInstance,
+  t: product.electrical.connectivity.ElectricalTerminalRef
 ) -> SpiceProjectionRefusal? {
   let n = net_membership_count(intent: intent, t: t)
   if n == 0 {
@@ -138,8 +138,8 @@ fn terminal_netting_refusal(
 }
 
 fn terminals_netting_refusal(
-  intent: AnalogCircuitIntent,
-  c: ElectricalComponentInstance
+  intent: product.compute_board.analog.AnalogCircuitIntent,
+  c: product.compute_board.analog.ElectricalComponentInstance
 ) -> SpiceProjectionRefusal? {
   fold(component_terminals(c: c), init: none, f: fn(acc, t) {
     match acc {
@@ -150,9 +150,9 @@ fn terminals_netting_refusal(
 }
 
 fn component_refusal(
-  intent: AnalogCircuitIntent,
-  bindings: List<ComponentModelBinding>,
-  c: ElectricalComponentInstance
+  intent: product.compute_board.analog.AnalogCircuitIntent,
+  bindings: List<product.compute_board.analog.ComponentModelBinding>,
+  c: product.compute_board.analog.ElectricalComponentInstance
 ) -> SpiceProjectionRefusal? {
   if binding_count(bindings: bindings, c: c) > 1 {
     Present { value: DuplicateModelBinding { component: component_local_label(c: component_identity(c: c)) } }
@@ -169,8 +169,8 @@ fn component_refusal(
 }
 
 fn first_refusal(
-  intent: AnalogCircuitIntent,
-  bindings: List<ComponentModelBinding>
+  intent: product.compute_board.analog.AnalogCircuitIntent,
+  bindings: List<product.compute_board.analog.ComponentModelBinding>
 ) -> SpiceProjectionRefusal? {
   fold(intent.components, init: none, f: fn(acc, c) {
     match acc {
@@ -184,7 +184,7 @@ fn first_refusal(
 // identifier or answers Absent, and an Absent name renders as the empty string inside the deck —
 // so the refusal has to happen here, before a line is built, or a component silently loses its
 // name and the deck describes a different circuit.
-fn spelling_refusal(c: ElectricalComponentInstance) -> SpiceProjectionRefusal? {
+fn spelling_refusal(c: product.compute_board.analog.ElectricalComponentInstance) -> SpiceProjectionRefusal? {
   if spice_identifier_is_admissible(spelling: component_local_label(c: component_identity(c: c)) as String) {
     none
   } else {
@@ -192,7 +192,7 @@ fn spelling_refusal(c: ElectricalComponentInstance) -> SpiceProjectionRefusal? {
   }
 }
 
-fn net_spelling_refusal(intent: AnalogCircuitIntent, reference: NetIdentity) -> SpiceProjectionRefusal? {
+fn net_spelling_refusal(intent: product.compute_board.analog.AnalogCircuitIntent, reference: product.electrical.connectivity.NetIdentity) -> SpiceProjectionRefusal? {
   fold(intent.nets, init: none, f: fn(acc, net) {
     match acc {
       Present { value: r } => Present { value: r }
@@ -212,9 +212,9 @@ fn net_spelling_refusal(intent: AnalogCircuitIntent, reference: NetIdentity) -> 
 // not carry one. Both come from spice_netlist, so a run cannot exercise a circuit the receipt
 // does not describe.
 fn first_refusal_or_net_spelling(
-  intent: AnalogCircuitIntent,
-  bindings: List<ComponentModelBinding>,
-  reference: NetIdentity
+  intent: product.compute_board.analog.AnalogCircuitIntent,
+  bindings: List<product.compute_board.analog.ComponentModelBinding>,
+  reference: product.electrical.connectivity.NetIdentity
 ) -> SpiceProjectionRefusal? {
   match net_spelling_refusal(intent: intent, reference: reference) {
     Present { value: r } => Present { value: r }
@@ -223,10 +223,10 @@ fn first_refusal_or_net_spelling(
 }
 
 fn project_analog_to_spice(
-  article_identity: BoardArticleIdentity,
-  intent: AnalogCircuitIntent,
-  bindings: List<ComponentModelBinding>,
-  reference: NetIdentity
+  article_identity: product.compute_board.article.BoardArticleIdentity,
+  intent: product.compute_board.analog.AnalogCircuitIntent,
+  bindings: List<product.compute_board.analog.ComponentModelBinding>,
+  reference: product.electrical.connectivity.NetIdentity
 ) -> SpiceProjection {
   match first_refusal_or_net_spelling(intent: intent, bindings: bindings, reference: reference) {
     Present { value: r } => SpiceSliceRefused { cause: r }
@@ -245,7 +245,7 @@ fn project_analog_to_spice(
 // one article's identity paired with another article's circuit was perfectly constructible and
 // the resulting receipt would name a board it does not describe. Taking the article closes that
 // by construction: there is one value, and both facts are read out of it here.
-fn project_article_to_spice(admitted: AdmittedBoardPowerInterfaceArticle) -> SpiceProjection {
+fn project_article_to_spice(admitted: product.compute_board.admission.AdmittedBoardPowerInterfaceArticle) -> SpiceProjection {
   let article = admitted_article(a: admitted)
   project_analog_to_spice(
     article_identity: article.identity,
@@ -262,7 +262,7 @@ fn project_article_to_spice(admitted: AdmittedBoardPowerInterfaceArticle) -> Spi
 // on no net to Ground, so the bypassing deck would have simulated cleanly and described a
 // different board. There is one refusal gate and both projections are behind it; a String return
 // is what made the bypass possible, because a String has nowhere to put a refusal.
-fn project_article_to_ngspice_run(admitted: AdmittedBoardPowerInterfaceArticle) -> SpiceProjection {
+fn project_article_to_ngspice_run(admitted: product.compute_board.admission.AdmittedBoardPowerInterfaceArticle) -> SpiceProjection {
   let article = admitted_article(a: admitted)
   let intent = article.analog
   let reference = article.reference_net
@@ -272,7 +272,7 @@ fn project_article_to_ngspice_run(admitted: AdmittedBoardPowerInterfaceArticle) 
       SpiceSliceProjected {
         receipt: SpiceEmissionReceipt {
           source_article: article.identity,
-          source: spice_emit_ngspice(netlist: SpiceNetlist {
+          source: spice_emit_ngspice(netlist: v2.extdeps.formats.spice.SpiceNetlist {
             title: spice_netlist(intent: intent, reference: reference).title,
             body: list_snoc_item(
               xs: spice_netlist(intent: intent, reference: reference).body,

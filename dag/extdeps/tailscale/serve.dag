@@ -165,7 +165,7 @@ fn tailscale_serve_service() -> TailscaleServeService {
   ServeCli
 }
 
-fn tailscale_serve_scope(node: NetworkEndpoint) -> TailscaleServeScope {
+fn tailscale_serve_scope(node: product.network_topology.NetworkEndpoint) -> TailscaleServeScope {
   TailscaleServeScope { node: node, service: tailscale_serve_service() }
 }
 
@@ -177,7 +177,7 @@ fn tailscale_serve_route_subject(
 }
 
 // Scope identity keys on NetworkEndpoint.label only: fleet tailnet device rows are singleton authorities per label (gunbc.fleet_intent_network). If endpoint rows at the same label can diverge on host/address/role/locality, widen equality here before call sites depend on label alone.
-fn tailscale_network_endpoint_label_eq(a: NetworkEndpoint, b: NetworkEndpoint) -> Bool {
+fn tailscale_network_endpoint_label_eq(a: product.network_topology.NetworkEndpoint, b: product.network_topology.NetworkEndpoint) -> Bool {
   a.label == b.label
 }
 
@@ -199,7 +199,7 @@ fn tailscale_serve_route_key_of(subject: TailscaleServeRouteSubject) -> Tailscal
   tailscale_serve_route_key(endpoint: subject.endpoint)
 }
 
-fn tailscale_serve_route_member_path(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+fn tailscale_serve_route_member_path(endpoint: TailscaleServeEndpoint) -> std.types.NonEmptyStr {
   tailscale_serve_route_key_label(key: tailscale_serve_route_key(endpoint: endpoint))
 }
 
@@ -262,14 +262,14 @@ fn tailscale_endpoint_value_eq(a: TailscaleServeEndpoint, b: TailscaleServeEndpo
 }
 
 // KEYING-0 follow-on (node://adhoc-907f1da5-c20): tailscale_serve_route_key_relation scopes route keys by TailscaleServeScope { node, service } instead of GlobalKeyScope. Two nodes may each own the same listener×mount route as distinct scoped keys; collapsing them was the DeploymentArtifactStep poison class reached from the scope axis. Witness: test.claim.tailscale_serve_route_key_witness w_per_device_scope_preserves_distinct_nodes_same_route and its GlobalKeyScope RED control.
-data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey> = KeyRelation {
+data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey> = std.key_relation.KeyRelation {
   scope_of: tailscale_serve_route_scope_of,
   key_of: tailscale_serve_route_key_of,
   scope_eq: tailscale_serve_scope_eq,
   key_eq: tailscale_serve_route_key_eq,
 }
 
-fn tailscale_serve_route_endpoint_state_of(subject: TailscaleServeRouteSubject) -> NonEmptyStr {
+fn tailscale_serve_route_endpoint_state_of(subject: TailscaleServeRouteSubject) -> std.types.NonEmptyStr {
   tailscale_endpoint_state_of(endpoint: subject.endpoint)
 }
 
@@ -277,9 +277,9 @@ fn tailscale_serve_route_subject_value_eq(a: TailscaleServeRouteSubject, b: Tail
   tailscale_endpoint_value_eq(a: a.endpoint, b: b.endpoint)
 }
 
-data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey, NonEmptyStr> = KeyedResourceRelation {
+data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey, NonEmptyStr> = std.key_relation.KeyedResourceRelation {
   key: tailscale_serve_route_key_relation,
-  state: StateRelation {
+  state: std.key_relation.StateRelation {
     state_of: tailscale_serve_route_endpoint_state_of,
     state_eq: tailscale_endpoint_state_eq,
   },

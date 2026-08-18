@@ -1,7 +1,7 @@
 module gunbc.accelerator_demo_gpu
 
 
-fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity {
+fn wgsl_device_precision_fidelity(contract: std.numerical_contract.NumericalContract) -> extdeps.communication.medium.DecodeFidelity {
   match contract {
     IntegerExact => Lossless
     FloatApproximate { rounding: _, fma_contraction: _ } => Lossy
@@ -19,8 +19,8 @@ type GpuFidelityReceipt {
 }
 
 fn gpu_fidelity_receipt(
-  device: GpuModelCatalogRow,
-  contract: NumericalContract
+  device: extdeps.gpu.types.GpuModelCatalogRow,
+  contract: std.numerical_contract.NumericalContract
 ) -> GpuFidelityReceipt {
   GpuFidelityReceipt {
     device: device
@@ -31,7 +31,7 @@ fn gpu_fidelity_receipt(
   }
 }
 
-fn render_decode_fidelity(fidelity: DecodeFidelity) -> String {
+fn render_decode_fidelity(fidelity: extdeps.communication.medium.DecodeFidelity) -> String {
   match fidelity {
     Lossless => "Lossless"
     Lossy => "Lossy"
@@ -66,7 +66,7 @@ fn render_gpu_fidelity_receipt(receipt: GpuFidelityReceipt) -> String {
   )
 }
 
-fn wgsl_source_for_contract(contract: NumericalContract) -> String {
+fn wgsl_source_for_contract(contract: std.numerical_contract.NumericalContract) -> String {
   match contract {
     IntegerExact => wgsl_relu_mul_add_int_kernel_source
     FloatApproximate { rounding: _, fma_contraction: _ } => wgsl_relu_mul_add_float_kernel_source
@@ -79,7 +79,7 @@ type GpuDemoTriptychView {
   right_receipt: String
 }
 
-fn render_device_sketch(device: GpuModelCatalogRow) -> String {
+fn render_device_sketch(device: extdeps.gpu.types.GpuModelCatalogRow) -> String {
   concat(
     device.vendor.legal_name,
     concat(
@@ -102,8 +102,8 @@ fn render_device_sketch(device: GpuModelCatalogRow) -> String {
 }
 
 fn project_gpu_triptych_view(
-  device: GpuModelCatalogRow,
-  contract: NumericalContract
+  device: extdeps.gpu.types.GpuModelCatalogRow,
+  contract: std.numerical_contract.NumericalContract
 ) -> GpuDemoTriptychView {
   GpuDemoTriptychView {
     left_device_sketch: render_device_sketch(device: device)

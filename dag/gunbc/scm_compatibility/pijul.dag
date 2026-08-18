@@ -1,9 +1,9 @@
 module gunbc.scm_compatibility.pijul
 
 
-data pijul_compatibility_binding_note: NonEmptyStr = "The Pijul R1 handler consumes Pijul's own projection decoder, channel state identity, recorded changes, dependency/context graph, graph-conflict facts, partial availability, and independent read-back assessment. Those facts remain in PijulCompatibilityReceipt. The shared target and generation handles are opaque projections only; they are not commits, refs, branches, or semantic conflict verdicts, and R0 honestly reports conditional advance as unavailable."
+data pijul_compatibility_binding_note: std.types.NonEmptyStr = "The Pijul R1 handler consumes Pijul's own projection decoder, channel state identity, recorded changes, dependency/context graph, graph-conflict facts, partial availability, and independent read-back assessment. Those facts remain in PijulCompatibilityReceipt. The shared target and generation handles are opaque projections only; they are not commits, refs, branches, or semantic conflict verdicts, and R0 honestly reports conditional advance as unavailable."
 
-data pijul_compatibility_read_back_identity_note: NonEmptyStr = "A PijulCompatibilityReceipt is constructible by this handler only after pijul_assess_read_back proves that the independently decoded observation equals repository. Its common read-back handle fingerprints the decoded repository state and availability plus the observing Pijul version; the producer version never substitutes for state identity."
+data pijul_compatibility_read_back_identity_note: std.types.NonEmptyStr = "A PijulCompatibilityReceipt is constructible by this handler only after pijul_assess_read_back proves that the independently decoded observation equals repository. Its common read-back handle fingerprints the decoded repository state and availability plus the observing Pijul version; the producer version never substitutes for state identity."
 
 type PijulCompatibilityReceipt {
   target: extdeps.pijul.PijulChannelName
@@ -40,9 +40,9 @@ fn pijul_compatibility_binding_outcome_fold<R>(
 }
 
 fn pijul_compatibility_bind(
-  projection: PijulRepositoryProjection,
-  target: PijulChannelName,
-  read_back: PijulReadBackObservation,
+  projection: extdeps.pijul.PijulRepositoryProjection,
+  target: extdeps.pijul.PijulChannelName,
+  read_back: extdeps.pijul.PijulReadBackObservation,
 ) -> PijulCompatibilityBindingOutcome {
   match pijul_decode_projection(projection: projection) {
     PijulDecodeRefused { cause } =>
@@ -87,8 +87,8 @@ fn pijul_compatibility_bind(
   }
 }
 
-fn pijul_compatibility_fidelity() -> CompatibilityFidelityProfile {
-  CompatibilityFidelityProfile {
+fn pijul_compatibility_fidelity() -> gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
+  gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
     endpoint_state: CompatibilityFidelityPreserved,
     upstream_change_evidence: CompatibilityFidelityPreserved,
     native_proposal_contract: CompatibilityFidelityUnavailable {
@@ -106,8 +106,8 @@ fn pijul_compatibility_fidelity() -> CompatibilityFidelityProfile {
 }
 
 fn pijul_compatibility_version_text(
-  version: PijulUpstreamVersion,
-) -> NonEmptyStr {
+  version: extdeps.pijul.PijulUpstreamVersion,
+) -> std.types.NonEmptyStr {
   concat(
     to_string(version.major),
     concat(
@@ -127,9 +127,9 @@ fn pijul_compatibility_version_text(
 }
 
 fn pijul_compatibility_octets_identity(
-  tag: NonEmptyStr,
+  tag: std.types.NonEmptyStr,
   octets: List<std.integer.UInt8>,
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: octets
@@ -143,9 +143,9 @@ fn pijul_compatibility_octets_identity(
 }
 
 fn pijul_compatibility_bytes_identity(
-  tag: NonEmptyStr,
+  tag: std.types.NonEmptyStr,
   bytes: Bytes,
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   pijul_compatibility_octets_identity(
     tag: tag,
     octets: bytes_octets(b: bytes),
@@ -153,9 +153,9 @@ fn pijul_compatibility_bytes_identity(
 }
 
 fn pijul_compatibility_path_identity(
-  tag: NonEmptyStr,
-  path: PijulPath,
-) -> Fnv1a64Structural {
+  tag: std.types.NonEmptyStr,
+  path: extdeps.pijul.PijulPath,
+) -> std.content_hash.Fnv1a64Structural {
   pijul_compatibility_octets_identity(
     tag: tag,
     octets: path.octets,
@@ -163,9 +163,9 @@ fn pijul_compatibility_path_identity(
 }
 
 fn pijul_compatibility_vertex_identity(
-  tag: NonEmptyStr,
-  vertex: PijulVertexId,
-) -> Fnv1a64Structural {
+  tag: std.types.NonEmptyStr,
+  vertex: extdeps.pijul.PijulVertexId,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: [
@@ -182,8 +182,8 @@ fn pijul_compatibility_vertex_identity(
 }
 
 fn pijul_compatibility_graph_vertex_identity(
-  vertex: PijulGraphVertex,
-) -> Fnv1a64Structural {
+  vertex: extdeps.pijul.PijulGraphVertex,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "pijul-graph-vertex",
     members: [
@@ -200,8 +200,8 @@ fn pijul_compatibility_graph_vertex_identity(
 }
 
 fn pijul_compatibility_edge_disposition_identity(
-  disposition: PijulEdgeDisposition,
-) -> Fnv1a64Structural {
+  disposition: extdeps.pijul.PijulEdgeDisposition,
+) -> std.content_hash.Fnv1a64Structural {
   let label = match disposition {
     PijulAliveEdge => "alive"
     PijulDeletedEdge => "deleted"
@@ -213,8 +213,8 @@ fn pijul_compatibility_edge_disposition_identity(
 }
 
 fn pijul_compatibility_graph_edge_identity(
-  edge: PijulGraphEdge,
-) -> Fnv1a64Structural {
+  edge: extdeps.pijul.PijulGraphEdge,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "pijul-graph-edge",
     members: [
@@ -238,9 +238,9 @@ fn pijul_compatibility_graph_edge_identity(
 }
 
 fn pijul_compatibility_change_hashes_identity(
-  tag: NonEmptyStr,
-  changes: List<PijulChangeHash>,
-) -> Fnv1a64Structural {
+  tag: std.types.NonEmptyStr,
+  changes: List<extdeps.pijul.PijulChangeHash>,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: changes
@@ -254,9 +254,9 @@ fn pijul_compatibility_change_hashes_identity(
 }
 
 fn pijul_compatibility_vertices_identity(
-  tag: NonEmptyStr,
-  vertices: List<PijulVertexId>,
-) -> Fnv1a64Structural {
+  tag: std.types.NonEmptyStr,
+  vertices: List<extdeps.pijul.PijulVertexId>,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: vertices
@@ -270,9 +270,9 @@ fn pijul_compatibility_vertices_identity(
 }
 
 fn pijul_compatibility_paths_identity(
-  tag: NonEmptyStr,
-  paths: List<PijulPath>,
-) -> Fnv1a64Structural {
+  tag: std.types.NonEmptyStr,
+  paths: List<extdeps.pijul.PijulPath>,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: paths
@@ -286,11 +286,11 @@ fn pijul_compatibility_paths_identity(
 }
 
 fn pijul_compatibility_conflict_identity(
-  conflict: PijulConflictFact,
-) -> Fnv1a64Structural {
+  conflict: extdeps.pijul.PijulConflictFact,
+) -> std.content_hash.Fnv1a64Structural {
   pijul_conflict_fact_fold(
     conflict: conflict,
-    fold: PijulConflictFactFold {
+    fold: extdeps.pijul.PijulConflictFactFold {
       order: fn(left, right, at) {
         compatibility_identity_sequence(
           tag: "pijul-order-conflict",
@@ -383,8 +383,8 @@ fn pijul_compatibility_conflict_identity(
 }
 
 fn pijul_compatibility_tree_entry_kind_identity(
-  kind: PijulTreeEntryKind,
-) -> Fnv1a64Structural {
+  kind: extdeps.pijul.PijulTreeEntryKind,
+) -> std.content_hash.Fnv1a64Structural {
   let label = match kind {
     PijulDirectoryEntry => "directory"
     PijulFileEntry => "file"
@@ -397,8 +397,8 @@ fn pijul_compatibility_tree_entry_kind_identity(
 }
 
 fn pijul_compatibility_tree_entry_identity(
-  entry: PijulTreeEntry,
-) -> Fnv1a64Structural {
+  entry: extdeps.pijul.PijulTreeEntry,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "pijul-tree-entry",
     members: [
@@ -420,8 +420,8 @@ fn pijul_compatibility_tree_entry_identity(
 }
 
 fn pijul_compatibility_working_copy_disposition_identity(
-  disposition: PijulWorkingCopyDisposition,
-) -> Fnv1a64Structural {
+  disposition: extdeps.pijul.PijulWorkingCopyDisposition,
+) -> std.content_hash.Fnv1a64Structural {
   let label = match disposition {
     PijulWorkingCopyClean => "clean"
     PijulWorkingCopyModified => "modified"
@@ -434,8 +434,8 @@ fn pijul_compatibility_working_copy_disposition_identity(
 }
 
 fn pijul_compatibility_working_copy_entry_identity(
-  entry: PijulWorkingCopyEntry,
-) -> Fnv1a64Structural {
+  entry: extdeps.pijul.PijulWorkingCopyEntry,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "pijul-working-copy-entry",
     members: [
@@ -455,8 +455,8 @@ fn pijul_compatibility_working_copy_entry_identity(
 }
 
 fn pijul_compatibility_channel_identity(
-  channel: PijulChannel,
-) -> Fnv1a64Structural {
+  channel: extdeps.pijul.PijulChannel,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "pijul-channel",
     members: [
@@ -478,8 +478,8 @@ fn pijul_compatibility_channel_identity(
 }
 
 fn pijul_compatibility_availability_identity(
-  availability: PijulDecodedAvailability,
-) -> Fnv1a64Structural {
+  availability: extdeps.pijul.PijulDecodedAvailability,
+) -> std.content_hash.Fnv1a64Structural {
   match availability {
     PijulDecodedComplete =>
       compatibility_identity_sequence(
@@ -512,8 +512,8 @@ fn pijul_compatibility_availability_identity(
 }
 
 fn pijul_compatibility_observed_state_identity(
-  repository: PijulDecodedRepository,
-) -> Fnv1a64Structural {
+  repository: extdeps.pijul.PijulDecodedRepository,
+) -> std.content_hash.Fnv1a64Structural {
   let state = repository.state
   compatibility_identity_sequence(
     tag: "pijul-readback-state-v1",
@@ -584,16 +584,16 @@ fn pijul_compatibility_observed_state_identity(
 
 fn pijul_compatibility_projection_receipt(
   receipt: PijulCompatibilityReceipt,
-) -> CompatibilityProjectionReceipt {
-  let generation = receipt.generation.state as NonEmptyStr
+) -> gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
+  let generation = receipt.generation.state as std.types.NonEmptyStr
   let state = pijul_compatibility_observed_state_identity(
     repository: receipt.repository,
   )
   match receipt.advance {
     PijulConditionalAdvanceUnavailable { reason } =>
-      CompatibilityProjectionReceipt {
+      gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
         realization: "pijul-r0",
-        target: receipt.target as NonEmptyStr,
+        target: receipt.target as std.types.NonEmptyStr,
         generation_evidence: generation,
         projection: compatibility_projection_handle(
           realization: "pijul-r0",
@@ -614,7 +614,7 @@ fn pijul_compatibility_projection_receipt(
 
 fn pijul_compatibility_projection_handler(
 ) -> CompatibilityProjectionHandler<PijulCompatibilityReceipt> {
-  CompatibilityProjectionHandler {
+  gunbc.scm_compatibility_shape.CompatibilityProjectionHandler {
     project: fn(receipt) {
       pijul_compatibility_projection_receipt(receipt: receipt)
     },

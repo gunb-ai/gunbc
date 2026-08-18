@@ -9,11 +9,11 @@ type LensVerdict
   | NotApplicable { diagnostic: v2.std.diagnostic.Diagnostic }
   | Unrealized { diagnostic: v2.std.diagnostic.Diagnostic }
 
-fn lens_verdict_module_file(module_name: String) -> Symbol {
+fn lens_verdict_module_file(module_name: String) -> v2.std.node.Symbol {
   symbol_intern_lexeme(lexeme: module_name)
 }
 
-fn lens_verdict_module_diagnostic(reason: Symbol, module_name: String) -> Diagnostic {
+fn lens_verdict_module_diagnostic(reason: v2.std.node.Symbol, module_name: String) -> v2.std.diagnostic.Diagnostic {
   textual_whole_file_diagnostic(
     reason: reason,
     module_file: lens_verdict_module_file(module_name: module_name),
@@ -21,25 +21,25 @@ fn lens_verdict_module_diagnostic(reason: Symbol, module_name: String) -> Diagno
   )
 }
 
-fn lens_verdict_module_violation(reason: Symbol, module_name: String) -> LensVerdict {
+fn lens_verdict_module_violation(reason: v2.std.node.Symbol, module_name: String) -> LensVerdict {
   Violation {
     diagnostic: lens_verdict_module_diagnostic(reason: reason, module_name: module_name)
   }
 }
 
-fn lens_verdict_module_unrealized(reason: Symbol, module_name: String) -> LensVerdict {
+fn lens_verdict_module_unrealized(reason: v2.std.node.Symbol, module_name: String) -> LensVerdict {
   Unrealized {
     diagnostic: lens_verdict_module_diagnostic(reason: reason, module_name: module_name)
   }
 }
 
-fn lens_verdict_module_not_applicable(reason: Symbol, module_name: String) -> LensVerdict {
+fn lens_verdict_module_not_applicable(reason: v2.std.node.Symbol, module_name: String) -> LensVerdict {
   NotApplicable {
     diagnostic: lens_verdict_module_diagnostic(reason: reason, module_name: module_name)
   }
 }
 
-fn lens_verdict_diagnostic_locus_module(d: Diagnostic) -> String {
+fn lens_verdict_diagnostic_locus_module(d: v2.std.diagnostic.Diagnostic) -> String {
   match d.at {
     Textual { file: module_file, extent: _ } => symbol_lexeme(sym: module_file)
     NodeLocus { anchor: _ } => ""

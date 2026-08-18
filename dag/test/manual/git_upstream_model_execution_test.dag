@@ -13,15 +13,15 @@ type GitR0LiveFixtureOutcome
     }
   | GitR0LiveFixtureExecutionRefused { diagnostic: String }
 
-fn observed_sha1_oid(stdout: String) -> GitObjectId {
+fn observed_sha1_oid(stdout: String) -> extdeps.git.object_store.GitObjectId {
   GitSha1ObjectId {
-    digest: Sha1Digest { hex: trim(s: stdout) as Sha1DigestHex },
+    digest: std.content_hash.Sha1Digest { hex: trim(s: stdout) as std.content_hash.Sha1DigestHex },
   }
 }
 
-fn complete_fixture_repository() -> GitRepositoryState {
+fn complete_fixture_repository() -> extdeps.git.object_store.GitRepositoryState {
   let repo = git_fixture_repository()
-  GitRepositoryState {
+  extdeps.git.object_store.GitRepositoryState {
     object_format: repo.object_format,
     objects: repo.objects,
     unavailable: [],
@@ -509,18 +509,18 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
                         let observed_main = observed_sha1_oid(
                           stdout: main_read_back.stdout,
                         )
-                        let observation = GitR0ReadBackObservation {
+                        let observation = extdeps.git.object_store.GitR0ReadBackObservation {
                           git_version: trim(s: git_version.stdout),
                           object_format: GitObjectFormatSha1,
                           tree_oid: observed_sha1_oid(stdout: root_tree.stdout),
                           tree_entries: observed_tree_entries,
                           tag_oids: [observed_sha1_oid(stdout: tag_oid.stdout)],
                           refs: [
-                            GitRefRecord {
+                            extdeps.git.object_store.GitRefRecord {
                               name: "refs/heads/main",
                               target: DirectTarget { oid: observed_main },
                             },
-                            GitRefRecord {
+                            extdeps.git.object_store.GitRefRecord {
                               name: "HEAD",
                               target: SymbolicTarget {
                                 ref_name: trim(s: head_read_back.stdout)

@@ -14,8 +14,8 @@ type HostCliEnrollmentRequirement {
 
 data codex_wet_materialization_host_cli_requirements: List<HostCliEnrollmentRequirement> = [
   HostCliEnrollmentRequirement {
-    tool: "npm" as NonEmptyStr,
-    provision: "apt install npm on falsifier cadence runner image" as NonEmptyStr,
+    tool: "npm" as std.types.NonEmptyStr,
+    provision: "apt install npm on falsifier cadence runner image" as std.types.NonEmptyStr,
   },
 ]
 
@@ -23,7 +23,7 @@ type HostCliDependencyObservation
   = HostCliDependencyPresent
   | HostCliDependencyAbsent { tool: std.types.NonEmptyStr, hint: String }
 
-fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
+fn observe_host_cli_dependency(tool: extdeps.tools.CliTool) -> HostCliDependencyObservation {
   let check = shell.Which.Check(command: tool.name)
   if check.exists {
     HostCliDependencyPresent
@@ -35,7 +35,7 @@ fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
   }
 }
 
-fn cli_tool_for_enrollment_requirement(requirement: HostCliEnrollmentRequirement) -> CliTool? {
+fn cli_tool_for_enrollment_requirement(requirement: HostCliEnrollmentRequirement) -> extdeps.tools.CliTool? {
   if requirement.tool == npm_cli_tool.name {
     Present { value: npm_cli_tool }
   } else {
@@ -71,7 +71,7 @@ fn first_absent_codex_wet_materialization_host_cli_dependency() -> HostCliDepend
   )
 }
 
-fn host_dependency_absent_wire(tool: NonEmptyStr, hint: String) -> String {
+fn host_dependency_absent_wire(tool: std.types.NonEmptyStr, hint: String) -> String {
   concat(
     "HostDependencyAbsent\{tool=",
     concat(tool as String, concat(",hint=", concat(hint, "\}"))),

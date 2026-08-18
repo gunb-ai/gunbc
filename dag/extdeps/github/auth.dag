@@ -2,8 +2,8 @@ module extdeps.github.auth
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/authentication"
   }
@@ -25,7 +25,7 @@ data default_github_auth_source: GitHubAuthSource = {
   }
 }
 
-data structural_coverage_gap_github_token_metadata_verification: List<CoverageClosureEntry> = [
+data structural_coverage_gap_github_token_metadata_verification: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "GitHubAuthToken" },
@@ -36,10 +36,10 @@ data structural_coverage_gap_github_token_metadata_verification: List<CoverageCl
   }
 ]
 
-func github_token() -> GitHubAuthToken
+func github_token() -> extdeps.github.github.GitHubAuthToken
 {
   cred = match default_github_auth_source.credential_source {
-    EnvVar { name } => env_credential(env_var: name as NonEmptyStr)
+    EnvVar { name } => env_credential(env_var: name as std.types.NonEmptyStr)
   }
   return {
     token: cred.token,

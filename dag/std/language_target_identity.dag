@@ -47,7 +47,7 @@ type LanguageTargetRegistration {
   disposition: TargetDisposition
 }
 
-fn registration_subject(registration: LanguageTargetRegistration) -> DeclarationRef {
+fn registration_subject(registration: LanguageTargetRegistration) -> std.decl_ref.DeclarationRef {
   match registration.grounding {
     ExternalGrounding { scope: s } => s.subject.declaration
     ProjectGrounding { authority: a } => a
@@ -113,7 +113,7 @@ type NamedTargetTally
       rest: List<std.decl_ref.DeclarationRef>
     }
 
-fn tally_many_candidates(first: DeclarationRef, second: DeclarationRef, rest: List<DeclarationRef>) -> List<DeclarationRef> {
+fn tally_many_candidates(first: std.decl_ref.DeclarationRef, second: std.decl_ref.DeclarationRef, rest: List<std.decl_ref.DeclarationRef>) -> List<std.decl_ref.DeclarationRef> {
   concat([first, second], rest)
 }
 
@@ -142,26 +142,26 @@ type ProjectionLookup
   | ProjectionAmbiguous { subject: std.decl_ref.DeclarationRef }
 
 fn subject_occurrence_count(
-  target: DeclarationRef,
-  subjects: List<DeclarationRef>
+  target: std.decl_ref.DeclarationRef,
+  subjects: List<std.decl_ref.DeclarationRef>
 ) -> Int {
   fold(subjects, init: 0, f: fn(acc, s) {
     if declaration_ref_eq(a: s, b: target) { acc + 1 } else { acc }
   })
 }
 
-fn registration_subjects(registry: List<LanguageTargetRegistration>) -> List<DeclarationRef> {
+fn registration_subjects(registry: List<LanguageTargetRegistration>) -> List<std.decl_ref.DeclarationRef> {
   fold(registry, init: [], f: fn(acc, r) {
     concat(acc, [registration_subject(registration: r)])
   })
 }
 
-fn projection_subjects(projections: List<LanguageTargetProjection>) -> List<DeclarationRef> {
+fn projection_subjects(projections: List<LanguageTargetProjection>) -> List<std.decl_ref.DeclarationRef> {
   fold(projections, init: [], f: fn(acc, p) { concat(acc, [p.subject]) })
 }
 
 fn projection_for_subject(
-  subject: DeclarationRef,
+  subject: std.decl_ref.DeclarationRef,
   projections: List<LanguageTargetProjection>
 ) -> ProjectionLookup {
   if subject_occurrence_count(target: subject, subjects: projection_subjects(projections: projections)) > 1 {
@@ -174,7 +174,7 @@ fn projection_for_subject(
 }
 
 fn display_name_for_subject(
-  subject: DeclarationRef,
+  subject: std.decl_ref.DeclarationRef,
   projections: List<LanguageTargetProjection>
 ) -> String? {
   match projection_for_subject(subject: subject, projections: projections) {
@@ -245,7 +245,7 @@ fn duplicate_projection_subject_count(projections: List<LanguageTargetProjection
   })
 }
 
-fn tally_contains(tally: NamedTargetTally, candidate: DeclarationRef) -> Bool {
+fn tally_contains(tally: NamedTargetTally, candidate: std.decl_ref.DeclarationRef) -> Bool {
   match tally {
     TallyNone => false
     TallyOne { target: only } => declaration_ref_eq(a: only, b: candidate)
@@ -256,7 +256,7 @@ fn tally_contains(tally: NamedTargetTally, candidate: DeclarationRef) -> Bool {
   }
 }
 
-fn tally_push(tally: NamedTargetTally, next: DeclarationRef) -> NamedTargetTally {
+fn tally_push(tally: NamedTargetTally, next: std.decl_ref.DeclarationRef) -> NamedTargetTally {
   if tally_contains(tally: tally, candidate: next) {
     tally
   } else {

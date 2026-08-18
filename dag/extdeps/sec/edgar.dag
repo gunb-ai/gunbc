@@ -2,14 +2,14 @@ module extdeps.sec.edgar
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.sec.gov/edgar/sec-api-documentation"
   }
 }
 
-data edgar_data_api_base: NonEmptyStr = "https://data.sec.gov"
+data edgar_data_api_base: std.types.NonEmptyStr = "https://data.sec.gov"
 
 // §3 shape/transport split: this module owns the EDGAR XBRL JSON response shapes and the agnostic operation contract (inputs → outputs, exit/error semantics). extdeps.sec.edgar_rest binds ONE transport handler (`transport rest`) to that shape; extdeps.http.client (curl argv) is a peer handler — N handlers, one shape, dispatch peripheral. Business policy (SEC User-Agent fair-access, request pacing) is workflow-layer, not extdeps.
 type EdgarErrorEnvelope {
@@ -39,7 +39,7 @@ type CompanyFactsResponse {
   facts: Map<String, Map<String, CompanyFactsTaxonomyFacts>>
 }
 
-data structural_coverage_gap_company_facts_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_company_facts_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "CompanyFactsResponse" },
@@ -49,7 +49,7 @@ data structural_coverage_gap_company_facts_residual: List<CoverageClosureEntry> 
   }
 ]
 
-data structural_coverage_gap_company_concept_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_company_concept_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "CompanyConceptResponse" },
@@ -59,15 +59,15 @@ data structural_coverage_gap_company_concept_residual: List<CoverageClosureEntry
   }
 ]
 
-fn cik_url_segment(cik: Cik) -> NonEmptyStr {
+fn cik_url_segment(cik: extdeps.sec.types.Cik) -> std.types.NonEmptyStr {
   concat("CIK", cik_padded_digits(cik: cik))
 }
 
-fn cik_padded_digits(cik: Cik) -> NonEmptyStr {
+fn cik_padded_digits(cik: extdeps.sec.types.Cik) -> std.types.NonEmptyStr {
   pad_cik_digits_loop(remaining: cik_digit_width() - string_length(cik.digits), acc: cik.digits)
 }
 
-fn pad_cik_digits_loop(remaining: Int, acc: NonEmptyStr) -> NonEmptyStr {
+fn pad_cik_digits_loop(remaining: Int, acc: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
   if remaining <= 0 {
     acc
   } else {
@@ -75,6 +75,6 @@ fn pad_cik_digits_loop(remaining: Int, acc: NonEmptyStr) -> NonEmptyStr {
   }
 }
 
-fn xbrl_concept_path_segment(ref: XbrlConceptRef) -> NonEmptyStr {
+fn xbrl_concept_path_segment(ref: extdeps.sec.types.XbrlConceptRef) -> std.types.NonEmptyStr {
   concat(xbrl_taxonomy_wire(taxonomy: ref.taxonomy), "/", ref.tag, ".json")
 }

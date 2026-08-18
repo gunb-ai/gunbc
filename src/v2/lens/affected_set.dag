@@ -3,7 +3,7 @@ module v2.lens.affected_set
 
 type Dag = Node
 
-type AffectedDimension = Symbol
+type AffectedDimension = v2.std.node.Symbol
 
 type ExclusionKey {
   at: Node
@@ -152,13 +152,13 @@ fn empty_affected_fold_acc(dag: Dag) -> AffectedFoldAcc {
 fn empty_affected_set_fold_acc(dag: Dag) -> AffectedSetFoldAcc {
   AffectedSetActive {
     dag: dag,
-    changes: ChangeSet { changes: [] },
+    changes: v2.std.change.ChangeSet { changes: [] },
     affected: [],
     exclusions: []
   }
 }
 
-fn fold_pending(acc: AffectedFoldAcc, next: Diagnostics) -> Diagnostics {
+fn fold_pending(acc: AffectedFoldAcc, next: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Diagnostics {
   diagnostics_merge(outer: acc.pending, inner: next)
 }
 
@@ -171,12 +171,12 @@ fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
   }
 }
 
-fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
+fn lens_frontier_dependency_kinds() -> List<v2.std.dependency.DependencyKind> {
   [ProjectionDependsOn, VerifiedBy, Contains]
 }
 
 fn affected_set_boundary_pure_receipt_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^affected_set_boundary_pure_receipt_payload } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -184,14 +184,14 @@ fn affected_set_boundary_pure_receipt_node() -> Node {
 }
 
 fn affected_set_dimension_not_read_receipt_node(dimension: AffectedDimension) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: dimension } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn dependency_kind_in_lens_frontier_policy(kind: DependencyKind) -> Bool {
+fn dependency_kind_in_lens_frontier_policy(kind: v2.std.dependency.DependencyKind) -> Bool {
   contains(
     xs: lens_frontier_dependency_kinds(),
     item: kind,
@@ -199,15 +199,15 @@ fn dependency_kind_in_lens_frontier_policy(kind: DependencyKind) -> Bool {
   )
 }
 
-fn change_for_edit(edit: Edit) -> Change {
-  Change {
+fn change_for_edit(edit: v2.std.node.Edit) -> v2.std.change.Change {
+  v2.std.change.Change {
     kind: NodeChanged,
     subject: edit.replacement,
     at: edit.at
   }
 }
 
-fn affected_set_from_fold_acc(acc: AffectedSetFoldAcc) -> AffectedSet {
+fn affected_set_from_fold_acc(acc: AffectedSetFoldAcc) -> v2.std.change.AffectedSet {
   match acc {
     AffectedSetActive { dag: _, changes: changes, affected: affected, exclusions: exclusions } =>
       AffectedSetProduced {
@@ -224,13 +224,13 @@ fn affected_set_from_fold_acc(acc: AffectedSetFoldAcc) -> AffectedSet {
   }
 }
 
-fn append_change(changes: ChangeSet, change: Change) -> ChangeSet {
-  ChangeSet {
+fn append_change(changes: v2.std.change.ChangeSet, change: v2.std.change.Change) -> v2.std.change.ChangeSet {
+  v2.std.change.ChangeSet {
     changes: list_snoc_item(xs: changes.changes, item: change)
   }
 }
 
-fn add_change_to_affected_acc(acc: AffectedSetFoldAcc, change: Change) -> AffectedSetFoldAcc {
+fn add_change_to_affected_acc(acc: AffectedSetFoldAcc, change: v2.std.change.Change) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: dag, changes: changes, affected: affected, exclusions: exclusions } =>
       AffectedSetActive {
@@ -249,9 +249,9 @@ fn add_change_to_affected_acc(acc: AffectedSetFoldAcc, change: Change) -> Affect
 
 fn record_affected_dependency(
   acc: AffectedSetFoldAcc,
-  change: Change,
-  dependency: DependencyView,
-  target: DependencyEndpoint
+  change: v2.std.change.Change,
+  dependency: v2.std.dependency.DependencyView,
+  target: v2.std.change.DependencyEndpoint
 ) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: dag, changes: changes, affected: affected, exclusions: exclusions } =>
@@ -259,7 +259,7 @@ fn record_affected_dependency(
         AffectedSetActive {
           dag: dag,
           changes: changes,
-          affected: list_snoc_item(xs: affected, item: AffectedDependency {
+          affected: list_snoc_item(xs: affected, item: v2.std.change.AffectedDependency {
               change: change,
               dependency: dependency,
               target: target
@@ -282,7 +282,7 @@ fn record_affected_dependency(
   }
 }
 
-fn dependency_in_lens_frontier(dependency: DependencyView) -> Bool {
+fn dependency_in_lens_frontier(dependency: v2.std.dependency.DependencyView) -> Bool {
   dependency_kind_in_lens_frontier_policy(kind: dependency.kind)
 }
 
@@ -292,7 +292,7 @@ fn node_in_list(nodes: List<Node>, needle: Node) -> Bool {
   })
 }
 
-fn affected_set_closure_step(acc: AffectedSetClosureAcc, dependency: DependencyView) -> AffectedSetClosureAcc {
+fn affected_set_closure_step(acc: AffectedSetClosureAcc, dependency: v2.std.dependency.DependencyView) -> AffectedSetClosureAcc {
   if node_in_list(nodes: acc.frontier, needle: dependency.source) && (node_in_list(nodes: acc.frontier, needle: dependency.dependent) == false) {
     AffectedSetClosureAcc {
       frontier: list_snoc_item(xs: acc.frontier, item: dependency.dependent),
@@ -314,7 +314,7 @@ fn affected_set_closure_step(acc: AffectedSetClosureAcc, dependency: DependencyV
   }
 }
 
-fn affected_set_closure_pass(dependencies: List<DependencyView>, acc: AffectedSetClosureAcc) -> AffectedSetClosureAcc {
+fn affected_set_closure_pass(dependencies: List<v2.std.dependency.DependencyView>, acc: AffectedSetClosureAcc) -> AffectedSetClosureAcc {
   fold(
     dependencies,
     init: acc,
@@ -331,12 +331,12 @@ fn affected_set_closure_frontier_unchanged(
   length(xs: before.frontier) == length(xs: after.frontier)
 }
 
-fn affected_set_closure_convergence_rounds(dependencies: List<DependencyView>) -> List<DependencyView> {
+fn affected_set_closure_convergence_rounds(dependencies: List<v2.std.dependency.DependencyView>) -> List<v2.std.dependency.DependencyView> {
   list_append(left: dependencies, right: dependencies)
 }
 
 fn affected_set_closure_fixpoint_step(
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   state: AffectedSetClosureFixpointState
 ) -> AffectedSetClosureFixpointState {
   if state.stable {
@@ -350,7 +350,7 @@ fn affected_set_closure_fixpoint_step(
   }
 }
 
-fn affected_set_closure(dependencies: List<DependencyView>, edit_locus: Node) -> AffectedSetClosureAcc {
+fn affected_set_closure(dependencies: List<v2.std.dependency.DependencyView>, edit_locus: Node) -> AffectedSetClosureAcc {
   let state = fold(
     affected_set_closure_convergence_rounds(dependencies: dependencies),
     init: AffectedSetClosureFixpointState {
@@ -367,7 +367,7 @@ fn affected_set_closure(dependencies: List<DependencyView>, edit_locus: Node) ->
   state.acc
 }
 
-fn affected_set_reading(graph: InferredTree, edit_locus: Node) -> AffectedSetReading {
+fn affected_set_reading(graph: v2.compiler.infer.InferredTree, edit_locus: Node) -> AffectedSetReading {
   let dependency_reading = dependency_lens(root: graph.root)
   let closure = affected_set_closure(dependencies: dependency_reading, edit_locus: edit_locus)
   AffectedSetReading {
@@ -377,13 +377,13 @@ fn affected_set_reading(graph: InferredTree, edit_locus: Node) -> AffectedSetRea
   }
 }
 
-fn append_changed_node_subjects(nodes: List<Node>, changes: ChangeSet) -> List<Node> {
+fn append_changed_node_subjects(nodes: List<Node>, changes: v2.std.change.ChangeSet) -> List<Node> {
   fold(changes.changes, init: nodes, f: fn(acc, change) {
     list_snoc_item(xs: acc, item: change.subject)
   })
 }
 
-fn append_affected_dependency_nodes(nodes: List<Node>, affected: List<AffectedDependency>) -> List<Node> {
+fn append_affected_dependency_nodes(nodes: List<Node>, affected: List<v2.std.change.AffectedDependency>) -> List<Node> {
   fold(affected, init: nodes, f: fn(acc, row) {
     list_snoc_item(
       xs: acc,
@@ -392,7 +392,7 @@ fn append_affected_dependency_nodes(nodes: List<Node>, affected: List<AffectedDe
   })
 }
 
-fn affected_set_rerun_nodes(affected_set_value: AffectedSet) -> RerunNodeSet {
+fn affected_set_rerun_nodes(affected_set_value: v2.std.change.AffectedSet) -> RerunNodeSet {
   match affected_set_value {
     AffectedSetProduced { changes: changes, affected: affected, exclusions: _, restricted_to: _ } =>
       RerunNodeSetProduced {
@@ -416,8 +416,8 @@ fn affected_set_reading_rerun_nodes(reading: AffectedSetReading) -> RerunNodeSet
 
 fn record_affected_exclusion(
   acc: AffectedSetFoldAcc,
-  change: Change,
-  dependency: DependencyView,
+  change: v2.std.change.Change,
+  dependency: v2.std.dependency.DependencyView,
   proof: PropagationExclusionProof
 ) -> AffectedSetFoldAcc {
   match acc {
@@ -428,7 +428,7 @@ fn record_affected_exclusion(
             dag: dag,
             changes: changes,
             affected: affected,
-            exclusions: list_snoc_item(xs: exclusions, item: AffectedExclusion {
+            exclusions: list_snoc_item(xs: exclusions, item: v2.std.change.AffectedExclusion {
                 change: change,
                 dependency: dependency,
                 usage_site: usage_site,
@@ -444,7 +444,7 @@ fn record_affected_exclusion(
   }
 }
 
-fn fail_affected_set_with_reason(acc: AffectedSetFoldAcc, reason: Symbol) -> AffectedSetFoldAcc {
+fn fail_affected_set_with_reason(acc: AffectedSetFoldAcc, reason: v2.std.node.Symbol) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: _, changes: changes, affected: _, exclusions: _ } =>
       AffectedSetFailed {
@@ -459,7 +459,7 @@ fn fail_affected_set_with_reason(acc: AffectedSetFoldAcc, reason: Symbol) -> Aff
   }
 }
 
-fn fail_affected_set_with_diagnostics(acc: AffectedSetFoldAcc, diagnostics: NonEmptyDiagnostics) -> AffectedSetFoldAcc {
+fn fail_affected_set_with_diagnostics(acc: AffectedSetFoldAcc, diagnostics: v2.std.diagnostic.NonEmptyDiagnostics) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: _, changes: changes, affected: _, exclusions: _ } =>
       AffectedSetFailed {
@@ -481,7 +481,7 @@ fn root_key(subject: Node, dimension: AffectedDimension) -> ExclusionKey {
   }
 }
 
-fn dependency_endpoint_node(dependency: DependencyView, target: DependencyEndpoint) -> Node {
+fn dependency_endpoint_node(dependency: v2.std.dependency.DependencyView, target: v2.std.change.DependencyEndpoint) -> Node {
   match target {
     DependencySource => dependency.source
     DependencyDependent => dependency.dependent
@@ -509,7 +509,7 @@ fn mark_rerun(frontier: ReExecFrontier, key: ExclusionKey) -> ReExecFrontier {
   }
 }
 
-fn mark_boundary_excluded(frontier: ReExecFrontier, edit: Edit, proof: BoundaryExclusionProof) -> ReExecFrontier {
+fn mark_boundary_excluded(frontier: ReExecFrontier, edit: v2.std.node.Edit, proof: BoundaryExclusionProof) -> ReExecFrontier {
   match frontier {
     FailClosed { reason: e } => FailClosed { reason: e }
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
@@ -552,20 +552,20 @@ fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: Propagation
   }
 }
 
-fn mark_whole_dag(reason: Symbol) -> ReExecFrontier {
+fn mark_whole_dag(reason: v2.std.node.Symbol) -> ReExecFrontier {
   FailClosed { reason: ReasonSymbol { reason: reason } }
 }
 
-fn mark_whole_dag_diagnostics(diagnostics: NonEmptyDiagnostics) -> ReExecFrontier {
+fn mark_whole_dag_diagnostics(diagnostics: v2.std.diagnostic.NonEmptyDiagnostics) -> ReExecFrontier {
   FailClosed { reason: ReasonDiagnostics { diagnostics: diagnostics } }
 }
-fn mark_whole_dag_diagnostic(diagnostic: Diagnostic) -> ReExecFrontier {
+fn mark_whole_dag_diagnostic(diagnostic: v2.std.diagnostic.Diagnostic) -> ReExecFrontier {
   mark_whole_dag_diagnostics(
     diagnostics: diagnostics_singleton(d: diagnostic)
   )
 }
 
-fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replacement: Node) -> BoundaryReceipt {
+fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: v2.std.node.Path, replacement: Node) -> BoundaryReceipt {
   match read_model.boundary.boundary_hash_receipt(dag, path, replacement) {
     HashUnchangedPure { content_hash: h } =>
       BoundaryPruned {
@@ -581,7 +581,7 @@ fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replaceme
 fn frontier_receipt(
   read_model: AffectedSetRead,
   dag: Dag,
-  edit: Edit,
+  edit: v2.std.node.Edit,
   dimension: AffectedDimension
 ) -> FrontierReceipt {
   read_model.frontier.proven_transitive_dependency_frontier(
@@ -593,9 +593,9 @@ fn frontier_receipt(
 fn propagation_receipt(
   read_model: AffectedSetRead,
   dag: Dag,
-  edit: Edit,
+  edit: v2.std.node.Edit,
   dimension: AffectedDimension,
-  dependency: DependencyView
+  dependency: v2.std.dependency.DependencyView
 ) -> PropagationReceipt {
   read_model.propagation_receipt(
     dag,
@@ -608,7 +608,7 @@ fn expand_dimension(
   read_model: AffectedSetRead,
   dag: Dag,
   frontier: ReExecFrontier,
-  edit: Edit,
+  edit: v2.std.node.Edit,
   dimension: AffectedDimension
 ) -> ReExecFrontier {
   match frontier {
@@ -648,7 +648,7 @@ fn seed_edit_fold_acc_live(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
   acc: AffectedFoldAcc,
-  edit: Edit
+  edit: v2.std.node.Edit
 ) -> AffectedFoldAcc {
   match boundary_receipt(
     read_model: read_model,
@@ -706,7 +706,7 @@ fn expand_changed_dimensions(
   boundary_dag: Dag,
   frontier_dag: Dag,
   frontier: ReExecFrontier,
-  edit: Edit
+  edit: v2.std.node.Edit
 ) -> ReExecFrontier {
   match read_model.boundary.changed_dimension_receipt(boundary_dag, edit) {
     ChangedDimensions { first: first_dimension, rest: rest_dimensions } =>
@@ -734,7 +734,7 @@ fn seed_edit_fold_acc(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
   acc: AffectedFoldAcc,
-  edit: Edit
+  edit: v2.std.node.Edit
 ) -> AffectedFoldAcc {
   match acc.frontier {
     FailClosed { reason: _ } => acc
@@ -752,7 +752,7 @@ fn expand_affected_dimension(
   read_model: AffectedSetRead,
   dag: Dag,
   acc: AffectedSetFoldAcc,
-  edit: Edit,
+  edit: v2.std.node.Edit,
   dimension: AffectedDimension
 ) -> AffectedSetFoldAcc {
   match frontier_receipt(read_model: read_model, dag: dag, edit: edit, dimension: dimension) {
@@ -798,7 +798,7 @@ fn expand_affected_dimensions(
   boundary_dag: Dag,
   frontier_dag: Dag,
   acc: AffectedSetFoldAcc,
-  edit: Edit
+  edit: v2.std.node.Edit
 ) -> AffectedSetFoldAcc {
   match read_model.boundary.changed_dimension_receipt(boundary_dag, edit) {
     ChangedDimensions { first: first_dimension, rest: rest_dimensions } =>
@@ -826,7 +826,7 @@ fn seed_affected_set_fold_acc_live(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
   acc: AffectedSetFoldAcc,
-  edit: Edit
+  edit: v2.std.node.Edit
 ) -> AffectedSetFoldAcc {
   let change = change_for_edit(edit: edit)
   match add_change_to_affected_acc(acc: acc, change: change) {
@@ -908,8 +908,8 @@ fn affected_set_from_diff(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
   dag: Dag,
-  diff: Diff
-) -> Witness<AffectedSet> {
+  diff: v2.std.node.Diff
+) -> Witness<v2.std.change.AffectedSet> {
   Holds {
     value: affected_set_from_fold_acc(
       acc: fold(diff.edits, init: empty_affected_set_fold_acc(dag: dag), f: fn(acc, edit) {
@@ -928,7 +928,7 @@ fn re_exec_frontier_from_diff(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
   dag: Dag,
-  diff: Diff
+  diff: v2.std.node.Diff
 ) -> Witness<ReExecFrontier> {
   Holds {
     value: frontier_from_fold_acc(
@@ -944,7 +944,7 @@ fn re_exec_frontier_from_diff(
   }
 }
 
-fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt {
+fn canonical_boundary_exclusion_receipt(node: Node, h: v2.std.node.Hash) -> BoundaryReceipt {
   match find_child_by_name(root: node, name: ^affected_set_boundary_pure_receipt_edge) {
     Accepted { value: receipt, diagnostics: _ } =>
       if receipt == affected_set_boundary_pure_receipt_node() {
@@ -961,7 +961,7 @@ fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt 
   }
 }
 
-fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
+fn canonical_boundary_hash_receipt(dag: Dag, path: v2.std.node.Path, replacement: Node) -> HashReceipt {
   match subterm_at(root: dag, path: path) {
     Accepted { value: current, diagnostics: _ } =>
       if content_hash(n: current) == content_hash(n: replacement) {
@@ -981,7 +981,7 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
   }
 }
 
-fn connective_to_dimension_family(connective: Connective) -> AffectedDimension {
+fn connective_to_dimension_family(connective: v2.std.node.Connective) -> AffectedDimension {
   match connective {
     Atom { identity: identity } => identity
     Conj => ^canonical_tag_conj
@@ -992,7 +992,7 @@ fn connective_to_dimension_family(connective: Connective) -> AffectedDimension {
   }
 }
 
-fn behavior_to_dimension_family(behavior: Behavior) -> AffectedDimension {
+fn behavior_to_dimension_family(behavior: v2.std.node.Behavior) -> AffectedDimension {
   match behavior {
     Value => ^canonical_tag_value
     Transform => ^canonical_tag_transform
@@ -1057,7 +1057,7 @@ fn changed_dimension_families_union(before: Node, after: Node) -> ChangedDimensi
   }
 }
 
-fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
+fn canonical_changed_dimension_receipt(dag: Dag, edit: v2.std.node.Edit) -> ChangedDimensionReceipt {
   match subterm_at(root: dag, path: edit.at) {
     Accepted { value: current, diagnostics: _ } =>
       changed_dimension_families_union(before: current, after: edit.replacement)
@@ -1066,13 +1066,13 @@ fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimension
   }
 }
 
-fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceipt {
+fn canonical_ancestor_frame_dependencies(frame: v2.lens.application.AncestorFrame) -> FrontierReceipt {
   match find_child_by_name(root: frame.ancestor, name: frame.step) {
     Accepted { value: child, diagnostics: _ } =>
       FrontierProduced {
         dependencies: [
           FrontierDependency {
-            dependency: DependencyView {
+            dependency: v2.std.dependency.DependencyView {
               source: frame.ancestor,
               dependent: child,
               kind: Contains,
@@ -1087,14 +1087,14 @@ fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceip
   }
 }
 
-fn frontier_dependency_from_dependency_view(dependency: DependencyView) -> FrontierDependency {
+fn frontier_dependency_from_dependency_view(dependency: v2.std.dependency.DependencyView) -> FrontierDependency {
   FrontierDependency {
     dependency: dependency,
     target: DependencyDependent
   }
 }
 
-fn frontier_dependencies_from_dependency_views(dependencies: List<DependencyView>) -> List<FrontierDependency> {
+fn frontier_dependencies_from_dependency_views(dependencies: List<v2.std.dependency.DependencyView>) -> List<FrontierDependency> {
   fold(dependencies, init: [], f: fn(acc, dependency) {
     list_snoc_item(
       xs: acc,
@@ -1105,7 +1105,7 @@ fn frontier_dependencies_from_dependency_views(dependencies: List<DependencyView
 
 fn append_canonical_ancestor_dependencies(
   acc: FrontierReceipt,
-  frame: AncestorFrame
+  frame: v2.lens.application.AncestorFrame
 ) -> FrontierReceipt {
   match acc {
     FrontierProduced { dependencies: dependencies } =>
@@ -1129,13 +1129,13 @@ fn append_canonical_ancestor_dependencies(
   }
 }
 
-fn canonical_ancestor_dependencies(frames: List<AncestorFrame>) -> FrontierReceipt {
+fn canonical_ancestor_dependencies(frames: List<v2.lens.application.AncestorFrame>) -> FrontierReceipt {
   fold(frames, init: FrontierProduced { dependencies: [] }, f: fn(acc, frame) {
     append_canonical_ancestor_dependencies(acc: acc, frame: frame)
   })
 }
 
-fn canonical_region_dependencies(dag: Dag, walk: AncestorWalk) -> FrontierReceipt {
+fn canonical_region_dependencies(dag: Dag, walk: v2.lens.application.AncestorWalk) -> FrontierReceipt {
   match canonical_ancestor_dependencies(frames: walk.frames) {
     FrontierProduced { dependencies: _ } =>
       let closure = affected_set_closure(dependencies: dependency_lens(root: dag), edit_locus: walk.current)
@@ -1161,7 +1161,7 @@ fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> Fro
 fn canonical_propagation_receipt(
   dag: Dag,
   edit_dimension: EditDimension,
-  dependency: DependencyView
+  dependency: v2.std.dependency.DependencyView
 ) -> PropagationReceipt {
   if dependency_in_lens_frontier(dependency: dependency) {
     Propagates
@@ -1197,13 +1197,13 @@ fn canonical_affected_set_read() -> AffectedSetRead {
   }
 }
 
-fn canonical_post_edit_dag(dag: Dag, edit: Edit) -> AffectedPostEditDagRead {
+fn canonical_post_edit_dag(dag: Dag, edit: v2.std.node.Edit) -> AffectedPostEditDagRead {
   AffectedPostEditDagRead {
     outcome: substitute_at(root: dag, path: edit.at, replacement: edit.replacement)
   }
 }
 
-fn affected_set(dag: Dag, diff: Diff) -> Witness<ReExecFrontier> {
+fn affected_set(dag: Dag, diff: v2.std.node.Diff) -> Witness<ReExecFrontier> {
   re_exec_frontier_from_diff(
     read_model: canonical_affected_set_read(),
     post_edit_dag: canonical_post_edit_dag,
@@ -1231,9 +1231,9 @@ type RepoProcessUniverse
   = UniverseComplete { processes: List<RepoProcess> }
   | UniverseIncomplete { uncovered_kind: v2.std.node.Symbol, reason: FailClosedReason }
 
-data affected_set_reflect_gate_type: Symbol = ^Gate
-data affected_set_reflect_meta_process_kind_type: Symbol = ^MetaProcessKind
-data affected_set_reflect_repo_process_kind_type: Symbol = ^RepoProcessKind
+data affected_set_reflect_gate_type: v2.std.node.Symbol = ^Gate
+data affected_set_reflect_meta_process_kind_type: v2.std.node.Symbol = ^MetaProcessKind
+data affected_set_reflect_repo_process_kind_type: v2.std.node.Symbol = ^RepoProcessKind
 
 fn ci_gate_processes() -> List<RepoProcess> {
   fold(coproduct_arm_keys(type_name: affected_set_reflect_gate_type), init: [], f: fn(acc, key) {
@@ -1247,7 +1247,7 @@ fn meta_processes() -> List<RepoProcess> {
   })
 }
 
-fn universe_has_process_of_kind(processes: List<RepoProcess>, kind_key: Symbol) -> Bool {
+fn universe_has_process_of_kind(processes: List<RepoProcess>, kind_key: v2.std.node.Symbol) -> Bool {
   fold(processes, init: false, f: fn(acc, p) {
     acc || (discriminant(v: p.kind) == kind_key)
   })
@@ -1281,6 +1281,6 @@ fn repo_process_universe() -> RepoProcessUniverse {
   )
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

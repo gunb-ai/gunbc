@@ -91,15 +91,15 @@ fn admitted_capability_outcome(observation: SparkCapabilityObservation) -> Capab
       match observation.probe_effect {
         ProbeInert => CapabilityPresent { evidence: e }
         ProbeMayEstablish { mechanism: m } => CapabilityObservationRefused {
-          first: join(["a positive readback is not evidence here: performing the probe may have established the subject via ", m as String], "") as NonEmptyStr,
+          first: join(["a positive readback is not evidence here: performing the probe may have established the subject via ", m as String], "") as std.types.NonEmptyStr,
           more: [],
         }
         ProbeAnswersWithoutSubject { mechanism: m } => CapabilityObservationRefused {
-          first: join(["a positive readback is not evidence here: the probe answers positively with no subject present via ", m as String], "") as NonEmptyStr,
+          first: join(["a positive readback is not evidence here: the probe answers positively with no subject present via ", m as String], "") as std.types.NonEmptyStr,
           more: [],
         }
         ProbeEffectUnknown { reason: r } => CapabilityObservationRefused {
-          first: join(["a positive readback is not evidence here: the probe's effect on the subject is unclassified -- ", r as String], "") as NonEmptyStr,
+          first: join(["a positive readback is not evidence here: the probe's effect on the subject is unclassified -- ", r as String], "") as std.types.NonEmptyStr,
           more: [],
         }
       }
@@ -120,8 +120,8 @@ fn admitted_capability_outcome(observation: SparkCapabilityObservation) -> Capab
 // matches, because "no row" means nobody asked, not that the capability is missing.
 fn observation_for(
   observations: List<SparkCapabilityObservation>,
-  host: HostIdentity,
-  principal: NonEmptyStr,
+  host: product.placement_supply.HostIdentity,
+  principal: std.types.NonEmptyStr,
   capability: SparkServingCapability,
 ) -> CapabilityObservationOutcome {
   fold(observations, init: CapabilityUnobserved, f: fn(acc, o) {
@@ -150,20 +150,20 @@ fn capability_outcome_label(outcome: CapabilityObservationOutcome) -> String {
 
 // The probe classifications for the reads this lane actually performs, stated as data so a probe
 // author picks from a modeled row rather than deciding independently each time.
-data linger_probe_effect: ProbeEffectOnSubject = ProbeInert
+data linger_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = ProbeInert
 
 // The one that must NOT be used as evidence, kept as a row precisely so its unsuitability is
 // visible rather than rediscovered: SSH login starts a user manager through logind, so a probe that
 // observes a running manager over SSH may have started it.
-data user_manager_over_ssh_probe_effect: ProbeEffectOnSubject = ProbeMayEstablish {
-  mechanism: "an SSH login starts a systemd user manager via pam_systemd/logind, so observing a running manager through an SSH probe may have created it" as NonEmptyStr
+data user_manager_over_ssh_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = ProbeMayEstablish {
+  mechanism: "an SSH login starts a systemd user manager via pam_systemd/logind, so observing a running manager through an SSH probe may have created it" as std.types.NonEmptyStr
 }
 
-data accelerator_inventory_probe_effect: ProbeEffectOnSubject = ProbeInert
+data accelerator_inventory_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = ProbeInert
 
 // A write trial and a bind trial are CAPABILITY TRIALS, and they are inert with respect to the
 // capability even though they touch the host: creating and removing a temporary file does not make
 // the artifact root writable, it demonstrates that it already was. The distinction the independence
 // criterion draws is about the SUBJECT, not about whether the probe had any effect at all.
-data writable_root_trial_probe_effect: ProbeEffectOnSubject = ProbeInert
-data endpoint_bind_trial_probe_effect: ProbeEffectOnSubject = ProbeInert
+data writable_root_trial_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = ProbeInert
+data endpoint_bind_trial_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = ProbeInert

@@ -60,16 +60,16 @@ type IntrospectApplication<Output> {
   section: SectionRef
   span: SourceSpan
 }
-fn path_unresolvable_diagnostic(at: Node) -> Diagnostic {
-  Diagnostic {
+fn path_unresolvable_diagnostic(at: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^path_unresolvable_reason,
     at: node_locus(node: at),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn path_ambiguous_diagnostic(at: Node) -> Diagnostic {
-  Diagnostic {
+fn path_ambiguous_diagnostic(at: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^path_ambiguous_reason,
     at: node_locus(node: at),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -78,8 +78,8 @@ fn path_ambiguous_diagnostic(at: Node) -> Diagnostic {
 
 fn lens_enforcement_violation_diagnostic<Projected, Budget>(
   input: LensEnforcementViolationInput<Projected, Budget>
-) -> Diagnostic {
-  Diagnostic {
+) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^lens_enforcement_violation_reason,
     at: node_locus(node: input.at),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -98,15 +98,15 @@ fn lens_enforcement_violation_input<Projected, Budget>(
   }
 }
 
-fn advisory_report_diagnostic(report: Report) -> Diagnostic {
-  Diagnostic {
+fn advisory_report_diagnostic(report: v2.std.report.Report) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: report_reason_to_diagnostic_reason(reason: report.reason),
     at: report.at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn find_child_by_name(root: Node, name: Symbol) -> Outcome<Node> {
+fn find_child_by_name(root: Node, name: v2.std.node.Symbol) -> Outcome<Node> {
   match find_named_child(root: root, name: name) {
     Accepted { value: child, diagnostics: d } => Accepted { value: child, diagnostics: d }
     Rejected { diagnostics: diags } =>
@@ -118,7 +118,7 @@ fn find_child_by_name(root: Node, name: Symbol) -> Outcome<Node> {
   }
 }
 
-fn subterm_at_steps(root: Node, steps: List<Symbol>) -> Outcome<Node> {
+fn subterm_at_steps(root: Node, steps: List<v2.std.node.Symbol>) -> Outcome<Node> {
   fold_list(
     xs: steps,
     empty: outcome_accepted(value: root),
@@ -133,12 +133,12 @@ fn subterm_at_steps(root: Node, steps: List<Symbol>) -> Outcome<Node> {
   )
 }
 
-fn subterm_at(root: Node, path: Path) -> Outcome<Node> {
+fn subterm_at(root: Node, path: v2.std.node.Path) -> Outcome<Node> {
   subterm_at_steps(root: root, steps: path.steps)
 }
 
-fn replace_edge_target(e: Edge, replacement: Node) -> Edge {
-  Edge { label: e.label, target: replacement }
+fn replace_edge_target(e: v2.std.node.Edge, replacement: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: e.label, target: replacement }
 }
 
 type PathSplit {
@@ -147,7 +147,7 @@ type PathSplit {
   first: Bool
 }
 
-fn split_path_steps(root: Node, steps: List<Symbol>) -> Outcome<PathSplit> {
+fn split_path_steps(root: Node, steps: List<v2.std.node.Symbol>) -> Outcome<PathSplit> {
   if is_empty(xs: steps) {
     outcome_rejected(d: path_unresolvable_diagnostic(at: root))
   } else {
@@ -168,7 +168,7 @@ fn split_path_steps(root: Node, steps: List<Symbol>) -> Outcome<PathSplit> {
   }
 }
 
-fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Node> {
+fn rebuild_node_with_child(root: Node, name: v2.std.node.Symbol, child: Node) -> Outcome<Node> {
   if name_occurrences(name: name, children: root.children) == 0 {
     outcome_rejected(d: path_unresolvable_diagnostic(at: root))
   } else if name_occurrences(name: name, children: root.children) == 1 {
@@ -205,7 +205,7 @@ type AncestorWalk {
   frames: List<AncestorFrame>
 }
 
-fn collect_ancestor_frames(root: Node, steps: List<Symbol>) -> Outcome<AncestorWalk> {
+fn collect_ancestor_frames(root: Node, steps: List<v2.std.node.Symbol>) -> Outcome<AncestorWalk> {
   fold_list(
     xs: steps,
     empty: outcome_accepted(value: AncestorWalk { current: root, frames: [] }),
@@ -252,7 +252,7 @@ fn thread_substitution_up(frames: List<AncestorFrame>, rebuilt_child: Node) -> O
   )
 }
 
-fn substitute_at(root: Node, path: Path, replacement: Node) -> Outcome<Node> {
+fn substitute_at(root: Node, path: v2.std.node.Path, replacement: Node) -> Outcome<Node> {
   if is_empty(xs: path.steps) {
     outcome_accepted(value: replacement)
   } else {
@@ -279,11 +279,11 @@ fn substitute_at(root: Node, path: Path, replacement: Node) -> Outcome<Node> {
   }
 }
 
-fn apply_edit(root: Node, edit: Edit) -> Outcome<Node> {
+fn apply_edit(root: Node, edit: v2.std.node.Edit) -> Outcome<Node> {
   substitute_at(root: root, path: edit.at, replacement: edit.replacement)
 }
 
-fn apply_diff_edits(root: Node, edits: List<Edit>) -> Outcome<Node> {
+fn apply_diff_edits(root: Node, edits: List<v2.std.node.Edit>) -> Outcome<Node> {
   fold_list(
     xs: edits,
     empty: outcome_accepted(value: root),
@@ -298,7 +298,7 @@ fn apply_diff_edits(root: Node, edits: List<Edit>) -> Outcome<Node> {
   )
 }
 
-fn apply_diff(root: Node, d: Diff) -> Outcome<Node> {
+fn apply_diff(root: Node, d: v2.std.node.Diff) -> Outcome<Node> {
   apply_diff_edits(root: root, edits: d.edits)
 }
 
@@ -391,8 +391,8 @@ type ReportDiagnosticsFold {
   acc: v2.std.diagnostic.NonEmptyDiagnostics
 }
 
-fn advisory_reports_empty_diagnostic(at: Node) -> Diagnostic {
-  Diagnostic {
+fn advisory_reports_empty_diagnostic(at: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^advisory_reports_empty_reason,
     at: node_locus(node: at),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -400,9 +400,9 @@ fn advisory_reports_empty_diagnostic(at: Node) -> Diagnostic {
 }
 
 fn reports_to_non_empty_diagnostics(
-  reports: List<Report>,
+  reports: List<v2.std.report.Report>,
   at: Node
-) -> Outcome<NonEmptyDiagnostics> {
+) -> Outcome<v2.std.diagnostic.NonEmptyDiagnostics> {
   if is_empty(xs: reports) {
     outcome_rejected(d: advisory_reports_empty_diagnostic(at: at))
   } else {
@@ -435,8 +435,8 @@ fn apply_advisory_lens(
   lens: AdvisoryLens,
   section: SectionRef,
   root: Node,
-  config: LensApplicationConfig<Report, Report, Report>
-) -> Outcome<List<Report>> {
+  config: LensApplicationConfig<v2.std.report.Report, v2.std.report.Report, v2.std.report.Report>
+) -> Outcome<List<v2.std.report.Report>> {
   bind_outcome(
     o: section_subject(root: root, section: section),
     f: fn(subject) {
@@ -459,6 +459,6 @@ fn apply_advisory_lens(
   )
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

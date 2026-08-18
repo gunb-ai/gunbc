@@ -1,22 +1,22 @@
 module extdeps.github.app
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/apps/apps"
   }
 }
 
-data installation_auth_citation: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data installation_auth_citation: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation"
   }
 }
 
-data private_key_citation: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data private_key_citation: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps"
   }
@@ -72,7 +72,7 @@ data all_permission_axes: List<GitHubPermissionAxis> = [
   WorkflowsAxis, AdministrationAxis, OrganizationSelfHostedRunnersAxis
 ]
 
-fn permission_axis_wire_name(axis: GitHubPermissionAxis) -> NonEmptyStr {
+fn permission_axis_wire_name(axis: GitHubPermissionAxis) -> std.types.NonEmptyStr {
   match axis {
     ActionsAxis => "actions"
     ArtifactMetadataAxis => "artifact_metadata"
@@ -99,7 +99,7 @@ fn permission_axis_wire_name(axis: GitHubPermissionAxis) -> NonEmptyStr {
   }
 }
 
-fn permission_axis_from_wire(name: NonEmptyStr) -> GitHubPermissionAxis? {
+fn permission_axis_from_wire(name: std.types.NonEmptyStr) -> GitHubPermissionAxis? {
   v2.std.algebra.fold_list(
     xs: all_permission_axes,
     empty: none,
@@ -373,7 +373,7 @@ type GitHubAppPublicKeyFingerprint {
   digest: std.types.NonEmptyStr
 }
 
-fn sha256_base64_key_fingerprint(digest: NonEmptyStr) -> GitHubAppPublicKeyFingerprint {
+fn sha256_base64_key_fingerprint(digest: std.types.NonEmptyStr) -> GitHubAppPublicKeyFingerprint {
   GitHubAppPublicKeyFingerprint {
     algorithm: Sha256,
     encoding: FingerprintBase64,
@@ -395,9 +395,9 @@ fn key_fingerprint_eq(a: GitHubAppPublicKeyFingerprint, b: GitHubAppPublicKeyFin
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.app",
       decl_name: "GitHubAppRegistration",
       field: WholeDeclaration

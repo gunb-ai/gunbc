@@ -66,9 +66,9 @@ fn inflow_state_with_declaration(acc: InflowFoldState, declaration: String) -> I
       in_legacy_file: acc.in_legacy_file,
       current_file: acc.current_file,
       pending_attribute: false,
-      additions: concat(acc.additions, [LegacyTestBehavior {
+      additions: concat(acc.additions, [gunbc.legacy_test_behavior_disposition.LegacyTestBehavior {
         source_file: acc.current_file as std.types.FilePath,
-        test_fn: name as NonEmptyStr,
+        test_fn: name as std.types.NonEmptyStr,
       }]),
       unresolved: acc.unresolved,
     }
@@ -150,7 +150,7 @@ fn inflow_observation_of_diff(diff_text: String) -> LegacyTestInflowObservation 
   )
   if final_state.unresolved || final_state.pending_attribute {
     InflowRefused {
-      reason: "a diff added a line-anchored #[test] whose function declaration never appeared in the observed text; the arrival is real but unnamed, so this refuses rather than reporting a count it cannot justify" as NonEmptyStr,
+      reason: "a diff added a line-anchored #[test] whose function declaration never appeared in the observed text; the arrival is real but unnamed, so this refuses rather than reporting a count it cannot justify" as std.types.NonEmptyStr,
     }
   } else {
     InflowMeasured { additions: final_state.additions }
@@ -193,7 +193,7 @@ fn inflow_observation_of_unified_diff_result(
     inflow_observation_of_diff(diff_text: diff_text)
   } else {
     InflowRefused {
-      reason: concat("the change diff could not be observed, so inflow is unknown rather than zero: ", failure_reason) as NonEmptyStr,
+      reason: concat("the change diff could not be observed, so inflow is unknown rather than zero: ", failure_reason) as std.types.NonEmptyStr,
     }
   }
 }

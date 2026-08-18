@@ -22,16 +22,16 @@ type RustSourceManifestStateRefusal
   | ObservedCargoPathUntracked { path: String }
   | CargoTargetMissingLifecycleDisposition { path: String }
 
-data rust_source_manifest_state_verdict_query_scaffold: Disposition = Scaffold {
+data rust_source_manifest_state_verdict_query_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.stage0_rust_source_lifecycle_scaffold",
     decl_name: "rust_source_manifest_state_verdict",
     field: WholeDeclaration
   }
 }
 
-data rust_source_manifest_state_verdict_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold evidence fold; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes path-derived ratchets (authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:24 / v1-zero-hand-maintained-rust)")
+data rust_source_manifest_state_verdict_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold evidence fold; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes path-derived ratchets (authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:24 / v1-zero-hand-maintained-rust)")
 
 fn path_in_list(path: String, paths: List<String>) -> Bool {
   any(xs: paths, predicate: fn(p) { p == path })
@@ -176,7 +176,7 @@ fn count_observed_manifest_duplicate_excess(
   )
 }
 
-fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
+fn rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation) -> RustSourceManifestStateVerdict {
   match observation {
     RustManifestReadRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } }
@@ -261,27 +261,27 @@ data rust_source_discovery_prefix_hints: List<String> = [
 
 data stage0_src_repo_prefix: String = "src/v1/stage0/src/"
 
-data generated_stage0_files_authority_ref: DeclarationRef = DeclarationRef {
+data generated_stage0_files_authority_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.stage0_emit_plan_generated",
   decl_name: "generated_stage0_files",
   field: WholeDeclaration
 }
 
-data hand_maintained_stage0_filenames_authority_ref: DeclarationRef = DeclarationRef {
+data hand_maintained_stage0_filenames_authority_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.compiler.self_host.stage0_crate_layout",
   decl_name: "hand_maintained_stage0_filenames",
   field: WholeDeclaration
 }
 
-data stage0_partition_crate_rows_authority_ref: DeclarationRef = DeclarationRef {
+data stage0_partition_crate_rows_authority_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.workflow.rust_crate_partition",
   decl_name: "stage0_partition_crate_rows",
   field: WholeDeclaration
 }
 
-data stage0_cargo_bin_manifest_authority_ref: DeclarationRef = stage0_cargo_bin_paths_observation_ref
+data stage0_cargo_bin_manifest_authority_ref: std.decl_ref.DeclarationRef = stage0_cargo_bin_paths_observation_ref
 
-data behavioral_oracle_carrier_ref: DeclarationRef = DeclarationRef {
+data behavioral_oracle_carrier_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "tools.self_host_module_behavioral_transport_roster",
   decl_name: "compiler_module_behavioral_transport_roster",
   field: WholeDeclaration
@@ -332,7 +332,7 @@ data bootstrap_stage0_crate_layout_generated_repo_path: String = stage0_src_repo
   filename: "bootstrap_stage0_crate_layout_generated.rs"
 )
 
-data generated_artifact_emit_authority_ref: DeclarationRef = DeclarationRef {
+data generated_artifact_emit_authority_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.generated_artifact_emit",
   decl_name: "artifact_generate",
   field: WholeDeclaration
@@ -456,26 +456,26 @@ fn path_matches_discovery_prefix_hint(path: String) -> Bool {
 
 data residue_cssl_assembly_reason: String = "hand-retained cssl seed-linked closure assembly kernel — not regen-emitted; counted scaffold until harness consolidation emits it"
 
-data residue_cssl_assembly_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: cssl_seed_linked_closure_assembly.rs migrates to generated_stage0_files membership or a typed emit producer row deletes the hand file")
+data residue_cssl_assembly_dissolution: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: cssl_seed_linked_closure_assembly.rs migrates to generated_stage0_files membership or a typed emit producer row deletes the hand file")
 
 data residue_module_path_index_reason: String = "hand_maintained_stage0_dirs lists module_path_index/ but file membership is not enumerated by any join authority yet"
 
-data residue_module_path_index_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: module_path_index/*.rs paths derive from hand_maintained_stage0_dirs + host census, or the directory dissolves into generated emit")
+data residue_module_path_index_dissolution: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: module_path_index/*.rs paths derive from hand_maintained_stage0_dirs + host census, or the directory dissolves into generated emit")
 
 data residue_frontier_module_gap_reason: String = "frontier module with behavioral receipt roster row but not yet on hand_maintained_stage0_filenames / generated_stage0_files join"
 
-data residue_frontier_module_gap_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the module basename appears on hand_maintained_stage0_filenames() or generated_stage0_files and this residue row deletes")
+data residue_frontier_module_gap_dissolution: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: the module basename appears on hand_maintained_stage0_filenames() or generated_stage0_files and this residue row deletes")
 
 data residue_stage0_core_lib_reason: String = "src/v1/stage0_core/src/lib.rs exists on disk but is absent from stage0_partition_crate_rows — authority contradiction surfaced for operator resolution"
 
-data residue_stage0_core_lib_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_partition_crate_rows enrolls src/v1/stage0_core OR the crate deletes")
+data residue_stage0_core_lib_dissolution: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_partition_crate_rows enrolls src/v1/stage0_core OR the crate deletes")
 
-fn residue_row(path: String, reason: String, dissolution: DissolutionCondition) -> RustSourceLifecycleRow {
+fn residue_row(path: String, reason: String, dissolution: std.dissolution.DissolutionCondition) -> RustSourceLifecycleRow {
   RustSourceLifecycleRow {
     path: path,
     roles: [],
     maintenance_dispositions: [
-      HandScaffold { reason: reason as NonEmptyStr, dissolution: dissolution }
+      HandScaffold { reason: reason as std.types.NonEmptyStr, dissolution: dissolution }
     ]
   }
 }
@@ -539,7 +539,7 @@ fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> Rust
   )
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: list_concat_unique(acc: classified, items: [extra_path]),
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -558,7 +558,7 @@ fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
   )
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: classified,
     prior_tracked_rust_repo_paths: prior_classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -572,7 +572,7 @@ fn witness_honest_minimal_observation_ok() -> RustManifestObserved {
   )
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: classified,
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -602,14 +602,14 @@ fn witness_duplicate_tracked_observation() -> RustManifestObserved {
   let tracked_with_dup = list_snoc_item(xs: classified, item: dup_path)
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: tracked_with_dup,
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
   }
 }
 
-fn declaration_ref_populated(ref: DeclarationRef) -> Bool {
+fn declaration_ref_populated(ref: std.decl_ref.DeclarationRef) -> Bool {
   !(ref.module_path == "") && !(ref.decl_name == "")
 }
 
@@ -624,16 +624,16 @@ fn rust_maintenance_disposition_well_formed(disposition: RustMaintenanceDisposit
   }
 }
 
-data lifecycle_row_well_formed_query_scaffold: Disposition = Scaffold {
+data lifecycle_row_well_formed_query_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.stage0_rust_source_lifecycle_scaffold",
     decl_name: "lifecycle_row_well_formed",
     field: WholeDeclaration
   }
 }
 
-data lifecycle_row_well_formed_query_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: lifecycle_row_well_formed — interim scaffold obligation-shape validator; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes row well-formedness (authority dag/gunbc/v1_deletion_plan.dag)")
+data lifecycle_row_well_formed_query_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: lifecycle_row_well_formed — interim scaffold obligation-shape validator; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes row well-formedness (authority dag/gunbc/v1_deletion_plan.dag)")
 
 fn lifecycle_row_well_formed(row: RustSourceLifecycleRow) -> Bool {
   !(row.path == "")

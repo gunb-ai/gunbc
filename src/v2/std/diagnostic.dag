@@ -54,17 +54,17 @@ fn node_locus(node: Node) -> Locus {
   NodeLocus { anchor: LocusAnchor { at: node } }
 }
 
-fn port_locus(port: Symbol) -> Locus {
+fn port_locus(port: v2.std.node.Symbol) -> Locus {
   PortLocus { anchor: LocusAnchor { at: port } }
 }
 
-fn textual_whole_file_locus(file: Symbol) -> Locus {
+fn textual_whole_file_locus(file: v2.std.node.Symbol) -> Locus {
   Textual { file: file, extent: WholeFile }
 }
 
 fn textual_whole_file_diagnostic(
-  reason: Symbol,
-  module_file: Symbol,
+  reason: v2.std.node.Symbol,
+  module_file: v2.std.node.Symbol,
   correction: Correction
 ) -> Diagnostic {
   Diagnostic {
@@ -74,7 +74,7 @@ fn textual_whole_file_diagnostic(
   }
 }
 
-fn module_unavailable_diagnostic(reason: Symbol, module_file: Symbol) -> Diagnostic {
+fn module_unavailable_diagnostic(reason: v2.std.node.Symbol, module_file: v2.std.node.Symbol) -> Diagnostic {
   textual_whole_file_diagnostic(
     reason: reason,
     module_file: module_file,
@@ -166,11 +166,11 @@ fn diagnostics_merge(outer: Diagnostics, inner: Diagnostics) -> Diagnostics {
     }
   }
 }
-data diagnostics_monoid: Monoid<Diagnostics> = Monoid {
+data diagnostics_monoid: Monoid<Diagnostics> = std.algebra.Monoid {
   op: diagnostics_merge,
   identity: None
 }
-data non_empty_diagnostics_semigroup: Semigroup<NonEmptyDiagnostics> = Semigroup {
+data non_empty_diagnostics_semigroup: Semigroup<NonEmptyDiagnostics> = std.algebra.Semigroup {
   op: non_empty_diagnostics_append
 }
 fn rejected_with_pending(

@@ -1,8 +1,8 @@
 module extdeps.github.workflow_run_event
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/webhooks/webhook-events-and-payloads#workflow_run"
   }
@@ -14,9 +14,9 @@ data workflow_run_event_run_id_carrier_note: String = "run_id is carried as the 
 
 data workflow_run_event_member: String = "workflow_run"
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.workflow_run_event",
       decl_name: "workflow_run_event_member",
       field: WholeDeclaration
@@ -57,7 +57,7 @@ type WorkflowRunEventMember
   = WorkflowRunEventMemberFound { value: extdeps.languages.json.emit.JsonValue }
   | WorkflowRunEventMemberFailed { observation: WorkflowRunEventObservation }
 
-fn workflow_run_event_member_at(v: JsonValue, key: String) -> WorkflowRunEventMember {
+fn workflow_run_event_member_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> WorkflowRunEventMember {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberAbsent =>
       WorkflowRunEventMemberFailed { observation: WorkflowRunEventMemberAbsent { member: key } }
@@ -80,7 +80,7 @@ type WorkflowRunEventText
 
 data workflow_run_event_field_specific_decode_note: String = "TWO DECODERS, NOT ONE, AND THE NUMERIC WIDENING BELONGS TO EXACTLY ONE OF THEM. An earlier revision had a single helper that admitted a JSON string OR a JSON number and used it for every member — workflow name, conclusion, html_url, run_started_at, head_sha, head_branch, repository, originating event, and run id alike. The widening was introduced for run id, which GitHub genuinely delivers as a number, and it then applied to eight members for which a number is not a representation at all but a sign the payload shape changed or something else is answering.\n\nThat is the absorbing fallback in decoder form: the arm that should refuse instead widens, so `\"conclusion\": 0` or `\"head_branch\": 42` decodes to the text \"0\" and \"42\" and flows into a TRUST WALL that compares it against an expected value. It would not match, so it would refuse — but it would refuse with the WRONG reason (branch is not main) instead of the true one (branch is not a string), and a decoder whose diagnostics are wrong about why is a decoder nobody can debug against.\n\nSo: workflow_run_event_required_string_at admits ONLY a JSON string, and workflow_run_event_numeric_identity_at is the single place a numeric lexeme is accepted.\n\nIT HAS TWO CONSUMERS, AND ITS NAME NOW SAYS SO. It was called workflow_run_event_run_id_at while serving both `id` and `workflow_id`, and this paragraph described the widening as belonging to `exactly one member` — true of the decoder, false of the members, which is the prose-contradicting-mechanism class this file has already been caught by once. Both consumers are GitHub numeric identities and both are genuinely delivered as numbers, so one reader is correct; what was wrong was a name asserting a narrower scope than the code had. The widening is bounded by that reader's call sites, which are these two, and planting a number at any other member produces a located refusal naming that member."
 
-fn workflow_run_event_required_string_at(v: JsonValue, key: String) -> WorkflowRunEventText {
+fn workflow_run_event_required_string_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> WorkflowRunEventText {
   match workflow_run_event_member_at(v: v, key: key) {
     WorkflowRunEventMemberFailed { observation: o } =>
       WorkflowRunEventTextFailed { observation: o }
@@ -120,7 +120,7 @@ fn workflow_run_event_required_string_at(v: JsonValue, key: String) -> WorkflowR
 
 data workflow_run_event_run_id_decode_note: String = "THE ONLY MEMBER WHOSE DECODER ADMITS A NUMBER. GitHub delivers workflow_run.id as a JSON number, and the lexeme is the digits the payload actually carried, unchanged — accepting it is not a coercion. A string is admitted beside it because the identity comparison downstream is string-to-string either way and a payload quoting the id is still unambiguously the same id. Every non-textual, non-numeric shape refuses, so this decoder is exactly one wire form wider than the required-string decoder and not one form wider than that."
 
-fn workflow_run_event_numeric_identity_at(v: JsonValue, key: String) -> WorkflowRunEventText {
+fn workflow_run_event_numeric_identity_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> WorkflowRunEventText {
   match workflow_run_event_member_at(v: v, key: key) {
     WorkflowRunEventMemberFailed { observation: o } =>
       WorkflowRunEventTextFailed { observation: o }
@@ -156,7 +156,7 @@ fn workflow_run_event_numeric_identity_at(v: JsonValue, key: String) -> Workflow
   }
 }
 
-fn workflow_run_event_nested_text(v: JsonValue, outer: String, inner: String) -> WorkflowRunEventText {
+fn workflow_run_event_nested_text(v: extdeps.languages.json.emit.JsonValue, outer: String, inner: String) -> WorkflowRunEventText {
   match workflow_run_event_member_at(v: v, key: outer) {
     WorkflowRunEventMemberFailed { observation: o } =>
       WorkflowRunEventTextFailed { observation: o }
@@ -180,7 +180,7 @@ fn workflow_run_event_assemble(
   workflow_name: String,
   workflow_id: String,
   workflow_path: String,
-  conclusion: WorkflowRunConclusion,
+  conclusion: extdeps.github.workflow_runs.WorkflowRunConclusion,
   html_url: String,
   run_started_at: String,
   head_sha: String,
@@ -192,14 +192,14 @@ fn workflow_run_event_assemble(
   WorkflowRunEventObserved {
     event: WorkflowRunEvent {
       activity: activity,
-      run_id: run_id as NonEmptyStr,
+      run_id: run_id as std.types.NonEmptyStr,
       workflow_name: workflow_name,
-      workflow_id: workflow_id as NonEmptyStr,
+      workflow_id: workflow_id as std.types.NonEmptyStr,
       workflow_path: workflow_path,
       conclusion: conclusion,
-      html_url: html_url as NonEmptyStr,
-      run_started_at: run_started_at as NonEmptyStr,
-      head_sha: head_sha as CommitSha,
+      html_url: html_url as std.types.NonEmptyStr,
+      run_started_at: run_started_at as std.types.NonEmptyStr,
+      head_sha: head_sha as std.types.CommitSha,
       head_branch: head_branch,
       head_repository_full_name: head_repository_full_name,
       originating_event: originating_event,

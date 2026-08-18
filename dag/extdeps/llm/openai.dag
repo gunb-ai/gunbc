@@ -1,8 +1,8 @@
 module extdeps.llm.openai
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "platform.openai.com/docs/api-reference/chat/create"
   }
@@ -170,7 +170,7 @@ type OpenAiChatCompletion200Body {
   system_fingerprint: String?
 }
 
-data structural_coverage_gap_openai_chat_completion_200_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_openai_chat_completion_200_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "OpenAiChatCompletion200Message" },
@@ -184,7 +184,7 @@ data structural_coverage_gap_openai_chat_completion_200_residual: List<CoverageC
   }
 ]
 
-data structural_coverage_gap_openai_chat_message_additive_content_parts: List<CoverageClosureEntry> = [
+data structural_coverage_gap_openai_chat_message_additive_content_parts: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "OpenAiChatMessagePart" },
@@ -196,7 +196,7 @@ data structural_coverage_gap_openai_chat_message_additive_content_parts: List<Co
   }
 ]
 
-data structural_coverage_gap_openai_chat_message_additive_tool_calls: List<CoverageClosureEntry> = [
+data structural_coverage_gap_openai_chat_message_additive_tool_calls: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "ToolCall" },
@@ -308,7 +308,7 @@ type OpenAiResponses200OutputContent {
   annotations: List<OpenAiResponses200Annotation>?
 }
 
-data structural_coverage_gap_openai_responses_200_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_openai_responses_200_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "OpenAiResponses200OutputContent" },

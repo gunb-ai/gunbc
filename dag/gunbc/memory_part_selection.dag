@@ -56,7 +56,7 @@ type PartImplication
     }
 
 fn implication_severity(
-  step: MemoryTrainingStep,
+  step: extdeps.memory.training.MemoryTrainingStep,
   standing: TrainingEvidenceStanding,
 ) -> PartImplication {
   match standing {
@@ -71,9 +71,9 @@ fn implication_severity(
 }
 
 fn implication_for_step(
-  candidate: DramModuleCatalogRow,
+  candidate: extdeps.memory.types.DramModuleCatalogRow,
   failure: PlatformTrainingFailure,
-  target_board: BaseboardModel,
+  target_board: extdeps.boards.types.BaseboardModel,
 ) -> PartImplication {
   if failure.board != target_board {
     PartNotImplicated
@@ -85,9 +85,9 @@ fn implication_for_step(
 }
 
 fn part_implication(
-  candidate: DramModuleCatalogRow,
+  candidate: extdeps.memory.types.DramModuleCatalogRow,
   failures: List<PlatformTrainingFailure>,
-  target_board: BaseboardModel,
+  target_board: extdeps.boards.types.BaseboardModel,
 ) -> PartImplication {
   fold(
     failures,
@@ -126,8 +126,8 @@ type TopologyPressure
   | CapacityForcesExoticTopology { capacity_bytes: std.measure.ByteSize }
 
 fn topology_pressure(
-  candidate: DramModuleCatalogRow,
-  jedec: JedecDdrGenerationCatalogRow,
+  candidate: extdeps.memory.types.DramModuleCatalogRow,
+  jedec: extdeps.memory.types.JedecDdrGenerationCatalogRow,
 ) -> TopologyPressure {
   if capacity_reachable_as_dual_rank_registered(module: candidate, jedec: jedec) {
     CapacityReachableConventionally
@@ -187,8 +187,8 @@ type CandidateAdmission
 fn candidate_admission(
   candidate: PartCandidate,
   failures: List<PlatformTrainingFailure>,
-  declared_currency: CurrencyCode,
-  target_board: BaseboardModel,
+  declared_currency: std.currency.CurrencyCode,
+  target_board: extdeps.boards.types.BaseboardModel,
 ) -> CandidateAdmission {
   if candidate.currency != declared_currency {
     CandidateCurrencyMismatch {
@@ -218,8 +218,8 @@ fn candidate_admission(
 fn candidate_admissible(
   candidate: PartCandidate,
   failures: List<PlatformTrainingFailure>,
-  declared_currency: CurrencyCode,
-  target_board: BaseboardModel,
+  declared_currency: std.currency.CurrencyCode,
+  target_board: extdeps.boards.types.BaseboardModel,
 ) -> Bool {
   match candidate_admission(
     candidate: candidate,
@@ -252,8 +252,8 @@ fn candidate_dominates(a: PartCandidate, b: PartCandidate) -> Bool {
 fn pareto_frontier(
   candidates: List<PartCandidate>,
   failures: List<PlatformTrainingFailure>,
-  declared_currency: CurrencyCode,
-  target_board: BaseboardModel,
+  declared_currency: std.currency.CurrencyCode,
+  target_board: extdeps.boards.types.BaseboardModel,
 ) -> List<PartCandidate> {
   let admissible = candidates |> filter(c =>
     candidate_admissible(

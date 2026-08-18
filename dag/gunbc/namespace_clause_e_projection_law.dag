@@ -62,23 +62,23 @@ type NamespaceClauseEProjectionVerdict
     }
 
 fn direct_file_dependency_eq(
-  a: DirectFileDependency,
-  b: DirectFileDependency
+  a: std.occurrence_binding_candidates.DirectFileDependency,
+  b: std.occurrence_binding_candidates.DirectFileDependency
 ) -> Bool {
   a.consumer_file == b.consumer_file
     && a.provider_file == b.provider_file
 }
 
 fn direct_file_dependency_lists_eq(
-  left: List<DirectFileDependency>,
-  right: List<DirectFileDependency>
+  left: List<std.occurrence_binding_candidates.DirectFileDependency>,
+  right: List<std.occurrence_binding_candidates.DirectFileDependency>
 ) -> ListsAgreementAtVerdict {
   lists_agree_at(left: left, right: right, agree: direct_file_dependency_eq)
 }
 
 fn reference_derived_file_dependencies_match_provenances(
-  provenances: List<CrossFileBindingProvenance>,
-  file_dependencies: List<DirectFileDependency>
+  provenances: List<std.occurrence_binding_candidates.CrossFileBindingProvenance>,
+  file_dependencies: List<std.occurrence_binding_candidates.DirectFileDependency>
 ) -> ListsAgreementAtVerdict {
   direct_file_dependency_lists_eq(
     left: direct_file_dependencies_from_provenances(provenances: provenances),
@@ -87,16 +87,16 @@ fn reference_derived_file_dependencies_match_provenances(
 }
 
 fn cross_file_binding_provenance_matches_provider(
-  a: CrossFileBindingProvenance,
-  b: BoundReferenceProvider,
+  a: std.occurrence_binding_candidates.CrossFileBindingProvenance,
+  b: std.occurrence_binding_candidates.BoundReferenceProvider,
 ) -> Bool {
   a.reference_occurrence == b.reference_occurrence
     && a.declaration_occurrence == b.declaration_occurrence
 }
 
 fn provenance_provider_lists_agree(
-  provenances: List<CrossFileBindingProvenance>,
-  providers: List<BoundReferenceProvider>
+  provenances: List<std.occurrence_binding_candidates.CrossFileBindingProvenance>,
+  providers: List<std.occurrence_binding_candidates.BoundReferenceProvider>
 ) -> ListsAgreementAtVerdict {
   lists_agree_at(
     left: provenances,
@@ -106,7 +106,7 @@ fn provenance_provider_lists_agree(
 }
 
 fn assess_controlled_two_mention_provenance_projection(
-  production: ReferenceDerivedClauseEProduction,
+  production: std.occurrence_binding_candidates.ReferenceDerivedClauseEProduction,
 ) -> NamespaceClauseEProjectionVerdict {
   match production {
     ReferenceDerivedClauseEProductionReady {

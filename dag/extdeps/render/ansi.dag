@@ -2,8 +2,8 @@ module extdeps.render.ansi
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "ecma-international.org/publications-and-standards/standards/ecma-48/"
   }
@@ -152,7 +152,7 @@ fn emit_sgr_csi(style: SgrStyle) -> String {
   concat(concat(csi_esc, format_sgr_params(style: style)), csi_end)
 }
 
-fn ansi_code(c: SemanticColor) -> String? {
+fn ansi_code(c: std.symbols.SemanticColor) -> String? {
   fold(ansi_mappings,
     init: none,
     f: (acc, m) => match acc {

@@ -32,7 +32,7 @@ fn srv1_blue_green_slot_selection(status_json: String) -> BlueGreenSlotSelection
   }
 }
 
-fn tailscale_serve_status_read(transport: HostEffectTransport) -> TailscaleServeStatusRead {
+fn tailscale_serve_status_read(transport: gunbc.host_effect.HostEffectTransport) -> TailscaleServeStatusRead {
   let argv = concat(["tailscale"], tailscale_serve_status_json_argv())
   match transport {
     LocalShell => {
@@ -62,9 +62,9 @@ data blue_green_cutover_order_note: String = "Operator-signed 2026-08-01: straig
 
 fn live_deploy_blue_green_cutover_with_selection(
   selection: BlueGreenSlotSelection,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match selection {
     BlueGreenSlotSelectionRefused { reason } =>
@@ -100,8 +100,8 @@ fn live_deploy_blue_green_cutover_with_selection(
   }
 }
 
-fn live_deploy_preflight_intent(access: DeployAccess) -> HostEffectIntent {
-  HostEffectIntent {
+fn live_deploy_preflight_intent(access: gunbc.ci_deploy_access.DeployAccess) -> gunbc.host_effect.HostEffectIntent {
+  gunbc.host_effect.HostEffectIntent {
     target: HostOs { node: access.host },
     effect: DeployAccessPreflight {},
     evidence: host_effect_identity_evidence,
@@ -111,14 +111,14 @@ fn live_deploy_preflight_intent(access: DeployAccess) -> HostEffectIntent {
 }
 
 fn live_deploy_mutation_denied(
-  target: NodeControlPlane,
-  effect: HostEffect,
-  transport: HostEffectTransport,
-  gate: AccessDecision
+  target: gunbc.host_effect.NodeControlPlane,
+  effect: gunbc.host_effect.HostEffect,
+  transport: gunbc.host_effect.HostEffectTransport,
+  gate: std.access.AccessDecision
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   NotConverged {
     reason: deploy_access_decision_reason(d: gate),
-    applied: HostEffectIntent {
+    applied: gunbc.host_effect.HostEffectIntent {
       target: target,
       effect: effect,
       evidence: host_effect_identity_evidence,
@@ -129,12 +129,12 @@ fn live_deploy_mutation_denied(
 }
 
 fn live_deploy_fold(
-  spec: DeploymentSpec,
-  effect: HostEffect,
-  transport: HostEffectTransport,
-  access: DeployAccess,
-  fixture_actor: DeployAccessActor?,
-  fixture_host: DeployTargetHostObservation?
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  effect: gunbc.host_effect.HostEffect,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess,
+  fixture_actor: gunbc.ci_deploy_access.DeployAccessActor?,
+  fixture_host: gunbc.ci_deploy_target_host.DeployTargetHostObservation?
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let target = HostOs { node: spec.target.host }
   let gate = deploy_mutation_gate(
@@ -163,10 +163,10 @@ fn live_deploy_fold(
 }
 
 fn live_deploy_ensure_dependency(
-  spec: DeploymentSpec,
-  dep: DeploymentDependencyStep,
-  transport: HostEffectTransport,
-  access: DeployAccess
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  dep: gunbc.live_deploy.spec.DeploymentDependencyStep,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
@@ -179,10 +179,10 @@ fn live_deploy_ensure_dependency(
 }
 
 fn live_deploy_apply_mutation_via_transport(
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
@@ -195,10 +195,10 @@ fn live_deploy_apply_mutation_via_transport(
 }
 
 fn live_deploy_apply_readiness_gate(
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess,
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess,
   mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_apply_readiness_gate_with_readiness(
@@ -237,9 +237,9 @@ fn live_deploy_apply_readiness_gate_with_readiness(
 }
 
 fn live_deploy_apply_digest_readback_via_transport(
-  spec: DeploymentSpec,
-  transport: HostEffectTransport,
-  access: DeployAccess,
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
@@ -252,10 +252,10 @@ fn live_deploy_apply_digest_readback_via_transport(
 }
 
 fn live_deploy_apply_via_transport(
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let mutation = live_deploy_apply_mutation_via_transport(
     spec: spec,
@@ -296,9 +296,9 @@ fn live_deploy_apply_via_transport(
 }
 
 fn live_deploy_retract_via_transport(
-  spec: DeploymentSpec,
-  transport: HostEffectTransport,
-  access: DeployAccess
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
@@ -310,7 +310,7 @@ fn live_deploy_retract_via_transport(
   )
 }
 
-fn live_deploy_access_preflight_for(access: DeployAccess) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn live_deploy_access_preflight_for(access: gunbc.ci_deploy_access.DeployAccess) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let proof = deploy_target_proof_from_access(access: access)
   let intent = live_deploy_preflight_intent(access: access)
   if !deploy_target_ssh_proof_structurally_valid(proof: proof) {
@@ -337,7 +337,7 @@ fn live_deploy_access_preflight_for(access: DeployAccess) -> Reconciliation<Host
       Deny { refusal: _ } =>
         NotConverged {
           reason: deploy_access_decision_reason(d: gate),
-          applied: HostEffectIntent {
+          applied: gunbc.host_effect.HostEffectIntent {
             target: intent.target,
             effect: intent.effect,
             evidence: intent.evidence,
@@ -354,8 +354,8 @@ fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffect
 }
 
 fn live_deploy_apply_srv1_with_access(
-  access: DeployAccess,
-  candidate: CandidateRelease,
+  access: gunbc.ci_deploy_access.DeployAccess,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match tailscale_serve_status_read(transport: access.transport) {
     TailscaleServeStatusReadRefused { reason } =>
@@ -373,7 +373,7 @@ fn live_deploy_apply_srv1_with_access(
 data retract_carries_no_candidate_note: String = "A RETRACT OBSERVES NO CANDIDATE, WHICH IS WHY IT CANNOT FAIL FOR WANT OF ONE. It removes what this deployment owns; there is no release being installed, so there is nothing whose identity a retract could state and nothing for readiness to compare. While the revision rode on DeploymentServiceConfig this path had to construct one anyway, and worse, it called observe_candidate_release first — so a retract could refuse because git HEAD was unreadable, a condition with no bearing whatsoever on tearing down a unit.\\n\\nThe fold now passes RevisionNotInstalled, so the arm that would render an ExecStart refuses loudly instead of naming a revision this operation never had."
 
 fn live_deploy_retract_srv1_with_access(
-  access: DeployAccess,
+  access: gunbc.ci_deploy_access.DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_retract_via_transport(
     spec: deployment_spec_srv1(),
@@ -382,7 +382,7 @@ fn live_deploy_retract_srv1_with_access(
   )
 }
 
-fn live_deploy_apply_srv1(candidate: CandidateRelease) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn live_deploy_apply_srv1(candidate: gunbc.live_deploy.candidate.CandidateRelease) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_apply_srv1_with_access(access: ci_deploy_srv1_access, candidate: candidate)
 }
 
@@ -390,7 +390,7 @@ fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvid
   live_deploy_retract_srv1_with_access(access: ci_deploy_srv1_access)
 }
 
-fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ProcessExit {
+fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> std.process.ProcessExit {
   if reconciliation_converged(r: r) {
     ExitSuccess
   } else {
@@ -403,7 +403,7 @@ fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffec
 
 data live_deploy_candidate_observed_at_launcher_note: String = "THE ONE OBSERVATION POINT OF THE INVOCATION, AND IT IS HERE BECAUSE HERE IS BEFORE EVERY MUTATION. The preflight has not run, no rsync has touched the host, no unit has been written; the deploying checkout is exactly the tree the job was handed. Observing later — inside the cutover, inside the emitter, inside a readiness retry — would read a tree the deploy itself may have altered, and would give the invocation two revisions that both look right locally.\n\nA REFUSAL HERE STOPS THE LINE BEFORE ANYTHING IS TOUCHED. A deploy that cannot name the release it is installing has nothing to write into ExecStart and nothing to verify the routed process against, so it exits with the typed cause rather than proceeding with a placeholder. This is the cheapest possible place to refuse: nothing has been mutated, so there is no half-applied state to reason about and no rollback to perform."
 
-fn live_deploy_wet_with_access(access: DeployAccess) -> ProcessExit {
+fn live_deploy_wet_with_access(access: gunbc.ci_deploy_access.DeployAccess) -> std.process.ProcessExit {
   match observe_candidate_release() {
     CandidateUnobservable { cause: why } =>
       exit_failure(reason: candidate_unobservable_detail(cause: why))
@@ -420,7 +420,7 @@ fn live_deploy_wet_with_access(access: DeployAccess) -> ProcessExit {
   }
 }
 
-fn live_deploy_retract_wet_with_access(access: DeployAccess) -> ProcessExit {
+fn live_deploy_retract_wet_with_access(access: gunbc.ci_deploy_access.DeployAccess) -> std.process.ProcessExit {
   let preflight = live_deploy_access_preflight_for(access: access)
   if !reconciliation_converged(r: preflight) {
     live_deploy_reconciliation_exit(r: preflight)
@@ -431,18 +431,18 @@ fn live_deploy_retract_wet_with_access(access: DeployAccess) -> ProcessExit {
   }
 }
 
-func live_deploy_apply_srv1_wet() -> ProcessExit {
+func live_deploy_apply_srv1_wet() -> std.process.ProcessExit {
   live_deploy_wet_with_access(access: ci_deploy_srv1_access)
 }
 
-func live_deploy_apply_srv1_operator_wet() -> ProcessExit {
+func live_deploy_apply_srv1_operator_wet() -> std.process.ProcessExit {
   live_deploy_wet_with_access(access: ci_deploy_srv1_operator_access)
 }
 
-func live_deploy_retract_srv1_wet() -> ProcessExit {
+func live_deploy_retract_srv1_wet() -> std.process.ProcessExit {
   live_deploy_retract_wet_with_access(access: ci_deploy_srv1_access)
 }
 
-func live_deploy_retract_srv1_operator_wet() -> ProcessExit {
+func live_deploy_retract_srv1_operator_wet() -> std.process.ProcessExit {
   live_deploy_retract_wet_with_access(access: ci_deploy_srv1_operator_access)
 }

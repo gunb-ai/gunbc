@@ -14,7 +14,7 @@ type VisibilityLeak {
 
 data no_visibility_leaks: List<VisibilityLeak> = []
 
-fn module_is_public(facts: List<ModuleVisibilityFact>, qn: QualifiedName) -> Bool {
+fn module_is_public(facts: List<ModuleVisibilityFact>, qn: v2.std.qualified_name.QualifiedName) -> Bool {
   fold(facts, init: false, f: fn(acc, fct) {
     if acc { true }
     else {
@@ -50,6 +50,6 @@ fn visibility_clean(facts: List<ModuleVisibilityFact>) -> Bool {
   visibility_leak_count(facts: facts) == 0
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

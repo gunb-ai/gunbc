@@ -1,8 +1,8 @@
 module extdeps.cpu.ampere_altra_package
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
   }
@@ -43,7 +43,7 @@ fn altra_pin_summary_total() -> Int {
 // specific product of the other family. The value was correct, which is exactly why it survived:
 // both families are LGA4926, so every witness passed and nothing could have caught it by
 // execution. It now reads the family authority, which is what it always meant.
-data altra_fclga_socket: CpuSocket = ampere_lga4926_socket
+data altra_fclga_socket: extdeps.cpu.types.CpuSocket = ampere_lga4926_socket
 
 fn altra_declared_contact_count() -> Int {
   altra_fclga_socket.contact_count
@@ -62,20 +62,20 @@ fn altra_declared_contact_count() -> Int {
 // this module's sibling attachment stack exists to keep them apart. What it legitimately bounds is
 // the volume the processor occupies once seated, which is a real constraint on keepout and on
 // neighbouring component clearance even while the socket part remains unselected.
-data altra_package_body_width: Micrometer = micrometer(count: 77080)
+data altra_package_body_width: std.measure.Micrometer = micrometer(count: 77080)
 
-data altra_package_body_height: Micrometer = micrometer(count: 67000)
+data altra_package_body_height: std.measure.Micrometer = micrometer(count: 67000)
 
 // THE LAND PITCH BELONGS TO THE PACKAGE, NOT TO WHICHEVER DOCUMENT TRANSCRIBED IT FIRST. The
 // datasheet's package mechanical drawing states e = 0.87 BASIC and f = 0.50 BASIC on the same
 // figure as the body extent and the 4926-contact identity, so the hexagonal pitch pair is a
 // property of the part. It was previously authored only in the platform-specification module, and
 // a fact's ABSENCE from its subject's authority is not what makes it belong somewhere else.
-data altra_package_pad_pitch_dx: Micrometer = micrometer(count: 870)
+data altra_package_pad_pitch_dx: std.measure.Micrometer = micrometer(count: 870)
 
-data altra_package_pad_pitch_dy: Micrometer = micrometer(count: 500)
+data altra_package_pad_pitch_dy: std.measure.Micrometer = micrometer(count: 500)
 
-data altra_package_body_designator: NonEmptyStr = "FCLGA4926"
+data altra_package_body_designator: std.types.NonEmptyStr = "FCLGA4926"
 
 data altra_ddr4_channel_count: Int = 8
 
@@ -110,7 +110,7 @@ type Table4PinRow {
   signal_name: std.types.NonEmptyStr
 }
 
-data power_supply_signal_prefixes: List<NonEmptyStr> = [
+data power_supply_signal_prefixes: List<std.types.NonEmptyStr> = [
   "VDD",
   "VCC",
   "VPP",
@@ -122,37 +122,37 @@ data power_supply_signal_prefixes: List<NonEmptyStr> = [
   "DVDD",
 ]
 
-fn signal_has_power_supply_prefix(signal: NonEmptyStr) -> Bool {
+fn signal_has_power_supply_prefix(signal: std.types.NonEmptyStr) -> Bool {
   fold(power_supply_signal_prefixes, init: false, f: fn(acc, prefix) {
     acc || starts_with(s: signal as String, prefix: prefix as String)
   })
 }
 
-fn signal_is_reserved_name(signal: NonEmptyStr) -> Bool {
+fn signal_is_reserved_name(signal: std.types.NonEmptyStr) -> Bool {
   starts_with(s: signal as String, prefix: "RESERVED")
     || starts_with(s: signal as String, prefix: "RFU")
 }
 
-fn signal_is_power_return_name(signal: NonEmptyStr) -> Bool {
+fn signal_is_power_return_name(signal: std.types.NonEmptyStr) -> Bool {
   (signal as String) == "VSS"
     || (signal as String) == "GND"
     || starts_with(s: signal as String, prefix: "VSS_")
 }
 
-fn signal_is_reference_name(signal: NonEmptyStr) -> Bool {
+fn signal_is_reference_name(signal: std.types.NonEmptyStr) -> Bool {
   (signal as String) == "AGND" || (signal as String) == "DGND"
 }
 
-fn signal_has_positive_polarity_suffix(signal: NonEmptyStr) -> Bool {
+fn signal_has_positive_polarity_suffix(signal: std.types.NonEmptyStr) -> Bool {
   ends_with(s: signal as String, suffix: "_P")
 }
 
-fn signal_has_negative_polarity_suffix(signal: NonEmptyStr) -> Bool {
+fn signal_has_negative_polarity_suffix(signal: std.types.NonEmptyStr) -> Bool {
   ends_with(s: signal as String, suffix: "_N")
     || ends_with(s: signal as String, suffix: "_M")
 }
 
-fn differential_pair_base_name(signal: NonEmptyStr) -> NonEmptyStr? {
+fn differential_pair_base_name(signal: std.types.NonEmptyStr) -> std.types.NonEmptyStr? {
   if signal_has_positive_polarity_suffix(signal: signal) || signal_has_negative_polarity_suffix(signal: signal) {
     let len = (signal as String).length()
     if len > 2 {
@@ -161,7 +161,7 @@ fn differential_pair_base_name(signal: NonEmptyStr) -> NonEmptyStr? {
           s: signal as String,
           start: 0,
           end: len - 2,
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       }
     } else {
       none
@@ -176,7 +176,7 @@ type DifferentialPolarityScan {
   has_negative: Bool
 }
 
-fn scan_table4_differential_polarities(rows: List<Table4PinRow>) -> Map<NonEmptyStr, DifferentialPolarityScan> {
+fn scan_table4_differential_polarities(rows: List<Table4PinRow>) -> Map<std.types.NonEmptyStr, DifferentialPolarityScan> {
   fold(rows, init: empty_map(), f: fn(acc, row) {
     match differential_pair_base_name(signal: row.signal_name) {
       Absent => acc
@@ -203,8 +203,8 @@ fn differential_pair_is_complete(scan: DifferentialPolarityScan) -> Bool {
 // Active-low and other single-ended _N/_M names (WE_N, RAS_N, …) with no _P mate route to
 // SingleEndedSignalContact when scan.has_negative && !scan.has_positive.
 fn classify_table4_signal(
-  signal: NonEmptyStr,
-  polarities: Map<NonEmptyStr, DifferentialPolarityScan>
+  signal: std.types.NonEmptyStr,
+  polarities: Map<std.types.NonEmptyStr, DifferentialPolarityScan>
 ) -> ContactElectricalFunction {
   if signal_is_reserved_name(signal: signal) {
     ReservedContact
@@ -236,7 +236,7 @@ fn classify_table4_signal(
 
 fn table4_row_to_contact(
   row: Table4PinRow,
-  polarities: Map<NonEmptyStr, DifferentialPolarityScan>
+  polarities: Map<std.types.NonEmptyStr, DifferentialPolarityScan>
 ) -> PackageContact {
   PackageContact {
     designator: row.designator,
@@ -267,7 +267,7 @@ type PackageContactMapStanding
   | DuplicateContactDesignator { designator: std.types.NonEmptyStr }
   | IncompleteDifferentialPolarity { pair: std.types.NonEmptyStr }
 
-fn contact_designators(map: PackageContactMap) -> List<NonEmptyStr> {
+fn contact_designators(map: PackageContactMap) -> List<std.types.NonEmptyStr> {
   map.contacts |> map(c => c.designator)
 }
 
@@ -334,7 +334,7 @@ type DifferentialPairStanding
   = AllDifferentialPairsComplete
   | IncompleteDifferentialPair { pair: std.types.NonEmptyStr, member_count: Int }
 
-fn first_incomplete_polarity_pair(contacts: List<PackageContact>) -> NonEmptyStr? {
+fn first_incomplete_polarity_pair(contacts: List<PackageContact>) -> std.types.NonEmptyStr? {
   fold(contacts, init: none, f: fn(acc, c) {
     match acc {
       Present { value: _ } => acc
@@ -390,7 +390,7 @@ type DesignatorScan {
   duplicated: Map<std.types.NonEmptyStr, Bool>
 }
 
-fn scan_designators(designators: List<NonEmptyStr>) -> DesignatorScan {
+fn scan_designators(designators: List<std.types.NonEmptyStr>) -> DesignatorScan {
   fold(designators, init: DesignatorScan { seen: empty_map(), duplicated: empty_map() }, f: fn(acc, d) {
     if map_contains_key(acc.seen, d) {
       DesignatorScan { seen: acc.seen, duplicated: map_insert(acc.duplicated, d, true) }
@@ -400,7 +400,7 @@ fn scan_designators(designators: List<NonEmptyStr>) -> DesignatorScan {
   })
 }
 
-fn first_duplicate_designator(designators: List<NonEmptyStr>) -> NonEmptyStr? {
+fn first_duplicate_designator(designators: List<std.types.NonEmptyStr>) -> std.types.NonEmptyStr? {
   let scan = scan_designators(designators: designators)
   fold(designators, init: none, f: fn(acc, d) {
     match acc {
@@ -454,9 +454,9 @@ fn altra_reference_board_collateral_standing() -> ReferenceBoardCollateralStandi
   }
 }
 
-data ampere_altra_package_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data ampere_altra_package_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu.ampere_altra_package",
       decl_name: "altra_fclga_socket",
       field: WholeDeclaration
@@ -466,4 +466,4 @@ data ampere_altra_package_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [ampere_altra_rev_a1_datasheet_authority, ampere_customer_reference_boards_authority]
 }
 
-data extdeps_model_scope: ExternalModelScope = ampere_altra_package_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = ampere_altra_package_model_scope

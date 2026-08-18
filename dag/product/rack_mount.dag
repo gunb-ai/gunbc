@@ -90,9 +90,9 @@ type ChassisMount {
 // not re-derived. The top unit is the one place ordinal and cardinal meet: position + magnitude - 1
 // is affine arithmetic, and it is the only site that reads the magnitude's count, deliberately, so
 // the crossing happens once and is visible rather than spread across the occupancy surface.
-fn mount_unit_span(m: ChassisMount) -> RackUnit { m.chassis.rack_units }
+fn mount_unit_span(m: ChassisMount) -> std.measure.RackUnit { m.chassis.rack_units }
 
-fn mount_top_unit(m: ChassisMount) -> RackUnitPosition {
+fn mount_top_unit(m: ChassisMount) -> product.placement_supply.RackUnitPosition {
   m.lowest_unit + rack_unit_count(u: mount_unit_span(m: m)) - 1
 }
 
@@ -103,7 +103,7 @@ fn mounts_collide(a: ChassisMount, b: ChassisMount) -> Bool {
   a.lowest_unit <= mount_top_unit(m: b) && b.lowest_unit <= mount_top_unit(m: a)
 }
 
-fn asset_eq(a: PhysicalAssetIdentity, b: PhysicalAssetIdentity) -> Bool {
+fn asset_eq(a: product.placement_supply.PhysicalAssetIdentity, b: product.placement_supply.PhysicalAssetIdentity) -> Bool {
   (a as String) == (b as String)
 }
 
@@ -112,7 +112,7 @@ type MountAdmission {
   refusal: MountRefusal?
 }
 
-fn admit_mount(acc: MountAdmission, rack: RackCatalogRow, m: ChassisMount) -> MountAdmission {
+fn admit_mount(acc: MountAdmission, rack: extdeps.rack.types.RackCatalogRow, m: ChassisMount) -> MountAdmission {
   match acc.refusal {
     Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: Present { value: r } }
     Absent =>
@@ -156,7 +156,7 @@ type RackInstance sole_constructor {
   mounts: List<ChassisMount>
 }
 
-fn rack_instance(identity: RackIdentity, catalog: RackCatalogRow, mounts: List<ChassisMount>) -> MountConstruction<RackInstance> {
+fn rack_instance(identity: product.placement_supply.RackIdentity, catalog: extdeps.rack.types.RackCatalogRow, mounts: List<ChassisMount>) -> MountConstruction<RackInstance> {
   let admitted = fold(mounts, init: MountAdmission { admitted: [], refusal: none }, f: (acc, m) =>
     admit_mount(acc: acc, rack: catalog, m: m))
   match admitted.refusal {
@@ -167,9 +167,9 @@ fn rack_instance(identity: RackIdentity, catalog: RackCatalogRow, mounts: List<C
 
 fn rack_mounts(r: RackInstance) -> List<ChassisMount> { r.mounts }
 
-fn rack_identity(r: RackInstance) -> RackIdentity { r.identity }
+fn rack_identity(r: RackInstance) -> product.placement_supply.RackIdentity { r.identity }
 
-fn rack_units_occupied(r: RackInstance) -> RackUnit {
+fn rack_units_occupied(r: RackInstance) -> std.measure.RackUnit {
   fold(r.mounts, init: rack_unit(0), f: (acc, m) => measure_add(acc, mount_unit_span(m: m)))
 }
 
@@ -181,7 +181,7 @@ fn rack_units_occupied(r: RackInstance) -> RackUnit {
 // their sum is bounded by it. The guard is kept anyway and REFUSES rather than clamping to zero,
 // because a fabricated zero would report a full rack as empty; if it ever fires, the invariant
 // above is broken and that is worth a typed answer rather than a plausible number.
-fn rack_units_free(r: RackInstance) -> MountConstruction<RackUnit> {
+fn rack_units_free(r: RackInstance) -> MountConstruction<std.measure.RackUnit> {
   let occupied = rack_units_occupied(r: r)
   if measure_le(occupied, r.catalog.rack_units) {
     MountReady { value: rack_unit(count: rack_unit_count(u: r.catalog.rack_units) - rack_unit_count(u: occupied)) }
@@ -199,7 +199,7 @@ fn rack_units_free(r: RackInstance) -> MountConstruction<RackUnit> {
 // where it is willing to say what it wants done with the remainder.
 // Named for what it measures. This is the aperture, not the rack, and no consumer here may treat
 // it as an external dimension.
-fn rack_units_to_micrometres(units: RackUnit) -> Micrometer {
+fn rack_units_to_micrometres(units: std.measure.RackUnit) -> std.measure.Micrometer {
   micrometer(count: rack_unit_count(u: units) * micrometers_per_rack_unit())
 }
 
@@ -224,6 +224,6 @@ fn rack_units_to_micrometres(units: RackUnit) -> Micrometer {
 // World and a RoomIdentity, resolving the room through the world and retaining that identity in the
 // result, and its discriminating control is the case the deleted version got wrong - a ceiling
 // above the aperture but below the external height must REFUSE.
-fn rack_mounting_aperture_height(r: RackInstance) -> Micrometer {
+fn rack_mounting_aperture_height(r: RackInstance) -> std.measure.Micrometer {
   rack_units_to_micrometres(units: r.catalog.rack_units)
 }

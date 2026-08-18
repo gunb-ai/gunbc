@@ -4,7 +4,7 @@ module v2.test.manual.cross_language_add_python_to_typescript
 
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 type ParseTreeToTargetModelBridge {
   source_parse_tree: v2.std.node.Symbol
@@ -23,7 +23,7 @@ fn parse_tree_to_target_model_bridge_scaffold() -> Witness<ParseTreeToTargetMode
     }
   } else {
     Violates {
-      diagnostic: Diagnostic {
+      diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^parse_tree_to_target_model_bridge_not_realized,
         at: port_locus(port: ^cross_language_bridge_port),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -91,7 +91,7 @@ test fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
   }
 }
 
-fn cross_language_compile_on_real_tree_refuses_underived_holds(parse_tree: ParseTree) -> Bool {
+fn cross_language_compile_on_real_tree_refuses_underived_holds(parse_tree: v2.std.grammar.ParseTree) -> Bool {
   match cross_language_compile(
     parse_tree: parse_tree,
     source_model: python_target_model(),

@@ -24,7 +24,7 @@ type RequiredCellStanding
 // committed observation) and land in CellUnobserved; Inaccessible is a producer that
 // ASKED and could not reach — a different remedy, kept distinct; Conflict is its own arm
 // (a wrong-machine or contradictory observation is neither drift nor unreachability).
-fn required_cell_standing(c: HostPhaseCellStatus) -> RequiredCellStanding {
+fn required_cell_standing(c: gunbc.host_phase_status.HostPhaseCellStatus) -> RequiredCellStanding {
   let host = c.cell.host
   let label = c.cell.phase_label
   match host_phase_cell_verdict(c: c) {
@@ -61,7 +61,7 @@ type HostKnobStanding
 // host-identity-converge runs — first-wins would render that collision a verdict).
 // 0 receipts -> Unobserved; exactly 1 -> judged on its own validity; >1 -> NotConverged
 // with the ambiguity named, whatever the duplicates claim.
-fn host_knob_standing(host: HostIdentity, receipts: List<ConvergeCliReceipt>) -> HostKnobStanding {
+fn host_knob_standing(host: product.placement_supply.HostIdentity, receipts: List<gunbc.fleet_converge_cli.ConvergeCliReceipt>) -> HostKnobStanding {
   let mine = filter(receipts, r => r.host == (host as String))
   if length(mine) == 0 {
     KnobUnobserved { host: host }
@@ -94,8 +94,8 @@ type HostConvergenceStanding {
 }
 
 fn host_convergence_standing(
-  intent: HostEnrollmentIntent,
-  receipts: List<ConvergeCliReceipt>,
+  intent: gunbc.host_assimilation_program.HostEnrollmentIntent,
+  receipts: List<gunbc.fleet_converge_cli.ConvergeCliReceipt>,
 ) -> HostConvergenceStanding {
   HostConvergenceStanding {
     host: intent.host,
@@ -119,8 +119,8 @@ type FleetConvergenceVerdict
 // list. An empty enrollment refuses convergence (a fleet of zero hosts is an observation
 // gap, not a converged fleet).
 fn fleet_convergence_verdict(
-  enrollments: List<HostEnrollmentIntent>,
-  receipts: List<ConvergeCliReceipt>,
+  enrollments: List<gunbc.host_assimilation_program.HostEnrollmentIntent>,
+  receipts: List<gunbc.fleet_converge_cli.ConvergeCliReceipt>,
 ) -> FleetConvergenceVerdict {
   let standings = map(enrollments, e => host_convergence_standing(intent: e, receipts: receipts))
   if length(standings) > 0

@@ -36,49 +36,49 @@ fn list_tasks() -> FreeMonoid<Task> {
   Empty
 }
 
-data backend_host: UriHost = UriHost {
+data backend_host: v2.std.network.UriHost = v2.std.network.UriHost {
   spelling: "backend.local",
   grammar: rfc3986_host_abnf
 }
 
-data backend_address: NetworkAddress = NetworkAddress {
-  authority: UriAuthority {
+data backend_address: v2.std.network.NetworkAddress = v2.std.network.NetworkAddress {
+  authority: v2.std.network.UriAuthority {
     userinfo: Absent,
     host: backend_host,
     port: Absent
   }
 }
 
-data frontend_host: UriHost = UriHost {
+data frontend_host: v2.std.network.UriHost = v2.std.network.UriHost {
   spelling: "frontend.local",
   grammar: rfc3986_host_abnf
 }
 
-data frontend_address: NetworkAddress = NetworkAddress {
-  authority: UriAuthority {
+data frontend_address: v2.std.network.NetworkAddress = v2.std.network.NetworkAddress {
+  authority: v2.std.network.UriAuthority {
     userinfo: Absent,
     host: frontend_host,
     port: Absent
   }
 }
 
-data backend_endpoint: Endpoint = Endpoint {
-  identity: EndpointRef { identity: ^rust_backend_endpoint },
+data backend_endpoint: v2.extdeps.coordination.Endpoint = v2.extdeps.coordination.Endpoint {
+  identity: v2.extdeps.coordination.EndpointRef { identity: ^rust_backend_endpoint },
   address: backend_address,
-  language: LanguageRef { identity: ^rust_language },
+  language: v2.extdeps.coordination.LanguageRef { identity: ^rust_language },
   framework: NoFramework
 }
 
-data frontend_endpoint: Endpoint = Endpoint {
-  identity: EndpointRef { identity: ^react_frontend_endpoint },
+data frontend_endpoint: v2.extdeps.coordination.Endpoint = v2.extdeps.coordination.Endpoint {
+  identity: v2.extdeps.coordination.EndpointRef { identity: ^react_frontend_endpoint },
   address: frontend_address,
-  language: LanguageRef { identity: ^typescript_language },
-  framework: HostedByFramework { framework: FrameworkRef { identity: ^react_framework } }
+  language: v2.extdeps.coordination.LanguageRef { identity: ^typescript_language },
+  framework: HostedByFramework { framework: v2.extdeps.coordination.FrameworkRef { identity: ^react_framework } }
 }
 
-data create_task_facts: WireContractFacts = WireContractFacts {
-  from: EndpointRef { identity: ^react_frontend_endpoint },
-  to: EndpointRef { identity: ^rust_backend_endpoint },
+data create_task_facts: v2.extdeps.coordination.WireContractFacts = v2.extdeps.coordination.WireContractFacts {
+  from: v2.extdeps.coordination.EndpointRef { identity: ^react_frontend_endpoint },
+  to: v2.extdeps.coordination.EndpointRef { identity: ^rust_backend_endpoint },
   exchange: RequestReply,
   settlement: ImmediateSettlement,
   consistency: NoReplicaConvergence
@@ -86,15 +86,15 @@ data create_task_facts: WireContractFacts = WireContractFacts {
 
 data create_task_contract: v2.extdeps.coordination.WireContract = v2.extdeps.coordination.WireContract {
   facts: create_task_facts,
-  bind: CoordinationBind {
-    bind: BindRef { identity: create_task },
+  bind: v2.extdeps.coordination.CoordinationBind {
+    bind: v2.extdeps.coordination.BindRef { identity: create_task },
     effect: Http
   }
 }
 
-data update_status_facts: WireContractFacts = WireContractFacts {
-  from: EndpointRef { identity: ^react_frontend_endpoint },
-  to: EndpointRef { identity: ^rust_backend_endpoint },
+data update_status_facts: v2.extdeps.coordination.WireContractFacts = v2.extdeps.coordination.WireContractFacts {
+  from: v2.extdeps.coordination.EndpointRef { identity: ^react_frontend_endpoint },
+  to: v2.extdeps.coordination.EndpointRef { identity: ^rust_backend_endpoint },
   exchange: RequestReply,
   settlement: ImmediateSettlement,
   consistency: NoReplicaConvergence
@@ -102,15 +102,15 @@ data update_status_facts: WireContractFacts = WireContractFacts {
 
 data update_status_contract: v2.extdeps.coordination.WireContract = v2.extdeps.coordination.WireContract {
   facts: update_status_facts,
-  bind: CoordinationBind {
-    bind: BindRef { identity: update_status },
+  bind: v2.extdeps.coordination.CoordinationBind {
+    bind: v2.extdeps.coordination.BindRef { identity: update_status },
     effect: Http
   }
 }
 
-data list_tasks_facts: WireContractFacts = WireContractFacts {
-  from: EndpointRef { identity: ^react_frontend_endpoint },
-  to: EndpointRef { identity: ^rust_backend_endpoint },
+data list_tasks_facts: v2.extdeps.coordination.WireContractFacts = v2.extdeps.coordination.WireContractFacts {
+  from: v2.extdeps.coordination.EndpointRef { identity: ^react_frontend_endpoint },
+  to: v2.extdeps.coordination.EndpointRef { identity: ^rust_backend_endpoint },
   exchange: RequestReply,
   settlement: ImmediateSettlement,
   consistency: NoReplicaConvergence
@@ -118,13 +118,13 @@ data list_tasks_facts: WireContractFacts = WireContractFacts {
 
 data list_tasks_contract: v2.extdeps.coordination.WireContract = v2.extdeps.coordination.WireContract {
   facts: list_tasks_facts,
-  bind: CoordinationBind {
-    bind: BindRef { identity: list_tasks },
+  bind: v2.extdeps.coordination.CoordinationBind {
+    bind: v2.extdeps.coordination.BindRef { identity: list_tasks },
     effect: Http
   }
 }
 
-data task_manager_deployment: DeploymentUnit = DeploymentUnit {
+data task_manager_deployment: v2.extdeps.coordination.DeploymentUnit = v2.extdeps.coordination.DeploymentUnit {
   endpoints: [backend_endpoint, frontend_endpoint],
   wire_contracts: [create_task_contract, update_status_contract, list_tasks_contract]
 }
@@ -151,13 +151,13 @@ data task_manager_task_field_catalog: List<TaskManagerTaskField> = [
   TaskFieldStatus
 ]
 
-data task_manager_sql_projection_policy: StageDiagnosticPolicy = StageDiagnosticPolicy {
+data task_manager_sql_projection_policy: v2.std.diagnostic.StageDiagnosticPolicy = v2.std.diagnostic.StageDiagnosticPolicy {
   accumulation: ShortCircuit
 }
 
 fn task_manager_task_fields_to_sql_columns(
   fields: List<TaskManagerTaskField>
-) -> Outcome<List<SqlColumnDefinition>> {
+) -> Outcome<List<v2.extdeps.formats.sql.SqlColumnDefinition>> {
   fold(
     fields,
     init: outcome_accepted(value: std.algebra.Empty),
@@ -187,21 +187,21 @@ fn task_manager_task_field_scalar(field: TaskManagerTaskField) -> TaskManagerSql
   }
 }
 
-fn task_manager_not_null_column_constraints() -> SqlColumnConstraints {
-  SqlColumnConstraints { not_null: true }
+fn task_manager_not_null_column_constraints() -> v2.extdeps.formats.sql.SqlColumnConstraints {
+  v2.extdeps.formats.sql.SqlColumnConstraints { not_null: true }
 }
 
-fn task_manager_absent_column_default() -> SqlColumnDefault {
+fn task_manager_absent_column_default() -> v2.extdeps.formats.sql.SqlColumnDefault {
   SqlColumnDefaultAbsent
 }
 
-fn task_manager_sql_identifier(name: String) -> SqlIdentifier {
+fn task_manager_sql_identifier(name: String) -> v2.extdeps.formats.sql.SqlIdentifier {
   SqlRegularIdentifier { name: name }
 }
 
 fn task_manager_projectable_scalar_to_sql_data_type(
   scalar: TaskManagerSqlProjectableScalar
-) -> Outcome<SqlDataType> {
+) -> Outcome<v2.extdeps.formats.sql.SqlDataType> {
   match scalar {
     ProjectTaskId => outcome_accepted(value: SqlTypeCharacterLargeObject)
     ProjectString => outcome_accepted(value: SqlTypeCharacterLargeObject)
@@ -209,8 +209,8 @@ fn task_manager_projectable_scalar_to_sql_data_type(
   }
 }
 
-fn task_manager_reject_unmapped_domain_scalar(node: Node) -> Outcome<SqlDataType> {
-  outcome_rejected(d: Diagnostic {
+fn task_manager_reject_unmapped_domain_scalar(node: Node) -> Outcome<v2.extdeps.formats.sql.SqlDataType> {
+  outcome_rejected(d: v2.std.diagnostic.Diagnostic {
     reason: ^task_manager_unmapped_domain_scalar,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -219,7 +219,7 @@ fn task_manager_reject_unmapped_domain_scalar(node: Node) -> Outcome<SqlDataType
 
 fn task_manager_sql_data_type_for_scalar(
   dispatch: TaskManagerSqlScalarDispatch
-) -> Outcome<SqlDataType> {
+) -> Outcome<v2.extdeps.formats.sql.SqlDataType> {
   match dispatch {
     MappedProjectable { scalar } =>
       task_manager_projectable_scalar_to_sql_data_type(scalar: scalar)
@@ -230,7 +230,7 @@ fn task_manager_sql_data_type_for_scalar(
 
 fn task_manager_task_field_to_sql_data_type(
   field: TaskManagerTaskField
-) -> Outcome<SqlDataType> {
+) -> Outcome<v2.extdeps.formats.sql.SqlDataType> {
   task_manager_sql_data_type_for_scalar(
     dispatch: MappedProjectable {
       scalar: task_manager_task_field_scalar(field: field)
@@ -240,9 +240,9 @@ fn task_manager_task_field_to_sql_data_type(
 
 fn task_manager_sql_column_definition(
   name: String,
-  data_type: SqlDataType
-) -> SqlColumnDefinition {
-  SqlColumnDefinition {
+  data_type: v2.extdeps.formats.sql.SqlDataType
+) -> v2.extdeps.formats.sql.SqlColumnDefinition {
+  v2.extdeps.formats.sql.SqlColumnDefinition {
     name: task_manager_sql_identifier(name: name),
     data_type: data_type,
     constraints: task_manager_not_null_column_constraints(),
@@ -252,7 +252,7 @@ fn task_manager_sql_column_definition(
 
 fn task_manager_task_field_to_sql_column_definition(
   field: TaskManagerTaskField
-) -> Outcome<SqlColumnDefinition> {
+) -> Outcome<v2.extdeps.formats.sql.SqlColumnDefinition> {
   bind_outcome(
     o: task_manager_task_field_to_sql_data_type(field: field),
     f: fn(data_type) {
@@ -264,11 +264,11 @@ fn task_manager_task_field_to_sql_column_definition(
   )
 }
 
-fn task_to_sql_table_definition() -> Outcome<SqlTableDefinition> {
+fn task_to_sql_table_definition() -> Outcome<v2.extdeps.formats.sql.SqlTableDefinition> {
   bind_outcome(
     o: task_manager_task_fields_to_sql_columns(fields: task_manager_task_field_catalog),
     f: fn(columns) {
-      outcome_accepted(value: SqlTableDefinition {
+      outcome_accepted(value: v2.extdeps.formats.sql.SqlTableDefinition {
         name: task_manager_sql_identifier(name: tasks_table_spelling),
         columns: columns,
         primary_key: optional_present(value: [
@@ -282,7 +282,7 @@ fn task_to_sql_table_definition() -> Outcome<SqlTableDefinition> {
   )
 }
 
-fn task_to_sql_create_table() -> Outcome<SqlSchemaOperation> {
+fn task_to_sql_create_table() -> Outcome<v2.extdeps.formats.sql.SqlSchemaOperation> {
   bind_outcome(
     o: task_to_sql_table_definition(),
     f: fn(table) {

@@ -1,8 +1,8 @@
 module extdeps.ampere.mt_collins_product_brief.subject
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "uawartifacts.blob.core.windows.net/upload-files/data/uawbrochures/cloud_native_demo/Mt._Collins_2U_2022_V2.pdf",
   }
@@ -18,9 +18,9 @@ type EngineeringFactsRoute
   = EngineeringFactsUnderNda { access_route: extdeps.external_authority.ExternalAuthority }
   | EngineeringFactsPubliclyIngested
 
-data mt_collins_product_brief_title: NonEmptyStr = "Mt. Collins 2U product brief"
+data mt_collins_product_brief_title: std.types.NonEmptyStr = "Mt. Collins 2U product brief"
 
-data mt_collins_product_brief_version_label: NonEmptyStr = "2022 V2"
+data mt_collins_product_brief_version_label: std.types.NonEmptyStr = "2022 V2"
 
 data mt_collins_engineering_facts_route: EngineeringFactsRoute = EngineeringFactsUnderNda {
   access_route: ampere_customer_reference_boards_authority,
@@ -42,9 +42,9 @@ data mt_collins_public_product_brief: MtCollinsPublicProductBrief = MtCollinsPub
   engineering_facts_route: mt_collins_engineering_facts_route,
 }
 
-data mt_collins_product_brief_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data mt_collins_product_brief_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ampere.mt_collins_product_brief.subject",
       decl_name: "mt_collins_public_product_brief",
       field: WholeDeclaration,
@@ -54,4 +54,4 @@ data mt_collins_product_brief_model_scope: ExternalModelScope = ExternalModelSco
   further_citations: [],
 }
 
-data extdeps_model_scope: ExternalModelScope = mt_collins_product_brief_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = mt_collins_product_brief_model_scope

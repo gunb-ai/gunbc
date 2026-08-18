@@ -7,7 +7,7 @@ data production_qualification_origin_call_occurrence_frontier_note: String = "SC
 
 data production_qualification_construction_wall_path_frontier_note: String = "Construction-wall path split (wise-ram-22 addendum, royal-crab-235 lane): sole_constructor record-literal refusal executes on the v1 seed infer path only — v2.compiler.04_infer carries zero sole_constructor handling today. A construction site this probe discovers is NOT automatically in a guarded population; guard presence is a property of the compiler PATH, not the site. This probe classifies structural skeleton origin only — it never infers 'sole_constructor exists therefore this form is walled'."
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
@@ -15,7 +15,7 @@ data production_qualification_counted_qualifications_note: String = "Axes derive
 
 data production_evidence_grounding_vocabulary_note: String = "B0-aligned vocabulary (wise-ram-22): ProductionQualificationOrigin = CompilerDerived | FixtureDerived | UnknownOrigin. ProductionEvidenceGrounding = StructurallyGrounded | ExecutionMeasured | Unmeasured — measurement carries an origin, never replaces one. Rows do not populate grounding at skeleton grain yet; the carrier declares the split so probe and B0 share one epistemology."
 
-data production_qualification_counted_qualifications: List<EmissionQualification> = [
+data production_qualification_counted_qualifications: List<v2.compiler.self_host.emitter_producer_provenance.EmissionQualification> = [
   SourceProduced,
   CargoGreen
 ]
@@ -37,7 +37,7 @@ type DerivedProductionQualificationMintSiteRow {
 }
 
 data empty_string_list: List<String> = []
-data empty_symbol_list: List<Symbol> = []
+data empty_symbol_list: List<v2.std.node.Symbol> = []
 data empty_site_list: List<DerivedProductionQualificationMintSiteRow> = []
 
 data mint_written_callee: String = "mint_written_provenanced_rust_artifact"
@@ -54,7 +54,7 @@ fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+fn symbol_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> Bool {
   a == b
 }
 
@@ -87,7 +87,7 @@ fn production_qualification_origin_eq(
 fn site_row_already_present(
   sites: List<DerivedProductionQualificationMintSiteRow>,
   qualified_name: String,
-  axis: EmissionQualification
+  axis: v2.compiler.self_host.emitter_producer_provenance.EmissionQualification
 ) -> Bool {
   any(
     xs: sites,
@@ -104,7 +104,7 @@ fn site_row_already_present(
 fn maybe_snoc_site_row(
   sites: List<DerivedProductionQualificationMintSiteRow>,
   qualified_name: String,
-  axis: EmissionQualification,
+  axis: v2.compiler.self_host.emitter_producer_provenance.EmissionQualification,
   origin: ProductionQualificationOrigin
 ) -> List<DerivedProductionQualificationMintSiteRow> {
   if site_row_already_present(sites: sites, qualified_name: qualified_name, axis: axis) {
@@ -130,7 +130,7 @@ fn atom_collect_init(n: Node) -> AtomCollectState {
   AtomCollectState { node: n, atoms: empty_symbol_list }
 }
 
-fn atom_collect_step(acc: AtomCollectState, _edge: Edge, child: AtomCollectState) -> AtomCollectState {
+fn atom_collect_step(acc: AtomCollectState, _edge: v2.std.node.Edge, child: AtomCollectState) -> AtomCollectState {
   let atoms = match node_atom_identity_optional(node: child.node) {
     Present { value: sym } =>
       if contains(xs: acc.atoms, item: sym, eq: symbol_eq) {
@@ -144,10 +144,10 @@ fn atom_collect_step(acc: AtomCollectState, _edge: Edge, child: AtomCollectState
 }
 
 fn atom_collect_algebra() -> NodeFold<AtomCollectState> {
-  NodeFold { init: atom_collect_init, step: atom_collect_step }
+  v2.std.node.NodeFold { init: atom_collect_init, step: atom_collect_step }
 }
 
-fn atom_identities_in_node(node: Node) -> List<Symbol> {
+fn atom_identities_in_node(node: Node) -> List<v2.std.node.Symbol> {
   let from_descendants = fold_node(n: node, algebra: atom_collect_algebra()).atoms
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
@@ -213,7 +213,7 @@ fn callee_collect_merge(
 
 fn callee_collect_step(
   acc: CalleeCollectState,
-  _edge: Edge,
+  _edge: v2.std.node.Edge,
   child: CalleeCollectState
 ) -> CalleeCollectState {
   let merged = callee_collect_merge(left: acc.callees, right: child.callees)
@@ -225,7 +225,7 @@ fn callee_collect_step(
 }
 
 fn callee_collect_algebra() -> NodeFold<CalleeCollectState> {
-  NodeFold { init: callee_collect_init, step: callee_collect_step }
+  v2.std.node.NodeFold { init: callee_collect_init, step: callee_collect_step }
 }
 
 fn callees_from_atom_scan(node: Node) -> List<String> {
@@ -246,21 +246,21 @@ fn callees_from_node(node: Node) -> List<String> {
   callee_collect_merge(left: from_call_walk, right: callees_from_atom_scan(node: node))
 }
 
-fn decl_contains_callee(decl: FnArrowDecl, callee: String) -> Bool {
+fn decl_contains_callee(decl: v2.std.fn_index.FnArrowDecl, callee: String) -> Bool {
   contains(xs: callees_from_node(node: decl.output), item: callee, eq: string_eq)
 }
 
-fn decl_contains_atom(decl: FnArrowDecl, atom: String) -> Bool {
+fn decl_contains_atom(decl: v2.std.fn_index.FnArrowDecl, atom: String) -> Bool {
   node_contains_atom_text(node: decl.output, wanted: atom)
 }
 
-fn decl_has_qualifying_mint_callee(decl: FnArrowDecl) -> Bool {
+fn decl_has_qualifying_mint_callee(decl: v2.std.fn_index.FnArrowDecl) -> Bool {
   decl_contains_callee(decl: decl, callee: mint_written_callee)
     || decl_contains_callee(decl: decl, callee: mint_provenanced_callee)
     || decl_contains_callee(decl: decl, callee: advance_cargo_green_callee)
 }
 
-fn decl_has_source_produced_mint_callee(decl: FnArrowDecl) -> Bool {
+fn decl_has_source_produced_mint_callee(decl: v2.std.fn_index.FnArrowDecl) -> Bool {
   decl_contains_callee(decl: decl, callee: mint_written_callee)
     || decl_contains_callee(decl: decl, callee: mint_provenanced_callee)
 }
@@ -268,11 +268,11 @@ fn decl_has_source_produced_mint_callee(decl: FnArrowDecl) -> Bool {
 data direct_rust_door_target_model_callee: String = "direct_rust_door_target_model"
 
 // FixtureDerived requires the direct_rust_door_inferred_tree fixture-tree marker atom in the fn-arrow skeleton. Target-model choice (direct_rust_door_target_model) is NOT an origin proxy — mint_written + target without the fixture-tree marker classifies UnknownOrigin.
-fn decl_has_fixture_marker(decl: FnArrowDecl) -> Bool {
+fn decl_has_fixture_marker(decl: v2.std.fn_index.FnArrowDecl) -> Bool {
   decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
 }
 
-fn decl_origin_from_structure(decl: FnArrowDecl) -> ProductionQualificationOrigin {
+fn decl_origin_from_structure(decl: v2.std.fn_index.FnArrowDecl) -> ProductionQualificationOrigin {
   if decl_has_fixture_marker(decl: decl) {
     FixtureDerived
   } else {
@@ -282,7 +282,7 @@ fn decl_origin_from_structure(decl: FnArrowDecl) -> ProductionQualificationOrigi
 
 fn derived_sites_for_decl(
   sites: List<DerivedProductionQualificationMintSiteRow>,
-  decl: FnArrowDecl
+  decl: v2.std.fn_index.FnArrowDecl
 ) -> List<DerivedProductionQualificationMintSiteRow> {
   if decl_has_qualifying_mint_callee(decl: decl) {
     let origin = decl_origin_from_structure(decl: decl)
@@ -313,7 +313,7 @@ fn derived_sites_for_decl(
 }
 
 fn derived_production_qualification_mint_sites_from_facts(
-  decls: List<FnArrowDecl>
+  decls: List<v2.std.fn_index.FnArrowDecl>
 ) -> List<DerivedProductionQualificationMintSiteRow> {
   fold_list(
     xs: decls,
@@ -386,7 +386,7 @@ fn ingest_mint_surface_discovered_in_live_scope() -> Bool {
 
 // Production admission (not mere classification totality): refuses both UnknownOrigin and FixtureDerived discovered rows — fixture-derived production qualification is the forbidden class. discovered_origin_classification_is_total_for_decls is the weaker predicate (UnknownOrigin count zero only) for witnesses that need classification totality without production admission.
 fn discovered_origin_classification_is_total_for_decls(
-  decls: List<FnArrowDecl>
+  decls: List<v2.std.fn_index.FnArrowDecl>
 ) -> Bool {
   count_derived_mint_sites_with_origin(
     sites: derived_production_qualification_mint_sites_from_facts(decls: decls),
@@ -395,7 +395,7 @@ fn discovered_origin_classification_is_total_for_decls(
 }
 
 fn production_qualification_origin_probe_admission_holds_for_decls(
-  decls: List<FnArrowDecl>
+  decls: List<v2.std.fn_index.FnArrowDecl>
 ) -> Bool {
   let sites = derived_production_qualification_mint_sites_from_facts(decls: decls)
   (count_derived_mint_sites_with_origin(sites: sites, origin: UnknownOrigin) == 0)
@@ -403,21 +403,21 @@ fn production_qualification_origin_probe_admission_holds_for_decls(
 }
 
 fn probe_mint_callee_atom_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: mint_written_callee) } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn unknown_origin_red_control_planted_decl() -> FnArrowDecl {
-  FnArrowDecl {
+fn unknown_origin_red_control_planted_decl() -> v2.std.fn_index.FnArrowDecl {
+  v2.std.fn_index.FnArrowDecl {
     qualified_name: "synthetic.production_qualification_origin_probe.unknown_origin_red_control",
     name: "unknown_origin_red_control_planted_decl",
-    output: Node {
+    output: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: probe_mint_callee_atom_node() }
+        v2.std.node.Edge { label: Positional, target: probe_mint_callee_atom_node() }
       ],
       occurrence_id: SyntheticOccurrence
     },
@@ -428,21 +428,21 @@ fn unknown_origin_red_control_planted_decl() -> FnArrowDecl {
 data structural_red_control_planted_qualified_name: String = "synthetic.production_qualification_origin_probe.structural_red_control_planted"
 
 fn probe_mint_provenanced_callee_atom_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: mint_provenanced_callee) } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn parameter_borne_fixture_mint_planted_decl() -> FnArrowDecl {
-  FnArrowDecl {
+fn parameter_borne_fixture_mint_planted_decl() -> v2.std.fn_index.FnArrowDecl {
+  v2.std.fn_index.FnArrowDecl {
     qualified_name: "synthetic.production_qualification_origin_probe.parameter_borne_fixture_mint_red_control",
     name: "parameter_borne_fixture_mint_red_control_planted_decl",
-    output: Node {
+    output: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: probe_mint_provenanced_callee_atom_node() }
+        v2.std.node.Edge { label: Positional, target: probe_mint_provenanced_callee_atom_node() }
       ],
       occurrence_id: SyntheticOccurrence
     },
@@ -451,7 +451,7 @@ fn parameter_borne_fixture_mint_planted_decl() -> FnArrowDecl {
 }
 
 fn probe_fixture_tree_atom_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode {
       connective: Atom {
         identity: symbol_intern_lexeme(lexeme: direct_rust_door_inferred_tree_atom)
@@ -463,7 +463,7 @@ fn probe_fixture_tree_atom_node() -> Node {
 }
 
 fn probe_target_model_callee_atom_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode {
       connective: Atom {
         identity: symbol_intern_lexeme(lexeme: direct_rust_door_target_model_callee)
@@ -474,15 +474,15 @@ fn probe_target_model_callee_atom_node() -> Node {
   }
 }
 
-fn structural_red_control_planted_decl() -> FnArrowDecl {
-  FnArrowDecl {
+fn structural_red_control_planted_decl() -> v2.std.fn_index.FnArrowDecl {
+  v2.std.fn_index.FnArrowDecl {
     qualified_name: structural_red_control_planted_qualified_name,
     name: "structural_red_control_planted_decl",
-    output: Node {
+    output: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: probe_mint_callee_atom_node() },
-        Edge { label: Positional, target: probe_fixture_tree_atom_node() }
+        v2.std.node.Edge { label: Positional, target: probe_mint_callee_atom_node() },
+        v2.std.node.Edge { label: Positional, target: probe_fixture_tree_atom_node() }
       ],
       occurrence_id: SyntheticOccurrence
     },
@@ -492,15 +492,15 @@ fn structural_red_control_planted_decl() -> FnArrowDecl {
 
 data target_without_fixture_tree_red_control_qualified_name: String = "synthetic.production_qualification_origin_probe.target_without_fixture_tree_red_control"
 
-fn target_without_fixture_tree_red_control_planted_decl() -> FnArrowDecl {
-  FnArrowDecl {
+fn target_without_fixture_tree_red_control_planted_decl() -> v2.std.fn_index.FnArrowDecl {
+  v2.std.fn_index.FnArrowDecl {
     qualified_name: target_without_fixture_tree_red_control_qualified_name,
     name: "target_without_fixture_tree_red_control_planted_decl",
-    output: Node {
+    output: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: probe_mint_callee_atom_node() },
-        Edge { label: Positional, target: probe_target_model_callee_atom_node() }
+        v2.std.node.Edge { label: Positional, target: probe_mint_callee_atom_node() },
+        v2.std.node.Edge { label: Positional, target: probe_target_model_callee_atom_node() }
       ],
       occurrence_id: SyntheticOccurrence
     },

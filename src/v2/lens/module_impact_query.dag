@@ -86,7 +86,7 @@ data impact_no_import_modules: List<String> = []
 
 data impact_no_module: Optional<ModuleIdentity> = Absent
 
-data impact_no_trigger: Optional<ReferenceDerivedClosureTrigger> = Absent
+data impact_no_trigger: Optional<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureTrigger> = Absent
 
 fn impact_string_eq(a: String, b: String) -> Bool {
   a == b
@@ -114,7 +114,7 @@ type ImpactPoolIndex {
   declared_modules: Map<String, String>
 }
 
-fn impact_build_pool_index(nodes: List<ModuleDeclarationFact>) -> ImpactPoolIndex {
+fn impact_build_pool_index(nodes: List<v2.lens.module_graph.ModuleDeclarationFact>) -> ImpactPoolIndex {
   fold_list(
     xs: nodes,
     empty: ImpactPoolIndex {
@@ -162,7 +162,7 @@ fn impact_pool_declares_module_indexed(
 data module_impact_path_adapter_note: String = "impact_paths_for_module and impact_seeds_for_path are the FILE-SHAPED ADAPTERS above the semantic core, not part of it. impact_seeds_for_path returns a LIST because one path may conservatively resolve to several semantic seeds under the staged many-to-many path/module relation, and returning a single identity would silently pick one. An empty result is a real answer - the pool declares no module at that path - and the caller decides whether that is a refusal; the adapter never invents a seed."
 
 fn impact_paths_for_module(
-  nodes: List<ModuleDeclarationFact>,
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>,
   module_id: ModuleIdentity
 ) -> List<String> {
   fold_list(
@@ -179,7 +179,7 @@ fn impact_paths_for_module(
 }
 
 fn impact_seeds_for_path(
-  nodes: List<ModuleDeclarationFact>,
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>,
   path: String
 ) -> List<ModuleIdentity> {
   fold_list(
@@ -199,8 +199,8 @@ fn impact_seeds_for_path(
 }
 
 fn impact_edge_is_import_derived(
-  edge: ModuleDependencyEdge,
-  import_facts: List<ImportResolutionFact>
+  edge: v2.lens.module_graph.ModuleDependencyEdge,
+  import_facts: List<v2.lens.module_graph.ImportResolutionFact>
 ) -> Bool {
   any(
     xs: import_facts,
@@ -211,8 +211,8 @@ fn impact_edge_is_import_derived(
 }
 
 fn impact_provenance_of_edge(
-  edge: ModuleDependencyEdge,
-  import_facts: List<ImportResolutionFact>
+  edge: v2.lens.module_graph.ModuleDependencyEdge,
+  import_facts: List<v2.lens.module_graph.ImportResolutionFact>
 ) -> EdgeProvenance {
   if impact_edge_is_import_derived(edge: edge, import_facts: import_facts) {
     ImportDerivedEdge
@@ -228,7 +228,7 @@ type ImpactNormalizationAcc {
 
 fn impact_cause_for_absent_target(
   dependent: ModuleIdentity,
-  edge: ModuleDependencyEdge
+  edge: v2.lens.module_graph.ModuleDependencyEdge
 ) -> ImpactStandingCause {
   if edge.target_declared {
     DeclaredTargetAbsentFromPool {
@@ -245,7 +245,7 @@ fn impact_cause_for_absent_target(
 
 fn impact_normalize_edge(
   acc: ImpactNormalizationAcc,
-  edge: ModuleDependencyEdge,
+  edge: v2.lens.module_graph.ModuleDependencyEdge,
   index: ImpactPoolIndex,
   import_index: Map<String, List<String>>
 ) -> ImpactNormalizationAcc {
@@ -303,7 +303,7 @@ fn impact_imports_for_path(
 }
 
 fn impact_build_import_index(
-  import_facts: List<ImportResolutionFact>
+  import_facts: List<v2.lens.module_graph.ImportResolutionFact>
 ) -> Map<String, List<String>> {
   fold_list(
     xs: import_facts,
@@ -322,7 +322,7 @@ fn impact_build_import_index(
 }
 
 fn impact_provenance_of_edge_indexed(
-  edge: ModuleDependencyEdge,
+  edge: v2.lens.module_graph.ModuleDependencyEdge,
   import_index: Map<String, List<String>>
 ) -> EdgeProvenance {
   if contains(
@@ -337,9 +337,9 @@ fn impact_provenance_of_edge_indexed(
 }
 
 fn impact_normalize(
-  edges: List<ModuleDependencyEdge>,
-  nodes: List<ModuleDeclarationFact>,
-  import_facts: List<ImportResolutionFact>
+  edges: List<v2.lens.module_graph.ModuleDependencyEdge>,
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>,
+  import_facts: List<v2.lens.module_graph.ImportResolutionFact>
 ) -> ImpactNormalizationAcc {
   let index = impact_build_pool_index(nodes: nodes)
   let import_index = impact_build_import_index(import_facts: import_facts)
@@ -365,8 +365,8 @@ fn impact_normalize(
 }
 
 fn impact_admission_pool_independence_trigger(
-  admissions: List<ReferenceDerivedClosureAdmission>
-) -> Optional<ReferenceDerivedClosureTrigger> {
+  admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission>
+) -> Optional<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureTrigger> {
   fold_list(
     xs: admissions,
     empty: impact_no_trigger,
@@ -385,7 +385,7 @@ fn impact_admission_pool_independence_trigger(
 }
 
 fn impact_admission_pool_independence_established(
-  admissions: List<ReferenceDerivedClosureAdmission>
+  admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission>
 ) -> Bool {
   any(
     xs: admissions,
@@ -404,7 +404,7 @@ fn impact_admission_pool_independence_established(
 }
 
 fn impact_standing_from_admissions(
-  admissions: List<ReferenceDerivedClosureAdmission>,
+  admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission>,
   causes: List<ImpactStandingCause>
 ) -> ImpactStanding {
   match impact_admission_pool_independence_trigger(admissions: admissions) {
@@ -833,10 +833,10 @@ fn impact_classify_cycles(
 fn module_impact_reading(
   seeds: List<ModuleIdentity>,
   direction: ImpactDirection,
-  edges: List<ModuleDependencyEdge>,
-  nodes: List<ModuleDeclarationFact>,
-  import_facts: List<ImportResolutionFact>,
-  admissions: List<ReferenceDerivedClosureAdmission>
+  edges: List<v2.lens.module_graph.ModuleDependencyEdge>,
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>,
+  import_facts: List<v2.lens.module_graph.ImportResolutionFact>,
+  admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission>
 ) -> ImpactReading {
   let normalized = impact_normalize(
     edges: edges,
@@ -1008,7 +1008,7 @@ fn impact_changed_subjects(
 }
 
 fn impact_resolve_subject_seeds(
-  nodes: List<ModuleDeclarationFact>,
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>,
   subject: ChangedSubject
 ) -> List<ModuleIdentity> {
   if impact_subject_resolvable_in_head(subject: subject) {
@@ -1027,7 +1027,7 @@ fn impact_unresolved_cause_for(subject: ChangedSubject) -> UnresolvedSubjectCaus
 }
 
 fn impact_resolve_changed_subjects(
-  nodes: List<ModuleDeclarationFact>,
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>,
   subjects: List<ChangedSubject>
 ) -> List<ChangedPathSeeds> {
   list_reverse(xs: fold_list(
@@ -1046,7 +1046,7 @@ fn impact_resolve_changed_subjects(
 }
 
 fn impact_unresolved_subjects(
-  nodes: List<ModuleDeclarationFact>,
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>,
   subjects: List<ChangedSubject>
 ) -> List<UnresolvedSubject> {
   list_reverse(xs: fold_list(
@@ -1088,10 +1088,10 @@ fn impact_seeds_of_resolution(resolution: List<ChangedPathSeeds>) -> List<Module
 fn changed_surface_impact_outcome(
   changed_paths: List<String>,
   departed_paths: List<String>,
-  edges: List<ModuleDependencyEdge>,
-  nodes: List<ModuleDeclarationFact>,
-  import_facts: List<ImportResolutionFact>,
-  admissions: List<ReferenceDerivedClosureAdmission>
+  edges: List<v2.lens.module_graph.ModuleDependencyEdge>,
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>,
+  import_facts: List<v2.lens.module_graph.ImportResolutionFact>,
+  admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission>
 ) -> ChangedSurfaceImpactOutcome {
   let subjects = impact_changed_subjects(
     changed_paths: changed_paths,
@@ -1148,6 +1148,6 @@ fn changed_surface_skip_authority(outcome: ChangedSurfaceImpactOutcome) -> SkipA
 
 data module_impact_construction_justification_note: String = "The bad-state class is a consumer reading a pool-relative, per-component answer as if it were exact and whole-subgraph. Most of that class is unwritable by construction rather than validated after the fact: ImpactStanding makes ExactForGraphSubject reachable only when the admission carrier reports pool independence Established AND no cause was observed, so a pool-relative answer cannot present as exact; ModuleIdentity is a record, so a path cannot be passed where a semantic identity is required; the declared flag and pool membership are independent observations landing as distinct cause arms, so an inconsistent pool cannot silently answer complete; and cycle verdicts are per strongly connected component, so a per-cycle law cannot be answered at union grain. What is NOT yet walled, and is what the grounding supplies: edge provenance is derived at query time rather than carried, so a dual-backed edge classifies reference-derived and a change to the edge population could reclassify a cycle with no consumer edit. That dissolves to one authority - provenance stamped at the single construction site import_fact_to_dependency_edge - hence WallAfterGrounding rather than WallNow, and not RatchetForever, because it is decidable."
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

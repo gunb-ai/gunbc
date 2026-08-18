@@ -20,7 +20,7 @@ type ContactPopulationKind
   | ReturnContacts
   | NoConnectContacts
 
-fn population_kind_name(k: ContactPopulationKind) -> NonEmptyStr {
+fn population_kind_name(k: ContactPopulationKind) -> std.types.NonEmptyStr {
   match k {
     AllPackageLeads => "all package leads"
     VendorGeneralPurposeIo => "vendor general-purpose I/O"

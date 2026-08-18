@@ -131,7 +131,7 @@ fn atom_body_discriminator_module_scope_body(root: Node) -> Optional<Node> {
   }
 }
 
-fn atom_body_discriminator_top_level_arrow_lexeme_optional(edge: Edge) -> Optional<String> {
+fn atom_body_discriminator_top_level_arrow_lexeme_optional(edge: v2.std.node.Edge) -> Optional<String> {
   match edge.label {
     Named { name: sym } =>
       match edge.target.kind {
@@ -299,7 +299,7 @@ fn atom_body_discriminator_parameter_count(arrow: Node) -> Optional<Int> {
   }
 }
 
-fn atom_body_discriminator_classify_body(target: Node, mirror: AtomBodyDiscriminatorMirror) -> ArrowBodyForm {
+fn atom_body_discriminator_classify_body(target: Node, mirror: AtomBodyDiscriminatorMirror) -> v2.std.node.ArrowBodyForm {
   match mirror {
     AtomBodyDiscriminatorProduction => classify_arrow_body_form(target: target)
     AtomBodyDiscriminatorRedNoDirectAtom =>
@@ -312,7 +312,7 @@ fn atom_body_discriminator_classify_body(target: Node, mirror: AtomBodyDiscrimin
 fn atom_body_discriminator_arrow_row_holds(
   arrow: Node,
   expected_param_count: Int,
-  expected_form: ArrowBodyForm,
+  expected_form: v2.std.node.ArrowBodyForm,
   mirror: AtomBodyDiscriminatorMirror
 ) -> Bool {
   match atom_body_discriminator_parameter_count(arrow: arrow) {
@@ -330,7 +330,7 @@ fn atom_body_discriminator_arrow_row_holds(
 fn atom_body_discriminator_arrow_classifies(
   arrow: Node,
   mirror: AtomBodyDiscriminatorMirror
-) -> Optional<ArrowBodyForm> {
+) -> Optional<v2.std.node.ArrowBodyForm> {
   match atom_body_discriminator_arrow_body_optional(arrow: arrow) {
     Absent => Absent
     Present { value: body } =>

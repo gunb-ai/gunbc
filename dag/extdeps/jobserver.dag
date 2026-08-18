@@ -1,8 +1,8 @@
 module extdeps.jobserver
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html"
   }
@@ -14,14 +14,14 @@ type JobserverConfig {
   mib_per_job: std.measure.ByteSize
 }
 
-fn derive_jobserver_tokens(nproc: HardwareThreadCount, mem_total: ByteSize, cfg: JobserverConfig) -> HardwareThreadCount {
+fn derive_jobserver_tokens(nproc: std.measure.HardwareThreadCount, mem_total: std.measure.ByteSize, cfg: JobserverConfig) -> std.measure.HardwareThreadCount {
   let cpu_bound = hardware_thread_count_value(t: cpu_cores_available(nproc: nproc, margin: cfg.margin))
   let mem_for_builds = byte_size_saturating_sub(total: mem_total, reserved: cfg.mem_reserve)
   let mem_bound = measure_fit_count_floor(capacity: mem_for_builds, each: cfg.mib_per_job)
   hardware_thread_count(count: nat_min(a: cpu_bound, b: mem_bound))
 }
 
-fn jobserver_build_pool_bytes(nproc: HardwareThreadCount, mem_total: ByteSize, cfg: JobserverConfig) -> ByteSize {
+fn jobserver_build_pool_bytes(nproc: std.measure.HardwareThreadCount, mem_total: std.measure.ByteSize, cfg: JobserverConfig) -> std.measure.ByteSize {
   let tokens = derive_jobserver_tokens(nproc: nproc, mem_total: mem_total, cfg: cfg)
   measure_scale_fraction_floor(m: cfg.mib_per_job, num: hardware_thread_count_value(t: tokens), den: 1)
 }

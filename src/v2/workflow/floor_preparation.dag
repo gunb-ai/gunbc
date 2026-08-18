@@ -48,13 +48,13 @@ type PreparedFloorSubjectServe
     }
   | PreparedFloorSubjectRefused { cause: PreparedFloorSubjectRefusal }
 
-fn floor_preparation_policy_identity(policy: FloorPreparationPolicy) -> Fnv1a64Structural {
+fn floor_preparation_policy_identity(policy: FloorPreparationPolicy) -> std.content_hash.Fnv1a64Structural {
   match policy {
     ResolveSelectedClosuresV1 {} => content_hash_atom(value: "floor-preparation.resolve-selected-closures-v1")
   }
 }
 
-fn prepared_floor_witness_kind_identity(witness: ScheduleWitnessEntry) -> String {
+fn prepared_floor_witness_kind_identity(witness: std.realization_schedule.ScheduleWitnessEntry) -> String {
   match witness.kind {
     CorpusWitnessKind => "corpus"
     ExecutionWitnessKind => "execution"
@@ -62,7 +62,7 @@ fn prepared_floor_witness_kind_identity(witness: ScheduleWitnessEntry) -> String
   }
 }
 
-fn prepared_floor_witness_identity(witness: ScheduleWitnessEntry) -> Fnv1a64Structural {
+fn prepared_floor_witness_identity(witness: std.realization_schedule.ScheduleWitnessEntry) -> std.content_hash.Fnv1a64Structural {
   let with_entry = content_hash_combine_structural(
     left: content_hash_atom(value: "prepared-floor-witness-v1"),
     right: content_hash_atom(value: witness.entry),
@@ -79,7 +79,7 @@ fn prepared_floor_witness_identity(witness: ScheduleWitnessEntry) -> Fnv1a64Stru
 
 fn prepared_floor_selected_identity(
   selected: List<PreparedFloorEntryRequest>,
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   selected |> fold(
     init: content_hash_atom(value: "prepared-floor-selected-v1"),
     f: (acc, entry) => content_hash_combine_structural(
@@ -90,9 +90,9 @@ fn prepared_floor_selected_identity(
 }
 
 fn prepared_floor_entry_artifact_request(
-  discovery: FloorDiscoveryRequest,
+  discovery: v2.workflow.floor_discovery.FloorDiscoveryRequest,
   entry: PreparedFloorEntryRequest,
-) -> ArtifactRequest {
+) -> std.materialization_provider.ArtifactRequest {
   ResolveClosureRequest {
     closure_digest: entry.closure_digest,
     compiler: compiler_identity_input(digest: discovery.subject.tool_identity),
@@ -101,7 +101,7 @@ fn prepared_floor_entry_artifact_request(
 
 fn prepared_floor_artifact_set_identity(
   request: PreparedFloorSubjectRequest,
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   request.selected |> fold(
     init: content_hash_atom(value: "prepared-floor-artifact-set-v1"),
     f: (acc, entry) => content_hash_combine_structural(
@@ -137,8 +137,8 @@ type PreparedFloorWitnessMultiplicityIndex {
 }
 
 fn prepared_floor_identity_map_contains(
-  identities: Map<ScheduleWitnessEntry, Bool>,
-  witness: ScheduleWitnessEntry,
+  identities: Map<std.realization_schedule.ScheduleWitnessEntry, Bool>,
+  witness: std.realization_schedule.ScheduleWitnessEntry,
 ) -> Bool {
   match map_get(identities, witness) {
     Absent => false
@@ -148,7 +148,7 @@ fn prepared_floor_identity_map_contains(
 
 fn prepared_floor_witness_multiplicity_step(
   index: PreparedFloorWitnessMultiplicityIndex,
-  witness: ScheduleWitnessEntry,
+  witness: std.realization_schedule.ScheduleWitnessEntry,
 ) -> PreparedFloorWitnessMultiplicityIndex {
   if prepared_floor_identity_map_contains(identities: index.witnessed, witness: witness) {
     PreparedFloorWitnessMultiplicityIndex {
@@ -228,7 +228,7 @@ fn prepared_floor_identity_index(
 
 fn prepared_floor_probe_for_witness(
   index: PreparedFloorIdentityIndex,
-  witness: ScheduleWitnessEntry,
+  witness: std.realization_schedule.ScheduleWitnessEntry,
 ) -> PreparedFloorEntryProbe? {
   map_get(index.probes.by_witness, witness)
 }
@@ -238,7 +238,7 @@ data prepared_floor_identity_index_cost_law: String = "THE SELECTED/PROBE JOIN I
 fn prepared_floor_duplicate_selected_identities(
   selected: List<PreparedFloorEntryRequest>,
   index: PreparedFloorIdentityIndex,
-) -> List<ScheduleWitnessEntry> {
+) -> List<std.realization_schedule.ScheduleWitnessEntry> {
   selected
     |> filter(entry => prepared_floor_identity_map_contains(
       identities: index.selected.duplicated,
@@ -250,7 +250,7 @@ fn prepared_floor_duplicate_selected_identities(
 fn prepared_floor_duplicate_probe_identities(
   probes: List<PreparedFloorEntryProbe>,
   index: PreparedFloorIdentityIndex,
-) -> List<ScheduleWitnessEntry> {
+) -> List<std.realization_schedule.ScheduleWitnessEntry> {
   probes
     |> filter(entry => prepared_floor_identity_map_contains(
       identities: index.probes.multiplicity.duplicated,
@@ -262,7 +262,7 @@ fn prepared_floor_duplicate_probe_identities(
 fn prepared_floor_missing_probe_identities(
   selected: List<PreparedFloorEntryRequest>,
   index: PreparedFloorIdentityIndex,
-) -> List<ScheduleWitnessEntry> {
+) -> List<std.realization_schedule.ScheduleWitnessEntry> {
   selected
     |> filter(entry => !prepared_floor_identity_map_contains(
       identities: index.probes.multiplicity.witnessed,
@@ -274,7 +274,7 @@ fn prepared_floor_missing_probe_identities(
 fn prepared_floor_unexpected_probe_identities(
   probes: List<PreparedFloorEntryProbe>,
   index: PreparedFloorIdentityIndex,
-) -> List<ScheduleWitnessEntry> {
+) -> List<std.realization_schedule.ScheduleWitnessEntry> {
   probes
     |> filter(entry => !prepared_floor_identity_map_contains(
       identities: index.selected.witnessed,

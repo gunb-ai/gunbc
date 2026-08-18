@@ -1,8 +1,8 @@
 module extdeps.languages.yaml.ingest
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "yaml.org/spec/1.2.2/"
   }
@@ -105,7 +105,7 @@ fn yaml_is_flow_sequence_text(text: String) -> Bool {
   starts_with(s: text, prefix: "[") && ends_with(s: text, suffix: "]")
 }
 
-fn yaml_parse_flow_sequence(text: String) -> YamlValue {
+fn yaml_parse_flow_sequence(text: String) -> extdeps.languages.yaml.types.YamlValue {
   let inner = substring(s: text, start: 1, end: text.length() - 1)
   if inner == "" {
     YamlSequence { elements: [] }
@@ -114,7 +114,7 @@ fn yaml_parse_flow_sequence(text: String) -> YamlValue {
   }
 }
 
-fn yaml_parse_scalar_text(text: String) -> YamlValue {
+fn yaml_parse_scalar_text(text: String) -> extdeps.languages.yaml.types.YamlValue {
   if text == "''" {
     YamlString { value: "" }
   } else if starts_with(s: text, prefix: "\"") && ends_with(s: text, suffix: "\"") && (text.length() >= 2) {
@@ -200,7 +200,7 @@ fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: 
   }
 }
 
-fn yaml_parse_mapping_entries(lines: List<String>, index: Int, indent: Int, acc: List<YamlKeyValue>) -> YamlBlockResult {
+fn yaml_parse_mapping_entries(lines: List<String>, index: Int, indent: Int, acc: List<extdeps.languages.yaml.types.YamlKeyValue>) -> YamlBlockResult {
   if !yaml_has_line_at(lines: lines, index: index) {
     ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: index }
   } else if yaml_indent_at(lines: lines, index: index) != indent {
@@ -238,7 +238,7 @@ fn yaml_parse_seq_item(lines: List<String>, index: Int, indent: Int) -> YamlSeqI
   }
 }
 
-fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<YamlValue>) -> YamlBlockResult {
+fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<extdeps.languages.yaml.types.YamlValue>) -> YamlBlockResult {
   if !yaml_has_line_at(lines: lines, index: index) {
     ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: index }
   } else if yaml_indent_at(lines: lines, index: index) != indent {

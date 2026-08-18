@@ -89,12 +89,12 @@ fn derive_copied_port_index_from_arrow(arrow: Node) -> Optional<Int> {
   }
 }
 
-fn derive_copied_port_fact(combiner: Symbol, arrow: Node) -> Optional<CopiedPortFact> {
+fn derive_copied_port_fact(combiner: v2.std.node.Symbol, arrow: Node) -> Optional<v2.std.algebra.CopiedPortFact> {
   match derive_copied_port_index_from_arrow(arrow: arrow) {
     Absent => Absent
     Present { value: idx } =>
       Present {
-        value: CopiedPortFact {
+        value: v2.std.algebra.CopiedPortFact {
           combiner: combiner,
           copied_port_index: idx
         }
@@ -102,7 +102,7 @@ fn derive_copied_port_fact(combiner: Symbol, arrow: Node) -> Optional<CopiedPort
   }
 }
 
-fn row_matches_combiner(row: CopiedPortFact, combiner: Symbol) -> Bool {
+fn row_matches_combiner(row: v2.std.algebra.CopiedPortFact, combiner: v2.std.node.Symbol) -> Bool {
   row.combiner == combiner
 }
 
@@ -110,7 +110,7 @@ fn some_copied_port_index(idx: Int) -> Optional<Int> {
   Present { value: idx }
 }
 
-fn copied_port_index_from_registry(rows: List<CopiedPortFact>, combiner: Symbol) -> Optional<Int> {
+fn copied_port_index_from_registry(rows: List<v2.std.algebra.CopiedPortFact>, combiner: v2.std.node.Symbol) -> Optional<Int> {
   fold_list(
     xs: rows,
     empty: Absent,

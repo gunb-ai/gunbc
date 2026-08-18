@@ -46,25 +46,25 @@ fn minutes_per_billing_month() -> std.nat.Nat {
   billing_month_as_hour_count() * minutes_per_hour()
 }
 
-fn money_per_minute_from_money_per_month(monthly: MoneyPerMonth) -> MoneyPerMinute {
-  MoneyPerMinute {
+fn money_per_minute_from_money_per_month(monthly: std.measure.MoneyPerMonth) -> std.measure.MoneyPerMinute {
+  std.measure.MoneyPerMinute {
     amount: money_amount_micro(count: money_per_month_micros(q: monthly) / minutes_per_billing_month()),
     currency: monthly.currency,
   }
 }
 
 fn convert_money_per_minute_eur_to_usd(
-  eur: MoneyPerMinute,
+  eur: std.measure.MoneyPerMinute,
   numerator: std.nat.Nat,
   denominator: std.nat.Nat,
-) -> MoneyPerMinute? {
+) -> std.measure.MoneyPerMinute? {
   if denominator <= 0 {
     none
   } else {
     match eur.currency {
       Eur =>
         Present {
-          value: MoneyPerMinute {
+          value: std.measure.MoneyPerMinute {
             amount: money_amount_micro(count: (money_per_minute_micros(q: eur) * numerator) / denominator),
             currency: Usd,
           }
@@ -74,14 +74,14 @@ fn convert_money_per_minute_eur_to_usd(
   }
 }
 
-fn subtract_money_per_minute_usd(umbrella: MoneyPerMinute, floor: MoneyPerMinute) -> MoneyPerMinute? {
+fn subtract_money_per_minute_usd(umbrella: std.measure.MoneyPerMinute, floor: std.measure.MoneyPerMinute) -> std.measure.MoneyPerMinute? {
   let umbrella_micros = money_per_minute_micros(q: umbrella)
   let floor_micros = money_per_minute_micros(q: floor)
   if umbrella_micros < floor_micros {
     none
   } else {
     Present {
-      value: MoneyPerMinute {
+      value: std.measure.MoneyPerMinute {
         amount: money_amount_micro(count: umbrella_micros - floor_micros),
         currency: Usd,
       }
@@ -90,9 +90,9 @@ fn subtract_money_per_minute_usd(umbrella: MoneyPerMinute, floor: MoneyPerMinute
 }
 
 fn derive_monthly_eur_with_amortization(
-  row: HetznerDedicatedServerPriceRow,
-  amortization_months: AmortizationMonths,
-) -> MoneyPerMonth? {
+  row: extdeps.pricing.hetzner_dedicated.HetznerDedicatedServerPriceRow,
+  amortization_months: std.measure.AmortizationMonths,
+) -> std.measure.MoneyPerMonth? {
   let months = amortization_months_count(m: amortization_months)
   if months <= 0 {
     none
@@ -100,7 +100,7 @@ fn derive_monthly_eur_with_amortization(
     let monthly = money_per_month_micros(q: row.monthly)
     let setup = hetzner_dedicated_setup_fee_micros(row: row)
     Present {
-      value: MoneyPerMonth {
+      value: std.measure.MoneyPerMonth {
         amount: money_amount_micro(count: monthly + (setup / months)),
         currency: Eur,
       }
@@ -109,8 +109,8 @@ fn derive_monthly_eur_with_amortization(
 }
 
 fn derive_runner_cost_floor_per_minute_usd(
-  row: HetznerDedicatedServerPriceRow,
-  runner_vcpus: HardwareThreadCount,
+  row: extdeps.pricing.hetzner_dedicated.HetznerDedicatedServerPriceRow,
+  runner_vcpus: std.measure.HardwareThreadCount,
   assumptions: WedgeAssumptions,
 ) -> RunnerCostFloorResult {
   if basis_point_count(bp: assumptions.runner_utilization_bp) <= 0 {
@@ -134,13 +134,13 @@ fn derive_runner_cost_floor_per_minute_usd(
       ) {
         Present { value: monthly_eur } => {
           let per_minute_server_eur = money_per_minute_from_money_per_month(monthly: monthly_eur)
-          let per_minute_runner_eur = MoneyPerMinute {
+          let per_minute_runner_eur = std.measure.MoneyPerMinute {
             amount: money_amount_micro(
               count: (money_per_minute_micros(q: per_minute_server_eur) * runner_count) / server_count
             ),
             currency: Eur,
           }
-          let utilized_runner_eur = MoneyPerMinute {
+          let utilized_runner_eur = std.measure.MoneyPerMinute {
             amount: money_amount_micro(
               count: (money_per_minute_micros(q: per_minute_runner_eur) * basis_point_unity_count()) / basis_point_count(bp: assumptions.runner_utilization_bp)
             ),
@@ -163,8 +163,8 @@ fn derive_runner_cost_floor_per_minute_usd(
 }
 
 fn derive_github_hetzner_ci_minute_wedge(
-  umbrella_row: GithubActionsRunnerPriceRow,
-  floor_row: HetznerDedicatedServerPriceRow,
+  umbrella_row: extdeps.pricing.github_actions.GithubActionsRunnerPriceRow,
+  floor_row: extdeps.pricing.hetzner_dedicated.HetznerDedicatedServerPriceRow,
   assumptions_input: WedgeAssumptionsInput,
 ) -> KnowableWedgeResult {
   match assumptions_input {

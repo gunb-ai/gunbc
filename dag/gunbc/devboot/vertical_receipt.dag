@@ -45,15 +45,15 @@ fn devboot_vertical_receipt() -> DevbootVerticalReceipt? {
       Present {
         value: DevbootVerticalReceipt {
           evaluated_head: "eb38c7b704",
-          subject_ref_token: "fnv1a64-9c6ddff3327a5dd3" as NonEmptyStr,
-          artifact_object_id: "e503761a12f3d9c0e7d4364e8bfb094ab0bddf6a" as NonEmptyStr,
+          subject_ref_token: "fnv1a64-9c6ddff3327a5dd3" as std.types.NonEmptyStr,
+          artifact_object_id: "e503761a12f3d9c0e7d4364e8bfb094ab0bddf6a" as std.types.NonEmptyStr,
           artifact_sha256: digest,
-          producer_entry: DeclarationRef {
+          producer_entry: std.decl_ref.DeclarationRef {
             module_path: "gunbc.devboot.produce",
             decl_name: "devboot_produce_entry",
             field: WholeDeclaration,
           },
-          consumer_entry: DeclarationRef {
+          consumer_entry: std.decl_ref.DeclarationRef {
             module_path: "gunbc.devboot.produce",
             decl_name: "devboot_materialize",
             field: WholeDeclaration,

@@ -14,7 +14,7 @@ fn host_swap_backing_requirement() -> SwapBackingRequirement {
   if byte_size_count(b: cap) > 0 {
     SwapBackingRequired {
       min_total: cap,
-      requiring_declaration: DeclarationRef {
+      requiring_declaration: std.decl_ref.DeclarationRef {
         module_path: "gunbc.runner_slot_allocation",
         decl_name: "gunbc_runner_slot_desired",
         field: WholeDeclaration,
@@ -27,11 +27,11 @@ fn host_swap_backing_requirement() -> SwapBackingRequirement {
 
 data host_swap_backing_verdict_note: String = "The fail-closed fold, with each arm answering a different question so the remedies stay separable. No observation at all is UnknownRefused: nothing on this host can be asked about swap today, and the fix is to BUILD the producer. An observed total of zero is Absent: the host answered, and the answer is that the backing the caps presuppose is not there — the fix is to PROVISION it. An observed total below the requirement is Drifted: backing exists and is too small, so the fix is to RESIZE. Collapsing any two of those into one arm is the state-space conflation this lane keeps paying for; they have different owners and their counts measure different things. Note the arm that is deliberately absent: there is no 'assume the distro default gave us swap'. Ubuntu server images ship with swap configured sometimes and not others depending on installer path, and srv1..srv4 were installed across at least two paths (the srv3/srv4 BMC virtual-media route and whatever preceded it), so a default-assuming arm would be a guess whose error rate is unmeasurable by construction."
 
-fn swap_stats_total_bytes(s: SwapStats) -> Int {
+fn swap_stats_total_bytes(s: extdeps.tools.free.SwapStats) -> Int {
   byte_size_count(b: s.total)
 }
 
-fn host_swap_backing_verdict_for_stats(min_total: ByteSize, s: SwapStats) -> ObservationVerdict {
+fn host_swap_backing_verdict_for_stats(min_total: std.measure.ByteSize, s: extdeps.tools.free.SwapStats) -> std.upsert_decision.ObservationVerdict {
   let total = swap_stats_total_bytes(s: s)
   if total == 0 {
     std.upsert_decision.Absent
@@ -42,8 +42,8 @@ fn host_swap_backing_verdict_for_stats(min_total: ByteSize, s: SwapStats) -> Obs
 
 fn host_swap_backing_verdict(
   req: SwapBackingRequirement,
-  observed: SwapStats?,
-) -> ObservationVerdict {
+  observed: extdeps.tools.free.SwapStats?,
+) -> std.upsert_decision.ObservationVerdict {
   match req {
     SwapBackingNotRequired => Converged
     SwapBackingRequired { min_total: m, requiring_declaration: d } =>
@@ -57,9 +57,9 @@ fn host_swap_backing_verdict(
 data host_swap_cap_qualification_note: String = "THE load-bearing conjunct of this module, and the reason it is not a free-floating swap model: it changes what an EXISTING converged knob is allowed to claim. gunbc.runner_unit_live_read already produces a verdict for the per-slot MemorySwapMax cap. That verdict is a fact about the cgroup property and is imported here unchanged; what this fold adds is the qualification that a cap verdict carries information only when its backing is observed Converged. Every other backing state DOMINATES the cap: unobserved backing yields UnknownRefused however green the property read was, absent backing yields Absent, undersized backing yields Drifted. This is not a min() over some verdict lattice and must not become one — it is a presupposition check, and the asymmetry is the point. A green cap over unknown backing is precisely the failure mode #7213 found in another dress: sccache --show-stats reported a healthy server because the probe auto-started the very thing it was measuring, and a MemorySwapMax read reports a healthy ceiling because systemd will happily store a ceiling for a resource the host does not have. Both manufacture their own evidence, and both must refuse instead."
 
 fn swap_cap_verdict_qualified_by_backing(
-  cap: ObservationVerdict,
-  backing: ObservationVerdict,
-) -> ObservationVerdict {
+  cap: std.upsert_decision.ObservationVerdict,
+  backing: std.upsert_decision.ObservationVerdict,
+) -> std.upsert_decision.ObservationVerdict {
   match backing {
     Converged => cap
     std.upsert_decision.Absent => std.upsert_decision.Absent
@@ -73,13 +73,13 @@ fn swap_cap_verdict_qualified_by_backing(
 data host_swap_cap_widen_red_control_note: String = "The forbidden arm, modeled as its own declaration so it can be executed against the gate rather than described in prose. Backing-blind qualification is what the corpus does TODAY — the cap verdict is reported as-is, with no backing term anywhere in the fold — so this sketch is not a hypothetical: it is the current behaviour written down and made falsifiable. The gate rejects it and accepts the authority on the same inputs, and the perturbation is independent of the property checked, so the pair cannot pass tautologically."
 
 fn swap_cap_verdict_backing_blind_widen_sketch(
-  cap: ObservationVerdict,
-  backing: ObservationVerdict,
-) -> ObservationVerdict {
+  cap: std.upsert_decision.ObservationVerdict,
+  backing: std.upsert_decision.ObservationVerdict,
+) -> std.upsert_decision.ObservationVerdict {
   cap
 }
 
-fn observation_verdict_is_converged(v: ObservationVerdict) -> Bool {
+fn observation_verdict_is_converged(v: std.upsert_decision.ObservationVerdict) -> Bool {
   match v {
     Converged => true
     std.upsert_decision.Absent => false
@@ -91,8 +91,8 @@ fn observation_verdict_is_converged(v: ObservationVerdict) -> Bool {
 }
 
 fn swap_cap_verdict_gate_accepts(
-  verdict: ObservationVerdict,
-  backing: ObservationVerdict,
+  verdict: std.upsert_decision.ObservationVerdict,
+  backing: std.upsert_decision.ObservationVerdict,
 ) -> Bool {
   if observation_verdict_is_converged(v: backing) {
     true
@@ -103,26 +103,26 @@ fn swap_cap_verdict_gate_accepts(
 
 data host_swap_backing_observation_frontier_note: String = "The live producer returns none for every host on purpose — there is no /proc/swaps reader and no free(1) transport in the tree — so the honest observation for all four hosts is absence, and the derived verdict for all four is UnknownRefused. host_swap_backing_observed_producer is an explicit scaffold no-op (not a transport fold that discards success); realization binds host_swap_backing_observed_producer_scaffold until argv materialization can express swap ops. The count of unobserved hosts is exported so the deficit is a NUMBER that must change when a producer lands."
 
-data host_swap_backing_observed_producer_scaffold: Disposition = Scaffold {
+data host_swap_backing_observed_producer_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,
   }
 }
 
-fn host_swap_backing_observed_producer(host: HostIdentity) -> SwapStats? {
+fn host_swap_backing_observed_producer(host: product.placement_supply.HostIdentity) -> extdeps.tools.free.SwapStats? {
   none
 }
 
-fn host_swap_backing_observation(host: HostIdentity) -> SwapStats? {
+fn host_swap_backing_observation(host: product.placement_supply.HostIdentity) -> extdeps.tools.free.SwapStats? {
   host_swap_backing_observed_producer(host: host)
 }
 
 data host_swap_backing_probe_independence_note: String = "The host verdict is routed through the read-back independence criterion rather than trusting the observation directly, and it is worth being precise about why, because /proc/swaps IS inert and the routing is therefore a no-op TODAY. The routing is what makes the classification load-bearing instead of decorative: the probe row travels with the verdict, so a future producer that swapped the transport for an ensure-shaped one — `swapon --show` after an activation attempt, an agent that mounts what it fails to find — would have to change proc_swaps_read_probe's classification to keep the same green, and changing it is a visible edit to a cited row rather than a silent change of meaning inside a transport. This is the same reason the swap CAP is qualified by its backing: a value is evidence only together with the conditions under which it was obtained."
 
-fn host_swap_backing_host_verdict(host: HostIdentity) -> ObservationVerdict {
+fn host_swap_backing_host_verdict(host: product.placement_supply.HostIdentity) -> std.upsert_decision.ObservationVerdict {
   readback_evidence_verdict(
     p: proc_swaps_read_probe,
     observed: host_swap_backing_verdict(
@@ -132,7 +132,7 @@ fn host_swap_backing_host_verdict(host: HostIdentity) -> ObservationVerdict {
   )
 }
 
-fn host_swap_backing_unobserved_count(hosts: List<HostIdentity>) -> Int {
+fn host_swap_backing_unobserved_count(hosts: List<product.placement_supply.HostIdentity>) -> Int {
   filter(
     hosts,
     h => observation_verdict_eq(a: host_swap_backing_host_verdict(host: h), b: UnknownRefused),

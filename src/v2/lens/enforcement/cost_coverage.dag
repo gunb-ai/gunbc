@@ -54,11 +54,11 @@ type CostCoverageCensusAcc {
   file_rows: List<CostCoverageFileReceipt>
 }
 
-data cost_coverage_unknown_asymptotic_class: Symbol = ^cost_coverage_unknown_asymptotic_class
+data cost_coverage_unknown_asymptotic_class: v2.std.node.Symbol = ^cost_coverage_unknown_asymptotic_class
 
-data cost_coverage_file_anchor: Symbol = ^cost_coverage_file_anchor
+data cost_coverage_file_anchor: v2.std.node.Symbol = ^cost_coverage_file_anchor
 
-data cost_coverage_reject_probe: Symbol = ^cost_coverage_reject_probe
+data cost_coverage_reject_probe: v2.std.node.Symbol = ^cost_coverage_reject_probe
 
 fn cost_coverage_collect_fn_decls(root: Node, acc: List<Node>) -> List<Node> {
   let acc1 = if dag_node_is_fn_decl(node: root) {
@@ -237,8 +237,8 @@ fn cost_coverage_file_receipt_from_module(
 
 fn cost_coverage_ingest_source_text(
   source_text: String,
-  file: Symbol
-) -> Outcome<NormalizedTree> {
+  file: v2.std.node.Symbol
+) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: d } =>
@@ -256,7 +256,7 @@ fn cost_coverage_ingest_source_text(
 fn cost_coverage_rejected_file_receipt(
   rel_path: String,
   stage: String,
-  reason: Symbol
+  reason: v2.std.node.Symbol
 ) -> CostCoverageFileReceipt {
   let empty = cost_coverage_empty_file_counts()
   CostCoverageFileReceipt {

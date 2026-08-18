@@ -1,16 +1,16 @@
 module extdeps.llm.cursor_stream
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "cursor.com/docs/sdk/typescript"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.llm.cursor_stream",
       decl_name: "CursorSdkStreamTerminalReconcile",
       field: WholeDeclaration
@@ -111,7 +111,7 @@ fn cursor_sdk_terminal_status_from_wire(wire_status: String) -> CursorSdkTermina
   }
 }
 
-fn cursor_sdk_error_from_object(v: JsonValue) -> CursorSdkTerminalErrorWire? {
+fn cursor_sdk_error_from_object(v: extdeps.languages.json.emit.JsonValue) -> CursorSdkTerminalErrorWire? {
   match json_object_unique_member(v: v, key: "message") {
     JsonMemberFound { value: msg_v } => {
       let message = json_string_value_or_empty(v: msg_v)
@@ -145,7 +145,7 @@ fn cursor_sdk_error_from_object(v: JsonValue) -> CursorSdkTerminalErrorWire? {
 fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTerminalReconcile {
   if raw == "" {
     CursorSdkStreamTerminalsUnclassified {
-      reason: "empty Cursor SDK run result" as NonEmptyStr,
+      reason: "empty Cursor SDK run result" as std.types.NonEmptyStr,
       raw: raw,
     }
   } else {
@@ -168,7 +168,7 @@ fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTermina
                         }
                       Absent =>
                         CursorSdkStreamTerminalsUnclassified {
-                          reason: "malformed error object in Cursor SDK run result" as NonEmptyStr,
+                          reason: "malformed error object in Cursor SDK run result" as std.types.NonEmptyStr,
                           raw: raw,
                         }
                     }
@@ -180,40 +180,40 @@ fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTermina
                     }
                   JsonMemberDuplicated { count: _ } =>
                     CursorSdkStreamTerminalsUnclassified {
-                      reason: "duplicate error member in Cursor SDK run result" as NonEmptyStr,
+                      reason: "duplicate error member in Cursor SDK run result" as std.types.NonEmptyStr,
                       raw: raw,
                     }
                   JsonMemberNotAnObject =>
                     CursorSdkStreamTerminalsUnclassified {
-                      reason: "Cursor SDK run result error member not an object" as NonEmptyStr,
+                      reason: "Cursor SDK run result error member not an object" as std.types.NonEmptyStr,
                       raw: raw,
                     }
                 }
               Absent =>
                 CursorSdkStreamTerminalsUnclassified {
-                  reason: "Cursor SDK run result missing or unknown status member" as NonEmptyStr,
+                  reason: "Cursor SDK run result missing or unknown status member" as std.types.NonEmptyStr,
                   raw: raw,
                 }
             }
           JsonMemberAbsent =>
             CursorSdkStreamTerminalsUnclassified {
-              reason: "Cursor SDK run result missing status member" as NonEmptyStr,
+              reason: "Cursor SDK run result missing status member" as std.types.NonEmptyStr,
               raw: raw,
             }
           JsonMemberDuplicated { count: _ } =>
             CursorSdkStreamTerminalsUnclassified {
-              reason: "duplicate status member in Cursor SDK run result" as NonEmptyStr,
+              reason: "duplicate status member in Cursor SDK run result" as std.types.NonEmptyStr,
               raw: raw,
             }
           JsonMemberNotAnObject =>
             CursorSdkStreamTerminalsUnclassified {
-              reason: "Cursor SDK run result is not a JSON object" as NonEmptyStr,
+              reason: "Cursor SDK run result is not a JSON object" as std.types.NonEmptyStr,
               raw: raw,
             }
         }
       Absent =>
         CursorSdkStreamTerminalsUnclassified {
-          reason: "Cursor SDK run result is not parseable JSON" as NonEmptyStr,
+          reason: "Cursor SDK run result is not parseable JSON" as std.types.NonEmptyStr,
           raw: raw,
         }
     }

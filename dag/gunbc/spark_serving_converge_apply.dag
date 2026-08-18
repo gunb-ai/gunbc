@@ -12,7 +12,7 @@ type SparkServingFrozenRemoteExecResult =
   | SparkServingFrozenRemoteExecRefused { reason: String }
 
 fn spark_serving_apply_reads_frozen_typed_rows(
-  artifact: FleetConvergePlanArtifact,
+  artifact: gunbc.fleet_converge_plan.FleetConvergePlanArtifact,
   claimed_bundle_hex: String,
 ) -> SparkServingFrozenApplyResult {
   if !fleet_converge_plan_artifact_bundle_admits(artifact: artifact, claimed_hex: claimed_bundle_hex) {
@@ -61,9 +61,9 @@ fn spark_serving_apply_reads_frozen_typed_rows(
 // relies on the runner job having established them out of band. Fusing them is what let the
 // stronger name stand over the weaker guarantee.
 fn spark_serving_exec_frozen_typed_rows(
-  artifact: FleetConvergePlanArtifact,
+  artifact: gunbc.fleet_converge_plan.FleetConvergePlanArtifact,
   claimed_bundle_hex: String,
-  transport: HostEffectTransport,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> SparkServingFrozenRemoteExecResult {
   match spark_serving_apply_reads_frozen_typed_rows(
     artifact: artifact,
@@ -109,9 +109,9 @@ fn spark_serving_exec_frozen_typed_rows(
 // there is correct rather than restrictive: delivering a unit file over an unverified route is
 // exactly the posture the credential lane exists to make unreachable.
 func spark_serving_run_operation(
-  operation: RemoteOperation,
-  transport: HostEffectTransport,
-) -> RemoteOperationOutcome
+  operation: gunbc.remote_operation.RemoteOperation,
+  transport: gunbc.host_effect.HostEffectTransport,
+) -> gunbc.remote_operation.RemoteOperationOutcome
   uses net: Network
 {
   match operation {
@@ -177,8 +177,8 @@ type SparkServingSequenceAcc =
 
 func spark_serving_sequence_step(
   acc: SparkServingSequenceAcc,
-  operation: RemoteOperation,
-  transport: HostEffectTransport,
+  operation: gunbc.remote_operation.RemoteOperation,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> SparkServingSequenceAcc
   uses net: Network
 {
@@ -199,9 +199,9 @@ func spark_serving_sequence_step(
 }
 
 func spark_serving_run_operation_sequence(
-  operations: List<RemoteOperation>,
-  transport: HostEffectTransport,
-) -> RemoteOperationOutcome
+  operations: List<gunbc.remote_operation.RemoteOperation>,
+  transport: gunbc.host_effect.HostEffectTransport,
+) -> gunbc.remote_operation.RemoteOperationOutcome
   uses net: Network
 {
   match fold(

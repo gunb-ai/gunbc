@@ -1,15 +1,15 @@
 module extdeps.version.pep440
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "packaging.python.org/en/latest/specifications/version-specifiers/"
   }
 }
 
-data pep440_spec_url: NonEmptyStr = "https://packaging.python.org/en/latest/specifications/version-specifiers/"
-data pep440_spec_label: NonEmptyStr = "PEP 440 (Final, 2014-08-22)"
+data pep440_spec_url: std.types.NonEmptyStr = "https://packaging.python.org/en/latest/specifications/version-specifiers/"
+data pep440_spec_label: std.types.NonEmptyStr = "PEP 440 (Final, 2014-08-22)"
 
 type Pep440Constraint = VersionConstraint
 
@@ -72,20 +72,20 @@ fn pep440_version_specifier_constraint(spec: Pep440VersionSpecifier) -> VersionC
   pep440_version_specifier_label(spec: spec)
 }
 
-fn pep440_compare_non_negative_int(a: std.integer.NonNegativeInt, b: std.integer.NonNegativeInt) -> Ordering {
+fn pep440_compare_non_negative_int(a: std.integer.NonNegativeInt, b: std.integer.NonNegativeInt) -> std.algebra.Ordering {
   if a < b { Less }
   else if a > b { Greater }
   else { Equal }
 }
 
-fn pep440_compare_release_segments(a: Pep440ReleaseSegments, b: Pep440ReleaseSegments) -> Ordering {
+fn pep440_compare_release_segments(a: Pep440ReleaseSegments, b: Pep440ReleaseSegments) -> std.algebra.Ordering {
   match pep440_compare_non_negative_int(a: a.first, b: b.first) {
     Equal => pep440_compare_release_rest(a_rest: a.rest, b_rest: b.rest)
     other => other
   }
 }
 
-fn pep440_compare_release_rest(a_rest: List<std.integer.NonNegativeInt>, b_rest: List<std.integer.NonNegativeInt>) -> Ordering {
+fn pep440_compare_release_rest(a_rest: List<std.integer.NonNegativeInt>, b_rest: List<std.integer.NonNegativeInt>) -> std.algebra.Ordering {
   if a_rest.length() == 0 && b_rest.length() == 0 { Equal }
   else if a_rest.length() == 0 {
 
@@ -119,7 +119,7 @@ fn pep440_pre_release_phase_rank(phase: Pep440PreReleasePhase) -> std.integer.No
   }
 }
 
-fn pep440_compare_pre_release(a: Pep440PreRelease?, b: Pep440PreRelease?) -> Ordering {
+fn pep440_compare_pre_release(a: Pep440PreRelease?, b: Pep440PreRelease?) -> std.algebra.Ordering {
   match a {
     Absent => match b {
       Absent => Equal
@@ -139,7 +139,7 @@ fn pep440_compare_pre_release(a: Pep440PreRelease?, b: Pep440PreRelease?) -> Ord
   }
 }
 
-fn pep440_compare_dev_release(a: std.integer.NonNegativeInt?, b: std.integer.NonNegativeInt?) -> Ordering {
+fn pep440_compare_dev_release(a: std.integer.NonNegativeInt?, b: std.integer.NonNegativeInt?) -> std.algebra.Ordering {
   match a {
     Absent => match b {
       Absent => Equal
@@ -152,7 +152,7 @@ fn pep440_compare_dev_release(a: std.integer.NonNegativeInt?, b: std.integer.Non
   }
 }
 
-fn pep440_compare_post_release(a: std.integer.NonNegativeInt?, b: std.integer.NonNegativeInt?) -> Ordering {
+fn pep440_compare_post_release(a: std.integer.NonNegativeInt?, b: std.integer.NonNegativeInt?) -> std.algebra.Ordering {
   match a {
     Absent => match b {
       Absent => Equal
@@ -178,7 +178,7 @@ fn pep440_is_bare_dev_public(v: Pep440PublicVersion) -> Bool {
   }
 }
 
-fn pep440_compare_bare_dev_tier(a: Pep440PublicVersion, b: Pep440PublicVersion) -> Ordering {
+fn pep440_compare_bare_dev_tier(a: Pep440PublicVersion, b: Pep440PublicVersion) -> std.algebra.Ordering {
   let a_bare = pep440_is_bare_dev_public(v: a)
   let b_bare = pep440_is_bare_dev_public(v: b)
   if a_bare && !b_bare { Less }
@@ -186,7 +186,7 @@ fn pep440_compare_bare_dev_tier(a: Pep440PublicVersion, b: Pep440PublicVersion) 
   else { Equal }
 }
 
-fn pep440_compare_public(a: Pep440PublicVersion, b: Pep440PublicVersion) -> Ordering {
+fn pep440_compare_public(a: Pep440PublicVersion, b: Pep440PublicVersion) -> std.algebra.Ordering {
   match pep440_compare_non_negative_int(a: a.epoch, b: b.epoch) {
     Equal =>
       match pep440_compare_release_segments(a: a.release_segments, b: b.release_segments) {

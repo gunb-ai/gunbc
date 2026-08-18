@@ -3,25 +3,25 @@ module v2.lens.complexity
 
 data complexity_variables_list_carrier_note: String = "ComplexityVariables is List<SizeVariable> with no Refined/Witness carrier. The admits predicate is vacuous, so refine+Holds rewrap added no admission fact and under discovery (PR 7765) Witness peels left Holds-wrapped lists that concat rejected as Record. complexity_lens returns ComplexityBound directly (UnknownComplexity on cost Violates) so discovery cannot nest an extra Holds around the bound. dissolve-on: root-cause the discovery shared-index path that injected the extra Holds layer."
 
-fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
+fn complexity_variables_admits(xs: List<v2.lens.cost.SizeVariable>) -> Bool {
   true
 }
 
-data complexity_variables_validation: Validation<List<SizeVariable>> = Validation {
+data complexity_variables_validation: Validation<List<v2.lens.cost.SizeVariable>> = v2.std.refinement.Validation {
   reason: ^complexity_variables_invalid,
   admits: complexity_variables_admits
 }
 
-data complexity_variables_vacuous_validation: VacuousValidation<List<SizeVariable>> = VacuousValidation {
+data complexity_variables_vacuous_validation: VacuousValidation<List<v2.lens.cost.SizeVariable>> = v2.std.refinement.VacuousValidation {
   reason: ^complexity_variables_invalid,
   vacuous: vacuous_admits_marker
 }
 
-fn complexity_projection_locus() -> Locus {
+fn complexity_projection_locus() -> v2.std.diagnostic.Locus {
   Textual { file: ^complexity_projection_virtual_file, extent: WholeFile }
 }
 
-type ComplexityVariables = List<SizeVariable>
+type ComplexityVariables = List<v2.lens.cost.SizeVariable>
 
 type SizeIndexedAsymptoticClass
   = SizedLogClass
@@ -41,7 +41,7 @@ fn unknown_complexity() -> ComplexityBound {
   UnknownComplexity { diagnostic: complexity_projection_diagnostic() }
 }
 
-fn single_complexity_variable(size_var: SizeVariable) -> ComplexityVariables {
+fn single_complexity_variable(size_var: v2.lens.cost.SizeVariable) -> ComplexityVariables {
   [size_var]
 }
 
@@ -63,7 +63,7 @@ fn sized_complexity(
   SizedComplexity { class: class, variables: variables }
 }
 
-fn linear_complexity(size_var: SizeVariable) -> ComplexityBound {
+fn linear_complexity(size_var: v2.lens.cost.SizeVariable) -> ComplexityBound {
   sized_complexity(
     class: SizedLinearClass,
     variables: single_complexity_variable(size_var: size_var)
@@ -71,8 +71,8 @@ fn linear_complexity(size_var: SizeVariable) -> ComplexityBound {
 }
 
 fn polynomial_complexity(
-  size_var: SizeVariable,
-  degree: PolynomialDegree
+  size_var: v2.lens.cost.SizeVariable,
+  degree: v2.lens.cost.PolynomialDegree
 ) -> ComplexityBound {
   sized_complexity(
     class: SizedPolynomialClass { degree: degree },
@@ -82,16 +82,16 @@ fn polynomial_complexity(
 
 fn multidimensional_polynomial_complexity(
   variables: ComplexityVariables,
-  degree: PolynomialDegree
+  degree: v2.lens.cost.PolynomialDegree
 ) -> ComplexityBound {
   sized_complexity(class: SizedPolynomialClass { degree: degree }, variables: variables)
 }
 
-fn unknown_complexity_with_diagnostic(diagnostic: Diagnostic) -> ComplexityBound {
+fn unknown_complexity_with_diagnostic(diagnostic: v2.std.diagnostic.Diagnostic) -> ComplexityBound {
   UnknownComplexity { diagnostic: diagnostic }
 }
 
-fn complexity_variables_from_cost(cost: SymbolicCost) -> ComplexityVariables {
+fn complexity_variables_from_cost(cost: v2.lens.cost.SymbolicCost) -> ComplexityVariables {
   match cost {
     ConstantCost { value: _ } => Empty
     LogCost { variable: v } => [v]
@@ -115,7 +115,7 @@ fn complexity_variables_from_cost(cost: SymbolicCost) -> ComplexityVariables {
 }
 
 fn complexity_bound_from_sized_class(
-  class: AsymptoticClass,
+  class: v2.lens.cost.AsymptoticClass,
   variables: ComplexityVariables
 ) -> ComplexityBound {
   match class {
@@ -133,7 +133,7 @@ fn complexity_bound_from_sized_class(
   }
 }
 
-fn complexity_bound_from_cost(cost: SymbolicCost) -> ComplexityBound {
+fn complexity_bound_from_cost(cost: v2.lens.cost.SymbolicCost) -> ComplexityBound {
   match cost {
     UnknownCost { diagnostic: d } =>
       unknown_complexity_with_diagnostic(diagnostic: d)
@@ -145,15 +145,15 @@ fn complexity_bound_from_cost(cost: SymbolicCost) -> ComplexityBound {
   }
 }
 
-fn complexity_projection_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn complexity_projection_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^complexity_reason_unmodeled_cost_projection,
     at: Textual { file: ^complexity_projection_virtual_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
-fn asymptotic_projection(cost_witness: Witness<SymbolicCost>) -> ComplexityBound {
+fn asymptotic_projection(cost_witness: Witness<v2.lens.cost.SymbolicCost>) -> ComplexityBound {
   match cost_witness {
     Holds { value: cost } =>
       complexity_bound_from_cost(cost: cost)
@@ -166,7 +166,7 @@ fn complexity_lens(n: Node) -> ComplexityBound {
   asymptotic_projection(cost_witness: cost_lens(n: n))
 }
 
-fn complexity_bound_class(b: ComplexityBound) -> AsymptoticClass {
+fn complexity_bound_class(b: ComplexityBound) -> v2.lens.cost.AsymptoticClass {
   match b {
     ConstantComplexity => ClassConstant
     SizedComplexity { class: c, variables: _ } => asymptotic_class_from_sized_class(class: c)
@@ -174,7 +174,7 @@ fn complexity_bound_class(b: ComplexityBound) -> AsymptoticClass {
   }
 }
 
-fn asymptotic_class_from_sized_class(class: SizeIndexedAsymptoticClass) -> AsymptoticClass {
+fn asymptotic_class_from_sized_class(class: SizeIndexedAsymptoticClass) -> v2.lens.cost.AsymptoticClass {
   match class {
     SizedLogClass => ClassLog
     SizedLinearClass => ClassLinear
@@ -211,6 +211,6 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: RatchetForever
 }

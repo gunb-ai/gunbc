@@ -1,7 +1,7 @@
 module v2.test.lens_mock_totality.diagnostic_mock_totality
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedDiagnosticMock {
   tag: v2.std.node.Symbol
@@ -9,7 +9,7 @@ type MaterializedDiagnosticMock {
 
 data diagnostic_red_omit_keys: List<String> = ["diagnostic.ipmi.Tool.SelList"]
 
-fn materialize_diagnostic_mock(case: PublishedMockCase) -> Outcome<MaterializedDiagnosticMock> {
+fn materialize_diagnostic_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedDiagnosticMock> {
   if case.operation_key == "ssh.Session.Exec" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec })
   } else if case.operation_key == "ssh.Session.ExecScript" {
@@ -43,11 +43,11 @@ fn materialize_diagnostic_mock(case: PublishedMockCase) -> Outcome<MaterializedD
   }
 }
 
-fn diagnostic_real_consumer_handles(case: PublishedMockCase) -> Bool {
+fn diagnostic_real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   outcome_accepted_p(outcome: materialize_diagnostic_mock(case: case))
 }
 
-fn diagnostic_omits_sel_list_consumer_handles(case: PublishedMockCase) -> Bool {
+fn diagnostic_omits_sel_list_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   omit_consumer_handles(
     case: case,
     omit_keys: diagnostic_red_omit_keys,

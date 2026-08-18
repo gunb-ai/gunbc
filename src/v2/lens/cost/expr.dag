@@ -67,38 +67,38 @@ fn cost_log_expr(base: v2.std.nat.Nat, argument: SizeExpr) -> CostExpr {
   CostLog { base: base, argument: argument }
 }
 
-fn cost_expr_authority_locus() -> Locus {
+fn cost_expr_authority_locus() -> v2.std.diagnostic.Locus {
   textual_whole_file_locus(file: ^cost_expr_authority_virtual_file)
 }
 
-fn cost_expr_refusal_diagnostic(cause: CostExprRefusalCause) -> Diagnostic {
+fn cost_expr_refusal_diagnostic(cause: CostExprRefusalCause) -> v2.std.diagnostic.Diagnostic {
   match cause {
     UnboundedIteration { at: loc } =>
-      Diagnostic {
+      v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_unbounded_iteration,
         at: loc,
         correction: Unavailable { reason: AmbiguousIntent }
       }
     UngroundedLogArgument { argument: _, at: loc } =>
-      Diagnostic {
+      v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_ungrounded_log_argument,
         at: loc,
         correction: Unavailable { reason: AmbiguousIntent }
       }
     InvalidLogBase { base: _, at: loc } =>
-      Diagnostic {
+      v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_invalid_log_base,
         at: loc,
         correction: Unavailable { reason: AmbiguousIntent }
       }
     UnmodeledEffect { operation: _, at: loc } =>
-      Diagnostic {
+      v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_unmodeled_effect,
         at: loc,
         correction: Unavailable { reason: AmbiguousIntent }
       }
     UnresolvedSize { variable: _, at: loc } =>
-      Diagnostic {
+      v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_unresolved_size,
         at: loc,
         correction: Unavailable { reason: AmbiguousIntent }

@@ -8,8 +8,8 @@ module extdeps.land_pattern.types
 // so this repository has NOT read its fillet tables and cannot derive a land pattern from a
 // package outline. That is why the only land pattern representable here is one a vendor PRINTED,
 // and why no function in this module takes a body dimension set and returns a pattern.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "shop.ipc.org/ipc-7351/ipc-7351-standard-only/Revision-b/english"
   }
@@ -46,7 +46,7 @@ fn peripheral_land_count(g: SurfaceMountLandGeometry) -> std.nat.Nat {
   }
 }
 
-fn land_pattern_pitch(g: SurfaceMountLandGeometry) -> Micrometer {
+fn land_pattern_pitch(g: SurfaceMountLandGeometry) -> std.measure.Micrometer {
   match g {
     DualRowLandGeometry { lands_per_row: _, pitch: p, row_span_centre_to_centre: _, land_length: _, land_width: _ } => p
     QuadRowLandGeometry { lands_per_side: _, pitch: p, side_span_centre_to_centre: _, land_length: _, land_width: _, thermal_land_side: _ } => p
@@ -235,9 +235,9 @@ fn candidate_refusal_count(s: CandidateRefusalSet) -> std.nat.Nat {
   1 + fold(s.rest, init: 0, f: fn(acc, _c) { acc + 1 })
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.land_pattern.types",
       decl_name: "land_pattern_note",
       field: WholeDeclaration

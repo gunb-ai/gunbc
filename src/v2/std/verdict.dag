@@ -18,11 +18,11 @@ fn verdict_semantic_mismatch<Subj, T>(
   SemanticMismatch { actual: actual, falsification: falsification }
 }
 
-fn verdict_build_failed<Subj, T>(actual: Outcome<T>, diagnostic: Diagnostic) -> Verdict<Subj, T> {
+fn verdict_build_failed<Subj, T>(actual: Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic) -> Verdict<Subj, T> {
   BuildFailed { actual: actual, diagnostic: diagnostic }
 }
 
-fn verdict_run_failed<Subj, T>(actual: Outcome<T>, diagnostic: Diagnostic) -> Verdict<Subj, T> {
+fn verdict_run_failed<Subj, T>(actual: Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic) -> Verdict<Subj, T> {
   RunFailed { actual: actual, diagnostic: diagnostic }
 }
 
@@ -53,7 +53,7 @@ fn verdict_combine<Subj, T>(a: Verdict<Subj, T>, b: Verdict<Subj, T>) -> Verdict
 }
 
 fn verdict_monoid<Subj, T>() -> Monoid<Verdict<Subj, T>> {
-  Monoid {
+  std.algebra.Monoid {
     op: verdict_combine,
     identity: Pass
   }

@@ -1,7 +1,7 @@
 module v2.test.lens_mock_totality.cron_mock_totality
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedCronMock {
   tag: v2.std.node.Symbol
@@ -9,7 +9,7 @@ type MaterializedCronMock {
 
 data cron_red_omit_keys: List<String> = ["cron.Tab.Replace"]
 
-fn materialize_cron_mock(case: PublishedMockCase) -> Outcome<MaterializedCronMock> {
+fn materialize_cron_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedCronMock> {
   if case.operation_key == "cron.Tab.List" {
     outcome_accepted(value: MaterializedCronMock { tag: ^materialized_list })
   } else if case.operation_key == "cron.Tab.Replace" {
@@ -19,11 +19,11 @@ fn materialize_cron_mock(case: PublishedMockCase) -> Outcome<MaterializedCronMoc
   }
 }
 
-fn cron_real_consumer_handles(case: PublishedMockCase) -> Bool {
+fn cron_real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   outcome_accepted_p(outcome: materialize_cron_mock(case: case))
 }
 
-fn cron_omits_replace_consumer_handles(case: PublishedMockCase) -> Bool {
+fn cron_omits_replace_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   omit_consumer_handles(
     case: case,
     omit_keys: cron_red_omit_keys,

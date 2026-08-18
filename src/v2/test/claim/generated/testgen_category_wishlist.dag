@@ -2,7 +2,7 @@ module v2.test.generated.testgen_category_wishlist
 
 
 
-fn refinement_preservation_stub_locus() -> Locus {
+fn refinement_preservation_stub_locus() -> v2.std.diagnostic.Locus {
   port_locus(port: ^refinement_preservation_stub_locus_port)
 }
 
@@ -10,12 +10,12 @@ fn refinement_preservation_stub_admits(xs: List<Node>) -> Bool {
   true
 }
 
-data refinement_preservation_stub_validation: Validation<List<Node>> = Validation {
+data refinement_preservation_stub_validation: Validation<List<Node>> = v2.std.refinement.Validation {
   reason: ^refinement_preservation_stub_invalid,
   admits: refinement_preservation_stub_admits
 }
 
-data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Node>> = VacuousValidation {
+data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Node>> = v2.std.refinement.VacuousValidation {
   reason: ^refinement_preservation_stub_invalid,
   vacuous: vacuous_admits_marker
 }
@@ -53,10 +53,10 @@ type TestgenWishlistRow {
   oracle: TestgenOracleBasis
   dispatch_key: v2.std.node.Symbol
 }
-fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
-  Generator {
+fn wishlist_type_construction_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
+  v2.lens.testgen.Generator {
     kind: TestClaimCompilesClaimVariant,
-    classification: TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     slot: TypeConstruction {
       subject: ConnectiveKernel { connective: Conj },
@@ -66,13 +66,13 @@ fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
   }
 }
 
-fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
-  Generator {
+fn dispatched_algebra_law_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
+  v2.lens.testgen.Generator {
     kind: TestClaimEqualsClaimVariant,
-    classification: TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     anchor: manual_claim_anchor(anchor: ManualNatAddAssociativity),
     slot: AlgebraLaw {
-      subject: AlgebraLawSubject {
+      subject: v2.lens.testgen.AlgebraLawSubject {
         algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
         inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
         law: ^law_nat_add_associativity,
@@ -83,10 +83,10 @@ fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
   }
 }
 
-fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept> {
-  Generator {
+fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
+  v2.lens.testgen.Generator {
     kind: TestClaimDiagnosticClaimVariant,
-    classification: TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     anchor: generated_claim_anchor(
       anchor: GeneratedCoproductExhaustiveness {
         coproduct_type: ^TestClaim,
@@ -102,13 +102,13 @@ fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept>
   }
 }
 
-fn wishlist_lens_applicability_generator() -> Generator<TestgenConcept> {
-  Generator {
+fn wishlist_lens_applicability_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
+  v2.lens.testgen.Generator {
     kind: TestClaimCompilesClaimVariant,
-    classification: TestClassification { tier: Tier2, layer: Integration },
+    classification: v2.std.verification.TestClassification { tier: Tier2, layer: Integration },
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     slot: LensApplicability {
-      subject: LensApplicabilitySubject {
+      subject: v2.lens.testgen.LensApplicabilitySubject {
         lens: ^t19_generator_wishlist_lens_structural_resolution,
         program: stub_empty_conj,
       },
@@ -118,13 +118,13 @@ fn wishlist_lens_applicability_generator() -> Generator<TestgenConcept> {
   }
 }
 
-fn wishlist_bidirectional_roundtrip_generator() -> Generator<TestgenConcept> {
-  Generator {
+fn wishlist_bidirectional_roundtrip_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
+  v2.lens.testgen.Generator {
     kind: TestClaimRoundTripClaimVariant,
-    classification: TestClassification { tier: Tier3, layer: Integration },
+    classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration },
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     slot: BidirectionalRoundtrip {
-      subject: BidirectionalRoundtripSubject {
+      subject: v2.lens.testgen.BidirectionalRoundtripSubject {
         language: ^dag_language_model_surface_id,
         production: ^t19_generator_wishlist_dag_surface_production,
       },
@@ -134,10 +134,10 @@ fn wishlist_bidirectional_roundtrip_generator() -> Generator<TestgenConcept> {
   }
 }
 
-fn dispatched_language_behavior_equivalence_generator() -> Generator<TestgenConcept> {
-  Generator {
+fn dispatched_language_behavior_equivalence_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
+  v2.lens.testgen.Generator {
     kind: TestClaimCompilesClaimVariant,
-    classification: TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     anchor: manual_claim_anchor(anchor: ManualLbeConjDagSurface),
     slot: LanguageBehaviorEquivalence {
       subject: lbe_subject_conj_dag_surface(),
@@ -148,13 +148,13 @@ fn dispatched_language_behavior_equivalence_generator() -> Generator<TestgenConc
   }
 }
 
-fn dispatched_refinement_preservation_generator() -> Generator<TestgenConcept> {
-  Generator {
+fn dispatched_refinement_preservation_generator() -> Generator<v2.lens.testgen.TestgenConcept> {
+  v2.lens.testgen.Generator {
     kind: TestClaimEqualsClaimVariant,
-    classification: TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase),
     slot: RefinementPreservation {
-      subject: RefinementPreservationSubject {
+      subject: v2.lens.testgen.RefinementPreservationSubject {
         refined: refinement_preservation_stub_generator_refined(),
         original: [stub_empty_conj],
       },
@@ -218,7 +218,7 @@ fn dispatched_non_tautological_generator_count_is_four() -> Bool {
 }
 
 fn testgen_wishlist_count_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^t19_generator_wishlist_count_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -229,7 +229,7 @@ fn testgen_wishlist_count_claim_rhs() -> Node {
   if pending_non_tautological_generator_count_is_three() && dispatched_non_tautological_generator_count_is_four() {
     testgen_wishlist_count_node()
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -237,10 +237,10 @@ fn testgen_wishlist_count_claim_rhs() -> Node {
   }
 }
 
-data claim_testgen_wishlist_formalized: TestClaim = EqualsClaim {
+data claim_testgen_wishlist_formalized: v2.std.verification.TestClaim = EqualsClaim {
   label: "generated/testgen_category_wishlist: three pending non-tautological generator categories and four dispatched categories",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: testgen_wishlist_count_node(),
   rhs: testgen_wishlist_count_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

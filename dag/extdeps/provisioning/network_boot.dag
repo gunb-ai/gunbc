@@ -1,8 +1,8 @@
 module extdeps.provisioning.network_boot
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "uefi.org/specs/UEFI/2.10/24_Network_Protocols_UDP_and_MTFTP.html"
   }
@@ -17,7 +17,7 @@ type DhcpBootDirection =
     NativeDhcpBootOptions
   | ProxyDhcp
 
-fn network_uefi_bootloader_artifact(arch: Architecture) -> NonEmptyStr? {
+fn network_uefi_bootloader_artifact(arch: extdeps.toolchain.types.Architecture) -> std.types.NonEmptyStr? {
   match arch {
     Aarch64 => Present { value: "grubnetaa64.efi" }
     X86_64 => Present { value: "grubnetx64.efi" }

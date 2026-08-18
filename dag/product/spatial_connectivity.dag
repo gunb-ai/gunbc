@@ -27,7 +27,7 @@ module product.spatial_connectivity
 // direction - an opening is symmetric in its two rooms, and a one-way relation would be a claim
 // about access control rather than about geometry.
 
-type OpeningIdentity = NonEmptyStr where brand("OpeningIdentity")
+type OpeningIdentity = std.types.NonEmptyStr where brand("OpeningIdentity")
 
 type ReachabilityEndpoint
   = TraversalStart
@@ -87,7 +87,7 @@ type OpeningPlan sole_constructor {
   openings: List<Opening>
 }
 
-fn room_identity_eq(a: RoomIdentity, b: RoomIdentity) -> Bool {
+fn room_identity_eq(a: product.placement_supply.RoomIdentity, b: product.placement_supply.RoomIdentity) -> Bool {
   (a as String) == (b as String)
 }
 
@@ -95,7 +95,7 @@ fn opening_identity_eq(a: OpeningIdentity, b: OpeningIdentity) -> Bool {
   (a as String) == (b as String)
 }
 
-fn find_room(w: World, identity: RoomIdentity) -> PlacedSpace? {
+fn find_room(w: product.spatial_world.World, identity: product.placement_supply.RoomIdentity) -> product.spatial_world.PlacedSpace? {
   fold(world_rooms(w: w), init: none, f: (acc, r) =>
     match acc {
       Present { value: found } => Present { value: found }
@@ -106,14 +106,14 @@ fn find_room(w: World, identity: RoomIdentity) -> PlacedSpace? {
 // The widest region the two rooms share on any one wall. Two rooms can meet along more than one wall
 // - an L-shaped pair meets twice - and an opening lies in one of them, so the admission asks whether
 // ANY shared region contains it rather than picking a region first and testing against that.
-fn region_contains(region: WallOverlap, along_low: Int, along_high: Int, sill: Int, head: Int) -> Bool {
+fn region_contains(region: std.orthogonal_topology.WallOverlap, along_low: Int, along_high: Int, sill: Int, head: Int) -> Bool {
   region.along_low <= along_low
     && along_high <= region.along_high
     && region.low <= sill
     && head <= region.high
 }
 
-fn some_shared_region_contains(a: EnclosedSpace, b: EnclosedSpace, o: Opening) -> Bool {
+fn some_shared_region_contains(a: std.orthogonal_topology.EnclosedSpace, b: std.orthogonal_topology.EnclosedSpace, o: Opening) -> Bool {
   let b_walls = space_walls(s: b)
   fold(space_walls(s: a), init: false, f: (acc, wa) =>
     acc || fold(b_walls, init: false, f: (inner, wb) =>
@@ -125,7 +125,7 @@ fn some_shared_region_contains(a: EnclosedSpace, b: EnclosedSpace, o: Opening) -
         }))
 }
 
-fn rooms_share_any_wall(a: EnclosedSpace, b: EnclosedSpace) -> Bool {
+fn rooms_share_any_wall(a: std.orthogonal_topology.EnclosedSpace, b: std.orthogonal_topology.EnclosedSpace) -> Bool {
   let b_walls = space_walls(s: b)
   fold(space_walls(s: a), init: false, f: (acc, wa) =>
     acc || fold(b_walls, init: false, f: (inner, wb) =>
@@ -141,7 +141,7 @@ fn rooms_share_any_wall(a: EnclosedSpace, b: EnclosedSpace) -> Bool {
 // outside the shared region is a dimension to correct - reported last because it is the only one
 // whose numbers are worth printing, and printing them for a pair of rooms that do not meet at all
 // would be noise.
-fn admit_opening(w: World, o: Opening) -> ConnectivityConstruction<Opening> {
+fn admit_opening(w: product.spatial_world.World, o: Opening) -> ConnectivityConstruction<Opening> {
   if o.along_low >= o.along_high || o.sill >= o.head {
     ConnectivityRefused { cause: OpeningHasNoArea { opening: o.identity } }
   } else {
@@ -172,7 +172,7 @@ fn admit_opening(w: World, o: Opening) -> ConnectivityConstruction<Opening> {
 // The reported shared region is the first one the two rooms have. With more than one it is not
 // necessarily the one the caller meant, and saying so is better than guessing: the refusal names the
 // opening, so the caller can see its own numbers beside a region the rooms really do share.
-fn first_shared_region(a: EnclosedSpace, b: EnclosedSpace) -> WallOverlap? {
+fn first_shared_region(a: std.orthogonal_topology.EnclosedSpace, b: std.orthogonal_topology.EnclosedSpace) -> std.orthogonal_topology.WallOverlap? {
   let b_walls = space_walls(s: b)
   fold(space_walls(s: a), init: none, f: (acc, wa) =>
     match acc {
@@ -189,7 +189,7 @@ fn first_shared_region(a: EnclosedSpace, b: EnclosedSpace) -> WallOverlap? {
 // Its no-region arm is unreachable: the caller checked that a shared wall exists before asking. It
 // is a refusal rather than a fabricated rectangle of zeroes, because a zero region would read as a
 // real measurement of a wall that is not there.
-fn widest_mismatch(a: EnclosedSpace, b: EnclosedSpace, o: Opening) -> ConnectivityRefusal {
+fn widest_mismatch(a: std.orthogonal_topology.EnclosedSpace, b: std.orthogonal_topology.EnclosedSpace, o: Opening) -> ConnectivityRefusal {
   match first_shared_region(a: a, b: b) {
     Absent => OpeningRoomsShareNoWall { first: o.first, second: o.second }
     Present { value: region } =>
@@ -216,7 +216,7 @@ fn count_openings_named(openings: List<Opening>, wanted: OpeningIdentity) -> Int
   fold(openings, init: 0, f: (n, o) => if opening_identity_eq(a: o.identity, b: wanted) { n + 1 } else { n })
 }
 
-fn opening_plan(w: World, openings: List<Opening>) -> ConnectivityConstruction<OpeningPlan> {
+fn opening_plan(w: product.spatial_world.World, openings: List<Opening>) -> ConnectivityConstruction<OpeningPlan> {
   let acc = fold(openings, init: PlanAcc { admitted: [], refusal: none }, f: (a, o) =>
     match a.refusal {
       Present { value: c } => PlanAcc { admitted: a.admitted, refusal: Present { value: c } }
@@ -238,13 +238,13 @@ fn opening_plan(w: World, openings: List<Opening>) -> ConnectivityConstruction<O
 
 fn plan_openings(p: OpeningPlan) -> List<Opening> { p.openings }
 
-fn contains_room(rooms: List<RoomIdentity>, wanted: RoomIdentity) -> Bool {
+fn contains_room(rooms: List<product.placement_supply.RoomIdentity>, wanted: product.placement_supply.RoomIdentity) -> Bool {
   fold(rooms, init: false, f: (hit, r) => hit || room_identity_eq(a: r, b: wanted))
 }
 
 // ONE RELAXATION: every opening with exactly one end already reached brings the other end in. An
 // opening is symmetric, so both directions are tried.
-fn relax_once(reached: List<RoomIdentity>, openings: List<Opening>) -> List<RoomIdentity> {
+fn relax_once(reached: List<product.placement_supply.RoomIdentity>, openings: List<Opening>) -> List<product.placement_supply.RoomIdentity> {
   fold(openings, init: reached, f: (acc, o) =>
     if contains_room(rooms: acc, wanted: o.first) && !contains_room(rooms: acc, wanted: o.second) {
       concat(acc, [o.second])
@@ -261,7 +261,7 @@ fn relax_once(reached: List<RoomIdentity>, openings: List<Opening>) -> List<Room
 // set has stopped growing, and there are only as many rooms as the world has - so a path that needed
 // more rounds would have to visit some room twice, and revisiting reaches nothing new. The world's
 // room list is what the fold iterates, which is why the bound cannot drift from the thing it bounds.
-fn reachable_from(w: World, p: OpeningPlan, start: RoomIdentity) -> ConnectivityConstruction<List<RoomIdentity>> {
+fn reachable_from(w: product.spatial_world.World, p: OpeningPlan, start: product.placement_supply.RoomIdentity) -> ConnectivityConstruction<List<product.placement_supply.RoomIdentity>> {
   match find_room(w: w, identity: start) {
     Absent => ConnectivityRefused { cause: ReachabilityEndpointMissing { identity: start, role: TraversalStart } }
     Present { value: _ } =>
@@ -272,7 +272,7 @@ fn reachable_from(w: World, p: OpeningPlan, start: RoomIdentity) -> Connectivity
   }
 }
 
-fn rooms_are_connected(w: World, p: OpeningPlan, from: RoomIdentity, to: RoomIdentity) -> ConnectivityConstruction<Bool> {
+fn rooms_are_connected(w: product.spatial_world.World, p: OpeningPlan, from: product.placement_supply.RoomIdentity, to: product.placement_supply.RoomIdentity) -> ConnectivityConstruction<Bool> {
   match reachable_from(w: w, p: p, start: from) {
     ConnectivityRefused { cause: c } => ConnectivityRefused { cause: c }
     ConnectivityReady { value: reached } =>
@@ -287,7 +287,7 @@ fn rooms_are_connected(w: World, p: OpeningPlan, from: RoomIdentity, to: RoomIde
 // a special case here, because the fold starts from whichever room the world lists first and an
 // empty world has none to start from. The empty answer is `true` and it is the honest one: there is
 // no pair of rooms that fails to reach each other.
-fn unreachable_room(w: World, p: OpeningPlan) -> RoomIdentity? {
+fn unreachable_room(w: product.spatial_world.World, p: OpeningPlan) -> product.placement_supply.RoomIdentity? {
   match world_rooms(w: w) {
     Empty => none
     Cons { head: first, tail: _ } =>
@@ -303,7 +303,7 @@ fn unreachable_room(w: World, p: OpeningPlan) -> RoomIdentity? {
   }
 }
 
-fn world_is_connected(w: World, p: OpeningPlan) -> Bool {
+fn world_is_connected(w: product.spatial_world.World, p: OpeningPlan) -> Bool {
   match unreachable_room(w: w, p: p) {
     Absent => true
     Present { value: _ } => false

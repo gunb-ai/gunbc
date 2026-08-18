@@ -12,33 +12,33 @@ type HostIdentityAdoptReceipt {
   read_converged: Bool
 }
 
-data gunbc_host_identity_adopt_scope_disposition: Disposition = std.disposition.Terminal {
+data gunbc_host_identity_adopt_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "ADOPT-BASE phase-0 live consumer: modeled hostname -s read over host_effect SshShell transport -> HostIdentityObservation -> DeployedIntentV0 recording OBSERVED base. Adoption records actual base so a later converge diff is honest; adoption != drift correction. host_identity_adopt_*_wet runs ONCE per host and its receipt is the thing an operator hand-commits as one of the gunbc.deployed_intent_v0 persisted rows (gunbc_srv1_deployed_intent_v0_persisted, gunbc_srv2_deployed_intent_v0_persisted) — converge (gunbc.host_identity_assimilation) never calls back into this module's live functions, it takes the persisted DeployedIntentV0 as an argument."
 }
 
-data gunbc_host_identity_adopt_model_marker: NonEmptyStr = "gunbc.host_identity_adopt.v0"
+data gunbc_host_identity_adopt_model_marker: std.types.NonEmptyStr = "gunbc.host_identity_adopt.v0"
 
-fn host_identity_observed_probed_at() -> NonEmptyStr {
+fn host_identity_observed_probed_at() -> std.types.NonEmptyStr {
   clock_now_probed_at_or_unknown()
 }
 
-fn srv1_host_identity_ssh_transport() -> HostEffectTransport {
-  SshShell { ssh_host: operator_host_srv1 as NonEmptyStr }
+fn srv1_host_identity_ssh_transport() -> gunbc.host_effect.HostEffectTransport {
+  SshShell { ssh_host: operator_host_srv1 as std.types.NonEmptyStr }
 }
 
-fn srv1_host_identity_os_target() -> NodeControlPlane {
+fn srv1_host_identity_os_target() -> gunbc.host_effect.NodeControlPlane {
   HostOs { node: srv1_host }
 }
 
-fn srv2_host_identity_ssh_transport() -> HostEffectTransport {
-  SshShell { ssh_host: operator_host_srv2 as NonEmptyStr }
+fn srv2_host_identity_ssh_transport() -> gunbc.host_effect.HostEffectTransport {
+  SshShell { ssh_host: operator_host_srv2 as std.types.NonEmptyStr }
 }
 
-fn srv2_host_identity_os_target() -> NodeControlPlane {
+fn srv2_host_identity_os_target() -> gunbc.host_effect.NodeControlPlane {
   HostOs { node: srv2_host }
 }
 
-fn host_identity_transport_label(transport: HostEffectTransport) -> String {
+fn host_identity_transport_label(transport: gunbc.host_effect.HostEffectTransport) -> String {
   match transport {
     SshShell { ssh_host: h } => concat("SshShell:", h)
     FleetSsh { target: t, context: _ } => concat("FleetSsh:", t.endpoint as String)
@@ -47,15 +47,15 @@ fn host_identity_transport_label(transport: HostEffectTransport) -> String {
   }
 }
 
-fn host_identity_adopt_model_hash() -> ContentHash {
+fn host_identity_adopt_model_hash() -> std.content_hash.ContentHash {
   content_hash_atom(value: gunbc_host_identity_adopt_model_marker)
 }
 
 fn host_identity_adopt_receipt(
-  fleet_slot: HostIdentity,
-  target_host: ComputeHost,
-  observation: HostIdentityObservation,
-  transport: HostEffectTransport,
+  fleet_slot: product.placement_supply.HostIdentity,
+  target_host: gunbc.fleet_intent.ComputeHost,
+  observation: gunbc.host_identity_observation.HostIdentityObservation,
+  transport: gunbc.host_effect.HostEffectTransport,
   read_converged: Bool,
 ) -> HostIdentityAdoptReceipt {
   HostIdentityAdoptReceipt {
@@ -75,11 +75,11 @@ fn host_identity_adopt_receipt(
 }
 
 fn host_identity_adopt_live(
-  fleet_slot: HostIdentity,
-  target_host: ComputeHost,
-  target: NodeControlPlane,
-  transport: HostEffectTransport,
-  probed_at: NonEmptyStr,
+  fleet_slot: product.placement_supply.HostIdentity,
+  target_host: gunbc.fleet_intent.ComputeHost,
+  target: gunbc.host_effect.NodeControlPlane,
+  transport: gunbc.host_effect.HostEffectTransport,
+  probed_at: std.types.NonEmptyStr,
 ) -> HostIdentityAdoptReceipt? {
   let r = host_identity_observation_apply(target: target, transport: transport)
   let converged = reconciliation_converged(r: r)
@@ -98,7 +98,7 @@ fn host_identity_adopt_live(
   }
 }
 
-fn host_identity_adopt_srv1_live(probed_at: NonEmptyStr) -> HostIdentityAdoptReceipt? {
+fn host_identity_adopt_srv1_live(probed_at: std.types.NonEmptyStr) -> HostIdentityAdoptReceipt? {
   host_identity_adopt_live(
     fleet_slot: operator_host_srv1,
     target_host: srv1_host,
@@ -108,7 +108,7 @@ fn host_identity_adopt_srv1_live(probed_at: NonEmptyStr) -> HostIdentityAdoptRec
   )
 }
 
-fn host_identity_adopt_srv2_live(probed_at: NonEmptyStr) -> HostIdentityAdoptReceipt? {
+fn host_identity_adopt_srv2_live(probed_at: std.types.NonEmptyStr) -> HostIdentityAdoptReceipt? {
   host_identity_adopt_live(
     fleet_slot: operator_host_srv2,
     target_host: srv2_host,
@@ -142,7 +142,7 @@ fn host_identity_receipt_emit(message: String) -> Bool {
   )
 }
 
-fn host_identity_adopt_exit(receipt: HostIdentityAdoptReceipt) -> ProcessExit {
+fn host_identity_adopt_exit(receipt: HostIdentityAdoptReceipt) -> std.process.ProcessExit {
   if host_identity_adopt_receipt_is_valid(receipt: receipt) {
     let _announced = host_identity_receipt_emit(message: host_identity_adopt_receipt_message(receipt: receipt))
     ExitSuccess
@@ -158,7 +158,7 @@ fn host_identity_adopt_exit(receipt: HostIdentityAdoptReceipt) -> ProcessExit {
 
 fn host_identity_adopt_wet(
   live: fn(NonEmptyStr) -> HostIdentityAdoptReceipt?,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   let probed_at = host_identity_observed_probed_at()
   match live(probed_at) {
     Present { value: receipt } => host_identity_adopt_exit(receipt: receipt)
@@ -169,7 +169,7 @@ fn host_identity_adopt_wet(
   }
 }
 
-func host_identity_adopt_srv1_wet() -> ProcessExit {
+func host_identity_adopt_srv1_wet() -> std.process.ProcessExit {
   let probed_at = host_identity_observed_probed_at()
   match host_identity_adopt_srv1_live(probed_at: probed_at) {
     Present { value: receipt } => host_identity_adopt_exit(receipt: receipt)
@@ -180,7 +180,7 @@ func host_identity_adopt_srv1_wet() -> ProcessExit {
   }
 }
 
-func host_identity_adopt_srv2_wet() -> ProcessExit {
+func host_identity_adopt_srv2_wet() -> std.process.ProcessExit {
   let probed_at = host_identity_observed_probed_at()
   match host_identity_adopt_srv2_live(probed_at: probed_at) {
     Present { value: receipt } => host_identity_adopt_exit(receipt: receipt)

@@ -41,7 +41,7 @@ fn dashboard_local_exec(
 }
 
 fn dashboard_target_exec(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   program: std.types.FilePath,
   args: List<String>,
 ) -> DashboardExecResult {
@@ -70,7 +70,7 @@ fn dashboard_target_exec(
 }
 
 fn dashboard_target_probe(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   program: std.types.FilePath,
   args: List<String>,
 ) -> DashboardExecResult {
@@ -104,7 +104,7 @@ type DashboardArgv {
 }
 
 fn dashboard_run_target_argvs(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   commands: List<DashboardArgv>,
 ) -> DashboardExecResult {
   fold(
@@ -143,7 +143,7 @@ fn dashboard_exec_refusal_reason(label: String, r: DashboardExecResult) -> List<
 }
 
 fn dashboard_target_path_observe(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   flag: String,
   path: std.types.FilePath,
 ) -> DashboardPathObservation {
@@ -187,7 +187,7 @@ fn dashboard_observation_present_bit(obs: DashboardPathObservation) -> Bool {
 }
 
 fn dashboard_target_directory_present(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   path: std.types.FilePath,
 ) -> Bool {
   dashboard_observation_present_bit(
@@ -196,7 +196,7 @@ fn dashboard_target_directory_present(
 }
 
 fn dashboard_target_file_present(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   path: std.types.FilePath,
 ) -> Bool {
   dashboard_observation_present_bit(
@@ -209,7 +209,7 @@ fn dashboard_next_path(path: std.types.FilePath) -> std.types.FilePath {
 }
 
 fn dashboard_copy_to_target_atomically(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   controller_workdir: std.types.FilePath,
   local_path: std.types.FilePath,
   remote_path: std.types.FilePath,
@@ -246,7 +246,7 @@ fn dashboard_copy_to_target_atomically(
 
 fn dashboard_hydrate_controller_history(
   controller_repo: std.types.FilePath,
-  history_remote: NonEmptyStr,
+  history_remote: std.types.NonEmptyStr,
 ) -> DashboardExecResult {
   let shallow = dashboard_local_exec(
     workdir: controller_repo,
@@ -277,7 +277,7 @@ fn dashboard_hydrate_controller_history(
 
 fn dashboard_prepare_bundle(
   controller_repo: std.types.FilePath,
-  anchor_ref: NonEmptyStr,
+  anchor_ref: std.types.NonEmptyStr,
   temp_bundle: std.types.FilePath,
   temp_verify_repo: std.types.FilePath,
 ) -> DashboardExecResult {
@@ -287,7 +287,7 @@ fn dashboard_prepare_bundle(
     args: shape_git_bundle_create_argv(
       repo: controller_repo,
       bundle: temp_bundle,
-      source_ref: anchor_ref as GitRef,
+      source_ref: anchor_ref as std.types.GitRef,
     ),
   )
   if !created.success {
@@ -315,7 +315,7 @@ fn dashboard_prepare_bundle(
           args: shape_git_bare_fetch_argv(
             repo: temp_verify_repo,
             bundle: temp_bundle,
-            source_ref: anchor_ref as GitRef,
+            source_ref: anchor_ref as std.types.GitRef,
           ),
         )
         if imported.success {
@@ -335,7 +335,7 @@ fn dashboard_prepare_bundle(
 }
 
 fn dashboard_stage_bundle(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   controller_repo: std.types.FilePath,
   staged_bundle: std.types.FilePath,
   temp_bundle: std.types.FilePath,
@@ -351,7 +351,7 @@ fn dashboard_stage_bundle(
 data serve_binary_copy_refusal_note: String = "THE SOURCE IS CHECKED BEFORE THE COPY so a missing build refuses by its own path rather than through cp's error. An absent target/release/gunbc is the ordinary state of a fresh controller checkout — nobody has built yet — and it is the single most likely reason this step fails, so it earns a refusal that names the file it looked for instead of a generic copy failure the reader has to decode.\\n\\nThe destination directory is created first because the instance's bin/ has no other creator: serve_binary is derived as a child of the instance root, and every other ensured directory in the plan is a sibling. Relying on the copy to imply its parent would fail on a fresh instance in a way that reads like a permissions problem.\\n\\nThe executable bit is set explicitly rather than inherited. cp preserves mode from the source, which is correct today and silently wrong the moment the build lands non-executable or the copy path changes — and a serve binary that exists but cannot execute produces a service that fails to start with no indication the provisioner is why."
 
 fn dashboard_ensure_serve_binary(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   controller_repo: std.types.FilePath,
   built_binary: std.types.FilePath,
   path: std.types.FilePath,
@@ -405,11 +405,11 @@ fn dashboard_ensure_serve_binary(
 }
 
 fn dashboard_ensure_local_origin(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   bundle: std.types.FilePath,
   origin: std.types.FilePath,
-  source_ref: NonEmptyStr,
-  publish_ref: NonEmptyStr,
+  source_ref: std.types.NonEmptyStr,
+  publish_ref: std.types.NonEmptyStr,
 ) -> DashboardExecResult {
   dashboard_run_target_argvs(instance: instance, commands: [
     DashboardArgv {
@@ -421,24 +421,24 @@ fn dashboard_ensure_local_origin(
       args: shape_git_bare_fetch_argv(
         repo: origin,
         bundle: bundle,
-        source_ref: source_ref as GitRef,
+        source_ref: source_ref as std.types.GitRef,
       ),
     },
     DashboardArgv {
       program: "/usr/bin/git" as std.types.FilePath,
       args: shape_git_bare_update_ref_argv(
         repo: origin,
-        publish_ref: publish_ref as GitRef,
+        publish_ref: publish_ref as std.types.GitRef,
       ),
     },
   ])
 }
 
 fn dashboard_ensure_source_repo(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   origin: std.types.FilePath,
   repo: std.types.FilePath,
-  anchor_ref: NonEmptyStr,
+  anchor_ref: std.types.NonEmptyStr,
 ) -> DashboardExecResult {
   let git_dir = concat(repo as String, "/.git") as std.types.FilePath
   match dashboard_target_path_observe(instance: instance, flag: "-d", path: git_dir) {
@@ -476,14 +476,14 @@ fn dashboard_ensure_source_repo(
           program: "/usr/bin/git" as std.types.FilePath,
           args: shape_git_fetch_remote_argv(
             repo: repo,
-            remote: "origin" as NonEmptyStr,
+            remote: "origin" as std.types.NonEmptyStr,
           ),
         },
         DashboardArgv {
           program: "/usr/bin/git" as std.types.FilePath,
           args: shape_git_reset_hard_argv(
             repo: repo,
-            target: anchor_ref as GitRef,
+            target: anchor_ref as std.types.GitRef,
           ),
         },
       ])
@@ -493,7 +493,7 @@ fn dashboard_ensure_source_repo(
 }
 
 fn dashboard_ensure_service(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> DashboardExecResult {
   let service_session = dashboard_instance_service_session_name(instance: instance)
   let present = dashboard_target_probe(
@@ -539,24 +539,24 @@ data dashboard_health_loopback_host: String = "127.0.0.1"
 
 data dashboard_health_path: String = "/instance.json"
 
-fn dashboard_instance_health_uri(instance: HostDashboardInstance) -> Uri {
-  Uri {
+fn dashboard_instance_health_uri(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> extdeps.uri.Uri {
+  extdeps.uri.Uri {
     scheme: Http,
     locator: join([
       dashboard_health_loopback_host,
       ":",
       to_string(instance.listen_port),
       dashboard_health_path,
-    ], "") as NonEmptyStr,
+    ], "") as std.types.NonEmptyStr,
   }
 }
 
-fn dashboard_instance_health_url(instance: HostDashboardInstance) -> String {
+fn dashboard_instance_health_url(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> String {
   uri_wire(uri: dashboard_instance_health_uri(instance: instance)) as String
 }
 
 fn dashboard_read_instance_health(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> DashboardExecResult {
   dashboard_target_probe(
     instance: instance,
@@ -568,7 +568,7 @@ fn dashboard_read_instance_health(
 data dashboard_health_identity_note: String = "Health readback identifies the served document POSITIONALLY, never by scanning it: the body must parse as one JSON value and START with the emitter's own schema+instance_id prefix (gunbc.roadmap_dashboard_instance.dashboard_instance_health_identity_prefix). The scan this replaces accepted the fragment from any nested value, so a foreign or stale server answering the polled port — or a document merely mentioning the instance id — could report a converged apply that never happened (DESIGN 5). Same rule as the dispatch admission receipt; one reading, two consumers."
 
 fn dashboard_health_names_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   result: DashboardExecResult,
 ) -> Bool {
   result.success
@@ -582,10 +582,10 @@ fn dashboard_health_names_instance(
 }
 
 data dashboard_health_poll_attempts: Int = 31
-data dashboard_health_poll_seconds: Seconds = 2
+data dashboard_health_poll_seconds: std.types.Seconds = 2
 
 fn dashboard_verify_health_after_attempts(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   remaining: Int,
 ) -> DashboardExecResult {
   let health = dashboard_read_instance_health(instance: instance)
@@ -623,7 +623,7 @@ fn dashboard_verify_health_after_attempts(
   }
 }
 
-fn dashboard_verify_health(instance: HostDashboardInstance) -> DashboardExecResult {
+fn dashboard_verify_health(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> DashboardExecResult {
   dashboard_verify_health_after_attempts(
     instance: instance,
     remaining: dashboard_health_poll_attempts,
@@ -631,8 +631,8 @@ fn dashboard_verify_health(instance: HostDashboardInstance) -> DashboardExecResu
 }
 
 fn dashboard_apply_provision_op(
-  instance: HostDashboardInstance,
-  op: DashboardInstanceProvisionOp,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  op: gunbc.roadmap_dashboard_instance.DashboardInstanceProvisionOp,
   temp_bundle: std.types.FilePath,
   temp_verify_repo: std.types.FilePath,
 ) -> DashboardExecResult {
@@ -761,8 +761,8 @@ type DashboardApplyFold {
 }
 
 fn dashboard_apply_plan(
-  instance: HostDashboardInstance,
-  plan: List<DashboardInstanceProvisionOp>,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  plan: List<gunbc.roadmap_dashboard_instance.DashboardInstanceProvisionOp>,
   temp_bundle: std.types.FilePath,
   temp_verify_repo: std.types.FilePath,
 ) -> DashboardApplyFold {
@@ -816,14 +816,14 @@ type DashboardProductionSnapshot {
 }
 
 fn dashboard_production_snapshot(
-  production: HostDashboardInstance,
+  production: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> DashboardProductionSnapshot {
   let head = dashboard_target_probe(
     instance: production,
     program: "/usr/bin/git" as std.types.FilePath,
     args: shape_git_rev_parse_argv(
       repo: production.repo_root,
-      target: "HEAD" as GitRef,
+      target: "HEAD" as std.types.GitRef,
     ),
   )
   let health = dashboard_target_probe(
@@ -863,7 +863,7 @@ type DashboardProductionReading
   | ProductionUnpeered { host: std.types.NonEmptyStr }
 
 fn dashboard_peer_isolation_ok(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   peer: DashboardProductionPeer,
 ) -> Bool {
   match peer {
@@ -916,7 +916,7 @@ fn dashboard_production_readings_equal(
 }
 
 fn dashboard_source_anchor_matches(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> Bool {
   if !dashboard_target_directory_present(
     instance: instance,
@@ -929,7 +929,7 @@ fn dashboard_source_anchor_matches(
       program: "/usr/bin/git" as std.types.FilePath,
       args: shape_git_rev_parse_argv(
         repo: instance.repo_root,
-        target: "HEAD" as GitRef,
+        target: "HEAD" as std.types.GitRef,
       ),
     )
     let base = dashboard_target_probe(
@@ -937,7 +937,7 @@ fn dashboard_source_anchor_matches(
       program: "/usr/bin/git" as std.types.FilePath,
       args: shape_git_rev_parse_argv(
         repo: instance.repo_root,
-        target: instance.dispatch_base_ref as GitRef,
+        target: instance.dispatch_base_ref as std.types.GitRef,
       ),
     )
     head.success && base.success && trim(head.stdout) == trim(base.stdout)
@@ -945,15 +945,15 @@ fn dashboard_source_anchor_matches(
 }
 
 fn dashboard_source_revision_readback(
-  instance: HostDashboardInstance,
-  desired_source_revision: CommitSha,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  desired_source_revision: std.types.CommitSha,
 ) -> DashboardExecResult {
   let head = dashboard_target_probe(
     instance: instance,
     program: "/usr/bin/git" as std.types.FilePath,
     args: shape_git_rev_parse_argv(
       repo: instance.repo_root,
-      target: "HEAD" as GitRef,
+      target: "HEAD" as std.types.GitRef,
     ),
   )
   let observed = trim(head.stdout)
@@ -982,10 +982,10 @@ fn dashboard_source_revision_readback(
 }
 
 fn dashboard_instance_observe(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   production_untouched: Bool,
-  desired_source_revision: CommitSha,
-) -> DashboardInstanceObserved {
+  desired_source_revision: std.types.CommitSha,
+) -> gunbc.roadmap_dashboard_instance.DashboardInstanceObserved {
   let health = dashboard_read_instance_health(instance: instance)
   let provider_runtime = match dashboard_instance_provider_executable(instance: instance) {
     Absent =>
@@ -1059,7 +1059,7 @@ fn dashboard_instance_observe(
     init: [],
     f: fn(acc, o) { concat(acc, dashboard_path_observation_refusal(obs: o)) },
   )
-  DashboardInstanceObserved {
+  gunbc.roadmap_dashboard_instance.DashboardInstanceObserved {
     observation_refusals: concat(path_refusals, probe_refusals),
     root_present: dashboard_observation_present_bit(obs: obs_root),
     ownership_marker_present: dashboard_observation_present_bit(obs: obs_marker),
@@ -1118,19 +1118,19 @@ type DashboardApplyPreflightResult
     }
 
 fn dashboard_apply_preflight_refused(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   step: String,
   detail: String,
 ) -> DashboardApplyPreflightResult {
   DashboardApplyPreflightRefused {
     instance_id: instance.instance_id,
-    step: step as NonEmptyStr,
+    step: step as std.types.NonEmptyStr,
     detail: detail,
   }
 }
 
 fn dashboard_source_preflight_decision(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   ref_read: DashboardExecResult,
   status_read: DashboardExecResult,
   shallow_read: DashboardExecResult,
@@ -1204,14 +1204,14 @@ fn dashboard_source_preflight_decision(
   } else {
     DashboardApplyPreflightReady {
       instance_id: instance.instance_id,
-      source_revision: trim(ref_read.stdout) as CommitSha,
+      source_revision: trim(ref_read.stdout) as std.types.CommitSha,
     }
   }
 }
 
 // THE SERVE BINARY LEFT THIS ROSTER BECAUSE IT STOPPED BEING A PRECONDITION. This list is what must ALREADY EXIST on the target for provisioning to be possible — git to clone, tmux to run the service, mkdir and mv and cp to place things, the provider executable to preflight auth. The serve binary used to qualify because instances borrowed production's, which was installed by a different mechanism and always present.\n\nMaking it instance-owned turned it into an OUTPUT of the very plan this preflight gates, and the two facts together are a deadlock: preflight refuses because the binary is absent, and the only thing that installs it is the apply preflight is refusing to admit. Observed exactly that way on srv2 — a refusal naming a path that nothing but the blocked apply could ever create.\n\nThe distinction the roster now holds is precondition versus deliverable, and it is worth stating because the deadlock is invisible while every path happens to pre-exist. dirname and chmod join for the same reason the binary leaves: the install step runs them, so they are genuinely required beforehand. Whether the binary landed is answered AFTER apply by the readback, which is where an output belongs.
 fn dashboard_required_target_executables(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> List<std.types.FilePath> {
   let provider_paths = match dashboard_instance_provider_executable(instance: instance) {
     Present { value: executable } => [executable]
@@ -1253,7 +1253,7 @@ type DashboardExecutableSurvey
   | ExecutableSurveyRefused { path: std.types.FilePath, reason: String }
 
 fn dashboard_survey_target_executables(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> DashboardExecutableSurvey {
   match dashboard_instance_provider_executable(instance: instance) {
     Absent =>
@@ -1295,7 +1295,7 @@ type DashboardBootstrapPreflight
     }
 
 fn dashboard_bootstrap_preflight_decision(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   root: DashboardPathObservation,
   bootstrap_present: DashboardPathObservation,
   bootstrap_writable: DashboardPathObservation,
@@ -1329,7 +1329,7 @@ fn dashboard_bootstrap_parent_decision(
     PathObservedAbsent =>
       DashboardBootstrapRefused {
         bootstrap_root: bootstrap_root,
-        reason: "nearest modeled bootstrap parent is absent" as NonEmptyStr,
+        reason: "nearest modeled bootstrap parent is absent" as std.types.NonEmptyStr,
       }
     PathObservedPresent =>
       match bootstrap_writable {
@@ -1338,7 +1338,7 @@ fn dashboard_bootstrap_parent_decision(
         PathObservedAbsent =>
           DashboardBootstrapRefused {
             bootstrap_root: bootstrap_root,
-            reason: "nearest modeled bootstrap parent is not writable" as NonEmptyStr,
+            reason: "nearest modeled bootstrap parent is not writable" as std.types.NonEmptyStr,
           }
         PathObservedPresent => DashboardBootstrapReady { bootstrap_root: bootstrap_root }
       }
@@ -1346,7 +1346,7 @@ fn dashboard_bootstrap_parent_decision(
 }
 
 fn dashboard_instance_apply_preflight(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   production: DashboardProductionPeer,
 ) -> DashboardApplyPreflightResult {
   if !dashboard_instance_paths_are_owned(instance: instance)
@@ -1435,7 +1435,7 @@ fn dashboard_instance_apply_preflight(
               program: "/usr/bin/git" as std.types.FilePath,
               args: shape_git_rev_parse_argv(
                 repo: controller_repo,
-                target: anchor_ref as GitRef,
+                target: anchor_ref as std.types.GitRef,
               ),
             ),
             status_read: dashboard_local_exec(
@@ -1584,7 +1584,7 @@ fn dashboard_instance_apply_preflight(
 
 fn dashboard_apply_preflight_json_value(
   result: DashboardApplyPreflightResult,
-) -> JsonValue {
+) -> extdeps.languages.json.emit.JsonValue {
   match result {
     DashboardApplyPreflightReady { instance_id, source_revision } =>
       json_object(members: [
@@ -1633,7 +1633,7 @@ type DashboardInstanceApplyResult
 
 fn dashboard_apply_result_json_value(
   result: DashboardInstanceApplyResult,
-) -> JsonValue {
+) -> extdeps.languages.json.emit.JsonValue {
   match result {
     DashboardApplyConverged { instance_id, receipts, observed } =>
       json_object(members: [
@@ -1662,7 +1662,7 @@ fn dashboard_apply_result_json_value(
 
 fn dashboard_step_receipt_json_value(
   receipt: DashboardProvisionStepReceipt,
-) -> JsonValue {
+) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "kind", value: json_string(s: receipt.kind as String)),
     json_kv(key: "target", value: json_string(s: receipt.target)),
@@ -1672,23 +1672,23 @@ fn dashboard_step_receipt_json_value(
 }
 
 fn dashboard_apply_refused(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   step: String,
   detail: String,
   receipts: List<DashboardProvisionStepReceipt>,
 ) -> DashboardInstanceApplyResult {
   DashboardApplyRefused {
     instance_id: instance.instance_id,
-    step: step as NonEmptyStr,
+    step: step as std.types.NonEmptyStr,
     detail: detail,
     receipts: receipts,
   }
 }
 
 fn dashboard_instance_apply_after_preflight(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   production: DashboardProductionPeer,
-  desired_source_revision: CommitSha,
+  desired_source_revision: std.types.CommitSha,
 ) -> DashboardInstanceApplyResult {
   if !dashboard_instance_paths_are_owned(instance: instance)
       || !dashboard_peer_isolation_ok(instance: instance, peer: production) {
@@ -1813,8 +1813,8 @@ data bootstrap_then_escalate_note: String = "THE ARM THAT BREAKS THE DEADLOCK: r
 data dashboard_bootstrap_unused_temp_path: std.types.FilePath = "/nonexistent/gunbc-bootstrap-has-no-temp-dir" as std.types.FilePath
 
 fn dashboard_bootstrap_only_ops(
-  instance: HostDashboardInstance,
-) -> List<DashboardInstanceProvisionOp> {
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+) -> List<gunbc.roadmap_dashboard_instance.DashboardInstanceProvisionOp> {
   dashboard_instance_provision_plan(instance: instance)
     |> filter(op => match op {
       DashboardEnsureDirectory { path: _ } => true
@@ -1825,7 +1825,7 @@ fn dashboard_bootstrap_only_ops(
 }
 
 fn dashboard_apply_bootstrap_then_escalate(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   state_root: std.types.FilePath,
   remediation: String,
 ) -> DashboardInstanceApplyResult {
@@ -1849,7 +1849,7 @@ fn dashboard_apply_bootstrap_then_escalate(
 }
 
 fn dashboard_instance_apply(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   production: DashboardProductionPeer,
 ) -> DashboardInstanceApplyResult {
   match dashboard_instance_apply_preflight(
@@ -1906,7 +1906,7 @@ fn srv1_lab_dashboard_preflight_json() -> String {
   ))
 }
 
-func srv1_lab_dashboard_preflight_wet() -> ProcessExit {
+func srv1_lab_dashboard_preflight_wet() -> std.process.ProcessExit {
   let result = srv1_lab_dashboard_preflight()
   match result {
     DashboardApplyPreflightReady {
@@ -1933,7 +1933,7 @@ fn srv1_lab_dashboard_apply_json() -> String {
   serialize_json(v: dashboard_apply_result_json_value(result: srv1_lab_dashboard_apply()))
 }
 
-func srv1_lab_dashboard_apply_wet() -> ProcessExit {
+func srv1_lab_dashboard_apply_wet() -> std.process.ProcessExit {
   let result = srv1_lab_dashboard_apply()
   match result {
     DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess
@@ -1947,14 +1947,14 @@ data srv2_lab_apply_entry_note: String = "BEFORE THIS BLOCK THIS MODULE CONTAINE
 fn srv2_lab_dashboard_apply() -> DashboardInstanceApplyResult {
   dashboard_instance_apply(
     instance: srv2_lab_dashboard_instance(),
-    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
+    production: NoProductionPeer { host: "srv2" as std.types.NonEmptyStr },
   )
 }
 
 fn srv2_lab_dashboard_preflight() -> DashboardApplyPreflightResult {
   dashboard_instance_apply_preflight(
     instance: srv2_lab_dashboard_instance(),
-    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
+    production: NoProductionPeer { host: "srv2" as std.types.NonEmptyStr },
   )
 }
 
@@ -1964,7 +1964,7 @@ fn srv2_lab_dashboard_preflight_json() -> String {
   ))
 }
 
-func srv2_lab_dashboard_preflight_wet() -> ProcessExit {
+func srv2_lab_dashboard_preflight_wet() -> std.process.ProcessExit {
   let result = srv2_lab_dashboard_preflight()
   match result {
     DashboardApplyPreflightReady {
@@ -1991,7 +1991,7 @@ fn srv2_lab_dashboard_apply_json() -> String {
   serialize_json(v: dashboard_apply_result_json_value(result: srv2_lab_dashboard_apply()))
 }
 
-func srv2_lab_dashboard_apply_wet() -> ProcessExit {
+func srv2_lab_dashboard_apply_wet() -> std.process.ProcessExit {
   let result = srv2_lab_dashboard_apply()
   match result {
     DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess
@@ -2038,7 +2038,7 @@ type DashboardProviderReadiness
 data provider_login_command_projects_the_shaper_note: String = "THIS PROJECTS extdeps.llm.cli's DEVICE-AUTH SHAPER AND USED TO CONTRADICT IT. The readiness surface hand-concatenated `CODEX_HOME=… codex login` — the plain browser flow — in the same change that modeled shape_codex_device_login_env_args_for_program and recorded that a headless host MUST use --device-auth because the plain flow's callback resolves to localhost on the server rather than the operator's machine (review, 2026-07-30).\\n\\nSo the emitted instruction was the one proven not to work, spelled a second time beside the shaper built to prevent exactly that. Two representations of one invocation, and the prose one drifts silently because nothing executes it.\\n\\nJoining the shaper's own argv keeps the printed line and the modeled invocation the same object. If the env var, the program path or the flag changes, both move together — and the operator is never handed a command this repository has already established cannot complete."
 
 fn dashboard_provider_device_login_command(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   codex_program: std.types.FilePath,
 ) -> String {
   join(
@@ -2057,12 +2057,12 @@ fn dashboard_probe_refused(r: DashboardExecResult) -> Bool {
 }
 
 fn dashboard_provider_readiness(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> DashboardProviderReadiness {
   match dashboard_instance_provider_executable(instance: instance) {
     Absent =>
       ProviderReadinessRefused {
-        stage: "provider-executable-placement" as NonEmptyStr,
+        stage: "provider-executable-placement" as std.types.NonEmptyStr,
         reason: dashboard_instance_provider_executable_refusal_detail(instance: instance),
       }
     Present { value: codex_program } => {
@@ -2074,7 +2074,7 @@ fn dashboard_provider_readiness(
   ) {
     PathObservationRefused { reason } =>
       ProviderReadinessRefused {
-        stage: "provider-state-root" as NonEmptyStr,
+        stage: "provider-state-root" as std.types.NonEmptyStr,
         reason: reason,
       }
     PathObservedAbsent =>
@@ -2096,7 +2096,7 @@ fn dashboard_provider_readiness(
       )
       if dashboard_probe_refused(r: runtime) {
         ProviderReadinessRefused {
-          stage: "provider-runtime" as NonEmptyStr,
+          stage: "provider-runtime" as std.types.NonEmptyStr,
           reason: trim(runtime.stderr),
         }
       } else if !runtime.success {
@@ -2115,7 +2115,7 @@ fn dashboard_provider_readiness(
         )
         if dashboard_probe_refused(r: auth) {
           ProviderReadinessRefused {
-            stage: "provider-auth" as NonEmptyStr,
+            stage: "provider-auth" as std.types.NonEmptyStr,
             reason: trim(auth.stderr),
           }
         } else if !auth.success {
@@ -2140,7 +2140,7 @@ fn dashboard_provider_readiness(
   }
 }
 
-fn dashboard_provider_readiness_json(instance: HostDashboardInstance) -> String {
+fn dashboard_provider_readiness_json(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> String {
   serialize_json(v: json_object(members: concat(
     [json_kv(key: "schema", value: json_string(s: "roadmap-provider-readiness/v1"))],
     match dashboard_provider_readiness(instance: instance) {

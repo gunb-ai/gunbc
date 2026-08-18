@@ -37,7 +37,7 @@ data native_at_small_scale_receipt_note: String = "THE ONE INHABITANT. Subject i
 
 fn native_at_small_scale_transition_receipt() -> NativeSelectedWitnessTransitionReceipt {
   NativeSelectedWitnessTransitionReceipt {
-    node: "rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C" as RoadmapNodeIdentity,
+    node: "rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C" as gunbc.roadmap_model.RoadmapNodeIdentity,
     landed_pull_request: 7599,
     landed_merge_commit: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
     evaluated_head: "2f9e780e6d2130680c4d9fb49739bf0c6cc7c746",

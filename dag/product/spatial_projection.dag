@@ -50,7 +50,7 @@ type ProjectedScene sole_constructor {
 // THE CORNERS OF A PRISM ARE ITS FOOTPRINT VERTICES AT BOTH HEIGHTS. Deriving them here rather than
 // asking the topology layer for a corner list keeps this module a consumer: it reads the footprint
 // and the two elevations that already define the prism, and invents no geometry of its own.
-fn space_corners(s: EnclosedSpace) -> List<Point3> {
+fn space_corners(s: std.orthogonal_topology.EnclosedSpace) -> List<std.affine_space.Point3> {
   let prism = shell_prism(s: space_shell(s: s))
   let low = signed_frame_component_count(c: prism3_low(p: prism))
   let high = signed_frame_component_count(c: prism3_high(p: prism))
@@ -73,7 +73,7 @@ type CornerAcc {
   refusal: SceneRefusal?
 }
 
-fn accumulate_corner(acc: CornerAcc, v: ProjectionView, p: Point3) -> CornerAcc {
+fn accumulate_corner(acc: CornerAcc, v: std.planar_projection.ProjectionView, p: std.affine_space.Point3) -> CornerAcc {
   match acc.refusal {
     Present { value: r } => CornerAcc { images: acc.images, nearest: acc.nearest, farthest: acc.farthest, started: acc.started, refusal: Present { value: r } }
     Absent =>
@@ -105,7 +105,7 @@ fn accumulate_corner(acc: CornerAcc, v: ProjectionView, p: Point3) -> CornerAcc 
 // OrthogonalLoop2 has at least four vertices by construction (SPATIAL-3A refuses fewer), so the
 // started flag is always true by the time the fold ends. It exists so that "no corners seen yet" is
 // a state distinct from "the depth so far is zero" rather than a zero standing in for both.
-fn project_room(v: ProjectionView, r: PlacedSpace) -> SceneConstruction<ProjectedRoom> {
+fn project_room(v: std.planar_projection.ProjectionView, r: product.spatial_world.PlacedSpace) -> SceneConstruction<ProjectedRoom> {
   let acc = fold(space_corners(s: r.space), init: CornerAcc { images: [], nearest: 0, farthest: 0, started: false, refusal: none }, f: (a, p) =>
     accumulate_corner(acc: a, v: v, p: p))
   match acc.refusal {
@@ -119,7 +119,7 @@ type SceneAcc {
   refusal: SceneRefusal?
 }
 
-fn project_world(w: World, v: ProjectionView) -> SceneConstruction<ProjectedScene> {
+fn project_world(w: product.spatial_world.World, v: std.planar_projection.ProjectionView) -> SceneConstruction<ProjectedScene> {
   let acc = fold(world_rooms(w: w), init: SceneAcc { rooms: [], refusal: none }, f: (a, r) =>
     match a.refusal {
       Present { value: c } => SceneAcc { rooms: a.rooms, refusal: Present { value: c } }
@@ -136,7 +136,7 @@ fn project_world(w: World, v: ProjectionView) -> SceneConstruction<ProjectedScen
 }
 
 fn scene_rooms(s: ProjectedScene) -> List<ProjectedRoom> { s.rooms }
-fn scene_view(s: ProjectedScene) -> ProjectionView { s.view }
+fn scene_view(s: ProjectedScene) -> std.planar_projection.ProjectionView { s.view }
 
 type PageBox {
   min_u: Int

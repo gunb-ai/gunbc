@@ -1,16 +1,16 @@
 module gunbc.fleet_ssh_access
 
 
-data fleet_automation_sa_email: ServiceAccountEmail = "fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
+data fleet_automation_sa_email: extdeps.cloud.gcp.gcp.ServiceAccountEmail = "fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
 
 
-data operator_macbook_ssh_key: SshPublicKey = SshPublicKey {
+data operator_macbook_ssh_key: extdeps.ssh.SshPublicKey = extdeps.ssh.SshPublicKey {
   algorithm: Ed25519,
   material: "AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF",
   comment: "macbook-m4",
 }
 
-data fleet_automation_ssh_key: SshPublicKey = SshPublicKey {
+data fleet_automation_ssh_key: extdeps.ssh.SshPublicKey = extdeps.ssh.SshPublicKey {
   algorithm: Ed25519,
   material: "AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN",
   comment: "fleet-automation@gunbc",
@@ -29,9 +29,9 @@ data fleet_automation_ssh_key_fingerprint: String = "SHA256:mGT7qJsh36VsVb8OPh3m
 // authority (review 50872, §3): the CI materialization URL and the requirement row's
 // pinned_version both DERIVE from it via the helpers below, so there is one place the pin
 // lives. Rotating to version 2 edits this one field and everything downstream follows.
-data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
+data fleet_automation_ssh_privkey_secret: extdeps.cloud.gcp.secret_ref.SecretRef = extdeps.cloud.gcp.secret_ref.SecretRef {
   project: fleet_secrets_gcp_project,
-  secret: "fleet-automation-ssh-key" as NonEmptyStr,
+  secret: "fleet-automation-ssh-key" as std.types.NonEmptyStr,
   version: "1",
   hash_state: HashPending,
 }
@@ -78,11 +78,11 @@ data operator_ssh_principal: SshAccessPrincipal = SshAccessPrincipal {
   public_key: operator_macbook_ssh_key,
 }
 
-data fleet_authorized_keys: List<SshPublicKey> = [
+data fleet_authorized_keys: List<extdeps.ssh.SshPublicKey> = [
   operator_macbook_ssh_key,
   fleet_automation_ssh_key,
 ]
 
-fn fleet_host_authorized_keys() -> List<SshPublicKey> {
+fn fleet_host_authorized_keys() -> List<extdeps.ssh.SshPublicKey> {
   fleet_authorized_keys
 }

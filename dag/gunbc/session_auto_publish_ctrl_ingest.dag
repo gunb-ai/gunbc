@@ -32,8 +32,8 @@ fn authenticate_ctrl_publication_ingest(
 
 fn ingest_publication_request_from_ctrl(
   authority: CtrlPublicationIngestAuthority,
-  expected_remote_head: CommitSha,
-  candidate_head: CommitSha,
+  expected_remote_head: std.types.CommitSha,
+  candidate_head: std.types.CommitSha,
 ) -> PublicationRequest {
   PublicationRequest {
     requester: authority.authenticated_requester,

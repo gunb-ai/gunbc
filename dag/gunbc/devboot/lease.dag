@@ -33,7 +33,7 @@ data produced_ref_namespace: String = "refs/devboot/produced/"
 // A ref name is a PATH, and Git rejects several characters that the natural wire form of a content hash contains -- the sha256 wire form carries a colon, which is illegal in a ref name. So the ref token is derived here rather than reusing serialize_content_hash, and the derivation keeps the one property the wire form has that matters: the FAMILY stays visible.
 //
 // Dropping the family and keeping only the hex would let two hashes from different families produce the same ref name whenever their hex happened to coincide, which is exactly the cross-family collapse the content-hash family grounding exists to prevent. The token separates family from digest with a hyphen, so the ref namespace inherits the same cross-family distinctness the type carries.
-fn content_hash_ref_token(hash: ContentHash) -> String {
+fn content_hash_ref_token(hash: std.content_hash.ContentHash) -> String {
   match hash {
     Fnv1a64(s) => join(["fnv1a64-", s.digest as String], "")
     Sha256Hash(d) => join(["sha256-", d.hex as String], "")
@@ -42,12 +42,12 @@ fn content_hash_ref_token(hash: ContentHash) -> String {
   }
 }
 
-fn lease_ref_for_subject(subject: BuildSubject) -> GitRefName {
-  join([lease_ref_namespace, content_hash_ref_token(hash: build_subject_digest(subject: subject))], "") as NonEmptyStr as GitRefName
+fn lease_ref_for_subject(subject: gunbc.devboot.subject.BuildSubject) -> extdeps.git.object_store.GitRefName {
+  join([lease_ref_namespace, content_hash_ref_token(hash: build_subject_digest(subject: subject))], "") as std.types.NonEmptyStr as extdeps.git.object_store.GitRefName
 }
 
-fn artifact_ref_for_subject(subject: BuildSubject) -> GitRefName {
-  join([artifact_ref_namespace, content_hash_ref_token(hash: build_subject_digest(subject: subject))], "") as NonEmptyStr as GitRefName
+fn artifact_ref_for_subject(subject: gunbc.devboot.subject.BuildSubject) -> extdeps.git.object_store.GitRefName {
+  join([artifact_ref_namespace, content_hash_ref_token(hash: build_subject_digest(subject: subject))], "") as std.types.NonEmptyStr as extdeps.git.object_store.GitRefName
 }
 
 // THE ONLY THREE THINGS A REQUESTER MAY LEARN, and the middle one is why this type exists at all. It won the lease and must build; it lost to a producer that already holds it and must attach to that producer; or the attempt refused for a reason that is neither, and it must not build.
@@ -74,7 +74,7 @@ type LeaseOutcome
 // So the absent case refuses here with LeaseCreateNotModeled instead of being treated as an acquisition. Treating it as one would be the fabrication this repository forbids most sharply: the requester would be told it holds sole producership on the strength of a transition that was never modeled, and two requesters arriving together would both be told it, which is precisely the invariant the lease exists to hold. A refusal costs a first build; a fabricated acquisition costs the guarantee.
 //
 // dissolve-on: the upstream object store gains an exact create-only transition (expected-old absent, refusing when the ref exists). At that point this arm is deleted and the absent case becomes a real LeaseAcquired -- the arm is not permanent, and naming its trigger is what separates a staged gap from an accepted one.
-fn lease_outcome_from_ref_transition(outcome: GitUpdateRefOutcome) -> LeaseOutcome {
+fn lease_outcome_from_ref_transition(outcome: extdeps.git.object_store.GitUpdateRefOutcome) -> LeaseOutcome {
   match outcome {
     GitRefTransitionModeled { repository, transition } =>
       LeaseAcquired { name: transition.advanced_name, holder: transition.new }
@@ -101,10 +101,10 @@ fn lease_outcome_from_ref_transition(outcome: GitUpdateRefOutcome) -> LeaseOutco
 //
 // This is the pure decision only. It mints no execution receipt, exactly as the modeled transition it consumes does not: a real producer must perform the update through a transport and read the result back. Promoting this outcome to a claim that the lease is held on a live host would be the specification-without-execution failure -- the model would be green while no process had ever taken a lease.
 fn acquire_producer_lease(
-  store: GitRepositoryState,
-  subject: BuildSubject,
-  expected_holder: GitObjectId,
-  claim: GitObjectId,
+  store: extdeps.git.object_store.GitRepositoryState,
+  subject: gunbc.devboot.subject.BuildSubject,
+  expected_holder: extdeps.git.object_store.GitObjectId,
+  claim: extdeps.git.object_store.GitObjectId,
 ) -> LeaseOutcome {
   lease_outcome_from_ref_transition(
     outcome: git_model_update_ref_exact(

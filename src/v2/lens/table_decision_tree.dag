@@ -3,7 +3,7 @@ module v2.lens.table_decision_tree
 
 data table_decision_tree_module: String = "v2.lens.table_decision_tree"
 
-fn table_decision_tree_unrealized_verdict() -> LensVerdict {
+fn table_decision_tree_unrealized_verdict() -> v2.std.lens_verdict.LensVerdict {
   lens_verdict_module_unrealized(
     reason: ^table_decision_tree_producer_unavailable,
     module_name: table_decision_tree_module
@@ -22,6 +22,6 @@ fn table_decision_tree_fact_for_fn(fn_node: Node) -> TableDecisionTreeFact {
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

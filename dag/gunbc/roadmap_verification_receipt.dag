@@ -15,7 +15,7 @@ type VerificationSubject {
 
 data current_verification_selection_note: String = "Recut A mutable pointer: after the belt derives the exact six-field verification question it publishes which head and change_window_identity are current. The dashboard reads this before addressing any immutable receipt. It is not verification evidence and may be replaced whenever the belt selects a new window for the same head."
 
-data current_verification_selection_schema: NonEmptyStr = "roadmap-verification-current-selection/v1"
+data current_verification_selection_schema: std.types.NonEmptyStr = "roadmap-verification-current-selection/v1"
 
 type CurrentVerificationSelection {
   head_sha: std.types.CommitSha
@@ -131,7 +131,7 @@ fn current_verification_selection_json(
   ]))
 }
 
-fn verification_subject_decode_v1(doc: JsonValue) -> VerificationSubject? {
+fn verification_subject_decode_v1(doc: extdeps.languages.json.emit.JsonValue) -> VerificationSubject? {
   match verification_receipt_string_member(doc: doc, key: "node_identity") {
     VerificationReceiptMemberUnreadable { reason: _ } => none
     VerificationReceiptMemberRead { value: node_identity } =>
@@ -152,11 +152,11 @@ fn verification_subject_decode_v1(doc: JsonValue) -> VerificationSubject? {
                         VerificationReceiptMemberRead { value: head_sha } =>
                           Present {
                             value: VerificationSubject {
-                              node_identity: node_identity as NonEmptyStr as RoadmapNodeIdentity,
+                              node_identity: node_identity as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeIdentity,
                               criteria_digest: criteria_digest,
                               attempt_key: attempt_key,
-                              branch: branch as NonEmptyStr,
-                              head_sha: head_sha as CommitSha,
+                              branch: branch as std.types.NonEmptyStr,
+                              head_sha: head_sha as std.types.CommitSha,
                               change_window_identity: git_diff_window_absent_identity(),
                             },
                           }
@@ -268,7 +268,7 @@ fn current_verification_selection_decode_document(
                           }
                         } else {
                           SelectionObserved {
-                            head: expected_head_sha as CommitSha,
+                            head: expected_head_sha as std.types.CommitSha,
                             window_identity: window_identity,
                           }
                         }
@@ -689,15 +689,15 @@ type VerificationReceiptFileSource
   | VerificationReceiptPresent { text: String }
   | VerificationReceiptUnreadable { detail: String }
 
-data verification_receipt_schema: NonEmptyStr = "roadmap-verification-receipt/v2"
-data verification_receipt_schema_v1: NonEmptyStr = "roadmap-verification-receipt/v1"
+data verification_receipt_schema: std.types.NonEmptyStr = "roadmap-verification-receipt/v2"
+data verification_receipt_schema_v1: std.types.NonEmptyStr = "roadmap-verification-receipt/v1"
 
 type VerificationReceiptMember
   = VerificationReceiptMemberRead { value: String }
   | VerificationReceiptMemberUnreadable { reason: String }
 
 fn verification_receipt_string_member(
-  doc: JsonValue,
+  doc: extdeps.languages.json.emit.JsonValue,
   key: String,
 ) -> VerificationReceiptMember {
   match json_object_unique_member(v: doc, key: key) {
@@ -727,7 +727,7 @@ fn verification_receipt_string_member(
   }
 }
 
-fn verification_receipt_int_member(doc: JsonValue, key: String) -> Int? {
+fn verification_receipt_int_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> Int? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
@@ -738,7 +738,7 @@ fn verification_receipt_int_member(doc: JsonValue, key: String) -> Int? {
   }
 }
 
-fn verification_receipt_object_member(doc: JsonValue, key: String) -> JsonValue? {
+fn verification_receipt_object_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> extdeps.languages.json.emit.JsonValue? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } => Present { value: v }
     _ => none
@@ -746,7 +746,7 @@ fn verification_receipt_object_member(doc: JsonValue, key: String) -> JsonValue?
 }
 
 fn verification_receipt_string_array_member(
-  doc: JsonValue,
+  doc: extdeps.languages.json.emit.JsonValue,
   key: String,
 ) -> List<String>? {
   match json_object_unique_member(v: doc, key: key) {
@@ -778,7 +778,7 @@ fn verification_receipt_string_array_member(
   }
 }
 
-fn verification_subject_json(subject: VerificationSubject) -> JsonValue {
+fn verification_subject_json(subject: VerificationSubject) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(
       key: "node_identity",
@@ -799,8 +799,8 @@ fn verification_subject_json(subject: VerificationSubject) -> JsonValue {
 }
 
 fn verification_validation_operation_json(
-  validation: ValidationOperation,
-) -> JsonValue {
+  validation: gunbc.roadmap_execution_contract.ValidationOperation,
+) -> extdeps.languages.json.emit.JsonValue {
   match validation {
     GunbcClaimValidation { entry, function } =>
       json_object(members: [
@@ -821,8 +821,8 @@ fn verification_validation_operation_json(
 }
 
 fn verification_modeled_command_json(
-  command: ModeledValidationCommand,
-) -> JsonValue {
+  command: gunbc.roadmap_execution_contract.ModeledValidationCommand,
+) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "label", value: json_string(s: command.label as String)),
     json_kv(key: "program", value: json_string(s: command.program as String)),
@@ -835,7 +835,7 @@ fn verification_modeled_command_json(
 
 fn verification_validation_execution_json(
   execution: ValidationExecution,
-) -> JsonValue {
+) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(
       key: "validation",
@@ -853,7 +853,7 @@ fn verification_validation_execution_json(
   ])
 }
 
-fn verification_verdict_json(verdict: ValidationVerdict) -> JsonValue {
+fn verification_verdict_json(verdict: gunbc.roadmap_validation_oracle.ValidationVerdict) -> extdeps.languages.json.emit.JsonValue {
   match verdict {
     ValidationNotRun =>
       json_object(members: [
@@ -917,7 +917,7 @@ type VerificationReceiptDecode
   = VerificationReceiptDecoded { receipt: VerificationReceipt }
   | VerificationReceiptUndecodable { reason: String }
 
-fn verification_subject_decode(doc: JsonValue) -> VerificationSubject? {
+fn verification_subject_decode(doc: extdeps.languages.json.emit.JsonValue) -> VerificationSubject? {
   match verification_receipt_string_member(doc: doc, key: "node_identity") {
     VerificationReceiptMemberUnreadable { reason: _ } => none
     VerificationReceiptMemberRead { value: node_identity } =>
@@ -947,11 +947,11 @@ fn verification_subject_decode(doc: JsonValue) -> VerificationSubject? {
                                 Present { value: change_window_identity } =>
                                   Present {
                                     value: VerificationSubject {
-                                      node_identity: node_identity as NonEmptyStr as RoadmapNodeIdentity,
+                                      node_identity: node_identity as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeIdentity,
                                       criteria_digest: criteria_digest,
                                       attempt_key: attempt_key,
-                                      branch: branch as NonEmptyStr,
-                                      head_sha: head_sha as CommitSha,
+                                      branch: branch as std.types.NonEmptyStr,
+                                      head_sha: head_sha as std.types.CommitSha,
                                       change_window_identity: change_window_identity,
                                     },
                                   }
@@ -966,8 +966,8 @@ fn verification_subject_decode(doc: JsonValue) -> VerificationSubject? {
 }
 
 fn verification_validation_operation_decode(
-  doc: JsonValue,
-) -> ValidationOperation? {
+  doc: extdeps.languages.json.emit.JsonValue,
+) -> gunbc.roadmap_execution_contract.ValidationOperation? {
   match verification_receipt_string_member(doc: doc, key: "kind") {
     VerificationReceiptMemberUnreadable { reason: _ } => none
     VerificationReceiptMemberRead { value: kind } =>
@@ -981,7 +981,7 @@ fn verification_validation_operation_decode(
                 Present {
                   value: GunbcClaimValidation {
                     entry: entry as std.types.FilePath,
-                    function: function as NonEmptyStr,
+                    function: function as std.types.NonEmptyStr,
                   },
                 }
             }
@@ -991,7 +991,7 @@ fn verification_validation_operation_decode(
           VerificationReceiptMemberUnreadable { reason: _ } => none
           VerificationReceiptMemberRead { value: filter } =>
             Present {
-              value: CargoTestValidation { filter: filter as NonEmptyStr },
+              value: CargoTestValidation { filter: filter as std.types.NonEmptyStr },
             }
         }
       } else if kind == "cargo-fmt" {
@@ -1003,8 +1003,8 @@ fn verification_validation_operation_decode(
 }
 
 fn verification_modeled_command_decode(
-  doc: JsonValue,
-) -> ModeledValidationCommand? {
+  doc: extdeps.languages.json.emit.JsonValue,
+) -> gunbc.roadmap_execution_contract.ModeledValidationCommand? {
   match verification_receipt_string_member(doc: doc, key: "label") {
     VerificationReceiptMemberUnreadable { reason: _ } => none
     VerificationReceiptMemberRead { value: label } =>
@@ -1015,8 +1015,8 @@ fn verification_modeled_command_decode(
             Absent => none
             Present { value: args } =>
               Present {
-                value: ModeledValidationCommand {
-                  label: label as NonEmptyStr,
+                value: gunbc.roadmap_execution_contract.ModeledValidationCommand {
+                  label: label as std.types.NonEmptyStr,
                   program: program as std.types.FilePath,
                   args: args,
                 },
@@ -1027,7 +1027,7 @@ fn verification_modeled_command_decode(
 }
 
 fn verification_validation_execution_decode(
-  doc: JsonValue,
+  doc: extdeps.languages.json.emit.JsonValue,
 ) -> ValidationExecution? {
   match verification_receipt_object_member(doc: doc, key: "validation") {
     Absent => none
@@ -1068,7 +1068,7 @@ fn verification_validation_execution_decode(
   }
 }
 
-fn verification_executions_decode(doc: JsonValue) -> List<ValidationExecution>? {
+fn verification_executions_decode(doc: extdeps.languages.json.emit.JsonValue) -> List<ValidationExecution>? {
   match json_object_unique_member(v: doc, key: "executions") {
     JsonMemberFound { value: executions_value } =>
       match executions_value {
@@ -1090,8 +1090,8 @@ fn verification_executions_decode(doc: JsonValue) -> List<ValidationExecution>? 
                   Absent =>
                     ValidationExecution {
                       validation: CargoFmtValidation,
-                      command: ModeledValidationCommand {
-                        label: "decode-placeholder" as NonEmptyStr,
+                      command: gunbc.roadmap_execution_contract.ModeledValidationCommand {
+                        label: "decode-placeholder" as std.types.NonEmptyStr,
                         program: "/dev/null" as std.types.FilePath,
                         args: [],
                       },
@@ -1112,7 +1112,7 @@ fn verification_executions_decode(doc: JsonValue) -> List<ValidationExecution>? 
   }
 }
 
-fn verification_verdict_decode(doc: JsonValue) -> ValidationVerdict? {
+fn verification_verdict_decode(doc: extdeps.languages.json.emit.JsonValue) -> gunbc.roadmap_validation_oracle.ValidationVerdict? {
   match verification_receipt_string_member(doc: doc, key: "key") {
     VerificationReceiptMemberUnreadable { reason: _ } => none
     VerificationReceiptMemberRead { value: key } =>
@@ -1182,7 +1182,7 @@ fn verification_verdict_decode(doc: JsonValue) -> ValidationVerdict? {
   }
 }
 
-fn verification_receipt_decode_document(doc: JsonValue) -> VerificationReceiptDecode {
+fn verification_receipt_decode_document(doc: extdeps.languages.json.emit.JsonValue) -> VerificationReceiptDecode {
   match verification_receipt_string_member(doc: doc, key: "schema") {
     VerificationReceiptMemberUnreadable { reason: r } =>
       VerificationReceiptUndecodable { reason: r }
@@ -1265,8 +1265,8 @@ fn verification_receipt_decode_document(doc: JsonValue) -> VerificationReceiptDe
                                                   Absent =>
                                                     ValidationExecution {
                                                       validation: CargoFmtValidation,
-                                                      command: ModeledValidationCommand {
-                                                        label: "decode-placeholder" as NonEmptyStr,
+                                                      command: gunbc.roadmap_execution_contract.ModeledValidationCommand {
+                                                        label: "decode-placeholder" as std.types.NonEmptyStr,
                                                         program: "/dev/null" as std.types.FilePath,
                                                         args: [],
                                                       },

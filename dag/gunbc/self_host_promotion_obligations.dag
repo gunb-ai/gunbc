@@ -41,9 +41,9 @@ data artifact_axis_omits_build_path: PromotionObligation = PromotionObligation {
     decl_name: "GenerationIdentity",
     field_name: "build_configuration"
   ),
-  claim_at_risk: "Two generations agreeing on all six declared axes may still produce different artifact bytes, so artifact-digest equality across hosts or workspaces is not a reproducibility oracle." as NonEmptyStr,
+  claim_at_risk: "Two generations agreeing on all six declared axes may still produce different artifact bytes, so artifact-digest equality across hosts or workspaces is not a reproducibility oracle." as std.types.NonEmptyStr,
   condition: unbound_dissolution(
-    description: "🟡 dissolve-on: EITHER the emitted artifact is built with the path remapped out (making the declared axes an actual determinant of the bytes), OR build path is named as a component of build_configuration (making the axis tell the truth about what it covers). Papering over it inside a comparison is not one of the remedies." as NonEmptyStr
+    description: "🟡 dissolve-on: EITHER the emitted artifact is built with the path remapped out (making the declared axes an actual determinant of the bytes), OR build path is named as a component of build_configuration (making the axis tell the truth about what it covers). Papering over it inside a comparison is not one of the remedies." as std.types.NonEmptyStr
   ),
 }
 
@@ -95,7 +95,7 @@ data frontier_numerator_admits_seed_evidence: PromotionObligation = PromotionObl
     module_path: "v2.compiler.self_host.emitter_producer_provenance",
     decl_name: "EmitterProducer"
   ),
-  claim_at_risk: "A self-host promotion is supposed to mean a v2 emitter produced the module; the producer axis still carries a V1SeedEmitter arm, so a promotion granted on seed-produced evidence is representable." as NonEmptyStr,
+  claim_at_risk: "A self-host promotion is supposed to mean a v2 emitter produced the module; the producer axis still carries a V1SeedEmitter arm, so a promotion granted on seed-produced evidence is representable." as std.types.NonEmptyStr,
   condition: bound_dissolution(
     ref: decl_ref(
       module_path: "v2.compiler.self_host.emitter_producer_provenance",

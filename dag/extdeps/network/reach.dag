@@ -1,15 +1,15 @@
 module extdeps.network.reach
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "man.openbsd.org/ssh_config#ProxyJump",
   }
 }
 
-data reach_proxycommand_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data reach_proxycommand_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "man.openbsd.org/ssh_config#ProxyCommand",
   }
@@ -30,19 +30,19 @@ type ReachRealizability =
     ReachRealizable
   | ReachRefused { cause: ReachRefusalCause }
 
-fn direct_lan(host: NetworkHost) -> Reach {
+fn direct_lan(host: extdeps.network.endpoint.NetworkHost) -> Reach {
   DirectLan { host: host }
 }
 
-fn proxy_jump(jumps: List<NetworkHost>, target: NetworkHost) -> Reach {
+fn proxy_jump(jumps: List<extdeps.network.endpoint.NetworkHost>, target: extdeps.network.endpoint.NetworkHost) -> Reach {
   ProxyJump { jumps: jumps, target: target }
 }
 
-fn fabric_tunnel(target: NetworkHost) -> Reach {
+fn fabric_tunnel(target: extdeps.network.endpoint.NetworkHost) -> Reach {
   FabricTunnel { target: target }
 }
 
-fn reach_target(reach: Reach) -> NetworkHost {
+fn reach_target(reach: Reach) -> extdeps.network.endpoint.NetworkHost {
   match reach {
     DirectLan { host: h } => h
     ProxyJump { jumps: _, target: t } => t

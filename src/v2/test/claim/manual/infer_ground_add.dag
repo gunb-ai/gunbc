@@ -16,85 +16,85 @@ type InferReceiptCase
       expected_value: Node
     }
 
-fn fixture_int_type_node(atom: Symbol) -> Node {
-  Node {
+fn fixture_int_type_node(atom: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn infer_receipt_symbol_node(s: Symbol) -> Node {
-  Node {
+fn infer_receipt_symbol_node(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn infer_receipt_runtime_value() -> RuntimeValue {
+fn infer_receipt_runtime_value() -> v2.std.runtime.RuntimeValue {
   RuntimePrimitive {
-    value: RuntimePrimitiveValue {
+    value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: infer_receipt_symbol_node(s: ^infer_receipt_runtime_value_symbol),
       bytes: []
     }
   }
 }
 
-fn infer_receipt_runtime_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn infer_receipt_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^infer_receipt_extdeps,
     at: node_locus(node: n),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
-fn infer_receipt_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn infer_receipt_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
 fn infer_receipt_call_primitive(
   node: Node,
-  _args: List<RuntimeValue>,
-  _env: EvaluationEnvironment
-) -> Outcome<RuntimeValue> {
+  _args: List<v2.std.runtime.RuntimeValue>,
+  _env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
-fn infer_receipt_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+fn infer_receipt_choose_branch(node: Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<Node> {
   Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
-fn infer_receipt_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+fn infer_receipt_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
   Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
 fn infer_receipt_bind_value(
-  _key: EnvironmentBindingKey,
-  _value: RuntimeValue,
-  env: EvaluationEnvironment
-) -> Outcome<EvaluationEnvironment> {
+  _key: v2.std.runtime.EnvironmentBindingKey,
+  _value: v2.std.runtime.RuntimeValue,
+  env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
   Accepted { value: env, diagnostics: None }
 }
 
-fn infer_receipt_interpretation() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter {
+fn infer_receipt_interpretation() -> v2.std.runtime.InterpretationAlgebra {
+  v2.std.runtime.InterpretationAlgebra {
+    value: v2.std.runtime.ValueInterpreter {
       allocate_literal: infer_receipt_allocate_literal
     },
-    transform: TransformInterpreter {
+    transform: v2.std.runtime.TransformInterpreter {
       call_primitive: infer_receipt_call_primitive
     },
-    branch: BranchInterpreter {
+    branch: v2.std.runtime.BranchInterpreter {
       choose_branch: infer_receipt_choose_branch
     },
-    loop: LoopInterpreter {
+    loop: v2.std.runtime.LoopInterpreter {
       step_loop: infer_receipt_step_loop
     },
-    bind: BindInterpreter {
+    bind: v2.std.runtime.BindInterpreter {
       bind_value: infer_receipt_bind_value
     },
-    match: MatchInterpreter {
+    match: v2.std.runtime.MatchInterpreter {
       choose_arm: v2.std.runtime.runtime_reject_match_arm
     }
   }
@@ -107,7 +107,7 @@ fn infer_receipt_case_input(case: InferReceiptCase) -> Node {
   }
 }
 
-fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
+fn infer_receipt_claim(case: InferReceiptCase) -> v2.std.verification.TestClaim {
   match case {
     InferDiagnosticReceiptCase {
       label: label,
@@ -120,7 +120,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
         anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
         input: input,
         expected_rejection: r,
-        classification: TestClassification { tier: Tier1, layer: Unit }
+        classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
       }
     InferCompilesReceiptCase {
       label: label,
@@ -133,13 +133,13 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
         anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
         input: input,
         expected_value: v,
-        classification: TestClassification { tier: Tier1, layer: Unit }
+        classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
       }
   }
 }
 
-fn infer_receipt_interpretation_structure_witness() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
+fn infer_receipt_interpretation_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
+  v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^infer_receipt_allocate_literal_sym,
     call_primitive: ^infer_receipt_call_primitive_sym,
     choose_branch: ^infer_receipt_choose_branch_sym,
@@ -149,7 +149,7 @@ fn infer_receipt_interpretation_structure_witness() -> InterpretationStructureWi
   }
 }
 
-fn infer_receipt_context() -> EvalContext {
+fn infer_receipt_context() -> v2.compiler.eval.EvalContext {
   eval_context_with_semantics(
     runtime_identity: ^infer_receipt_interpretation_pin,
     interpretation: infer_receipt_interpretation(),
@@ -157,8 +157,8 @@ fn infer_receipt_context() -> EvalContext {
   )
 }
 
-fn infer_receipt_empty_tree(root: Node) -> InferredTree {
-  InferredTree {
+fn infer_receipt_empty_tree(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map {
       lookup: fn(_) {
@@ -170,7 +170,7 @@ fn infer_receipt_empty_tree(root: Node) -> InferredTree {
 
 fn infer_receipt_subject(case: InferReceiptCase) -> TestClaimEvalSubject<Node> {
   let input = infer_receipt_case_input(case: case)
-  TestClaimEvalSubject {
+  v2.compiler.eval.TestClaimEvalSubject {
     claim: infer_receipt_claim(case: case),
     context: infer_receipt_context(),
     tree: infer_receipt_empty_tree(root: input),
@@ -181,14 +181,14 @@ fn infer_receipt_subject(case: InferReceiptCase) -> TestClaimEvalSubject<Node> {
   }
 }
 
-fn infer_receipt_case_pin(case: InferReceiptCase) -> Symbol {
+fn infer_receipt_case_pin(case: InferReceiptCase) -> v2.std.node.Symbol {
   match case {
     InferDiagnosticReceiptCase { input_symbol: sym, label: _, input: _, expected_rejection: _ } => sym
     InferCompilesReceiptCase { input_symbol: sym, label: _, input: _, expected_value: _ } => sym
   }
 }
 
-fn infer_outcome_node_projection(actual: Outcome<InferredTree>) -> Outcome<Node> {
+fn infer_outcome_node_projection(actual: Outcome<v2.compiler.infer.InferredTree>) -> Outcome<Node> {
   match actual {
     Accepted { value: tree, diagnostics: ad } =>
       Accepted { value: tree.root, diagnostics: ad }
@@ -200,7 +200,7 @@ fn infer_add_receipt_run(
   subject: TestClaimEvalSubject<Node>,
 ) -> TestClaimRun<Node, InferredTree> {
   let actual = anchor_infer_add()
-  TestClaimRun {
+  v2.compiler.eval.TestClaimRun {
     cache: test_claim_cache_receipt(subject: subject),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
@@ -233,7 +233,7 @@ fn infer_descent_witness_receipt_run(
   subject: TestClaimEvalSubject<Node>,
 ) -> TestClaimRun<Node, Node> {
   let actual = infer_descent_witness_contract_node(n: subject.input.evaluator_input)
-  TestClaimRun {
+  v2.compiler.eval.TestClaimRun {
     cache: test_claim_cache_receipt(subject: subject),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
@@ -250,24 +250,24 @@ fn infer_descent_witness_receipt_run(
 fn fixture_add_resolved_node() -> Node {
   fixture_add_resolved_tree()
 }
-fn fixture_add_resolved_tree() -> ResolvedTree {
-  Node {
+fn fixture_add_resolved_tree() -> v2.compiler.resolve.ResolvedTree {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^fixture_add_name },
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Arrow },
           children: [
-            Edge {
+            v2.std.node.Edge {
               label: Positional,
               target: fixture_int_type_node(atom: ^fixture_add_int_atom)
             },
-            Edge {
+            v2.std.node.Edge {
               label: Positional,
               target: fixture_int_type_node(atom: ^fixture_add_int_atom)
             },
-            Edge {
+            v2.std.node.Edge {
               label: Positional,
               target: fixture_int_type_node(atom: ^fixture_add_body_int_atom)
             }
@@ -280,7 +280,7 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
 }
 }
 
-fn anchor_infer_add() -> Outcome<InferredTree> {
+fn anchor_infer_add() -> Outcome<v2.compiler.infer.InferredTree> {
   infer(tree: fixture_add_resolved_tree())
 }
 
@@ -314,6 +314,6 @@ data subject_infer_descent_witness_holds_atom: TestClaimEvalSubject<Node> = infe
 
 data run_infer_descent_witness_holds_atom: TestClaimRun<Node, Node> = infer_descent_witness_receipt_run(subject: subject_infer_descent_witness_holds_atom)
 
-data claim_infer_add_compiles: TestClaim = infer_receipt_claim(case: case_infer_add_compiles)
+data claim_infer_add_compiles: v2.std.verification.TestClaim = infer_receipt_claim(case: case_infer_add_compiles)
 
-data claim_infer_descent_witness_holds_atom: TestClaim = infer_receipt_claim(case: case_infer_descent_witness_holds_atom)
+data claim_infer_descent_witness_holds_atom: v2.std.verification.TestClaim = infer_receipt_claim(case: case_infer_descent_witness_holds_atom)

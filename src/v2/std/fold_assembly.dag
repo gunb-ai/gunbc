@@ -1,19 +1,19 @@
 module v2.std.fold_assembly
 
 
-data fold_template_edge: Symbol = ^fold_template
-data fold_elements_edge: Symbol = ^fold_elements
+data fold_template_edge: v2.std.node.Symbol = ^fold_template
+data fold_elements_edge: v2.std.node.Symbol = ^fold_elements
 
-fn named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
-fn conj_record(children: FreeMonoid<Edge>) -> Node {
+fn conj_record(children: FreeMonoid<v2.std.node.Edge>) -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: children)
 }
 
-fn fold_decode_reject(node: Node, reason: Symbol) -> Outcome<FreeMonoid<Node>> {
-  outcome_rejected(d: Diagnostic {
+fn fold_decode_reject(node: Node, reason: v2.std.node.Symbol) -> Outcome<FreeMonoid<Node>> {
+  outcome_rejected(d: v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -51,12 +51,12 @@ fn apply_fills_into(template: Node, fills: FreeMonoid<Node>) -> ApplyResult {
   }
 }
 
-fn apply_fills_step(acc: ApplyEdgesAcc, e: Edge) -> ApplyEdgesAcc {
+fn apply_fills_step(acc: ApplyEdgesAcc, e: v2.std.node.Edge) -> ApplyEdgesAcc {
   apply_fills_step_with(acc: acc, e: e, r: apply_fills_into(template: e.target, fills: acc.rest))
 }
-fn apply_fills_step_with(acc: ApplyEdgesAcc, e: Edge, r: ApplyResult) -> ApplyEdgesAcc {
+fn apply_fills_step_with(acc: ApplyEdgesAcc, e: v2.std.node.Edge, r: ApplyResult) -> ApplyEdgesAcc {
   ApplyEdgesAcc {
-    edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: r.node }),
+    edges: list_snoc_item(xs: acc.edges, item: v2.std.node.Edge { label: e.label, target: r.node }),
     rest: r.rest
   }
 }
@@ -96,7 +96,7 @@ fn decode_node_list(node: Node) -> Outcome<FreeMonoid<Node>> {
   }
 }
 
-fn decode_node_list_conj(node: Node, head: NamedEdgeTargetLookup, tail: NamedEdgeTargetLookup) -> Outcome<FreeMonoid<Node>> {
+fn decode_node_list_conj(node: Node, head: v2.std.node.NamedEdgeTargetLookup, tail: v2.std.node.NamedEdgeTargetLookup) -> Outcome<FreeMonoid<Node>> {
   match head {
     Absent =>
       match tail {
@@ -186,7 +186,7 @@ fn decode_inner_step(acc: Outcome<FreeMonoid<FreeMonoid<Node>>>, elem_node: Node
   }
 }
 
-fn assemble_fold(g: ChainGeneralization) -> Node {
+fn assemble_fold(g: v2.std.anti_unification.ChainGeneralization) -> Node {
   conj_record(children: [
     named_edge(name: fold_template_edge, target: g.template),
     named_edge(name: fold_elements_edge, target: encode_per_element(per_element: g.per_element)),
@@ -196,12 +196,12 @@ fn assemble_fold(g: ChainGeneralization) -> Node {
 fn fold_template_of(fold_form: Node) -> Outcome<Node> {
   match named_edge_target_lookup(children: fold_form.children, name: fold_template_edge) {
     Found { target: t } => outcome_accepted(value: t)
-    Absent => outcome_rejected(d: Diagnostic {
+    Absent => outcome_rejected(d: v2.std.diagnostic.Diagnostic {
       reason: ^fold_form_template_edge_absent,
       at: node_locus(node: fold_form),
       correction: Unavailable { reason: ExternalContractUnknown }
     })
-    Ambiguous => outcome_rejected(d: Diagnostic {
+    Ambiguous => outcome_rejected(d: v2.std.diagnostic.Diagnostic {
       reason: ^fold_form_template_edge_ambiguous,
       at: node_locus(node: fold_form),
       correction: Unavailable { reason: ExternalContractUnknown }

@@ -2,8 +2,8 @@ module extdeps.pricing.regional_compute
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "prices.azure.com/api/retail/prices"
   }
@@ -23,7 +23,7 @@ type Geography
   | EastAsia
   | SoutheastAsia
 
-fn geography_label(g: Geography) -> NonEmptyStr {
+fn geography_label(g: Geography) -> std.types.NonEmptyStr {
   match g {
     NorthAmerica => "North America"
     SouthAmerica => "South America"
@@ -46,7 +46,7 @@ type ComputeProvider
   | Contabo
   | AlibabaCloud
 
-fn compute_provider_label(p: ComputeProvider) -> NonEmptyStr {
+fn compute_provider_label(p: ComputeProvider) -> std.types.NonEmptyStr {
   match p {
     AwsEc2 => "AWS EC2"
     AzureVirtualMachines => "Azure Virtual Machines"
@@ -80,15 +80,15 @@ type RegionalComputeRow {
 
 fn usd_per_hour(micros: std.nat.Nat) -> HourlyRateAvailability {
   HourlyCited {
-    hourly: MoneyPerHour { amount: money_amount_micro(count: micros), currency: Usd },
+    hourly: std.measure.MoneyPerHour { amount: money_amount_micro(count: micros), currency: Usd },
   }
 }
 
-fn two_vcpu() -> HardwareThreadCount {
+fn two_vcpu() -> std.measure.HardwareThreadCount {
   hardware_thread_count(2)
 }
 
-fn eight_gibibytes() -> ByteSize {
+fn eight_gibibytes() -> std.measure.ByteSize {
   byte_size(count: 8589934592)
 }
 

@@ -1,7 +1,7 @@
 module gunbc.host_converge_slice1
 
 
-data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
+data gunbc_host_converge_slice1_scope_disposition: std.disposition.Disposition = Terminal {
   reason: "Host-converge realized knob: per_slot_tasks_max from fleet_converge_policy through typed systemctl show/set-property/list-units and clock_now_probed_at (LocalShell on-host, operator principal briansrls on srv1). MemoryMax/MemoryHigh drop-in authoring and system.control shadow teardown are deploy-time only (gunbc.host_axis_caps at live_deploy apply under ghrunner sudo) — convergence does NOT write /etc/systemd drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert on the operator principal (operator privilege hold 2026-08-13). Ordering invariant (author derived drop-ins before shadow revert) is modeled in host_axis_caps for the deploy path. srv1 TasksMax on probe unit; srv3 multi-unit enumerated via runner_instance_glob. Per-unit outcomes are independent (DESIGN section 5 per-cause refusal / siblings continue). srv2 and other knobs stay on host_converge_realize frontier."
 }
 
@@ -20,11 +20,11 @@ data host_converge_slice1_control_shadow_converge_note: String = "Aug-11 root-er
 
 data host_converge_slice1_cap_author_before_shadow_revert_enforced: Bool = true
 
-fn host_converge_slice1_shadow_revert_script_matches_authority(unit: NonEmptyStr) -> Bool {
+fn host_converge_slice1_shadow_revert_script_matches_authority(unit: std.types.NonEmptyStr) -> Bool {
   control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: unit))
 }
 
-data host_converge_slice1_probe_unit: NonEmptyStr = "actions-runner@srv1-01.service"
+data host_converge_slice1_probe_unit: std.types.NonEmptyStr = "actions-runner@srv1-01.service"
 
 data host_converge_slice1_knob_name: String = "per_slot_memory_max_bytes"
 
@@ -69,11 +69,11 @@ type HostConvergeSlice1ConvergeResult
   | HostConvergeSlice1TasksConverged { applied_knobs: Int, receipt: HostConvergeSlice1TasksMaxReceipt }
   | HostConvergeSlice1Refused { reason: String }
 
-fn host_converge_identity(h: HostConverge) -> HostIdentity {
+fn host_converge_identity(h: gunbc.host_converge.HostConverge) -> product.placement_supply.HostIdentity {
   h.identity
 }
 
-fn converge_knob_by_name(host: HostConverge, name: String) -> ConvergeKnob? {
+fn converge_knob_by_name(host: gunbc.host_converge.HostConverge, name: String) -> gunbc.host_converge.ConvergeKnob? {
   fold(host.knobs, init: none, f: fn(acc, knob) {
     match acc {
       Present { value: _ } => acc
@@ -87,7 +87,7 @@ fn converge_knob_by_name(host: HostConverge, name: String) -> ConvergeKnob? {
   })
 }
 
-fn host_converge_from_policy(policy: ConvergePolicy, host: HostIdentity) -> HostConverge? {
+fn host_converge_from_policy(policy: gunbc.host_converge.ConvergePolicy, host: product.placement_supply.HostIdentity) -> gunbc.host_converge.HostConverge? {
   match policy {
     ConvergePolicyUnsound { reason: _ } => none
     ConvergePolicyDerived { hosts: hs } =>
@@ -95,7 +95,7 @@ fn host_converge_from_policy(policy: ConvergePolicy, host: HostIdentity) -> Host
   }
 }
 
-fn host_converge_slice1_per_slot_memory_max_knob(host: HostIdentity) -> ConvergeKnob? {
+fn host_converge_slice1_per_slot_memory_max_knob(host: product.placement_supply.HostIdentity) -> gunbc.host_converge.ConvergeKnob? {
   match host_converge_from_policy(policy: fleet_converge_policy(), host: host) {
     Present { value: hc } =>
       match converge_knob_by_name(host: hc, name: host_converge_slice1_knob_name) {
@@ -115,29 +115,29 @@ fn host_converge_slice1_per_slot_memory_max_knob(host: HostIdentity) -> Converge
   }
 }
 
-fn host_converge_slice1_srv1_per_slot_memory_max_knob() -> ConvergeKnob? {
+fn host_converge_slice1_srv1_per_slot_memory_max_knob() -> gunbc.host_converge.ConvergeKnob? {
   host_converge_slice1_per_slot_memory_max_knob(host: operator_host_srv1)
 }
 
 data host_converge_slice1_probed_at_refusal_reason: String = "host_converge_slice1: probed_at read failed (clock_now_probed_at); fail-closed"
 
-fn host_converge_slice1_probed_at() -> NonEmptyStr? {
+fn host_converge_slice1_probed_at() -> std.types.NonEmptyStr? {
   clock_now_probed_at()
 }
 
-fn host_converge_slice1_read_memory_max_raw(unit: NonEmptyStr) -> String? {
+fn host_converge_slice1_read_memory_max_raw(unit: std.types.NonEmptyStr) -> String? {
   match systemctl_show_property_read_local(unit: unit, property: MemoryMax) {
     SystemdPropertyCaptured { value: raw } => Present { value: raw }
     SystemdPropertyCaptureRefused { reason: _ } => none
   }
 }
 
-fn host_converge_slice1_live_read(unit: NonEmptyStr, probed_at: NonEmptyStr) -> RunnerUnitMemoryLiveRead? {
+fn host_converge_slice1_live_read(unit: std.types.NonEmptyStr, probed_at: std.types.NonEmptyStr) -> gunbc.runner_unit_live_read.RunnerUnitMemoryLiveRead? {
   match host_converge_slice1_read_memory_max_raw(unit: unit) {
     Present { value: memory_max_raw } =>
       Present {
         value: runner_unit_live_read_typed(
-          row: RunnerUnitLiveReadRow {
+          row: gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
             unit: unit,
             memory_max_raw: memory_max_raw,
             memory_swap_max_raw: "",
@@ -152,16 +152,16 @@ fn host_converge_slice1_live_read(unit: NonEmptyStr, probed_at: NonEmptyStr) -> 
 }
 
 fn host_converge_slice1_memory_cap_verdict(
-  read: RunnerUnitMemoryLiveRead,
-  knob: ConvergeKnob,
-) -> ConvergeVerdict? {
+  read: gunbc.runner_unit_live_read.RunnerUnitMemoryLiveRead,
+  knob: gunbc.host_converge.ConvergeKnob,
+) -> gunbc.host_converge.ConvergeVerdict? {
   per_slot_memory_cap_verdict_from_unit_read(read: read, target: knob.target)
 }
 
 fn host_converge_slice1_receipt_from_read(
-  host: HostIdentity,
-  read: RunnerUnitMemoryLiveRead,
-  knob: ConvergeKnob,
+  host: product.placement_supply.HostIdentity,
+  read: gunbc.runner_unit_live_read.RunnerUnitMemoryLiveRead,
+  knob: gunbc.host_converge.ConvergeKnob,
   applied: Bool,
   read_back_converged: Bool,
   reapply_noop: Bool,
@@ -206,15 +206,15 @@ type HostConvergeSlice1EnumerationMismatch {
   observed_units: List<std.types.NonEmptyStr>
 }
 
-fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyStr>? {
-  systemctl_list_units_active_services(instance_glob: instance_glob as NonEmptyStr)
+fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<std.types.NonEmptyStr>? {
+  systemctl_list_units_active_services(instance_glob: instance_glob as std.types.NonEmptyStr)
 }
 
 // Count equality is a postcondition after RunnerSlotProvision, not a pre-refuse on under-count.
 // Observed < declared means slots are missing — converge existing units' caps; provision adds the delta.
 fn host_converge_slice1_enumeration_mismatch(
-  host: HostIdentity,
-  units: List<NonEmptyStr>,
+  host: product.placement_supply.HostIdentity,
+  units: List<std.types.NonEmptyStr>,
 ) -> HostConvergeSlice1EnumerationMismatch? {
   let declared = declared_runner_count_for(host: host)
   if length(units) == declared {
@@ -230,7 +230,7 @@ fn host_converge_slice1_enumeration_mismatch(
   }
 }
 
-fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<NonEmptyStr>) -> HostConvergeSlice1EnumerationMismatch? {
+fn host_converge_slice1_cross_check_enumeration(host: product.placement_supply.HostIdentity, units: List<std.types.NonEmptyStr>) -> HostConvergeSlice1EnumerationMismatch? {
   let declared = declared_runner_count_for(host: host)
   let observed_count = length(units)
   if observed_count > declared {
@@ -249,7 +249,7 @@ type HostConvergeSlice1HostResult
   | HostConvergeSlice1HostRefused { reason: String }
   | HostConvergeSlice1HostEnumerationMismatch { mismatch: HostConvergeSlice1EnumerationMismatch }
 
-fn host_converge_slice1_tasks_knob(host: HostIdentity) -> ConvergeKnob? {
+fn host_converge_slice1_tasks_knob(host: product.placement_supply.HostIdentity) -> gunbc.host_converge.ConvergeKnob? {
   match host_converge_from_policy(policy: fleet_converge_policy(), host: host) {
     Present { value: hc } =>
       match converge_knob_by_name(host: hc, name: host_converge_slice1_tasks_knob_name) {
@@ -269,14 +269,14 @@ fn host_converge_slice1_tasks_knob(host: HostIdentity) -> ConvergeKnob? {
   }
 }
 
-fn host_converge_slice1_read_tasks_max_raw(unit: NonEmptyStr) -> String? {
+fn host_converge_slice1_read_tasks_max_raw(unit: std.types.NonEmptyStr) -> String? {
   match systemctl_show_property_read_local(unit: unit, property: TasksMax) {
     SystemdPropertyCaptured { value: raw } => Present { value: raw }
     SystemdPropertyCaptureRefused { reason: _ } => none
   }
 }
 
-fn host_converge_slice1_read_tasks_current_raw(unit: NonEmptyStr) -> String? {
+fn host_converge_slice1_read_tasks_current_raw(unit: std.types.NonEmptyStr) -> String? {
   match systemctl_show_property_read_local(unit: unit, property: TasksCurrent) {
     SystemdPropertyCaptured { value: raw } => Present { value: raw }
     SystemdPropertyCaptureRefused { reason: _ } => none
@@ -287,7 +287,7 @@ fn host_converge_slice1_read_tasks_current_raw(unit: NonEmptyStr) -> String? {
 // unparseable wire is the Absent verdict (untyped wire, refused upstream), never Drifted:
 // Drifted is reserved for a real limit that disagrees, because Drifted is the arm that
 // arms the apply path.
-fn host_converge_slice1_tasks_verdict(limit: SystemdCgroupTaskLimit, knob: ConvergeKnob) -> ConvergeVerdict {
+fn host_converge_slice1_tasks_verdict(limit: extdeps.systemd.SystemdCgroupTaskLimit, knob: gunbc.host_converge.ConvergeKnob) -> gunbc.host_converge.ConvergeVerdict {
   match limit {
     TaskLimitCount { count: n } =>
       if to_string(n) == knob.desired { VerdictConverged } else { Drifted }
@@ -296,11 +296,11 @@ fn host_converge_slice1_tasks_verdict(limit: SystemdCgroupTaskLimit, knob: Conve
   }
 }
 
-fn host_converge_slice1_apply_tasks_max(unit: NonEmptyStr, value: String) -> Bool {
+fn host_converge_slice1_apply_tasks_max(unit: std.types.NonEmptyStr, value: String) -> Bool {
   systemctl_set_property_local(
     unit: unit,
     property: systemd_tasks_max_property,
-    value: value as NonEmptyStr,
+    value: value as std.types.NonEmptyStr,
   )
 }
 
@@ -315,7 +315,7 @@ fn host_converge_slice1_tasks_headroom_refuses(current: Int, target: Int) -> Boo
   current >= target
 }
 
-fn host_converge_slice1_tasks_guard(unit: NonEmptyStr, target_value: String) -> HostConvergeSlice1TasksGuardOutcome {
+fn host_converge_slice1_tasks_guard(unit: std.types.NonEmptyStr, target_value: String) -> HostConvergeSlice1TasksGuardOutcome {
   match parse_int(s: target_value) {
     Present { value: target } =>
       match host_converge_slice1_read_tasks_current_raw(unit: unit) {
@@ -348,11 +348,11 @@ fn host_converge_slice1_tasks_guard(unit: NonEmptyStr, target_value: String) -> 
 }
 
 fn host_converge_slice1_tasks_receipt(
-  host: HostIdentity,
-  unit: NonEmptyStr,
-  knob: ConvergeKnob,
-  limit: SystemdCgroupTaskLimit,
-  probed_at: NonEmptyStr,
+  host: product.placement_supply.HostIdentity,
+  unit: std.types.NonEmptyStr,
+  knob: gunbc.host_converge.ConvergeKnob,
+  limit: extdeps.systemd.SystemdCgroupTaskLimit,
+  probed_at: std.types.NonEmptyStr,
   applied: Bool,
   read_back_converged: Bool,
   reapply_noop: Bool,
@@ -376,7 +376,7 @@ fn host_converge_slice1_tasks_receipt_is_valid(receipt: HostConvergeSlice1TasksM
     && receipt.verdict == VerdictConverged
 }
 
-fn host_converge_slice1_tasks_read_limit(unit: NonEmptyStr) -> SystemdCgroupTaskLimit? {
+fn host_converge_slice1_tasks_read_limit(unit: std.types.NonEmptyStr) -> extdeps.systemd.SystemdCgroupTaskLimit? {
   match host_converge_slice1_read_tasks_max_raw(unit: unit) {
     Present { value: raw } => Present { value: parse_systemd_task_limit_show(raw: raw) }
     _ => none
@@ -391,7 +391,7 @@ fn host_converge_slice1_tasks_read_limit(unit: NonEmptyStr) -> SystemdCgroupTask
 // them — but the EAGAIN-starvation class the guard exists for requires setting the cap
 // BELOW current, which re-applying the already-effective value cannot cause regardless
 // of concurrent spawns (review 50754 wording). Mirrors the memory circuit's reapply-noop.
-fn host_converge_slice1_prove_tasks_reapply_noop(unit: NonEmptyStr, knob: ConvergeKnob) -> String? {
+fn host_converge_slice1_prove_tasks_reapply_noop(unit: std.types.NonEmptyStr, knob: gunbc.host_converge.ConvergeKnob) -> String? {
   if !host_converge_slice1_apply_tasks_max(unit: unit, value: knob.desired) {
     Present {
       value: "host_converge_slice1: tasks reapply-noop second apply (systemctl set-property TasksMax) failed; fail-closed",
@@ -418,7 +418,7 @@ fn host_converge_slice1_prove_tasks_reapply_noop(unit: NonEmptyStr, knob: Conver
   }
 }
 
-fn host_converge_slice1_converge_unit_tasks(host: HostIdentity, unit: NonEmptyStr, knob: ConvergeKnob) -> HostConvergeSlice1UnitOutcome {
+fn host_converge_slice1_converge_unit_tasks(host: product.placement_supply.HostIdentity, unit: std.types.NonEmptyStr, knob: gunbc.host_converge.ConvergeKnob) -> HostConvergeSlice1UnitOutcome {
   match host_converge_slice1_probed_at() {
     Present { value: probed_at } =>
       match host_converge_slice1_tasks_read_limit(unit: unit) {
@@ -497,7 +497,7 @@ fn host_converge_slice1_converge_unit_tasks(host: HostIdentity, unit: NonEmptySt
   }
 }
 
-fn host_converge_slice1_converge_host(host: HostIdentity, instance_glob: String) -> HostConvergeSlice1HostResult {
+fn host_converge_slice1_converge_host(host: product.placement_supply.HostIdentity, instance_glob: String) -> HostConvergeSlice1HostResult {
   match host_converge_slice1_tasks_knob(host: host) {
     Present { value: tasks_knob } =>
       match host_converge_slice1_enumerate_units(instance_glob: instance_glob) {

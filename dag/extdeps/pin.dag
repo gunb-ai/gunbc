@@ -2,8 +2,8 @@ module extdeps.pin
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "reproducible-builds.org/docs/definition/"
   }
@@ -52,8 +52,8 @@ type SubjectProjectedPinAdmission<Subject>
 
 fn subject_projected_pin_as_pin<Subject>(
   pin: SubjectProjectedPin<Subject>,
-  expected_identity: ContentHash,
-  version: VersionIdentity,
+  expected_identity: std.content_hash.ContentHash,
+  version: extdeps.version.VersionIdentity,
 ) -> Pin<Subject> {
   Pin {
     subject: pin.subject,
@@ -65,8 +65,8 @@ fn subject_projected_pin_as_pin<Subject>(
 
 fn admit_subject_projected_pin_integrity<Subject>(
   pin: SubjectProjectedPin<Subject>,
-  observed_identity: ContentHash,
-  expected_identity: ContentHash,
+  observed_identity: std.content_hash.ContentHash,
+  expected_identity: std.content_hash.ContentHash,
 ) -> SubjectProjectedPinAdmission<Subject> {
   match pin.selection {
     TrackedChannel { channel: c, refresh_window_days: _ } =>
@@ -138,7 +138,7 @@ data pin_integrity_admission_note: String = "Establishes INTEGRITY ONLY, and is 
 
 fn admit_pin_integrity<Subject>(
   pin: Pin<Subject>,
-  observed_identity: ContentHash,
+  observed_identity: std.content_hash.ContentHash,
 ) -> PinAdmission<Subject> {
   match pin.selection {
     TrackedChannel { channel: c, refresh_window_days: _ } =>
@@ -182,7 +182,7 @@ fn pin_value_eq<Subject>(a: Pin<Subject>, b: Pin<Subject>) -> Bool {
     && (a.selection == b.selection)
 }
 
-data pin_frontier_rows: List<FrontierRow> = [
+data pin_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.pin", decl_name: "PinSelection"),
     reason: "refresh_window_days is a bare PositiveInt count of days rather than a day-typed magnitude",

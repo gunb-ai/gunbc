@@ -1,22 +1,22 @@
 module extdeps.cpu.ampere_altra_platform_hw_design.subject
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Altra_Platform_HW_Design_Specification_v1.00_20210120.pdf",
   }
 }
 
-data altra_platform_hw_design_subject_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data altra_platform_hw_design_subject_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Altra_Platform_HW_Design_Specification_v1.00_20210120.pdf",
   }
 }
 
-data ampere_technical_document_index_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data ampere_technical_document_index_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "amperecomputing.com/products/processors/altra",
   }
@@ -38,11 +38,11 @@ type HeldSpecificationSupersessionStanding
       detail: std.types.NonEmptyStr,
     }
 
-data altra_platform_hw_design_title: NonEmptyStr = "Ampere Altra Platform Hardware Design Specification"
+data altra_platform_hw_design_title: std.types.NonEmptyStr = "Ampere Altra Platform Hardware Design Specification"
 
-data altra_platform_hw_design_version_label: NonEmptyStr = "v1.00"
+data altra_platform_hw_design_version_label: std.types.NonEmptyStr = "v1.00"
 
-data altra_platform_hw_design_publication_date: SpecificationDocumentDate = SpecificationDocumentDate {
+data altra_platform_hw_design_publication_date: extdeps.publication.SpecificationDocumentDate = extdeps.publication.SpecificationDocumentDate {
   year: 2021,
   month: 1,
   day: 20,
@@ -50,7 +50,7 @@ data altra_platform_hw_design_publication_date: SpecificationDocumentDate = Spec
 
 data altra_platform_hw_design_supersession_standing: HeldSpecificationSupersessionStanding = NewerRevisionExistsUnretrieved {
   newer_version_label: "v1.20",
-  newer_publication_date: SpecificationDocumentDate {
+  newer_publication_date: extdeps.publication.SpecificationDocumentDate {
     year: 2025,
     month: 7,
     day: 15,
@@ -78,9 +78,9 @@ data altra_platform_hw_design_specification: AltraPlatformHwDesignSpecification 
   supersession_standing: altra_platform_hw_design_supersession_standing,
 }
 
-data altra_platform_hw_design_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data altra_platform_hw_design_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
       decl_name: "altra_platform_hw_design_specification",
       field: WholeDeclaration,
@@ -90,4 +90,4 @@ data altra_platform_hw_design_model_scope: ExternalModelScope = ExternalModelSco
   further_citations: [],
 }
 
-data extdeps_model_scope: ExternalModelScope = altra_platform_hw_design_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = altra_platform_hw_design_model_scope

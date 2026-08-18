@@ -2,36 +2,36 @@ module v2.test.lens_unused_parameters.non_use_edges
 
 data unused_parameters_non_use_child: Node = claim_atom_node(s: ^unused_parameters_non_use_child_symbol)
 
-data unused_parameters_non_use_root: Node = Node {
+data unused_parameters_non_use_root: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^unused_parameters_non_use_root_symbol } },
   children: [
-    Edge { label: Named { name: ^unused_parameters_non_use_edge_symbol }, target: unused_parameters_non_use_child }
+    v2.std.node.Edge { label: Named { name: ^unused_parameters_non_use_edge_symbol }, target: unused_parameters_non_use_child }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data unused_parameters_contains_dependency: DependencyView = DependencyView {
+data unused_parameters_contains_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: unused_parameters_non_use_root,
   dependent: unused_parameters_non_use_child,
   kind: Contains,
   usage_site: unused_parameters_non_use_child
 }
 
-data unused_parameters_data_dependency: DependencyView = DependencyView {
+data unused_parameters_data_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: unused_parameters_non_use_root,
   dependent: unused_parameters_non_use_child,
   kind: DataDependsOn,
   usage_site: unused_parameters_non_use_child
 }
 
-data unused_parameters_generated_from_dependency: DependencyView = DependencyView {
+data unused_parameters_generated_from_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: unused_parameters_non_use_root,
   dependent: unused_parameters_non_use_child,
   kind: GeneratedFrom,
   usage_site: unused_parameters_non_use_child
 }
 
-fn unused_parameters_non_use_facts() -> InferredFacts {
+fn unused_parameters_non_use_facts() -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^unused_parameters_non_use_type_symbol,
     algebra_symbol: ^unused_parameters_non_use_algebra_symbol,
@@ -39,7 +39,7 @@ fn unused_parameters_non_use_facts() -> InferredFacts {
   )
 }
 
-fn unused_parameters_non_use_tree() -> InferredTree {
+fn unused_parameters_non_use_tree() -> v2.compiler.infer.InferredTree {
   claim_inferred_tree(root: unused_parameters_non_use_root, facts: unused_parameters_non_use_facts())
 }
 
@@ -51,17 +51,17 @@ type LensUseClassificationPartitionClaim {
 
 data unused_parameters_non_use_edges_claim: LensUseClassificationPartitionClaim = LensUseClassificationPartitionClaim {
   input: unused_parameters_non_use_tree(),
-  expected: UseClassificationFact {
+  expected: v2.lens.unused_parameters.UseClassificationFact {
     uses: [
-      ClassifiedDependencyView {
+      v2.std.dependency.ClassifiedDependencyView {
         dependency: unused_parameters_contains_dependency,
         classification: IsStructuralComposition
       },
-      ClassifiedDependencyView {
+      v2.std.dependency.ClassifiedDependencyView {
         dependency: unused_parameters_data_dependency,
         classification: IsNonUseDependency
       },
-      ClassifiedDependencyView {
+      v2.std.dependency.ClassifiedDependencyView {
         dependency: unused_parameters_generated_from_dependency,
         classification: RequiresResolutionWitness
       }

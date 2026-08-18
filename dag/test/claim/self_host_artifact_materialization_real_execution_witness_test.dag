@@ -1,7 +1,7 @@
 module test.claim.self_host_artifact_materialization_real_execution_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data real_execution_home_doc: String = "Wet execution witness for the artifact axis: it writes a real minimal crate into a real mktemp directory, runs a REAL cargo build through cargo.Build.BuildManifestMessages, decodes cargo's own JSON message stream, and digests the file cargo named with a REAL sha512sum. shell.Mktemp.Dir, Filesystem.Write and cargo.Build.* have no mock_response, so the hermetic discovery corpus refuses this file by construction; it is excluded from discovery (gunbc.ci_layer_roots witness_exclusion_frontier) and enrolled in bin_witness_wet_entries, same lane as the other real-execution witnesses. The pure decision folds are witnessed hermetically on every PR in test.claim.self_host_artifact_materialization_witness — this file adds only what a fixture cannot supply: that the flag cargo is actually invoked with produces the stream the decode expects, and that the path in that stream is a file sha512sum can read."
 
@@ -204,15 +204,15 @@ fn build_twice_in_one_dir(first_source: String, second_source: String) -> TwoBui
   }
 }
 
-fn axis_is_materialized(a: GeneratedArtifactIdentity) -> Bool {
+fn axis_is_materialized(a: v2.compiler.self_host.generation.GeneratedArtifactIdentity) -> Bool {
   match a {
     ArtifactMaterialized { digest: _ } => true
     ArtifactNotMaterialized => false
   }
 }
 
-fn axis_identity(artifact: GeneratedArtifactIdentity) -> GenerationIdentity {
-  GenerationIdentity {
+fn axis_identity(artifact: v2.compiler.self_host.generation.GeneratedArtifactIdentity) -> v2.compiler.self_host.generation.GenerationIdentity {
+  v2.compiler.self_host.generation.GenerationIdentity {
     producer_compiler: symbol_identity_digest(sym: "axis-derivation-producer-compiler"),
     source_closure: symbol_identity_digest(sym: "axis-derivation-source-closure"),
     target_model: symbol_identity_digest(sym: "axis-derivation-target-model"),

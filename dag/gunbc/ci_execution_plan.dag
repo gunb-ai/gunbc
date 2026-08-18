@@ -58,7 +58,7 @@ fn ci_execution_plan_for_subject(subject: CiExecutionSubject) -> CiExecutionPlan
   }
 }
 
-fn ci_subject_head_sha(subject: CiExecutionSubject) -> CommitSha? {
+fn ci_subject_head_sha(subject: CiExecutionSubject) -> std.types.CommitSha? {
   match subject {
     PushToMain { head_sha: sha, base_tree_hash: _ } => Present { value: sha }
     PullRequestToMain { pr_number: _, head_sha: sha, base_ref: _, base_tree_hash: _, head_repo_full_name: _ } =>

@@ -30,7 +30,7 @@ fn dispatch_event_pipe_emission(
     ),
   ) {
     Accepted { value: text, diagnostics: _ } =>
-      PipeEmitted { command: TmuxPipeCommand { body: text as NonEmptyStr } }
+      PipeEmitted { command: extdeps.tmux.TmuxPipeCommand { body: text as std.types.NonEmptyStr } }
     Rejected { diagnostics: _ } =>
       PipeEmitRefused {
         detail: join([

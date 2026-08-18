@@ -11,10 +11,10 @@ type EvaluationClock
   = ThreadCpu
   | MonotonicWall
 
-fn evaluation_clock_key(c: EvaluationClock) -> NonEmptyStr {
+fn evaluation_clock_key(c: EvaluationClock) -> std.types.NonEmptyStr {
   match c {
-    ThreadCpu => "thread_cpu" as NonEmptyStr
-    MonotonicWall => "monotonic_wall" as NonEmptyStr
+    ThreadCpu => "thread_cpu" as std.types.NonEmptyStr
+    MonotonicWall => "monotonic_wall" as std.types.NonEmptyStr
   }
 }
 
@@ -28,7 +28,7 @@ type EvaluationLimit
 
 data evaluation_limit_unset_is_a_state_not_a_default_note: String = "LimitUnset IS A DECLARED POLICY STATE, NOT A MISSING VALUE, and separating it from a sentinel is what keeps this from becoming the absorbing fallback DESIGN section 5 forbids. Unset means this caller has declared that it does not bound this clock — today's serve behavior, stated rather than implied. It is NOT the same fact as a limit that could not be read, which would be a refusal; and it is not spelled as a zero or a very large number, because both of those are answers wearing the shape of an absence. A consumer matching on this coproduct cannot silently treat unbounded as bounded."
 
-fn evaluation_limit_nanos(limit: PositiveMillisecond) -> Int {
+fn evaluation_limit_nanos(limit: std.measure.PositiveMillisecond) -> Int {
   positive_millisecond_count(m: limit) * nanoseconds_per_millisecond()
 }
 
@@ -50,7 +50,7 @@ type EvaluationBudgetVerdict
 fn evaluation_budget_verdict(
   entry: EvaluationEntryIdentity,
   clock: EvaluationClock,
-  elapsed: Nanosecond,
+  elapsed: std.measure.Nanosecond,
   limit: EvaluationLimit,
 ) -> EvaluationBudgetVerdict {
   match limit {
@@ -82,8 +82,8 @@ fn effective_nested_limit_nanos(
   }
 }
 
-fn evaluation_budget_refusal_code() -> NonEmptyStr {
-  "evaluation_budget_exceeded" as NonEmptyStr
+fn evaluation_budget_refusal_code() -> std.types.NonEmptyStr {
+  "evaluation_budget_exceeded" as std.types.NonEmptyStr
 }
 
 data evaluation_budget_retry_semantics_note: String = "THE REFUSAL CODE IS STABLE AND CARRIES NO RETRY PROMISE, which is a modeling decision and not an omission. A deterministic request that exceeds a fixed evaluation policy will exceed it again on every retry, so advertising Retry-After — or reaching for a status whose meaning is temporary capacity — would tell the caller something the model does not know. The machine-readable code, the clock that fired, the entry, and both quantities are what a consumer can act on; whether a later attempt may be admitted is a separate fact that no arm here establishes (operator review 2026-08-09)."

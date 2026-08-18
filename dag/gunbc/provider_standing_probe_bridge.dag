@@ -9,9 +9,9 @@ data provider_standing_probe_bridge_limit_note: String = "LimitObservationUnobse
 
 data provider_standing_probe_bridge_claude_control_note: String = "Claude credential control probes ground authentication from token state, never from subscription profile metadata alone. tokenSource=none with profile metadata present maps to AuthenticationProfilePresentTokenAbsent, not AuthenticationAuthenticated. Installation and tool environment are not observed at this bridge — only authentication is derived from the credential-control input."
 
-data provider_standing_probe_bridge_claude_installation_unobserved_reason: NonEmptyStr = "installation not observed at credential-control bridge" as NonEmptyStr
+data provider_standing_probe_bridge_claude_installation_unobserved_reason: std.types.NonEmptyStr = "installation not observed at credential-control bridge" as std.types.NonEmptyStr
 
-data provider_standing_probe_bridge_claude_tool_environment_unobserved_reason: NonEmptyStr = "tool environment not observed at credential-control bridge" as NonEmptyStr
+data provider_standing_probe_bridge_claude_tool_environment_unobserved_reason: std.types.NonEmptyStr = "tool environment not observed at credential-control bridge" as std.types.NonEmptyStr
 
 type ProviderDashboardExecProbe
   = ProviderDashboardExecProbeRefused { detail: std.types.NonEmptyStr }
@@ -37,20 +37,20 @@ type ClaudeCredentialControlProbeObservation {
   subscription_tier: std.types.NonEmptyStr,
 }
 
-data provider_dashboard_exec_probe_transport_refused_reason: NonEmptyStr = "dashboard provider exec probe transport refused" as NonEmptyStr
+data provider_dashboard_exec_probe_transport_refused_reason: std.types.NonEmptyStr = "dashboard provider exec probe transport refused" as std.types.NonEmptyStr
 
-data provider_standing_probe_bridge_entitlement_unobserved_reason: NonEmptyStr = "entitlement surface not read at login-status bridge" as NonEmptyStr
+data provider_standing_probe_bridge_entitlement_unobserved_reason: std.types.NonEmptyStr = "entitlement surface not read at login-status bridge" as std.types.NonEmptyStr
 
-data provider_standing_probe_bridge_limit_unobserved_reason: NonEmptyStr = "account limit surface not read at login-status bridge" as NonEmptyStr
+data provider_standing_probe_bridge_limit_unobserved_reason: std.types.NonEmptyStr = "account limit surface not read at login-status bridge" as std.types.NonEmptyStr
 
-data provider_standing_probe_bridge_installation_unobserved_reason: NonEmptyStr = "installation could not be observed before auth probe" as NonEmptyStr
+data provider_standing_probe_bridge_installation_unobserved_reason: std.types.NonEmptyStr = "installation could not be observed before auth probe" as std.types.NonEmptyStr
 
-data provider_standing_probe_bridge_state_root_absent_installation_reason: NonEmptyStr = "provider state root absent; executable not probed at this bridge" as NonEmptyStr
+data provider_standing_probe_bridge_state_root_absent_installation_reason: std.types.NonEmptyStr = "provider state root absent; executable not probed at this bridge" as std.types.NonEmptyStr
 
-data provider_standing_probe_bridge_tool_environment_unobserved_reason: NonEmptyStr = "tool environment could not be observed before auth probe" as NonEmptyStr
+data provider_standing_probe_bridge_tool_environment_unobserved_reason: std.types.NonEmptyStr = "tool environment could not be observed before auth probe" as std.types.NonEmptyStr
 
 fn provider_dashboard_exec_probe_refused(
-  detail: NonEmptyStr,
+  detail: std.types.NonEmptyStr,
 ) -> ProviderDashboardExecProbe {
   ProviderDashboardExecProbeRefused { detail: detail }
 }
@@ -83,24 +83,24 @@ fn provider_dashboard_exec_probe_is_transport_refused(
 }
 
 fn provider_standing_bundle_unobserved_installation(
-  reason: NonEmptyStr,
-) -> ProviderInstallationStanding {
+  reason: std.types.NonEmptyStr,
+) -> gunbc.provider_standing.ProviderInstallationStanding {
   InstallationStandingUnobserved { reason: reason }
 }
 
 fn provider_standing_bundle_unobserved_authentication(
-  reason: NonEmptyStr,
-) -> ProviderAuthenticationStanding {
+  reason: std.types.NonEmptyStr,
+) -> gunbc.provider_standing.ProviderAuthenticationStanding {
   AuthenticationStandingUnobserved { reason: reason }
 }
 
 fn provider_standing_bundle_unobserved_tool_environment(
-  reason: NonEmptyStr,
-) -> ProviderToolEnvironmentStanding {
+  reason: std.types.NonEmptyStr,
+) -> gunbc.provider_standing.ProviderToolEnvironmentStanding {
   ToolEnvironmentStandingUnobserved { reason: reason }
 }
 
-fn provider_standing_bundle_honest_limit_unobserved() -> List<ProviderLimitObservation> {
+fn provider_standing_bundle_honest_limit_unobserved() -> List<gunbc.provider_standing.ProviderLimitObservation> {
   [
     LimitObservationUnobserved {
       reason: provider_standing_probe_bridge_limit_unobserved_reason,
@@ -108,7 +108,7 @@ fn provider_standing_bundle_honest_limit_unobserved() -> List<ProviderLimitObser
   ]
 }
 
-fn provider_standing_bundle_honest_entitlement_unobserved() -> ProviderEntitlementObservation {
+fn provider_standing_bundle_honest_entitlement_unobserved() -> gunbc.provider_standing.ProviderEntitlementObservation {
   EntitlementObservationUnobserved {
     reason: provider_standing_probe_bridge_entitlement_unobserved_reason,
   }
@@ -126,15 +126,15 @@ data codex_first_deployment_subscription_policy: CodexPersonalSubscriptionPolicy
   admitted_plans: [CodexPlanPro],
 }
 
-fn codex_plan_eq(a: CodexPlanType, b: CodexPlanType) -> Bool {
+fn codex_plan_eq(a: extdeps.llm.codex_app_server.CodexPlanType, b: extdeps.llm.codex_app_server.CodexPlanType) -> Bool {
   codex_plan_type_wire_name(p: a) == codex_plan_type_wire_name(p: b)
 }
 
-fn codex_policy_admits_plan(policy: CodexPersonalSubscriptionPolicy, plan: CodexPlanType) -> Bool {
+fn codex_policy_admits_plan(policy: CodexPersonalSubscriptionPolicy, plan: extdeps.llm.codex_app_server.CodexPlanType) -> Bool {
   any(policy.admitted_plans, p => codex_plan_eq(a: p, b: plan))
 }
 
-fn codex_plan_is_entitling(plan: CodexPlanType) -> Bool {
+fn codex_plan_is_entitling(plan: extdeps.llm.codex_app_server.CodexPlanType) -> Bool {
   codex_policy_admits_plan(
     policy: codex_first_deployment_subscription_policy,
     plan: plan,
@@ -142,8 +142,8 @@ fn codex_plan_is_entitling(plan: CodexPlanType) -> Bool {
 }
 
 fn provider_entitlement_from_codex_plan_reading(
-  reading: CodexPlanTypeReading,
-) -> ProviderEntitlementObservation {
+  reading: gunbc.codex_app_server_press.CodexPlanTypeReading,
+) -> gunbc.provider_standing.ProviderEntitlementObservation {
   match reading {
     CodexPlanTypeObserved { plan: p } =>
       if codex_plan_is_entitling(plan: p) {
@@ -154,7 +154,7 @@ fn provider_entitlement_from_codex_plan_reading(
             "codex chatgpt plan ",
             codex_plan_type_wire_name(p: p) as String,
             " is not yet admitted by the deployed profile",
-          ], "") as NonEmptyStr,
+          ], "") as std.types.NonEmptyStr,
         }
       }
     CodexPlanTypeUnrecognized { native: n } =>
@@ -163,7 +163,7 @@ fn provider_entitlement_from_codex_plan_reading(
           "codex chatgpt planType ",
           n as String,
           " is outside the cited 0.146.0 PlanType enum; this pin is stale",
-        ], "") as NonEmptyStr,
+        ], "") as std.types.NonEmptyStr,
       }
     CodexPlanTypeMalformed { cause: c } =>
       EntitlementObservationUnobserved { reason: c }
@@ -171,22 +171,22 @@ fn provider_entitlement_from_codex_plan_reading(
 }
 
 fn provider_entitlement_from_codex_realm(
-  realm: CodexAccountRealm,
-) -> ProviderEntitlementObservation {
+  realm: gunbc.codex_app_server_press.CodexAccountRealm,
+) -> gunbc.provider_standing.ProviderEntitlementObservation {
   match realm {
     CodexChatgptRealm { plan: reading } =>
       provider_entitlement_from_codex_plan_reading(reading: reading)
     CodexApiKeyRealm =>
       EntitlementRejected {
-        reason: "codex account is an apiKey platform credential, not the personal ChatGPT subscription this profile requires" as NonEmptyStr,
+        reason: "codex account is an apiKey platform credential, not the personal ChatGPT subscription this profile requires" as std.types.NonEmptyStr,
       }
     CodexAmazonBedrockRealm =>
       EntitlementRejected {
-        reason: "codex account is an amazonBedrock contract credential, not the personal ChatGPT subscription this profile requires" as NonEmptyStr,
+        reason: "codex account is an amazonBedrock contract credential, not the personal ChatGPT subscription this profile requires" as std.types.NonEmptyStr,
       }
     CodexAccountRealmAbsent =>
       EntitlementObservationUnobserved {
-        reason: "codex account/read reported no account; entitlement is unread until the credential authenticates" as NonEmptyStr,
+        reason: "codex account/read reported no account; entitlement is unread until the credential authenticates" as std.types.NonEmptyStr,
       }
     CodexAccountRealmUnrecognizedType { native: n } =>
       EntitlementObservationUnobserved {
@@ -194,7 +194,7 @@ fn provider_entitlement_from_codex_realm(
           "codex account type ",
           n as String,
           " is outside the cited 0.146.0 Account union; this pin is stale",
-        ], "") as NonEmptyStr,
+        ], "") as std.types.NonEmptyStr,
       }
     CodexAccountRealmUnobserved { reason: r } =>
       EntitlementObservationUnobserved { reason: r }
@@ -202,8 +202,8 @@ fn provider_entitlement_from_codex_realm(
 }
 
 fn provider_entitlement_from_codex_press_receipt(
-  receipt: CodexAccountStandingReceipt,
-) -> ProviderEntitlementObservation {
+  receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt,
+) -> gunbc.provider_standing.ProviderEntitlementObservation {
   provider_entitlement_from_codex_realm(
     realm: receipt.standing.evidence.account_realm,
   )
@@ -212,8 +212,8 @@ fn provider_entitlement_from_codex_press_receipt(
 data codex_credential_liveness_bridge_note: String = "LIVENESS IS NOT REALM (continuity receipt 2026-08-13). account/read can report chatgpt/pro while account/rateLimits/read returns no buckets — the dead-credential trap. AuthenticationAuthenticated derives from CodexCredentialLive (buckets returned, token exercised upstream), never from account_realm or account_read disposition alone. Realm stays on the entitlement bridge; this bridge owns the authentication axis only."
 
 fn provider_authentication_from_codex_credential_liveness(
-  liveness: CodexCredentialLiveness,
-) -> ProviderAuthenticationStanding {
+  liveness: gunbc.codex_app_server_press.CodexCredentialLiveness,
+) -> gunbc.provider_standing.ProviderAuthenticationStanding {
   match liveness {
     CodexCredentialLive { bucket_count: _ } => AuthenticationAuthenticated
     CodexCredentialDead { reason: r } =>
@@ -224,21 +224,21 @@ fn provider_authentication_from_codex_credential_liveness(
 }
 
 fn provider_authentication_from_codex_press_receipt(
-  receipt: CodexAccountStandingReceipt,
-) -> ProviderAuthenticationStanding {
+  receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt,
+) -> gunbc.provider_standing.ProviderAuthenticationStanding {
   provider_authentication_from_codex_credential_liveness(
     liveness: receipt.standing.evidence.credential_liveness,
   )
 }
 
-data codex_press_standing_bundle_installation_unobserved_reason: NonEmptyStr = "installation not derived at codex press receipt bridge; runtime materialization is separate" as NonEmptyStr
+data codex_press_standing_bundle_installation_unobserved_reason: std.types.NonEmptyStr = "installation not derived at codex press receipt bridge; runtime materialization is separate" as std.types.NonEmptyStr
 
-data codex_press_standing_bundle_tool_environment_unobserved_reason: NonEmptyStr = "tool environment not derived at codex press receipt bridge" as NonEmptyStr
+data codex_press_standing_bundle_tool_environment_unobserved_reason: std.types.NonEmptyStr = "tool environment not derived at codex press receipt bridge" as std.types.NonEmptyStr
 
 fn provider_standing_bundle_from_codex_press_receipt(
-  receipt: CodexAccountStandingReceipt,
-) -> ProviderStandingBundle {
-  ProviderStandingBundle {
+  receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt,
+) -> gunbc.provider_standing.ProviderStandingBundle {
+  gunbc.provider_standing.ProviderStandingBundle {
     installation: provider_standing_bundle_unobserved_installation(
       reason: codex_press_standing_bundle_installation_unobserved_reason,
     ),
@@ -254,10 +254,10 @@ fn provider_standing_bundle_from_codex_press_receipt(
 
 fn provider_standing_bundle_from_codex_dashboard_probes(
   observation: CodexProviderDashboardProbeObservation,
-) -> ProviderStandingBundle {
+) -> gunbc.provider_standing.ProviderStandingBundle {
   match observation.state_root {
     CodexStateRootProbeRefused { reason } =>
-      ProviderStandingBundle {
+      gunbc.provider_standing.ProviderStandingBundle {
         installation: provider_standing_bundle_unobserved_installation(reason: reason),
         authentication: provider_standing_bundle_unobserved_authentication(reason: reason),
         entitlement: provider_standing_bundle_honest_entitlement_unobserved(),
@@ -268,7 +268,7 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
         ),
       }
     CodexStateRootAbsent =>
-      ProviderStandingBundle {
+      gunbc.provider_standing.ProviderStandingBundle {
         installation: provider_standing_bundle_unobserved_installation(
           reason: provider_standing_probe_bridge_state_root_absent_installation_reason,
         ),
@@ -277,7 +277,7 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
         limits: provider_standing_bundle_honest_limit_unobserved(),
         turn: TurnNotStarted,
         tool_environment: ToolEnvironmentUnavailable {
-          reason: "provider state root absent" as NonEmptyStr,
+          reason: "provider state root absent" as std.types.NonEmptyStr,
         },
       }
     CodexStateRootPresent => {
@@ -299,7 +299,7 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
             ToolEnvironmentReady
           } else {
             ToolEnvironmentUnavailable {
-              reason: "provider runtime probe failed" as NonEmptyStr,
+              reason: "provider runtime probe failed" as std.types.NonEmptyStr,
             }
           }
       }
@@ -313,7 +313,7 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
             AuthenticationCredentialsAbsent
           }
       }
-      ProviderStandingBundle {
+      gunbc.provider_standing.ProviderStandingBundle {
         installation: installation,
         authentication: authentication,
         entitlement: provider_standing_bundle_honest_entitlement_unobserved(),
@@ -327,9 +327,9 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
 
 fn provider_standing_bundle_from_claude_credential_control_probe(
   observation: ClaudeCredentialControlProbeObservation,
-) -> ProviderStandingBundle {
-  let authentication = if observation.token_source == ("none" as NonEmptyStr) {
-      if observation.subscription_tier == ("none" as NonEmptyStr) {
+) -> gunbc.provider_standing.ProviderStandingBundle {
+  let authentication = if observation.token_source == ("none" as std.types.NonEmptyStr) {
+      if observation.subscription_tier == ("none" as std.types.NonEmptyStr) {
         AuthenticationCredentialsAbsent
       } else {
         AuthenticationProfilePresentTokenAbsent {
@@ -340,7 +340,7 @@ fn provider_standing_bundle_from_claude_credential_control_probe(
     } else {
       AuthenticationAuthenticated
     }
-  ProviderStandingBundle {
+  gunbc.provider_standing.ProviderStandingBundle {
     installation: provider_standing_bundle_unobserved_installation(
       reason: provider_standing_probe_bridge_claude_installation_unobserved_reason,
     ),
@@ -357,9 +357,9 @@ fn provider_standing_bundle_from_claude_credential_control_probe(
 data codex_press_limit_bridge_note: String = "THE CONSUMER THE PRESS RECEIPT NAMED. gunbc.codex_app_server_press account_standing_authenticated_rate_limits_readable_note specifies this bridge and carries its dissolution: read evidence.rate_limit_buckets per limit_id, project each CodexRateLimitBucketVerdict to ProviderNativeLimitBucket, and NEVER route through ProviderAccountLimit or through CodexPressAccountReady as the limit axis.\n\nWHY THE SUBJECT MUST BE THE BUCKET. The account-standing classification gates on codex_default_rate_limit_id alone, so it reports Ready while a sibling bucket is exhausted and reports the account blocked while a sibling has capacity. Promoting either reading to account scope erases bucket identity and refuses — or admits — work for the wrong reason. One bucket is one subject; the draw decides which subject a dispatch actually consults.\n\nCAPACITY-UNKNOWN IS NOT CAPACITY, AND IT IS NOT UNIVERSAL EITHER. CodexBucketCapacityUnknown carries a limit_id whose window did not decode, so it becomes LimitSubjectUnobserved ON THAT BUCKET and never LimitObservedAvailable. It first mapped to the subject-less LimitObservationUnobserved, which blocks every draw — so one bucket failing to decode refused a draw naming a measured, available sibling, discarding a limit_id the producer already held (review 51237) — the empty-observation narrow is the failure mode here, not the widen: reading could-not-decode as nothing-is-wrong would admit a dispatch against a bucket nobody measured.\n\nAN EMPTY BUCKET LIST IS ALSO NOT CAPACITY. limit_observations_are_selection_eligible already refuses an empty list, so this projection does not change that verdict; what it adds is a located reason, so the refusal says which observation was missing instead of arriving as a bare false."
 
 fn provider_limit_observation_from_codex_bucket(
-  credential: ProviderLimitCredentialIdentity,
-  verdict: CodexRateLimitBucketVerdict,
-) -> ProviderLimitObservation {
+  credential: gunbc.provider_standing.ProviderLimitCredentialIdentity,
+  verdict: gunbc.codex_app_server_press.CodexRateLimitBucketVerdict,
+) -> gunbc.provider_standing.ProviderLimitObservation {
   match verdict {
     CodexBucketCapacityAvailable { limit_id: id } =>
       LimitObservedAvailable {
@@ -389,14 +389,14 @@ fn provider_limit_observation_from_codex_bucket(
 
 data codex_press_native_cause_token_note: String = "DISSOLVED AS DECLARED. This note previously said limit_id remained the cause fallback because native_token was not optional, and that resets_at was dropped because LimitUnavailableUntilReset had nowhere to put it — with the dissolve-on named as *that arm gains a typed reset instant*. It has one now, so both discards are gone: the cause is ProviderNativeLimitCause and answers NativeCauseUnreported when the wire omits rateLimitReachedType, and the reset is ProviderLimitReset carrying the decoded resetsAt.\n\nKept rather than deleted because the shape of the error is worth more than the fix: a required field whose producer lacks a value is what MANUFACTURES a fallback. The substitution was not chosen, it was the only expression that typechecked. Where an observation may not be there, the carrier has to say so, or the projection will invent something plausible in the slot."
 
-data codex_press_bucket_unavailable_reason: NonEmptyStr = "codex app-server rate-limit bucket reported exhausted until reset" as NonEmptyStr
-data codex_press_bucket_capacity_unknown_reason: NonEmptyStr = "codex app-server rate-limit bucket window did not decode; capacity unmeasured" as NonEmptyStr
-data codex_press_no_buckets_reason: NonEmptyStr = "codex app-server rate-limit response carried no decodable bucket; no limit was observed" as NonEmptyStr
+data codex_press_bucket_unavailable_reason: std.types.NonEmptyStr = "codex app-server rate-limit bucket reported exhausted until reset" as std.types.NonEmptyStr
+data codex_press_bucket_capacity_unknown_reason: std.types.NonEmptyStr = "codex app-server rate-limit bucket window did not decode; capacity unmeasured" as std.types.NonEmptyStr
+data codex_press_no_buckets_reason: std.types.NonEmptyStr = "codex app-server rate-limit response carried no decodable bucket; no limit was observed" as std.types.NonEmptyStr
 
 fn provider_limit_observations_from_codex_buckets(
-  credential: ProviderLimitCredentialIdentity,
-  buckets: List<CodexRateLimitBucketVerdict>,
-) -> List<ProviderLimitObservation> {
+  credential: gunbc.provider_standing.ProviderLimitCredentialIdentity,
+  buckets: List<gunbc.codex_app_server_press.CodexRateLimitBucketVerdict>,
+) -> List<gunbc.provider_standing.ProviderLimitObservation> {
   if list_length(items: buckets) == 0 {
     [LimitObservationUnobserved { reason: codex_press_no_buckets_reason }]
   } else {
@@ -408,14 +408,14 @@ fn provider_limit_observations_from_codex_buckets(
 data codex_press_credential_binding_note: String = "THE CREDENTIAL COMES FROM THE RECEIPT, NOT FROM THE CALLER (review artifact 51237 handback item 1). provider_limit_observations_from_codex_press_evidence takes the credential identity and the evidence as INDEPENDENT arguments, so nothing stops a caller taking buckets observed under one CODEX_HOME and publishing them as the standing of a different credential. The standing would be honestly decoded and attached to the wrong account — a forgery no arm refuses, because both arguments are individually valid.\n\nThe receipt already carries the answer: CodexAccountPreflightSubject.credential is the exact ambient context the trip ran under. So the receipt-taking entry point DERIVES the identity from that subject and gives the caller no place to supply one. The evidence-taking form remains for callers that genuinely hold only evidence, but it is no longer the way a receipt reaches the standing.\n\nCODEX_HOME is the identity because it IS the isolation mechanism (extdeps.llm.codex_auth codex_state_root_isolation_note): two homes are two credential stores, and one home is one account's tokens.\\n\\nTHE FIRST FIX WAS INCOMPLETE AND THAT IS THE POINT OF THIS PARAGRAPH. Adding the receipt-taking entry point did not remove the forgery — provider_limit_observations_from_codex_press_evidence still took a credential and an evidence record as independent arguments, so the exact construction the correction was meant to eliminate stayed reachable beside the corrected one. A safe path added next to an unsafe path leaves the unsafe path. It is deleted; the only production entry consumes the complete receipt, and the bucket-list helper takes an already-bound credential rather than a free one."
 
 fn codex_press_credential_identity(
-  credential: AmbientCodexCredentialContext,
-) -> ProviderLimitCredentialIdentity {
-  LimitCredentialLabel { label: credential.codex_home as NonEmptyStr }
+  credential: gunbc.codex_app_server_press.AmbientCodexCredentialContext,
+) -> gunbc.provider_standing.ProviderLimitCredentialIdentity {
+  LimitCredentialLabel { label: credential.codex_home as std.types.NonEmptyStr }
 }
 
 fn provider_limit_observations_from_codex_press_receipt(
-  receipt: CodexAccountStandingReceipt,
-) -> List<ProviderLimitObservation> {
+  receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt,
+) -> List<gunbc.provider_standing.ProviderLimitObservation> {
   provider_limit_observations_from_codex_buckets(
     credential: codex_press_credential_identity(credential: receipt.subject.credential),
     buckets: receipt.standing.evidence.rate_limit_buckets,

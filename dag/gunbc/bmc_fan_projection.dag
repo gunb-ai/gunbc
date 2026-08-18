@@ -83,11 +83,11 @@ type BmcProjectedConfigDigest
   = ProjectedConfigDigestKnown { digest: extdeps.crypto.hash.Digest }
   | ProjectedConfigDigestUnavailable
 
-data altrad8ud_openbmc_322_swampd_config_asrr_path: NonEmptyStr = "/usr/share/swampd/config-asrr.json"
+data altrad8ud_openbmc_322_swampd_config_asrr_path: std.types.NonEmptyStr = "/usr/share/swampd/config-asrr.json"
 
-data altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
+data altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id: std.types.NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
 
-data altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex: NonEmptyStr = "f559aff7f3455011e951bed1eac52e8cbe7a724b772fe6ece1d8545ff47cb5bc"
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex: std.types.NonEmptyStr = "f559aff7f3455011e951bed1eac52e8cbe7a724b772fe6ece1d8545ff47cb5bc"
 
 type BmcProjectedConfigContentIdentity {
   realization_id: std.types.NonEmptyStr
@@ -96,15 +96,15 @@ type BmcProjectedConfigContentIdentity {
   projected_config_sha256_hex: std.types.NonEmptyStr
 }
 
-data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve_steps: List<BmcFanCurveStep> = [
-  BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
-  BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
-  BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
-  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
-  BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve_steps: List<extdeps.bmc.types.BmcFanCurveStep> = [
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
 ]
 
-data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve: BmcFanCurve = BmcFanCurve {
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve: extdeps.bmc.types.BmcFanCurve = extdeps.bmc.types.BmcFanCurve {
   control_sensor: "TEMP_SOC",
   steps: altrad8ud_openbmc_322_fleet_quiet_projected_config_curve_steps,
   minimum_duty: percent(30),
@@ -127,17 +127,17 @@ data altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity: BmcPro
 
 data altrad8ud_openbmc_322_fleet_quiet_projected_config_probe_note: String = "SHA-256 of /usr/share/swampd/config-asrr.json after applying altrad8ud_openbmc_322_fleet_quiet_projected_config_curve (the srv3 2.07.00 vendor stock aggressive curve) through the altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1 realization, measured on srv4 by authenticated BMC SSH 2026-07-30: the jq realization was run on srv4's pre-onboarding base config with the stock aggressive desired params, the resulting canonical bytes were written to srv4 by staged same-filesystem atomic rename, and the live config-asrr.json digest read back equal to this hex. Unlike the earlier lazy row (whose hex was the raw onboarding file, idempotent only in structure), this hex IS the realization's own output — the realization reproduces the cited digest byte-for-byte. altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity is the immutable content identity binding realization, config path, probed curve bytes, and cited sha256 hex; bmc_fan_projected_config_digest admits that hex only when every input matches that row exactly. Live intent curves must be witnessed against the frozen probed curve before projection can qualify new bytes."
 
-data altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest: Digest = sha256_digest(
+data altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest: extdeps.crypto.hash.Digest = sha256_digest(
   hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
 )
 
 fn bmc_fan_projected_config_digest_sha256_hex(
-  curve: BmcFanCurve,
-  intent_curve: BmcFanCurve,
-  realization: StateRealizationIdentity,
-  config_path: NonEmptyStr,
+  curve: extdeps.bmc.types.BmcFanCurve,
+  intent_curve: extdeps.bmc.types.BmcFanCurve,
+  realization: std.state_durability.StateRealizationIdentity,
+  config_path: std.types.NonEmptyStr,
   content_identity: BmcProjectedConfigContentIdentity,
-) -> NonEmptyStr? {
+) -> std.types.NonEmptyStr? {
   if curve == intent_curve
     && curve == content_identity.projected_curve
     && realization.realization_id == content_identity.realization_id
@@ -149,10 +149,10 @@ fn bmc_fan_projected_config_digest_sha256_hex(
 }
 
 fn bmc_fan_projected_config_digest(
-  curve: BmcFanCurve,
-  intent_curve: BmcFanCurve,
-  realization: StateRealizationIdentity,
-  config_path: NonEmptyStr,
+  curve: extdeps.bmc.types.BmcFanCurve,
+  intent_curve: extdeps.bmc.types.BmcFanCurve,
+  realization: std.state_durability.StateRealizationIdentity,
+  config_path: std.types.NonEmptyStr,
   content_identity: BmcProjectedConfigContentIdentity,
 ) -> BmcProjectedConfigDigest {
   match bmc_fan_projected_config_digest_sha256_hex(
@@ -170,14 +170,14 @@ fn bmc_fan_projected_config_digest(
   }
 }
 
-data bmc_fan_witness_digest_mismatch_sentinel: Digest = sha256_digest(
+data bmc_fan_witness_digest_mismatch_sentinel: extdeps.crypto.hash.Digest = sha256_digest(
   hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 )
 
 fn bmc_fan_admitted_config_digest(
-  curve: BmcFanCurve,
-  intent_curve: BmcFanCurve,
-  projected_config_digest: Digest?,
+  curve: extdeps.bmc.types.BmcFanCurve,
+  intent_curve: extdeps.bmc.types.BmcFanCurve,
+  projected_config_digest: extdeps.crypto.hash.Digest?,
 ) -> BmcAdmittedConfigDigest {
   if curve == intent_curve {
     match projected_config_digest {
@@ -190,19 +190,19 @@ fn bmc_fan_admitted_config_digest(
 }
 
 fn bmc_fan_policy_projection_capability(
-  board: BaseboardModel,
-  firmware: BmcFirmwareVersion,
-  projected_curve: BmcFanCurve,
-  projected_config_digest: Digest,
-  config_path: NonEmptyStr,
-  controller_service: NonEmptyStr,
-  controller_zone_path: NonEmptyStr,
-  aggregate_fan_pid_entry: NonEmptyStr,
-  realization: StateRealizationIdentity,
-  durability_capability_version: StateDurabilityCapabilityVersion,
-  publication_protocol: LinuxFilePublicationProtocol,
-  durability_boundaries: List<StateDurabilityBoundary>,
-  required_tach_inputs: List<NonEmptyStr>,
+  board: extdeps.boards.types.BaseboardModel,
+  firmware: extdeps.bmc.capability.BmcFirmwareVersion,
+  projected_curve: extdeps.bmc.types.BmcFanCurve,
+  projected_config_digest: extdeps.crypto.hash.Digest,
+  config_path: std.types.NonEmptyStr,
+  controller_service: std.types.NonEmptyStr,
+  controller_zone_path: std.types.NonEmptyStr,
+  aggregate_fan_pid_entry: std.types.NonEmptyStr,
+  realization: std.state_durability.StateRealizationIdentity,
+  durability_capability_version: std.state_durability.StateDurabilityCapabilityVersion,
+  publication_protocol: extdeps.filesystem.linux.LinuxFilePublicationProtocol,
+  durability_boundaries: List<std.state_durability.StateDurabilityBoundary>,
+  required_tach_inputs: List<std.types.NonEmptyStr>,
 ) -> BmcFanPolicyProjectionCapability {
   BmcFanPolicyProjectionCapability {
     board: board,
@@ -223,9 +223,9 @@ fn bmc_fan_policy_projection_capability(
 
 fn bmc_fan_policy_projection_apply_suitability(
   capability: BmcFanPolicyProjectionCapability,
-  board: BaseboardModel,
-  desired_curve: BmcFanCurve,
-  observation: BmcFanPolicyObservation,
+  board: extdeps.boards.types.BaseboardModel,
+  desired_curve: extdeps.bmc.types.BmcFanCurve,
+  observation: extdeps.bmc.types.BmcFanPolicyObservation,
 ) -> BmcFanProjectionApplySuitability {
   if capability.board != board {
     BmcFanProjectionApplyRefused { cause: BmcFanProjectionBoardMismatch }
@@ -244,7 +244,7 @@ fn bmc_fan_policy_projection_apply_suitability(
 
 fn bmc_fan_policy_projection_live_digest_suitability(
   capability: BmcFanPolicyProjectionCapability,
-  observation: BmcFanPolicyObservation,
+  observation: extdeps.bmc.types.BmcFanPolicyObservation,
 ) -> BmcFanProjectionLiveDigestSuitability {
   if observation.active_config_digest == capability.projected_config_digest {
     BmcFanProjectionLiveDigestMatches
@@ -266,7 +266,7 @@ fn bmc_fan_projection_live_digest_refusal_reason(
 
 fn bmc_fan_policy_projection_topology_suitability(
   capability: BmcFanPolicyProjectionCapability,
-  observation: BmcFanPolicyObservation,
+  observation: extdeps.bmc.types.BmcFanPolicyObservation,
 ) -> BmcFanProjectionTopologySuitability {
   match bmc_fan_controller_shape_aggregated_topology(
     shape: observation.controller_shape,
@@ -296,8 +296,8 @@ fn bmc_fan_policy_projection_topology_suitability(
 }
 
 fn bmc_fan_policy_drift_assessment(
-  desired_curve: BmcFanCurve,
-  observation: BmcFanPolicyObservation,
+  desired_curve: extdeps.bmc.types.BmcFanCurve,
+  observation: extdeps.bmc.types.BmcFanPolicyObservation,
   projection: BmcFanPolicyProjectionCapability,
 ) -> BmcFanPolicyDriftAssessment {
   if observation.curve != desired_curve {
@@ -327,12 +327,12 @@ fn bmc_fan_policy_drift_assessment(
 }
 
 fn bmc_fan_state_durability_capability(
-  realization: StateRealizationIdentity,
-  capability_version: StateDurabilityCapabilityVersion,
-  boundaries: List<StateDurabilityBoundary>,
-  publication_protocol: LinuxFilePublicationProtocol,
-) -> StateDurabilityCapability {
-  StateDurabilityCapability {
+  realization: std.state_durability.StateRealizationIdentity,
+  capability_version: std.state_durability.StateDurabilityCapabilityVersion,
+  boundaries: List<std.state_durability.StateDurabilityBoundary>,
+  publication_protocol: extdeps.filesystem.linux.LinuxFilePublicationProtocol,
+) -> std.state_durability.StateDurabilityCapability {
+  std.state_durability.StateDurabilityCapability {
     realization: realization,
     capability_version: capability_version,
     supported_boundaries: boundaries,
@@ -350,7 +350,7 @@ fn bmc_fan_state_durability_capability(
 
 fn bmc_fan_policy_projection_durability_capability(
   capability: BmcFanPolicyProjectionCapability,
-) -> StateDurabilityCapability {
+) -> std.state_durability.StateDurabilityCapability {
   bmc_fan_state_durability_capability(
     realization: capability.realization,
     capability_version: capability.durability_capability_version,
@@ -362,9 +362,9 @@ fn bmc_fan_policy_projection_durability_capability(
 fn bmc_fan_policy_projection_durability_admission(
   host: product.placement_supply.HostIdentity,
   capability: BmcFanPolicyProjectionCapability,
-  perturbation_generation: StatePerturbationGeneration,
+  perturbation_generation: std.state_durability.StatePerturbationGeneration,
 ) -> BmcFanDurabilityAdmission {
-  StateDurabilityAdmission {
+  std.state_durability.StateDurabilityAdmission {
     target: host,
     desired_state_digest: capability.projected_config_digest,
     realization: capability.realization,

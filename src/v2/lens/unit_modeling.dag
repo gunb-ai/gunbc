@@ -45,33 +45,33 @@ data unit_field_rows: List<UnitFieldRow> = [
   UnitFieldRow { field: ^dt_microseconds, carrier: ^DurationMicro }
 ]
 
-fn unit_field_token_map() -> Map<Symbol, Symbol> {
+fn unit_field_token_map() -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   fold(unit_field_rows, init: empty_map(), f: fn(acc, row) {
     map_insert(m: acc, key: row.field, value: row.carrier)
   })
 }
 
-fn field_name_has_known_carrier(name: Symbol) -> Bool {
+fn field_name_has_known_carrier(name: v2.std.node.Symbol) -> Bool {
   match v2.std.collection.map_get(m: unit_field_token_map(), key: name) {
     Accepted { value: Present { value: _ } } => true
     _ => false
   }
 }
 
-data exemption_marker_rows: List<Symbol> = [
+data exemption_marker_rows: List<v2.std.node.Symbol> = [
 
   ^version, ^opcode, ^id, ^kind, ^tag, ^discriminant, ^status, ^code, ^enum,
 
   ^index, ^idx, ^ordinal, ^position, ^pos, ^offset, ^line, ^column, ^col
 ]
 
-fn exemption_marker_set() -> Map<Symbol, Symbol> {
+fn exemption_marker_set() -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   fold(exemption_marker_rows, init: empty_map(), f: fn(acc, mk) {
     map_insert(m: acc, key: mk, value: mk)
   })
 }
 
-fn name_is_exempt(name: Symbol) -> Bool {
+fn name_is_exempt(name: v2.std.node.Symbol) -> Bool {
   match v2.std.collection.map_get(m: exemption_marker_set(), key: name) {
     Accepted { value: Present { value: _ } } => true
     _ => false
@@ -82,7 +82,7 @@ fn type_is_flat_scalar(target: Node) -> Bool {
   edge_field_type_name(target: target) == ^dag_binding_type_int
 }
 
-fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
+fn field_unit_violation(carrier: Node, edge: v2.std.node.Edge) -> Optional<v2.std.diagnostic.Diagnostic> {
   match edge.label {
     Named { name: nm } =>
       if type_is_flat_scalar(target: edge.target) {
@@ -98,7 +98,7 @@ fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   }
 }
 
-fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
+fn carrier_first_unit_violation(carrier: Node) -> Optional<v2.std.diagnostic.Diagnostic> {
   match carrier.kind {
     TypeNode { connective: _ } =>
       fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {
@@ -108,15 +108,15 @@ fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
   }
 }
 
-fn unit_modeling_diagnostic(carrier: Node, name: Symbol) -> Diagnostic {
+fn unit_modeling_diagnostic(carrier: Node, name: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   if field_name_has_known_carrier(name: name) {
-    Diagnostic {
+    v2.std.diagnostic.Diagnostic {
       reason: ^unit_modeling_flat_scalar_unit_leaf_fixable,
       at: node_locus(node: carrier),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   } else {
-    Diagnostic {
+    v2.std.diagnostic.Diagnostic {
       reason: ^unit_modeling_flat_scalar_blocked_pending_carrier,
       at: node_locus(node: carrier),
       correction: Unavailable { reason: ExternalContractUnknown }
@@ -133,6 +133,6 @@ fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: RatchetForever
 }

@@ -17,7 +17,7 @@ type PublicProjectionPlan {
   projection_digest: std.content_hash.ContentHash
 }
 
-fn publication_subject_digest(subject: PublicProjectionSubject) -> ContentHash {
+fn publication_subject_digest(subject: PublicProjectionSubject) -> std.content_hash.ContentHash {
   content_hash_tagged(
     tag: "publication-subject",
     payload: content_hash_combine_structural(
@@ -27,12 +27,12 @@ fn publication_subject_digest(subject: PublicProjectionSubject) -> ContentHash {
   )
 }
 
-fn projection_digest_from_subjects(subjects: List<PublicProjectionSubject>) -> ContentHash {
+fn projection_digest_from_subjects(subjects: List<PublicProjectionSubject>) -> std.content_hash.ContentHash {
   let digests = map(subjects, subject => publication_subject_digest(subject: subject))
   as_content_hash_structural(
     structural: fold(
       sort_by(digests, digest => serialize_content_hash(hash: digest) as String),
-      init: content_hash_atom(value: "public-projection" as NonEmptyStr),
+      init: content_hash_atom(value: "public-projection" as std.types.NonEmptyStr),
       f: fn(acc, digest) {
         content_hash_combine_structural(
           left: acc,
@@ -49,7 +49,7 @@ type AuthoredSubjectPartition {
 }
 
 fn partition_authored_subjects(
-  admitted: AdmittedPublicationPolicy,
+  admitted: gunbc.publication_policy.AdmittedPublicationPolicy,
   authored_subjects: List<PublicProjectionSubject>,
 ) -> AuthoredSubjectPartition {
   fold(
@@ -76,8 +76,8 @@ fn partition_authored_subjects(
 }
 
 fn derive_public_projection_plan(
-  admitted: AdmittedPublicationPolicy,
-  source_revision: CommitSha,
+  admitted: gunbc.publication_policy.AdmittedPublicationPolicy,
+  source_revision: std.types.CommitSha,
   authored_subjects: List<PublicProjectionSubject>,
 ) -> PublicProjectionPlan {
   let parts = partition_authored_subjects(
@@ -95,7 +95,7 @@ fn derive_public_projection_plan(
 
 fn public_projection_includes_subject(
   plan: PublicProjectionPlan,
-  subject_identity: ContentHash,
+  subject_identity: std.content_hash.ContentHash,
 ) -> Bool {
   fold(plan.included_subjects, init: false, f: fn(found, subject) {
     found || subject.subject_identity == subject_identity
@@ -104,7 +104,7 @@ fn public_projection_includes_subject(
 
 fn public_projection_omits_subject(
   plan: PublicProjectionPlan,
-  subject_identity: ContentHash,
+  subject_identity: std.content_hash.ContentHash,
 ) -> Bool {
   fold(plan.omitted_subjects, init: false, f: fn(found, subject) {
     found || subject.subject_identity == subject_identity

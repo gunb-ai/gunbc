@@ -96,28 +96,28 @@ type PtxCost {
   instruction_cost: v2.std.nat.Nat
   occupancy_cost: v2.std.nat.Nat
 }
-fn ptx_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+fn ptx_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.lexing.LexPattern) -> v2.std.compilers.lexing.LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
 
-fn ptx_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+fn ptx_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-fn ptx_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+fn ptx_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
   Sequence { left: left, right: right }
 }
 
-fn ptx_identifier_pattern() -> LexPattern {
+fn ptx_identifier_pattern() -> v2.std.compilers.lexing.LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
     right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
 
-fn ptx_lex() -> LexRules {
+fn ptx_lex() -> v2.std.compilers.lexing.LexRules {
   ModeledLexRules {
-    root: LexRuleSet {
+    root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
         ptx_lex_token(token_class: ^ptx_token_ident, pattern: ptx_identifier_pattern()),
@@ -131,7 +131,7 @@ fn ptx_lex() -> LexRules {
   }
 }
 
-fn ptx_entry_kernel_expr() -> GrammarExpr {
+fn ptx_entry_kernel_expr() -> v2.std.grammar.GrammarExpr {
   ptx_grammar_sequence(
     left: ptx_grammar_terminal(token_class: ^ptx_token_kw_entry),
     right: ptx_grammar_sequence(
@@ -150,14 +150,14 @@ fn ptx_entry_kernel_expr() -> GrammarExpr {
   )
 }
 
-fn ptx_grammar() -> ParseGrammar {
-  let start = GrammarProduction {
+fn ptx_grammar() -> v2.std.grammar.ParseGrammar {
+  let start = v2.std.grammar.GrammarProduction {
     name: ^ptx_production_entry_kernel,
     expression: ptx_entry_kernel_expr(),
     emitted: grammar_atom(identity: ^ptx_surface_entry_kernel)
   }
   ModeledGrammar {
-    root: GrammarRoot {
+    root: v2.std.grammar.GrammarRoot {
       start: ^ptx_production_entry_kernel,
       productions: [start],
       sync_tokens: grammar_empty_sync_tokens()
@@ -165,8 +165,8 @@ fn ptx_grammar() -> ParseGrammar {
   }
 }
 
-fn ptx_entry_kernel_formal_production() -> FormalProduction {
-  FormalProduction {
+fn ptx_entry_kernel_formal_production() -> v2.std.grammar.FormalProduction {
+  v2.std.grammar.FormalProduction {
     lhs: grammar_formal_nonterminal(identity: ^ptx_production_entry_kernel),
     rhs: [
       grammar_formal_terminal(identity: ^ptx_token_kw_entry),
@@ -179,17 +179,17 @@ fn ptx_entry_kernel_formal_production() -> FormalProduction {
   }
 }
 
-fn ptx_ingest_grammar_schema() -> GrammarSchema {
-  GrammarSchema {
+fn ptx_ingest_grammar_schema() -> v2.std.grammar.GrammarSchema {
+  v2.std.grammar.GrammarSchema {
     lex: ptx_lex(),
     grammar: ptx_grammar()
   }
 }
 
-fn ptx_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
-  GrammarSchemaProbeBinding {
+fn ptx_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaProbeBinding {
+  v2.std.grammar.GrammarSchemaProbeBinding {
     schema: ptx_ingest_grammar_schema(),
-    probe: GrammarSchemaProbe {
+    probe: v2.std.grammar.GrammarSchemaProbe {
       fixture: ".entry k() {}",
       production: ptx_entry_kernel_formal_production(),
       expected_parse_surface: grammar_atom(identity: ^ptx_surface_entry_kernel)

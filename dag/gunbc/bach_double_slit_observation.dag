@@ -29,11 +29,11 @@ fn bach_which_path_evidence_gap() -> BachWhichPathEvidenceGap {
   BachWhichPathAuthorityAbsent {}
 }
 
-fn bach_buildup_row_is_cited_apparatus(row: BachBuildupObservationRow) -> Bool {
+fn bach_buildup_row_is_cited_apparatus(row: extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow) -> Bool {
   row.apparatus == bach_et_al_2013_double_slit
 }
 
-fn figure_3_panel_rank(panel: Figure3BuildupPanel) -> Int {
+fn figure_3_panel_rank(panel: extdeps.physics.bach_et_al_2013_double_slit.Figure3BuildupPanel) -> Int {
   match panel {
     Figure3PanelA => 0
     Figure3PanelB => 1
@@ -43,7 +43,7 @@ fn figure_3_panel_rank(panel: Figure3BuildupPanel) -> Int {
   }
 }
 
-fn bach_pattern_status_rank(status: PatternStatus) -> Int {
+fn bach_pattern_status_rank(status: extdeps.physics.bach_et_al_2013_double_slit.PatternStatus) -> Int {
   match status {
     PatternNotYetDiscernible => 0
     PatternDiscernible => 1
@@ -52,8 +52,8 @@ fn bach_pattern_status_rank(status: PatternStatus) -> Int {
 }
 
 fn bach_pattern_status_never_regresses_from(
-  previous: PatternStatus,
-  next: PatternStatus,
+  previous: extdeps.physics.bach_et_al_2013_double_slit.PatternStatus,
+  next: extdeps.physics.bach_et_al_2013_double_slit.PatternStatus,
 ) -> Bool {
   bach_pattern_status_rank(status: next) >= bach_pattern_status_rank(status: previous)
 }
@@ -66,7 +66,7 @@ type StrictIncreaseFoldAcc {
 
 fn fold_strict_increase_count(
   acc: StrictIncreaseFoldAcc,
-  row: BachBuildupObservationRow,
+  row: extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow,
 ) -> StrictIncreaseFoldAcc {
   if !acc.valid {
     acc
@@ -96,7 +96,7 @@ fn fold_strict_increase_count(
 }
 
 fn bach_buildup_counts_strictly_increase(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   let folded = fold(
     rows,
@@ -120,7 +120,7 @@ type PatternStatusMonotonicFoldAcc {
 
 fn fold_pattern_status_monotonic(
   acc: PatternStatusMonotonicFoldAcc,
-  row: BachBuildupObservationRow,
+  row: extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow,
 ) -> PatternStatusMonotonicFoldAcc {
   if !acc.valid {
     acc
@@ -153,7 +153,7 @@ fn fold_pattern_status_monotonic(
 }
 
 fn bach_buildup_pattern_status_never_regresses(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   let folded = fold(
     rows,
@@ -176,7 +176,7 @@ type DiscernibleBeforeClearlyVisibleAcc {
 
 fn fold_discernible_before_clearly_visible(
   acc: DiscernibleBeforeClearlyVisibleAcc,
-  row: BachBuildupObservationRow,
+  row: extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow,
 ) -> DiscernibleBeforeClearlyVisibleAcc {
   if !acc.valid {
     acc
@@ -206,7 +206,7 @@ fn fold_discernible_before_clearly_visible(
 }
 
 fn bach_buildup_discernible_precedes_clearly_visible(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   let folded = fold(
     rows,
@@ -227,13 +227,13 @@ type LastBuildupRowAcc
 
 fn fold_track_last_buildup_row(
   acc: LastBuildupRowAcc,
-  row: BachBuildupObservationRow,
+  row: extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow,
 ) -> LastBuildupRowAcc {
   LastBuildupRowPresent { row: row }
 }
 
 fn bach_buildup_final_row_clearly_visible(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   match fold(
     rows,
@@ -249,7 +249,7 @@ fn bach_buildup_final_row_clearly_visible(
 }
 
 fn bach_buildup_all_rows_cited_apparatus(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   rows |> all(row => bach_buildup_row_is_cited_apparatus(row: row))
 }
@@ -261,7 +261,7 @@ type PanelSequenceFoldAcc {
 
 fn fold_panel_sequence(
   acc: PanelSequenceFoldAcc,
-  row: BachBuildupObservationRow,
+  row: extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow,
 ) -> PanelSequenceFoldAcc {
   if !acc.valid {
     acc
@@ -282,7 +282,7 @@ fn fold_panel_sequence(
 }
 
 fn bach_buildup_panels_are_figure_3_a_through_e_once(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   let folded = fold(
     rows,
@@ -298,14 +298,14 @@ fn bach_buildup_panels_are_figure_3_a_through_e_once(
 }
 
 fn bach_buildup_source_shape_holds_for(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   bach_buildup_all_rows_cited_apparatus(rows: rows)
     && bach_buildup_panels_are_figure_3_a_through_e_once(rows: rows)
 }
 
 fn bach_buildup_progression_holds_for(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   bach_buildup_source_shape_holds_for(rows: rows)
     && bach_buildup_counts_strictly_increase(rows: rows)
@@ -319,7 +319,7 @@ fn bach_cited_buildup_progression_holds() -> Bool {
 }
 
 fn bach_distribution_observation_rank(
-  observation: BachDistributionObservation,
+  observation: extdeps.physics.bach_et_al_2013_double_slit.BachDistributionObservation,
 ) -> Int {
   match observation {
     SlitOneSingleSlitDiffractionObserved => 0
@@ -335,7 +335,7 @@ type DistributionObservationSequenceFoldAcc {
 
 fn fold_distribution_observation_sequence(
   acc: DistributionObservationSequenceFoldAcc,
-  observation: BachDistributionObservation,
+  observation: extdeps.physics.bach_et_al_2013_double_slit.BachDistributionObservation,
 ) -> DistributionObservationSequenceFoldAcc {
   if !acc.valid {
     acc
@@ -356,7 +356,7 @@ fn fold_distribution_observation_sequence(
 }
 
 fn bach_distribution_observations_match_canonical_sequence_for(
-  observations: List<BachDistributionObservation>,
+  observations: List<extdeps.physics.bach_et_al_2013_double_slit.BachDistributionObservation>,
 ) -> Bool {
   let folded = fold(
     observations,
@@ -383,7 +383,7 @@ fn bach_double_slit_interference_evidence_holds() -> Bool {
 }
 
 fn bach_double_slit_interference_evidence_rejects_for_distribution(
-  observations: List<BachDistributionObservation>,
+  observations: List<extdeps.physics.bach_et_al_2013_double_slit.BachDistributionObservation>,
 ) -> Bool {
   !bach_cited_buildup_progression_holds()
     || !bach_distribution_observations_match_canonical_sequence_for(
@@ -392,35 +392,35 @@ fn bach_double_slit_interference_evidence_rejects_for_distribution(
 }
 
 fn bach_buildup_progression_rejects_non_increasing_counts(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   !bach_buildup_counts_strictly_increase(rows: rows)
 }
 
 fn bach_buildup_progression_rejects_status_regression(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   !bach_buildup_pattern_status_never_regresses(rows: rows)
 }
 
 fn bach_buildup_progression_rejects_missing_discernible_before_clearly_visible(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   !bach_buildup_discernible_precedes_clearly_visible(rows: rows)
 }
 
 fn bach_buildup_progression_rejects_final_not_clearly_visible(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   !bach_buildup_final_row_clearly_visible(rows: rows)
 }
 
 fn bach_buildup_progression_rejects_wrong_panel_order(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow>,
 ) -> Bool {
   !bach_buildup_panels_are_figure_3_a_through_e_once(rows: rows)
 }
 
-data bach_raw_count_triplet_coverage_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: extdeps carries raw matched-exposure arrival rows at a grain that supports left, right, and both counts under one exposure identity; then bach_quantitative_path_additivity_gap may gain a positive cited counterpart.")
+data bach_raw_count_triplet_coverage_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: extdeps carries raw matched-exposure arrival rows at a grain that supports left, right, and both counts under one exposure identity; then bach_quantitative_path_additivity_gap may gain a positive cited counterpart.")
 
-data bach_which_path_evidence_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: a cited upstream authority for which-path distinguishability evidence lands; then bach_which_path_evidence_gap may gain a positive cited counterpart.")
+data bach_which_path_evidence_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: a cited upstream authority for which-path distinguishability evidence lands; then bach_which_path_evidence_gap may gain a positive cited counterpart.")

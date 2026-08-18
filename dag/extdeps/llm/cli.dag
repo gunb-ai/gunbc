@@ -2,22 +2,22 @@ module extdeps.llm.cli
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/openai/codex"
   }
 }
 
-data codex_noninteractive_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data codex_noninteractive_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "learn.chatgpt.com/docs/non-interactive-mode"
   }
 }
 
-data claude_cli_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data claude_cli_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.claude.com/en/docs/claude-code/cli-reference"
   }
@@ -254,26 +254,26 @@ fn codex_device_prompt_code_scan(lines: List<String>) -> CodexCodeScan {
   })
 }
 
-fn codex_device_prompt_parse(pane: RenderedTerminalText) -> CodexDeviceLoginPrompt {
+fn codex_device_prompt_parse(pane: std.types.RenderedTerminalText) -> CodexDeviceLoginPrompt {
   let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
   let url_hit = lines
     |> filter(l => string_contains(s: l, pattern: codex_device_prompt_marker_url))
     |> first
   match url_hit {
     Absent => CodexDeviceLoginPromptUnavailable {
-      reason: "no verification url in pane" as NonEmptyStr,
+      reason: "no verification url in pane" as std.types.NonEmptyStr,
     }
     Present { value: url_line } =>
       match codex_device_prompt_code_scan(lines: lines) {
         CodeScanSeeking => CodexDeviceLoginPromptUnavailable {
-          reason: "verification url present but no one-time code line" as NonEmptyStr,
+          reason: "verification url present but no one-time code line" as std.types.NonEmptyStr,
         }
         CodeScanAfterMarker => CodexDeviceLoginPromptUnavailable {
-          reason: "one-time code line present but code not yet rendered" as NonEmptyStr,
+          reason: "one-time code line present but code not yet rendered" as std.types.NonEmptyStr,
         }
         CodeScanFound { code } => CodexDeviceLoginReady {
-          verification_url: url_line as NonEmptyStr,
-          user_code: code as NonEmptyStr,
+          verification_url: url_line as std.types.NonEmptyStr,
+          user_code: code as std.types.NonEmptyStr,
         }
       }
   }

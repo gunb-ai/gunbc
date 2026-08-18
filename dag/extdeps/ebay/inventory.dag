@@ -1,14 +1,14 @@
 module extdeps.ebay.inventory
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "developer.ebay.com/api-docs/sell/inventory/resources/methods"
   }
 }
 
-data inventory_api_contract_version: NonEmptyStr = "1.18.5"
+data inventory_api_contract_version: std.types.NonEmptyStr = "1.18.5"
 
 type ConditionEnum
   = New
@@ -128,7 +128,7 @@ type InventoryItem {
   product: InventoryItemProduct?
 }
 
-data structural_coverage_gap_inventory_item_response_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_inventory_item_response_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "InventoryItem" },
@@ -156,7 +156,7 @@ type InventoryItemWithSkuLocaleGroupid {
   product: InventoryItemProduct?
 }
 
-data structural_coverage_gap_inventory_item_row_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_inventory_item_row_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "InventoryItemWithSkuLocaleGroupid" },
@@ -185,7 +185,7 @@ type PricingSummary {
   price: EbayAmount
 }
 
-data structural_coverage_gap_pricing_summary_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_pricing_summary_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "PricingSummary" },
@@ -206,7 +206,7 @@ type ListingPolicies {
   returnPolicyId: std.types.NonEmptyStr
 }
 
-data structural_coverage_gap_listing_policies_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_listing_policies_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "ListingPolicies" },
@@ -233,7 +233,7 @@ type EbayOfferDetailsWithKeys {
   merchantLocationKey: String?
 }
 
-data structural_coverage_gap_offer_details_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_offer_details_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "EbayOfferDetailsWithKeys" },
@@ -273,7 +273,7 @@ type EbayOfferDetailsWithAll {
   listing: Json?
 }
 
-data structural_coverage_gap_offer_row_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_offer_row_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "EbayOfferDetailsWithAll" },
@@ -318,8 +318,8 @@ service ebay.Inventory {
   operation CreateOrReplaceInventoryItem {
     input {
       access_token: Secret
-      sku: NonEmptyStr
-      content_language: NonEmptyStr
+      sku: std.types.NonEmptyStr
+      content_language: std.types.NonEmptyStr
       item: InventoryItem
     }
     output {
@@ -346,10 +346,10 @@ service ebay.Inventory {
   operation GetInventoryItem {
     input {
       access_token: Secret
-      sku: NonEmptyStr
+      sku: std.types.NonEmptyStr
     }
     output {
-      item_sku: NonEmptyStr from "sku"
+      item_sku: std.types.NonEmptyStr from "sku"
     }
     readonly
     transport rest {
@@ -391,11 +391,11 @@ service ebay.Inventory {
   operation CreateOffer {
     input {
       access_token: Secret
-      content_language: NonEmptyStr
+      content_language: std.types.NonEmptyStr
       offer: EbayOfferDetailsWithKeys
     }
     output {
-      offer_id: NonEmptyStr from "offerId"
+      offer_id: std.types.NonEmptyStr from "offerId"
     }
     transport rest {
       method: POST,
@@ -416,7 +416,7 @@ service ebay.Inventory {
   operation GetOffers {
     input {
       access_token: Secret
-      sku: NonEmptyStr
+      sku: std.types.NonEmptyStr
     }
     output {
       total: Int from "total"
@@ -439,10 +439,10 @@ service ebay.Inventory {
   operation PublishOffer {
     input {
       access_token: Secret
-      offer_id: NonEmptyStr
+      offer_id: std.types.NonEmptyStr
     }
     output {
-      listing_id: NonEmptyStr from "listingId"
+      listing_id: std.types.NonEmptyStr from "listingId"
     }
     transport rest {
       method: POST,

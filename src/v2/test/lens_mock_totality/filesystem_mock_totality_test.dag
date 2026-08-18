@@ -2,7 +2,7 @@ module v2.test.lens_mock_totality.filesystem_mock_totality
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedFilesystemMock {
   tag: v2.std.node.Symbol
@@ -10,7 +10,7 @@ type MaterializedFilesystemMock {
 
 data filesystem_red_omit_keys: List<String> = ["Filesystem.Read"]
 
-fn materialize_filesystem_mock(case: PublishedMockCase) -> Outcome<MaterializedFilesystemMock> {
+fn materialize_filesystem_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedFilesystemMock> {
   if case.operation_key == "Filesystem.Write" || case.operation_key == "Filesystem.WriteOwnerOnly" {
     outcome_accepted(value: MaterializedFilesystemMock { tag: ^materialized_write })
   } else if case.operation_key == "Filesystem.Read" {
@@ -20,11 +20,11 @@ fn materialize_filesystem_mock(case: PublishedMockCase) -> Outcome<MaterializedF
   }
 }
 
-fn real_consumer_handles(case: PublishedMockCase) -> Bool {
+fn real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   outcome_accepted_p(outcome: materialize_filesystem_mock(case: case))
 }
 
-fn omits_read_consumer_handles(case: PublishedMockCase) -> Bool {
+fn omits_read_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   omit_consumer_handles(
     case: case,
     omit_keys: filesystem_red_omit_keys,

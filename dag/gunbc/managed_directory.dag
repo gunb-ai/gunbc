@@ -26,7 +26,7 @@ fn dependent_class_eq(a: DependentClass, b: DependentClass) -> Bool {
   }
 }
 
-fn dependent_class_of(owner: PosixUser, who: PosixUser) -> DependentClass {
+fn dependent_class_of(owner: extdeps.access.posix.PosixUser, who: extdeps.access.posix.PosixUser) -> DependentClass {
   if who.uid == owner.uid {
     OwnerClass
   } else if who.gid == owner.gid {
@@ -36,15 +36,15 @@ fn dependent_class_of(owner: PosixUser, who: PosixUser) -> DependentClass {
   }
 }
 
-fn needs_verb(needs: List<Verb>, v: Verb) -> Bool {
+fn needs_verb(needs: List<std.effect_grant.Verb>, v: std.effect_grant.Verb) -> Bool {
   fold(needs, init: false, f: (acc, n) => acc || verb_eq(a: n, b: v))
 }
 
 fn class_needs(
-  owner: PosixUser,
+  owner: extdeps.access.posix.PosixUser,
   dependents: List<DirectoryDependent>,
   cls: DependentClass,
-) -> List<Verb> {
+) -> List<std.effect_grant.Verb> {
   flat_map(
     filter(
       xs: dependents,
@@ -58,22 +58,22 @@ fn class_needs(
 }
 
 fn class_bits(
-  owner: PosixUser,
+  owner: extdeps.access.posix.PosixUser,
   dependents: List<DirectoryDependent>,
   cls: DependentClass,
-) -> PermissionBits {
+) -> extdeps.access.posix.PermissionBits {
   let needs = class_needs(owner: owner, dependents: dependents, cls: cls)
-  PermissionBits {
+  extdeps.access.posix.PermissionBits {
     read: needs_verb(needs: needs, v: Read),
     write: needs_verb(needs: needs, v: Write),
     execute: needs_verb(needs: needs, v: Execute),
   }
 }
 
-fn managed_directory_permissions(d: ManagedDirectory) -> FilePermissions {
-  FilePermissions {
-    ownership: FileOwnership { uid: d.owner.uid, gid: d.owner.gid },
-    mode: FileMode {
+fn managed_directory_permissions(d: ManagedDirectory) -> extdeps.access.posix.FilePermissions {
+  extdeps.access.posix.FilePermissions {
+    ownership: extdeps.access.posix.FileOwnership { uid: d.owner.uid, gid: d.owner.gid },
+    mode: extdeps.access.posix.FileMode {
       owner: class_bits(owner: d.owner, dependents: d.dependents, cls: OwnerClass),
       group: class_bits(owner: d.owner, dependents: d.dependents, cls: GroupClass),
       other: class_bits(owner: d.owner, dependents: d.dependents, cls: OtherClass),
@@ -90,7 +90,7 @@ fn managed_directory_mode_octal(d: ManagedDirectory) -> String {
 
 data srv1_attempt_state_dependents_note: String = "The attempt-state root's dependents are the whole evidence base for its mode, so they are stated with their reasons rather than assumed. The service user needs all three verbs: WRITE because belt_attempt_state_initialize_for_instance writes attempt-key, the admission receipt, and the initial provider-events file; EXECUTE because creating and traversing the per-attempt subdirectory requires the directory search bit (which is why belt_footprint_root_verdict probes search separately from write); READ because belt_workflow_progress_for_attempt_ref reads back <node>-current/attempt-key on every dashboard poll. NOBODY ELSE APPEARS, and that absence is the claim being made: the CI-runner principal never touches this tree (the deploy creates the directory through sudo and hands it to the service user), and no other account on srv1 has a reason to read attempt evidence. Deriving from exactly that list gives 0700 — a tightening from the inherited 0755, and the tightening is the consequence rather than the goal. If a future consumer genuinely needs to read attempt evidence (a metrics reader, a second service account), it is added HERE as a dependent with the verbs it needs, and the mode widens by derivation with the reason recorded — never by editing a number."
 
-fn srv1_dashboard_service_principal() -> PosixUser {
+fn srv1_dashboard_service_principal() -> extdeps.access.posix.PosixUser {
   fleet_posix_operator_user
 }
 
@@ -99,7 +99,7 @@ data attempt_state_directory_is_placed_note: String = "THE DIRECTORY'S REQUIREME
 fn attempt_state_directory_at(path: std.types.FilePath) -> ManagedDirectory {
   let service = srv1_dashboard_service_principal()
   ManagedDirectory {
-    member: "attempt-state-root" as NonEmptyStr,
+    member: "attempt-state-root" as std.types.NonEmptyStr,
     path: path,
     owner: service,
     dependents: [

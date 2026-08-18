@@ -17,11 +17,11 @@ type AccessTokenResolution
 
 data gcloud_human_auth_pause_note: String = "Human gcloud authentication is the current REALIZER of an access ENSURE upsert, never a fleet phase or unconditional preflight. A selected operation first has to require a Secret Manager read/write; that effect requires an access token; only then does GcloudPrintToken OBSERVE the access capability. A successful print classifies Converged/Noop and continues without exposing the token. A missing or expired session classifies Absent/Apply(GoogleCloudInteractiveAuthenticationRequired) only when stderr carries an observed authentication deficit; missing binary, network, or other infrastructure failures classify Refuse with the stderr detail preserved. Re-driving after the upsert resumes the same operation. OperatorSuppliedToken remains an explicit compatibility handler. A future workload-identity/OAuth handler can realize the same ensure without changing BMC convergence."
 
-fn gcloud_access_ensure_refusal_reason(stderr: String) -> NonEmptyStr {
+fn gcloud_access_ensure_refusal_reason(stderr: String) -> std.types.NonEmptyStr {
   if string_length(s: stderr) > 0 {
-    stderr as NonEmptyStr
+    stderr as std.types.NonEmptyStr
   } else {
-    "gcloud auth print-access-token failed without observable authentication deficit" as NonEmptyStr
+    "gcloud auth print-access-token failed without observable authentication deficit" as std.types.NonEmptyStr
   }
 }
 
@@ -30,21 +30,21 @@ fn gcloud_access_ensure_classification(
   stderr: String,
 ) -> UpsertClassification<AccessEnsurePlan> {
   if success {
-    UpsertClassification {
+    std.upsert_decision.UpsertClassification {
       verdict: std.upsert_decision.Converged,
       decision: Noop,
     }
   } else {
     match gcloud_stderr_auth_deficit(stderr: stderr) {
       Present { value: _ } =>
-        UpsertClassification {
+        std.upsert_decision.UpsertClassification {
           verdict: Absent,
           decision: Apply {
             plan: GoogleCloudInteractiveAuthenticationRequired {},
           },
         }
       Absent =>
-        UpsertClassification {
+        std.upsert_decision.UpsertClassification {
           verdict: UnknownRefused,
           decision: std.upsert_decision.Refuse {
             reason: gcloud_access_ensure_refusal_reason(stderr: stderr),
@@ -92,4 +92,4 @@ func ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
   }
 }
 
-data ensure_access_token_eager_bootstrap_fork_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.assimilate.bmc_bootstrap_provision bmc_bootstrap_provision_srv3 still eagerly calls shell.GCloud.AuthPrintAccessToken() at node auth (pre-existing, out of #7423 scope) — a second §3 authority beside ensure_access_token for the same access-token concept. DISSOLVES WHEN bootstrap provision acquires tokens only through ensure_access_token(source: GcloudPrintToken) (or a typed wra")
+data ensure_access_token_eager_bootstrap_fork_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.assimilate.bmc_bootstrap_provision bmc_bootstrap_provision_srv3 still eagerly calls shell.GCloud.AuthPrintAccessToken() at node auth (pre-existing, out of #7423 scope) — a second §3 authority beside ensure_access_token for the same access-token concept. DISSOLVES WHEN bootstrap provision acquires tokens only through ensure_access_token(source: GcloudPrintToken) (or a typed wra")

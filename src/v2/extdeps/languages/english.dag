@@ -44,20 +44,20 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition
     MalformedSentence => FailClosed { feature: MalformedSentence }
   }
 }
-fn english_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+fn english_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.lexing.LexPattern) -> v2.std.compilers.lexing.LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
 
-fn english_word_pattern() -> LexPattern {
+fn english_word_pattern() -> v2.std.compilers.lexing.LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
     right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
 
-fn english_lex() -> LexRules {
+fn english_lex() -> v2.std.compilers.lexing.LexRules {
   ModeledLexRules {
-    root: LexRuleSet {
+    root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
         english_lex_token(token_class: ^english_token_word, pattern: english_word_pattern()),
@@ -71,26 +71,26 @@ fn english_lex() -> LexRules {
   }
 }
 
-fn english_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+fn english_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-fn english_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+fn english_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
   Sequence { left: left, right: right }
 }
 
-fn english_article_expr() -> GrammarExpr {
+fn english_article_expr() -> v2.std.grammar.GrammarExpr {
   Choice {
     left: english_grammar_terminal(token_class: ^english_token_definite_article),
     right: english_grammar_terminal(token_class: ^english_token_indefinite_article)
   }
 }
 
-fn english_article_nonterminal() -> GrammarExpr {
+fn english_article_nonterminal() -> v2.std.grammar.GrammarExpr {
   Nonterminal { production: ^english_production_article }
 }
 
-fn english_svo_sentence_expr() -> GrammarExpr {
+fn english_svo_sentence_expr() -> v2.std.grammar.GrammarExpr {
   english_grammar_sequence(
     left: english_article_nonterminal(),
     right: english_grammar_sequence(
@@ -109,7 +109,7 @@ fn english_svo_sentence_expr() -> GrammarExpr {
   )
 }
 
-fn english_copula_sentence_expr() -> GrammarExpr {
+fn english_copula_sentence_expr() -> v2.std.grammar.GrammarExpr {
   english_grammar_sequence(
     left: english_article_nonterminal(),
     right: english_grammar_sequence(
@@ -128,23 +128,23 @@ fn english_copula_sentence_expr() -> GrammarExpr {
   )
 }
 
-fn english_productions() -> List<GrammarProduction> {
-  let article = GrammarProduction {
+fn english_productions() -> List<v2.std.grammar.GrammarProduction> {
+  let article = v2.std.grammar.GrammarProduction {
     name: ^english_production_article,
     expression: english_article_expr(),
     emitted: grammar_atom(identity: ^english_surface_article)
   }
-  let svo = GrammarProduction {
+  let svo = v2.std.grammar.GrammarProduction {
     name: ^english_production_svo_sentence,
     expression: english_svo_sentence_expr(),
     emitted: grammar_atom(identity: ^english_surface_svo)
   }
-  let copula = GrammarProduction {
+  let copula = v2.std.grammar.GrammarProduction {
     name: ^english_production_copula_sentence,
     expression: english_copula_sentence_expr(),
     emitted: grammar_atom(identity: ^english_surface_copula)
   }
-  let sentence = GrammarProduction {
+  let sentence = v2.std.grammar.GrammarProduction {
     name: ^english_production_sentence,
     expression: Choice {
       left: Nonterminal { production: ^english_production_svo_sentence },
@@ -155,9 +155,9 @@ fn english_productions() -> List<GrammarProduction> {
   [sentence, article, svo, copula]
 }
 
-fn english_grammar() -> ParseGrammar {
+fn english_grammar() -> v2.std.grammar.ParseGrammar {
   ModeledGrammar {
-    root: GrammarRoot {
+    root: v2.std.grammar.GrammarRoot {
       start: ^english_production_sentence,
       productions: english_productions(),
       sync_tokens: grammar_empty_sync_tokens()
@@ -165,18 +165,18 @@ fn english_grammar() -> ParseGrammar {
   }
 }
 
-fn english_model_core() -> ModelCore {
-  ModelCore {
+fn english_model_core() -> v2.std.model_core.ModelCore {
+  v2.std.model_core.ModelCore {
     primitives: [],
     inhabitance: [],
     laws: [],
-    effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+    effects: v2.std.model_core.EffectSemanticsDecl { operations: [] },
+    partiality: v2.std.model_core.PartialitySemanticsDecl { operations: [] }
   }
 }
 
-fn english_language_model() -> LanguageModel {
-  LanguageModel {
+fn english_language_model() -> v2.std.language_model.LanguageModel {
+  v2.std.language_model.LanguageModel {
     canonical_symbols: language_model_empty_canonical_symbols(),
     language_identity: ^english_language_identity,
     core: english_model_core(),
@@ -197,29 +197,29 @@ fn english_grammar_wrapper() -> EnglishGrammar {
   }
 }
 
-fn english_ingest_grammar_schema() -> GrammarSchema {
-  GrammarSchema {
+fn english_ingest_grammar_schema() -> v2.std.grammar.GrammarSchema {
+  v2.std.grammar.GrammarSchema {
     lex: english_lex(),
     grammar: english_grammar()
   }
 }
 
-fn english_article_formal_production_definite() -> FormalProduction {
-  FormalProduction {
+fn english_article_formal_production_definite() -> v2.std.grammar.FormalProduction {
+  v2.std.grammar.FormalProduction {
     lhs: grammar_formal_nonterminal(identity: ^english_production_article),
     rhs: [grammar_formal_terminal(identity: ^english_token_definite_article)]
   }
 }
 
-fn english_article_formal_production_indefinite() -> FormalProduction {
-  FormalProduction {
+fn english_article_formal_production_indefinite() -> v2.std.grammar.FormalProduction {
+  v2.std.grammar.FormalProduction {
     lhs: grammar_formal_nonterminal(identity: ^english_production_article),
     rhs: [grammar_formal_terminal(identity: ^english_token_indefinite_article)]
   }
 }
 
-fn english_svo_formal_production() -> FormalProduction {
-  FormalProduction {
+fn english_svo_formal_production() -> v2.std.grammar.FormalProduction {
+  v2.std.grammar.FormalProduction {
     lhs: grammar_formal_nonterminal(identity: ^english_production_svo_sentence),
     rhs: [
       grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
@@ -232,8 +232,8 @@ fn english_svo_formal_production() -> FormalProduction {
   }
 }
 
-fn english_copula_formal_production() -> FormalProduction {
-  FormalProduction {
+fn english_copula_formal_production() -> v2.std.grammar.FormalProduction {
+  v2.std.grammar.FormalProduction {
     lhs: grammar_formal_nonterminal(identity: ^english_production_copula_sentence),
     rhs: [
       grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
@@ -246,10 +246,10 @@ fn english_copula_formal_production() -> FormalProduction {
   }
 }
 
-fn english_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
-  GrammarSchemaProbeBinding {
+fn english_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaProbeBinding {
+  v2.std.grammar.GrammarSchemaProbeBinding {
     schema: english_ingest_grammar_schema(),
-    probe: GrammarSchemaProbe {
+    probe: v2.std.grammar.GrammarSchemaProbe {
       fixture: "the function is a handler.",
       production: english_copula_formal_production(),
       expected_parse_surface: grammar_atom(identity: ^english_surface_copula)
@@ -259,12 +259,12 @@ fn english_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
 
 data english_add_fn_source_text: String = "the add is a function. the add takes the x. the add takes the y. the add returns the sum. the sum adds the x. the sum adds the y."
 
-fn english_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn english_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
-fn english_inhabitant_atom(id: Symbol) -> Node {
-  Node {
+fn english_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -272,7 +272,7 @@ fn english_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn english_noun_facts_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       english_named_edge(
@@ -289,7 +289,7 @@ fn english_noun_facts_node() -> Node {
 }
 
 fn english_noun_inhabitant_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       english_named_edge(
@@ -306,18 +306,18 @@ fn english_noun_inhabitant_node() -> Node {
 }
 
 fn english_add_fn_emitted_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: english_noun_inhabitant_node() },
-      Edge { label: Positional, target: english_noun_inhabitant_node() },
-      Edge { label: Positional, target: english_noun_inhabitant_node() }
+      v2.std.node.Edge { label: Positional, target: english_noun_inhabitant_node() },
+      v2.std.node.Edge { label: Positional, target: english_noun_inhabitant_node() },
+      v2.std.node.Edge { label: Positional, target: english_noun_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn english_add_fn_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn english_add_fn_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
 
     BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
@@ -364,7 +364,7 @@ fn english_add_fn_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn english_add_fn_binding_spellings() -> Map<Symbol, String> {
+fn english_add_fn_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(
       map_insert(
@@ -416,12 +416,12 @@ fn english_add_fn_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn english_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+fn english_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> Node {
 
   concrete_syntax_token_to_node(token: token)
 }
 
-fn english_add_fn_formal_rhs() -> List<FormalGrammarSymbol> {
+fn english_add_fn_formal_rhs() -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: english_add_fn_concrete_tokens(),
     empty: Empty,
@@ -434,7 +434,7 @@ fn english_add_fn_formal_rhs() -> List<FormalGrammarSymbol> {
   )
 }
 
-fn english_add_fn_formal_production() -> FormalProduction {
+fn english_add_fn_formal_production() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^english_production_add_fn_paragraph,
     rhs: english_add_fn_formal_rhs()
@@ -456,7 +456,7 @@ fn english_add_fn_relation_row() -> EnglishGrammarRelationRow {
 }
 
 fn english_grammar_relation_row_node(row: EnglishGrammarRelationRow) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       english_named_edge(
@@ -477,7 +477,7 @@ fn english_grammar_relation_row_node(row: EnglishGrammarRelationRow) -> Node {
 }
 
 fn english_add_fn_translation_rules_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       english_named_edge(
@@ -490,7 +490,7 @@ fn english_add_fn_translation_rules_node() -> Node {
 }
 
 fn english_add_fn_serialize_source_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       english_named_edge(
@@ -513,7 +513,7 @@ fn english_add_fn_serialize_source_node() -> Node {
 }
 }
 
-fn english_add_fn_zip_fold_closure_edges() -> List<Edge> {
+fn english_add_fn_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   [
     english_named_edge(
       name: ^english_inhabitant_field_add_fn,
@@ -539,7 +539,7 @@ fn english_add_fn_zip_fold_closure_edges() -> List<Edge> {
 }
 
 fn english_declared_inhabitants_root() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: list_append(
       left: [
@@ -559,7 +559,7 @@ fn english_selection_policy_node() -> Node {
 }
 
 fn english_add_fn_target_model_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       english_named_edge(name: ^target_model_edge_selection_policy, target: english_selection_policy_node()),
@@ -571,8 +571,8 @@ fn english_add_fn_target_model_node() -> Node {
 }
 }
 
-fn english_add_fn_target_model() -> TargetModel {
-  TargetModel {
+fn english_add_fn_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: english_add_fn_target_model_node(),
     lex: english_lex(),
@@ -583,11 +583,11 @@ fn english_add_fn_target_model() -> TargetModel {
   }
 }
 
-fn english_sentence_nonterminal() -> GrammarExpr {
+fn english_sentence_nonterminal() -> v2.std.grammar.GrammarExpr {
   Nonterminal { production: ^english_production_sentence }
 }
 
-fn english_add_fn_paragraph_expr() -> GrammarExpr {
+fn english_add_fn_paragraph_expr() -> v2.std.grammar.GrammarExpr {
   Sequence {
     left: english_sentence_nonterminal(),
     right: Sequence {
@@ -606,17 +606,17 @@ fn english_add_fn_paragraph_expr() -> GrammarExpr {
   }
 }
 
-fn english_add_fn_paragraph_production() -> GrammarProduction {
-  GrammarProduction {
+fn english_add_fn_paragraph_production() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^english_production_add_fn_paragraph,
     expression: english_add_fn_paragraph_expr(),
     emitted: english_add_fn_emitted_node()
   }
 }
 
-fn english_add_fn_paragraph_grammar() -> ParseGrammar {
+fn english_add_fn_paragraph_grammar() -> v2.std.grammar.ParseGrammar {
   ModeledGrammar {
-    root: GrammarRoot {
+    root: v2.std.grammar.GrammarRoot {
       start: ^english_production_add_fn_paragraph,
       productions: list_append(
         left: [english_add_fn_paragraph_production()],

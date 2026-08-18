@@ -1,18 +1,18 @@
 module extdeps.llm.claude_agent_sdk_stream
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.npmjs.com/package/@anthropic-ai/claude-agent-sdk/v/0.3.220"
   }
 }
 
-data claude_agent_sdk_version: NonEmptyStr = "0.3.220"
+data claude_agent_sdk_version: std.types.NonEmptyStr = "0.3.220"
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.llm.claude_agent_sdk_stream",
       decl_name: "claude_stream_event_type_control_response",
       field: WholeDeclaration
@@ -39,7 +39,7 @@ fn list_contains_string(items: List<String>, needle: String) -> Bool {
   })
 }
 
-fn decode_json_string_array(v: JsonValue) -> JsonStringListDecode {
+fn decode_json_string_array(v: extdeps.languages.json.emit.JsonValue) -> JsonStringListDecode {
   match v {
     JsonArray { elements: elems } =>
       fold(elems, init: JsonStringListOk { values: [] }, f: fn(acc, head) {
@@ -69,7 +69,7 @@ type JsonMemberRequiredDecode
   = JsonMemberRequiredOk { value: extdeps.languages.json.emit.JsonValue }
   | JsonMemberRequiredRefuse
 
-fn parser_drop_receipt_required_member(v: JsonValue, key: String) -> JsonMemberRequiredDecode {
+fn parser_drop_receipt_required_member(v: extdeps.languages.json.emit.JsonValue, key: String) -> JsonMemberRequiredDecode {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: found } => JsonMemberRequiredOk { value: found }
     JsonMemberAbsent => JsonMemberRequiredRefuse

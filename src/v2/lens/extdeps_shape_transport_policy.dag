@@ -116,44 +116,44 @@ fn extdeps_data_literal_is_embedded_policy_literal(value: String) -> Bool {
   }
 }
 
-fn extdeps_live_module_embedded_policy_literal_count(module: QualifiedName) -> Int {
+fn extdeps_live_module_embedded_policy_literal_count(module: v2.std.qualified_name.QualifiedName) -> Int {
   extdeps_shape_transport_policy_embedded_policy_literal_count(
     facts: extdeps_shape_transport_policy_facts_for_qualified_name(module: module).embedded_facts
   )
 }
 
-fn extdeps_live_module_source_nickname_literal_count(module: QualifiedName) -> Int {
+fn extdeps_live_module_source_nickname_literal_count(module: v2.std.qualified_name.QualifiedName) -> Int {
   extdeps_shape_transport_policy_facts_for_qualified_name(module: module).source_nickname_literal_count
 }
 
-fn extdeps_live_module_transport_fusion_fork_count(module: QualifiedName) -> Int {
+fn extdeps_live_module_transport_fusion_fork_count(module: v2.std.qualified_name.QualifiedName) -> Int {
   extdeps_shape_transport_policy_fusion_count_for_module(
     fusion_facts: extdeps_shape_transport_policy_facts_for_qualified_name(module: module).fusion_facts,
     module: module
   )
 }
 
-fn extdeps_live_module_policy_leak_count(module: QualifiedName) -> Int {
+fn extdeps_live_module_policy_leak_count(module: v2.std.qualified_name.QualifiedName) -> Int {
   extdeps_shape_transport_policy_policy_leak_count_for_module(
     argv_facts: extdeps_shape_transport_policy_facts_for_qualified_name(module: module).argv_facts,
     module: module
   )
 }
 
-fn extdeps_live_module_gist_create_declares_filename_input(module: QualifiedName) -> Bool {
+fn extdeps_live_module_gist_create_declares_filename_input(module: v2.std.qualified_name.QualifiedName) -> Bool {
   extdeps_shape_transport_policy_facts_for_qualified_name(module: module).gist_create_declares_filename_input
 }
 
-fn extdeps_live_module_gist_create_files_keyed_by_filename(module: QualifiedName) -> Bool {
+fn extdeps_live_module_gist_create_files_keyed_by_filename(module: v2.std.qualified_name.QualifiedName) -> Bool {
   extdeps_shape_transport_policy_facts_for_qualified_name(module: module).gist_create_files_keyed_by_filename
 }
 
-fn extdeps_module_identity_resolves(module: QualifiedName) -> Bool {
+fn extdeps_module_identity_resolves(module: v2.std.qualified_name.QualifiedName) -> Bool {
   extdeps_qualified_name_resolves_in_derived_module_set(module: module)
 }
 
 fn extdeps_live_module_dead_param_count_for_operation(
-  module: QualifiedName,
+  module: v2.std.qualified_name.QualifiedName,
   service: String,
   operation: String
 ) -> Int {
@@ -167,13 +167,13 @@ fn extdeps_live_module_dead_param_count_for_operation(
   )
 }
 
-fn argv_fact_matches_module(fact: ExtdepsTransportArgvFact, module: QualifiedName) -> Bool {
+fn argv_fact_matches_module(fact: ExtdepsTransportArgvFact, module: v2.std.qualified_name.QualifiedName) -> Bool {
   fact.module == module
 }
 
 fn argv_fact_matches_operation(
   fact: ExtdepsTransportArgvFact,
-  module: QualifiedName,
+  module: v2.std.qualified_name.QualifiedName,
   service: String,
   operation: String
 ) -> Bool {
@@ -182,13 +182,13 @@ fn argv_fact_matches_operation(
     && fact.operation == operation
 }
 
-fn fusion_fact_matches_module(fact: ExtdepsTransportFusionFact, module: QualifiedName) -> Bool {
+fn fusion_fact_matches_module(fact: ExtdepsTransportFusionFact, module: v2.std.qualified_name.QualifiedName) -> Bool {
   fact.module == module
 }
 
 fn input_fact_matches_operation(
   fact: ExtdepsOperationInputFact,
-  module: QualifiedName,
+  module: v2.std.qualified_name.QualifiedName,
   service: String,
   operation: String
 ) -> Bool {
@@ -208,7 +208,7 @@ fn extdeps_argv_token_references_param(token: String, param_name: String) -> Boo
 
 fn extdeps_argv_facts_reference_param(
   argv_facts: List<ExtdepsTransportArgvFact>,
-  module: QualifiedName,
+  module: v2.std.qualified_name.QualifiedName,
   service: String,
   operation: String,
   param_name: String
@@ -231,7 +231,7 @@ fn extdeps_argv_facts_reference_param(
 
 fn filter_input_facts_for_operation(
   facts: List<ExtdepsOperationInputFact>,
-  module: QualifiedName,
+  module: v2.std.qualified_name.QualifiedName,
   service: String,
   operation: String
 ) -> List<ExtdepsOperationInputFact> {
@@ -254,7 +254,7 @@ fn filter_input_facts_for_operation(
 }
 
 fn extdeps_project_operation_argv(
-  module: QualifiedName,
+  module: v2.std.qualified_name.QualifiedName,
   service: String,
   operation: String,
   input_facts: List<ExtdepsOperationInputFact>,
@@ -454,7 +454,7 @@ fn extdeps_shape_transport_policy_clean_holds(
 
 fn filter_argv_facts_for_operation(
   facts: List<ExtdepsTransportArgvFact>,
-  module: QualifiedName,
+  module: v2.std.qualified_name.QualifiedName,
   service: String,
   operation: String
 ) -> List<ExtdepsTransportArgvFact> {
@@ -478,7 +478,7 @@ fn filter_argv_facts_for_operation(
 
 fn filter_argv_facts_for_module(
   facts: List<ExtdepsTransportArgvFact>,
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
 ) -> List<ExtdepsTransportArgvFact> {
   fold_list(
     xs: facts,
@@ -495,7 +495,7 @@ fn filter_argv_facts_for_module(
 
 fn filter_fusion_facts_for_module(
   facts: List<ExtdepsTransportFusionFact>,
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
 ) -> List<ExtdepsTransportFusionFact> {
   fold_list(
     xs: facts,
@@ -513,7 +513,7 @@ fn filter_fusion_facts_for_module(
 fn extdeps_shape_transport_policy_violation_count_for_operation(
   argv_facts: List<ExtdepsTransportArgvFact>,
   fusion_facts: List<ExtdepsTransportFusionFact>,
-  module: QualifiedName,
+  module: v2.std.qualified_name.QualifiedName,
   service: String,
   operation: String
 ) -> Int {
@@ -531,7 +531,7 @@ fn extdeps_shape_transport_policy_violation_count_for_operation(
 fn extdeps_shape_transport_policy_violation_count_for_module(
   argv_facts: List<ExtdepsTransportArgvFact>,
   fusion_facts: List<ExtdepsTransportFusionFact>,
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
 ) -> Int {
   extdeps_shape_transport_policy_violation_count(
     argv_facts: argv_facts,
@@ -541,7 +541,7 @@ fn extdeps_shape_transport_policy_violation_count_for_module(
 
 fn extdeps_shape_transport_policy_policy_leak_count_for_module(
   argv_facts: List<ExtdepsTransportArgvFact>,
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
 ) -> Int {
   length(
     xs: scan_argv_facts_for_violations(
@@ -552,7 +552,7 @@ fn extdeps_shape_transport_policy_policy_leak_count_for_module(
 
 fn extdeps_shape_transport_policy_fusion_count_for_module(
   fusion_facts: List<ExtdepsTransportFusionFact>,
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
 ) -> Int {
   length(
     xs: scan_fusion_facts_for_violations(
@@ -564,7 +564,7 @@ fn extdeps_shape_transport_policy_fusion_count_for_module(
 fn extdeps_shape_transport_policy_dead_param_count_for_operation(
   argv_facts: List<ExtdepsTransportArgvFact>,
   input_facts: List<ExtdepsOperationInputFact>,
-  module: QualifiedName,
+  module: v2.std.qualified_name.QualifiedName,
   service: String,
   operation: String
 ) -> Int {
@@ -587,6 +587,6 @@ fn extdeps_shape_transport_policy_embedded_policy_literal_count(
   length(xs: scan_embedded_policy_facts_for_violations(facts: facts))
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

@@ -50,8 +50,8 @@ fn readback_probe_is_independent(p: ReadBackProbe) -> Bool {
 
 // An UNCLASSIFIED probe is treated exactly as a self-establishing one, and this is the fail-closed hinge. The tempting default is the other way — nobody has shown this probe has a side effect, so assume it does not — and that default is the absorbing fallback with the burden of proof reversed: it converts every un-audited transport into evidence, and the population of un-audited transports is the whole tree. Independence is a property that must be ESTABLISHED for a specific transport, so ProbeEffectUnknown carries a reason and yields the same correction as the two non-independent arms. All three stay distinct anyway, because their remedies differ: ProbeMayEstablish is a probe to REPLACE (its transport can bring the subject into being), ProbeAnswersWithoutSubject is a probe to GROUND (its transport is harmless but its positive answer does not imply the subject, so the reading must be preceded by an independent existence check), and ProbeEffectUnknown is a transport to AUDIT. Collapsing the first two loses exactly the information that decides which of those three things to do.
 fn readback_non_independent_evidence_verdict(
-  observed: ObservationVerdict,
-) -> ObservationVerdict {
+  observed: std.upsert_decision.ObservationVerdict,
+) -> std.upsert_decision.ObservationVerdict {
   match observed {
     Converged => UnknownRefused
     std.upsert_decision.Absent => std.upsert_decision.Absent
@@ -62,7 +62,7 @@ fn readback_non_independent_evidence_verdict(
   }
 }
 
-fn readback_evidence_verdict(p: ReadBackProbe, observed: ObservationVerdict) -> ObservationVerdict {
+fn readback_evidence_verdict(p: ReadBackProbe, observed: std.upsert_decision.ObservationVerdict) -> std.upsert_decision.ObservationVerdict {
   probe_effect_on_subject_fold(
     effect: p.effect_on_subject,
     fold: ProbeEffectOnSubjectFold {
@@ -84,12 +84,12 @@ data readback_trusting_widen_red_control_note: String = "The forbidden arm as an
 
 fn readback_evidence_trusting_widen_sketch(
   p: ReadBackProbe,
-  observed: ObservationVerdict,
-) -> ObservationVerdict {
+  observed: std.upsert_decision.ObservationVerdict,
+) -> std.upsert_decision.ObservationVerdict {
   observed
 }
 
-fn readback_verdict_is_converged(v: ObservationVerdict) -> Bool {
+fn readback_verdict_is_converged(v: std.upsert_decision.ObservationVerdict) -> Bool {
   match v {
     Converged => true
     std.upsert_decision.Absent => false
@@ -100,7 +100,7 @@ fn readback_verdict_is_converged(v: ObservationVerdict) -> Bool {
   }
 }
 
-fn readback_evidence_gate_accepts(p: ReadBackProbe, verdict: ObservationVerdict) -> Bool {
+fn readback_evidence_gate_accepts(p: ReadBackProbe, verdict: std.upsert_decision.ObservationVerdict) -> Bool {
   probe_effect_on_subject_fold(
     effect: p.effect_on_subject,
     fold: ProbeEffectOnSubjectFold {

@@ -9,13 +9,13 @@ data direct_rust_door_execution_receipt_ceiling_note: String = "HONEST CEILING o
 
 data direct_rust_door_emitted_root: Node = rust_fixture_emitted_add_fn
 
-data direct_rust_door_missing_rules_bundle: Node = Node {
+data direct_rust_door_missing_rules_bundle: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence,
 }
 
-data direct_rust_door_missing_rules_target: TargetModel = TargetModel {
+data direct_rust_door_missing_rules_target: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: direct_rust_door_missing_rules_bundle,
   lex: rust_fn_add_lex(),
@@ -60,25 +60,25 @@ fn assess_missing_translation_rule_refuses() -> DirectRustDoorAdmission {
 }
 
 // THE CANONICAL ACCEPTANCE AUTHORITY for roadmap node v2-emitter-direct-rust-door, and the lane's first composition specimen. TWO independently OBSERVED facts are stored — the production emission observation and the independent missing-rule admission — and NOTHING derived is stored beside them: source fidelity, declared producer closure, and SourceProduced qualification are FUNCTIONS of the observation, so a group whose leaves contradict its observation is unconstructible rather than merely wrong. The expensive ingest-assemble-infer-emit walk happens EXACTLY ONCE per group value; every leaf and the higher-order expectation are pure projections that never re-walk it. A leaf production never reached reports LeafNotReached carrying the stage, never a false that would read as refuted. direct_rust_door_group_from_observations plants observations for the fast algebra controls, so the group algebra is discriminated WITHOUT paying a production walk.
-data direct_rust_door_leaf_not_reached_assembly: Symbol = ^direct_rust_door_leaf_not_reached_assembly_rejected
+data direct_rust_door_leaf_not_reached_assembly: v2.std.node.Symbol = ^direct_rust_door_leaf_not_reached_assembly_rejected
 
-data direct_rust_door_leaf_not_reached_inference: Symbol = ^direct_rust_door_leaf_not_reached_inference_rejected
+data direct_rust_door_leaf_not_reached_inference: v2.std.node.Symbol = ^direct_rust_door_leaf_not_reached_inference_rejected
 
-data direct_rust_door_leaf_not_reached_emission: Symbol = ^direct_rust_door_leaf_not_reached_emission_rejected
+data direct_rust_door_leaf_not_reached_emission: v2.std.node.Symbol = ^direct_rust_door_leaf_not_reached_emission_rejected
 
-data direct_rust_door_leaf_not_reached_receipt: Symbol = ^direct_rust_door_leaf_not_reached_producer_receipt_rejected
+data direct_rust_door_leaf_not_reached_receipt: v2.std.node.Symbol = ^direct_rust_door_leaf_not_reached_producer_receipt_rejected
 
-data direct_rust_door_source_mismatch_cause: Symbol = ^direct_rust_door_emitted_source_differs_from_expected
+data direct_rust_door_source_mismatch_cause: v2.std.node.Symbol = ^direct_rust_door_emitted_source_differs_from_expected
 
-data direct_rust_door_wrong_producer_cause: Symbol = ^direct_rust_door_producer_is_not_v2_emitter_interpreted
+data direct_rust_door_wrong_producer_cause: v2.std.node.Symbol = ^direct_rust_door_producer_is_not_v2_emitter_interpreted
 
-data direct_rust_door_declared_closure_seed_cause: Symbol = ^direct_rust_door_declared_producer_closure_contains_seed_emitter
+data direct_rust_door_declared_closure_seed_cause: v2.std.node.Symbol = ^direct_rust_door_declared_producer_closure_contains_seed_emitter
 
-data direct_rust_door_source_produced_missing_cause: Symbol = ^direct_rust_door_source_produced_qualification_missing
+data direct_rust_door_source_produced_missing_cause: v2.std.node.Symbol = ^direct_rust_door_source_produced_qualification_missing
 
-data direct_rust_door_missing_rule_refused_cause: Symbol = ^direct_rust_door_missing_rule_refusal_not_established
+data direct_rust_door_missing_rule_refused_cause: v2.std.node.Symbol = ^direct_rust_door_missing_rule_refusal_not_established
 
-data direct_rust_door_missing_rule_unavailable_cause: Symbol = ^direct_rust_door_missing_rule_refusal_unavailable
+data direct_rust_door_missing_rule_unavailable_cause: v2.std.node.Symbol = ^direct_rust_door_missing_rule_refusal_unavailable
 
 type DirectRustDoorLeafResult
   = LeafEstablished
@@ -91,7 +91,7 @@ type DirectRustDoorProductionGroup {
 }
 
 fn direct_rust_door_group_from_observations(
-  emission: ProvenancedRustEmissionObservation,
+  emission: v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation,
   missing_rule: DirectRustDoorAdmission
 ) -> DirectRustDoorProductionGroup {
   DirectRustDoorProductionGroup { emission: emission, missing_rule: missing_rule }
@@ -115,9 +115,9 @@ type DirectRustDoorArtifactLeafResult
   | ArtifactLeafRefused { cause: v2.std.node.Symbol }
 
 fn direct_rust_door_artifact_assessment(
-  artifact: ProvenancedRustArtifact,
+  artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact,
   holds: fn(ProvenancedRustArtifact) -> Bool,
-  refusal_cause: Symbol
+  refusal_cause: v2.std.node.Symbol
 ) -> DirectRustDoorArtifactLeafResult {
   if holds(artifact) {
     ArtifactLeafEstablished
@@ -127,7 +127,7 @@ fn direct_rust_door_artifact_assessment(
 }
 
 fn direct_rust_door_source_fidelity_assessment(
-  artifact: ProvenancedRustArtifact
+  artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact
 ) -> DirectRustDoorArtifactLeafResult {
   direct_rust_door_artifact_assessment(
     artifact: artifact,
@@ -137,7 +137,7 @@ fn direct_rust_door_source_fidelity_assessment(
 }
 
 fn direct_rust_door_producer_identity_assessment(
-  artifact: ProvenancedRustArtifact
+  artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact
 ) -> DirectRustDoorArtifactLeafResult {
   direct_rust_door_artifact_assessment(
     artifact: artifact,
@@ -147,7 +147,7 @@ fn direct_rust_door_producer_identity_assessment(
 }
 
 fn direct_rust_door_seed_emitter_absence_assessment(
-  artifact: ProvenancedRustArtifact
+  artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact
 ) -> DirectRustDoorArtifactLeafResult {
   direct_rust_door_artifact_assessment(
     artifact: artifact,
@@ -157,7 +157,7 @@ fn direct_rust_door_seed_emitter_absence_assessment(
 }
 
 fn direct_rust_door_source_produced_assessment(
-  artifact: ProvenancedRustArtifact
+  artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact
 ) -> DirectRustDoorArtifactLeafResult {
   direct_rust_door_artifact_assessment(
     artifact: artifact,
@@ -172,7 +172,7 @@ fn direct_rust_door_source_produced_assessment(
 }
 
 fn direct_rust_door_artifact_leaf(
-  emission: ProvenancedRustEmissionObservation,
+  emission: v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation,
   assess: fn(ProvenancedRustArtifact) -> DirectRustDoorArtifactLeafResult
 ) -> DirectRustDoorLeafResult {
   match emission {

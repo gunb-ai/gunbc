@@ -62,8 +62,8 @@ type PrincipalReachObservation {
 
 fn observation_for(
   observations: List<PrincipalReachObservation>,
-  host: HostIdentity,
-  login: NonEmptyStr,
+  host: product.placement_supply.HostIdentity,
+  login: std.types.NonEmptyStr,
 ) -> PrincipalReachObservation? {
   fold(observations, init: none, f: fn(acc, o) {
     match acc {
@@ -88,12 +88,12 @@ data spark_operator_bootstrap_login: String = "briansrls"
 // because a bootstrap needs a transport: with no reachable principal there is nothing to bootstrap
 // THROUGH, so the honest standing is unobserved rather than a plan that could not be executed.
 fn derive_spark_managed_access_standing(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   observations: List<PrincipalReachObservation>,
 ) -> SparkManagedAccessStanding {
-  let managed = PosixAccountOccurrence { host: host, principal: FleetAccountAutomation }
-  let bootstrap = PosixAccountOccurrence { host: host, principal: FleetAccountOperator }
-  match observation_for(observations: observations, host: host, login: spark_managed_executor_login as NonEmptyStr) {
+  let managed = gunbc.fleet_posix_accounts.PosixAccountOccurrence { host: host, principal: FleetAccountAutomation }
+  let bootstrap = gunbc.fleet_posix_accounts.PosixAccountOccurrence { host: host, principal: FleetAccountOperator }
+  match observation_for(observations: observations, host: host, login: spark_managed_executor_login as std.types.NonEmptyStr) {
     Present { value: m } =>
       if m.authenticated {
         ManagedAccessGrounded { occurrence: managed }
@@ -101,7 +101,7 @@ fn derive_spark_managed_access_standing(
         ManagedAccessBootstrapRequired { host: host, missing: managed, bootstrap_transport: bootstrap }
       }
     Absent =>
-      match observation_for(observations: observations, host: host, login: spark_operator_bootstrap_login as NonEmptyStr) {
+      match observation_for(observations: observations, host: host, login: spark_operator_bootstrap_login as std.types.NonEmptyStr) {
         Present { value: b } =>
           if b.authenticated {
             ManagedAccessBootstrapRequired { host: host, missing: managed, bootstrap_transport: bootstrap }
@@ -161,7 +161,7 @@ data spark_managed_narrow_grant: String = "loginctl enable-linger for this accou
 
 fn derive_spark_bootstrap_plan(
   standing: SparkManagedAccessStanding,
-  fleet_public_material_identity: ContentHash,
+  fleet_public_material_identity: std.content_hash.ContentHash,
 ) -> SparkBootstrapPlan? {
   match standing {
     ManagedAccessGrounded { occurrence: _ } => none
@@ -170,14 +170,14 @@ fn derive_spark_bootstrap_plan(
       value: SparkBootstrapPlan {
         host: h,
         transport: t,
-        first: CreateManagedAccount { occurrence: m, login: spark_managed_executor_login as NonEmptyStr },
+        first: CreateManagedAccount { occurrence: m, login: spark_managed_executor_login as std.types.NonEmptyStr },
         more: [
           InstallFleetAuthorizedKey { occurrence: m, public_material_identity: fleet_public_material_identity },
           ProveKeyOnlyAuthentication { occurrence: m },
-          InstallNarrowPrivilegeGrant { occurrence: m, grant: spark_managed_narrow_grant as NonEmptyStr },
+          InstallNarrowPrivilegeGrant { occurrence: m, grant: spark_managed_narrow_grant as std.types.NonEmptyStr },
           CreateNoLoginServiceIdentity {
-            occurrence: PosixAccountOccurrence { host: h, principal: FleetAccountInferenceService },
-            login: "gunbc-inference" as NonEmptyStr,
+            occurrence: gunbc.fleet_posix_accounts.PosixAccountOccurrence { host: h, principal: FleetAccountInferenceService },
+            login: "gunbc-inference" as std.types.NonEmptyStr,
           },
         ],
       }
@@ -210,7 +210,7 @@ fn authorize_spark_bootstrap(plan: SparkBootstrapPlan) -> SparkBootstrapAuthoriz
       host: plan.host,
       first_privileged: first,
       more_privileged: list_tail_of_effects(effects: privileged),
-      secret_purpose: "one-time administrator credential on this host, used solely to apply the named privileged effects through the modeled secret boundary; not retained, not a serving requirement" as NonEmptyStr,
+      secret_purpose: "one-time administrator credential on this host, used solely to apply the named privileged effects through the modeled secret boundary; not retained, not a serving requirement" as std.types.NonEmptyStr,
     }
   }
 }

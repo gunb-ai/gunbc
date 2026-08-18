@@ -1,7 +1,7 @@
 module gunbc.fleet_shell_transport_observation
 
 
-data fleet_shell_transport_authority_disposition: Disposition = SingleAuthority
+data fleet_shell_transport_authority_disposition: std.disposition.Disposition = SingleAuthority
 
 data fleet_shell_transport_scope_note: String = "SHELL TRANSPORT IS NOT NETWORK REACH. gunbc.fleet_reach answers whether packets can route to a host; this module answers whether an SSH session from the executing environment can authenticate and run a command. Both must be modeled separately (operator rule 2026-07-24). A ReachRefused or Permission-denied transport observation is a RECEIPT — not EndpointAbsent, swap Absent, or SessionsObservedAbsent. THE PRODUCER returns ShellTransportUnobserved until host_effect_apply can run the probe; it does not hand-enter host facts. still_ram_738_session_* rows below are dated execution receipts for one environment (2026-08-06 ssh BatchMode probes), not fabrication of swap, disk, or session counts. Review 49656: interim only — downstream modules must not treat these as permanent authority; fleet_shell_transport_observed_producer_dissolve_on names HostEffectTransport as the successor."
 
@@ -20,39 +20,39 @@ type HostShellTransportObservation
   | ShellTransportUnobserved { reason: String }
 
 data still_ram_738_srv1_shell_transport: HostShellTransportObservation = ShellTransportReachRefused {
-  observed_on: "2026-08-06" as NonEmptyStr,
-  principal: "node@srv1" as NonEmptyStr,
-  detail: "Permission denied (publickey,password)" as NonEmptyStr,
-  gap: "A1/B2 fleet_subsumption_manual_gaps: fleet-automation key not available to this session principal" as NonEmptyStr,
+  observed_on: "2026-08-06" as std.types.NonEmptyStr,
+  principal: "node@srv1" as std.types.NonEmptyStr,
+  detail: "Permission denied (publickey,password)" as std.types.NonEmptyStr,
+  gap: "A1/B2 fleet_subsumption_manual_gaps: fleet-automation key not available to this session principal" as std.types.NonEmptyStr,
 }
 
 data still_ram_738_srv2_shell_transport: HostShellTransportObservation = ShellTransportReachRefused {
-  observed_on: "2026-08-06" as NonEmptyStr,
-  principal: "node@srv2" as NonEmptyStr,
-  detail: "Permission denied (publickey,password)" as NonEmptyStr,
-  gap: "A1/B2 fleet_subsumption_manual_gaps: fleet-automation key not available to this session principal" as NonEmptyStr,
+  observed_on: "2026-08-06" as std.types.NonEmptyStr,
+  principal: "node@srv2" as std.types.NonEmptyStr,
+  detail: "Permission denied (publickey,password)" as std.types.NonEmptyStr,
+  gap: "A1/B2 fleet_subsumption_manual_gaps: fleet-automation key not available to this session principal" as std.types.NonEmptyStr,
 }
 
 data still_ram_738_srv3_shell_transport: HostShellTransportObservation = ShellTransportReachRefused {
-  observed_on: "2026-08-06" as NonEmptyStr,
-  principal: "node@srv2 (jump) -> ubuntu@192.168.1.221" as NonEmptyStr,
-  detail: "jump host srv2: Permission denied (publickey,password); srv3 B2 gap: fleet-automation authorized for no user on srv3" as NonEmptyStr,
-  gap: "gunbc.plans.fleet_subsumption_manual_gaps B2 + A1 materialized secret for fleet-automation key" as NonEmptyStr,
+  observed_on: "2026-08-06" as std.types.NonEmptyStr,
+  principal: "node@srv2 (jump) -> ubuntu@192.168.1.221" as std.types.NonEmptyStr,
+  detail: "jump host srv2: Permission denied (publickey,password); srv3 B2 gap: fleet-automation authorized for no user on srv3" as std.types.NonEmptyStr,
+  gap: "gunbc.plans.fleet_subsumption_manual_gaps B2 + A1 materialized secret for fleet-automation key" as std.types.NonEmptyStr,
 }
 
 data parent_probe_2026_08_07_srv3_shell_transport: HostShellTransportObservation = ShellTransportSucceeded {
-  observed_on: "2026-08-07" as NonEmptyStr,
-  principal: "srv2 (jump) -> ubuntu@192.168.1.221" as NonEmptyStr,
-  detail: "vivid-eagle-131 reached srv3 on this path (supersedes still_ram_738 2026-08-06 ReachRefused from srv1-as-briansrls direct attempt; srv4 remains only unreachable host)" as NonEmptyStr,
+  observed_on: "2026-08-07" as std.types.NonEmptyStr,
+  principal: "srv2 (jump) -> ubuntu@192.168.1.221" as std.types.NonEmptyStr,
+  detail: "vivid-eagle-131 reached srv3 on this path (supersedes still_ram_738 2026-08-06 ReachRefused from srv1-as-briansrls direct attempt; srv4 remains only unreachable host)" as std.types.NonEmptyStr,
 }
 
 data srv3_shell_transport_observation_correction_note: String = "CORRECTION (2026-08-07): srv3 IS reachable via srv2->ubuntu@192.168.1.221. still_ram_738_srv3_shell_transport is a stale session receipt; parent_probe_2026_08_07_srv3_shell_transport is the current observation for planning."
 
 data still_ram_738_srv4_shell_transport: HostShellTransportObservation = ShellTransportReachRefused {
-  observed_on: "2026-08-06" as NonEmptyStr,
-  principal: "node@srv4" as NonEmptyStr,
-  detail: "Permission denied (publickey)" as NonEmptyStr,
-  gap: "A1 fleet_subsumption_manual_gaps: fleet-automation key not available to this session principal (distinct from srv4's prior ReachRefused over jump from srv2 with fleet key)" as NonEmptyStr,
+  observed_on: "2026-08-06" as std.types.NonEmptyStr,
+  principal: "node@srv4" as std.types.NonEmptyStr,
+  detail: "Permission denied (publickey)" as std.types.NonEmptyStr,
+  gap: "A1 fleet_subsumption_manual_gaps: fleet-automation key not available to this session principal (distinct from srv4's prior ReachRefused over jump from srv2 with fleet key)" as std.types.NonEmptyStr,
 }
 
 fn still_ram_738_session_shell_transport(host: product.placement_supply.HostIdentity) -> HostShellTransportObservation {
@@ -137,9 +137,9 @@ fn srv3_network_reach_realizable() -> Bool {
   srv3_reach_is_realizable()
 }
 
-data fleet_shell_transport_observed_producer_dissolve_on: Disposition = Scaffold {
+data fleet_shell_transport_observed_producer_dissolve_on: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,

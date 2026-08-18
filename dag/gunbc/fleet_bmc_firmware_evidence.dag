@@ -26,7 +26,7 @@ type BmcFirmwareVersionStanding
   = BmcFirmwareVersionEstablished { firmware: extdeps.bmc.capability.BmcFirmwareVersion }
   | BmcFirmwareVersionUnestablished { endpoint: std.bmc.BmcEndpoint }
 
-fn bmc_firmware_evidence_endpoint(evidence: BmcFirmwareEvidence) -> BmcEndpoint {
+fn bmc_firmware_evidence_endpoint(evidence: BmcFirmwareEvidence) -> std.bmc.BmcEndpoint {
   match evidence {
     BmcFirmwareEvidenceObserved { observation: o } => o.endpoint
     BmcFirmwareEvidenceAttested { attestation: a } => a.endpoint
@@ -57,7 +57,7 @@ type BmcFirmwareCapabilityStanding
 // established for THAT host.
 fn bmc_firmware_capability_standing(
   evidence: BmcFirmwareEvidence,
-  catalog: List<BmcFirmwareCapabilityRow>,
+  catalog: List<extdeps.bmc.capability.BmcFirmwareCapabilityRow>,
 ) -> BmcFirmwareCapabilityStanding {
   match bmc_firmware_evidence_version(evidence: evidence) {
     BmcFirmwareVersionUnestablished { endpoint: e } =>
@@ -77,7 +77,7 @@ data fleet_bmc_firmware_attestation_dissolution_trigger: String = "🟡 dissolve
 
 data srv1_bmc_firmware_attestation: BmcFirmwareAttestation = BmcFirmwareAttestation {
   endpoint: srv1_baseboard.bmc,
-  firmware: BmcFirmwareVersion {
+  firmware: extdeps.bmc.capability.BmcFirmwareVersion {
     family: OpenBmc,
     version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
   },
@@ -87,7 +87,7 @@ data srv1_bmc_firmware_attestation: BmcFirmwareAttestation = BmcFirmwareAttestat
 
 data srv2_bmc_firmware_attestation: BmcFirmwareAttestation = BmcFirmwareAttestation {
   endpoint: srv2_baseboard.bmc,
-  firmware: BmcFirmwareVersion {
+  firmware: extdeps.bmc.capability.BmcFirmwareVersion {
     family: OpenBmc,
     version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
   },

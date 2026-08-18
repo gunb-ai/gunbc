@@ -118,6 +118,6 @@ fn body_is_linear(levels: FreeMonoid<FreeMonoid<Node>>) -> Bool {
   for_all(xs: levels, predicate: fn(level) { level_is_linear(level: level) })
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

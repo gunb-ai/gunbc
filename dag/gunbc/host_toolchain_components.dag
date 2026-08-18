@@ -13,7 +13,7 @@ type ToolchainComponentRequirement {
 data floor_gate_component_requirements: List<ToolchainComponentRequirement> = [
   ToolchainComponentRequirement {
     component: Rustfmt,
-    required_by: DeclarationRef {
+    required_by: std.decl_ref.DeclarationRef {
       module_path: "v2.workflow.ci_floor_plan",
       decl_name: "floor_self_host_realized_comparison_gate_entry",
       field: WholeDeclaration,
@@ -28,7 +28,7 @@ type ResolvedToolchain {
   components: List<extdeps.rustup.RustupComponent>
 }
 
-fn resolved_toolchain_has(t: ResolvedToolchain, c: RustupComponent) -> Bool {
+fn resolved_toolchain_has(t: ResolvedToolchain, c: extdeps.rustup.RustupComponent) -> Bool {
   fold(t.components, init: false, f: (acc, x) => acc || rustup_component_eq(a: x, b: c))
 }
 
@@ -44,7 +44,7 @@ data toolchain_completeness_verdict_note: String = "The fail-closed fold, with t
 fn toolchain_completeness_verdict(
   reqs: List<ToolchainComponentRequirement>,
   resolved: ResolvedToolchain?,
-) -> ObservationVerdict {
+) -> std.upsert_decision.ObservationVerdict {
   match resolved {
     Absent => UnknownRefused
     Present { value: t } =>
@@ -58,13 +58,13 @@ fn toolchain_completeness_verdict(
 
 data toolchain_probe_note: String = "The probe, classified. Listing a toolchain's components reads a directory and installs nothing, so it is ProbeInert and its Converged survives. The sketch beside it is the shape an ensure lane reaches for by reflex and must not: a check that runs `rustup component add` when the component is missing reports success it caused, so it can never witness the deficit it exists to find — and the deficit's frequency would drop to zero by construction, which is the absorbing fallback in its purest form. That matters here beyond principle: the two-hosts-in-two-days recurrence is only visible BECAUSE the checks so far have refused rather than repaired."
 
-data rustup_component_list_probe: ReadBackProbe = ReadBackProbe {
+data rustup_component_list_probe: gunbc.readback_independence.ReadBackProbe = gunbc.readback_independence.ReadBackProbe {
   label: "rustup component list --installed, as the job principal, on the active toolchain",
   subject: "the components carried by the toolchain the job principal's shim resolves",
   effect_on_subject: ProbeInert,
 }
 
-data rustup_component_add_on_miss_probe_sketch: ReadBackProbe = ReadBackProbe {
+data rustup_component_add_on_miss_probe_sketch: gunbc.readback_independence.ReadBackProbe = gunbc.readback_independence.ReadBackProbe {
   label: "list components, adding any missing one before reporting",
   subject: "the components carried by the toolchain the job principal's shim resolves",
   effect_on_subject: ProbeMayEstablish {
@@ -73,10 +73,10 @@ data rustup_component_add_on_miss_probe_sketch: ReadBackProbe = ReadBackProbe {
 }
 
 fn toolchain_completeness_observed_verdict(
-  probe: ReadBackProbe,
+  probe: gunbc.readback_independence.ReadBackProbe,
   reqs: List<ToolchainComponentRequirement>,
   resolved: ResolvedToolchain?,
-) -> ObservationVerdict {
+) -> std.upsert_decision.ObservationVerdict {
   if !readback_probe_is_independent(p: probe) {
     UnknownRefused
   } else {
@@ -107,7 +107,7 @@ data srv2_ghrunner_pinned_toolchain_has_rustfmt: ResolvedToolchain = ResolvedToo
   components: [Rustfmt],
 }
 
-fn host_toolchain_completeness_observation(host: HostIdentity) -> ResolvedToolchain? {
+fn host_toolchain_completeness_observation(host: product.placement_supply.HostIdentity) -> ResolvedToolchain? {
   if (host as String) == (operator_host_srv2 as String) {
     Present { value: srv2_ghrunner_toolchain_after_fix }
   } else {
@@ -115,7 +115,7 @@ fn host_toolchain_completeness_observation(host: HostIdentity) -> ResolvedToolch
   }
 }
 
-fn host_toolchain_completeness_verdict(host: HostIdentity) -> ObservationVerdict {
+fn host_toolchain_completeness_verdict(host: product.placement_supply.HostIdentity) -> std.upsert_decision.ObservationVerdict {
   toolchain_completeness_observed_verdict(
     probe: rustup_component_list_probe,
     reqs: floor_gate_component_requirements,
@@ -123,7 +123,7 @@ fn host_toolchain_completeness_verdict(host: HostIdentity) -> ObservationVerdict
   )
 }
 
-fn toolchain_completeness_unobserved_count(hosts: List<HostIdentity>) -> Int {
+fn toolchain_completeness_unobserved_count(hosts: List<product.placement_supply.HostIdentity>) -> Int {
   filter(
     hosts,
     h => observation_verdict_eq(a: host_toolchain_completeness_verdict(host: h), b: UnknownRefused),
@@ -136,9 +136,9 @@ fn toolchain_completeness_fleet_unobserved_count() -> Int {
 
 data toolchain_ensure_frontier_note: String = "What is NOT here, named rather than half-built. The operator's routing puts the component on the modeled toolchain ensure (B3), which means a HostToolchainKind variant for the runner floor toolchain and a HostEffect arm that applies `rustup component add` to the RESOLVED toolchain of the job principal. That effect cannot be realized today: it hits the argv materializer's hardcoded five-parameter vocabulary, the same blocker gunbc.host_swap_backing and gunbc.auth.materialized_secret both name, now dispatched as its own work item. Landing the variant before the materializer is generic would put an unreachable arm into gunbc.host_effect — a load-bearing type with six match sites and no exhaustiveness checking in the seed, so a variant nothing can apply would fall through silently rather than refuse. The requirement rows, the resolution shape, the verdict and its probe classification are all live now and are what the ensure will consume; the apply arm lands when the materializer child unblocks it. srv2's components were brought into the desired state BY HAND on operator instruction in the meantime, and that hand action is exactly what this axis makes visible and counted rather than invisible."
 
-data toolchain_ensure_apply_scaffold: Disposition = Scaffold {
+data toolchain_ensure_apply_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_toolchain_ensure",
     decl_name: "host_toolchain_ensure_effect",
     field: WholeDeclaration,
@@ -152,9 +152,9 @@ type ComponentSpawnReachability
   | NotReachableOnSpawnPath { inherited_path: std.types.NonEmptyStr }
 
 fn gate_finds_component_verdict(
-  completeness: ObservationVerdict,
+  completeness: std.upsert_decision.ObservationVerdict,
   reachability: ComponentSpawnReachability?,
-) -> ObservationVerdict {
+) -> std.upsert_decision.ObservationVerdict {
   match reachability {
     Absent => UnknownRefused
     Present { value: r } =>
@@ -165,11 +165,11 @@ fn gate_finds_component_verdict(
   }
 }
 
-fn host_toolchain_spawn_reachability(host: HostIdentity) -> ComponentSpawnReachability? {
+fn host_toolchain_spawn_reachability(host: product.placement_supply.HostIdentity) -> ComponentSpawnReachability? {
   none
 }
 
-fn host_gate_finds_component_verdict(host: HostIdentity) -> ObservationVerdict {
+fn host_gate_finds_component_verdict(host: product.placement_supply.HostIdentity) -> std.upsert_decision.ObservationVerdict {
   gate_finds_component_verdict(
     completeness: host_toolchain_completeness_verdict(host: host),
     reachability: host_toolchain_spawn_reachability(host: host),

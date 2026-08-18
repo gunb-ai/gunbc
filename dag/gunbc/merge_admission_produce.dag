@@ -12,7 +12,7 @@ data wire_exact_arity_note: String = "BOTH v2 parsers require an EXACT line coun
 data gate_roster_hash_wire_note: String = "Gate roster hash wire is the serialized fnv1a64 structural fingerprint (16 lowercase hex digits — atom_identity_hash / hash_combine wire form). parse_gate_roster_hash_wire routes through std.content_hash.fnv1a64_structural_hex_digest (exact length plus lowercase-hex syntax) before branding as GateRosterHash; blank, malformed, or wrong-length receipt lines refuse the whole receipt (review 45474). An earlier cut cast arbitrary text to NonEmptyStr via structural_content_hash unchecked."
 data receipt_wire_v2_note: String = "Wire v2 is SELF-IDENTIFYING: line 1 is the schema tag, so a v1 wire (positional, no tag) read by the v2 parser refuses on the tag line instead of mis-binding fields by position — and a v2 wire read by the v1 parser mis-parses into a conclusion-line mismatch, also a refusal. Lines: schema, attempt_id, tested_base_tree_hash, gate_roster_hash, conclusion, tested_head_sha, then the optional pr number. The v1 wire, path, and type stay until the entry migration completes and the old consumers delete with the emitter web (add-replacement, never in-place mutation of a live format)."
 
-fn render_receipt_wire_v2(receipt: MergeAdmissionReceiptV2) -> String {
+fn render_receipt_wire_v2(receipt: gunbc.merge_admission.MergeAdmissionReceiptV2) -> String {
   let core = concat(
     concat(
       concat(concat(merge_admission_receipt_schema_v2, "
@@ -50,7 +50,7 @@ fn receipt_wire_v2_pr_number(lines: List<String>) -> ReceiptWirePrNumber {
   }
 }
 
-fn parse_receipt_wire_v2(text: String) -> MergeAdmissionReceiptV2? {
+fn parse_receipt_wire_v2(text: String) -> gunbc.merge_admission.MergeAdmissionReceiptV2? {
   let lines = receipt_wire_lines(text: text)
   if !((length(lines) == 6) || (length(lines) == 7)) {
     none
@@ -77,7 +77,7 @@ fn parse_receipt_wire_v2(text: String) -> MergeAdmissionReceiptV2? {
                       WirePrMalformed => none
                       WirePrAbsent =>
                         Present {
-                          value: MergeAdmissionReceiptV2 {
+                          value: gunbc.merge_admission.MergeAdmissionReceiptV2 {
                             attempt_id: attempt,
                             pr_number: none,
                             tested_head_sha: lines.skip(n: 5).first(),
@@ -88,7 +88,7 @@ fn parse_receipt_wire_v2(text: String) -> MergeAdmissionReceiptV2? {
                         }
                       WirePrPresent { value: n } =>
                         Present {
-                          value: MergeAdmissionReceiptV2 {
+                          value: gunbc.merge_admission.MergeAdmissionReceiptV2 {
                             attempt_id: attempt,
                             pr_number: Present { value: n },
                             tested_head_sha: lines.skip(n: 5).first(),
@@ -113,7 +113,7 @@ fn shell_stdout_line(raw: String) -> String {
   trim(raw)
 }
 
-fn parse_gate_roster_hash_wire(line: String) -> GateRosterHash? {
+fn parse_gate_roster_hash_wire(line: String) -> gunbc.merge_admission.GateRosterHash? {
   match fnv1a64_structural_hex_digest(hex: shell_stdout_line(raw: line)) {
     Present { value: structural } =>
       Present { value: gate_roster_hash_from_structural(structural: structural) }
@@ -121,7 +121,7 @@ fn parse_gate_roster_hash_wire(line: String) -> GateRosterHash? {
   }
 }
 
-fn render_gate_roster_hash_wire(hash: GateRosterHash) -> String {
+fn render_gate_roster_hash_wire(hash: gunbc.merge_admission.GateRosterHash) -> String {
   serialize_content_hash(hash: as_content_hash_structural(structural: hash)) as String
 }
 
@@ -138,7 +138,7 @@ fn merge_target_tree_hash_show_tree_refusal_cause(stderr: String) -> String {
   }
 }
 
-fn observe_merge_target_tree_hash(ref: GitRef) -> MergeTargetTreeHashObservation {
+fn observe_merge_target_tree_hash(ref: std.types.GitRef) -> MergeTargetTreeHashObservation {
   let result = git.Inspect.ShowTree(ref: ref)
   if !result.success {
     MergeTargetTreeHashRefused {
@@ -173,7 +173,7 @@ fn merge_target_tree_hash_refusal_reason(prefix: String, ref: String, cause: Str
   )
 }
 
-fn render_receipt_wire_with_pr_line(receipt: MergeAdmissionReceipt, pr_line: String) -> String {
+fn render_receipt_wire_with_pr_line(receipt: gunbc.merge_admission.MergeAdmissionReceipt, pr_line: String) -> String {
   concat(
     concat(
       concat(
@@ -186,7 +186,7 @@ fn render_receipt_wire_with_pr_line(receipt: MergeAdmissionReceipt, pr_line: Str
   )
 }
 
-fn render_receipt_wire(receipt: MergeAdmissionReceipt) -> String {
+fn render_receipt_wire(receipt: gunbc.merge_admission.MergeAdmissionReceipt) -> String {
   let core = concat(
     concat(
       concat(
@@ -211,7 +211,7 @@ fn wire_pr_number_from_lines(lines: List<String>) -> Int? {
   }
 }
 
-fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
+fn parse_receipt_wire(text: String) -> gunbc.merge_admission.MergeAdmissionReceipt? {
   let lines = receipt_wire_lines(text: text)
   if length(lines) < 4 {
     none
@@ -224,7 +224,7 @@ fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
               Absent => none
               Present { value: gate_roster_hash } =>
                 Present {
-                  value: MergeAdmissionReceipt {
+                  value: gunbc.merge_admission.MergeAdmissionReceipt {
                     pr_number: wire_pr_number_from_lines(lines: lines),
                     head_sha: lines.skip(n: 3).first(),
                     base_tree_hash: base_tree_hash,
@@ -244,16 +244,16 @@ fn ci_repo_root_shell() -> String {
   git_toplevel_shell_subexpr_with_fallback()
 }
 
-fn floor_exit_to_check_conclusion(exit_code: Int) -> CheckConclusion {
+fn floor_exit_to_check_conclusion(exit_code: Int) -> extdeps.github.checks.CheckConclusion {
   if exit_code == 0 { Success } else { Failure }
 }
 
 fn stamp_floor_receipt(
   pr_number: Int?,
-  head_sha: CommitSha,
-  base_tree_hash: GitObjectId,
+  head_sha: std.types.CommitSha,
+  base_tree_hash: extdeps.git.object_store.GitObjectId,
   floor_exit_code: Int,
-) -> MergeAdmissionReceipt {
+) -> gunbc.merge_admission.MergeAdmissionReceipt {
   stamp_floor_receipt_with_conclusion(
     pr_number: pr_number,
     head_sha: head_sha,
@@ -264,10 +264,10 @@ fn stamp_floor_receipt(
 
 fn stamp_floor_receipt_with_conclusion(
   pr_number: Int?,
-  head_sha: CommitSha,
-  base_tree_hash: GitObjectId,
-  conclusion: CheckConclusion,
-) -> MergeAdmissionReceipt {
+  head_sha: std.types.CommitSha,
+  base_tree_hash: extdeps.git.object_store.GitObjectId,
+  conclusion: extdeps.github.checks.CheckConclusion,
+) -> gunbc.merge_admission.MergeAdmissionReceipt {
   mint_merge_admission_receipt(
     pr_number: pr_number,
     head_sha: head_sha,

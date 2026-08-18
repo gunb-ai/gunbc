@@ -123,7 +123,7 @@ type GoStringPrimitiveFacts {
 
 data go_source_text: String = "func add(x int, y int) int { return x + y }"
 
-fn go_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn go_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^go_token_kw_func },
     BoundToken { token_class: ^go_token_ident, binding: ^go_binding_fn_add },
@@ -301,16 +301,16 @@ data go_string_facts_catalog: List<GoStringPrimitiveFacts> = [
 
 data go_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
-fn go_inhabitant_atom(id: Symbol) -> Node {
-  Node {
+fn go_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn go_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn go_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
 fn go_int_kind_node(kind: GoIntKind) -> Node {
@@ -371,7 +371,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
       width,
       encoding,
       std_projection
-    } => Node {
+    } => v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
         go_named_edge(
@@ -408,7 +408,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
       width,
       encoding,
       std_projection
-    } => Node {
+    } => v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
         go_named_edge(
@@ -444,7 +444,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
 }
 
 fn go_float_facts_node(facts: GoFloatPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(
@@ -469,7 +469,7 @@ fn go_float_facts_node(facts: GoFloatPrimitiveFacts) -> Node {
 }
 
 fn go_complex_facts_node(facts: GoComplexPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(
@@ -494,7 +494,7 @@ fn go_complex_facts_node(facts: GoComplexPrimitiveFacts) -> Node {
 }
 
 fn go_bool_facts_node(facts: GoBoolPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(
@@ -515,7 +515,7 @@ fn go_bool_facts_node(facts: GoBoolPrimitiveFacts) -> Node {
 }
 
 fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(
@@ -535,7 +535,7 @@ fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
 }
 }
 
-fn go_empty_primitive_spec_facts() -> Map<Symbol, Node> {
+fn go_empty_primitive_spec_facts() -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
       v2.std.optional.Absent
@@ -544,11 +544,11 @@ fn go_empty_primitive_spec_facts() -> Map<Symbol, Node> {
 }
 
 fn go_primitive_fact_map_2(
-  axis0: Symbol,
+  axis0: v2.std.node.Symbol,
   fact0: Node,
-  axis1: Symbol,
+  axis1: v2.std.node.Symbol,
   fact1: Node
-) -> Map<Symbol, Node> {
+) -> Map<v2.std.node.Symbol, Node> {
   map_insert(
     map_insert(go_empty_primitive_spec_facts(), axis0, fact0),
     axis1,
@@ -557,13 +557,13 @@ fn go_primitive_fact_map_2(
 }
 
 fn go_primitive_fact_map_3(
-  axis0: Symbol,
+  axis0: v2.std.node.Symbol,
   fact0: Node,
-  axis1: Symbol,
+  axis1: v2.std.node.Symbol,
   fact1: Node,
-  axis2: Symbol,
+  axis2: v2.std.node.Symbol,
   fact2: Node
-) -> Map<Symbol, Node> {
+) -> Map<v2.std.node.Symbol, Node> {
   map_insert(
     map_insert(
       map_insert(go_empty_primitive_spec_facts(), axis0, fact0),
@@ -576,17 +576,17 @@ fn go_primitive_fact_map_3(
 }
 
 fn go_primitive_fact_map_5(
-  axis0: Symbol,
+  axis0: v2.std.node.Symbol,
   fact0: Node,
-  axis1: Symbol,
+  axis1: v2.std.node.Symbol,
   fact1: Node,
-  axis2: Symbol,
+  axis2: v2.std.node.Symbol,
   fact2: Node,
-  axis3: Symbol,
+  axis3: v2.std.node.Symbol,
   fact3: Node,
-  axis4: Symbol,
+  axis4: v2.std.node.Symbol,
   fact4: Node
-) -> Map<Symbol, Node> {
+) -> Map<v2.std.node.Symbol, Node> {
   map_insert(
     map_insert(
       map_insert(
@@ -606,14 +606,14 @@ fn go_primitive_fact_map_5(
   )
 }
 
-fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> PrimitiveFactBundle {
+fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
   match facts {
     GoSignedIntegerPrimitiveFacts {
       surface_spelling,
       width,
       encoding,
       std_projection: _
-    } => PrimitiveFactBundle {
+    } => v2.std.model_core.PrimitiveFactBundle {
       substrate_carrier: go_integer_facts_node(facts: facts),
       spec_facts: go_primitive_fact_map_5(
         axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
@@ -635,7 +635,7 @@ fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> Pri
       width,
       encoding,
       std_projection: _
-    } => PrimitiveFactBundle {
+    } => v2.std.model_core.PrimitiveFactBundle {
       substrate_carrier: go_integer_facts_node(facts: facts),
       spec_facts: go_primitive_fact_map_5(
         axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
@@ -655,8 +655,8 @@ fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> Pri
   }
 }
 
-fn go_primitive_bundle_from_float_facts(facts: GoFloatPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+fn go_primitive_bundle_from_float_facts(facts: GoFloatPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: go_float_facts_node(facts: facts),
     spec_facts: go_primitive_fact_map_3(
       axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
@@ -669,8 +669,8 @@ fn go_primitive_bundle_from_float_facts(facts: GoFloatPrimitiveFacts) -> Primiti
   }
 }
 
-fn go_primitive_bundle_from_complex_facts(facts: GoComplexPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+fn go_primitive_bundle_from_complex_facts(facts: GoComplexPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: go_complex_facts_node(facts: facts),
     spec_facts: go_primitive_fact_map_3(
       axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
@@ -683,8 +683,8 @@ fn go_primitive_bundle_from_complex_facts(facts: GoComplexPrimitiveFacts) -> Pri
   }
 }
 
-fn go_primitive_bundle_from_bool_facts(facts: GoBoolPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+fn go_primitive_bundle_from_bool_facts(facts: GoBoolPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: go_bool_facts_node(facts: facts),
     spec_facts: go_primitive_fact_map_2(
       axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
@@ -695,8 +695,8 @@ fn go_primitive_bundle_from_bool_facts(facts: GoBoolPrimitiveFacts) -> Primitive
   }
 }
 
-fn go_primitive_bundle_from_string_facts(facts: GoStringPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+fn go_primitive_bundle_from_string_facts(facts: GoStringPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: go_string_facts_node(facts: facts),
     spec_facts: go_primitive_fact_map_2(
       axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
@@ -707,7 +707,7 @@ fn go_primitive_bundle_from_string_facts(facts: GoStringPrimitiveFacts) -> Primi
   }
 }
 
-fn go_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+fn go_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: go_integer_facts_catalog,
     empty: Empty,
@@ -720,7 +720,7 @@ fn go_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn go_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+fn go_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: go_float_facts_catalog,
     empty: Empty,
@@ -733,7 +733,7 @@ fn go_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn go_primitive_bundles_from_complex_catalog() -> List<PrimitiveFactBundle> {
+fn go_primitive_bundles_from_complex_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: go_complex_facts_catalog,
     empty: Empty,
@@ -746,7 +746,7 @@ fn go_primitive_bundles_from_complex_catalog() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn go_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
+fn go_primitive_bundles_from_bool_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: go_bool_facts_catalog,
     empty: Empty,
@@ -759,7 +759,7 @@ fn go_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn go_primitive_bundles_from_string_catalog() -> List<PrimitiveFactBundle> {
+fn go_primitive_bundles_from_string_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: go_string_facts_catalog,
     empty: Empty,
@@ -772,7 +772,7 @@ fn go_primitive_bundles_from_string_catalog() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn go_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn go_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: list_append(
@@ -790,9 +790,9 @@ fn go_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
 
 fn go_per_language_fact_bundle_key(
   subject: Node,
-  axis: ModelCorePrimitiveFactAxis
-) -> PerLanguageFactBundleKey {
-  PerLanguageFactBundleKey {
+  axis: v2.std.model_core.ModelCorePrimitiveFactAxis
+) -> v2.std.grounding.PerLanguageFactBundleKey {
+  v2.std.grounding.PerLanguageFactBundleKey {
     subject_carrier: subject,
     target: go_target_model(),
     fact_axis: axis
@@ -801,10 +801,10 @@ fn go_per_language_fact_bundle_key(
 
 fn go_per_language_fact_bundle_entry(
   subject: Node,
-  axis: ModelCorePrimitiveFactAxis,
+  axis: v2.std.model_core.ModelCorePrimitiveFactAxis,
   fact_value: Node
-) -> PerLanguageFactBundleEntry {
-  PerLanguageFactBundleEntry {
+) -> v2.std.grounding.PerLanguageFactBundleEntry {
+  v2.std.grounding.PerLanguageFactBundleEntry {
     key: go_per_language_fact_bundle_key(subject: subject, axis: axis),
     fact_value: fact_value
   }
@@ -812,7 +812,7 @@ fn go_per_language_fact_bundle_entry(
 
 fn go_integer_per_language_fact_bundle_entries(
   facts: GoIntegerPrimitiveFacts
-) -> List<PerLanguageFactBundleEntry> {
+) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   match facts {
     GoSignedIntegerPrimitiveFacts {
       surface_spelling,
@@ -887,7 +887,7 @@ fn go_integer_per_language_fact_bundle_entries(
 
 fn go_float_per_language_fact_bundle_entries(
   facts: GoFloatPrimitiveFacts
-) -> List<PerLanguageFactBundleEntry> {
+) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   [
     go_per_language_fact_bundle_entry(
       subject: go_float_facts_node(facts: facts),
@@ -909,7 +909,7 @@ fn go_float_per_language_fact_bundle_entries(
 
 fn go_complex_per_language_fact_bundle_entries(
   facts: GoComplexPrimitiveFacts
-) -> List<PerLanguageFactBundleEntry> {
+) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   [
     go_per_language_fact_bundle_entry(
       subject: go_complex_facts_node(facts: facts),
@@ -931,7 +931,7 @@ fn go_complex_per_language_fact_bundle_entries(
 
 fn go_bool_per_language_fact_bundle_entries(
   facts: GoBoolPrimitiveFacts
-) -> List<PerLanguageFactBundleEntry> {
+) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   [
     go_per_language_fact_bundle_entry(
       subject: go_bool_facts_node(facts: facts),
@@ -948,7 +948,7 @@ fn go_bool_per_language_fact_bundle_entries(
 
 fn go_string_per_language_fact_bundle_entries(
   facts: GoStringPrimitiveFacts
-) -> List<PerLanguageFactBundleEntry> {
+) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   [
     go_per_language_fact_bundle_entry(
       subject: go_string_facts_node(facts: facts),
@@ -963,7 +963,7 @@ fn go_string_per_language_fact_bundle_entries(
   ]
 }
 
-fn go_per_language_fact_bundle_entries_from_integer_catalog() -> List<PerLanguageFactBundleEntry> {
+fn go_per_language_fact_bundle_entries_from_integer_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: go_integer_facts_catalog,
     empty: Empty,
@@ -976,7 +976,7 @@ fn go_per_language_fact_bundle_entries_from_integer_catalog() -> List<PerLanguag
   )
 }
 
-fn go_per_language_fact_bundle_entries_from_float_catalog() -> List<PerLanguageFactBundleEntry> {
+fn go_per_language_fact_bundle_entries_from_float_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: go_float_facts_catalog,
     empty: Empty,
@@ -989,7 +989,7 @@ fn go_per_language_fact_bundle_entries_from_float_catalog() -> List<PerLanguageF
   )
 }
 
-fn go_per_language_fact_bundle_entries_from_complex_catalog() -> List<PerLanguageFactBundleEntry> {
+fn go_per_language_fact_bundle_entries_from_complex_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: go_complex_facts_catalog,
     empty: Empty,
@@ -1002,7 +1002,7 @@ fn go_per_language_fact_bundle_entries_from_complex_catalog() -> List<PerLanguag
   )
 }
 
-fn go_per_language_fact_bundle_entries_from_bool_catalog() -> List<PerLanguageFactBundleEntry> {
+fn go_per_language_fact_bundle_entries_from_bool_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: go_bool_facts_catalog,
     empty: Empty,
@@ -1015,7 +1015,7 @@ fn go_per_language_fact_bundle_entries_from_bool_catalog() -> List<PerLanguageFa
   )
 }
 
-fn go_per_language_fact_bundle_entries_from_string_catalog() -> List<PerLanguageFactBundleEntry> {
+fn go_per_language_fact_bundle_entries_from_string_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: go_string_facts_catalog,
     empty: Empty,
@@ -1028,7 +1028,7 @@ fn go_per_language_fact_bundle_entries_from_string_catalog() -> List<PerLanguage
   )
 }
 
-fn go_g1_3_per_language_fact_bundle_entry_rows() -> List<PerLanguageFactBundleEntry> {
+fn go_g1_3_per_language_fact_bundle_entry_rows() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   list_append(
     left: list_append(
       left: list_append(
@@ -1045,9 +1045,9 @@ fn go_g1_3_per_language_fact_bundle_entry_rows() -> List<PerLanguageFactBundleEn
 }
 
 fn go_g1_3_per_language_fact_bundle_registry_step(
-  acc: Outcome<PerLanguageFactBundleRegistry>,
-  entry: PerLanguageFactBundleEntry
-) -> Outcome<PerLanguageFactBundleRegistry> {
+  acc: Outcome<v2.std.grounding.PerLanguageFactBundleRegistry>,
+  entry: v2.std.grounding.PerLanguageFactBundleEntry
+) -> Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
   bind_outcome(o: acc, f: fn(registry) {
     insert_per_language_fact_bundle_entry(
       registry: registry,
@@ -1057,7 +1057,7 @@ fn go_g1_3_per_language_fact_bundle_registry_step(
   })
 }
 
-fn go_g1_3_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
+fn go_g1_3_per_language_fact_bundle_registry() -> Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
   fold_list(
     xs: go_g1_3_per_language_fact_bundle_entry_rows(),
     empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),
@@ -1072,7 +1072,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
       width,
       encoding,
       std_projection
-    } => Node {
+    } => v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
         go_named_edge(
@@ -1109,7 +1109,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
       width,
       encoding,
       std_projection
-    } => Node {
+    } => v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
         go_named_edge(
@@ -1145,7 +1145,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
 }
 
 fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(
@@ -1166,7 +1166,7 @@ fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
 }
 
 fn go_bool_algebra_witness_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(
@@ -1183,7 +1183,7 @@ fn go_bool_algebra_witness_node() -> Node {
 }
 
 fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(
@@ -1207,9 +1207,9 @@ fn go_string_element_node() -> Node {
   go_integer_facts_node(facts: go_facts_uint8)
 }
 
-fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = go_integer_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: commutative_ring_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: go_integer_algebra_witness_node(facts: facts)
@@ -1217,32 +1217,32 @@ fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInha
 }
 
 data go_atom_realization_symbol_node: Node = go_inhabitant_atom(id: ^go_atom_realization_symbol)
-data go_integer_algebra_inhabitance_go_facts_int: AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int)
-data go_integer_algebra_inhabitance_go_facts_int64: AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int64)
+data go_integer_algebra_inhabitance_go_facts_int: v2.std.model_core.AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int)
+data go_integer_algebra_inhabitance_go_facts_int64: v2.std.model_core.AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int64)
 
 fn go_leaf_model_fact_id_node_atom_realization_symbol() -> Node {
   go_atom_realization_symbol_node
 }
 
-fn go_float_algebra_inhabitance(facts: GoFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn go_float_algebra_inhabitance(facts: GoFloatPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = go_float_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: approximate_field_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: go_float_algebra_witness_node(facts: facts)
   }
 }
 
-fn go_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+fn go_bool_algebra_inhabitance() -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = go_bool_facts_node(facts: go_facts_bool)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: boolean_algebra_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: go_bool_algebra_witness_node()
   }
 }
 
-fn go_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn go_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: go_integer_facts_catalog,
     empty: Empty,
@@ -1252,7 +1252,7 @@ fn go_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn go_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn go_float_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: go_float_facts_catalog,
     empty: Empty,
@@ -1262,16 +1262,16 @@ fn go_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn go_string_algebra_inhabitance(facts: GoStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn go_string_algebra_inhabitance(facts: GoStringPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = go_string_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
+  v2.std.model_core.AlgebraInhabitanceDecl {
     algebra: free_monoid_node(inhabitant: go_string_element_node()),
     inhabitant: inhabitant,
     witness: go_string_algebra_witness_node(facts: facts)
   }
 }
 
-fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn go_string_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: go_string_facts_catalog,
     empty: Empty,
@@ -1281,17 +1281,17 @@ fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn go_complex_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn go_complex_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   []
 }
 
-fn go_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn go_bool_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   [
     go_bool_algebra_inhabitance()
   ]
 }
 
-fn go_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn go_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   list_append(
     left: list_append(
       left: list_append(
@@ -1307,18 +1307,18 @@ fn go_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn go_model_core() -> ModelCore {
-  ModelCore {
+fn go_model_core() -> v2.std.model_core.ModelCore {
+  v2.std.model_core.ModelCore {
     primitives: go_primitive_fact_bundles(),
     inhabitance: go_model_core_inhabitance_decls(),
     laws: [],
-    effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+    effects: v2.std.model_core.EffectSemanticsDecl { operations: [] },
+    partiality: v2.std.model_core.PartialitySemanticsDecl { operations: [] }
   }
 }
 
 fn go_int_inhabitant_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
@@ -1329,13 +1329,13 @@ fn go_int_inhabitant_node() -> Node {
 }
 
 fn go_int_additive_numeric_inhabitant_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [
             go_named_edge(
@@ -1374,13 +1374,13 @@ fn go_int_additive_numeric_inhabitant_node() -> Node {
 }
 
 fn go_int64_additive_numeric_inhabitant_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [
             go_named_edge(
@@ -1419,30 +1419,30 @@ fn go_int64_additive_numeric_inhabitant_node() -> Node {
 }
 
 fn go_int64_falsifier_emitted_add_fn_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
-      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
-      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
+      v2.std.node.Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
+      v2.std.node.Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
+      v2.std.node.Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
 fn go_declared_inhabitants_root() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node()),
-      Edge { label: Positional, target: go_int_additive_numeric_inhabitant_node() },
-      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
+      v2.std.node.Edge { label: Positional, target: go_int_additive_numeric_inhabitant_node() },
+      v2.std.node.Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn go_int_zip_fold_closure_edges() -> List<Edge> {
+fn go_int_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   [
     go_named_edge(
       name: ^go_inhabitant_field_add_fn,
@@ -1483,7 +1483,7 @@ fn go_int_zip_fold_closure_edges() -> List<Edge> {
   ]
 }
 
-fn go_coercion_candidate_edges() -> List<Edge> {
+fn go_coercion_candidate_edges() -> List<v2.std.node.Edge> {
   list_append(
     left: go_declared_inhabitants_root().children,
     right: go_int_zip_fold_closure_edges()
@@ -1491,7 +1491,7 @@ fn go_coercion_candidate_edges() -> List<Edge> {
 }
 
 fn go_add_declared_inhabitants_root() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: go_coercion_candidate_edges(),
     occurrence_id: SyntheticOccurrence
@@ -1503,7 +1503,7 @@ fn go_selection_policy_node() -> Node {
 }
 
 fn go_int64_selection_policy_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
@@ -1517,24 +1517,24 @@ fn go_int64_selection_policy_node() -> Node {
 }
 
 fn go_emitted_add_fn_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
       go_named_edge(name: ^go_surface_fn_item, target: go_inhabitant_atom(id: ^go_surface_fn_item)),
-      Edge { label: Positional, target: go_int_inhabitant_node() },
-      Edge { label: Positional, target: go_int_inhabitant_node() },
-      Edge { label: Positional, target: go_int_inhabitant_node() }
+      v2.std.node.Edge { label: Positional, target: go_int_inhabitant_node() },
+      v2.std.node.Edge { label: Positional, target: go_int_inhabitant_node() },
+      v2.std.node.Edge { label: Positional, target: go_int_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn go_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+fn go_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> Node {
 
   concrete_syntax_token_to_node(token: token)
 }
 
-fn go_serialize_source_children() -> List<Edge> {
+fn go_serialize_source_children() -> List<v2.std.node.Edge> {
   list_append(
     left: [
       go_named_edge(name: ^serialize_source_field_source_text, target: go_inhabitant_atom(id: ^go_source_literal)),
@@ -1553,16 +1553,16 @@ fn go_serialize_source_children() -> List<Edge> {
 }
 
 fn go_serialize_source_node() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: go_serialize_source_children(),
+  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: go_serialize_source_children(),
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+fn go_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-fn go_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+fn go_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,
@@ -1572,14 +1572,14 @@ fn go_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGr
   )
 }
 
-fn go_formal_production_fn_add() -> FormalProduction {
-  FormalProduction {
-    lhs: FormalNonterminal { identity: ^go_production_fn_add },
+fn go_formal_production_fn_add() -> v2.std.grammar.FormalProduction {
+  v2.std.grammar.FormalProduction {
+    lhs: v2.std.grammar.FormalNonterminal { identity: ^go_production_fn_add },
     rhs: go_formal_rhs_from_tokens(tokens: go_concrete_tokens())
   }
 }
 
-fn go_formal_productions() -> List<FormalProduction> {
+fn go_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   [go_formal_production_fn_add()]
 }
 
@@ -1587,7 +1587,7 @@ type GoGramBuild1State
   = GoGramBuild1StateInit
   | GoGramBuild1StateReady { expr: v2.std.grammar.GrammarExpr }
 
-fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
+fn go_grammar_sequence_from_token_classes() -> v2.std.grammar.GrammarExpr {
   match fold_list(
     xs: go_concrete_tokens(),
     empty: GoGramBuild1StateInit,
@@ -1613,12 +1613,12 @@ fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
   }
 }
 
-fn go_grammar_atom(id: Symbol) -> Node {
+fn go_grammar_atom(id: v2.std.node.Symbol) -> Node {
   go_inhabitant_atom(id: id)
 }
 
-fn go_grammar_production_fn_add() -> GrammarProduction {
-  GrammarProduction {
+fn go_grammar_production_fn_add() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^go_production_fn_add,
     expression: go_grammar_sequence_from_token_classes(),
     emitted: go_emitted_add_fn_node()
@@ -1633,7 +1633,7 @@ fn go_grammar_relation_row() -> GoGrammarRelationRow {
 }
 
 fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
@@ -1651,7 +1651,7 @@ fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
 }
 
 fn go_translation_rules_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^go_relation_rule_fn_add, target: go_grammar_relation_row_node(row: go_grammar_relation_row()))
@@ -1660,7 +1660,7 @@ fn go_translation_rules_node() -> Node {
 }
 }
 
-fn go_binding_spellings() -> Map<Symbol, String> {
+fn go_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(
       map_insert(
@@ -1685,24 +1685,24 @@ fn go_binding_spellings() -> Map<Symbol, String> {
 }
 
 fn go_emit_host_runtime_primitive_type_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^go_emit_host_runtime_primitive_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn go_host_transport_descriptor() -> HostTransportDescriptor {
-  HostTransportDescriptor {
+fn go_host_transport_descriptor() -> v2.std.host_transport.HostTransportDescriptor {
+  v2.std.host_transport.HostTransportDescriptor {
     identity: ^go_host_transport_identity,
     workspace: [
-      WorkspaceFile {
+      v2.std.host_transport.WorkspaceFile {
         path: "main.go",
         content: EmittedSource
       }
     ],
     build: Empty,
-    run: ProcessInvocation {
+    run: v2.std.host_transport.ProcessInvocation {
       program: HostToolProgram { executable: "go" },
       args: [
         LiteralArg { text: "run" },
@@ -1713,9 +1713,9 @@ fn go_host_transport_descriptor() -> HostTransportDescriptor {
   }
 }
 
-fn go_runtime_row() -> TargetEmitHostRuntimeRow {
+fn go_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
-    row: EmitHostRuntimeRow {
+    row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: go_host_transport_descriptor(),
       runtime_primitive_type: go_emit_host_runtime_primitive_type_node()
     }
@@ -1723,7 +1723,7 @@ fn go_runtime_row() -> TargetEmitHostRuntimeRow {
 }
 
 fn go_target_model_bundle_core() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^target_model_edge_selection_policy, target: go_selection_policy_node()),
@@ -1735,8 +1735,8 @@ fn go_target_model_bundle_core() -> Node {
 }
 }
 
-fn go_target_model_staging() -> TargetModel {
-  TargetModel {
+fn go_target_model_staging() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: go_target_model_bundle_core(),
     lex: go_lex(),
@@ -1747,17 +1747,17 @@ fn go_target_model_staging() -> TargetModel {
   }
 }
 
-fn go_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
+fn go_target_atom_type_form(spelling: v2.std.node.Symbol) -> v2.std.compilers.target_model.TargetTypeExpression {
   target_atom_alias_type_expression(
     spelling: spelling,
-    atom_form: TargetAtomTypeShape {
+    atom_form: v2.std.compilers.target_model.TargetAtomTypeShape {
       surface: ^go_surface_type_atom,
       ident_token: ^go_token_ident
     }
   )
 }
 
-data go_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealization {
+data go_target_atom_realization_symbol: v2.std.compilers.target_model.TargetAtomRealization = v2.std.compilers.target_model.TargetAtomRealization {
   source_carrier: symbol_kernel_type_node(),
   target_model: go_target_model_staging(),
   type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_string),
@@ -1766,7 +1766,7 @@ data go_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealiz
   display_name: ^symbol_kernel_type_atom
 }
 
-data go_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealization {
+data go_target_atom_realization_bool: v2.std.compilers.target_model.TargetAtomRealization = v2.std.compilers.target_model.TargetAtomRealization {
   source_carrier: bool_node(),
   target_model: go_target_model_staging(),
   type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_bool),
@@ -1775,7 +1775,7 @@ data go_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealizat
   display_name: ^bool_node_symbol
 }
 
-data go_target_atom_realization_char: TargetAtomRealization = TargetAtomRealization {
+data go_target_atom_realization_char: v2.std.compilers.target_model.TargetAtomRealization = v2.std.compilers.target_model.TargetAtomRealization {
   source_carrier: char_kernel_type_node(),
   target_model: go_target_model_staging(),
   type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_rune),
@@ -1784,14 +1784,14 @@ data go_target_atom_realization_char: TargetAtomRealization = TargetAtomRealizat
   display_name: ^char_kernel_type_atom
 }
 
-data go_target_atom_realization_catalog: List<TargetAtomRealization> = [
+data go_target_atom_realization_catalog: List<v2.std.compilers.target_model.TargetAtomRealization> = [
   go_target_atom_realization_symbol,
   go_target_atom_realization_bool,
   go_target_atom_realization_char
 ]
 
 fn go_target_model_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^target_model_edge_selection_policy, target: go_selection_policy_node()),
@@ -1810,8 +1810,8 @@ fn go_target_model_node() -> Node {
 }
 }
 
-fn go_target_model() -> TargetModel {
-  TargetModel {
+fn go_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: go_target_model_node(),
     lex: go_lex(),
@@ -1823,7 +1823,7 @@ fn go_target_model() -> TargetModel {
 }
 
 fn go_target_model_node_with_selection_policy(selection: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^target_model_edge_selection_policy, target: selection),
@@ -1842,8 +1842,8 @@ fn go_target_model_node_with_selection_policy(selection: Node) -> Node {
   }
 }
 
-fn go_target_model_int64_selection_policy() -> TargetModel {
-  TargetModel {
+fn go_target_model_int64_selection_policy() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: go_target_model_node_with_selection_policy(
       selection: go_int64_selection_policy_node()
@@ -1856,38 +1856,38 @@ fn go_target_model_int64_selection_policy() -> TargetModel {
   }
 }
 
-fn go_lex_rule(token_class: Symbol, text: String) -> LexRule {
+fn go_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
   TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
-fn go_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
+fn go_keyword_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
   TokenRule { token_class: token_class, pattern: KeywordPattern { text: text } }
 }
 
-fn go_whitespace_trivia_rule() -> LexRule {
+fn go_whitespace_trivia_rule() -> v2.std.compilers.lexing.LexRule {
 
   TriviaRule {
     pattern: OneOrMorePattern { element: LiteralPattern { text: " " } }
   }
 }
 
-fn go_ident_lex_pattern() -> LexPattern {
+fn go_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
     right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
 
-fn go_ident_lex_rule() -> LexRule {
+fn go_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: ^go_token_ident,
     pattern: go_ident_lex_pattern()
   }
 }
 
-fn go_lex_rules() -> LexRuleSet {
+fn go_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 
-  LexRuleSet {
+  v2.std.compilers.lexing.LexRuleSet {
     rules: [
       go_whitespace_trivia_rule(),
       go_ident_lex_rule(),
@@ -1905,24 +1905,24 @@ fn go_lex_rules() -> LexRuleSet {
   }
 }
 
-fn go_lex() -> LexRules {
+fn go_lex() -> v2.std.compilers.lexing.LexRules {
   ModeledLexRules { root: go_lex_rules() }
 }
 
-fn go_grammar_root() -> GrammarRoot {
+fn go_grammar_root() -> v2.std.grammar.GrammarRoot {
   let start = go_grammar_production_fn_add()
-  GrammarRoot {
+  v2.std.grammar.GrammarRoot {
     start: ^go_production_fn_add,
     productions: [start],
     sync_tokens: grammar_empty_sync_tokens()
   }
 }
 
-fn go_grammar() -> ParseGrammar {
+fn go_grammar() -> v2.std.grammar.ParseGrammar {
   ModeledGrammar { root: go_grammar_root() }
 }
 
-fn go_lex_token_symbol(sym: Symbol) -> Bool {
+fn go_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
   lex_rule_set_token_class_member(
     rules: go_lex_rules(),
     token_class: sym
@@ -1930,7 +1930,7 @@ fn go_lex_token_symbol(sym: Symbol) -> Bool {
 }
 
 fn go_integer_catalog_surface_symbol_step(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   acc: Bool,
   facts: GoIntegerPrimitiveFacts
 ) -> Bool {
@@ -1951,7 +1951,7 @@ fn go_integer_catalog_surface_symbol_step(
 }
 
 fn go_float_catalog_surface_symbol_step(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   acc: Bool,
   facts: GoFloatPrimitiveFacts
 ) -> Bool {
@@ -1959,7 +1959,7 @@ fn go_float_catalog_surface_symbol_step(
 }
 
 fn go_complex_catalog_surface_symbol_step(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   acc: Bool,
   facts: GoComplexPrimitiveFacts
 ) -> Bool {
@@ -1967,7 +1967,7 @@ fn go_complex_catalog_surface_symbol_step(
 }
 
 fn go_bool_catalog_surface_symbol_step(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   acc: Bool,
   facts: GoBoolPrimitiveFacts
 ) -> Bool {
@@ -1975,14 +1975,14 @@ fn go_bool_catalog_surface_symbol_step(
 }
 
 fn go_string_catalog_surface_symbol_step(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   acc: Bool,
   facts: GoStringPrimitiveFacts
 ) -> Bool {
   acc || sym == facts.surface_spelling
 }
 
-fn go_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn go_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   fold_list(
     xs: go_integer_facts_catalog,
     empty: false,
@@ -1992,7 +1992,7 @@ fn go_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn go_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn go_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   fold_list(
     xs: go_float_facts_catalog,
     empty: false,
@@ -2002,7 +2002,7 @@ fn go_float_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn go_complex_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn go_complex_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   fold_list(
     xs: go_complex_facts_catalog,
     empty: false,
@@ -2012,7 +2012,7 @@ fn go_complex_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn go_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn go_bool_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   fold_list(
     xs: go_bool_facts_catalog,
     empty: false,
@@ -2022,7 +2022,7 @@ fn go_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn go_string_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn go_string_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   fold_list(
     xs: go_string_facts_catalog,
     empty: false,
@@ -2032,7 +2032,7 @@ fn go_string_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn go_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn go_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   go_integer_catalog_surface_symbol(sym: sym) ||
     go_float_catalog_surface_symbol(sym: sym) ||
     go_complex_catalog_surface_symbol(sym: sym) ||
@@ -2040,7 +2040,7 @@ fn go_catalog_surface_symbol(sym: Symbol) -> Bool {
     go_string_catalog_surface_symbol(sym: sym)
 }
 
-fn go_language_model_canonical_symbols() -> Set<Symbol> {
+fn go_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
   Set {
     member: fn(sym) {
       go_catalog_surface_symbol(sym: sym) ||
@@ -2052,8 +2052,8 @@ fn go_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn go_language_model() -> LanguageModel {
-  LanguageModel {
+fn go_language_model() -> v2.std.language_model.LanguageModel {
+  v2.std.language_model.LanguageModel {
     lex: go_lex(),
     grammar: go_grammar(),
     language_identity: ^go_language_model_surface_id,

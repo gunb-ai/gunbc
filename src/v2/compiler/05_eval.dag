@@ -24,8 +24,8 @@ fn inputs_root_only(root: Node) -> Inputs {
   }
 }
 
-fn symbol_atom_node(sym: Symbol) -> Node {
-  Node {
+fn symbol_atom_node(sym: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -35,7 +35,7 @@ fn symbol_atom_node(sym: Symbol) -> Node {
 fn inputs_for_emit_host(
   claim_input_root: Node,
   expected_eval_root: Node,
-  claim_pin: Symbol
+  claim_pin: v2.std.node.Symbol
 ) -> Inputs {
   Inputs {
     root: claim_input_root,
@@ -70,9 +70,9 @@ fn eval_context_effect_io(context: EvalContext) -> EffectIoEvalContext {
 }
 
 fn eval_context_with_semantics(
-  runtime_identity: Symbol,
-  interpretation: InterpretationAlgebra,
-  structure_witness: InterpretationStructureWitness
+  runtime_identity: v2.std.node.Symbol,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  structure_witness: v2.std.runtime.InterpretationStructureWitness
 ) -> EvalContext {
   EvalContext {
     cache_authority: InterpretationCacheAuthority {
@@ -90,11 +90,11 @@ fn eval_context_with_semantics(
 }
 
 fn eval_context_with_effect_io(
-  runtime_identity: Symbol,
-  interpretation: InterpretationAlgebra,
-  structure_witness: InterpretationStructureWitness,
-  backend: EffectIoResourceBackend,
-  store: EffectIoFixtureStore
+  runtime_identity: v2.std.node.Symbol,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  structure_witness: v2.std.runtime.InterpretationStructureWitness,
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
+  store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
 ) -> EvalContext {
   let handler_bundle = effect_io_pure_handler_binding(store: store)
   EvalContext {
@@ -113,7 +113,7 @@ fn eval_context_with_effect_io(
         backend: backend,
         store: store,
         handlers: handler_bundle.handlers,
-        receipt_log: EffectReceiptLog { entries: Empty }
+        receipt_log: v2.std.runtime.EffectReceiptLog { entries: Empty }
       }
     }
   }
@@ -127,7 +127,7 @@ fn eval_context_v4_evaluator() -> EvalContext {
   )
 }
 
-fn interpretation_structure_witness_slots_digest(w: InterpretationStructureWitness) -> Hash {
+fn interpretation_structure_witness_slots_digest(w: v2.std.runtime.InterpretationStructureWitness) -> v2.std.node.Hash {
   combine_hash(
     a: combine_hash(
       a: combine_hash(
@@ -147,16 +147,16 @@ fn interpretation_structure_witness_slots_digest(w: InterpretationStructureWitne
 }
 
 fn interpretation_structure_witness_digest(
-  runtime_identity: Symbol,
-  structure_witness: InterpretationStructureWitness
-) -> Hash {
+  runtime_identity: v2.std.node.Symbol,
+  structure_witness: v2.std.runtime.InterpretationStructureWitness
+) -> v2.std.node.Hash {
   combine_hash(
     a: test_claim_symbol_digest(sym: runtime_identity),
     b: interpretation_structure_witness_slots_digest(w: structure_witness)
   )
 }
 
-fn interpretation_value_interpreter_executed_digest(v: ValueInterpreter) -> Hash {
+fn interpretation_value_interpreter_executed_digest(v: v2.std.runtime.ValueInterpreter) -> v2.std.node.Hash {
   if v.allocate_literal == v2_eval_allocate_literal {
     test_claim_symbol_digest(sym: ^v2_eval_allocate_literal_sym)
   } else if v.allocate_literal == v2_eval_represent_literal {
@@ -166,7 +166,7 @@ fn interpretation_value_interpreter_executed_digest(v: ValueInterpreter) -> Hash
   }
 }
 
-fn interpretation_transform_interpreter_executed_digest(t: TransformInterpreter) -> Hash {
+fn interpretation_transform_interpreter_executed_digest(t: v2.std.runtime.TransformInterpreter) -> v2.std.node.Hash {
   if t.call_primitive == v2_eval_call_primitive {
     test_claim_symbol_digest(sym: ^v2_eval_call_primitive_sym)
   } else {
@@ -174,7 +174,7 @@ fn interpretation_transform_interpreter_executed_digest(t: TransformInterpreter)
   }
 }
 
-fn interpretation_branch_interpreter_executed_digest(b: BranchInterpreter) -> Hash {
+fn interpretation_branch_interpreter_executed_digest(b: v2.std.runtime.BranchInterpreter) -> v2.std.node.Hash {
   if b.choose_branch == v2_eval_choose_branch {
     test_claim_symbol_digest(sym: ^v2_eval_choose_branch_sym)
   } else {
@@ -182,7 +182,7 @@ fn interpretation_branch_interpreter_executed_digest(b: BranchInterpreter) -> Ha
   }
 }
 
-fn interpretation_loop_interpreter_executed_digest(l: LoopInterpreter) -> Hash {
+fn interpretation_loop_interpreter_executed_digest(l: v2.std.runtime.LoopInterpreter) -> v2.std.node.Hash {
   if l.step_loop == v2_eval_step_loop {
     test_claim_symbol_digest(sym: ^v2_eval_step_loop_sym)
   } else {
@@ -190,7 +190,7 @@ fn interpretation_loop_interpreter_executed_digest(l: LoopInterpreter) -> Hash {
   }
 }
 
-fn interpretation_bind_interpreter_executed_digest(b: BindInterpreter) -> Hash {
+fn interpretation_bind_interpreter_executed_digest(b: v2.std.runtime.BindInterpreter) -> v2.std.node.Hash {
   if b.bind_value == v2_eval_bind_value {
     test_claim_symbol_digest(sym: ^v2_eval_bind_value_sym)
   } else {
@@ -202,7 +202,7 @@ fn interpretation_bind_interpreter_executed_digest(b: BindInterpreter) -> Hash {
 // The registered v4 evaluator wires choose_arm to runtime_reject_match_arm (Match
 // eval is unimplemented, not absent), so that is the recognized identity here,
 // same as every other slot recognizing its registered production function.
-fn interpretation_match_interpreter_executed_digest(m: MatchInterpreter) -> Hash {
+fn interpretation_match_interpreter_executed_digest(m: v2.std.runtime.MatchInterpreter) -> v2.std.node.Hash {
   if m.choose_arm == runtime_reject_match_arm {
     test_claim_symbol_digest(sym: ^runtime_reject_match_arm)
   } else {
@@ -210,7 +210,7 @@ fn interpretation_match_interpreter_executed_digest(m: MatchInterpreter) -> Hash
   }
 }
 
-fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_sym: Symbol) -> Bool {
+fn interpretation_value_interpreter_slot_coherent(v: v2.std.runtime.ValueInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
   if v.allocate_literal == v2_eval_allocate_literal {
     test_claim_symbol_digest(sym: ^v2_eval_allocate_literal_sym) == test_claim_symbol_digest(sym: witness_sym)
   } else if v.allocate_literal == v2_eval_represent_literal {
@@ -220,7 +220,7 @@ fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_s
   }
 }
 
-fn interpretation_transform_interpreter_slot_coherent(t: TransformInterpreter, witness_sym: Symbol) -> Bool {
+fn interpretation_transform_interpreter_slot_coherent(t: v2.std.runtime.TransformInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
   if t.call_primitive == v2_eval_call_primitive {
     test_claim_symbol_digest(sym: ^v2_eval_call_primitive_sym) == test_claim_symbol_digest(sym: witness_sym)
   } else {
@@ -228,7 +228,7 @@ fn interpretation_transform_interpreter_slot_coherent(t: TransformInterpreter, w
   }
 }
 
-fn interpretation_branch_interpreter_slot_coherent(b: BranchInterpreter, witness_sym: Symbol) -> Bool {
+fn interpretation_branch_interpreter_slot_coherent(b: v2.std.runtime.BranchInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
   if b.choose_branch == v2_eval_choose_branch {
     test_claim_symbol_digest(sym: ^v2_eval_choose_branch_sym) == test_claim_symbol_digest(sym: witness_sym)
   } else {
@@ -236,7 +236,7 @@ fn interpretation_branch_interpreter_slot_coherent(b: BranchInterpreter, witness
   }
 }
 
-fn interpretation_loop_interpreter_slot_coherent(l: LoopInterpreter, witness_sym: Symbol) -> Bool {
+fn interpretation_loop_interpreter_slot_coherent(l: v2.std.runtime.LoopInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
   if l.step_loop == v2_eval_step_loop {
     test_claim_symbol_digest(sym: ^v2_eval_step_loop_sym) == test_claim_symbol_digest(sym: witness_sym)
   } else {
@@ -244,7 +244,7 @@ fn interpretation_loop_interpreter_slot_coherent(l: LoopInterpreter, witness_sym
   }
 }
 
-fn interpretation_bind_interpreter_slot_coherent(b: BindInterpreter, witness_sym: Symbol) -> Bool {
+fn interpretation_bind_interpreter_slot_coherent(b: v2.std.runtime.BindInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
   if b.bind_value == v2_eval_bind_value {
     test_claim_symbol_digest(sym: ^v2_eval_bind_value_sym) == test_claim_symbol_digest(sym: witness_sym)
   } else {
@@ -252,7 +252,7 @@ fn interpretation_bind_interpreter_slot_coherent(b: BindInterpreter, witness_sym
   }
 }
 
-fn interpretation_match_interpreter_slot_coherent(m: MatchInterpreter, witness_sym: Symbol) -> Bool {
+fn interpretation_match_interpreter_slot_coherent(m: v2.std.runtime.MatchInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
   if m.choose_arm == runtime_reject_match_arm {
     test_claim_symbol_digest(sym: ^runtime_reject_match_arm) == test_claim_symbol_digest(sym: witness_sym)
   } else {
@@ -261,8 +261,8 @@ fn interpretation_match_interpreter_slot_coherent(m: MatchInterpreter, witness_s
 }
 
 fn interpretation_structure_witness_coherent(
-  interpretation: InterpretationAlgebra,
-  structure_witness: InterpretationStructureWitness
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  structure_witness: v2.std.runtime.InterpretationStructureWitness
 ) -> Bool {
   interpretation_value_interpreter_slot_coherent(v: interpretation.value, witness_sym: structure_witness.allocate_literal)
     && interpretation_transform_interpreter_slot_coherent(t: interpretation.transform, witness_sym: structure_witness.call_primitive)
@@ -272,7 +272,7 @@ fn interpretation_structure_witness_coherent(
     && interpretation_match_interpreter_slot_coherent(m: interpretation.match, witness_sym: structure_witness.choose_arm)
 }
 
-fn interpretation_algebra_executed_slots_digest(interpretation: InterpretationAlgebra) -> Hash {
+fn interpretation_algebra_executed_slots_digest(interpretation: v2.std.runtime.InterpretationAlgebra) -> v2.std.node.Hash {
   combine_hash(
     a: combine_hash(
       a: combine_hash(
@@ -292,10 +292,10 @@ fn interpretation_algebra_executed_slots_digest(interpretation: InterpretationAl
 }
 
 fn interpretation_algebra_executed_structure_digest(
-  runtime_identity: Symbol,
-  interpretation: InterpretationAlgebra,
-  structure_witness: InterpretationStructureWitness
-) -> Hash {
+  runtime_identity: v2.std.node.Symbol,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  structure_witness: v2.std.runtime.InterpretationStructureWitness
+) -> v2.std.node.Hash {
   let executed = combine_hash(
     a: test_claim_symbol_digest(sym: runtime_identity),
     b: interpretation_algebra_executed_slots_digest(interpretation: interpretation)
@@ -317,8 +317,8 @@ fn interpretation_algebra_executed_structure_digest(
 }
 
 fn interpretation_v4_evaluator_registry_semantics_digest(
-  interpretation: InterpretationAlgebra
-) -> Hash {
+  interpretation: v2.std.runtime.InterpretationAlgebra
+) -> v2.std.node.Hash {
   combine_hash(
     a: test_claim_symbol_digest(sym: ^v2_evaluator_runtime_id),
     b: interpretation_algebra_executed_slots_digest(interpretation: interpretation)
@@ -326,10 +326,10 @@ fn interpretation_v4_evaluator_registry_semantics_digest(
 }
 
 fn interpretation_registry_semantics_digest(
-  runtime_identity: Symbol,
-  interpretation: InterpretationAlgebra,
-  _structure_witness: InterpretationStructureWitness
-) -> Hash {
+  runtime_identity: v2.std.node.Symbol,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  _structure_witness: v2.std.runtime.InterpretationStructureWitness
+) -> v2.std.node.Hash {
   if runtime_identity == ^v2_evaluator_runtime_id {
     if interpretation == v2_evaluator_interpretation() {
       interpretation_v4_evaluator_registry_semantics_digest(interpretation: interpretation)
@@ -341,7 +341,7 @@ fn interpretation_registry_semantics_digest(
   }
 }
 
-fn eval_context_interpretation(context: EvalContext) -> InterpretationAlgebra {
+fn eval_context_interpretation(context: EvalContext) -> v2.std.runtime.InterpretationAlgebra {
   context.cache_authority.interpretation
 }
 
@@ -361,11 +361,11 @@ type TestClaimCacheKey<T> {
   eval_subject: TestClaimEvalSubject<T>
 }
 
-fn test_claim_cache_key_claim_hash<T>(key: TestClaimCacheKey<T>) -> Hash {
+fn test_claim_cache_key_claim_hash<T>(key: TestClaimCacheKey<T>) -> v2.std.node.Hash {
   test_claim_claim_hash_digest(c: key.eval_subject.claim)
 }
 
-fn test_claim_cache_key_interpretation_hash_node(key: TestClaimCacheKey<Node>) -> Hash {
+fn test_claim_cache_key_interpretation_hash_node(key: TestClaimCacheKey<Node>) -> v2.std.node.Hash {
   test_claim_cache_interpretation_hash_node(subject: key.eval_subject)
 }
 
@@ -378,15 +378,15 @@ type TestClaimRun<S, A> {
   verdict: Verdict<TestClaimEvalSubject<S>, A>
 }
 
-fn test_claim_cache_key_claim<T>(key: TestClaimCacheKey<T>) -> TestClaim {
+fn test_claim_cache_key_claim<T>(key: TestClaimCacheKey<T>) -> v2.std.verification.TestClaim {
   key.eval_subject.claim
 }
 
-fn test_claim_cache_receipt_claim<T>(receipt: TestClaimCacheReceipt<T>) -> TestClaim {
+fn test_claim_cache_receipt_claim<T>(receipt: TestClaimCacheReceipt<T>) -> v2.std.verification.TestClaim {
   test_claim_cache_key_claim(key: receipt.key)
 }
 
-fn test_claim_run_claim<S, A>(run: TestClaimRun<S, A>) -> TestClaim {
+fn test_claim_run_claim<S, A>(run: TestClaimRun<S, A>) -> v2.std.verification.TestClaim {
   test_claim_cache_receipt_claim(receipt: run.cache)
 }
 
@@ -407,22 +407,22 @@ type EvalProgress
   | ReadyToInterpret
   | Interpreted
 
-fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
+fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: v2.std.node.Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
     evaluator_pin: evaluator_pin
   }
 }
 
-fn test_claim_cache_digest_tag_node(tag: Symbol) -> Node {
-  Node {
+fn test_claim_cache_digest_tag_node(tag: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: tag } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
+fn test_claim_evaluation_nodes_digest(c: v2.std.verification.TestClaim) -> v2.std.node.Hash {
   fold_list(
     xs: test_claim_evaluation_nodes(c: c),
     empty: content_hash(n: test_claim_cache_digest_tag_node(tag: ^test_claim_cache_claim_digest_tag)),
@@ -432,7 +432,7 @@ fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
   )
 }
 
-fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
+fn no_correction_reason_digest(reason: v2.std.diagnostic.NoCorrectionReason) -> v2.std.node.Hash {
   match reason {
     UserInputBoundary =>
       test_claim_symbol_digest(sym: ^test_claim_no_correction_user_input_boundary_tag)
@@ -445,7 +445,7 @@ fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
   }
 }
 
-fn correction_verdict_digest(c: Correction) -> Hash {
+fn correction_verdict_digest(c: v2.std.diagnostic.Correction) -> v2.std.node.Hash {
   match c {
     Suggested { node: n } =>
       combine_hash(
@@ -460,7 +460,7 @@ fn correction_verdict_digest(c: Correction) -> Hash {
   }
 }
 
-fn byte_offset_cache_key_extent_component(key: ByteOffsetCacheKey) -> Hash {
+fn byte_offset_cache_key_extent_component(key: v2.std.node.ByteOffsetCacheKey) -> v2.std.node.Hash {
   match key {
     ByteOffsetCacheEligible { digest: digest } => digest
     ByteOffsetCacheIneligible {
@@ -477,7 +477,7 @@ fn byte_offset_cache_key_extent_component(key: ByteOffsetCacheKey) -> Hash {
   }
 }
 
-fn extent_cache_digest(e: Extent) -> Hash {
+fn extent_cache_digest(e: v2.std.diagnostic.Extent) -> v2.std.node.Hash {
   match e {
     WholeFile =>
       test_claim_symbol_digest(sym: ^test_claim_cache_extent_whole_file_tag)
@@ -492,7 +492,7 @@ fn extent_cache_digest(e: Extent) -> Hash {
   }
 }
 
-fn locus_cache_digest(at: Locus) -> Hash {
+fn locus_cache_digest(at: v2.std.diagnostic.Locus) -> v2.std.node.Hash {
   match at {
     NodeLocus { anchor: a } =>
       combine_hash(
@@ -515,7 +515,7 @@ fn locus_cache_digest(at: Locus) -> Hash {
   }
 }
 
-fn diagnostic_cache_digest(d: Diagnostic) -> Hash {
+fn diagnostic_cache_digest(d: v2.std.diagnostic.Diagnostic) -> v2.std.node.Hash {
   combine_hash(
     a: locus_cache_digest(at: d.at),
     b: combine_hash(
@@ -525,21 +525,21 @@ fn diagnostic_cache_digest(d: Diagnostic) -> Hash {
   )
 }
 
-fn diagnostic_tail_bag_cache_digest(xs: List<Diagnostic>) -> Hash {
+fn diagnostic_tail_bag_cache_digest(xs: List<v2.std.diagnostic.Diagnostic>) -> v2.std.node.Hash {
   bag_hash_digest(
     empty: test_claim_symbol_digest(sym: ^test_claim_cache_diagnostic_tail_bag_empty_tag),
     xs: map(xs, diag => diagnostic_cache_digest(d: diag))
   )
 }
 
-fn non_empty_diagnostics_cache_digest(d: NonEmptyDiagnostics) -> Hash {
+fn non_empty_diagnostics_cache_digest(d: v2.std.diagnostic.NonEmptyDiagnostics) -> v2.std.node.Hash {
   combine_hash(
     a: diagnostic_cache_digest(d: d.head),
     b: diagnostic_tail_bag_cache_digest(xs: d.tail)
   )
 }
 
-fn test_claim_variant_cache_digest(c: TestClaim) -> Hash {
+fn test_claim_variant_cache_digest(c: v2.std.verification.TestClaim) -> v2.std.node.Hash {
   match test_claim_coproduct_variant(c: c) {
     TestClaimCompilesClaimVariant =>
       test_claim_symbol_digest(sym: ^test_claim_cache_variant_compiles_tag)
@@ -554,7 +554,7 @@ fn test_claim_variant_cache_digest(c: TestClaim) -> Hash {
   }
 }
 
-fn test_claim_claim_body_cache_digest(c: TestClaim) -> Hash {
+fn test_claim_claim_body_cache_digest(c: v2.std.verification.TestClaim) -> v2.std.node.Hash {
   let nodes_digest = test_claim_evaluation_nodes_digest(c: c)
   match c {
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
@@ -570,29 +570,29 @@ fn test_claim_claim_body_cache_digest(c: TestClaim) -> Hash {
   }
 }
 
-fn test_claim_claim_hash_digest(c: TestClaim) -> Hash {
+fn test_claim_claim_hash_digest(c: v2.std.verification.TestClaim) -> v2.std.node.Hash {
   combine_hash(
     a: test_claim_variant_cache_digest(c: c),
     b: test_claim_claim_body_cache_digest(c: c)
   )
 }
 
-fn test_claim_symbol_digest(sym: Symbol) -> Hash {
+fn test_claim_symbol_digest(sym: v2.std.node.Symbol) -> v2.std.node.Hash {
   content_hash(n: test_claim_cache_digest_tag_node(tag: sym))
 }
 
-fn structural_property_witness_digest(w: StructuralPropertyWitness) -> Hash {
+fn structural_property_witness_digest(w: v2.std.witness.StructuralPropertyWitness) -> v2.std.node.Hash {
   combine_hash(
     a: test_claim_symbol_digest(sym: w.property),
     b: content_hash(n: w.evidence)
   )
 }
 
-fn ranking_dimension_digest(d: v2.std.cardinality.RankingDimension) -> Hash {
+fn ranking_dimension_digest(d: v2.std.cardinality.RankingDimension) -> v2.std.node.Hash {
   test_claim_symbol_digest(sym: d.measured)
 }
 
-fn termination_proof_digest(proof: v2.std.cardinality.TerminationProof) -> Hash {
+fn termination_proof_digest(proof: v2.std.cardinality.TerminationProof) -> v2.std.node.Hash {
   combine_hash(
     a: ranking_dimension_digest(d: proof.strict),
     b: fold_list(
@@ -605,21 +605,21 @@ fn termination_proof_digest(proof: v2.std.cardinality.TerminationProof) -> Hash 
   )
 }
 
-fn witness_cache_holds_digest(payload: Hash) -> Hash {
+fn witness_cache_holds_digest(payload: v2.std.node.Hash) -> v2.std.node.Hash {
   combine_hash(
     a: test_claim_symbol_digest(sym: ^test_claim_cache_witness_holds_tag),
     b: payload
   )
 }
 
-fn witness_cache_violates_digest(diag: Diagnostic) -> Hash {
+fn witness_cache_violates_digest(diag: v2.std.diagnostic.Diagnostic) -> v2.std.node.Hash {
   combine_hash(
     a: test_claim_symbol_digest(sym: ^test_claim_cache_witness_violates_tag),
     b: diagnostic_cache_digest(d: diag)
   )
 }
 
-fn descent_witness_digest(d: Witness<v2.std.cardinality.TerminationProof>) -> Hash {
+fn descent_witness_digest(d: Witness<v2.std.cardinality.TerminationProof>) -> v2.std.node.Hash {
   match d {
     Holds { value: proof } =>
       witness_cache_holds_digest(payload: termination_proof_digest(proof: proof))
@@ -628,14 +628,14 @@ fn descent_witness_digest(d: Witness<v2.std.cardinality.TerminationProof>) -> Ha
 }
 
 fn eval_grounding_not_derived_digest_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^eval_grounding_not_derived_digest_tag } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn inferred_facts_digest(facts: InferredFacts) -> Hash {
+fn inferred_facts_digest(facts: v2.compiler.infer.InferredFacts) -> v2.std.node.Hash {
   match facts.grounding {
     DerivedGrounding { grounding: g } =>
       combine_hash(
@@ -659,7 +659,7 @@ fn inferred_facts_digest(facts: InferredFacts) -> Hash {
   }
 }
 
-fn inferred_node_facts_cache_digest(tree: InferredTree, node: Node) -> Hash {
+fn inferred_node_facts_cache_digest(tree: v2.compiler.infer.InferredTree, node: Node) -> v2.std.node.Hash {
   combine_hash(
     a: content_hash(n: node),
     b: match inferred_facts_witness_for_eval(tree: tree, node: node) {
@@ -670,10 +670,10 @@ fn inferred_node_facts_cache_digest(tree: InferredTree, node: Node) -> Hash {
   )
 }
 
-fn inferred_tree_evaluated_facts_digest(tree: InferredTree) -> Hash {
+fn inferred_tree_evaluated_facts_digest(tree: v2.compiler.infer.InferredTree) -> v2.std.node.Hash {
   fold_node(
     n: tree.root,
-    algebra: NodeFold {
+    algebra: v2.std.node.NodeFold {
       init: fn(n0) {
         inferred_node_facts_cache_digest(tree: tree, node: n0)
       },
@@ -684,7 +684,7 @@ fn inferred_tree_evaluated_facts_digest(tree: InferredTree) -> Hash {
   )
 }
 
-fn inferred_tree_digest(tree: InferredTree) -> Hash {
+fn inferred_tree_digest(tree: v2.compiler.infer.InferredTree) -> v2.std.node.Hash {
   combine_hash(
     a: content_hash(n: tree.root),
     b: inferred_tree_evaluated_facts_digest(tree: tree)
@@ -735,7 +735,7 @@ fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> Int
   }
 }
 
-fn interpretation_cache_digest_authority_hash(auth: InterpretationCacheDigestAuthority) -> Hash {
+fn interpretation_cache_digest_authority_hash(auth: InterpretationCacheDigestAuthority) -> v2.std.node.Hash {
   match auth {
     InterpretationCacheRegistered {
       runtime_identity: runtime_identity,
@@ -766,24 +766,24 @@ fn interpretation_cache_digest_authority_hash(auth: InterpretationCacheDigestAut
   }
 }
 
-fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
+fn test_claim_interpretation_cache_digest(context: EvalContext) -> v2.std.node.Hash {
   interpretation_cache_digest_authority_hash(
     auth: test_claim_interpretation_cache_digest_authority(context: context)
   )
 }
 
-fn test_claim_evaluator_input_digest_node(input: TestClaimTypedInput<Node>) -> Hash {
+fn test_claim_evaluator_input_digest_node(input: TestClaimTypedInput<Node>) -> v2.std.node.Hash {
   content_hash(n: input.evaluator_input)
 }
 
-fn test_claim_evaluator_digest_node(input: TestClaimTypedInput<Node>) -> Hash {
+fn test_claim_evaluator_digest_node(input: TestClaimTypedInput<Node>) -> v2.std.node.Hash {
   combine_hash(
     a: test_claim_symbol_digest(sym: input.evaluator_pin),
     b: test_claim_evaluator_input_digest_node(input: input)
   )
 }
 
-fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<Node>) -> Hash {
+fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<Node>) -> v2.std.node.Hash {
   combine_hash(
     a: inferred_tree_digest(tree: subject.tree),
     b: combine_hash(
@@ -805,43 +805,43 @@ fn test_claim_cache_receipt(subject: TestClaimEvalSubject<Node>) -> TestClaimCac
   test_claim_cache_receipt_node(subject: subject)
 }
 
-fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
-  Diagnostic {
+fn eval_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
-fn runtime_binding_lookup_miss(key: EnvironmentBindingKey) -> Optional<RuntimeValue> {
+fn runtime_binding_lookup_miss(key: v2.std.runtime.EnvironmentBindingKey) -> Optional<v2.std.runtime.RuntimeValue> {
   optional_absent()
 }
 
-fn empty_runtime_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
+fn empty_runtime_bindings() -> Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
   Map {
     lookup: runtime_binding_lookup_miss
   }
 }
 
-fn empty_evaluation_environment() -> EvaluationEnvironment {
-  EvaluationEnvironment {
+fn empty_evaluation_environment() -> v2.std.runtime.EvaluationEnvironment {
+  v2.std.runtime.EvaluationEnvironment {
     bindings: empty_runtime_bindings()
   }
 }
 
-fn eval_runtime() -> V4EvaluatorRuntime {
+fn eval_runtime() -> v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime {
   v2_evaluator_runtime()
 }
 
-fn eval_default_interpretation() -> InterpretationAlgebra {
+fn eval_default_interpretation() -> v2.std.runtime.InterpretationAlgebra {
   v2_evaluator_interpretation()
 }
 
-fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+fn inferred_facts_witness_for_eval(tree: v2.compiler.infer.InferredTree, node: Node) -> Witness<v2.compiler.infer.InferredFacts> {
   witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
 }
 
-fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFacts> {
+fn inferred_facts_for_eval(tree: v2.compiler.infer.InferredTree, node: Node) -> Outcome<v2.compiler.infer.InferredFacts> {
   match inferred_facts_witness_for_eval(tree: tree, node: node) {
     Holds { value: facts } =>
       if !inferred_facts_grounding_derived(facts: facts) {
@@ -875,7 +875,7 @@ fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFa
   }
 }
 
-fn eval_structural_node_for_eval(tree: InferredTree, node: Node) -> Outcome<Node> {
+fn eval_structural_node_for_eval(tree: v2.compiler.infer.InferredTree, node: Node) -> Outcome<Node> {
   bind_outcome(
     o: inferred_facts_for_eval(tree: tree, node: node),
     f: fn(_facts) {
@@ -884,8 +884,8 @@ fn eval_structural_node_for_eval(tree: InferredTree, node: Node) -> Outcome<Node
   )
 }
 
-fn eval_short_circuit_policy() -> StageDiagnosticPolicy {
-  StageDiagnosticPolicy { accumulation: ShortCircuit }
+fn eval_short_circuit_policy() -> v2.std.diagnostic.StageDiagnosticPolicy {
+  v2.std.diagnostic.StageDiagnosticPolicy { accumulation: ShortCircuit }
 }
 
 fn eval_absorb_structural_child(
@@ -900,14 +900,14 @@ fn eval_absorb_structural_child(
 }
 
 fn control_transfer_value(
-  control: ControlTransfer,
+  control: v2.std.runtime.ControlTransfer,
   node: Node,
-  runtime: V4EvaluatorRuntime,
-  environment: EvaluationEnvironment
-) -> Outcome<RuntimeValue> {
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
+  environment: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   runtime.execution.control.terminal_value(
     control,
-    EvaluationFrame { current: node, environment: environment }
+    v2.std.runtime.EvaluationFrame { current: node, environment: environment }
   )
 }
 
@@ -919,8 +919,8 @@ type RuntimeValueAcceptanceWitness {
 
 fn eval_runtime_value_acceptance_witness(
   node: Node,
-  facts: InferredFacts,
-  value: RuntimeValue
+  facts: v2.compiler.infer.InferredFacts,
+  value: v2.std.runtime.RuntimeValue
 ) -> RuntimeValueAcceptanceWitness {
   RuntimeValueAcceptanceWitness {
     resolved_type: match inferred_facts_resolved_type(facts: facts) {
@@ -956,9 +956,9 @@ fn eval_runtime_value_acceptance_witness(
 
 fn eval_accept_runtime_value_with_facts(
   node: Node,
-  facts: InferredFacts,
-  value: RuntimeValue
-) -> Outcome<RuntimeValue> {
+  facts: v2.compiler.infer.InferredFacts,
+  value: v2.std.runtime.RuntimeValue
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   let witness = eval_runtime_value_acceptance_witness(node: node, facts: facts, value: value)
   match witness.resolved_type {
     Violates { diagnostic: d } => outcome_rejected(d: d)
@@ -979,7 +979,7 @@ fn eval_witness_outcome<T>(witness: Witness<T>) -> Outcome<T> {
   }
 }
 
-fn eval_first_runtime_argument(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
+fn eval_first_runtime_argument(args: List<v2.std.runtime.RuntimeValue>, node: Node) -> Outcome<v2.std.runtime.RuntimeValue> {
   eval_witness_outcome(
     witness: list_nth(
       xs: args,
@@ -989,7 +989,7 @@ fn eval_first_runtime_argument(args: List<RuntimeValue>, node: Node) -> Outcome<
   )
 }
 
-fn eval_bind_value_argument(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
+fn eval_bind_value_argument(args: List<v2.std.runtime.RuntimeValue>, node: Node) -> Outcome<v2.std.runtime.RuntimeValue> {
   eval_witness_outcome(
     witness: list_nth(
       xs: args,
@@ -999,7 +999,7 @@ fn eval_bind_value_argument(args: List<RuntimeValue>, node: Node) -> Outcome<Run
   )
 }
 
-fn eval_nth_child(node: Node, wanted: Int, absent_reason: Symbol) -> Outcome<Edge> {
+fn eval_nth_child(node: Node, wanted: Int, absent_reason: v2.std.node.Symbol) -> Outcome<v2.std.node.Edge> {
   eval_witness_outcome(
     witness: list_nth(
       xs: node.children,
@@ -1009,7 +1009,7 @@ fn eval_nth_child(node: Node, wanted: Int, absent_reason: Symbol) -> Outcome<Edg
   )
 }
 
-fn eval_branch_condition_edge(node: Node) -> Outcome<Edge> {
+fn eval_branch_condition_edge(node: Node) -> Outcome<v2.std.node.Edge> {
   eval_nth_child(
     node: node,
     wanted: 0,
@@ -1017,7 +1017,7 @@ fn eval_branch_condition_edge(node: Node) -> Outcome<Edge> {
   )
 }
 
-fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
+fn eval_bind_key(node: Node) -> Outcome<v2.std.runtime.EnvironmentBindingKey> {
   bind_outcome(
     o: eval_nth_child(
       node: node,
@@ -1030,7 +1030,7 @@ fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
   )
 }
 
-fn eval_bind_value_edge(node: Node) -> Outcome<Edge> {
+fn eval_bind_value_edge(node: Node) -> Outcome<v2.std.node.Edge> {
   eval_nth_child(
     node: node,
     wanted: 1,
@@ -1051,11 +1051,11 @@ fn eval_bind_body(node: Node) -> Outcome<Node> {
   )
 }
 
-fn eval_binding_key_node(sym: Symbol) -> Node {
+fn eval_binding_key_node(sym: v2.std.node.Symbol) -> Node {
   symbol_atom_node(sym: sym)
 }
 
-fn eval_binding_key_from_atom(node: Node) -> Optional<EnvironmentBindingKey> {
+fn eval_binding_key_from_atom(node: Node) -> Optional<v2.std.runtime.EnvironmentBindingKey> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } =>
       optional_present(value: environment_binding_key_for_symbol(sym: sym))
@@ -1063,7 +1063,7 @@ fn eval_binding_key_from_atom(node: Node) -> Optional<EnvironmentBindingKey> {
   }
 }
 
-fn eval_environment_binding_key_from_node(declaration: Node) -> Outcome<EnvironmentBindingKey> {
+fn eval_environment_binding_key_from_node(declaration: Node) -> Outcome<v2.std.runtime.EnvironmentBindingKey> {
   match eval_binding_key_from_atom(node: declaration) {
     Present { value: key } =>
       Accepted { value: key, diagnostics: None }
@@ -1074,7 +1074,7 @@ fn eval_environment_binding_key_from_node(declaration: Node) -> Outcome<Environm
   }
 }
 
-fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn eval_runtime_binding_lookup(node: Node, environment: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   bind_outcome(
     o: eval_environment_binding_key_from_node(declaration: node),
     f: fn(key) {
@@ -1093,9 +1093,9 @@ fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -
 
 fn eval_type_node_atom(
   node: Node,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment
-) -> Outcome<RuntimeValue> {
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   match node.kind {
     TypeNode { connective: Atom { identity: _ } } =>
       if v2_eval_is_literal_shaped_node(node: node) {
@@ -1127,9 +1127,9 @@ type EvalParamBindAcc {
 
 fn eval_bind_param_edge_step(
   state: EvalParamBindAcc,
-  param_edge: Edge,
-  args: List<RuntimeValue>,
-  bind: BindInterpreter,
+  param_edge: v2.std.node.Edge,
+  args: List<v2.std.runtime.RuntimeValue>,
+  bind: v2.std.runtime.BindInterpreter,
   node: Node
 ) -> EvalParamBindAcc {
   match state.acc {
@@ -1165,11 +1165,11 @@ fn eval_bind_param_edge_step(
 
 fn eval_bind_arrow_params(
   arrow: Node,
-  args: List<RuntimeValue>,
-  environment: EvaluationEnvironment,
-  bind: BindInterpreter,
+  args: List<v2.std.runtime.RuntimeValue>,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  bind: v2.std.runtime.BindInterpreter,
   node: Node
-) -> Outcome<EvaluationEnvironment> {
+) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
   bind_outcome(
     o: eval_nth_child(node: arrow, wanted: 0, absent_reason: ^eval_rejected_callee_absent),
     f: fn(domain_edge) {
@@ -1199,7 +1199,7 @@ fn eval_bind_arrow_params(
   )
 }
 
-fn eval_actual_present(args: List<RuntimeValue>, wanted: Int, node: Node) -> Bool {
+fn eval_actual_present(args: List<v2.std.runtime.RuntimeValue>, wanted: Int, node: Node) -> Bool {
   match list_nth(
     xs: args,
     wanted: wanted,
@@ -1210,7 +1210,7 @@ fn eval_actual_present(args: List<RuntimeValue>, wanted: Int, node: Node) -> Boo
   }
 }
 
-fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
+fn eval_transform_callee_edge(node: Node) -> Outcome<v2.std.node.Edge> {
   eval_nth_child(
     node: node,
     wanted: 0,
@@ -1286,11 +1286,11 @@ fn eval_node_is_loop(node: Node) -> Bool {
 }
 
 fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: locator },
-      Edge { label: Positional, target: payload }
+      v2.std.node.Edge { label: Positional, target: locator },
+      v2.std.node.Edge { label: Positional, target: payload }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -1311,7 +1311,7 @@ fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) 
 fn eval_invoke_effect_handler(
   bundle: EffectIoEvalBundle,
   request: EffectRequest
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   let handler = effect_handler_for_kind(binding: bundle.handlers, kind: request.kind)
   effect_io_pure_invoke_handler(handler: handler, request: request)
 }
@@ -1319,7 +1319,7 @@ fn eval_invoke_effect_handler(
 fn eval_bundle_with_receipt_appended(
   bundle: EffectIoEvalBundle,
   request: EffectRequest,
-  result: Outcome<RuntimeValue>
+  result: Outcome<v2.std.runtime.RuntimeValue>
 ) -> EffectIoEvalBundle {
   EffectIoEvalBundle {
     backend: bundle.backend,
@@ -1353,16 +1353,16 @@ fn eval_yield_effect_request(
   }
 }
 
-fn eval_effect_io_roundtrip_args_present(args: List<RuntimeValue>) -> Bool {
+fn eval_effect_io_roundtrip_args_present(args: List<v2.std.runtime.RuntimeValue>) -> Bool {
   eval_actual_present(args: args, wanted: 0, node: symbol_atom_node(sym: ^effect_io_roundtrip_marker))
     && eval_actual_present(args: args, wanted: 1, node: symbol_atom_node(sym: ^effect_io_roundtrip_marker))
 }
 
 fn eval_effect_io_roundtrip(
   bundle: EffectIoEvalBundle,
-  args: List<RuntimeValue>,
+  args: List<v2.std.runtime.RuntimeValue>,
   node: Node
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   if eval_effect_io_roundtrip_args_present(args: args) {
     bind_outcome(
       o: eval_first_runtime_argument(args: args, node: node),
@@ -1428,13 +1428,13 @@ fn eval_effect_io_roundtrip(
 
 fn eval_value_node(
   node: Node,
-  _args: List<RuntimeValue>,
-  _facts: InferredFacts,
-  _tree: InferredTree,
-  interpreter: RuntimeBehaviorInterpreter,
-  environment: EvaluationEnvironment,
-  _runtime: V4EvaluatorRuntime
-) -> Outcome<RuntimeValue> {
+  _args: List<v2.std.runtime.RuntimeValue>,
+  _facts: v2.compiler.infer.InferredFacts,
+  _tree: v2.compiler.infer.InferredTree,
+  interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  _runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
     ValueRuntimeInterpreter { interpreter: value } =>
       value.allocate_literal(node, environment)
@@ -1444,15 +1444,15 @@ fn eval_value_node(
 
 fn eval_transform_node(
   node: Node,
-  args: List<RuntimeValue>,
-  _facts: InferredFacts,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  interpreter: RuntimeBehaviorInterpreter,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  args: List<v2.std.runtime.RuntimeValue>,
+  _facts: v2.compiler.infer.InferredFacts,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
     TransformRuntimeInterpreter { interpreter: transform } =>
       if eval_node_is_effect_io_roundtrip(node: node, effect_io: effect_io) {
@@ -1527,13 +1527,13 @@ fn eval_transform_node(
 
 fn eval_branch_node_eval(
   node: Node,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  interpreter: RuntimeBehaviorInterpreter,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
     BranchRuntimeInterpreter { interpreter: branch } =>
       bind_outcome(
@@ -1572,15 +1572,15 @@ fn eval_branch_node_eval(
 
 fn eval_branch_node(
   node: Node,
-  _args: List<RuntimeValue>,
-  _facts: InferredFacts,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  interpreter: RuntimeBehaviorInterpreter,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  _args: List<v2.std.runtime.RuntimeValue>,
+  _facts: v2.compiler.infer.InferredFacts,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   eval_branch_node_eval(
     node: node,
     tree: tree,
@@ -1594,13 +1594,13 @@ fn eval_branch_node(
 
 fn eval_loop_node(
   node: Node,
-  _args: List<RuntimeValue>,
-  _facts: InferredFacts,
-  _tree: InferredTree,
-  interpreter: RuntimeBehaviorInterpreter,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime
-) -> Outcome<RuntimeValue> {
+  _args: List<v2.std.runtime.RuntimeValue>,
+  _facts: v2.compiler.infer.InferredFacts,
+  _tree: v2.compiler.infer.InferredTree,
+  interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
     LoopRuntimeInterpreter { interpreter: loop_interpreter } =>
       bind_outcome(
@@ -1620,13 +1620,13 @@ fn eval_loop_node(
 
 fn eval_bind_node_eval(
   node: Node,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  interpreter: RuntimeBehaviorInterpreter,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
     ValueRuntimeInterpreter { interpreter: _ } =>
       outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
@@ -1684,15 +1684,15 @@ fn eval_bind_node_eval(
 
 fn eval_bind_node(
   node: Node,
-  _args: List<RuntimeValue>,
-  _facts: InferredFacts,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  interpreter: RuntimeBehaviorInterpreter,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  _args: List<v2.std.runtime.RuntimeValue>,
+  _facts: v2.compiler.infer.InferredFacts,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   eval_bind_node_eval(
     node: node,
     tree: tree,
@@ -1704,7 +1704,7 @@ fn eval_bind_node(
   )
 }
 
-fn eval_match_scrutinee_edge(node: Node) -> Outcome<Edge> {
+fn eval_match_scrutinee_edge(node: Node) -> Outcome<v2.std.node.Edge> {
   eval_nth_child(
     node: node,
     wanted: 0,
@@ -1714,13 +1714,13 @@ fn eval_match_scrutinee_edge(node: Node) -> Outcome<Edge> {
 
 fn eval_match_node_eval(
   node: Node,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  interpreter: RuntimeBehaviorInterpreter,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
     MatchRuntimeInterpreter { interpreter: match_interpreter } =>
       bind_outcome(
@@ -1762,15 +1762,15 @@ fn eval_match_node_eval(
 
 fn eval_match_node(
   node: Node,
-  _args: List<RuntimeValue>,
-  _facts: InferredFacts,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  interpreter: RuntimeBehaviorInterpreter,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  _args: List<v2.std.runtime.RuntimeValue>,
+  _facts: v2.compiler.infer.InferredFacts,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   eval_match_node_eval(
     node: node,
     tree: tree,
@@ -1783,16 +1783,16 @@ fn eval_match_node(
 }
 
 fn eval_computation_node(
-  behavior: Behavior,
+  behavior: v2.std.node.Behavior,
   node: Node,
-  args: List<RuntimeValue>,
-  facts: InferredFacts,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  args: List<v2.std.runtime.RuntimeValue>,
+  facts: v2.compiler.infer.InferredFacts,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   let dispatch = interpretation_behavior_dispatch(
     interpretation: interpretation,
     behavior: behavior
@@ -1876,13 +1876,13 @@ fn eval_computation_node(
 
 fn eval_interpret_node(
   node: Node,
-  args: List<RuntimeValue>,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  args: List<v2.std.runtime.RuntimeValue>,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   bind_outcome(
     o: inferred_facts_for_eval(tree: tree, node: node),
     f: fn(facts) {
@@ -1910,11 +1910,11 @@ fn eval_interpret_node(
   )
 }
 
-fn empty_runtime_values() -> List<RuntimeValue> {
+fn empty_runtime_values() -> List<v2.std.runtime.RuntimeValue> {
   []
 }
 
-fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edge) -> Bool {
+fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: v2.std.node.Edge) -> Bool {
   if eval_transform_has_callee_reference(node: parent) {
     match progress {
       AwaitingChildren { processed: p } =>
@@ -1936,14 +1936,14 @@ fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edg
   }
 }
 
-fn eval_fold_state_value(state: EvalFoldState) -> Outcome<RuntimeValue> {
+fn eval_fold_state_value(state: EvalFoldState) -> Outcome<v2.std.runtime.RuntimeValue> {
   state.value
 }
 
 fn eval_absorb_child_diagnostics(
-  acc: Outcome<List<RuntimeValue>>,
+  acc: Outcome<List<v2.std.runtime.RuntimeValue>>,
   child: Outcome<Node>
-) -> Outcome<List<RuntimeValue>> {
+) -> Outcome<List<v2.std.runtime.RuntimeValue>> {
   absorb_outcome_diagnostics(
     acc: acc,
     child: child,
@@ -1952,9 +1952,9 @@ fn eval_absorb_child_diagnostics(
 }
 
 fn eval_append_child_value(
-  acc: Outcome<List<RuntimeValue>>,
-  child: Outcome<RuntimeValue>
-) -> Outcome<List<RuntimeValue>> {
+  acc: Outcome<List<v2.std.runtime.RuntimeValue>>,
+  child: Outcome<v2.std.runtime.RuntimeValue>
+) -> Outcome<List<v2.std.runtime.RuntimeValue>> {
   append_outcome_value(
     acc: acc,
     child: child,
@@ -1964,10 +1964,10 @@ fn eval_append_child_value(
 
 fn eval_fold_init(
   node: Node,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> EvalFoldState {
   let progress = if count(node.children) == 0 { ReadyToInterpret } else { AwaitingChildren { processed: 0 } }
@@ -1996,10 +1996,10 @@ fn eval_fold_init(
 
 fn eval_fold_control_transfer_state(
   node: Node,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> EvalFoldState {
   EvalFoldState {
@@ -2021,7 +2021,7 @@ fn eval_fold_control_transfer_state(
 fn eval_fold_is_callee_reference_edge(
   parent: Node,
   progress: EvalProgress,
-  edge: Edge
+  edge: v2.std.node.Edge
 ) -> Bool {
   if eval_transform_has_callee_reference(node: parent) {
     match progress {
@@ -2035,8 +2035,8 @@ fn eval_fold_is_callee_reference_edge(
 }
 
 fn eval_fold_callee_reference_child_state(
-  edge: Edge,
-  tree: InferredTree
+  edge: v2.std.node.Edge,
+  tree: v2.compiler.infer.InferredTree
 ) -> EvalFoldState {
   EvalFoldState {
     node: edge.target,
@@ -2054,16 +2054,16 @@ data eval_closure_argument_note: String = "A closure passed as a runtime argumen
 fn eval_fold_is_closure_argument_edge(
   parent: Node,
   progress: EvalProgress,
-  edge: Edge
+  edge: v2.std.node.Edge
 ) -> Bool {
   eval_edge_is_runtime_argument(parent: parent, progress: progress, edge: edge)
     && eval_node_is_arrow(node: edge.target)
 }
 
 fn eval_fold_closure_argument_child_state(
-  edge: Edge,
-  tree: InferredTree,
-  environment: EvaluationEnvironment
+  edge: v2.std.node.Edge,
+  tree: v2.compiler.infer.InferredTree,
+  environment: v2.std.runtime.EvaluationEnvironment
 ) -> EvalFoldState {
   EvalFoldState {
     node: edge.target,
@@ -2072,7 +2072,7 @@ fn eval_fold_closure_argument_child_state(
     child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
     value: Accepted {
       value: RuntimeClosure {
-        value: RuntimeClosureValue {
+        value: v2.std.runtime.RuntimeClosureValue {
           arrow_type: edge.target,
           arrow: edge.target,
           environment: environment
@@ -2085,11 +2085,11 @@ fn eval_fold_closure_argument_child_state(
 
 fn eval_fold_child_for_edge(
   acc: EvalFoldState,
-  edge: Edge,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  edge: v2.std.node.Edge,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> EvalFoldState {
   if eval_fold_is_callee_reference_edge(
@@ -2122,11 +2122,11 @@ fn eval_fold_child_for_edge(
 
 fn eval_fold_child_edge_step(
   acc: EvalFoldState,
-  edge: Edge,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  edge: v2.std.node.Edge,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> EvalFoldState {
   eval_fold_step(
@@ -2151,10 +2151,10 @@ fn eval_fold_child_edge_step(
 
 fn eval_fold_tree(
   n: Node,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> EvalFoldState {
   if eval_runtime_node_is_control_transfer(node: n) {
@@ -2195,14 +2195,14 @@ fn eval_fold_tree(
 fn eval_maybe_complete_node(
   node: Node,
   progress: EvalProgress,
-  args: List<RuntimeValue>,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  args: List<v2.std.runtime.RuntimeValue>,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext,
-  pending: Outcome<RuntimeValue>
-) -> Outcome<RuntimeValue> {
+  pending: Outcome<v2.std.runtime.RuntimeValue>
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   match progress {
     ReadyToInterpret =>
       eval_interpret_node(
@@ -2232,12 +2232,12 @@ fn eval_advance_progress(progress: EvalProgress, node: Node) -> EvalProgress {
 
 fn eval_fold_step(
   acc: EvalFoldState,
-  edge: Edge,
+  edge: v2.std.node.Edge,
   child: EvalFoldState,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> EvalFoldState {
   let structural = eval_absorb_structural_child(acc: acc.structural, child: child.structural)
@@ -2288,12 +2288,12 @@ fn eval_runtime_node_is_control_transfer(node: Node) -> Bool {
 
 fn eval_runtime_control_node(
   node: Node,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   bind_outcome(
     o: inferred_facts_for_eval(tree: tree, node: node),
     f: fn(facts) {
@@ -2360,12 +2360,12 @@ fn eval_runtime_control_node(
 
 fn eval_runtime_node_via_data_flow_fold(
   node: Node,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   let folded = eval_fold_tree(
     n: node,
     tree: tree,
@@ -2379,12 +2379,12 @@ fn eval_runtime_node_via_data_flow_fold(
 
 fn eval_runtime_node(
   node: Node,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  environment: v2.std.runtime.EvaluationEnvironment,
+  runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   if eval_runtime_node_is_control_transfer(node: node) {
     eval_runtime_control_node(
       node: node,
@@ -2407,10 +2407,10 @@ fn eval_runtime_node(
 }
 
 fn eval_with_context(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   context: EvalContext,
   inputs: Inputs
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   if well_formed(n: tree.root) {
     if well_formed(n: inputs.root) {
       eval_runtime_node(
@@ -2429,7 +2429,7 @@ fn eval_with_context(
   }
 }
 
-fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Inputs) -> Outcome<RuntimeValue> {
+fn eval(tree: v2.compiler.infer.InferredTree, interpretation: v2.std.runtime.InterpretationAlgebra, inputs: Inputs) -> Outcome<v2.std.runtime.RuntimeValue> {
   if well_formed(n: tree.root) {
     if well_formed(n: inputs.root) {
       eval_runtime_node(
@@ -2448,7 +2448,7 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
   }
 }
 
-fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
+fn eval_node(tree: v2.compiler.infer.InferredTree, inputs: Inputs) -> Outcome<Node> {
   bind_outcome(
     o: eval(tree: tree, interpretation: eval_default_interpretation(), inputs: inputs),
     f: fn(value) {
@@ -2523,7 +2523,7 @@ fn run_test_claim_round_trip_verdict_runtime(
 }
 
 fn run_test_claim_assert(
-  claim: TestClaim,
+  claim: v2.std.verification.TestClaim,
   actual: Outcome<Node>,
   at: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, Node> {
@@ -2559,7 +2559,7 @@ fn run_test_claim_structural_equals_verdict(
 }
 
 fn run_test_claim_assert_decided(
-  claim: TestClaim,
+  claim: v2.std.verification.TestClaim,
   actual: Outcome<Node>,
   at: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, Node> {
@@ -2603,15 +2603,15 @@ fn run_test_claim_assert_decided(
   }
 }
 
-fn runtime_value_eq(a: RuntimeValue, b: RuntimeValue) -> Bool {
+fn runtime_value_eq(a: v2.std.runtime.RuntimeValue, b: v2.std.runtime.RuntimeValue) -> Bool {
   a == b
 }
 
-fn outcome_runtime_value_eq(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
+fn outcome_runtime_value_eq(a: Outcome<v2.std.runtime.RuntimeValue>, b: Outcome<v2.std.runtime.RuntimeValue>) -> Bool {
   outcome_eq(a: a, b: b, payload_eq: runtime_value_eq)
 }
 
-fn accepted_runtime_value_outcome_eq(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
+fn accepted_runtime_value_outcome_eq(a: Outcome<v2.std.runtime.RuntimeValue>, b: Outcome<v2.std.runtime.RuntimeValue>) -> Bool {
   match b {
     Accepted { value: _, diagnostics: _ } => outcome_runtime_value_eq(a: a, b: b)
     Rejected { diagnostics: _ } => false
@@ -2619,10 +2619,10 @@ fn accepted_runtime_value_outcome_eq(a: Outcome<RuntimeValue>, b: Outcome<Runtim
 }
 
 fn run_test_claim_runtime_assert(
-  claim: TestClaim,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  actual: Outcome<RuntimeValue>,
+  claim: v2.std.verification.TestClaim,
+  tree: v2.compiler.infer.InferredTree,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  actual: Outcome<v2.std.runtime.RuntimeValue>,
   at: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match claim {
@@ -2685,7 +2685,7 @@ fn aggregate_verdicts<S, T>(
 
 fn run_test_claim(
   subject: TestClaimEvalSubject<Node>
-) -> TestClaimRun<Node, RuntimeValue> {
+) -> TestClaimRun<Node, v2.std.runtime.RuntimeValue> {
   let at = test_claim_input(c: subject.claim)
   match subject.claim {
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
@@ -2736,10 +2736,10 @@ fn run_test_claim(
 }
 
 fn eval_test_claim_subject(
-  claim: TestClaim,
+  claim: v2.std.verification.TestClaim,
   context: EvalContext,
-  tree: InferredTree,
-  evaluator_pin: Symbol
+  tree: v2.compiler.infer.InferredTree,
+  evaluator_pin: v2.std.node.Symbol
 ) -> TestClaimEvalSubject<Node> {
   let input = test_claim_input(c: claim)
   TestClaimEvalSubject {

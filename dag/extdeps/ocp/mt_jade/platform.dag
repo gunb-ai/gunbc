@@ -1,11 +1,11 @@
 module extdeps.ocp.mt_jade.platform
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = mt_jade_subject_authority_anchor
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = mt_jade_subject_authority_anchor
 
 data platform_subject_edge_note: String = "PLATFORM FACTS MUST JOIN THE ENTITY THEY DESCRIBE IN THE GRAPH, NOT ONLY THE SHARED OCP LOCATOR. extdeps.ocp.mt_jade.subject owns mt_jade_reference_platform; this row is the typed subject edge that binds every mechanical, sequencing, CPLD, clock and reference-part fact in this module to that declaration — the same pattern as extdeps.sec.issuer.gitlab_facts gitlab_facts_subject."
 
-data mt_jade_platform_subject: MtJadeReferencePlatform = mt_jade_reference_platform
+data mt_jade_platform_subject: extdeps.ocp.mt_jade.subject.MtJadeReferencePlatform = mt_jade_reference_platform
 
 data platform_note: String = "PLATFORM FACTS FROM THE PUBLIC OCP MT. JADE SPECIFICATION, REV 1.0 (2021-09-17). Section 7.2 carries the motherboard outline; section 7.3 names the ILM4926 socket; section 7.10 carries clocks, reset and power-on sequence; sections 7.6–7.8 carry BMC, I2C, JTAG and GPIO facts that define the board CPLD's role. Nothing here transcribes pin tables or Appendix A/B content."
 
@@ -34,7 +34,7 @@ type ProcessorSocketRole
   = MasterSocket
   | SlaveSocket
 
-fn processor_socket_role_name(role: ProcessorSocketRole) -> NonEmptyStr {
+fn processor_socket_role_name(role: ProcessorSocketRole) -> std.types.NonEmptyStr {
   match role {
     MasterSocket => "socket0 master"
     SlaveSocket => "socket1 slave"
@@ -54,7 +54,7 @@ type ProcessorPowerRail
   | VddqDdr0123_4567
   | Vdd3v3Soc
 
-fn processor_power_rail_name(rail: ProcessorPowerRail) -> NonEmptyStr {
+fn processor_power_rail_name(rail: ProcessorPowerRail) -> std.types.NonEmptyStr {
   match rail {
     VddSoc => "VDD_SOC"
     VddRcax => "VDD_RCAx"
@@ -100,7 +100,7 @@ type PlatformSequencingHandshake
 // names a one-microsecond delay on ALERT3_N; carrying it as Microsecond makes the unit part of
 // the fact rather than a comment that a reader could misread as a cycle count or an arbitrary
 // delay.
-data slave_socket_alert3_pulse_width: Microsecond = microsecond(count: 1)
+data slave_socket_alert3_pulse_width: std.measure.Microsecond = microsecond(count: 1)
 
 data platform_sequencing_handshake_chain: List<PlatformSequencingHandshake> = [
   SocPwrgdObserved { socket: MasterSocket },
@@ -130,7 +130,7 @@ type MtJadeBoardCpldResponsibility
   | SlaveSocketSysResetReleaseGating
   | SysResetPathWithBmc
 
-fn mt_jade_board_cpld_responsibility_name(r: MtJadeBoardCpldResponsibility) -> NonEmptyStr {
+fn mt_jade_board_cpld_responsibility_name(r: MtJadeBoardCpldResponsibility) -> std.types.NonEmptyStr {
   match r {
     CpuBmcGpioVoltageIsolation => "CPU/BMC GPIO voltage isolation"
     CpuJtagDaisyChainMux => "CPU JTAG daisy-chain mux and single-socket bypass"
@@ -277,7 +277,7 @@ type MtJadeReferencePartRow {
 // THE OCP REFERENCE-PART ROW NAMES AST2500 IN PROSE; THE CHIP FACTS LIVE IN THE ASPEED
 // AUTHORITY. This edge joins the platform BMC role to extdeps.bmc.aspeed_ast2500 rather than
 // retyping the part number as the only source of chip identity.
-data mt_jade_bmc_chip_catalog: AspeedAst2500CatalogRow = aspeed_ast2500_catalog
+data mt_jade_bmc_chip_catalog: extdeps.bmc.aspeed_ast2500.AspeedAst2500CatalogRow = aspeed_ast2500_catalog
 
 data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
   MtJadeReferencePartRow {
@@ -336,7 +336,7 @@ data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
   },
 ]
 
-fn clock_tree_contains_part_number(nodes: List<ClockTreeNode>, part: NonEmptyStr) -> Bool {
+fn clock_tree_contains_part_number(nodes: List<ClockTreeNode>, part: std.types.NonEmptyStr) -> Bool {
   fold(nodes, init: false, f: fn(acc, n) {
     acc || ((n.ordering_part_number as String) == (part as String))
   })
@@ -346,4 +346,4 @@ fn reference_part_roles_include(rows: List<MtJadeReferencePartRow>, wanted: Refe
   fold(rows, init: false, f: fn(acc, r) { acc || r.role == wanted })
 }
 
-data extdeps_model_scope: ExternalModelScope = mt_jade_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = mt_jade_model_scope

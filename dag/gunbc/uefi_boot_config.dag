@@ -5,12 +5,12 @@ type DesiredBootSource
   = BootFromInstallMedia { efi_file: std.types.NonEmptyStr }
   | BootFromPxeEntry { boot_index: Int }
 
-fn uefi_boot_config_commands(desired: DesiredBootSource) -> List<UefiShellCommand> {
+fn uefi_boot_config_commands(desired: DesiredBootSource) -> List<extdeps.firmware.uefi_shell.UefiShellCommand> {
   match desired {
     BootFromInstallMedia { efi_file: f } => [
       MapDevices { refresh: true },
       BcfgDump { target: BcfgBoot },
-      BcfgAdd { target: BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as NonEmptyStr },
+      BcfgAdd { target: BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as std.types.NonEmptyStr },
       Reset { mode: ResetWarm },
     ]
     BootFromPxeEntry { boot_index: i } => [

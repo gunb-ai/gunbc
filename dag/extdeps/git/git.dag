@@ -1,43 +1,43 @@
 module extdeps.git
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs"
   }
 }
 
-data git_diff_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_diff_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/git-diff"
   }
 }
 
-data git_rev_list_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_rev_list_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/git-rev-list"
   }
 }
 
-data git_merge_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_merge_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/git-merge"
   }
 }
 
-data git_checkout_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_checkout_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/git-checkout"
   }
 }
 
-data git_pathspec_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_pathspec_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/gitglossary"
   }
@@ -257,15 +257,15 @@ type GitDiffRange
   = TwoDot
   | ThreeDot
 
-fn git_diff_range_argv(base: GitRef, head: GitRef, range: GitDiffRange) -> List<String> {
+fn git_diff_range_argv(base: std.types.GitRef, head: std.types.GitRef, range: GitDiffRange) -> List<String> {
   match range {
     TwoDot => [base as String, head as String]
     ThreeDot => [concat(concat(base as String, "..."), head as String)]
   }
 }
 
-data git_ls_remote_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_ls_remote_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/git-ls-remote"
   }
@@ -333,7 +333,7 @@ fn parse_advertised_ref_line(line: String) -> AdvertisedRef? {
     } else {
       Present {
         value: AdvertisedRef {
-          object_id: fields.object_id as CommitSha,
+          object_id: fields.object_id as std.types.CommitSha,
           ref_name: fields.ref_name,
         },
       }
@@ -407,7 +407,7 @@ type GitRemoteRefParts {
   ref_name: String
 }
 
-fn git_remote_ref_parts(ref: GitRef) -> GitRemoteRefParts {
+fn git_remote_ref_parts(ref: std.types.GitRef) -> GitRemoteRefParts {
   let parts = split(s: ref as String, delimiter: "/")
   GitRemoteRefParts {
     remote: parts.first(),
@@ -415,8 +415,8 @@ fn git_remote_ref_parts(ref: GitRef) -> GitRemoteRefParts {
   }
 }
 
-fn git_remote_ref(parts: GitRemoteRefParts) -> GitRef {
-  concat(concat(parts.remote, "/"), parts.ref_name) as GitRef
+fn git_remote_ref(parts: GitRemoteRefParts) -> std.types.GitRef {
+  concat(concat(parts.remote, "/"), parts.ref_name) as std.types.GitRef
 }
 
 fn git_shell_join_argv(argv: List<String>) -> String {
@@ -458,7 +458,7 @@ fn git_fetch_prune_shell(remote: String) -> String {
   git_shell_join_argv(argv: shape_git_fetch_prune_argv(remote: remote))
 }
 
-fn shape_git_show_tree_argv(ref: GitRef) -> List<String> {
+fn shape_git_show_tree_argv(ref: std.types.GitRef) -> List<String> {
   ["git", "show", "-s", "--format=%T", ref as String]
 }
 
@@ -619,7 +619,7 @@ service git.Core {
   }
 
   operation Diff {
-    input { base: GitRef, head: GitRef = "HEAD" }
+    input { base: std.types.GitRef, head: std.types.GitRef = "HEAD" }
     output { diff: String from "stdout" }
     readonly
     transport shell { argv: ["git", "diff", "{base}", "{head}"] }
@@ -630,7 +630,7 @@ service git.Core {
   }
 
   operation DiffNameOnly {
-    input { base: GitRef, head: GitRef = "HEAD" }
+    input { base: std.types.GitRef, head: std.types.GitRef = "HEAD" }
     output {
       paths: List<std.types.FilePath> from "stdout_lines"
       success: Bool from "exit_success"
@@ -644,7 +644,7 @@ service git.Core {
   }
 
   operation DiffNameOnlyMerge {
-    input { base: GitRef, head: GitRef = "HEAD" }
+    input { base: std.types.GitRef, head: std.types.GitRef = "HEAD" }
     output {
       paths: List<std.types.FilePath> from "stdout_lines"
       success: Bool from "exit_success"
@@ -658,7 +658,7 @@ service git.Core {
   }
 
   operation DiffUnified0 {
-    input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
+    input { base: std.types.GitRef, head: std.types.GitRef = "HEAD", range: GitDiffRange }
     output {
       diff: String from "stdout"
       success: Bool from "exit_success"
@@ -672,7 +672,7 @@ service git.Core {
   }
 
   operation DiffNameStatus {
-    input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
+    input { base: std.types.GitRef, head: std.types.GitRef = "HEAD", range: GitDiffRange }
     output {
       raw: String from "stdout"
       success: Bool from "exit_success"
@@ -687,7 +687,7 @@ service git.Core {
 
   operation RevList {
     input { since: String }
-    output { commits: List<CommitSha> from "stdout_lines" }
+    output { commits: List<std.types.CommitSha> from "stdout_lines" }
     readonly
     transport shell { argv: ["git", "rev-list", "{since}..HEAD"] }
     exit {
@@ -698,7 +698,7 @@ service git.Core {
 
   operation RevListBefore {
     input { before: String }
-    output { base_ref: CommitSha from "stdout" }
+    output { base_ref: std.types.CommitSha from "stdout" }
     readonly
     transport shell { argv: ["git", "rev-list", "-1", "--before={before}", "HEAD"] }
     exit {
@@ -708,7 +708,7 @@ service git.Core {
   }
 
   operation Show {
-    input { ref: GitRef, path: std.types.FilePath }
+    input { ref: std.types.GitRef, path: std.types.FilePath }
     output {
       content: String from "stdout"
       success: Bool from "exit_success"
@@ -723,7 +723,7 @@ service git.Core {
   }
 
   operation FetchNoTags {
-    input { remote: String, ref: String, stall_deadline_seconds: Seconds }
+    input { remote: String, ref: String, stall_deadline_seconds: std.types.Seconds }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -863,7 +863,7 @@ service git.Core {
   }
 
   operation CheckoutNewBranchAtInRepo {
-    input { repo: std.types.FilePath, branch: String, start_point: GitRef }
+    input { repo: std.types.FilePath, branch: String, start_point: std.types.GitRef }
     output {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
@@ -927,7 +927,7 @@ service git.Core {
   }
 
   operation RevParseInRepo {
-    input { repo: std.types.FilePath, target: GitRef }
+    input { repo: std.types.FilePath, target: std.types.GitRef }
     output {
       revision: String from "stdout"
       exit_code: Int from "exit_code"
@@ -952,18 +952,18 @@ service git.Core {
   }
 }
 
-fn shape_git_worktree_add_argv(path: std.types.FilePath, branch: NonEmptyStr, remote_ref: GitRef) -> List<String> {
+fn shape_git_worktree_add_argv(path: std.types.FilePath, branch: std.types.NonEmptyStr, remote_ref: std.types.GitRef) -> List<String> {
   ["worktree", "add", path as String, "-b", branch as String, remote_ref as String]
 }
 
-fn shape_git_worktree_add_detached_argv(path: std.types.FilePath, commit: GitRef) -> List<String> {
+fn shape_git_worktree_add_detached_argv(path: std.types.FilePath, commit: std.types.GitRef) -> List<String> {
   ["worktree", "add", "--detach", path as String, commit as String]
 }
 
 fn shape_git_bundle_create_argv(
   repo: std.types.FilePath,
   bundle: std.types.FilePath,
-  source_ref: GitRef,
+  source_ref: std.types.GitRef,
 ) -> List<String> {
   ["-C", repo as String, "bundle", "create", bundle as String, source_ref as String]
 }
@@ -978,14 +978,14 @@ fn shape_git_is_shallow_repository_argv(repo: std.types.FilePath) -> List<String
 
 fn shape_git_remote_get_url_argv(
   repo: std.types.FilePath,
-  remote: NonEmptyStr,
+  remote: std.types.NonEmptyStr,
 ) -> List<String> {
   ["-C", repo as String, "remote", "get-url", remote as String]
 }
 
 fn shape_git_fetch_unshallow_argv(
   repo: std.types.FilePath,
-  remote: NonEmptyStr,
+  remote: std.types.NonEmptyStr,
 ) -> List<String> {
   ["-C", repo as String, "fetch", "--no-tags", "--unshallow", remote as String]
 }
@@ -1001,14 +1001,14 @@ fn shape_git_init_in_repo_argv(repo: std.types.FilePath) -> List<String> {
 fn shape_git_bare_fetch_argv(
   repo: std.types.FilePath,
   bundle: std.types.FilePath,
-  source_ref: GitRef,
+  source_ref: std.types.GitRef,
 ) -> List<String> {
   ["--git-dir", repo as String, "fetch", "--force", bundle as String, source_ref as String]
 }
 
 fn shape_git_bare_update_ref_argv(
   repo: std.types.FilePath,
-  publish_ref: GitRef,
+  publish_ref: std.types.GitRef,
 ) -> List<String> {
   ["--git-dir", repo as String, "update-ref", publish_ref as String, "FETCH_HEAD"]
 }
@@ -1016,7 +1016,7 @@ fn shape_git_bare_update_ref_argv(
 fn shape_git_clone_branch_argv(
   origin: std.types.FilePath,
   repo: std.types.FilePath,
-  branch: NonEmptyStr,
+  branch: std.types.NonEmptyStr,
 ) -> List<String> {
   ["clone", "--branch", branch as String, origin as String, repo as String]
 }
@@ -1025,21 +1025,21 @@ fn shape_git_status_porcelain_argv(repo: std.types.FilePath) -> List<String> {
   ["-C", repo as String, "status", "--porcelain"]
 }
 
-fn shape_git_fetch_remote_argv(repo: std.types.FilePath, remote: NonEmptyStr) -> List<String> {
+fn shape_git_fetch_remote_argv(repo: std.types.FilePath, remote: std.types.NonEmptyStr) -> List<String> {
   ["-C", repo as String, "fetch", remote as String]
 }
 
-fn shape_git_reset_hard_argv(repo: std.types.FilePath, target: GitRef) -> List<String> {
+fn shape_git_reset_hard_argv(repo: std.types.FilePath, target: std.types.GitRef) -> List<String> {
   ["-C", repo as String, "reset", "--hard", target as String]
 }
 
-fn shape_git_rev_parse_argv(repo: std.types.FilePath, target: GitRef) -> List<String> {
+fn shape_git_rev_parse_argv(repo: std.types.FilePath, target: std.types.GitRef) -> List<String> {
   ["-C", repo as String, "rev-parse", target as String]
 }
 
 service git.Worktree {
   operation Add {
-    input { path: std.types.FilePath, branch: NonEmptyStr, remote_ref: GitRef }
+    input { path: std.types.FilePath, branch: std.types.NonEmptyStr, remote_ref: std.types.GitRef }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"

@@ -1,8 +1,8 @@
 module extdeps.communication.numerical_fidelity
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#floating-point"
   }
@@ -16,7 +16,7 @@ type LoweringFidelityVerdict
   = LoweringAccepted { fidelity: extdeps.communication.medium.DecodeFidelity }
   | LoweringRefused { reason: LoweringRefusalReason }
 
-fn decode_fidelity_for_contract(contract: NumericalContract) -> DecodeFidelity {
+fn decode_fidelity_for_contract(contract: std.numerical_contract.NumericalContract) -> extdeps.communication.medium.DecodeFidelity {
   match contract {
     IntegerExact => Lossless
     FloatApproximate { fma_contraction: fma, rounding: _ } =>
@@ -27,7 +27,7 @@ fn decode_fidelity_for_contract(contract: NumericalContract) -> DecodeFidelity {
   }
 }
 
-fn lowering_fidelity_verdict_for_contract(contract: NumericalContract) -> LoweringFidelityVerdict {
+fn lowering_fidelity_verdict_for_contract(contract: std.numerical_contract.NumericalContract) -> LoweringFidelityVerdict {
   LoweringAccepted {
     fidelity: decode_fidelity_for_contract(contract: contract)
   }

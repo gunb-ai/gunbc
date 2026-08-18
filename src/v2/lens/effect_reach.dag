@@ -3,21 +3,21 @@ module v2.lens.effect_reach
 
 data effect_reach_law: String = "Effect-reach census (module-identity-storage-binding Phase 0): proven host-effect closure = call-reachable fn bodies from the witness entry over fn-arrow DependencyView facts, marking every string literal or data-init path literal that flows into a declared host-effect sink callee. Unknown path resolution fail-closed → HostEffectReach with UnknownPath empty string (still derived host-reading). Known-miss frontier: constructed paths (concat of literals that fail pure-path shape) and paths outside src/|dag/+.dag/no-spaces evade path census entirely → row keeps declared/default ReadsLiveTree disposition (miss ≤ baseline); falsely-declared rows and constructed deps close with Phase 1 typed SourceRef. Dissolves when typed SourceRef at host boundaries is ENFORCED and the bare-string file-dependency class is MIGRATED — not when the type is merely declared (task 5 flagship is per-row opt-in; 115 rows remain)."
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-data empty_flow_list: List<EffectReachFlow> = []
-data empty_decl_list: List<FnArrowDecl> = []
+data empty_flow_list: List<v2.std.effect_reach.EffectReachFlow> = []
+data empty_decl_list: List<v2.std.fn_index.FnArrowDecl> = []
 data empty_string_list: List<String> = []
-data empty_symbol_list: List<Symbol> = []
+data empty_symbol_list: List<v2.std.node.Symbol> = []
 data empty_node_list: List<Node> = []
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+fn symbol_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> Bool {
   a == b
 }
 
@@ -35,39 +35,39 @@ fn decl_module_prefix(mod_path: String) -> String {
   concat(mod_path, ".")
 }
 
-fn decl_belongs_to_module(decl: FnArrowDecl, mod_path: String) -> Bool {
+fn decl_belongs_to_module(decl: v2.std.fn_index.FnArrowDecl, mod_path: String) -> Bool {
   starts_with(s: decl.qualified_name, prefix: decl_module_prefix(mod_path: mod_path))
     || string_eq(a: decl.qualified_name, b: mod_path)
 }
 
-fn decls_in_module(decls: List<FnArrowDecl>, mod_path: String) -> List<FnArrowDecl> {
+fn decls_in_module(decls: List<v2.std.fn_index.FnArrowDecl>, mod_path: String) -> List<v2.std.fn_index.FnArrowDecl> {
   filter(
     xs: decls,
     predicate: fn(decl) { decl_belongs_to_module(decl: decl, mod_path: mod_path) }
   )
 }
 
-fn decls_in_modules(decls: List<FnArrowDecl>, modules: List<String>) -> List<FnArrowDecl> {
+fn decls_in_modules(decls: List<v2.std.fn_index.FnArrowDecl>, modules: List<String>) -> List<v2.std.fn_index.FnArrowDecl> {
   fold_list(xs: modules, empty: empty_decl_list, cons: fn(acc, mod_path) {
     list_append(left: acc, right: decls_in_module(decls: decls, mod_path: mod_path))
   })
 }
 
-fn data_init_belongs_to_modules(decl: DataInitDecl, modules: List<String>) -> Bool {
+fn data_init_belongs_to_modules(decl: v2.std.data_index.DataInitDecl, modules: List<String>) -> Bool {
   any(xs: modules, predicate: fn(m) { string_eq(a: decl.module, b: m) })
 }
 
 fn data_inits_in_modules(
-  inits: List<DataInitDecl>,
+  inits: List<v2.std.data_index.DataInitDecl>,
   modules: List<String>
-) -> List<DataInitDecl> {
+) -> List<v2.std.data_index.DataInitDecl> {
   filter(
     xs: inits,
     predicate: fn(decl) { data_init_belongs_to_modules(decl: decl, modules: modules) }
   )
 }
 
-fn data_init_is_path_literal(decl: DataInitDecl) -> Bool {
+fn data_init_is_path_literal(decl: v2.std.data_index.DataInitDecl) -> Bool {
   starts_with(s: decl.literal_fp, prefix: "str:")
     && !string_contains(s: decl.literal_fp, pattern: " ")
     && string_contains(s: decl.literal_fp, pattern: ".dag")
@@ -75,11 +75,11 @@ fn data_init_is_path_literal(decl: DataInitDecl) -> Bool {
       || string_contains(s: decl.literal_fp, pattern: "dag/"))
 }
 
-fn data_init_fp_matches_path(decl: DataInitDecl, path: String) -> Bool {
+fn data_init_fp_matches_path(decl: v2.std.data_index.DataInitDecl, path: String) -> Bool {
   string_contains(s: decl.literal_fp, pattern: path)
 }
 
-fn sink_kind_for_callee(callee_text: String) -> HostEffectSinkKind {
+fn sink_kind_for_callee(callee_text: String) -> v2.std.effect_reach.HostEffectSinkKind {
   if string_eq(a: callee_text, b: "Read")
     || string_eq(a: callee_text, b: "Filesystem.Read") {
     FilesystemReadSink
@@ -95,7 +95,7 @@ fn sink_kind_for_callee(callee_text: String) -> HostEffectSinkKind {
   }
 }
 
-fn flow_eq(a: EffectReachFlow, b: EffectReachFlow) -> Bool {
+fn flow_eq(a: v2.std.effect_reach.EffectReachFlow, b: v2.std.effect_reach.EffectReachFlow) -> Bool {
   match a {
     EffectReachFlow { sink: sa, path_literal: pa, init_literal_fp: fpa } =>
       match b {
@@ -107,7 +107,7 @@ fn flow_eq(a: EffectReachFlow, b: EffectReachFlow) -> Bool {
   }
 }
 
-fn sink_kind_eq(a: HostEffectSinkKind, b: HostEffectSinkKind) -> Bool {
+fn sink_kind_eq(a: v2.std.effect_reach.HostEffectSinkKind, b: v2.std.effect_reach.HostEffectSinkKind) -> Bool {
   match a {
     FilesystemReadSink =>
       match b { FilesystemReadSink => true _ => false }
@@ -122,11 +122,11 @@ fn sink_kind_eq(a: HostEffectSinkKind, b: HostEffectSinkKind) -> Bool {
   }
 }
 
-fn flow_already_present(flows: List<EffectReachFlow>, candidate: EffectReachFlow) -> Bool {
+fn flow_already_present(flows: List<v2.std.effect_reach.EffectReachFlow>, candidate: v2.std.effect_reach.EffectReachFlow) -> Bool {
   any(xs: flows, predicate: fn(f) { flow_eq(a: f, b: candidate) })
 }
 
-fn merge_flows(left: List<EffectReachFlow>, right: List<EffectReachFlow>) -> List<EffectReachFlow> {
+fn merge_flows(left: List<v2.std.effect_reach.EffectReachFlow>, right: List<v2.std.effect_reach.EffectReachFlow>) -> List<v2.std.effect_reach.EffectReachFlow> {
   fold_list(xs: right, empty: left, cons: fn(acc, f) {
     if flow_already_present(flows: acc, candidate: f) {
       acc
@@ -139,7 +139,7 @@ fn merge_flows(left: List<EffectReachFlow>, right: List<EffectReachFlow>) -> Lis
 fn path_literal_from_lexeme(
   text: String,
   param_names: List<String>,
-  data_inits: List<DataInitDecl>
+  data_inits: List<v2.std.data_index.DataInitDecl>
 ) -> String {
   if is_path_like_lexeme(text: text) {
     text
@@ -173,7 +173,7 @@ fn positional_child_targets(node: Node) -> List<Node> {
   })
 }
 
-fn arg_symbols_from_nodes(nodes: List<Node>) -> List<Symbol> {
+fn arg_symbols_from_nodes(nodes: List<Node>) -> List<v2.std.node.Symbol> {
   fold_list(xs: nodes, empty: empty_symbol_list, cons: fn(acc, n) {
     match node_atom_identity_optional(node: n) {
       Present { value: sym } => list_snoc_item(xs: acc, item: sym)
@@ -191,10 +191,10 @@ fn tail_nodes(xs: List<Node>) -> List<Node> {
 
 fn flows_from_sink_call(
   callee_text: String,
-  args: List<Symbol>,
+  args: List<v2.std.node.Symbol>,
   param_names: List<String>,
-  data_inits: List<DataInitDecl>
-) -> List<EffectReachFlow> {
+  data_inits: List<v2.std.data_index.DataInitDecl>
+) -> List<v2.std.effect_reach.EffectReachFlow> {
   let sink = sink_kind_for_callee(callee_text: callee_text)
   match sink {
     UnknownHostEffectSink => empty_flow_list
@@ -208,14 +208,14 @@ fn flows_from_sink_call(
             data_inits: data_inits
           )
           [
-            EffectReachFlow {
+            v2.std.effect_reach.EffectReachFlow {
               sink: sink,
               path_literal: path,
               init_literal_fp: ""
             }
           ]
         HeadAbsent =>
-          [EffectReachFlow { sink: sink, path_literal: "", init_literal_fp: "" }]
+          [v2.std.effect_reach.EffectReachFlow { sink: sink, path_literal: "", init_literal_fp: "" }]
       }
   }
 }
@@ -223,8 +223,8 @@ fn flows_from_sink_call(
 fn flows_from_call_node(
   node: Node,
   param_names: List<String>,
-  data_inits: List<DataInitDecl>
-) -> List<EffectReachFlow> {
+  data_inits: List<v2.std.data_index.DataInitDecl>
+) -> List<v2.std.effect_reach.EffectReachFlow> {
   let targets = positional_child_targets(node: node)
   match list_head(xs: targets) {
     HeadFound { value: callee_node } =>
@@ -256,7 +256,7 @@ fn atom_collect_init(n: Node) -> AtomCollectState {
   AtomCollectState { node: n, atoms: empty_symbol_list }
 }
 
-fn atom_collect_step(acc: AtomCollectState, _edge: Edge, child: AtomCollectState) -> AtomCollectState {
+fn atom_collect_step(acc: AtomCollectState, _edge: v2.std.node.Edge, child: AtomCollectState) -> AtomCollectState {
   let atoms = match node_atom_identity_optional(node: child.node) {
     Present { value: sym } =>
       if contains(xs: acc.atoms, item: sym, eq: symbol_eq) {
@@ -270,10 +270,10 @@ fn atom_collect_step(acc: AtomCollectState, _edge: Edge, child: AtomCollectState
 }
 
 fn atom_collect_algebra() -> NodeFold<AtomCollectState> {
-  NodeFold { init: atom_collect_init, step: atom_collect_step }
+  v2.std.node.NodeFold { init: atom_collect_init, step: atom_collect_step }
 }
 
-fn atom_identities_in_node(node: Node) -> List<Symbol> {
+fn atom_identities_in_node(node: Node) -> List<v2.std.node.Symbol> {
   let from_descendants = fold_node(n: node, algebra: atom_collect_algebra()).atoms
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
@@ -287,9 +287,9 @@ fn atom_identities_in_node(node: Node) -> List<Symbol> {
 }
 
 fn literal_path_flows_from_atoms(
-  atoms: List<Symbol>,
-  data_inits: List<DataInitDecl>
-) -> List<EffectReachFlow> {
+  atoms: List<v2.std.node.Symbol>,
+  data_inits: List<v2.std.data_index.DataInitDecl>
+) -> List<v2.std.effect_reach.EffectReachFlow> {
   fold_list(xs: atoms, empty: empty_flow_list, cons: fn(acc, sym) {
     let text = symbol_lexeme(sym: sym)
     let path = path_literal_from_lexeme(
@@ -298,7 +298,7 @@ fn literal_path_flows_from_atoms(
       data_inits: data_inits
     )
     if path != "" {
-      let flow = EffectReachFlow {
+      let flow = v2.std.effect_reach.EffectReachFlow {
         sink: FilesystemReadSink,
         path_literal: path,
         init_literal_fp: ""
@@ -324,7 +324,7 @@ type FlowScanState {
 fn flow_scan_init(
   n: Node,
   param_names: List<String>,
-  data_inits: List<DataInitDecl>
+  data_inits: List<v2.std.data_index.DataInitDecl>
 ) -> FlowScanState {
   FlowScanState {
     node: n,
@@ -334,7 +334,7 @@ fn flow_scan_init(
   }
 }
 
-fn flow_scan_step(acc: FlowScanState, _edge: Edge, child: FlowScanState) -> FlowScanState {
+fn flow_scan_step(acc: FlowScanState, _edge: v2.std.node.Edge, child: FlowScanState) -> FlowScanState {
   let from_call = flows_from_call_node(
     node: child.node,
     param_names: acc.param_names,
@@ -357,15 +357,15 @@ fn flow_scan_step(acc: FlowScanState, _edge: Edge, child: FlowScanState) -> Flow
 
 fn flow_scan_algebra(
   param_names: List<String>,
-  data_inits: List<DataInitDecl>
+  data_inits: List<v2.std.data_index.DataInitDecl>
 ) -> NodeFold<FlowScanState> {
-  NodeFold {
+  v2.std.node.NodeFold {
     init: fn(n) { flow_scan_init(n: n, param_names: param_names, data_inits: data_inits) },
     step: flow_scan_step
   }
 }
 
-fn param_names_of(decl: FnArrowDecl) -> List<String> {
+fn param_names_of(decl: v2.std.fn_index.FnArrowDecl) -> List<String> {
   fold_list(xs: decl.params, empty: empty_string_list, cons: fn(acc, p) {
     list_snoc_item(xs: acc, item: symbol_lexeme(sym: p.name))
   })
@@ -374,8 +374,8 @@ fn param_names_of(decl: FnArrowDecl) -> List<String> {
 fn flows_in_node(
   node: Node,
   param_names: List<String>,
-  data_inits: List<DataInitDecl>
-) -> List<EffectReachFlow> {
+  data_inits: List<v2.std.data_index.DataInitDecl>
+) -> List<v2.std.effect_reach.EffectReachFlow> {
   let from_descendants = fold_node(
     n: node,
     algebra: flow_scan_algebra(param_names: param_names, data_inits: data_inits)
@@ -413,26 +413,26 @@ fn callees_from_node(node: Node) -> List<String> {
   )
 }
 
-fn fn_arrow_decl_eq(a: FnArrowDecl, b: FnArrowDecl) -> Bool {
+fn fn_arrow_decl_eq(a: v2.std.fn_index.FnArrowDecl, b: v2.std.fn_index.FnArrowDecl) -> Bool {
   string_eq(a: a.qualified_name, b: b.qualified_name)
 }
 
-fn decl_in_list(decl: FnArrowDecl, xs: List<FnArrowDecl>) -> Bool {
+fn decl_in_list(decl: v2.std.fn_index.FnArrowDecl, xs: List<v2.std.fn_index.FnArrowDecl>) -> Bool {
   any(xs: xs, predicate: fn(d) { fn_arrow_decl_eq(a: d, b: decl) })
 }
 
 fn decls_matching_callee(
-  decls: List<FnArrowDecl>,
+  decls: List<v2.std.fn_index.FnArrowDecl>,
   modules: List<String>,
   callee: String
-) -> List<FnArrowDecl> {
+) -> List<v2.std.fn_index.FnArrowDecl> {
   filter(
     xs: decls_in_modules(decls: decls, modules: modules),
     predicate: fn(decl) { string_eq(a: decl.name, b: callee) }
   )
 }
 
-fn tail_decls(xs: List<FnArrowDecl>) -> List<FnArrowDecl> {
+fn tail_decls(xs: List<v2.std.fn_index.FnArrowDecl>) -> List<v2.std.fn_index.FnArrowDecl> {
   match list_tail(xs: xs) {
     TailFound { tail: t } => t
     TailAbsent => empty_decl_list
@@ -440,11 +440,11 @@ fn tail_decls(xs: List<FnArrowDecl>) -> List<FnArrowDecl> {
 }
 
 fn call_reachable_decls_go(
-  seeds: List<FnArrowDecl>,
+  seeds: List<v2.std.fn_index.FnArrowDecl>,
   closure_modules: List<String>,
-  decls: List<FnArrowDecl>,
-  reached: List<FnArrowDecl>
-) -> List<FnArrowDecl> {
+  decls: List<v2.std.fn_index.FnArrowDecl>,
+  reached: List<v2.std.fn_index.FnArrowDecl>
+) -> List<v2.std.fn_index.FnArrowDecl> {
   match list_head(xs: seeds) {
     HeadAbsent => reached
     HeadFound { value: seed } =>
@@ -482,8 +482,8 @@ fn call_reachable_decls_go(
 fn call_reachable_decls(
   entry_module: String,
   closure_modules: List<String>,
-  decls: List<FnArrowDecl>
-) -> List<FnArrowDecl> {
+  decls: List<v2.std.fn_index.FnArrowDecl>
+) -> List<v2.std.fn_index.FnArrowDecl> {
   call_reachable_decls_go(
     seeds: decls_in_module(decls: decls, mod_path: entry_module),
     closure_modules: closure_modules,
@@ -493,9 +493,9 @@ fn call_reachable_decls(
 }
 
 fn flows_from_reachable_decls(
-  reachable: List<FnArrowDecl>,
-  data_inits: List<DataInitDecl>
-) -> List<EffectReachFlow> {
+  reachable: List<v2.std.fn_index.FnArrowDecl>,
+  data_inits: List<v2.std.data_index.DataInitDecl>
+) -> List<v2.std.effect_reach.EffectReachFlow> {
   fold_list(xs: reachable, empty: empty_flow_list, cons: fn(acc, decl) {
     merge_flows(
       left: acc,
@@ -510,12 +510,12 @@ fn flows_from_reachable_decls(
 
 fn closure_data_init_path_flows(
   closure_modules: List<String>,
-  data_inits: List<DataInitDecl>
-) -> List<EffectReachFlow> {
+  data_inits: List<v2.std.data_index.DataInitDecl>
+) -> List<v2.std.effect_reach.EffectReachFlow> {
   let scoped = data_inits_in_modules(inits: data_inits, modules: closure_modules)
   fold_list(xs: scoped, empty: empty_flow_list, cons: fn(acc, decl) {
     if data_init_is_path_literal(decl: decl) {
-      let flow = EffectReachFlow {
+      let flow = v2.std.effect_reach.EffectReachFlow {
         sink: GunbcCompileEntrySink,
         path_literal: "",
         init_literal_fp: decl.literal_fp
@@ -533,10 +533,10 @@ fn closure_data_init_path_flows(
 
 fn effect_reach_classification_from_facts(
   entry_module: String,
-  facts: List<ModuleImportFact>,
-  decls: List<FnArrowDecl>,
-  data_inits: List<DataInitDecl>
-) -> EffectReachClassification {
+  facts: List<v2.lens.witness_cost_locality.ModuleImportFact>,
+  decls: List<v2.std.fn_index.FnArrowDecl>,
+  data_inits: List<v2.std.data_index.DataInitDecl>
+) -> v2.std.effect_reach.EffectReachClassification {
   let closure_modules = witness_import_closure(root: entry_module, facts: facts)
   let reachable = call_reachable_decls(
     entry_module: entry_module,
@@ -561,8 +561,8 @@ fn effect_reach_classification_from_facts(
 
 fn effect_reach_classification_from_facts_v0(
   entry_module: String,
-  facts: List<ModuleImportFact>
-) -> EffectReachClassification {
+  facts: List<v2.lens.witness_cost_locality.ModuleImportFact>
+) -> v2.std.effect_reach.EffectReachClassification {
   effect_reach_classification_from_facts(
     entry_module: entry_module,
     facts: facts,
@@ -571,18 +571,18 @@ fn effect_reach_classification_from_facts_v0(
   )
 }
 
-fn classification_is_local(classification: EffectReachClassification) -> Bool {
+fn classification_is_local(classification: v2.std.effect_reach.EffectReachClassification) -> Bool {
   match classification {
     LocalEffect => true
     HostEffectReach { flows: _ } => false
   }
 }
 
-fn derived_host_reading(classification: EffectReachClassification) -> Bool {
+fn derived_host_reading(classification: v2.std.effect_reach.EffectReachClassification) -> Bool {
   !classification_is_local(classification: classification)
 }
 
-fn flow_touched_by_path(flow: EffectReachFlow, path: String) -> Bool {
+fn flow_touched_by_path(flow: v2.std.effect_reach.EffectReachFlow, path: String) -> Bool {
   match flow {
     EffectReachFlow { sink: _, path_literal: p, init_literal_fp: fp } =>
       if p != "" {
@@ -596,7 +596,7 @@ fn flow_touched_by_path(flow: EffectReachFlow, path: String) -> Bool {
 }
 
 fn classification_has_path_literal(
-  classification: EffectReachClassification,
+  classification: v2.std.effect_reach.EffectReachClassification,
   path: String
 ) -> Bool {
   match classification {
@@ -607,7 +607,7 @@ fn classification_has_path_literal(
 }
 
 fn effect_reach_touched_by_paths(
-  classification: EffectReachClassification,
+  classification: v2.std.effect_reach.EffectReachClassification,
   touched_paths: List<String>
 ) -> Bool {
   any(
@@ -616,7 +616,7 @@ fn effect_reach_touched_by_paths(
   )
 }
 
-fn effect_reach_flow_count(classification: EffectReachClassification) -> Int {
+fn effect_reach_flow_count(classification: v2.std.effect_reach.EffectReachClassification) -> Int {
   match classification {
     LocalEffect => 0
     HostEffectReach { flows: flows } => length(xs: flows)

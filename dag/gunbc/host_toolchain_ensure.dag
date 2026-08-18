@@ -4,13 +4,13 @@ module gunbc.host_toolchain_ensure
 type HostToolchainKind = BuildCache | CodexRuntime | OsInstallActuator
 
 // Compatibility specialization, not the Ensure abstraction: HostToolchainKind is the closed selector for two existing HostEffect adapters in this entrypoint. Generic convergence semantics live in gunbc.ensure and dispatch requirements live in gunbc.roadmap_execution_contract. Cargo, rustc, provider auth, and future task dependencies must not be added to this enum merely because their callers say ensure; they require their own typed observation/plan/readback adapters and may then reuse generic Ensure.
-data host_toolchain_ensure_srv3_fork_scaffold: Disposition = Terminal {
+data host_toolchain_ensure_srv3_fork_scaffold: std.disposition.Disposition = Terminal {
   reason: "srv3_os_install_actuator_toolchain_ensure thinned to host_toolchain_ensure(host: srv3, kind: OsInstallActuator) — no behavioral fork remains."
 }
 
-data host_toolchain_ensure_apply_dispatch_scaffold: Disposition = Scaffold {
+data host_toolchain_ensure_apply_dispatch_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect_realize",
     decl_name: "host_effect_apply_gated",
     field: WholeDeclaration,
@@ -24,7 +24,7 @@ type HostToolchainReach = ResolvedHostToolchainReach {
   access: gunbc.ci_deploy_access.DeployAccess,
 }
 
-fn host_toolchain_direct_access(host: HostIdentity) -> DeployAccess? {
+fn host_toolchain_direct_access(host: product.placement_supply.HostIdentity) -> gunbc.ci_deploy_access.DeployAccess? {
   if host == operator_host_srv1 {
     Present { value: host_identity_srv1_access }
   } else { if host == operator_host_srv2 {
@@ -43,7 +43,7 @@ type HostToolchainReachOutcome
 
 fn host_toolchain_ensure_reach(
   kind: HostToolchainKind,
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
 ) -> HostToolchainReachOutcome {
   match host_toolchain_ensure_target_host(kind: kind, host: host) {
     Present { value: target } =>
@@ -56,7 +56,7 @@ fn host_toolchain_ensure_reach(
   }
 }
 
-fn host_toolchain_ensure_effect(kind: HostToolchainKind) -> HostEffect {
+fn host_toolchain_ensure_effect(kind: HostToolchainKind) -> gunbc.host_effect.HostEffect {
   match kind {
     BuildCache => ProvisionBuildCache { catalog_id: sccache_local_id }
     CodexRuntime => ProvisionCodexRuntime {}
@@ -64,7 +64,7 @@ fn host_toolchain_ensure_effect(kind: HostToolchainKind) -> HostEffect {
   }
 }
 
-fn host_toolchain_ensure_target_host(kind: HostToolchainKind, host: HostIdentity) -> ComputeHost? {
+fn host_toolchain_ensure_target_host(kind: HostToolchainKind, host: product.placement_supply.HostIdentity) -> gunbc.fleet_intent.ComputeHost? {
   match kind {
     BuildCache => fleet_compute_host_for_identity(identity: host)
     CodexRuntime => fleet_compute_host_for_identity(identity: host)
@@ -77,7 +77,7 @@ fn host_toolchain_ensure_target_host(kind: HostToolchainKind, host: HostIdentity
   }
 }
 
-func host_toolchain_ensure(host: HostIdentity, kind: HostToolchainKind) -> ProcessExit
+func host_toolchain_ensure(host: product.placement_supply.HostIdentity, kind: HostToolchainKind) -> std.process.ProcessExit
   uses net: Network
 {
   match host_toolchain_ensure_reach(kind: kind, host: host) {

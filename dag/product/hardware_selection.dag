@@ -54,7 +54,7 @@ fn memory_stick_count(platform: Platform, cfg: MemoryConfig) -> Int {
   platform.memory_channels * cfg.dimms_per_channel
 }
 
-fn memory_total_capacity(platform: Platform, cfg: MemoryConfig) -> ByteSize {
+fn memory_total_capacity(platform: Platform, cfg: MemoryConfig) -> std.measure.ByteSize {
   byte_size(count: byte_size_count(b: cfg.module.capacity_bytes) * memory_stick_count(platform: platform, cfg: cfg))
 }
 
@@ -62,26 +62,26 @@ fn rank_interleave_percent(rank_count: Int) -> Int {
   if rank_count >= 2 { 100 } else { 90 }
 }
 
-fn memory_bandwidth(platform: Platform, cfg: MemoryConfig) -> Bandwidth {
+fn memory_bandwidth(platform: Platform, cfg: MemoryConfig) -> std.measure.Bandwidth {
   let rated = min_int(a: cfg.module.data_rate_mts, b: effective_data_rate_mts(platform: platform, dimms_per_channel: cfg.dimms_per_channel, rank_count: cfg.module.rank_count))
   let interleaved = rated * rank_interleave_percent(rank_count: cfg.module.rank_count) / 100
-  Bandwidth { count: interleaved * 1000000 * dram_channel_bus_bytes() * platform.memory_channels }
+  std.measure.Bandwidth { count: interleaved * 1000000 * dram_channel_bus_bytes() * platform.memory_channels }
 }
 
-fn chips_per_rank(module: DramModuleCatalogRow) -> Int {
+fn chips_per_rank(module: extdeps.memory.types.DramModuleCatalogRow) -> Int {
   dram_chips_per_rank(module: module)
 }
 
-fn devices_per_stick(module: DramModuleCatalogRow) -> Int {
+fn devices_per_stick(module: extdeps.memory.types.DramModuleCatalogRow) -> Int {
   chips_per_rank(module: module) * module.rank_count
 }
 
-fn memory_power(platform: Platform, cfg: MemoryConfig) -> Watt {
+fn memory_power(platform: Platform, cfg: MemoryConfig) -> std.measure.Watt {
   let total_mw = milliwatt_count(w: cfg.power_per_chip) * devices_per_stick(module: cfg.module) * memory_stick_count(platform: platform, cfg: cfg)
   watt(count: total_mw / 1000)
 }
 
-fn memory_cost(platform: Platform, cfg: MemoryConfig) -> MoneyAmountMicro {
+fn memory_cost(platform: Platform, cfg: MemoryConfig) -> std.measure.MoneyAmountMicro {
   money_amount_micro(count: money_amount_micro_count(m: cfg.price_per_stick) * memory_stick_count(platform: platform, cfg: cfg))
 }
 
@@ -136,7 +136,7 @@ fn dc_load_watts(cfg: SystemConfig) -> Int {
   cpu_w + mem_w + board_w
 }
 
-fn wall_draw_watts(cfg: SystemConfig) -> Watt {
+fn wall_draw_watts(cfg: SystemConfig) -> std.measure.Watt {
   watt(count: dc_load_watts(cfg: cfg) * 100 / efficiency_percent(e: cfg.psu.efficiency))
 }
 
@@ -144,7 +144,7 @@ fn psu_is_adequate(cfg: SystemConfig) -> Bool {
   dc_load_watts(cfg: cfg) <= watt_count(w: cfg.psu.max_output)
 }
 
-fn config_total_cost(cfg: SystemConfig) -> MoneyAmountMicro {
+fn config_total_cost(cfg: SystemConfig) -> std.measure.MoneyAmountMicro {
   let mem_cost = money_amount_micro_count(m: memory_cost(platform: cfg.platform, cfg: cfg.memory))
   let total = money_amount_micro_count(m: cfg.cpu.price) + mem_cost + money_amount_micro_count(m: cfg.board.price) + money_amount_micro_count(m: cfg.psu.price)
   money_amount_micro(count: total)
@@ -164,7 +164,7 @@ fn config_is_realizable(cfg: SystemConfig) -> Bool {
   dram_module_is_realizable(module: cfg.memory.module, jedec: cfg.memory.jedec)
 }
 
-fn axes_comparisons(a: HardwareAxes, b: HardwareAxes) -> List<AxisComparison> {
+fn axes_comparisons(a: HardwareAxes, b: HardwareAxes) -> List<std.pareto.AxisComparison> {
   [
     axis_comparison_int(goal: HigherIsBetter, a: a.throughput, b: b.throughput),
     axis_comparison_int(goal: HigherIsBetter, a: byte_size_count(b: a.capacity), b: byte_size_count(b: b.capacity)),
@@ -174,7 +174,7 @@ fn axes_comparisons(a: HardwareAxes, b: HardwareAxes) -> List<AxisComparison> {
   ]
 }
 
-fn dominates(a: HardwareAxes, b: HardwareAxes) -> DominanceVerdict {
+fn dominates(a: HardwareAxes, b: HardwareAxes) -> std.pareto.DominanceVerdict {
   dominance_of_comparisons(comparisons: axes_comparisons(a: a, b: b))
 }
 

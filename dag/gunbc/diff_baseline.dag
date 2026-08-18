@@ -64,11 +64,11 @@ fn diff_baseline_kind(b: DiffBaseline) -> DiffBaselineKind {
   }
 }
 
-fn diff_baseline_ref(b: DiffBaseline) -> GitRef {
+fn diff_baseline_ref(b: DiffBaseline) -> std.types.GitRef {
   match b {
     MergeTarget { ref: r } => r
     ExactReplayBoundary { base: oid, head: _, observed_relation: _ } =>
-      git_object_id_wire_hex(oid: oid) as GitRef
+      git_object_id_wire_hex(oid: oid) as std.types.GitRef
     PushBefore { ref: r } => r
     PushParent { ref: r } => r
     OperatorOverride { ref: r } => r
@@ -107,7 +107,7 @@ fn diff_baseline_is_exact_replay(b: DiffBaseline) -> Bool {
   }
 }
 
-fn resolve_diff_window(observation: GitDiffWindowObservation?) -> DiffBaselineResolution? {
+fn resolve_diff_window(observation: gunbc.git_diff_change_window.GitDiffWindowObservation?) -> DiffBaselineResolution? {
   match observation {
     Absent => none
     Present { value: GitDiffWindowObserved { window: window } } =>
@@ -161,7 +161,7 @@ fn resolve_merge_target(base_ref: String?, default_remote_name: String) -> DiffB
       } else {
         BaselineSelected {
           baseline: MergeTarget {
-            ref: git_remote_ref(parts: GitRemoteRefParts { remote: default_remote_name, ref_name: b })
+            ref: git_remote_ref(parts: extdeps.git.GitRemoteRefParts { remote: default_remote_name, ref_name: b })
           }
         }
       }
@@ -207,7 +207,7 @@ fn resolve_push_before(push_before: PushBeforeInput?, head_sha: String?) -> Diff
                 reason: "push event before SHA equals head — self-compare refused; halting the floor (AFFECTED-SET REFUSAL)"
               }
             } else {
-              BaselineSelected { baseline: PushBefore { ref: before as GitRef } }
+              BaselineSelected { baseline: PushBefore { ref: before as std.types.GitRef } }
             }
         }
       }
@@ -216,7 +216,7 @@ fn resolve_push_before(push_before: PushBeforeInput?, head_sha: String?) -> Diff
 
 fn resolve_diff_baseline_by_event(
   event: CiDiffEvent,
-  push_parent_ref: GitRef,
+  push_parent_ref: std.types.GitRef,
   default_remote_name: String
 ) -> DiffBaselineResolution {
   if event.event_name == github_event_name_pull_request {
@@ -237,7 +237,7 @@ fn resolve_diff_baseline_by_event(
 
 fn resolve_diff_baseline(
   event: CiDiffEvent,
-  push_parent_ref: GitRef,
+  push_parent_ref: std.types.GitRef,
   default_remote_name: String
 ) -> DiffBaselineResolution {
   if diff_baseline_sources_conflict(event: event) {
@@ -261,7 +261,7 @@ fn resolve_diff_baseline(
                 default_remote_name: default_remote_name
               )
             } else {
-              BaselineSelected { baseline: OperatorOverride { ref: r as GitRef } }
+              BaselineSelected { baseline: OperatorOverride { ref: r as std.types.GitRef } }
             }
           Absent =>
             resolve_diff_baseline_by_event(

@@ -34,7 +34,7 @@ type SchedulerRunState {
 }
 
 fn scheduler_execution_dependency_kind_classifier() -> DependencyKindClassifier<Bool> {
-  DependencyKindClassifier {
+  v2.std.dependency.DependencyKindClassifier {
     contains: false,
     binds_to: false,
     type_depends_on: false,
@@ -53,14 +53,14 @@ fn scheduler_execution_dependency_kind_classifier() -> DependencyKindClassifier<
   }
 }
 
-fn scheduler_dependency_orders_execution(dependency: DependencyView) -> Bool {
+fn scheduler_dependency_orders_execution(dependency: v2.std.dependency.DependencyView) -> Bool {
   classify_dependency_kind(
     classifier: scheduler_execution_dependency_kind_classifier(),
     kind: dependency.kind
   )
 }
 
-fn scheduler_execution_dependencies(dependencies: List<DependencyView>) -> List<DependencyView> {
+fn scheduler_execution_dependencies(dependencies: List<v2.std.dependency.DependencyView>) -> List<v2.std.dependency.DependencyView> {
   filter(xs: dependencies, predicate: scheduler_dependency_orders_execution)
 }
 
@@ -72,7 +72,7 @@ fn scheduler_append_node_once(nodes: List<Node>, node: Node) -> List<Node> {
   }
 }
 
-fn scheduler_dependency_nodes(dependencies: List<DependencyView>) -> List<Node> {
+fn scheduler_dependency_nodes(dependencies: List<v2.std.dependency.DependencyView>) -> List<Node> {
   fold(dependencies, init: [], f: fn(nodes, dependency) {
     scheduler_append_node_once(
       nodes: scheduler_append_node_once(nodes: nodes, node: dependency.source),
@@ -82,7 +82,7 @@ fn scheduler_dependency_nodes(dependencies: List<DependencyView>) -> List<Node> 
 }
 
 fn scheduler_dependency_unblocked(
-  dependency: DependencyView,
+  dependency: v2.std.dependency.DependencyView,
   scheduled: List<Node>,
   candidate: Node
 ) -> Bool {
@@ -94,7 +94,7 @@ fn scheduler_dependency_unblocked(
 }
 
 fn scheduler_node_unblocked(
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   scheduled: List<Node>,
   candidate: Node
 ) -> Bool {
@@ -116,7 +116,7 @@ fn scheduler_node_unscheduled(scheduled: List<Node>, candidate: Node) -> Bool {
 
 fn runnable_frontier_from_dependencies(
   nodes: List<Node>,
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   scheduled: List<Node>
 ) -> RunnableFrontier {
   let execution_dependencies = scheduler_execution_dependencies(dependencies: dependencies)
@@ -154,11 +154,11 @@ fn scheduler_schedule_frontier(scheduled: List<Node>, frontier: RunnableFrontier
   })
 }
 
-fn scheduler_append_frontier_layer(layers: List<ReadinessLayer>, frontier: RunnableFrontier) -> List<ReadinessLayer> {
+fn scheduler_append_frontier_layer(layers: List<v2.std.dependency.ReadinessLayer>, frontier: RunnableFrontier) -> List<v2.std.dependency.ReadinessLayer> {
   if non_empty(xs: frontier.ready) {
     list_snoc_item(
       xs: layers,
-      item: ReadinessLayer { ready: frontier.ready }
+      item: v2.std.dependency.ReadinessLayer { ready: frontier.ready }
     )
   } else {
     layers
@@ -176,7 +176,7 @@ fn scheduler_run_init(nodes: List<Node>, scheduled: List<Node>) -> SchedulerRunS
 
 fn scheduler_step_state_from_dependencies(
   nodes: List<Node>,
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   state: SchedulerRunState
 ) -> SchedulerRunState {
   if is_empty(xs: state.remaining) {
@@ -233,7 +233,7 @@ fn scheduler_plan_from_state(state: SchedulerRunState) -> SchedulerPlan {
 
 fn scheduler_step_plan_from_dependencies(
   nodes: List<Node>,
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   scheduled: List<Node>
 ) -> SchedulerPlan {
   scheduler_plan_from_state(
@@ -247,7 +247,7 @@ fn scheduler_step_plan_from_dependencies(
 
 fn scheduler_run_to_fixed_point(
   nodes: List<Node>,
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   scheduled: List<Node>
 ) -> SchedulerRunState {
   fold(nodes, init: scheduler_run_init(nodes: nodes, scheduled: scheduled), f: fn(state, _) {
@@ -261,7 +261,7 @@ fn scheduler_run_to_fixed_point(
 
 fn scheduler_plan_from_dependencies(
   nodes: List<Node>,
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   scheduled: List<Node>
 ) -> SchedulerPlan {
   scheduler_plan_from_state(
@@ -273,13 +273,13 @@ fn scheduler_plan_from_dependencies(
   )
 }
 
-fn scheduler_nodes_from_layers(layers: List<ReadinessLayer>) -> List<Node> {
+fn scheduler_nodes_from_layers(layers: List<v2.std.dependency.ReadinessLayer>) -> List<Node> {
   fold(layers, init: [], f: fn(nodes, layer) {
     list_append(left: nodes, right: layer.ready)
   })
 }
 
-fn scheduler_plan_for_layers(layers: List<ReadinessLayer>, blocked: List<Node>) -> SchedulerPlan {
+fn scheduler_plan_for_layers(layers: List<v2.std.dependency.ReadinessLayer>, blocked: List<Node>) -> SchedulerPlan {
   let runnable = runnable_frontier_from_layers(layers: layers)
   if non_empty(xs: runnable.ready) {
     SchedulerPlanComplete {
@@ -296,13 +296,13 @@ fn scheduler_plan_for_layers(layers: List<ReadinessLayer>, blocked: List<Node>) 
   }
 }
 
-fn scheduler_first_readiness_layer(layers: List<ReadinessLayer>) -> Witness<ReadinessLayer> {
+fn scheduler_first_readiness_layer(layers: List<v2.std.dependency.ReadinessLayer>) -> Witness<v2.std.dependency.ReadinessLayer> {
   optional_present_witness(
     opt: list_at_optional(xs: layers, index: 0)
   )
 }
 
-fn runnable_frontier_from_layers(layers: List<ReadinessLayer>) -> RunnableFrontier {
+fn runnable_frontier_from_layers(layers: List<v2.std.dependency.ReadinessLayer>) -> RunnableFrontier {
   match scheduler_first_readiness_layer(layers: layers) {
     Holds { value: layer } => RunnableFrontier { ready: layer.ready }
     Violates { diagnostic: _ } => RunnableFrontier { ready: [] }
@@ -313,7 +313,7 @@ fn runnable_frontier(graph_node: Node) -> RunnableFrontier {
   runnable_frontier_from_layers(layers: scheduler_layers(graph_node: graph_node))
 }
 
-fn scheduler_layers(graph_node: Node) -> List<ReadinessLayer> {
+fn scheduler_layers(graph_node: Node) -> List<v2.std.dependency.ReadinessLayer> {
   topological_layers(graph_node: graph_node)
 }
 

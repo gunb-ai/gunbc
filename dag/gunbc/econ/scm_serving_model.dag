@@ -55,7 +55,7 @@ fn binary_gibibyte_bytes() -> std.nat.Nat {
 }
 
 // Vendors round a partial billing unit UP (Cloudflare states it outright: 'Cloudflare rounds up your usage to the next billing unit'), so bytes convert to billing units by ceiling division, never truncation. Truncating would under-state every bill by up to one unit per axis -- small at these sizes, wrong at every size.
-fn bytes_to_billing_units(bytes: std.nat.Nat, basis: ByteBasis) -> std.nat.Nat? {
+fn bytes_to_billing_units(bytes: std.nat.Nat, basis: extdeps.pricing.object_storage.ByteBasis) -> std.nat.Nat? {
   match basis {
     DecimalGigabyte => {
       let d = decimal_gigabyte_bytes()
@@ -69,7 +69,7 @@ fn bytes_to_billing_units(bytes: std.nat.Nat, basis: ByteBasis) -> std.nat.Nat? 
   }
 }
 
-fn assumed_basis(assumption: ByteBasisAssumption) -> ByteBasis? {
+fn assumed_basis(assumption: ByteBasisAssumption) -> extdeps.pricing.object_storage.ByteBasis? {
   match assumption {
     BasisAssumed { basis: b, rationale: _ } =>
       match b {
@@ -83,7 +83,7 @@ fn assumed_basis(assumption: ByteBasisAssumption) -> ByteBasis? {
 
 data basis_reconciliation_note: String = "A cited row that DOES state its byte basis (Google's replication row states GiB) outranks the caller's assumption: if they disagree the derivation refuses with BasisContradictsCitedRow rather than silently preferring either. A row whose basis is ByteBasisUnstated -- every storage row in the catalogue today -- accepts the declared assumption, because that is exactly the knowable-wedge shape: proceed on a declared assumption, refuse on an absent one."
 
-fn basis_compatible_with_row(row_basis: ByteBasis, assumed: ByteBasis) -> Bool {
+fn basis_compatible_with_row(row_basis: extdeps.pricing.object_storage.ByteBasis, assumed: extdeps.pricing.object_storage.ByteBasis) -> Bool {
   match row_basis {
     ByteBasisUnstated => true
     DecimalGigabyte => match assumed { DecimalGigabyte => true  BinaryGibibyte => false  ByteBasisUnstated => false }
@@ -128,16 +128,16 @@ fn derive_scm_usage(
   }
 }
 
-fn requests_cost_micros(count: std.nat.Nat, row: ObjectStorageRequestRow) -> std.nat.Nat {
+fn requests_cost_micros(count: std.nat.Nat, row: extdeps.pricing.object_storage.ObjectStorageRequestRow) -> std.nat.Nat {
   (count * money_rate_micros(q: row.per_million)) / 1000000
 }
 
 fn derive_scm_monthly_cost(
   profile: ScmWorkloadProfile,
-  storage_row: ObjectStorageClassRow,
-  egress_row: ObjectStorageEgressRow,
-  read_row: ObjectStorageRequestRow,
-  write_row: ObjectStorageRequestRow,
+  storage_row: extdeps.pricing.object_storage.ObjectStorageClassRow,
+  egress_row: extdeps.pricing.object_storage.ObjectStorageEgressRow,
+  read_row: extdeps.pricing.object_storage.ObjectStorageRequestRow,
+  write_row: extdeps.pricing.object_storage.ObjectStorageRequestRow,
   assumption: ByteBasisAssumption,
 ) -> ScmMonthlyCostResult {
   match assumed_basis(assumption: assumption) {
@@ -178,24 +178,24 @@ fn derive_scm_monthly_cost(
 
 // A bill assembled from one vendor's storage rate and another's egress rate is the cheapest-looking and most wrong number in this whole area -- it is how 'S3 with free egress' gets into a spreadsheet. The four rows must name ONE vendor or the derivation refuses, so that blend is unwritable rather than merely discouraged (DESIGN section 5, construction over validation).
 fn all_rows_same_vendor(
-  storage_row: ObjectStorageClassRow,
-  egress_row: ObjectStorageEgressRow,
-  read_row: ObjectStorageRequestRow,
-  write_row: ObjectStorageRequestRow,
+  storage_row: extdeps.pricing.object_storage.ObjectStorageClassRow,
+  egress_row: extdeps.pricing.object_storage.ObjectStorageEgressRow,
+  read_row: extdeps.pricing.object_storage.ObjectStorageRequestRow,
+  write_row: extdeps.pricing.object_storage.ObjectStorageRequestRow,
 ) -> Bool {
   storage_vendor_eq(a: storage_row.vendor, b: egress_row.vendor)
     && storage_vendor_eq(a: storage_row.vendor, b: read_row.vendor)
     && storage_vendor_eq(a: storage_row.vendor, b: write_row.vendor)
 }
 
-fn cited_storage_basis(row: ObjectStorageClassRow) -> ByteBasis {
+fn cited_storage_basis(row: extdeps.pricing.object_storage.ObjectStorageClassRow) -> extdeps.pricing.object_storage.ByteBasis {
   match row.storage_rate {
     RateCited { rate: _, quoted_unit_label: _, byte_basis: b } => b
     RateUnavailable { cause: _ } => ByteBasisUnstated
   }
 }
 
-fn cited_egress_basis(row: ObjectStorageEgressRow) -> ByteBasis {
+fn cited_egress_basis(row: extdeps.pricing.object_storage.ObjectStorageEgressRow) -> extdeps.pricing.object_storage.ByteBasis {
   match row.egress_rate {
     TransferCited { rate: _, quoted_unit_label: _, byte_basis: b } => b
     TransferIncludedAtNoCharge { terms: _ } => ByteBasisUnstated
@@ -248,7 +248,7 @@ type TierLadderAcc {
   tiers: List<RateTier>
 }
 
-fn storage_ladder(rows: List<ObjectStorageClassRow>) -> List<RateTier>? {
+fn storage_ladder(rows: List<extdeps.pricing.object_storage.ObjectStorageClassRow>) -> List<RateTier>? {
   let acc = fold(rows, init: TierLadderAcc { ok: true, tiers: [] }, f: fn(a, row) {
     match storage_rate_micros(row: row) {
       Present { value: r } =>
@@ -262,7 +262,7 @@ fn storage_ladder(rows: List<ObjectStorageClassRow>) -> List<RateTier>? {
   if acc.ok && (list_length(items: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
 }
 
-fn egress_ladder(rows: List<ObjectStorageEgressRow>) -> List<RateTier>? {
+fn egress_ladder(rows: List<extdeps.pricing.object_storage.ObjectStorageEgressRow>) -> List<RateTier>? {
   let acc = fold(rows, init: TierLadderAcc { ok: true, tiers: [] }, f: fn(a, row) {
     match egress_rate_micros(row: row) {
       Present { value: r } =>
@@ -292,7 +292,7 @@ type ProviderQuote {
 }
 
 // A quote carries the byte basis its own vendor states (BinaryGibibyte for Google, which says 'per 1 gibibyte'), or ByteBasisUnstated when the vendor does not say -- in which case the caller's declared assumption fills in. The vendor OUTRANKS the modeler: a stated basis is never overridden by an assumption, which is why the matrix can hold Google beside AWS without pretending they quote the same unit.
-fn effective_basis(quoted: ByteBasis, assumption: ByteBasisAssumption) -> ByteBasis? {
+fn effective_basis(quoted: extdeps.pricing.object_storage.ByteBasis, assumption: ByteBasisAssumption) -> extdeps.pricing.object_storage.ByteBasis? {
   match quoted {
     ByteBasisUnstated => assumed_basis(assumption: assumption)
     DecimalGigabyte => Present { value: quoted }

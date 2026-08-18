@@ -1,8 +1,8 @@
 module extdeps.tailscale.acl_api
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "tailscale.com/api"
   }
@@ -23,7 +23,7 @@ service tailscale.AclAdmin {
   operation GetPolicy {
     input {
       api_key: Secret
-      tailnet: NonEmptyStr
+      tailnet: std.types.NonEmptyStr
     }
     output {
       policy_json: String from "acl"
@@ -43,7 +43,7 @@ service tailscale.AclAdmin {
   operation UpsertPolicy {
     input {
       api_key: Secret
-      tailnet: NonEmptyStr
+      tailnet: std.types.NonEmptyStr
       policy_json: String
     }
     output {

@@ -29,7 +29,7 @@ type ProcessReceipt {
   exit_status: Int
 }
 
-fn process_receipt(label: NonEmptyStr, exit_status: Int) -> ProcessReceipt {
+fn process_receipt(label: std.types.NonEmptyStr, exit_status: Int) -> ProcessReceipt {
   ProcessReceipt {
     attempt: content_hash_atom(value: label),
     exit_status: exit_status,
@@ -55,7 +55,7 @@ fn process_receipt_attempt_eq(left: ProcessReceipt, right: ProcessReceipt) -> Bo
 // `serial_number: NonEmptyStr?` on its own record) justifies lifting DeviceSerialNumber to a shared
 // hardware-identity carrier; one consumer does not, so it stays here rather than being generalized
 // on speculation.
-type DeviceSerialNumber = NonEmptyStr where brand("DeviceSerialNumber")
+type DeviceSerialNumber = std.types.NonEmptyStr where brand("DeviceSerialNumber")
 
 type DeviceHardwareIdentity
   = DeviceSerial { serial: DeviceSerialNumber }
@@ -104,8 +104,8 @@ type FleetLifecycleObservation {
 }
 
 // Subject -> presentation, the only direction that is safe. HostIdentity is a branded NonEmptyStr, so projecting it outward is total and loses nothing; the inverse does not exist, which is the entire point above.
-fn host_identity_presentation(identity: HostIdentity) -> NonEmptyStr {
-  identity as NonEmptyStr
+fn host_identity_presentation(identity: product.placement_supply.HostIdentity) -> std.types.NonEmptyStr {
+  identity as std.types.NonEmptyStr
 }
 
 // The vendor envelope's `host` field is presentation evidence about a dispatch-side subject. It must
@@ -153,7 +153,7 @@ type ObservationSelection
 
 // One selector body, two entry points. Subject-grain selection is what a convergence read uses; when it reports Ambiguous, naming an exact attempt is the disambiguation, and both route through this same decision so neither can acquire a quieter rule than the other.
 fn select_unique_observation(
-  subject: HostIdentity,
+  subject: product.placement_supply.HostIdentity,
   candidates: List<FleetLifecycleObservation>,
 ) -> ObservationSelection {
   if count(candidates) == 0 {
@@ -173,7 +173,7 @@ fn select_unique_observation(
 
 // Keys on `observation.subject` -- the dispatch-side authority -- never on envelope.host.
 fn select_observation_for_subject(
-  subject: HostIdentity,
+  subject: product.placement_supply.HostIdentity,
   observations: List<FleetLifecycleObservation>,
 ) -> ObservationSelection {
   select_unique_observation(
@@ -183,7 +183,7 @@ fn select_observation_for_subject(
 }
 
 fn select_observation_by_attempt(
-  subject: HostIdentity,
+  subject: product.placement_supply.HostIdentity,
   attempt: ProcessReceipt,
   observations: List<FleetLifecycleObservation>,
 ) -> ObservationSelection {

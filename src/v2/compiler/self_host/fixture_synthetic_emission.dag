@@ -4,7 +4,7 @@ module v2.compiler.self_host.fixture_synthetic_emission
 
 data fixture_synthetic_emission_note: String = "Parallel fixture-scoped emission authority (wise-ram-22 disposition PR1 containment): SyntheticEmittedArtifact / FixtureBehaviorReceipt carry FixtureEmissionQualification only — no constructor into ProducerEmissionReceipt or production EmissionQualification."
 
-data fixture_synthetic_emission_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on disposition 1 (wise-ram-22 containment lane): real source-ingest qualification after infer(assemble(fixture ingest)) accepts without hand-authored DerivedGrounding. When that path greens, fixture mint on direct_rust_door_inferred_tree deletes and production ProvenancedRustArtifact subsumes the subject.")
+data fixture_synthetic_emission_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on disposition 1 (wise-ram-22 containment lane): real source-ingest qualification after infer(assemble(fixture ingest)) accepts without hand-authored DerivedGrounding. When that path greens, fixture mint on direct_rust_door_inferred_tree deletes and production ProvenancedRustArtifact subsumes the subject.")
 
 type FixtureEmissionQualification
   = FixtureSourceProduced
@@ -39,7 +39,7 @@ data fixture_cargo_green_qualifications: List<FixtureEmissionQualification> = [
   FixtureCargoGreen
 ]
 
-fn fixture_emitted_source_identity_for_medium(source: Medium<String>) -> Hash {
+fn fixture_emitted_source_identity_for_medium(source: Medium<String>) -> v2.std.node.Hash {
   content_hash_atom(value: source.carried)
 }
 
@@ -135,8 +135,8 @@ fn advance_fixture_behavior_receipt_cargo_green(
 }
 
 fn mint_synthetic_emitted_artifact_from_fixture_inferred(
-  inferred: InferredTree,
-  target: TargetModel,
+  inferred: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel,
   module_path: String,
   fixture_lane_tag: String
 ) -> Outcome<SyntheticEmittedArtifact> {
@@ -159,8 +159,8 @@ fn mint_synthetic_emitted_artifact_from_fixture_inferred(
 }
 
 fn mint_written_synthetic_emitted_artifact_from_fixture_inferred(
-  inferred: InferredTree,
-  target: TargetModel,
+  inferred: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel,
   module_path: String,
   workspace_dir: String,
   fixture_lane_tag: String

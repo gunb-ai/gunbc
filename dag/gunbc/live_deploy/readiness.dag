@@ -17,22 +17,22 @@ fn service_ready_apply_effect() -> ServiceReadyApplyEffect {
   }
 }
 
-fn service_ready_apply_effect_for_deploy(spec: DeploymentSpec) -> ServiceReadyApplyEffect {
+fn service_ready_apply_effect_for_deploy(spec: gunbc.live_deploy.spec.DeploymentSpec) -> ServiceReadyApplyEffect {
   ServiceReadyApplyEffect {
     unit: spec.service.unit_name,
     endpoint: live_deploy_service_ready_endpoint_authority,
   }
 }
 
-fn healthz_effective_read_from_get(success: Bool, body: String, error: String) -> HealthzEffectiveRead {
+fn healthz_effective_read_from_get(success: Bool, body: String, error: String) -> gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
   if success {
-    HealthzEffectiveRead { body: body, probe_error: "" }
+    gunbc.roadmap_site_surface_types.HealthzEffectiveRead { body: body, probe_error: "" }
   } else {
-    HealthzEffectiveRead { body: "", probe_error: error }
+    gunbc.roadmap_site_surface_types.HealthzEffectiveRead { body: "", probe_error: error }
   }
 }
 
-fn live_deploy_healthz_get_local(port: Int) -> HealthzEffectiveRead {
+fn live_deploy_healthz_get_local(port: Int) -> gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
   let url = live_deploy_health_url_for_port(port: port)
   let got = http.Client.GetLocalhostBounded(url: url)
   healthz_effective_read_from_get(
@@ -42,7 +42,7 @@ fn live_deploy_healthz_get_local(port: Int) -> HealthzEffectiveRead {
   )
 }
 
-fn healthz_effective_read_from_outcome(outcome: TypedArgvExecOutcome) -> HealthzEffectiveRead {
+fn healthz_effective_read_from_outcome(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
   match outcome {
     TypedArgvExecConverged { result: r } =>
       healthz_effective_read_from_get(
@@ -50,15 +50,15 @@ fn healthz_effective_read_from_outcome(outcome: TypedArgvExecOutcome) -> Healthz
         body: r.stdout,
         error: "http client GET over ssh failed"
       )
-    TypedArgvExecRefused { reason: why } => HealthzEffectiveRead { body: "", probe_error: why }
+    TypedArgvExecRefused { reason: why } => gunbc.roadmap_site_surface_types.HealthzEffectiveRead { body: "", probe_error: why }
   }
 }
 
 fn live_deploy_healthz_get_fleet_ssh(
   port: Int,
-  target: SshTarget,
-  context: FleetSshExecutionContext,
-) -> HealthzEffectiveRead {
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+) -> gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
   healthz_effective_read_from_outcome(
     outcome: typed_argv_exec_over_fleet_ssh(
       target: target,
@@ -68,11 +68,11 @@ fn live_deploy_healthz_get_fleet_ssh(
   )
 }
 
-fn live_deploy_healthz_get_ssh(port: Int, host: NonEmptyStr) -> HealthzEffectiveRead {
+fn live_deploy_healthz_get_ssh(port: Int, host: std.types.NonEmptyStr) -> gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
   let url = live_deploy_health_url_for_port(port: port)
   let argv = http_client_get_argv(url: url)
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
-    Present { value: why } => HealthzEffectiveRead { body: "", probe_error: why }
+    Present { value: why } => gunbc.roadmap_site_surface_types.HealthzEffectiveRead { body: "", probe_error: why }
     Absent =>
       match typed_argv_exec_over_ssh(host: host, argv: argv) {
         TypedArgvExecConverged { result: r } =>
@@ -82,18 +82,18 @@ fn live_deploy_healthz_get_ssh(port: Int, host: NonEmptyStr) -> HealthzEffective
             error: "http client GET over ssh failed"
           )
         TypedArgvExecRefused { reason: why } =>
-          HealthzEffectiveRead { body: "", probe_error: why }
+          gunbc.roadmap_site_surface_types.HealthzEffectiveRead { body: "", probe_error: why }
       }
   }
 }
 
-fn live_deploy_healthz_get_for_port(port: Int, transport: HostEffectTransport) -> HealthzEffectiveRead {
+fn live_deploy_healthz_get_for_port(port: Int, transport: gunbc.host_effect.HostEffectTransport) -> gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
   match transport {
     LocalShell => live_deploy_healthz_get_local(port: port)
     SshShell { ssh_host: h } => live_deploy_healthz_get_ssh(port: port, host: h)
     FleetSsh { target: t, context: c } => live_deploy_healthz_get_fleet_ssh(port: port, target: t, context: c)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      HealthzEffectiveRead {
+      gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
         body: "",
         probe_error: "health probe refused EmitArtifactThenThinRun transport",
       }
@@ -119,7 +119,7 @@ type HealthzRefusalCause
   | ProcessSurfaceMismatch { expected: String, observed: String }
   | ServedSurfaceStale { observed: String, expected: String }
 
-fn running_release_unidentified_detail(cause: RunningReleaseUnidentifiedCause) -> String {
+fn running_release_unidentified_detail(cause: gunbc.running_release_identity.RunningReleaseUnidentifiedCause) -> String {
   match cause {
     ReleaseIdentityBodyUnparseable => "the healthz body did not parse as JSON"
     ReleaseRevisionAbsent =>
@@ -139,7 +139,7 @@ fn running_release_unidentified_detail(cause: RunningReleaseUnidentifiedCause) -
   }
 }
 
-fn healthz_release_identity_refusal(body: String, cause: RunningReleaseUnidentifiedCause) -> HealthzRefusalCause {
+fn healthz_release_identity_refusal(body: String, cause: gunbc.running_release_identity.RunningReleaseUnidentifiedCause) -> HealthzRefusalCause {
   let detail = running_release_unidentified_detail(cause: cause)
   match cause {
     ReleaseRevisionAbsent => ProcessIdentityAbsent { body: body }
@@ -185,10 +185,10 @@ fn healthz_refusal_reason(cause: HealthzRefusalCause) -> String {
 data readiness_compares_the_candidate_note: String = "THE EXPECTATION IS THE ADMITTED CANDIDATE, NOT A FRESH OBSERVATION, AND THAT IS THE ENTIRE VALUE OF PASSING IT DOWN. Both halves compare against values the launcher captured ONCE before any mutation: candidate.revision and candidate.expected_surface_identity. Readiness therefore reads back the subject the deploy admitted, rather than re-deriving an expectation at comparison time.\\n\\nRe-materializing the bundle here would reopen exactly the time-of-check/time-of-use hole the candidate exists to close: if the deploying checkout changed after admission, a recomputed expectation would describe the CHANGED tree, and readiness could then agree with a process other than the one admitted — a self-consistent false green that no downstream check can see, because the expectation and the verdict would have drifted together.\\n\\nTHE TWO SURFACE CHECKS ARE NOT REDUNDANT. ProcessSurfaceMismatch compares the process's REPORTED bundle identity against the candidate's captured one — a claim about which tree the process bound. ServedSurfaceStale compares the projected artifact map — a claim about what it is actually serving. A process could report the expected identity while serving stale artifacts (a rendering defect), or serve correct artifacts under an unexpected identity (a different tree that happens to render the same). Each has its own discriminating control, because a single check covering both would green whenever either happened to agree."
 
 fn ground_service_ready_from_healthz_with_bundle(
-  read: HealthzEffectiveRead,
-  bundle: RoadmapSiteSurfaceBundle,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
+  read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead,
+  bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
+  expected_revision: std.types.CommitSha,
+  expected_surface_identity: std.content_hash.Fnv1a64Structural,
 ) -> Grounding<ServiceReadyEvidence> {
   if read.probe_error != "" {
     DoesNotGround { reason: healthz_refusal_reason(cause: HealthzProbeFailed { detail: read.probe_error }) }
@@ -234,9 +234,9 @@ fn ground_service_ready_from_healthz_with_bundle(
 data readiness_check_order_note: String = "THE ORDER IS PROBE, PARSE, IDENTITY, REVISION, SURFACE, AND IT IS CHOSEN SO THE FIRST REFUSAL IS THE MOST LOCATING ONE. A process at the wrong revision usually also serves the wrong surface, so checking the surface first would report 'stale surface' for what is really 'the pre-restart process is still answering' — true but one inference away from the remedy. Checking the revision first names the process; checking the surface after names the rebind. Identity precedes both because a body with no readable identity cannot be compared on either axis, and reporting a surface verdict about a process we cannot identify would attribute the surface to the wrong party."
 
 fn ground_service_ready_from_healthz(
-  read: HealthzEffectiveRead,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
+  read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead,
+  expected_revision: std.types.CommitSha,
+  expected_surface_identity: std.content_hash.Fnv1a64Structural,
 ) -> Grounding<ServiceReadyEvidence> {
   ground_service_ready_from_healthz_with_bundle(
     read: read,
@@ -247,15 +247,15 @@ fn ground_service_ready_from_healthz(
 }
 
 fn show_healthz_read_for_deploy(
-  spec: DeploymentSpec,
-  transport: HostEffectTransport,
-  access: DeployAccess,
-) -> ShowEffectiveRead<HealthzEffectiveRead> {
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess,
+) -> ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead> {
   let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
   match verdict {
     Deny { refusal: _ } =>
       ReadObserved {
-        value: HealthzEffectiveRead {
+        value: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
           body: "",
           probe_error: deploy_access_decision_reason(d: verdict),
         }
@@ -273,11 +273,11 @@ fn show_healthz_read_for_deploy(
 data healthz_healthy_fixture_note: String = "The healthy fixture is the REAL healthz body, not a hand-spelled {\"status\":\"ok\"}. Once readiness means 'answering AND serving this tree', a fixture that merely parses is no longer a healthy read — it is precisely the stale-surface case — so a stand-in body would have made the converges-on-healthy witnesses assert the opposite of the contract. Its counterpart witness_stale_surface_read_does_not_ground keeps the hand-spelled body as the discriminating RED."
 
 fn show_healthz_read_fixture_healthy(
-  bundle: RoadmapSiteSurfaceBundle,
-  release_revision: CommitSha,
-) -> ShowEffectiveRead<HealthzEffectiveRead> {
+  bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
+  release_revision: std.types.CommitSha,
+) -> ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead> {
   ReadObserved {
-    value: HealthzEffectiveRead {
+    value: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
       body: healthz_body_with_release_identity(
         roadmap: bundle.roadmap_md,
         dispatch: bundle.dispatch_json,
@@ -295,8 +295,8 @@ fn show_healthz_read_fixture_healthy(
 data healthz_healthy_fixture_carries_identity_note: String = "THE HEALTHY FIXTURE MOVED FROM bundle.healthz_body TO THE FULL SERVED DOCUMENT, AND IT HAD TO. bundle.healthz_body is the SURFACE projection — what the deploying tree expects the surface to be — and a running process never serves it, because a running process also states its release identity. Once readiness checks that identity, a fixture spelling the surface alone is no longer a healthy read: it is the pre-identity process, and the converges-on-healthy witnesses would have been asserting the refusal they exist to exclude.\\n\\nThe fixture is rendered by healthz_body_with_release_identity — the SAME producer the live route uses — so the healthy case is a document the process could actually emit rather than a hand-assembled approximation of one. That is the same discipline the original fixture note recorded when it refused a hand-spelled {\\\"status\\\":\\\"ok\\\"}, applied one layer up."
 
 fn show_healthz_read_fixture_healthy_live(
-  release_revision: CommitSha,
-) -> ShowEffectiveRead<HealthzEffectiveRead> {
+  release_revision: std.types.CommitSha,
+) -> ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead> {
   show_healthz_read_fixture_healthy(
     bundle: materialize_live_roadmap_site_surface_bundle(),
     release_revision: release_revision,
@@ -304,11 +304,11 @@ fn show_healthz_read_fixture_healthy_live(
 }
 
 fn reconcile_service_ready_read_for_bundle(
-  read: ShowEffectiveRead<HealthzEffectiveRead>,
-  bundle: RoadmapSiteSurfaceBundle,
+  read: ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead>,
+  bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
   effect: ServiceReadyApplyEffect,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
+  expected_revision: std.types.CommitSha,
+  expected_surface_identity: std.content_hash.Fnv1a64Structural,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match read {
     ReadAbsent { reason: why } =>
@@ -332,9 +332,9 @@ fn reconcile_service_ready_read_for_bundle(
 }
 
 fn reconcile_service_ready_read(
-  read: ShowEffectiveRead<HealthzEffectiveRead>,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
+  read: ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead>,
+  expected_revision: std.types.CommitSha,
+  expected_surface_identity: std.content_hash.Fnv1a64Structural,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   reconcile_service_ready_read_for_bundle(
     read: read,
@@ -346,10 +346,10 @@ fn reconcile_service_ready_read(
 }
 
 fn reconcile_service_ready_read_for_effect(
-  read: ShowEffectiveRead<HealthzEffectiveRead>,
+  read: ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead>,
   effect: ServiceReadyApplyEffect,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
+  expected_revision: std.types.CommitSha,
+  expected_surface_identity: std.content_hash.Fnv1a64Structural,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match read {
     ReadAbsent { reason: why } =>
@@ -373,10 +373,10 @@ fn reconcile_service_ready_read_for_effect(
 }
 
 fn live_deploy_service_ready_once_for_deploy(
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess,
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   reconcile_service_ready_read_for_effect(
     read: show_healthz_read_for_deploy(
@@ -391,8 +391,8 @@ fn live_deploy_service_ready_once_for_deploy(
 }
 
 fn live_deploy_service_ready_once_for_bundle(
-  bundle: RoadmapSiteSurfaceBundle,
-  release_revision: CommitSha,
+  bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
+  release_revision: std.types.CommitSha,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   reconcile_service_ready_read_for_bundle(
     read: show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision),
@@ -404,7 +404,7 @@ fn live_deploy_service_ready_once_for_bundle(
 }
 
 fn live_deploy_service_ready_once(
-  release_revision: CommitSha,
+  release_revision: std.types.CommitSha,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   live_deploy_service_ready_once_for_bundle(
     bundle: materialize_live_roadmap_site_surface_bundle(),
@@ -413,9 +413,9 @@ fn live_deploy_service_ready_once(
 }
 
 fn capture_unit_diagnosis(
-  spec: DeploymentSpec,
-  transport: HostEffectTransport,
-  access: DeployAccess,
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess,
 ) -> String {
   let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
   match verdict {
@@ -435,8 +435,8 @@ type ServiceReadyPollOutcome =
     PollSettled { result: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> }
   | PollRefusedAtBound { refusal: gunbc.live_deploy.service_ready.ServiceNotReady }
 
-fn poll_bound_refusal(spec: DeploymentSpec, last_probe: String) -> ServiceNotReady {
-  ServiceNotReady {
+fn poll_bound_refusal(spec: gunbc.live_deploy.spec.DeploymentSpec, last_probe: String) -> gunbc.live_deploy.service_ready.ServiceNotReady {
+  gunbc.live_deploy.service_ready.ServiceNotReady {
     unit: spec.service.unit_name,
     endpoint: live_deploy_service_ready_endpoint_authority,
     waited: live_deploy_service_ready_poll_bound,
@@ -445,7 +445,7 @@ fn poll_bound_refusal(spec: DeploymentSpec, last_probe: String) -> ServiceNotRea
   }
 }
 
-fn refusal_to_reconciliation(refusal: ServiceNotReady) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+fn refusal_to_reconciliation(refusal: gunbc.live_deploy.service_ready.ServiceNotReady) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   NotConverged {
     reason: service_not_ready_reason(refusal: refusal),
     applied: ServiceReadyApplyEffect { unit: refusal.unit, endpoint: refusal.endpoint },
@@ -453,10 +453,10 @@ fn refusal_to_reconciliation(refusal: ServiceNotReady) -> Reconciliation<Service
 }
 
 fn live_deploy_poll_service_ready_outcome_after_attempts(
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess,
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess,
   attempt: Int,
   last_probe: String,
 ) -> ServiceReadyPollOutcome {
@@ -493,10 +493,10 @@ fn live_deploy_poll_service_ready_outcome_after_attempts(
 }
 
 fn live_deploy_poll_service_ready_after_attempts(
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess,
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess,
   attempt: Int,
   last_probe: String,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
@@ -523,10 +523,10 @@ fn last_probe_from_attempt(
 }
 
 fn live_deploy_poll_until_service_ready_for_deploy(
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess,
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
+  transport: gunbc.host_effect.HostEffectTransport,
+  access: gunbc.ci_deploy_access.DeployAccess,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match live_deploy_poll_service_ready_outcome_after_attempts(
     spec: spec,
@@ -552,7 +552,7 @@ fn live_deploy_poll_until_service_ready_for_deploy(
 }
 
 fn live_deploy_poll_until_service_ready(
-  candidate: CandidateRelease,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   live_deploy_poll_until_service_ready_for_deploy(
     spec: deployment_spec_srv1(),

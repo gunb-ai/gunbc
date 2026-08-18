@@ -1,8 +1,8 @@
 module extdeps.sudo.nopasswd_execute_probe
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.sudo.ws/docs/man/sudo.man/"
   }
@@ -17,7 +17,7 @@ type SudoNopasswdExecuteProbeShape {
   check_argv: std.types.NonEmptyStr
 }
 
-type SudoNopasswdGrantListProbeShape = NonEmptyStr where brand("SudoNopasswdGrantListProbeShape")
+type SudoNopasswdGrantListProbeShape = std.types.NonEmptyStr where brand("SudoNopasswdGrantListProbeShape")
 
 type SudoNopasswdProbeKind
   = NopasswdExecuteCheck { check_argv: std.types.NonEmptyStr }

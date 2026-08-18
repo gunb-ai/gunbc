@@ -47,7 +47,7 @@ fn x86_64_abi_pdf_retrieval_observation_from_hex(hex: String) -> X86_64AbiPdfRet
     X86_64AbiPdfValidatedDigestConstructed(digest) =>
       X86_64AbiPdfRetrievalObserved(
         RepresentationRetrieved {
-          request: CitationRetrievalRequest {
+          request: std.citation.CitationRetrievalRequest {
             locator: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri,
           },
           observed_at: 0,
@@ -72,11 +72,11 @@ fn assemble_x86_64_abi_pdf_pin_construction() -> X86_64AbiPdfPinConstruction {
 
 data x86_64_abi_pdf_pin_construction: X86_64AbiPdfPinConstruction = assemble_x86_64_abi_pdf_pin_construction()
 
-fn x86_64_abi_pdf_version_cover_sequence() -> PdfSafeParameterSequenceConstruction {
+fn x86_64_abi_pdf_version_cover_sequence() -> gunbc.citation.pdf_safe_profile.PdfSafeParameterSequenceConstruction {
   pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)])
 }
 
-fn x86_64_abi_pdf_syscall_convention_sequence() -> PdfSafeParameterSequenceConstruction {
+fn x86_64_abi_pdf_syscall_convention_sequence() -> gunbc.citation.pdf_safe_profile.PdfSafeParameterSequenceConstruction {
   pdf_safe_parameter_sequence(
     constructions: [pdf_open_page(page: x86_64_abi_syscall_convention_authoritative_page)],
   )
@@ -101,7 +101,7 @@ fn x86_64_abi_pdf_fragment_selector_from_page(page: std.integer.PositiveInt) -> 
 }
 
 fn x86_64_abi_pdf_citation_selector_from_safe(
-  construction: PdfSafeParameterSequenceConstruction,
+  construction: gunbc.citation.pdf_safe_profile.PdfSafeParameterSequenceConstruction,
 ) -> X86_64AbiPdfCitationSelectorConstruction {
   match construction {
     SafeSequenceConstructed(sequence) =>
@@ -134,7 +134,7 @@ fn x86_64_abi_syscall_citation_fact_construction() -> X86_64AbiCitationFactConst
         X86_64AbiPdfCitationSelectorConstructed(selector) =>
           X86_64AbiCitationFactConstructed(
             citation_recorded_fact(
-              id: "x86-64-abi-linux-syscall-arg3-r10-citation" as RecordedFactId,
+              id: "x86-64-abi-linux-syscall-arg3-r10-citation" as std.claim_evidence.RecordedFactId,
               cited: citation_target(expected_pin: pin, selector: selector),
             ),
           )
@@ -166,27 +166,27 @@ fn x86_64_abi_syscall_evidence_link_construction() -> X86_64AbiEvidenceLinkConst
   match x86_64_abi_syscall_convention_citation_fact_construction {
     X86_64AbiCitationFactConstructed(fact) =>
       X86_64AbiEvidenceLinkConstructed(
-        EvidenceLink {
+        std.claim_evidence.EvidenceLink {
           fact: fact,
           direction: EvidenceSupports,
-          inference_rule: "citation-extraction-supports-syscall-arg3-claim" as InferenceRuleId,
+          inference_rule: "citation-extraction-supports-syscall-arg3-claim" as std.claim_evidence.InferenceRuleId,
           authority: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor,
-          provenance: EvidenceProvenance {
-            entity: "x86-64-abi-pdf-byte-extraction" as ProvEntityId,
-            activity: "wet-representation-retrieval" as ProvActivityId,
-            agent: "gunbc-citation-extraction-receipt" as ProvAgentId,
+          provenance: std.claim_evidence.EvidenceProvenance {
+            entity: "x86-64-abi-pdf-byte-extraction" as std.claim_evidence.ProvEntityId,
+            activity: "wet-representation-retrieval" as std.claim_evidence.ProvActivityId,
+            agent: "gunbc-citation-extraction-receipt" as std.claim_evidence.ProvAgentId,
           },
-          freshness: EvidenceFreshness {
-            maximum_conclusion: "x86-64-abi-linux-syscall-arg3-is-r10" as ClaimId,
+          freshness: std.claim_evidence.EvidenceFreshness {
+            maximum_conclusion: "x86-64-abi-linux-syscall-arg3-is-r10" as std.claim_evidence.ClaimId,
             basis: "draft-edition-0.99.6-page-125-syscall-register-convention",
           },
-          fidelity: EvidenceFidelity {
-            boundary: "raw-response-body-sha256" as NonEmptyStr,
+          fidelity: std.claim_evidence.EvidenceFidelity {
+            boundary: "raw-response-body-sha256" as std.types.NonEmptyStr,
             losses: [],
           },
-          probe_independence: ReadBackProbe {
-            label: "independent-byte-extraction-receipt" as NonEmptyStr,
-            subject: "x86-64-abi-pdf-raw-response-body" as NonEmptyStr,
+          probe_independence: gunbc.readback_independence.ReadBackProbe {
+            label: "independent-byte-extraction-receipt" as std.types.NonEmptyStr,
+            subject: "x86-64-abi-pdf-raw-response-body" as std.types.NonEmptyStr,
             effect_on_subject: ProbeMayEstablish {
               mechanism: "wet retrieval hashes bytes independently of authored pin",
             },
@@ -222,7 +222,7 @@ fn witness_syscall_evidence_link_binds_fact() -> Bool {
 }
 
 fn x86_64_abi_pdf_navigable_uri_from_safe(
-  construction: PdfSafeParameterSequenceConstruction,
+  construction: gunbc.citation.pdf_safe_profile.PdfSafeParameterSequenceConstruction,
 ) -> X86_64AbiPdfNavigableUriProjection {
   match project_navigable_uri_safe(
     base: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri,
@@ -234,7 +234,7 @@ fn x86_64_abi_pdf_navigable_uri_from_safe(
 }
 
 fn x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
-  name: NonEmptyStr,
+  name: std.types.NonEmptyStr,
   code_points: List<Int>,
 ) -> X86_64AbiPdfNavigableUriProjection {
   match pdf_open_nameddest_wire_from_scalar_code_points(name: name, code_points: code_points) {
@@ -268,6 +268,6 @@ fn x86_64_abi_pdf_syscall_navigable_uri_projection() -> X86_64AbiPdfNavigableUri
   x86_64_abi_pdf_navigable_uri_from_safe(construction: x86_64_abi_pdf_syscall_convention_sequence())
 }
 
-fn x86_64_abi_pdf_base_locator_probe() -> NonEmptyStr {
+fn x86_64_abi_pdf_base_locator_probe() -> std.types.NonEmptyStr {
   extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri.locator
 }

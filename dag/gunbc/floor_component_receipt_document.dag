@@ -50,7 +50,7 @@ type ReceiptText
   = ReceiptTextFound { text: String }
   | ReceiptTextFailed { decoding: FloorComponentReceiptDecoding }
 
-fn receipt_text_at(v: JsonValue, key: String) -> ReceiptText {
+fn receipt_text_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> ReceiptText {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
     JsonMemberDuplicated { count: _ } =>
@@ -83,7 +83,7 @@ type ReceiptElements
   = ReceiptElementsFound { elements: List<extdeps.languages.json.emit.JsonValue> }
   | ReceiptElementsFailed { decoding: FloorComponentReceiptDecoding }
 
-fn receipt_array_at(v: JsonValue, key: String) -> ReceiptElements {
+fn receipt_array_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> ReceiptElements {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberAbsent => ReceiptElementsFailed { decoding: ReceiptMemberAbsent { member: key } }
     JsonMemberDuplicated { count: _ } =>
@@ -113,7 +113,7 @@ type ReceiptValue
   = ReceiptValueFound { value: extdeps.languages.json.emit.JsonValue }
   | ReceiptValueFailed { decoding: FloorComponentReceiptDecoding }
 
-fn receipt_required_value_at(v: JsonValue, key: String) -> ReceiptValue {
+fn receipt_required_value_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> ReceiptValue {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: found } => ReceiptValueFound { value: found }
     JsonMemberAbsent => ReceiptValueFailed { decoding: ReceiptMemberAbsent { member: key } }
@@ -126,7 +126,7 @@ fn receipt_required_value_at(v: JsonValue, key: String) -> ReceiptValue {
 
 data receipt_run_terminal_legacy_absent_note: String = "TRANSITIONAL BACK-COMPAT for receipts under GitHub Actions artifact retention written before this PR: run_terminal did not exist, so the member is absent rather than null. Treating absent as ReceiptMemberAbsent would refuse the exact population the falsifier alert still consumes (review 51856). Absent therefore decodes to json_null(), meaning no incomplete envelope was recorded — the same reading as a concluded walk that explicitly emits run_terminal:null. The writer always emits the member on new receipts; only the reader carries this legacy arm. Dissolve-on: counted census shows zero retention receipts lacking the member, then delete this helper and require the member like selection_degradation."
 
-fn receipt_run_terminal_at(v: JsonValue) -> ReceiptValue {
+fn receipt_run_terminal_at(v: extdeps.languages.json.emit.JsonValue) -> ReceiptValue {
   match json_object_unique_member(v: v, key: receipt_member_run_terminal) {
     JsonMemberFound { value: found } => ReceiptValueFound { value: found }
     JsonMemberAbsent => ReceiptValueFound { value: json_null() }
@@ -141,7 +141,7 @@ fn receipt_run_terminal_at(v: JsonValue) -> ReceiptValue {
   }
 }
 
-fn floor_component_receipt_subject_json(subject: FloorComponentReceiptSubject) -> List<JsonKeyValue> {
+fn floor_component_receipt_subject_json(subject: FloorComponentReceiptSubject) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   [
     json_kv(key: receipt_member_schema, value: json_string(s: subject.schema as String)),
     json_kv(key: receipt_member_workflow_name, value: json_string(s: subject.workflow_name as String)),
@@ -150,7 +150,7 @@ fn floor_component_receipt_subject_json(subject: FloorComponentReceiptSubject) -
   ]
 }
 
-fn floor_component_receipt_document_json(doc: FloorComponentReceiptDocument) -> JsonValue {
+fn floor_component_receipt_document_json(doc: FloorComponentReceiptDocument) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: concat(
     floor_component_receipt_subject_json(subject: doc.subject),
     [
@@ -180,7 +180,7 @@ type FloorComponentFailureMode
   | ModeDeadlineReached
   | ModeUnrecorded
 
-fn floor_component_failure_mode_of(mode: NonEmptyStr) -> FloorComponentFailureMode? {
+fn floor_component_failure_mode_of(mode: std.types.NonEmptyStr) -> FloorComponentFailureMode? {
   if (mode as String) == "none" { Present { value: ModeNoFailure } }
   else if (mode as String) == "BudgetExceeded" { Present { value: ModeBudgetExceeded } }
   else if (mode as String) == "Infra" { Present { value: ModeInfra } }
@@ -212,7 +212,7 @@ fn floor_component_failure_mode_tag(m: FloorComponentFailureMode) -> String {
   }
 }
 
-fn floor_component_outcome_tag(o: ObservationOutcome) -> String {
+fn floor_component_outcome_tag(o: std.observation.ObservationOutcome) -> String {
   match o {
     Done => "done"
     Refused { diagnostic: _ } => "refused"
@@ -272,7 +272,7 @@ fn strict_natural_of_lexeme(text: String) -> std.nat.Nat? {
   }
 }
 
-fn receipt_natural_member_at(v: JsonValue, key: String) -> ReceiptNatural {
+fn receipt_natural_member_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> ReceiptNatural {
   match receipt_numeric_member_at(v: v, key: key) {
     ReceiptTextFailed { decoding: d } => ReceiptNaturalFailed { decoding: d }
     ReceiptTextFound { text: lexeme } =>
@@ -304,7 +304,7 @@ type ComponentAlertSummaryDecoding
 
 data receipt_numeric_member_note: String = "A NUMERIC MEMBER IS READ AS A NUMBER, NOT AS TEXT THAT HAPPENS TO LOOK LIKE ONE. The component index is an identity — routing joins on it, the incident signature is keyed on it, and it is inserted between delimiters when a marker is serialized. A text rendering of an identity is not an identity: `6` and `\"6\"` and `\" 6\"` are three strings and one component, and the string form is the one that later gets concatenated into a signature where a stray delimiter changes what the alert believes failed.\\n\\nSo this reader admits a JSON number and refuses everything else, including a numeric-looking string. The writer emits json_int, so a number is not merely tolerated here — it is the only shape the producer makes, and anything else means the producer changed or something other than the producer wrote the file."
 
-fn receipt_numeric_member_at(v: JsonValue, key: String) -> ReceiptText {
+fn receipt_numeric_member_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> ReceiptText {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
     JsonMemberDuplicated { count: _ } =>
@@ -328,7 +328,7 @@ fn receipt_numeric_member_at(v: JsonValue, key: String) -> ReceiptText {
   }
 }
 
-fn receipt_summary_required_string_at(v: JsonValue, key: String) -> ReceiptText {
+fn receipt_summary_required_string_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> ReceiptText {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
     JsonMemberDuplicated { count: _ } =>
@@ -365,14 +365,14 @@ type ComponentOutcomeRecovery
   = ComponentOutcomeRecovered { read: ComponentOutcomeRead }
   | ComponentOutcomeUnmodelled { detail: String }
 
-fn component_outcome_payload_text(component: JsonValue, key: String) -> String? {
+fn component_outcome_payload_text(component: extdeps.languages.json.emit.JsonValue, key: String) -> String? {
   match receipt_summary_required_string_at(v: component, key: key) {
     ReceiptTextFailed { decoding: _ } => none
     ReceiptTextFound { text: t } => Present { value: t }
   }
 }
 
-fn component_outcome_read_of_tag(tag: String, component: JsonValue) -> ComponentOutcomeRecovery {
+fn component_outcome_read_of_tag(tag: String, component: extdeps.languages.json.emit.JsonValue) -> ComponentOutcomeRecovery {
   if tag == floor_component_outcome_wire_pending_tag
     || tag == floor_component_outcome_wire_not_concluded_tag {
     ComponentOutcomeRecovered { read: ComponentNotConcluded }
@@ -381,7 +381,7 @@ fn component_outcome_read_of_tag(tag: String, component: JsonValue) -> Component
   } else if tag == "refused" {
     match component_outcome_payload_text(component: component, key: "diagnostic") {
       Absent => ComponentOutcomeUnmodelled { detail: "refused outcome carries no diagnostic" }
-      Present { value: d } => ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Refused { diagnostic: d as NonEmptyStr } } }
+      Present { value: d } => ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Refused { diagnostic: d as std.types.NonEmptyStr } } }
     }
   } else if tag == "failed" {
     match component_outcome_payload_text(component: component, key: "error") {
@@ -392,7 +392,7 @@ fn component_outcome_read_of_tag(tag: String, component: JsonValue) -> Component
           ReceiptValueFound { value: raw } =>
             match raw {
               JsonString { value: out } =>
-                ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Failed { error: e as NonEmptyStr, output: out } } }
+                ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Failed { error: e as std.types.NonEmptyStr, output: out } } }
               JsonNumber { lexeme: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is a number, expected a string" }
               JsonNull => ComponentOutcomeUnmodelled { detail: "failed outcome output is null, expected a string" }
               JsonBool { value: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is a bool, expected a string" }
@@ -404,7 +404,7 @@ fn component_outcome_read_of_tag(tag: String, component: JsonValue) -> Component
   } else if tag == "skipped" {
     match component_outcome_payload_text(component: component, key: "reason") {
       Absent => ComponentOutcomeUnmodelled { detail: "skipped outcome carries no reason" }
-      Present { value: r } => ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Skipped { reason: r as NonEmptyStr } } }
+      Present { value: r } => ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Skipped { reason: r as std.types.NonEmptyStr } } }
     }
   } else if tag == "final" {
     match receipt_natural_member_at(v: component, key: "shown_failures") {
@@ -432,7 +432,7 @@ data floor_component_deadline_reached_note: String = "ModeDeadlineReached is the
 
 data floor_component_host_dependency_absent_mode_note: String = "ModeHostDependencyAbsent is the falsifier recovery arm for wet Codex materialization when npm is not on PATH (run 31685755058 component 6). Before the host-cli check, the shell transport raised failed to execute npm and claim_executor classified the batch as WitnessRed — indistinguishable from a subject failure. The remedy is fleet provisioning (apt install npm on falsifier runners executing falsifier_rehomed_bin_wet_rows Codex entries), not witness deletion and not auto-install inside the witness. It maps to Refused like BudgetExceeded: the line stops with a located host obligation, not a broken claim."
 
-fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmptyStr) -> ObservationOutcome? {
+fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: std.types.NonEmptyStr) -> std.observation.ObservationOutcome? {
   match m {
     ModeNoFailure => Present { value: std.observation.Done }
     ModeBudgetExceeded => Present { value: std.observation.Refused { diagnostic: detail } }
@@ -451,8 +451,8 @@ fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmpt
 
 data outcome_mode_pair_note: String = "THE TWO FACTS ARE RECOVERED INDEPENDENTLY, SO THE PAIR MUST BE CHECKED. Typing each field separately closed the `outcome: banana` hole and opened a subtler one: outcome=done with failure_mode=WitnessRed, or outcome=failed with failure_mode=none, are two individually valid values forming a combination the writer cannot construct. The alert routes on the mode and decides incident identity on both, so an impossible pair is a receipt claiming a component both passed and broke — and neither field alone is wrong enough to refuse.\\n\\nThe agreement is DERIVED FROM THE WRITER, not restated. floor_component_outcome_of_mode is the single place the collapse happens, so the check asks that same function what outcome the mode implies and compares tags. Writing the valid pairs out as a table here would be a second copy of that mapping, and the two would drift the moment a mode is added — which is precisely the failure this receipt keeps finding elsewhere.\\n\\nTWO ARMS ARE DELIBERATELY BROADER, and both are properties of the writer rather than concessions. ModeUnrecorded pairs with ANY outcome because it is what the direct-outcome constructor emits: that path is handed an outcome and genuinely observed no mode, so there is no mode for the outcome to agree with. A NOT-CONCLUDED row likewise pairs with any mode, because a row whose transition never reached Concluded has no outcome at all — the mode records what the walk knew, and the absent conclusion is the fact being reported."
 
-fn outcome_matches_implied_mode(o: ObservationOutcome, mode: FloorComponentFailureMode) -> Bool {
-  match floor_component_outcome_of_mode(m: mode, detail: "pair-check" as NonEmptyStr) {
+fn outcome_matches_implied_mode(o: std.observation.ObservationOutcome, mode: FloorComponentFailureMode) -> Bool {
+  match floor_component_outcome_of_mode(m: mode, detail: "pair-check" as std.types.NonEmptyStr) {
     Absent => false
     Present { value: implied } => floor_component_outcome_tag(o: o) == floor_component_outcome_tag(o: implied)
   }
@@ -484,7 +484,7 @@ fn component_outcome_agrees_with_failure_mode(read: ComponentOutcomeRead, mode: 
   }
 }
 
-fn component_alert_summary_of(component: JsonValue) -> ComponentAlertSummaryDecoding {
+fn component_alert_summary_of(component: extdeps.languages.json.emit.JsonValue) -> ComponentAlertSummaryDecoding {
   match receipt_natural_member_at(v: component, key: "index") {
     ReceiptNaturalFailed { decoding: d } => ComponentSummaryFailed { decoding: d }
     ReceiptNaturalFound { value: idx } =>
@@ -518,7 +518,7 @@ fn component_alert_summary_of(component: JsonValue) -> ComponentAlertSummaryDeco
                           ComponentSummaryDecoded {
                             summary: ComponentAlertSummary {
                               index: idx,
-                              label: label as NonEmptyStr,
+                              label: label as std.types.NonEmptyStr,
                               outcome: typed_outcome,
                               failure_mode: typed_mode
                             }
@@ -590,7 +590,7 @@ type ComponentSummaryListDecoding
   = ComponentSummaryListDecoded { summaries: List<ComponentAlertSummary> }
   | ComponentSummaryListFailed { decoding: FloorComponentReceiptDecoding }
 
-fn component_alert_summaries_of(components: List<JsonValue>) -> ComponentSummaryListDecoding {
+fn component_alert_summaries_of(components: List<extdeps.languages.json.emit.JsonValue>) -> ComponentSummaryListDecoding {
   fold(components, init: ComponentSummaryListDecoded { summaries: [] }, f: (acc, c) =>
     match acc {
       ComponentSummaryListFailed { decoding: d } => ComponentSummaryListFailed { decoding: d }
@@ -605,7 +605,7 @@ fn component_alert_summaries_of(components: List<JsonValue>) -> ComponentSummary
 
 data receipt_count_decode_note: String = "component_count is read by the strict numeric reader, the same one the component index uses. It previously admitted a string and compared text, so a receipt declaring \"1\" passed against a decoded count of 1 — the field was checked for AGREEMENT while its type went unchecked, which is half a boundary. The writer emits json_int; a string here means the producer changed."
 
-fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptyStr) -> FloorComponentReceiptDecoding {
+fn floor_component_receipt_decode_with(text: String, expected_schema: std.types.NonEmptyStr) -> FloorComponentReceiptDecoding {
   match parse_json(s: text) {
     Absent => ReceiptNotJson { detail: "receipt is not valid JSON" }
     Present { value: doc } =>
@@ -658,10 +658,10 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
                                 ReceiptDecoded {
                                   document: FloorComponentReceiptDocument {
                                     subject: FloorComponentReceiptSubject {
-                                      schema: schema as NonEmptyStr,
-                                      workflow_name: workflow_name as NonEmptyStr,
-                                      run_id: run_id as NonEmptyStr,
-                                      head_sha: head_sha as CommitSha
+                                      schema: schema as std.types.NonEmptyStr,
+                                      workflow_name: workflow_name as std.types.NonEmptyStr,
+                                      run_id: run_id as std.types.NonEmptyStr,
+                                      head_sha: head_sha as std.types.CommitSha
                                     },
                                     component_count: count(components),
                                     components: components,
@@ -697,7 +697,7 @@ type ReceiptSubjectMatch
 
 fn floor_component_receipt_subject_matches_event(
   subject: FloorComponentReceiptSubject,
-  event: WorkflowRunEvent
+  event: extdeps.github.workflow_run_event.WorkflowRunEvent
 ) -> ReceiptSubjectMatch {
   if (subject.run_id as String) != (event.run_id as String) {
     ReceiptSubjectRunIdMismatch { receipt: subject.run_id, event: event.run_id }

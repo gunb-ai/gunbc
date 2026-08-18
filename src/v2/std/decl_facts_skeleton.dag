@@ -17,7 +17,7 @@ type DeclFactQualifiedNameResolution
   | DeclFactResolvedMissing { qualified_name: String }
   | DeclFactResolvedAmbiguous { qualified_name: String, match_count: Int }
 
-fn decl_facts_matching_qualified_name(qn: String, facts: List<DeclFact>) -> List<DeclFact> {
+fn decl_facts_matching_qualified_name(qn: String, facts: List<v2.std.decl_index.DeclFact>) -> List<v2.std.decl_index.DeclFact> {
   list_reverse(xs: fold(facts, init: Empty, f: fn(acc, fact) {
     if fact.qualified_name == qn {
       Cons { head: fact, tail: acc }
@@ -28,7 +28,7 @@ fn decl_facts_matching_qualified_name(qn: String, facts: List<DeclFact>) -> List
 }
 
 fn resolve_decl_fact_by_qualified_name(
-  facts: List<DeclFact>,
+  facts: List<v2.std.decl_index.DeclFact>,
   qn: String
 ) -> DeclFactQualifiedNameResolution {
   let matches = decl_facts_matching_qualified_name(qn: qn, facts: facts)
@@ -127,6 +127,6 @@ fn decl_fact_skeleton_for_resolution(
   }
 }
 
-data outer_record_constructor_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a closed enum or branded digest for each outer record-constructor spelling atom, grounded on extdeps/languages/dag ingest productions, so String aliases at the skeleton marshal boundary become unwritable.")
+data outer_record_constructor_lexeme_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a closed enum or branded digest for each outer record-constructor spelling atom, grounded on extdeps/languages/dag ingest productions, so String aliases at the skeleton marshal boundary become unwritable.")
 
-data skeleton_marshal_atom_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: same closed spelling authority as outer_record_constructor_lexeme_dissolve_on — skeleton marshal atoms share one cited production roster rather than parallel String nicknames.")
+data skeleton_marshal_atom_lexeme_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "Dissolve-on: same closed spelling authority as outer_record_constructor_lexeme_dissolve_on — skeleton marshal atoms share one cited production roster rather than parallel String nicknames.")

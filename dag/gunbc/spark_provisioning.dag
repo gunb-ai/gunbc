@@ -11,9 +11,9 @@ module gunbc.spark_provisioning
 // through the ordinary apply path — so blocking a provision on it would invent a
 // dependency the world does not have (operator ruling, 2026-08-07).
 
-type PxeEnvironmentIdentity = NonEmptyStr where brand("PxeEnvironmentIdentity")
+type PxeEnvironmentIdentity = std.types.NonEmptyStr where brand("PxeEnvironmentIdentity")
 
-type InstallationImageIdentity = NonEmptyStr where brand("InstallationImageIdentity")
+type InstallationImageIdentity = std.types.NonEmptyStr where brand("InstallationImageIdentity")
 
 type SparkAutoinstallSpec {
   parameters: extdeps.systems.nvidia_dgx_spark_setup.DgxSparkPxeInstallParameters
@@ -60,7 +60,7 @@ type SparkProvisioningIntent {
 // This is what gives the cited OOBE field list a consumer: a subject the wizard does not
 // offer cannot be discharged inside the portal, and the model should say so structurally
 // rather than discovering it at the keyboard.
-fn spark_intent_oobe_subjects() -> List<OobeSetupField> {
+fn spark_intent_oobe_subjects() -> List<extdeps.systems.nvidia_dgx_spark_setup.OobeSetupField> {
   [OobeLanguage, OobeTimeZone, OobeTermsAndConditions, OobeUserAccount, OobeAnalytics]
 }
 
@@ -215,7 +215,7 @@ type SparkProvisioningProgress
 // An incomplete observation is an INTERRUPTION, not a refusal and not a success: nothing
 // rejected anything, and the provision simply has not been seen to finish. The missing
 // element is named so the gap is countable rather than a silent not-yet.
-fn post_setup_observation_gap(observation: PostSetupObservation) -> NonEmptyStr? {
+fn post_setup_observation_gap(observation: PostSetupObservation) -> std.types.NonEmptyStr? {
   match observation.account {
     AccountNotObserved => Present { value: "administrator account not observed on the device" }
     AccountObserved { name: _ } => match observation.lan_reach {
@@ -291,13 +291,13 @@ fn classify_spark_progress(
 // ------------------------------------------------------------------------------------
 
 fn spark_intervention(
-  identity: NonEmptyStr,
-  frequency: HumanInterventionFrequency,
-  subject: NonEmptyStr,
-  instruction: NonEmptyStr
-) -> HumanIntervention {
-  HumanIntervention {
-    identity: identity as HumanInterventionIdentity,
+  identity: std.types.NonEmptyStr,
+  frequency: std.human_intervention.HumanInterventionFrequency,
+  subject: std.types.NonEmptyStr,
+  instruction: std.types.NonEmptyStr
+) -> std.human_intervention.HumanIntervention {
+  std.human_intervention.HumanIntervention {
+    identity: identity as std.human_intervention.HumanInterventionIdentity,
     frequency: frequency,
     subject: subject,
     instruction: instruction,
@@ -322,7 +322,7 @@ type HumanBurdenDerivation
 
 fn factory_oobe_human_burden(
   env: SparkProvisioningEnvironment,
-  credentials: SparkProvisioningCredentials
+  credentials: gunbc.spark_bootstrap_credential.SparkProvisioningCredentials
 ) -> HumanBurdenDerivation {
   match env.controller {
     BootstrapControllerUnknown =>
@@ -331,24 +331,24 @@ fn factory_oobe_human_burden(
       }
     BootstrapControllerReady => match spark_credentials_standing(c: credentials) {
       BootstrapCredentialsMaterialized =>
-        BurdenDerived { burden: ProvisioningHumanBurden { interventions: [] } }
+        BurdenDerived { burden: std.human_intervention.ProvisioningHumanBurden { interventions: [] } }
       BootstrapCredentialsNotMaterialized =>
         BurdenDerived {
-          burden: ProvisioningHumanBurden {
+          burden: std.human_intervention.ProvisioningHumanBurden {
             interventions: [spark_credential_materialization_intervention()]
           }
         }
     }
     BootstrapControllerAbsent =>
       BurdenDerived {
-        burden: ProvisioningHumanBurden {
+        burden: std.human_intervention.ProvisioningHumanBurden {
           interventions: [spark_manual_oobe_intervention()]
         }
       }
   }
 }
 
-fn spark_credential_materialization_intervention() -> HumanIntervention {
+fn spark_credential_materialization_intervention() -> std.human_intervention.HumanIntervention {
   spark_intervention(
     identity: "spark-bootstrap-credential-materialization",
     frequency: DeviceOnce,
@@ -357,7 +357,7 @@ fn spark_credential_materialization_intervention() -> HumanIntervention {
   )
 }
 
-fn spark_manual_oobe_intervention() -> HumanIntervention {
+fn spark_manual_oobe_intervention() -> std.human_intervention.HumanIntervention {
   spark_intervention(
     identity: "spark-oobe-manual-association",
     frequency: EveryProvision,
@@ -374,13 +374,13 @@ fn pxe_autoinstall_human_burden(env: SparkProvisioningEnvironment) -> HumanBurde
       }
     PxePrerequisitesReady =>
       BurdenDerived {
-        burden: ProvisioningHumanBurden {
+        burden: std.human_intervention.ProvisioningHumanBurden {
           interventions: [spark_pxe_recovery_intervention()]
         }
       }
     PxePrerequisitesAbsent =>
       BurdenDerived {
-        burden: ProvisioningHumanBurden {
+        burden: std.human_intervention.ProvisioningHumanBurden {
           interventions: [
             spark_pxe_environment_intervention(),
             spark_pxe_firmware_intervention(),
@@ -391,7 +391,7 @@ fn pxe_autoinstall_human_burden(env: SparkProvisioningEnvironment) -> HumanBurde
   }
 }
 
-fn spark_pxe_environment_intervention() -> HumanIntervention {
+fn spark_pxe_environment_intervention() -> std.human_intervention.HumanIntervention {
   spark_intervention(
     identity: "spark-pxe-boot-environment",
     frequency: FleetOnce,
@@ -400,7 +400,7 @@ fn spark_pxe_environment_intervention() -> HumanIntervention {
   )
 }
 
-fn spark_pxe_firmware_intervention() -> HumanIntervention {
+fn spark_pxe_firmware_intervention() -> std.human_intervention.HumanIntervention {
   spark_intervention(
     identity: "spark-pxe-firmware-enablement",
     frequency: DeviceOnce,
@@ -409,7 +409,7 @@ fn spark_pxe_firmware_intervention() -> HumanIntervention {
   )
 }
 
-fn spark_pxe_recovery_intervention() -> HumanIntervention {
+fn spark_pxe_recovery_intervention() -> std.human_intervention.HumanIntervention {
   spark_intervention(
     identity: "spark-recovery-media-reinstall",
     frequency: BreakGlassOnly,
@@ -421,7 +421,7 @@ fn spark_pxe_recovery_intervention() -> HumanIntervention {
 fn spark_strategy_human_burden(
   strategy: SparkProvisioningStrategy,
   env: SparkProvisioningEnvironment,
-  credentials: SparkProvisioningCredentials
+  credentials: gunbc.spark_bootstrap_credential.SparkProvisioningCredentials
 ) -> HumanBurdenDerivation {
   match strategy {
     FactoryOobe { bootstrap: _ } =>
@@ -449,7 +449,7 @@ fn select_spark_strategy(
   a: SparkProvisioningStrategy,
   b: SparkProvisioningStrategy,
   env: SparkProvisioningEnvironment,
-  credentials: SparkProvisioningCredentials
+  credentials: gunbc.spark_bootstrap_credential.SparkProvisioningCredentials
 ) -> SparkStrategySelection {
   match spark_strategy_human_burden(strategy: a, env: env, credentials: credentials) {
     BurdenUndecidable { cause: cause_a } => StrategySelectionUndecidable { cause: cause_a }
@@ -482,9 +482,9 @@ data spark_license_acceptance: LicenseAcceptance = LicenseAcceptance {
 // host identity is precisely what the credential module forbids, so the constructor waits
 // for real values instead of accepting invented ones.
 fn spark_provisioning_intent(
-  host: HostIdentity,
-  credentials: SparkProvisioningCredentials,
-  address: Ipv4Address,
+  host: product.placement_supply.HostIdentity,
+  credentials: gunbc.spark_bootstrap_credential.SparkProvisioningCredentials,
+  address: extdeps.network.ipv4.Ipv4Address,
   strategy: SparkProvisioningStrategy
 ) -> SparkProvisioningIntent {
   SparkProvisioningIntent {

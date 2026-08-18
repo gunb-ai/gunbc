@@ -10,16 +10,16 @@ type BootInstallSituation
   | NetworkUpNeedsDhcp { interface: std.types.NonEmptyStr }
   | NoBootSourceAvailable { reason: std.types.NonEmptyStr }
 
-fn ipv4_link_local(ipv4: NonEmptyStr) -> Bool {
+fn ipv4_link_local(ipv4: std.types.NonEmptyStr) -> Bool {
   starts_with(ipv4 as String, prefix: uefi_ipv4_link_local_prefix)
 }
 
-fn ipv4_unconfigured(ipv4: NonEmptyStr) -> Bool {
+fn ipv4_unconfigured(ipv4: std.types.NonEmptyStr) -> Bool {
   ipv4 as String == uefi_ipv4_unspecified
     || ipv4_link_local(ipv4: ipv4)
 }
 
-fn mapping_is_removable_install_media(m: UefiDeviceMapping) -> Bool {
+fn mapping_is_removable_install_media(m: extdeps.firmware.uefi_shell.UefiDeviceMapping) -> Bool {
   fold(
     uefi_shell_removable_media_device_path_tokens,
     init: false,
@@ -32,14 +32,14 @@ type MediaScan {
   boot_file: std.types.NonEmptyStr
 }
 
-fn scan_install_media(env: UefiShellEnvironment) -> MediaScan {
+fn scan_install_media(env: extdeps.firmware.uefi_shell.UefiShellEnvironment) -> MediaScan {
   fold(
     env.mappings,
     init: MediaScan { found: false, boot_file: "none" },
     f: (acc, m) =>
       if acc.found { acc }
       else if mapping_is_removable_install_media(m: m) {
-        MediaScan { found: true, boot_file: concat(m.fs_alias, ":\\EFI\\BOOT\\BOOTAA64.EFI") as NonEmptyStr }
+        MediaScan { found: true, boot_file: concat(m.fs_alias, ":\\EFI\\BOOT\\BOOTAA64.EFI") as std.types.NonEmptyStr }
       } else { acc }
   )
 }
@@ -57,7 +57,7 @@ type IfaceScanRanked {
 
 data iface_dhcp_rank_doc: String = "DHCP-candidate ranking, grounded in the srv4 live receipt (commit e0bdb3377cf): a link-local 169.254.x address on a linked NIC is EVIDENCE that DHCP was already tried there and failed (UEFI self-assigns after a lease timeout), so the scan must prefer a linked NIC that is merely unconfigured (0.0.0.0 = untried) over one stuck in link-local — on srv4 that is eth2 (the NIC that leases on the BMC LAN), never eth0. Rank: routable configured (3) > linked untried (2) > linked link-local (1) > no link (0)."
 
-fn iface_dhcp_rank(iface: UefiNetworkInterface) -> Int {
+fn iface_dhcp_rank(iface: extdeps.firmware.uefi_shell.UefiNetworkInterface) -> Int {
   match iface.media {
     MediaDisconnected => 0
     MediaPresent =>
@@ -67,7 +67,7 @@ fn iface_dhcp_rank(iface: UefiNetworkInterface) -> Int {
   }
 }
 
-fn scan_up_interface(env: UefiShellEnvironment) -> IfaceScan {
+fn scan_up_interface(env: extdeps.firmware.uefi_shell.UefiShellEnvironment) -> IfaceScan {
   let best = fold(
     env.interfaces,
     init: IfaceScanRanked { rank: 0, name: "none" },
@@ -79,7 +79,7 @@ fn scan_up_interface(env: UefiShellEnvironment) -> IfaceScan {
   IfaceScan { found: best.rank > 0, name: best.name, routable: best.rank == 3 }
 }
 
-fn diagnose_boot_install(env: UefiShellEnvironment) -> BootInstallSituation {
+fn diagnose_boot_install(env: extdeps.firmware.uefi_shell.UefiShellEnvironment) -> BootInstallSituation {
   let media = scan_install_media(env: env)
   if media.found {
     InstallMediaReady { boot_file: media.boot_file }
@@ -116,13 +116,13 @@ fn decide_boot_install(situation: BootInstallSituation, goal: DesiredOutcome) ->
   }
 }
 
-fn boot_install_commands(action: BootInstallAction) -> List<UefiShellCommand>? {
+fn boot_install_commands(action: BootInstallAction) -> List<extdeps.firmware.uefi_shell.UefiShellCommand>? {
   match action {
     BootFromMappedMedia { boot_file: f } =>
       Present {
         value: [
           MapDevices { refresh: true },
-          BcfgAdd { target: BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as NonEmptyStr },
+          BcfgAdd { target: BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as std.types.NonEmptyStr },
           Reset { mode: ResetWarm },
         ]
       }

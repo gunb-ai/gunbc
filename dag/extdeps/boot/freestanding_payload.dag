@@ -1,8 +1,8 @@
 module extdeps.boot.freestanding_payload
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/contents.html"
   }

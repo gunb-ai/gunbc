@@ -14,15 +14,15 @@ type GunbcTestRoute {
   selection_fn: v2.std.node.Symbol
 }
 
-fn gunbc_testgen_route_name_of(_route: GunbcTestgenRoute) -> Symbol {
+fn gunbc_testgen_route_name_of(_route: GunbcTestgenRoute) -> v2.std.node.Symbol {
   ^gunbc_testgen_route_name
 }
 
-fn gunbc_test_route_name_of(_route: GunbcTestRoute) -> Symbol {
+fn gunbc_test_route_name_of(_route: GunbcTestRoute) -> v2.std.node.Symbol {
   ^gunbc_test_route_name
 }
 
-fn gunbc_test_corpus_harness_route_name_of(_route: GunbcTestCorpusHarnessRoute) -> Symbol {
+fn gunbc_test_corpus_harness_route_name_of(_route: GunbcTestCorpusHarnessRoute) -> v2.std.node.Symbol {
   ^gunbc_test_corpus_harness_route_name
 }
 
@@ -45,8 +45,8 @@ fn gunbc_test_corpus_harness_route_semantics(_route: GunbcTestCorpusHarnessRoute
 fn gunbc_testgen_route_provenance(
   route: GunbcTestgenRoute,
   artifact: v2.std.artifact.GeneratedArtifact
-) -> GeneratorProvenance {
-  GeneratorProvenance {
+) -> v2.std.artifact.GeneratorProvenance {
+  v2.std.artifact.GeneratorProvenance {
     generator_id: route.generator,
     artifact: artifact
   }

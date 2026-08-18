@@ -1,20 +1,20 @@
 module gunbc.host_hygiene_reaper
 
 
-data gunbc_host_hygiene_reaper_scope_disposition: Disposition = Terminal {
+data gunbc_host_hygiene_reaper_scope_disposition: std.disposition.Disposition = Terminal {
   reason: "Brief 4 deliverable (a): residual reaper decision core. Extends the ctrl-runner-reclaim.timer pattern (a hand-deployed host timer with no prior .dag model) to dead-slot residue: processes surviving KillMode=process in an INACTIVE unit's cgroup, plus stale system.control override dirs for disabled instances. NON-GOAL: reaping anything in an ACTIVE unit's cgroup. CRITICAL SEQUENCING (the incident this guards against): a naive reap-everything-inactive would have killed the shared sccache server, found lazily auto-spawned into dead slot srv1-10's cgroup (host diagnosis behind PR 7019, session/wise-crab-547, open at authoring time). This module refuses to touch any build-cache-server occupant unconditionally, typed and counted, never a silent skip — fixing placement is that sibling work's separate concern, not this reaper's."
 }
 
-data gunbc_host_hygiene_reaper_build_cache_placement_scaffold: Disposition = Scaffold {
+data gunbc_host_hygiene_reaper_build_cache_placement_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.build_cache_instance",
     decl_name: "BuildCacheServerPlacement",
     field: WholeDeclaration,
   }
 }
 
-data gunbc_host_hygiene_reaper_build_cache_placement_scaffold_note: Disposition = Terminal {
+data gunbc_host_hygiene_reaper_build_cache_placement_scaffold_note: std.disposition.Disposition = Terminal {
   reason: "CgroupBuildCacheServerOccupant refuses unconditionally (an unconditional refuse-to-reap, not an allowlist: it is keyed on structurally detecting the sccache server process, never on a hand-maintained unit-name list). This is the interim named in the brief as 'until then'. BuildCacheServerPlacement HAS since landed, in gunbc.build_cache_instance rather than the provisioning fold, and with different arms than this scaffold predicted: ServerManagedUnitOwned | ServerRunnerOwned\{slot,lifecycle} | ServerUnsupervised | ServerPlacementAbsent | ServerPlacementUnknown. The predicted ServerUnitOwned and ServerLazySpawned do not exist — the first became ServerManagedUnitOwned because a unit owning the endpoint is satisfied by ANY unit including the wrong one, and the second named an inferred cause where an observer can only see the current owner. This variant should carry that placement and residual_reap_action_for_inactive should exempt ServerManagedUnitOwned by placement rather than refuse every build-cache occupant — dissolves onto gunbc_host_hygiene_reaper_build_cache_placement_scaffold."
 }
 
@@ -40,7 +40,7 @@ type ResidualReapAction
   | KillOccupantAndRemoveOverride
   | ReapRefused { cause: ReapRefusalCause }
 
-fn unit_is_inactive_for_reap(s: SystemdUnitActiveState) -> Bool {
+fn unit_is_inactive_for_reap(s: extdeps.systemd.SystemdUnitActiveState) -> Bool {
   match s {
     Active => false
     Activating => false
@@ -67,7 +67,7 @@ fn residual_reap_action(obs: ResidualSlotObservation) -> ResidualReapAction {
   }
 }
 
-data residual_reap_absorbing_fallback_widen_sketch_disposition: Disposition = Terminal {
+data residual_reap_absorbing_fallback_widen_sketch_disposition: std.disposition.Disposition = Terminal {
   reason: "deliberately-naive sibling of residual_reap_action, kept ONLY as a RED-control fixture: it reaps every occupant of an inactive unit's cgroup, including a build-cache-server occupant, reproducing the exact incident diagnosed on srv1 (shared sccache server lazily auto-spawned into dead slot srv1-10's cgroup). host_hygiene_reaper_test.dag proves this sketch kills the stranded sccache server on the cited fixture while the real decision function refuses. Never call this from an effect path."
 }
 

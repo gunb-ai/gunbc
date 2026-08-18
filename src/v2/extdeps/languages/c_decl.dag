@@ -56,11 +56,11 @@ fn c_stage1_type_decl_frontier_deferred_count() -> Int {
   )
 }
 
-fn c_decl_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn c_decl_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
-fn c_decl_shape_productions() -> List<FormalProduction> {
+fn c_decl_shape_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^c_decl_shape_enum,
@@ -83,7 +83,7 @@ fn c_decl_shape_productions() -> List<FormalProduction> {
   ]
 }
 
-fn c_decl_shared_field_productions() -> List<FormalProduction> {
+fn c_decl_shared_field_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^c_decl_qualified_name,
@@ -128,7 +128,7 @@ fn c_decl_shared_field_productions() -> List<FormalProduction> {
   ]
 }
 
-fn c_decl_shared_variant_productions() -> List<FormalProduction> {
+fn c_decl_shared_variant_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^c_decl_variant,
@@ -169,7 +169,7 @@ fn c_decl_shared_variant_productions() -> List<FormalProduction> {
   ]
 }
 
-fn c_decl_tagged_union_member_productions() -> List<FormalProduction> {
+fn c_decl_tagged_union_member_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^c_decl_field,
@@ -215,7 +215,7 @@ fn c_decl_tagged_union_member_productions() -> List<FormalProduction> {
   ]
 }
 
-fn c_decl_struct_top_productions() -> List<FormalProduction> {
+fn c_decl_struct_top_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^c_decl_struct,
@@ -229,7 +229,7 @@ fn c_decl_struct_top_productions() -> List<FormalProduction> {
   ]
 }
 
-fn c_decl_enum_top_productions() -> List<FormalProduction> {
+fn c_decl_enum_top_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^c_decl_enum,
@@ -244,7 +244,7 @@ fn c_decl_enum_top_productions() -> List<FormalProduction> {
   ]
 }
 
-fn c_decl_tagged_union_top_productions() -> List<FormalProduction> {
+fn c_decl_tagged_union_top_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^c_decl_tagged_union,
@@ -259,14 +259,14 @@ fn c_decl_tagged_union_top_productions() -> List<FormalProduction> {
   ]
 }
 
-fn c_decl_struct_formal_productions() -> List<FormalProduction> {
+fn c_decl_struct_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   list_append(
     left: c_decl_shared_field_productions(),
     right: c_decl_struct_top_productions()
   )
 }
 
-fn c_decl_coproduct_formal_productions() -> List<FormalProduction> {
+fn c_decl_coproduct_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   list_append(
     left: c_decl_shape_productions(),
     right: list_append(
@@ -285,8 +285,8 @@ fn c_decl_coproduct_formal_productions() -> List<FormalProduction> {
   )
 }
 
-fn c_decl_productions_only_translation_rules(productions: List<FormalProduction>) -> Node {
-  Node {
+fn c_decl_productions_only_translation_rules(productions: List<v2.std.grammar.FormalProduction>) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       c_decl_named_edge(
@@ -342,8 +342,8 @@ fn c_semantic_decl_serialize_profile_bundle_node() -> Node {
   )
 }
 
-fn c_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
-  TargetSemanticDeclSurfaceProjection {
+fn c_semantic_decl_surface_projection() -> v2.std.compilers.semantic_decl_emission.TargetSemanticDeclSurfaceProjection {
+  v2.std.compilers.semantic_decl_emission.TargetSemanticDeclSurfaceProjection {
     record_decoration_lines: [],
     field_type_before_name: true,
     type_expr_field_scope: false,
@@ -355,18 +355,18 @@ fn c_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
       union_field: ^c_token_union_field
     },
     coproduct_decoration_rules: [
-      TargetSemanticDeclCoproductDecorationRule {
+      v2.std.compilers.semantic_decl_emission.TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_all_variants_nullary,
         decoration_lines: [
-          TargetSemanticDeclDecorationLine {
+          v2.std.compilers.semantic_decl_emission.TargetSemanticDeclDecorationLine {
             surface_binding: ^c_decl_shape_enum_binding
           }
         ]
       },
-      TargetSemanticDeclCoproductDecorationRule {
+      v2.std.compilers.semantic_decl_emission.TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_default,
         decoration_lines: [
-          TargetSemanticDeclDecorationLine {
+          v2.std.compilers.semantic_decl_emission.TargetSemanticDeclDecorationLine {
             surface_binding: ^c_decl_shape_tagged_binding
           }
         ]

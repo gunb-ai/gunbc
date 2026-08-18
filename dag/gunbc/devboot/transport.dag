@@ -3,7 +3,7 @@ module gunbc.devboot.transport
 
 data devboot_shell_transport_note: String = "Counted retained-transport roster for gunbc.devboot.build and gunbc.devboot.produce WitnessBin.Run sites. Runtime-present devboot modules are not yet on host_effect_apply typed effects; every raw argv site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2 (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review."
 
-data devboot_shell_typed_effects_dissolve_ref: DeclarationRef = DeclarationRef {
+data devboot_shell_typed_effects_dissolve_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.host_effect_realize",
   decl_name: "host_effect_apply",
   field: WholeDeclaration,
@@ -15,152 +15,152 @@ type RetainedWitnessRun {
 }
 
 data retained_devboot_rm_rf: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot exchange and request/produced staging clears prior scratch trees and index files" as NonEmptyStr,
+  reason: "devboot exchange and request/produced staging clears prior scratch trees and index files" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_mkdir: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot exchange and staging directories are created before git index operations" as NonEmptyStr,
+  reason: "devboot exchange and staging directories are created before git index operations" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_read_tree: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot materializes a ref tree or prefixes a source tree into a scratch index" as NonEmptyStr,
+  reason: "devboot materializes a ref tree or prefixes a source tree into a scratch index" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_checkout_index: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot checks out indexed blobs to the exchange directory without piping artifact bytes" as NonEmptyStr,
+  reason: "devboot checks out indexed blobs to the exchange directory without piping artifact bytes" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_fetch: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot polls the producer answer ref over the git-only transport" as NonEmptyStr,
+  reason: "devboot polls the producer answer ref over the git-only transport" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_sleep: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot poll interval waits between fetch attempts" as NonEmptyStr,
+  reason: "devboot poll interval waits between fetch attempts" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_init: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot prepares a scratch exchange repository under the work root" as NonEmptyStr,
+  reason: "devboot prepares a scratch exchange repository under the work root" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_update_index: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot stages request and produced tree entries in a scratch index" as NonEmptyStr,
+  reason: "devboot stages request and produced tree entries in a scratch index" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_push: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot publishes a parentless request commit to the producer store" as NonEmptyStr,
+  reason: "devboot publishes a parentless request commit to the producer store" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_hash_object: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot writes staged blobs into the object database before indexing" as NonEmptyStr,
+  reason: "devboot writes staged blobs into the object database before indexing" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_write_tree: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot serializes a staged index to a tree object for commit-tree" as NonEmptyStr,
+  reason: "devboot serializes a staged index to a tree object for commit-tree" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_commit_tree: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot wraps request and produced trees in parentless commits for shallow clones" as NonEmptyStr,
+  reason: "devboot wraps request and produced trees in parentless commits for shallow clones" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_cat_file: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot reads request entry blobs from the producer store ref" as NonEmptyStr,
+  reason: "devboot reads request entry blobs from the producer store ref" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_rev_parse: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot resolves the request source subtree and produced answer refs" as NonEmptyStr,
+  reason: "devboot resolves the request source subtree and produced answer refs" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_update_ref: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot publishes the produced answer ref after commit-tree" as NonEmptyStr,
+  reason: "devboot publishes the produced answer ref after commit-tree" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_sha256sum: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot independently verifies artifact bytes before trusting the store digest" as NonEmptyStr,
+  reason: "devboot independently verifies artifact bytes before trusting the store digest" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_cp: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot installs the verified artifact at the caller out_path" as NonEmptyStr,
+  reason: "devboot installs the verified artifact at the caller out_path" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_chmod: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot marks the installed artifact executable for the caller" as NonEmptyStr,
+  reason: "devboot marks the installed artifact executable for the caller" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_uname: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot records the producing host beside the answer without keying the subject" as NonEmptyStr,
+  reason: "devboot records the producing host beside the answer without keying the subject" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_cargo_build: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer compiles the admitted subject with the observed toolchain homes" as NonEmptyStr,
+  reason: "devboot producer compiles the admitted subject with the observed toolchain homes" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_rm_file: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer removes a scratch index or unpack-file temp path" as NonEmptyStr,
+  reason: "devboot producer removes a scratch index or unpack-file temp path" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_add_all: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer stages the dirty worktree into its snapshot index" as NonEmptyStr,
+  reason: "devboot producer stages the dirty worktree into its snapshot index" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_rustc_version: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer observes the local rustc toolchain for subject identity" as NonEmptyStr,
+  reason: "devboot producer observes the local rustc toolchain for subject identity" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_bare_init: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer bootstraps the artifact store as a bare git repository" as NonEmptyStr,
+  reason: "devboot producer bootstraps the artifact store as a bare git repository" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_unpack_file: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer materializes a store blob to disk for independent digest verification" as NonEmptyStr,
+  reason: "devboot producer materializes a store blob to disk for independent digest verification" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_object_exists: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer checks artifact blob presence before reuse verification" as NonEmptyStr,
+  reason: "devboot producer checks artifact blob presence before reuse verification" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_git_object_size: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer measures stored artifact byte size for the availability record" as NonEmptyStr,
+  reason: "devboot producer measures stored artifact byte size for the availability record" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_mv: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer installs the built artifact beside the store binding" as NonEmptyStr,
+  reason: "devboot producer installs the built artifact beside the store binding" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_execute_artifact: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot materialize path executes the fetched bytes to verify they run" as NonEmptyStr,
+  reason: "devboot materialize path executes the fetched bytes to verify they run" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_ldd: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer observes platform C library version for subject identity" as NonEmptyStr,
+  reason: "devboot producer observes platform C library version for subject identity" as std.types.NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 

@@ -4,7 +4,7 @@ module gunbc.devboot.outcome
 
 
 // The identity of a REQUEST, kept distinct from the identity of what it asks for. Two requesters naming one subject share a subject digest and must share a producer; they do not share a work id, because each still needs to learn its own request's fate. Collapsing the two would make an attach unrepresentable -- the second requester would have nothing of its own to be told about.
-type DevbootWorkId = NonEmptyStr where brand("DevbootWorkId")
+type DevbootWorkId = std.types.NonEmptyStr where brand("DevbootWorkId")
 
 // THE ONLY EVIDENCE THAT A BUILD PRODUCED SOMETHING, and it is constructed from a read-back rather than from the builder's own report. This carrier is why 'build succeeded' cannot be reported without retrievable bytes: the available arm of the availability axis takes a StoredArtifact and there is no other way to inhabit it, so an exit-zero cargo invocation whose output nobody could retrieve has no arm to land in.
 //
@@ -99,7 +99,7 @@ type SubjectMatch
   = SubjectMatches
   | SubjectDiffers
 
-fn record_matches_request(record: StoredArtifactRecord, requested: BuildSubject) -> SubjectMatch {
+fn record_matches_request(record: StoredArtifactRecord, requested: gunbc.devboot.subject.BuildSubject) -> SubjectMatch {
   if build_subject_equal(left: record.subject, right: requested) {
     SubjectMatches
   } else {
@@ -122,8 +122,8 @@ type ReuseDecision
 //
 // Both arrive at a SubjectMatch and hand it to the same fold, so the ordering the ruling fixed -- candidate, then exact match, then observed bytes -- has exactly one implementation. An earlier revision let the live path reuse on ref presence alone, which is how a model and its realization end up disagreeing about the law the model exists to state: the witnesses exercised this fold while the code that actually served callers never called it.
 fn reuse_decision_from_match(
-  candidate_digest: ContentHash?,
-  requested: BuildSubject,
+  candidate_digest: std.content_hash.ContentHash?,
+  requested: gunbc.devboot.subject.BuildSubject,
   subject_match: SubjectMatch,
   availability: ArtifactAvailability,
 ) -> ReuseDecision {
@@ -149,7 +149,7 @@ fn reuse_decision_from_match(
 
 fn reuse_decision(
   candidate: StoredArtifactRecord?,
-  requested: BuildSubject,
+  requested: gunbc.devboot.subject.BuildSubject,
   availability: ArtifactAvailability,
 ) -> ReuseDecision {
   match candidate {

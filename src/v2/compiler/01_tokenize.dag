@@ -15,23 +15,23 @@ type LexMatchThunk {
   apply: fn(String) -> LexMatchResult
 }
 
-fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
+fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^tokenize_lex_e0_source_not_exhausted,
     at: at,
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
-fn tokenize_lex_e1_unrecognized_char_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
+fn tokenize_lex_e1_unrecognized_char_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^tokenize_lex_e1_unrecognized_char,
     at: at,
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
-fn char_in_class(c: Char, class: LexCharClass) -> Bool {
+fn char_in_class(c: std.types.Char, class: v2.std.compilers.lexing.LexCharClass) -> Bool {
   match class {
     WhitespaceChar =>
       c == 32 || c == 9 || c == 10 || c == 13
@@ -59,7 +59,7 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
   }
 }
 
-fn lex_strip_prefix(prefix: String, source: String) -> ListTailResult<Char> {
+fn lex_strip_prefix(prefix: String, source: String) -> ListTailResult<std.types.Char> {
   fold_list(
     xs: prefix,
     empty: TailFound { tail: source },
@@ -96,7 +96,7 @@ type DelimitedState {
   failed: Bool
 }
 
-fn lex_rule_pattern(rule: LexRule) -> LexPattern {
+fn lex_rule_pattern(rule: v2.std.compilers.lexing.LexRule) -> v2.std.compilers.lexing.LexPattern {
   match rule {
     TokenRule { token_class: _, pattern: p } => p
     TriviaRule { pattern: p } => p
@@ -195,10 +195,10 @@ type CompiledLexRule {
   thunk: LexMatchThunk
 }
 
-fn lex_rule_thunk(rule: LexRule) -> LexMatchThunk {
+fn lex_rule_thunk(rule: v2.std.compilers.lexing.LexRule) -> LexMatchThunk {
   fold_lex_pattern(
     pattern: lex_rule_pattern(rule: rule),
-    algebra: LexPatternFold {
+    algebra: v2.std.compilers.lexing.LexPatternFold {
       empty: LexMatchThunk { apply: fn(s) {
         LexMatchAccepted { remaining: s, lexeme: std.algebra.Empty }
       } },
@@ -322,7 +322,7 @@ fn lex_try_compiled(compiled: CompiledLexRule, source: String) -> LexRuleApply {
   }
 }
 
-fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
+fn lex_compile_rules(rules: List<v2.std.compilers.lexing.LexRule>) -> List<CompiledLexRule> {
   let reversed = fold_list(
     xs: rules,
     empty: std.algebra.Empty,
@@ -333,7 +333,7 @@ fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
   reversed.reverse()
 }
 
-fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
+fn lex_try_rule(rule: v2.std.compilers.lexing.LexRule, source: String) -> LexRuleApply {
   lex_try_compiled(
     compiled: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) },
     source: source
@@ -391,7 +391,7 @@ type LexWalkAcc {
   rules: List<CompiledLexRule>
 }
 
-fn lex_walk_init(src: String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
+fn lex_walk_init(src: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> LexWalkAcc {
   LexWalkAcc {
     remaining: src,
     tokens: std.algebra.Empty,
@@ -482,7 +482,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
               LexWalkAcc {
                 remaining: remaining,
                 tokens: Cons {
-                  head: Token {
+                  head: v2.std.compilers.lexing.Token {
                     class: class,
                     lexeme: lexeme,
                     file: acc.file,
@@ -519,7 +519,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 remaining: remaining,
                 tokens: acc.tokens,
                 annotations: Cons {
-                  head: UnboundSourceAnnotation {
+                  head: v2.std.compilers.lexing.UnboundSourceAnnotation {
                     annotation_class: class,
                     lexeme: lexeme,
                     placement: placement_from_line_prefix(indent_only: acc.line_prefix_indent_only),
@@ -541,8 +541,8 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
   }
 }
 
-fn lex_walk_source_algebra(file: Symbol, rules: LexRuleSet) -> SourceFold<LexWalkAcc> {
-  SourceFold {
+fn lex_walk_source_algebra(file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> SourceFold<LexWalkAcc> {
+  v2.std.text.SourceFold {
     init: fn(src) { lex_walk_init(src: src, file: file, rules: rules) },
     is_done: lex_walk_is_done,
     step: lex_walk_step
@@ -550,7 +550,7 @@ fn lex_walk_source_algebra(file: Symbol, rules: LexRuleSet) -> SourceFold<LexWal
 }
 
 // lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
-fn lex_walk_artifact(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
+fn lex_walk_artifact(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> Outcome<v2.std.compilers.lexing.LexArtifact> {
   let result = fold_source(
     src: source,
     algebra: lex_walk_source_algebra(file: file, rules: rules)
@@ -569,7 +569,7 @@ fn lex_walk_artifact(source: String, file: Symbol, rules: LexRuleSet) -> Outcome
   }
 }
 
-fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStream> {
+fn lex_walk(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> Outcome<v2.std.compilers.lexing.TokenStream> {
   match lex_walk_artifact(source: source, file: file, rules: rules) {
     v2.std.diagnostic.Rejected { diagnostics: ds } =>
       v2.std.diagnostic.Rejected { diagnostics: ds }
@@ -578,7 +578,7 @@ fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStr
   }
 }
 
-fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream> {
+fn tokenize(text: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRules) -> Outcome<v2.std.compilers.lexing.TokenStream> {
   let at = Textual {
     file: file,
     extent: WholeFile

@@ -12,7 +12,7 @@ type HostIdentityObservation {
   probed_at: std.types.NonEmptyStr
 }
 
-data gunbc_host_identity_observation_scope_disposition: Disposition = std.disposition.Terminal {
+data gunbc_host_identity_observation_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Slice-1 typed fixture/read carrier: hostname -s over host_effect transport -> HostIdentityObservation. Does NOT subsume gunbc.ci_deploy_target_host.deploy_target_host_observed_hostname (direct shell.Exec) — that path dissolves when live deploy routes target-host proof through this carrier."
 }
 
@@ -33,7 +33,7 @@ fn host_identity_observation_typed(row: HostIdentityObservationRow) -> HostIdent
   }
 }
 
-fn host_identity_observation_from_stdout(stdout: String, probed_at: NonEmptyStr) -> HostIdentityObservation? {
+fn host_identity_observation_from_stdout(stdout: String, probed_at: std.types.NonEmptyStr) -> HostIdentityObservation? {
   let trimmed = trim(stdout)
   if trimmed == "" {
     none
@@ -48,8 +48,8 @@ fn host_identity_observation_from_stdout(stdout: String, probed_at: NonEmptyStr)
 }
 
 fn host_identity_observation_apply(
-  target: NodeControlPlane,
-  transport: HostEffectTransport,
+  target: gunbc.host_effect.NodeControlPlane,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   host_effect_apply(
     target: target,
@@ -61,7 +61,7 @@ fn host_identity_observation_apply(
 
 fn host_identity_observation_from_apply(
   r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
-  probed_at: NonEmptyStr,
+  probed_at: std.types.NonEmptyStr,
 ) -> HostIdentityObservation? {
   match r {
     Converged { evidence: e, applied: _ } =>

@@ -7,7 +7,7 @@ type DerivedBound
   = BoundDerived { bytes: std.measure.ByteSize }
   | BoundUnknown
 
-fn derived_bound_of(derived_space: ByteSize?) -> DerivedBound {
+fn derived_bound_of(derived_space: std.measure.ByteSize?) -> DerivedBound {
   match derived_space {
     Present { value: bytes } => BoundDerived { bytes: bytes }
     Absent => BoundUnknown

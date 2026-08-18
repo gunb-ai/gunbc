@@ -1,8 +1,8 @@
 module extdeps.llm.cursor_cli
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.cursor.com/en/cli/overview"
   }
@@ -17,7 +17,7 @@ type CursorAuth
   = CursorApiKeyArgument { key: std.types.NonEmptyStr }
   | CursorApiKeyEnvironment { key: std.types.NonEmptyStr }
 
-data cursor_api_key_env_var: NonEmptyStr = "CURSOR_API_KEY" as NonEmptyStr
+data cursor_api_key_env_var: std.types.NonEmptyStr = "CURSOR_API_KEY" as std.types.NonEmptyStr
 
 data cursor_account_isolation_note: String = "THERE IS NO CURSOR_CONFIG_DIR, and the absence is the fact worth recording. codex isolates accounts by state root and this CLI has no equivalent environment variable — ~/.cursor holds agent-cli-state.json, cli-config.json and a chats directory for whichever account last logged in, with no way to point the process at a different one.\\n\\nSo cursor's account axis is the API KEY, not a directory. Two accounts are two keys passed to two invocations, sharing one ~/.cursor for non-credential state. That means concurrent sessions under different accounts are possible in a way codex's directory model does not require any care about, while concurrent sessions writing chat history to one shared directory is a contention question this module cannot answer and has not observed.\\n\\nRecorded rather than papered over: gunbc.provider_account's @label suffix scheme is a CODEX convention and does not transfer here. A cursor account selection is a secret reference, and forcing it into a state-root shape would invent a directory the tool does not read."
 
@@ -65,7 +65,7 @@ fn cursor_sandbox_args(choice: CursorSandboxChoice) -> List<String> {
 
 data cursor_model_selection_note: String = "MODEL IS A PER-INVOCATION ARGUMENT AND THE ROSTER IS AN ACCOUNT FACT. --model takes an identifier and --list-models prints what THIS ACCOUNT may use — the subcommand is literally documented as 'List available models for this account' — so the set is entitlement-scoped and cannot be modeled as a fixed closed enum without going wrong the moment a plan changes.\\n\\n193 identifiers were listed on srv2 on 2026-07-30, spanning several vendors' models behind one CLI. Enumerating them here would be a snapshot pretending to be a specification, so the type stays an identifier and the rows below name only the ones this repository has a reason to select, each recorded as OBSERVED AVAILABLE rather than as guaranteed.\\n\\ncursor_model_grok_high answers a direct operator question: Cursor Grok 4.5 is available on this account as cursor-grok-4.5-high, with a -fast sibling. The -fast variants throughout the roster are a latency tier on the same model, which is a selection axis rather than a different capability."
 
-type CursorModelId = NonEmptyStr where brand("CursorModelId")
+type CursorModelId = std.types.NonEmptyStr where brand("CursorModelId")
 
 data cursor_model_auto: CursorModelId = "auto" as CursorModelId
 data cursor_model_grok_high: CursorModelId = "cursor-grok-4.5-high" as CursorModelId
@@ -151,7 +151,7 @@ fn shape_cursor_invocation(inv: CursorInvocation) -> CursorProcessInvocation {
 
 // THE AUTOMATION PATH CANNOT MINT THE LEAKY ARM. CursorApiKeyArgument stays in the type because the CLI genuinely offers --api-key and an extdeps model that hid it would be describing a tool that does not exist — representing a surface honestly is not recommending it. But nothing in this repository has a reason to choose it, and leaving both arms equally reachable makes the leak an accident of which constructor someone happened to call.\n\nSo the automation constructor takes the key and sets the environment arm itself. There is no parameter through which a caller can request the argument form, which is the difference between a documented preference and a shape: reaching the leaky arm now requires writing CursorInvocation by hand and naming CursorApiKeyArgument deliberately, which is a visible decision rather than a default.\n\nWHERE THE KEY COMES FROM IS NOT THIS MODULE'S FACT. gunbc.auth.materialized_secret already owns the lifecycle that turns a SecretRef into a scoped credential and its SecretBinding coproduct already has the EnvVar arm this needs — so the intended composition is a materialization bound to EnvVar carrying cursor_api_key_env_var, performed by the caller inside that bracket. Importing it here would invert the layer: which secret store a deployment uses is policy, and an extdeps module that named one would state a requirement the CLI does not have.
 fn cursor_automation_invocation(
-  key: NonEmptyStr,
+  key: std.types.NonEmptyStr,
   model: CursorModelId,
   mode: CursorExecutionMode,
   sandbox: CursorSandboxChoice,
@@ -159,7 +159,7 @@ fn cursor_automation_invocation(
   force: Bool,
   trust_workspace: Bool,
   workspace: std.types.FilePath,
-  prompt: NonEmptyStr,
+  prompt: std.types.NonEmptyStr,
 ) -> CursorInvocation {
   CursorInvocation {
     auth: CursorApiKeyEnvironment { key: key },
@@ -180,7 +180,7 @@ fn cursor_argv_contains(argv: List<String>, token: String) -> Bool {
 
 fn cursor_invocation_binds_env(
   shaped: CursorProcessInvocation,
-  name: NonEmptyStr,
+  name: std.types.NonEmptyStr,
 ) -> Bool {
   any(shaped.environment, b => (b.name as String) == (name as String))
 }

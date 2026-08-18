@@ -96,7 +96,7 @@ fn select_artifact_path(
 // later invocation refer to one file.
 fn materialization_from_digest(
   executable: std.types.FilePath,
-  observation: Sha512FileObservation
+  observation: extdeps.tools.sha512sum.Sha512FileObservation
 ) -> ArtifactMaterializationOutcome {
   match observation {
     Sha512FileObserved { digest: d } =>
@@ -108,7 +108,7 @@ fn materialization_from_digest(
 
 fn materialization_outcome_from_path(
   path: ArtifactPathOutcome,
-  observation: Sha512FileObservation
+  observation: extdeps.tools.sha512sum.Sha512FileObservation
 ) -> ArtifactMaterializationOutcome {
   match path {
     ArtifactPathBuildFailed { target_name: t } =>
@@ -153,11 +153,11 @@ fn materialize_artifact_wet(
     ArtifactPathReported { executable: exe } => sha512sum_observe_file(path: exe)
     ArtifactPathBuildFailed { target_name: _ } =>
       Sha512FileObservationRefused {
-        cause: "no artifact path was reported, so no file was digested" as NonEmptyStr
+        cause: "no artifact path was reported, so no file was digested" as std.types.NonEmptyStr
       }
     ArtifactPathRefused { selection: _ } =>
       Sha512FileObservationRefused {
-        cause: "no artifact path was reported, so no file was digested" as NonEmptyStr
+        cause: "no artifact path was reported, so no file was digested" as std.types.NonEmptyStr
       }
   }
   materialization_outcome_from_path(path: path, observation: observation)
@@ -166,7 +166,7 @@ fn materialize_artifact_wet(
 // The projection into the generation carrier. ArtifactMaterialized is reachable from
 // exactly one arm, and only through observed_artifact_digest, whose argument is a
 // Sha512Digest that existed only because sha512sum reported it for this path.
-fn artifact_identity_of(outcome: ArtifactMaterializationOutcome) -> GeneratedArtifactIdentity {
+fn artifact_identity_of(outcome: ArtifactMaterializationOutcome) -> v2.compiler.self_host.generation.GeneratedArtifactIdentity {
   match outcome {
     ArtifactMaterializationObserved { executable: _, digest: d } =>
       ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }

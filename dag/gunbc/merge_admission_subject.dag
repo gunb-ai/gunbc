@@ -4,7 +4,7 @@ module gunbc.merge_admission_subject
 data merge_admission_subject_defusion_note: String = "WalkAttemptId, TestedSubject, and their path/wire identity live here because capture and admission classification both consume them. This is a MOVE from gunbc.merge_admission and gunbc.merge_admission_produce, not a second representation: the domain modules import this carrier home. Keeping the checkout capture out of the classifier's commit-roster closure makes its declared Negligible profile measurable at the realization boundary."
 
 // The attempt identity is a PATH SEGMENT, because it is concatenated into one: merge_admission_attempt_dir builds <root>/.gunbc/merge-admission/<attempt_id>/. As a bare string it was neither path-safe nor wire-safe. Both producers — GitHub-derived composition and explicit GUNBC_WALK_ATTEMPT_ID — go through walk_attempt_id, the only constructor, and refuse rather than sanitizing.
-type WalkAttemptId = PathSegment where brand("WalkAttemptId")
+type WalkAttemptId = std.types.PathSegment where brand("WalkAttemptId")
 
 fn walk_attempt_id(raw: String) -> WalkAttemptId? {
   if path_segment_is_safe(raw: raw) {
@@ -58,14 +58,14 @@ fn compose_explicit_walk_attempt_id(explicit: String) -> WalkAttemptId? {
   walk_attempt_id(raw: explicit)
 }
 
-fn render_git_object_id_wire(oid: GitObjectId) -> String {
+fn render_git_object_id_wire(oid: extdeps.git.object_store.GitObjectId) -> String {
   match oid {
     GitSha1ObjectId { digest: _ } => concat("sha1:", git_object_id_wire_hex(oid: oid) as String)
     GitSha256ObjectId { digest: _ } => concat("sha256:", git_object_id_wire_hex(oid: oid) as String)
   }
 }
 
-fn parse_git_object_id_wire(raw: String) -> GitObjectId? {
+fn parse_git_object_id_wire(raw: String) -> extdeps.git.object_store.GitObjectId? {
   if !(length(split(s: raw, delimiter: ":")) == 2) {
     none
   } else if split(s: raw, delimiter: ":").first() == "sha1" {

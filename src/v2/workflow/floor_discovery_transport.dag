@@ -48,7 +48,7 @@ type FloorDiscoveryTransportState
   | TransportReady
 
 fn floor_discovery_transport_initialize(
-  request: FloorDiscoveryRequest,
+  request: v2.workflow.floor_discovery.FloorDiscoveryRequest,
 ) -> FloorDiscoveryTransportState {
   TransportNeedsCommit { request: request }
 }

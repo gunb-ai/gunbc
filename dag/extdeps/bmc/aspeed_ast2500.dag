@@ -1,8 +1,8 @@
 module extdeps.bmc.aspeed_ast2500
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.aspeedtech.com/server_ast2500/"
   }
@@ -88,9 +88,9 @@ fn ast2500_pollable_sensor_reading_path_count(
   })
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.bmc.aspeed_ast2500",
       decl_name: "aspeed_ast2500_catalog",
       field: WholeDeclaration

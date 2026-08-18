@@ -24,13 +24,13 @@ type ProviderInterfaceResolution
     }
 
 fn project_codex_app_server_stdio_binding(
-  bundle: CodexRuntimeBundle,
+  bundle: gunbc.package_delivery.CodexRuntimeBundle,
 ) -> ProviderInterfaceResolution {
   ProviderInterfaceResolved {
     binding: ProviderInterfaceBinding {
       interface: CodexAppServer {},
       transport: CodexAppServerStdio,
-      executable: CodexAppServerExecutable {
+      executable: extdeps.llm.codex_app_server.CodexAppServerExecutable {
         path: codex_bundle_executable_path(bundle: bundle),
       },
       runtime_identity: codex_bundle_identity(bundle: bundle),
@@ -40,7 +40,7 @@ fn project_codex_app_server_stdio_binding(
 }
 
 fn observe_bind_codex_app_server_stdio(
-  bundle: CodexRuntimeBundle,
+  bundle: gunbc.package_delivery.CodexRuntimeBundle,
 ) -> ProviderInterfaceResolution {
   match project_codex_app_server_stdio_binding(bundle: bundle) {
     ProviderInterfaceResolved { binding } => {
@@ -48,7 +48,7 @@ fn observe_bind_codex_app_server_stdio(
       if present.is_file == false {
         RequiredProviderInterfaceUnavailable {
           interface: CodexAppServer {},
-          reason: "bundled Codex native executable absent at binding path" as NonEmptyStr,
+          reason: "bundled Codex native executable absent at binding path" as std.types.NonEmptyStr,
         }
       } else {
         ProviderInterfaceResolved { binding: binding }

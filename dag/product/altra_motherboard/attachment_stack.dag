@@ -29,7 +29,7 @@ type AttachmentLayer
   | LoadingMechanismLayer
   | MountingLayer
 
-fn attachment_layer_name(l: AttachmentLayer) -> NonEmptyStr {
+fn attachment_layer_name(l: AttachmentLayer) -> std.types.NonEmptyStr {
   match l {
     ProcessorPackageLayer => "processor package"
     SocketLayer => "socket"
@@ -131,7 +131,7 @@ data processor_package_standing: AttachmentLayerStanding = AttachmentLayerStandi
   layer: ProcessorPackageLayer,
   fact: FactEstablished {
     authority: extdeps_external_authority_anchor,
-    subject: DeclarationRef {
+    subject: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu.ampere_altra_package",
       decl_name: "altra_fclga_socket",
       field: WholeDeclaration
@@ -190,12 +190,12 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
 // voltage-regulator layout and the document's socket contents are unverified rather than known. The socket-vendor route is the
 // next authority, so this projects as unresolved rather than access-gated: a fact this repository
 // could never carry is not a fact merely waiting behind a gate.
-fn board_land_pattern_fact_from_obligation(standing: DesignationResolutionStanding) -> FactAuthorityStanding {
+fn board_land_pattern_fact_from_obligation(standing: extdeps.cpu_attachment.ilm4926.DesignationResolutionStanding) -> FactAuthorityStanding {
   match standing {
     DesignationFactEstablished { value: _, authority: a } =>
       FactEstablished {
         authority: a,
-        subject: DeclarationRef {
+        subject: std.decl_ref.DeclarationRef {
           module_path: "extdeps.cpu_attachment.ilm4926",
           decl_name: "ilm4926_attachment_standing",
           field: WholeDeclaration
@@ -278,7 +278,7 @@ fn reference_board_collateral_standing() -> FactAuthorityStanding {
     ReferenceBoardCollateralAvailable =>
       FactEstablished {
         authority: ampere_customer_reference_boards_authority,
-        subject: DeclarationRef {
+        subject: std.decl_ref.DeclarationRef {
           module_path: "extdeps.cpu.ampere_altra_package",
           decl_name: "altra_reference_board_collateral_standing",
           field: WholeDeclaration
@@ -372,7 +372,7 @@ fn authority_standing_refusal(fact: FactAuthorityStanding, carriage: RepositoryC
 // The refusal rendered as text for a consumer that can only carry a string. The three arms are
 // named individually rather than folded to one generic sentence, because which coherence law a row
 // broke is the fact a reader needs.
-fn authority_standing_refusal_text(r: AuthorityStandingRefusal) -> NonEmptyStr {
+fn authority_standing_refusal_text(r: AuthorityStandingRefusal) -> std.types.NonEmptyStr {
   match r {
     EstablishedFactHasInapplicableCarriage =>
       "this layer's fact is established, yet its carriage says the question does not apply; an established fact always has a carriage answer"
@@ -469,6 +469,6 @@ fn board_side_termination_population() -> Int {
   altra_declared_contact_count()
 }
 
-fn processor_socket() -> CpuSocket {
+fn processor_socket() -> extdeps.cpu.types.CpuSocket {
   altra_fclga_socket
 }

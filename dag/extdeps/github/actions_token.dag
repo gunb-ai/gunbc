@@ -1,28 +1,28 @@
 module extdeps.github.actions_token
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions"
   }
 }
 
-data automatic_token_citation: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data automatic_token_citation: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/actions/concepts/security/github_token"
   }
 }
 
-data app_permissions_citation: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data app_permissions_citation: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/authentication/permissions-required-for-github-apps"
   }
 }
 
-fn axis_actions_permissions_key(axis: GitHubPermissionAxis) -> NonEmptyStr? {
+fn axis_actions_permissions_key(axis: extdeps.github.app.GitHubPermissionAxis) -> std.types.NonEmptyStr? {
   match axis {
     ActionsAxis => Present { value: "actions" }
     ArtifactMetadataAxis => Present { value: "artifact-metadata" }
@@ -66,7 +66,7 @@ type IntrinsicTokenGrant
   = IntrinsicTokenGrantAbsent
   | IntrinsicTokenGrantRead
 
-fn axis_intrinsic_token_grant(axis: GitHubPermissionAxis) -> IntrinsicTokenGrant {
+fn axis_intrinsic_token_grant(axis: extdeps.github.app.GitHubPermissionAxis) -> IntrinsicTokenGrant {
   match axis {
     MetadataAxis => IntrinsicTokenGrantRead
     ActionsAxis => IntrinsicTokenGrantAbsent
@@ -99,7 +99,7 @@ type ActionsAccessSet
   | ActionsAccessReadOnly
   | ActionsAccessNotAvailable
 
-fn axis_allowed_actions_access(axis: GitHubPermissionAxis) -> ActionsAccessSet {
+fn axis_allowed_actions_access(axis: extdeps.github.app.GitHubPermissionAxis) -> ActionsAccessSet {
   match axis {
     ActionsAxis => ActionsAccessReadOrWrite
     ArtifactMetadataAxis => ActionsAccessReadOrWrite
@@ -126,7 +126,7 @@ fn axis_allowed_actions_access(axis: GitHubPermissionAxis) -> ActionsAccessSet {
   }
 }
 
-fn actions_access_set_admits(set: ActionsAccessSet, access: GitHubAppPermissionAccess) -> Bool {
+fn actions_access_set_admits(set: ActionsAccessSet, access: extdeps.github.app.GitHubAppPermissionAccess) -> Bool {
   match set {
     ActionsAccessNotAvailable => false
     ActionsAccessReadOrWrite => match access {
@@ -148,7 +148,7 @@ fn actions_access_set_admits(set: ActionsAccessSet, access: GitHubAppPermissionA
 // intrinsic-grant correction. The token carries Metadata: read while Metadata
 // is undeclarable, so a single "can carry" predicate answered two questions and
 // had to be wrong about one of them. Ask effective_actions_grant for possession.
-fn actions_token_may_declare_permission(name: GitHubPermissionAxis) -> Bool {
+fn actions_token_may_declare_permission(name: extdeps.github.app.GitHubPermissionAxis) -> Bool {
   match axis_actions_permissions_key(axis: name) {
     Absent => false
     Present { value: _ } => match axis_allowed_actions_access(axis: name) {
@@ -160,7 +160,7 @@ fn actions_token_may_declare_permission(name: GitHubPermissionAxis) -> Bool {
   }
 }
 
-data workflows_permission_name: GitHubPermissionAxis = WorkflowsAxis
+data workflows_permission_name: extdeps.github.app.GitHubPermissionAxis = WorkflowsAxis
 
 // Declarability is sufficient here because an intrinsic grant is read-only by
 // construction (IntrinsicTokenGrant has no write variant), so no intrinsic
@@ -212,7 +212,7 @@ type EffectiveActionsJobGrant {
   permissions: extdeps.github.actions.WorkflowPermissions
 }
 
-fn permission_level_access(level: PermissionLevel) -> GitHubAppPermissionAccess? {
+fn permission_level_access(level: extdeps.github.actions.PermissionLevel) -> extdeps.github.app.GitHubAppPermissionAccess? {
   match level {
     PermRead => Present { value: AppAccessRead }
     PermWrite => Present { value: AppAccessWrite }
@@ -220,7 +220,7 @@ fn permission_level_access(level: PermissionLevel) -> GitHubAppPermissionAccess?
   }
 }
 
-fn axis_modeled_by_workflow_permissions(axis: GitHubPermissionAxis) -> Bool {
+fn axis_modeled_by_workflow_permissions(axis: extdeps.github.app.GitHubPermissionAxis) -> Bool {
   match axis {
     ActionsAxis => true
     ContentsAxis => true
@@ -247,7 +247,7 @@ fn axis_modeled_by_workflow_permissions(axis: GitHubPermissionAxis) -> Bool {
   }
 }
 
-fn declared_level_for_axis(perms: WorkflowPermissions, axis: GitHubPermissionAxis) -> PermissionLevel? {
+fn declared_level_for_axis(perms: extdeps.github.actions.WorkflowPermissions, axis: extdeps.github.app.GitHubPermissionAxis) -> extdeps.github.actions.PermissionLevel? {
   match axis {
     ActionsAxis => perms.actions
     ContentsAxis => perms.contents
@@ -319,8 +319,8 @@ fn resolve_declared_write(grant: EffectiveActionsJobGrant) -> ActionsGrantResolu
 
 fn resolve_declared_access(
   grant: EffectiveActionsJobGrant,
-  axis: GitHubPermissionAxis,
-  declared: GitHubAppPermissionAccess
+  axis: extdeps.github.app.GitHubPermissionAxis,
+  declared: extdeps.github.app.GitHubAppPermissionAccess
 ) -> ActionsGrantResolution {
   if !actions_access_set_admits(set: axis_allowed_actions_access(axis: axis), access: declared) {
     ActionsGrantDeclaredAccessInvalid {
@@ -338,7 +338,7 @@ fn resolve_declared_access(
 
 fn effective_actions_grant(
   grant: EffectiveActionsJobGrant,
-  name: GitHubPermissionAxis
+  name: extdeps.github.app.GitHubPermissionAxis
 ) -> ActionsGrantResolution {
   match axis_actions_permissions_key(axis: name) {
     Absent => match axis_intrinsic_token_grant(axis: name) {
@@ -361,9 +361,9 @@ fn effective_actions_grant(
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.actions_token",
       decl_name: "EffectiveActionsJobGrant",
       field: WholeDeclaration

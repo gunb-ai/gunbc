@@ -46,34 +46,34 @@ data empty_dual_rep_data_inits: List<DualRepDataInit> = []
 data empty_dual_rep_fns: List<DualRepFnFact> = []
 data empty_dual_rep_module_scans: List<DualRepModuleScan> = []
 data empty_eq_node_sites: List<EqNodeSite> = []
-data empty_symbol_list: List<Symbol> = []
-data empty_edges: List<Edge> = []
-data empty_sym: Symbol = ^dual_rep_empty_sym
+data empty_symbol_list: List<v2.std.node.Symbol> = []
+data empty_edges: List<v2.std.node.Edge> = []
+data empty_sym: v2.std.node.Symbol = ^dual_rep_empty_sym
 
-data sym_m: Symbol = ^m
-data sym_a: Symbol = ^a
-data sym_b: Symbol = ^b
+data sym_m: v2.std.node.Symbol = ^m
+data sym_a: v2.std.node.Symbol = ^a
+data sym_b: v2.std.node.Symbol = ^b
 data sym_ttl_name: String = "ttl"
 data sym_flag_name: String = "flag"
 data sym_true_name: String = "true"
-data sym_x: Symbol = ^x
-data sym_y: Symbol = ^y
-data sym_wrapped: Symbol = ^wrapped
-data sym_inner: Symbol = ^inner
+data sym_x: v2.std.node.Symbol = ^x
+data sym_y: v2.std.node.Symbol = ^y
+data sym_wrapped: v2.std.node.Symbol = ^wrapped
+data sym_inner: v2.std.node.Symbol = ^inner
 data sym_lit_3600_name: String = "3600"
 data sym_lit_4_name: String = "4"
 data sym_lit_1_name: String = "1"
-data sym_add: Symbol = ^add
+data sym_add: v2.std.node.Symbol = ^add
 
 fn path_is_test_dag(path: String) -> Bool {
   string_contains(s: path, pattern: "_test.dag")
 }
 
-fn pos_edge(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+fn pos_edge(target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Positional, target: target }
 }
 
-fn atom_node(sym: Symbol) -> Node {
+fn atom_node(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: sym } },
     children: []
@@ -91,7 +91,7 @@ fn eq_conj(lhs: Node, rhs: Node) -> Node {
   )
 }
 
-fn call_node(callee: Symbol, args: List<Node>) -> Node {
+fn call_node(callee: v2.std.node.Symbol, args: List<Node>) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: fold(
@@ -102,7 +102,7 @@ fn call_node(callee: Symbol, args: List<Node>) -> Node {
   )
 }
 
-fn node_atom_sym(n: Node) -> Symbol {
+fn node_atom_sym(n: Node) -> v2.std.node.Symbol {
   match n.kind {
     TypeNode { connective: Atom { identity: sym } } => sym
     _ => empty_sym
@@ -113,7 +113,7 @@ fn node_atom_name(n: Node) -> String {
   node_atom_sym(n: n)
 }
 
-fn sym_is_empty(sym: Symbol) -> Bool {
+fn sym_is_empty(sym: v2.std.node.Symbol) -> Bool {
   sym == empty_sym
 }
 
@@ -154,7 +154,7 @@ fn eq_sites_collect_init(n: Node) -> List<EqNodeSite> {
 
 fn eq_sites_collect_step(
   acc: List<EqNodeSite>,
-  edge: Edge,
+  edge: v2.std.node.Edge,
   child_acc: List<EqNodeSite>
 ) -> List<EqNodeSite> {
   list_append(
@@ -166,7 +166,7 @@ fn eq_sites_collect_step(
 fn eq_sites_from_output(root: Node) -> List<EqNodeSite> {
   fold_node(
     n: root,
-    algebra: NodeFold {
+    algebra: v2.std.node.NodeFold {
       init: eq_sites_collect_init,
       step: eq_sites_collect_step
     }
@@ -245,7 +245,7 @@ fn body_alpha_equivalent_to_single_arg_call(
   }
 }
 
-fn char_eq(a: Char, b: Char) -> Bool {
+fn char_eq(a: std.types.Char, b: std.types.Char) -> Bool {
   a == b
 }
 
@@ -253,14 +253,14 @@ fn qualified_name_in_module(qname: String, module: String) -> Bool {
   is_prefix_of(prefix: concat(module, "."), xs: qname, eq: char_eq)
 }
 
-fn first_param_sym(params: List<Symbol>) -> Symbol {
+fn first_param_sym(params: List<v2.std.node.Symbol>) -> v2.std.node.Symbol {
   match list_at_optional(xs: params, index: 0) {
     Present { value: p } => p
     Absent => empty_sym
   }
 }
 
-fn param_syms_from_decl(decl: FnArrowDecl) -> List<Symbol> {
+fn param_syms_from_decl(decl: v2.std.fn_index.FnArrowDecl) -> List<v2.std.node.Symbol> {
   fold(decl.params, init: empty_symbol_list, f: fn(acc, p) {
     list_snoc_item(xs: acc, item: p.name)
   })
@@ -283,7 +283,7 @@ fn lookup_fn_fact(fns: List<DualRepFnFact>, name: String) -> DualRepFnFact {
   })
 }
 
-fn replace_param_in_output(output: Node, param: Symbol, arg_name: String) -> Node {
+fn replace_param_in_output(output: Node, param: v2.std.node.Symbol, arg_name: String) -> Node {
   match output.kind {
     TypeNode { connective: Atom { identity: sym } } =>
       if sym == param {
@@ -300,7 +300,7 @@ fn replace_param_in_output(output: Node, param: Symbol, arg_name: String) -> Nod
           f: fn(acc, e) {
             list_snoc_item(
               xs: acc,
-              item: Edge {
+              item: v2.std.node.Edge {
                 label: e.label,
                 target: replace_param_in_output(
                   output: e.target,
@@ -458,12 +458,12 @@ fn dual_rep_test_file_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
   length(xs: scans)
 }
 
-fn decl_belongs_to_module(decl: FnArrowDecl, fact: DualRepModuleRef) -> Bool {
+fn decl_belongs_to_module(decl: v2.std.fn_index.FnArrowDecl, fact: DualRepModuleRef) -> Bool {
   path_is_test_dag(path: fact.path)
     && qualified_name_in_module(qname: decl.qualified_name, module: fact.module)
 }
 
-fn fn_fact_from_decl(decl: FnArrowDecl) -> DualRepFnFact {
+fn fn_fact_from_decl(decl: v2.std.fn_index.FnArrowDecl) -> DualRepFnFact {
   DualRepFnFact {
     name: decl.name,
     params: param_syms_from_decl(decl: decl),
@@ -473,7 +473,7 @@ fn fn_fact_from_decl(decl: FnArrowDecl) -> DualRepFnFact {
 
 fn module_fns_for_fact(
   fact: DualRepModuleRef,
-  decls: List<FnArrowDecl>
+  decls: List<v2.std.fn_index.FnArrowDecl>
 ) -> List<DualRepFnFact> {
   fold(decls, init: empty_dual_rep_fns, f: fn(acc, decl) {
     if decl_belongs_to_module(decl: decl, fact: fact) {
@@ -484,13 +484,13 @@ fn module_fns_for_fact(
   })
 }
 
-fn data_init_belongs_to_module(decl: DataInitDecl, fact: DualRepModuleRef) -> Bool {
+fn data_init_belongs_to_module(decl: v2.std.data_index.DataInitDecl, fact: DualRepModuleRef) -> Bool {
   decl.module == fact.module
 }
 
 fn data_inits_for_fact(
   fact: DualRepModuleRef,
-  decls: List<DataInitDecl>
+  decls: List<v2.std.data_index.DataInitDecl>
 ) -> List<DualRepDataInit> {
   fold(decls, init: empty_dual_rep_data_inits, f: fn(acc, decl) {
     if data_init_belongs_to_module(decl: decl, fact: fact) {
@@ -506,8 +506,8 @@ fn data_inits_for_fact(
 
 fn dual_rep_module_scan_for_fact(
   fact: DualRepModuleRef,
-  decls: List<FnArrowDecl>,
-  data_init_decls: List<DataInitDecl>
+  decls: List<v2.std.fn_index.FnArrowDecl>,
+  data_init_decls: List<v2.std.data_index.DataInitDecl>
 ) -> DualRepModuleScan {
   DualRepModuleScan {
     path: fact.path,
@@ -518,8 +518,8 @@ fn dual_rep_module_scan_for_fact(
 }
 
 fn dual_rep_module_scans_from_decls(
-  decls: List<FnArrowDecl>,
-  data_init_decls: List<DataInitDecl>,
+  decls: List<v2.std.fn_index.FnArrowDecl>,
+  data_init_decls: List<v2.std.data_index.DataInitDecl>,
   modules: List<DualRepModuleRef>
 ) -> List<DualRepModuleScan> {
   fold_list(

@@ -3,22 +3,22 @@ module v2.test.lens_effect.effect_depends_on
 
 data effect_child: Node = claim_atom_node(s: ^effect_child_symbol)
 
-data effect_root: Node = Node {
+data effect_root: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^effect_root_symbol } },
   children: [
-    Edge { label: Named { name: ^effect_edge_symbol }, target: effect_child }
+    v2.std.node.Edge { label: Named { name: ^effect_edge_symbol }, target: effect_child }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data effect_dependency: DependencyView = DependencyView {
+data effect_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: effect_root,
   dependent: effect_child,
   kind: EffectDependsOn,
   usage_site: effect_child
 }
 
-fn effect_claim_facts() -> InferredFacts {
+fn effect_claim_facts() -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^effect_type_symbol,
     algebra_symbol: ^effect_algebra_symbol,
@@ -26,7 +26,7 @@ fn effect_claim_facts() -> InferredFacts {
   )
 }
 
-fn effect_claim_tree() -> InferredTree {
+fn effect_claim_tree() -> v2.compiler.infer.InferredTree {
   claim_inferred_tree(root: effect_root, facts: effect_claim_facts())
 }
 
@@ -38,11 +38,11 @@ type LensEffectClaim {
 
 data effect_depends_on_claim: LensEffectClaim = LensEffectClaim {
   input: effect_claim_tree(),
-  expected: EffectFact {
+  expected: v2.lens.effect.EffectFact {
     dependencies: [
-      ClassifiedDependencyView {
+      v2.std.dependency.ClassifiedDependencyView {
         dependency: effect_dependency,
-        classification: EffectClassification {}
+        classification: v2.lens.common.algebraic_composition.EffectClassification {}
       }
     ]
   },
@@ -65,11 +65,11 @@ fn effect_depends_on_claim_holds() -> Bool {
 
 data effect_depends_on_claim_passes: Bool = effect_depends_on_claim_holds()
 
-fn lens_effect_marker_node(marker: Symbol) -> Node {
-  Node {
+fn lens_effect_marker_node(marker: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Value },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: marker },
         target: effect_root
       }
@@ -90,17 +90,17 @@ fn effect_runtime_type_node() -> Node {
   claim_atom_node(s: ^effect_type_symbol)
 }
 
-fn effect_runtime_unit(node: Node) -> RuntimeValue {
+fn effect_runtime_unit(node: Node) -> v2.std.runtime.RuntimeValue {
   RuntimeUnit {
-    value: RuntimeUnitValue { unit_type: effect_runtime_type_node() }
+    value: v2.std.runtime.RuntimeUnitValue { unit_type: effect_runtime_type_node() }
   }
 }
 
-fn effect_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn effect_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   Accepted { value: effect_runtime_unit(node: node), diagnostics: None }
 }
 
-fn effect_reject_runtime(node: Node) -> Outcome<RuntimeValue> {
+fn effect_reject_runtime(node: Node) -> Outcome<v2.std.runtime.RuntimeValue> {
   Rejected {
     diagnostics: diagnostics_singleton(
       d: eval_diagnostic(reason: ^effect_runtime_rejected, node: node)
@@ -110,16 +110,16 @@ fn effect_reject_runtime(node: Node) -> Outcome<RuntimeValue> {
 
 fn effect_call_primitive(
   node: Node,
-  _args: List<RuntimeValue>,
-  _env: EvaluationEnvironment
-) -> Outcome<RuntimeValue> {
+  _args: List<v2.std.runtime.RuntimeValue>,
+  _env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   effect_reject_runtime(node: node)
 }
 
 fn effect_choose_branch(
   node: Node,
-  _value: RuntimeValue,
-  _env: EvaluationEnvironment
+  _value: v2.std.runtime.RuntimeValue,
+  _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<Node> {
   Rejected {
     diagnostics: diagnostics_singleton(
@@ -128,31 +128,31 @@ fn effect_choose_branch(
   }
 }
 
-fn effect_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+fn effect_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
   Accepted { value: Continue { value: effect_runtime_unit(node: node) }, diagnostics: None }
 }
 
 fn effect_bind_value(
-  _key: EnvironmentBindingKey,
-  _value: RuntimeValue,
-  env: EvaluationEnvironment
-) -> Outcome<EvaluationEnvironment> {
+  _key: v2.std.runtime.EnvironmentBindingKey,
+  _value: v2.std.runtime.RuntimeValue,
+  env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
   Accepted { value: env, diagnostics: None }
 }
 
-fn effect_interpretation() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: effect_allocate_literal },
-    transform: TransformInterpreter { call_primitive: effect_call_primitive },
-    branch: BranchInterpreter { choose_branch: effect_choose_branch },
-    loop: LoopInterpreter { step_loop: effect_step_loop },
-    bind: BindInterpreter { bind_value: effect_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+fn effect_interpretation() -> v2.std.runtime.InterpretationAlgebra {
+  v2.std.runtime.InterpretationAlgebra {
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: effect_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: effect_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: effect_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: effect_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: effect_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
-fn effect_interpretation_structure_witness() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
+fn effect_interpretation_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
+  v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^effect_allocate_literal_sym,
     call_primitive: ^effect_call_primitive_sym,
     choose_branch: ^effect_choose_branch_sym,
@@ -162,7 +162,7 @@ fn effect_interpretation_structure_witness() -> InterpretationStructureWitness {
   }
 }
 
-fn effect_context() -> EvalContext {
+fn effect_context() -> v2.compiler.eval.EvalContext {
   eval_context_with_semantics(
     runtime_identity: ^effect_interpretation_pin,
     interpretation: effect_interpretation(),
@@ -170,12 +170,12 @@ fn effect_context() -> EvalContext {
   )
 }
 
-data claim_lens_effect_depends_on_runtime_verdict: TestClaim = EqualsClaim {
+data claim_lens_effect_depends_on_runtime_verdict: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_effect/effect_depends_on routes through run_test_claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: lens_effect_marker_node(marker: ^effect_claim_pass_symbol),
   rhs: effect_depends_on_claim_expected_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
 data subject_lens_effect_depends_on_runtime_verdict: TestClaimEvalSubject<Node> = eval_test_claim_subject(

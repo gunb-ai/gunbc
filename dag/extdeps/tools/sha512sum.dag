@@ -2,8 +2,8 @@ module extdeps.tools.sha512sum
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.gnu.org/software/coreutils/manual/coreutils.html"
   }
@@ -15,9 +15,9 @@ data sha512sum_cli_tool: CliTool = CliTool {
   installable_via: [SourceCoreutils],
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.tools.sha512sum",
       decl_name: "sha512sum_cli_tool",
       field: WholeDeclaration
@@ -54,7 +54,7 @@ type Sha512FileObservation
 fn sha512sum_observe_file(path: std.types.FilePath) -> Sha512FileObservation {
   let read = sha512sum.Sha512.DigestFile(path: path)
   if !read.success {
-    Sha512FileObservationRefused { cause: "sha512sum DigestFile failed" as NonEmptyStr }
+    Sha512FileObservationRefused { cause: "sha512sum DigestFile failed" as std.types.NonEmptyStr }
   } else {
     match split(s: trim(read.stdout), delimiter: " ") |> first {
       Present { value: hex } =>
@@ -62,12 +62,12 @@ fn sha512sum_observe_file(path: std.types.FilePath) -> Sha512FileObservation {
           Present { value: digest } => Sha512FileObserved { digest: digest }
           Absent =>
             Sha512FileObservationRefused {
-              cause: "sha512sum stdout hex failed Sha512Digest refinement" as NonEmptyStr,
+              cause: "sha512sum stdout hex failed Sha512Digest refinement" as std.types.NonEmptyStr,
             }
         }
       Absent =>
         Sha512FileObservationRefused {
-          cause: "sha512sum stdout empty" as NonEmptyStr,
+          cause: "sha512sum stdout empty" as std.types.NonEmptyStr,
         }
     }
   }

@@ -39,7 +39,7 @@ type SourceModels {
 // addition outside the roster, so it reds the freeze gate. Dissolve-on: those two
 // identities leave the frozen roster, at which point the `self_host_` prefix on the
 // staleness machinery goes with them.
-data regen_staleness_authority: Symbol = ^canonical_emitted_bytes
+data regen_staleness_authority: v2.std.node.Symbol = ^canonical_emitted_bytes
 
 type SelfHostStageEmission {
   node: CoreNode
@@ -74,8 +74,8 @@ type PromotionWitness {
   candidate_fixed_point_sub_check: FixedPointCheck
 }
 
-fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn self_host_runner_not_realized_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^self_host_runner_not_realized,
     at: port_locus(port: ^self_host_runner_port),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -85,19 +85,19 @@ fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
 fn self_host_fixpoint_digest_mismatch_diagnostic(
   stage1: SelfHostStageEmission,
   stage2: SelfHostStageEmission
-) -> Diagnostic {
-  Diagnostic {
+) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^self_host_fixpoint_digest_mismatch,
     at: node_locus(node: stage2.node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn source_text_code_unit_digest(text: String) -> Hash {
+fn source_text_code_unit_digest(text: String) -> v2.std.node.Hash {
   symbol_identity_digest(sym: text)
 }
 
-fn canonical_emitted_bytes_digest(source: Medium<String>) -> Hash {
+fn canonical_emitted_bytes_digest(source: Medium<String>) -> v2.std.node.Hash {
   combine_hash(
     a: symbol_identity_digest(sym: ^canonical_emitted_bytes),
     b: source_text_code_unit_digest(text: source.carried)
@@ -210,8 +210,8 @@ fn candidate_promotion_witness(
   }
 }
 
-fn stage_emission_closedness(reference_stage1: CoreNode) -> StructuralPropertyWitness {
-  StructuralPropertyWitness {
+fn stage_emission_closedness(reference_stage1: CoreNode) -> v2.std.witness.StructuralPropertyWitness {
+  v2.std.witness.StructuralPropertyWitness {
     property: ^stage_emission_equality_closed_candidates,
     evidence: reference_stage1
   }
@@ -240,11 +240,11 @@ fn stage_emission_equality(
 ) -> StageEmissionEquality {
   match find_witness(
     source_facts: reference_stage1,
-    candidates: CandidateSet {
+    candidates: v2.std.find_witness.CandidateSet {
       candidates: [emitted_candidate],
       closedness: stage_emission_closedness(reference_stage1: reference_stage1)
     },
-    predicate: PreservationPredicate {
+    predicate: v2.std.find_witness.PreservationPredicate {
       algebra: reference_stage1,
       preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
     },
@@ -289,11 +289,11 @@ fn source_models_from_roster_and_roots(
   roster: List<String>
 ) -> SourceModels {
   SourceModels {
-    stage1_committed_seed_source: Medium {
+    stage1_committed_seed_source: extdeps.communication.medium.Medium {
       carried: fold_side_bytes(root: committed_root, roster: roster),
       fidelity: Lossless
     },
-    stage2_regen_emitted_source: Medium {
+    stage2_regen_emitted_source: extdeps.communication.medium.Medium {
       carried: fold_side_bytes(root: emitted_root, roster: roster),
       fidelity: Lossless
     }

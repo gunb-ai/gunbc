@@ -214,7 +214,7 @@ fn requirement_refusal(
       value: ServingRequirementRefusal {
         realization_label: realization_label(realization: realization),
         requirement: requirement,
-        cause: concat("unobserved: ", requirement_label(requirement: requirement)) as NonEmptyStr,
+        cause: concat("unobserved: ", requirement_label(requirement: requirement)) as std.types.NonEmptyStr,
       }
     }
   }
@@ -284,7 +284,7 @@ fn identity_contract_refusal(
       value: ServingRequirementRefusal {
         realization_label: realization_label(realization: realization),
         requirement: RequiresNoLoginServiceIdentity,
-        cause: "this realization cannot run the serving process as an identity the intent admits; a systemd user unit runs as the user whose manager owns it, so the separate existence of a no-login account does not make it run as that account" as NonEmptyStr,
+        cause: "this realization cannot run the serving process as an identity the intent admits; a systemd user unit runs as the user whose manager owns it, so the separate existence of a no-login account does not make it run as that account" as std.types.NonEmptyStr,
       }
     }
   }
@@ -391,7 +391,7 @@ type ServingInstallEffect
 // actor and the ranking question presumes one. Root would rank every realization at zero, which is
 // true and useless for choosing between them.
 fn serving_install_effect_requires_privilege(effect: ServingInstallEffect) -> Bool {
-  effect_requires_escalation(effect: effect, actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
+  effect_requires_escalation(effect: effect, actor: NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
 }
 
 fn realization_install_effects(realization: SparkServingRealization) -> List<ServingInstallEffect> {
@@ -505,7 +505,7 @@ fn select_spark_serving_realization(
           first: ServingRequirementRefusal {
             realization_label: "none",
             requirement: RequiresBindableEndpoint,
-            cause: "no candidate realization was evaluated" as NonEmptyStr,
+            cause: "no candidate realization was evaluated" as std.types.NonEmptyStr,
           },
           more: [],
         }
@@ -524,7 +524,7 @@ fn select_spark_serving_realization(
                   first: head,
                   second: second,
                   more: list_tail_of(xs: list_tail_of(xs: admitted)),
-                  cause: "PreferSystemIntegration does not order equally capable realizations by a modeled fact; the tie is a genuine choice rather than a derivation" as NonEmptyStr,
+                  cause: "PreferSystemIntegration does not order equally capable realizations by a modeled fact; the tie is a genuine choice rather than a derivation" as std.types.NonEmptyStr,
                 }
               }
           }
@@ -776,22 +776,22 @@ fn effect_actuation(
       join([
         "/usr/bin/install -m 644 -o root -g root ",
         target.staged_unit_path as String, " ", target.unit_path as String,
-      ], "") as NonEmptyStr,
+      ], "") as std.types.NonEmptyStr,
     ] }
-    ReloadSystemManager => ActuatedByEscalation { commands: ["/usr/bin/systemctl daemon-reload" as NonEmptyStr] }
+    ReloadSystemManager => ActuatedByEscalation { commands: ["/usr/bin/systemctl daemon-reload" as std.types.NonEmptyStr] }
     EnableSystemUnit => ActuatedByEscalation { commands: [
-      join(["/usr/bin/systemctl enable ", target.unit_name as String], "") as NonEmptyStr,
-      join(["/usr/bin/systemctl start ", target.unit_name as String], "") as NonEmptyStr,
-      join(["/usr/bin/systemctl restart ", target.unit_name as String], "") as NonEmptyStr,
+      join(["/usr/bin/systemctl enable ", target.unit_name as String], "") as std.types.NonEmptyStr,
+      join(["/usr/bin/systemctl start ", target.unit_name as String], "") as std.types.NonEmptyStr,
+      join(["/usr/bin/systemctl restart ", target.unit_name as String], "") as std.types.NonEmptyStr,
     ] }
     InstallRuntimePackage => ActuatedByEscalation { commands: [
-      join(["/usr/bin/apt-get install -y ", target.runtime_package as String], "") as NonEmptyStr,
+      join(["/usr/bin/apt-get install -y ", target.runtime_package as String], "") as std.types.NonEmptyStr,
     ] }
     GrantContainerRuntimeAccess => ActuatedByEscalation { commands: [
-      join(["/usr/sbin/usermod -aG docker ", principal_label(p: target.actor)], "") as NonEmptyStr,
+      join(["/usr/sbin/usermod -aG docker ", principal_label(p: target.actor)], "") as std.types.NonEmptyStr,
     ] }
     EnableLingerForOwnAccount => ActuatedByEscalation { commands: [
-      join(["/usr/bin/loginctl enable-linger ", principal_label(p: target.actor)], "") as NonEmptyStr,
+      join(["/usr/bin/loginctl enable-linger ", principal_label(p: target.actor)], "") as std.types.NonEmptyStr,
     ] }
     InstallOwnedRuntimeClosure => ActuatedByOwnerDirectly
     WriteUserUnitFile => ActuatedByOwnerDirectly
@@ -808,7 +808,7 @@ fn effect_actuation(
 fn realization_escalated_commands(
   realization: SparkServingRealization,
   target: ServingDeploymentTarget,
-) -> List<NonEmptyStr> {
+) -> List<std.types.NonEmptyStr> {
   flat_map(
     realization_install_effects(realization: realization),
     e =>
@@ -876,7 +876,7 @@ type EscalationShortfall
   | ShortfallUndecidable { cause: std.types.NonEmptyStr }
   | ShortfallEvidenceMismatch { cause: std.types.NonEmptyStr }
 
-fn grant_population_contains(population: List<NonEmptyStr>, command: NonEmptyStr) -> Bool {
+fn grant_population_contains(population: List<std.types.NonEmptyStr>, command: std.types.NonEmptyStr) -> Bool {
   fold(population, init: false, f: fn(acc, held) {
     if acc { true } else { (held as String) == (command as String) }
   })
@@ -902,8 +902,8 @@ fn grant_population_contains(population: List<NonEmptyStr>, command: NonEmptyStr
 // reading "undecidable" would go looking for an unreachable host that is fine.
 fn escalation_shortfall(
   realization: SparkServingRealization,
-  subject_host: HostIdentity,
-  expected_credential: ContentHash,
+  subject_host: product.placement_supply.HostIdentity,
+  expected_credential: std.content_hash.ContentHash,
   target: ServingDeploymentTarget,
   observed: ObservedGrantPopulation,
 ) -> EscalationShortfall {
@@ -911,12 +911,12 @@ fn escalation_shortfall(
     GrantPopulationUnobserved { host: uh, principal: up, cause: c } =>
       if (uh as String) != (subject_host as String) {
         ShortfallEvidenceMismatch {
-          cause: join(["an unobserved-grant record for host ", uh as String, " cannot answer for ", subject_host as String], "") as NonEmptyStr,
+          cause: join(["an unobserved-grant record for host ", uh as String, " cannot answer for ", subject_host as String], "") as std.types.NonEmptyStr,
         }
       } else {
         if (up as String) != principal_label(p: target.actor) {
           ShortfallEvidenceMismatch {
-            cause: join(["an unobserved-grant record for principal ", up as String, " cannot answer for ", principal_label(p: target.actor)], "") as NonEmptyStr,
+            cause: join(["an unobserved-grant record for principal ", up as String, " cannot answer for ", principal_label(p: target.actor)], "") as std.types.NonEmptyStr,
           }
         } else {
           ShortfallUndecidable { cause: c }
@@ -925,20 +925,20 @@ fn escalation_shortfall(
     GrantPopulationObserved { host: oh, principal: op, credential_identity: ok, commands: held } =>
       if (oh as String) != (subject_host as String) {
         ShortfallEvidenceMismatch {
-          cause: join(["grant population was observed on host ", oh as String, " but authorizes ", subject_host as String], "") as NonEmptyStr,
+          cause: join(["grant population was observed on host ", oh as String, " but authorizes ", subject_host as String], "") as std.types.NonEmptyStr,
         }
       } else {
       if (op as String) != principal_label(p: target.actor) {
         ShortfallEvidenceMismatch {
-          cause: join(["grant population was observed for principal ", op as String, " but authorizes ", principal_label(p: target.actor)], "") as NonEmptyStr,
+          cause: join(["grant population was observed for principal ", op as String, " but authorizes ", principal_label(p: target.actor)], "") as std.types.NonEmptyStr,
         }
       } else {
       match compare_content_hash(left: ok, right: expected_credential) {
         ContentHashDifferent => ShortfallEvidenceMismatch {
-          cause: "grant population was observed under a different credential than the one this plan authorizes" as NonEmptyStr,
+          cause: "grant population was observed under a different credential than the one this plan authorizes" as std.types.NonEmptyStr,
         }
         ContentHashCrossFamilyIncomparable => ShortfallEvidenceMismatch {
-          cause: "grant population credential identity is not comparable with the expected credential" as NonEmptyStr,
+          cause: "grant population credential identity is not comparable with the expected credential" as std.types.NonEmptyStr,
         }
         ContentHashEqual => {
       let missing = fold(

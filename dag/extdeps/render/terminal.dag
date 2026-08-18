@@ -2,14 +2,14 @@ module extdeps.render.terminal
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.unicode.org/reports/tr11/"
   }
 }
 
-fn span_width(span: Span, tier: Tier) -> Int? {
+fn span_width(span: std.render.Span, tier: std.symbols.Tier) -> Int? {
   let text_w = string_display_width(s: span.text)
   match span.style.symbol {
     null => Present { value: text_w }
@@ -20,7 +20,7 @@ fn span_width(span: Span, tier: Tier) -> Int? {
   }
 }
 
-fn truncate_spans(spans: List<Span>, budget: Int, tier: Tier) -> List<Span>? {
+fn truncate_spans(spans: List<std.render.Span>, budget: Int, tier: std.symbols.Tier) -> List<std.render.Span>? {
   let state = fold(spans,
     init: Present { value: { kept: [], remaining: budget } },
     f: (acc, span) => match acc {
@@ -34,7 +34,7 @@ fn truncate_spans(spans: List<Span>, budget: Int, tier: Tier) -> List<Span>? {
               if w <= st.remaining {
                 Present { value: { kept: concat(st.kept, [span]), remaining: st.remaining - w } }
               } else {
-                Present { value: { kept: concat(st.kept, [Span { text: truncate_text(text: span.text, max_width: st.remaining), style: span.style }]), remaining: 0 } }
+                Present { value: { kept: concat(st.kept, [std.render.Span { text: truncate_text(text: span.text, max_width: st.remaining), style: span.style }]), remaining: 0 } }
               }
             Absent => none
           }
@@ -47,17 +47,17 @@ fn truncate_spans(spans: List<Span>, budget: Int, tier: Tier) -> List<Span>? {
   }
 }
 
-fn constrain_line(line: Line, max_width: Int, tier: Tier) -> Line? {
+fn constrain_line(line: std.render.Line, max_width: Int, tier: std.symbols.Tier) -> std.render.Line? {
   let indent_width = line.indent * 4
   let budget = max_width - indent_width
-  if budget <= 0 { return Present { value: Line { spans: [], indent: line.indent, max_width: max_width } } }
+  if budget <= 0 { return Present { value: std.render.Line { spans: [], indent: line.indent, max_width: max_width } } }
   match truncate_spans(spans: line.spans, budget: budget, tier: tier) {
-    Present { value: spans } => Present { value: Line { spans: spans, indent: line.indent, max_width: max_width } }
+    Present { value: spans } => Present { value: std.render.Line { spans: spans, indent: line.indent, max_width: max_width } }
     Absent => none
   }
 }
 
-fn constrain_frame(frame: std.render.RenderFrame, viewport: Viewport, tier: Tier) -> std.render.RenderFrame? {
+fn constrain_frame(frame: std.render.RenderFrame, viewport: std.render.Viewport, tier: std.symbols.Tier) -> std.render.RenderFrame? {
   let result = fold(frame.lines,
     init: Present { value: [] },
     f: (acc, line) => match acc {
@@ -70,19 +70,19 @@ fn constrain_frame(frame: std.render.RenderFrame, viewport: Viewport, tier: Tier
     }
   )
   match result {
-    Present { value: lines } => Present { value: RenderFrame { lines: lines, cursor_action: frame.cursor_action } }
+    Present { value: lines } => Present { value: std.render.RenderFrame { lines: lines, cursor_action: frame.cursor_action } }
     Absent => none
   }
 }
 
-fn project_frame(frame: std.render.RenderFrame, viewport: Viewport, cap: RenderCapability) -> std.render.RenderFrame? {
+fn project_frame(frame: std.render.RenderFrame, viewport: std.render.Viewport, cap: std.render.RenderCapability) -> std.render.RenderFrame? {
   match constrain_frame(frame: frame, viewport: viewport, tier: cap.tier) {
-    Present { value: f } => Present { value: RenderFrame { lines: f.lines, cursor_action: cursor_action_under(requested: f.cursor_action, cap: cap) } }
+    Present { value: f } => Present { value: std.render.RenderFrame { lines: f.lines, cursor_action: cursor_action_under(requested: f.cursor_action, cap: cap) } }
     Absent => none
   }
 }
 
-fn serialize_span(span: Span, cap: RenderCapability) -> String {
+fn serialize_span(span: std.render.Span, cap: std.render.RenderCapability) -> String {
   let glyph = match span.style.symbol {
     null => ""
     sym  => match resolve_symbol(id: sym, tier: cap.tier) {
@@ -104,7 +104,7 @@ fn serialize_span(span: Span, cap: RenderCapability) -> String {
   }
 }
 
-fn serialize_line(line: Line, cap: RenderCapability) -> String {
+fn serialize_line(line: std.render.Line, cap: std.render.RenderCapability) -> String {
   let pad = repeat_string(s: " ", n: line.indent * 4)
   let body = fold(line.spans,
     init: "",
@@ -113,7 +113,7 @@ fn serialize_line(line: Line, cap: RenderCapability) -> String {
   concat(pad, body)
 }
 
-fn serialize_frame(frame: std.render.RenderFrame, cap: RenderCapability) -> String {
+fn serialize_frame(frame: std.render.RenderFrame, cap: std.render.RenderCapability) -> String {
   let rendered = map(frame.lines, line => serialize_line(line: line, cap: cap))
   join(rendered, "\n")
 }
@@ -135,7 +135,7 @@ fn admit_line_feed_against_projection(projection: TerminalWriteProjection, rende
         DynamicLineOpen =>
           if ansi_text_contains_line_feed(text: rendered) {
             TerminalWriteRefused {
-              cause: "rendered text cannot contain a line feed on a write that leaves the dynamic line open" as NonEmptyStr
+              cause: "rendered text cannot contain a line feed on a write that leaves the dynamic line open" as std.types.NonEmptyStr
             }
           } else {
             TerminalWriteProjected { bytes: b, next: n }
@@ -147,12 +147,12 @@ fn admit_line_feed_against_projection(projection: TerminalWriteProjection, rende
 
 fn project_terminal_write_admitted(
   prior: DynamicLineState,
-  requested: CursorAction,
-  capability: RenderCapability,
+  requested: std.render.CursorAction,
+  capability: std.render.RenderCapability,
   rendered: String
 ) -> TerminalWriteProjection {
   if ansi_text_contains_cursor_control(text: rendered) {
-    TerminalWriteRefused { cause: "rendered text cannot contain terminal cursor-control bytes" as NonEmptyStr }
+    TerminalWriteRefused { cause: "rendered text cannot contain terminal cursor-control bytes" as std.types.NonEmptyStr }
   } else {
     admit_line_feed_against_projection(
       rendered: rendered,
@@ -168,14 +168,14 @@ fn project_terminal_write_admitted(
 
 fn project_terminal_write_line_admitted(
   prior: DynamicLineState,
-  requested: CursorAction,
-  capability: RenderCapability,
+  requested: std.render.CursorAction,
+  capability: std.render.RenderCapability,
   rendered: String
 ) -> TerminalWriteProjection {
   match requested {
       Clear =>
         if rendered != "" {
-          TerminalWriteRefused { cause: "Clear requires empty rendered text" as NonEmptyStr }
+          TerminalWriteRefused { cause: "Clear requires empty rendered text" as std.types.NonEmptyStr }
         } else {
           match prior {
             DynamicLineOpen =>
@@ -211,7 +211,7 @@ fn project_terminal_write_line_admitted(
                 }
             }
           Clear =>
-            TerminalWriteRefused { cause: "Overwrite cannot project to Clear" as NonEmptyStr }
+            TerminalWriteRefused { cause: "Overwrite cannot project to Clear" as std.types.NonEmptyStr }
         }
       Append =>
         match prior {
@@ -234,8 +234,8 @@ fn project_terminal_write_line_admitted(
 
 fn project_terminal_write(
   prior: DynamicLineState,
-  requested: CursorAction,
-  capability: RenderCapability,
+  requested: std.render.CursorAction,
+  capability: std.render.RenderCapability,
   rendered: String
 ) -> TerminalWriteProjection {
   match prior {
@@ -248,7 +248,7 @@ fn project_terminal_write(
           rendered: rendered
         )
       } else {
-        TerminalWriteRefused { cause: "non-addressable terminal cannot continue an open dynamic line" as NonEmptyStr }
+        TerminalWriteRefused { cause: "non-addressable terminal cannot continue an open dynamic line" as std.types.NonEmptyStr }
       }
     DynamicLineClosed =>
       project_terminal_write_admitted(

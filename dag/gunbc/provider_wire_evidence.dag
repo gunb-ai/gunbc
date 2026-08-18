@@ -41,7 +41,7 @@ type ProviderWireCaptureOutcome
       cause: std.types.NonEmptyStr
     }
 
-fn private_evidence_object_path(root: std.types.FilePath, hex: NonEmptyStr) -> String {
+fn private_evidence_object_path(root: std.types.FilePath, hex: std.types.NonEmptyStr) -> String {
   concat(root as String, concat("/", hex as String))
 }
 
@@ -55,13 +55,13 @@ fn ensure_private_evidence_root(root: std.types.FilePath) -> PrivateEvidenceRoot
   let made = shell.Mkdir.Parents(path: root)
   if made.success == false {
     PrivateEvidenceRootRefused {
-      cause: "private evidence root could not be created" as NonEmptyStr,
+      cause: "private evidence root could not be created" as std.types.NonEmptyStr,
     }
   } else {
     let mode = shell.Chmod.OwnerOnlyDirectory(path: root)
     if mode.success == false {
       PrivateEvidenceRootRefused {
-        cause: "private evidence root exists but could not be made owner-only (0700)" as NonEmptyStr,
+        cause: "private evidence root exists but could not be made owner-only (0700)" as std.types.NonEmptyStr,
       }
     } else {
       PrivateEvidenceRootReady
@@ -106,14 +106,14 @@ fn retain_private_evidence_bytes_detailed(
     match mktemp_file_in_dir(dir: root) {
       Absent =>
         PrivateEvidenceBytesRetentionRefused {
-          cause: "private evidence staging mktemp failed" as NonEmptyStr,
+          cause: "private evidence staging mktemp failed" as std.types.NonEmptyStr,
         }
       Present { value: staging } => {
         let wrote = Filesystem.Write(path: staging as String, content: bytes)
         if wrote.success == false {
           let _ = shell.Remove.RecursiveForce(path: staging)
           PrivateEvidenceBytesRetentionRefused {
-            cause: "private evidence staging write failed" as NonEmptyStr,
+            cause: "private evidence staging write failed" as std.types.NonEmptyStr,
           }
         } else {
           match sha512sum_observe_file(path: staging) {
@@ -134,7 +134,7 @@ fn retain_private_evidence_bytes_detailed(
                     let _ = shell.Remove.RecursiveForce(path: staging)
                     if (existing_digest.hex as String) != (digest.hex as String) {
                       PrivateEvidenceBytesRetentionRefused {
-                        cause: "concurrent private evidence digest mismatch" as NonEmptyStr,
+                        cause: "concurrent private evidence digest mismatch" as std.types.NonEmptyStr,
                       }
                     } else {
                       PrivateEvidenceBytesRetained {
@@ -166,7 +166,7 @@ fn retain_private_evidence_bytes_detailed(
                       }
                     } else {
                       PrivateEvidenceBytesRetentionRefused {
-                        cause: "exclusive evidence publish lost race to different digest" as NonEmptyStr,
+                        cause: "exclusive evidence publish lost race to different digest" as std.types.NonEmptyStr,
                       }
                     }
                   Sha512FileObservationRefused { cause: cause } =>
@@ -179,7 +179,7 @@ fn retain_private_evidence_bytes_detailed(
                   Sha512FileObserved { digest: readback } =>
                     if (readback.hex as String) != (digest.hex as String) {
                       PrivateEvidenceBytesRetentionRefused {
-                        cause: "private evidence read-back digest mismatch" as NonEmptyStr,
+                        cause: "private evidence read-back digest mismatch" as std.types.NonEmptyStr,
                       }
                     } else {
                       PrivateEvidenceBytesRetained {

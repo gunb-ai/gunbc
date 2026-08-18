@@ -1,8 +1,8 @@
 module extdeps.firmware.uefi_shell
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "uefi.org/sites/default/files/resources/UEFI_Shell_2_2.pdf"
   }

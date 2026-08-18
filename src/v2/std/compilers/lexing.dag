@@ -50,7 +50,7 @@ type LexicalPhrase {
   spans: List<TokenSpan>
 }
 
-fn span(text: String, class: Symbol) -> TokenSpan {
+fn span(text: String, class: v2.std.node.Symbol) -> TokenSpan {
   TokenSpan { token_class: class, fragment: text }
 }
 
@@ -167,7 +167,7 @@ fn lex_artifact_new(tokens: TokenStream, annotations: List<UnboundSourceAnnotati
   LexArtifact { tokens: tokens, annotations: annotations }
 }
 
-fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
+fn lex_rule_token_class_member(rule: LexRule, token_class: v2.std.node.Symbol) -> Bool {
   match rule {
     TokenRule { token_class: c, pattern: _ } => c == token_class
     TriviaRule { pattern: _ } => false
@@ -175,7 +175,7 @@ fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
   }
 }
 
-fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
+fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: v2.std.node.Symbol) -> Bool {
   fold_list(
     xs: rules.rules,
     empty: false,
@@ -241,7 +241,7 @@ fn lex_empty_node() -> Node {
 }
 
 fn lex_void_lex_rules_evidence_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^lex_void_lex_rules_evidence } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -255,19 +255,19 @@ fn lex_rules_to_node(rules: LexRules) -> Node {
   }
 }
 
-fn symbol_intern_lexeme(lexeme: Lexeme) -> Symbol {
+fn symbol_intern_lexeme(lexeme: Lexeme) -> v2.std.node.Symbol {
   symbol_intern_lexeme(lexeme: lexeme)
 }
 
-data symbol_lexeme_host_disposition: Disposition = Scaffold {
+data symbol_lexeme_host_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.std.compilers.lexing",
     decl_name: "symbol_lexeme",
     field: WholeDeclaration
   }
 }
 
-fn symbol_lexeme(sym: Symbol) -> String {
+fn symbol_lexeme(sym: v2.std.node.Symbol) -> String {
   symbol_lexeme(sym: sym)
 }

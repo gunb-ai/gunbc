@@ -4,8 +4,8 @@ module extdeps.memory.te_ddr4_dimm_socket
 // Application Specification 114-115012 Rev A, "DDR4 DIMM Socket Solder Tail", dated Nov 24 2016,
 // read 2026-08-14. It covers the 288-position solder-tail DDR4 DIMM socket and names 2308107 as
 // the representative base product part number for that product line.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Specification+Or+Standard%7F114-115012%7FA%7Fpdf%7FEnglish%7FENG_SS_114-115012_A.pdf%7F2308107-5"
   }
@@ -28,14 +28,14 @@ data ddr4_dimm_socket_solder_tail_288_family: DimmSocketCatalogRow = DimmSocketC
   position_count: 288,
   contact_pitch: micrometer(count: 800),
   attachment: ThroughHoleSolderTail,
-  board_pattern: MountingPatternObligation {
+  board_pattern: extdeps.land_pattern.types.MountingPatternObligation {
     what_is_missing: "the plated-hole pattern this socket requires, which application specification 114-115012 publishes as Figure 3 and which the per-part customer drawing governs where the two conflict. No plated-hole geometry is transcribed here, and this repository carries no plated-hole geometry carrier for one to inhabit",
   },
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.memory.te_ddr4_dimm_socket",
       decl_name: "ddr4_dimm_socket_solder_tail_288_family",
       field: WholeDeclaration

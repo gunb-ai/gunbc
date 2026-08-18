@@ -9,9 +9,9 @@ type MaterializedNode {
 }
 
 data empty_materialized: List<MaterializedNode> = []
-data empty_hashes: List<ContentHash> = []
+data empty_hashes: List<std.content_hash.ContentHash> = []
 
-fn materialized_mark_peers_share(acc: List<MaterializedNode>, h: ContentHash) -> List<MaterializedNode> {
+fn materialized_mark_peers_share(acc: List<MaterializedNode>, h: std.content_hash.ContentHash) -> List<MaterializedNode> {
   fold_list(
     xs: acc,
     empty: empty_materialized,
@@ -25,7 +25,7 @@ fn materialized_mark_peers_share(acc: List<MaterializedNode>, h: ContentHash) ->
   )
 }
 
-fn materialized_has_peer(acc: List<MaterializedNode>, h: ContentHash) -> Bool {
+fn materialized_has_peer(acc: List<MaterializedNode>, h: std.content_hash.ContentHash) -> Bool {
   any(xs: acc, predicate: fn(e) { e.hash == h })
 }
 
@@ -49,7 +49,7 @@ fn materialize(root: Node) -> List<MaterializedNode> {
   )
 }
 
-fn materialization_is_share(m: Materialization) -> Bool {
+fn materialization_is_share(m: std.realization.Materialization) -> Bool {
   match m {
     Share => true
     Recompute => false
@@ -57,11 +57,11 @@ fn materialization_is_share(m: Materialization) -> Bool {
   }
 }
 
-fn hashes_contain(hs: List<ContentHash>, h: ContentHash) -> Bool {
+fn hashes_contain(hs: List<std.content_hash.ContentHash>, h: std.content_hash.ContentHash) -> Bool {
   any(xs: hs, predicate: fn(x) { x == h })
 }
 
-fn distinct_hashes(root: Node) -> List<ContentHash> {
+fn distinct_hashes(root: Node) -> List<std.content_hash.ContentHash> {
   fold_list(
     xs: node_subtree_nodes(root: root),
     empty: empty_hashes,
@@ -90,7 +90,7 @@ fn materialize_has_duplicate_computation(root: Node) -> Bool {
 
 data materialize_identity_grade_note: String = "First consumer of std.computation_identity (census R1): a Share verdict from this module is StructurallyIdentical-grade evidence — equal occurrence-independent content_hash — and nothing weaker. Verdicts this module cannot ground (a peer equal only under normalization, or only extensionally) are IdentityUnknown with a located cause, never silently Recompute-as-distinct: the lattice arm names the missing analysis."
 
-fn materialize_share_identity_grade() -> ComputationIdentity {
+fn materialize_share_identity_grade() -> std.computation_identity.ComputationIdentity {
   StructurallyIdentical
 }
 
@@ -98,6 +98,6 @@ fn materialize_share_grade_permits_share() -> Bool {
   identity_permits_share(ci: materialize_share_identity_grade())
 }
 
-fn materialize_ungrounded_identity(detail: String) -> ComputationIdentity {
+fn materialize_ungrounded_identity(detail: String) -> std.computation_identity.ComputationIdentity {
   IdentityUnknown { cause: MissingConcept { detail: detail } }
 }

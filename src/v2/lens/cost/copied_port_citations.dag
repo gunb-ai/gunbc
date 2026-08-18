@@ -6,7 +6,7 @@ data copied_port_citations_note: String = "Cited combiner Arrow bodies for per-o
 
 data copied_port_citation_frontier_dissolution_note: String = "See copied_port_citation_frontier_dissolution_note_dissolve_on for the lifecycle condition this row's rationale accompanies."
 
-data copied_port_citation_frontier_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: CopiedPortCitationRetained rows in copied_port_citation_frontier_rows() stand in for producer-ingested combiner Arrow bodies (Wave 1 Gate 1 C1 interim). DISSOLVES WHEN the general body producer emits ingested Arrow bodies for list_append, list_snoc_item, and map_merge (Stage D) — citations delete, derivation runs on real producer output, copied_port_citation_retained_count() reaches 0.")
+data copied_port_citation_frontier_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: CopiedPortCitationRetained rows in copied_port_citation_frontier_rows() stand in for producer-ingested combiner Arrow bodies (Wave 1 Gate 1 C1 interim). DISSOLVES WHEN the general body producer emits ingested Arrow bodies for list_append, list_snoc_item, and map_merge (Stage D) — citations delete, derivation runs on real producer output, copied_port_citation_retained_count() reaches 0.")
 
 type CopiedPortCitationFrontierDisposition
   = CopiedPortCitationRetained { combiner: v2.std.node.Symbol, migration_trigger: v2.std.node.Symbol }
@@ -68,17 +68,17 @@ fn copied_port_citation_retained_count() -> Int {
 }
 
 fn citation_conj_measure(left: Node, right: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      v2.std.node.Edge { label: Positional, target: left },
+      v2.std.node.Edge { label: Positional, target: right }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn citation_arrow_multi_linear_ambiguous(left_sym: Symbol, right_sym: Symbol) -> Node {
+fn citation_arrow_multi_linear_ambiguous(left_sym: v2.std.node.Symbol, right_sym: v2.std.node.Symbol) -> Node {
   citation_arrow_two_param_loop(
     left_sym: left_sym,
     right_sym: right_sym,
@@ -89,8 +89,8 @@ fn citation_arrow_multi_linear_ambiguous(left_sym: Symbol, right_sym: Symbol) ->
   )
 }
 
-fn citation_param_ref(sym: Symbol) -> Node {
-  Node {
+fn citation_param_ref(sym: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -98,53 +98,53 @@ fn citation_param_ref(sym: Symbol) -> Node {
 }
 
 fn citation_loop_body_linear_in(measure: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: ComputationNode { behavior: Transform },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
       },
-      Edge { label: Named { name: ^loop_bound_edge }, target: measure }
+      v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: measure }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn citation_arrow_two_param_loop(
-  left_sym: Symbol,
-  right_sym: Symbol,
+  left_sym: v2.std.node.Symbol,
+  right_sym: v2.std.node.Symbol,
   measure: Node
 ) -> Node {
   let left = citation_param_ref(sym: left_sym)
   let right = citation_param_ref(sym: right_sym)
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: left_sym }, target: left },
-            Edge { label: Named { name: right_sym }, target: right }
+            v2.std.node.Edge { label: Named { name: left_sym }, target: left },
+            v2.std.node.Edge { label: Named { name: right_sym }, target: right }
           ],
           occurrence_id: SyntheticOccurrence
         }
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: ^copied_port_citation_return_type } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^arrow_body_edge },
         target: citation_loop_body_linear_in(measure: measure)
       }
@@ -153,7 +153,7 @@ fn citation_arrow_two_param_loop(
   }
 }
 
-data copied_port_citation_list_append: CombinerArrowCitation = CombinerArrowCitation {
+data copied_port_citation_list_append: v2.lens.cost.copied_port_derivation.CombinerArrowCitation = v2.lens.cost.copied_port_derivation.CombinerArrowCitation {
   combiner: ^list_append,
   arrow: citation_arrow_two_param_loop(
     left_sym: ^copied_port_citation_list_append_left,
@@ -162,7 +162,7 @@ data copied_port_citation_list_append: CombinerArrowCitation = CombinerArrowCita
   )
 }
 
-data copied_port_citation_list_snoc_item: CombinerArrowCitation = CombinerArrowCitation {
+data copied_port_citation_list_snoc_item: v2.lens.cost.copied_port_derivation.CombinerArrowCitation = v2.lens.cost.copied_port_derivation.CombinerArrowCitation {
   combiner: ^list_snoc_item,
   arrow: citation_arrow_two_param_loop(
     left_sym: ^copied_port_citation_list_snoc_left,
@@ -171,7 +171,7 @@ data copied_port_citation_list_snoc_item: CombinerArrowCitation = CombinerArrowC
   )
 }
 
-data copied_port_citation_map_merge: CombinerArrowCitation = CombinerArrowCitation {
+data copied_port_citation_map_merge: v2.lens.cost.copied_port_derivation.CombinerArrowCitation = v2.lens.cost.copied_port_derivation.CombinerArrowCitation {
   combiner: ^map_merge,
   arrow: citation_arrow_two_param_loop(
     left_sym: ^copied_port_citation_map_merge_base,
@@ -180,17 +180,17 @@ data copied_port_citation_map_merge: CombinerArrowCitation = CombinerArrowCitati
   )
 }
 
-data copied_port_combiner_arrow_citations: List<CombinerArrowCitation> = [
+data copied_port_combiner_arrow_citations: List<v2.lens.cost.copied_port_derivation.CombinerArrowCitation> = [
   copied_port_citation_list_append,
   copied_port_citation_list_snoc_item,
   copied_port_citation_map_merge
 ]
 
-fn copied_port_fact_list_prepend(row: CopiedPortFact, xs: List<CopiedPortFact>) -> List<CopiedPortFact> {
+fn copied_port_fact_list_prepend(row: v2.std.algebra.CopiedPortFact, xs: List<v2.std.algebra.CopiedPortFact>) -> List<v2.std.algebra.CopiedPortFact> {
   Cons { head: row, tail: xs }
 }
 
-fn copied_port_derived_registry_rows() -> List<CopiedPortFact> {
+fn copied_port_derived_registry_rows() -> List<v2.std.algebra.CopiedPortFact> {
   fold_list(
     xs: copied_port_combiner_arrow_citations,
     empty: Empty,
@@ -203,7 +203,7 @@ fn copied_port_derived_registry_rows() -> List<CopiedPortFact> {
   )
 }
 
-fn copied_port_index_of(combiner: Symbol) -> Optional<Int> {
+fn copied_port_index_of(combiner: v2.std.node.Symbol) -> Optional<Int> {
   copied_port_index_from_registry(
     rows: copied_port_derived_registry_rows(),
     combiner: combiner

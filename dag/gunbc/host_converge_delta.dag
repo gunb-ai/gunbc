@@ -1,9 +1,9 @@
 module gunbc.host_converge_delta
 
 
-data gunbc_converge_target_byte_normalization_marker: Disposition = Scaffold {
+data gunbc_converge_target_byte_normalization_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge_delta",
     decl_name: "converge_knob_values_equal",
     field: WholeDeclaration,
@@ -15,7 +15,7 @@ type ConvergeKnobKey {
   name: String
 }
 
-fn converge_knob_key(knob: ConvergeKnob) -> ConvergeKnobKey {
+fn converge_knob_key(knob: gunbc.host_converge.ConvergeKnob) -> ConvergeKnobKey {
   ConvergeKnobKey { slice: knob.slice, name: knob.name }
 }
 
@@ -23,25 +23,25 @@ fn converge_knob_keys_equal(a: ConvergeKnobKey, b: ConvergeKnobKey) -> Bool {
   a.slice == b.slice && a.name == b.name
 }
 
-fn converge_knob_values_equal(a: ConvergeKnob, b: ConvergeKnob) -> Bool {
+fn converge_knob_values_equal(a: gunbc.host_converge.ConvergeKnob, b: gunbc.host_converge.ConvergeKnob) -> Bool {
   a.desired == b.desired && a.target == b.target
 }
 
-fn converge_knob_row(knob: ConvergeKnob) -> KeyedRow<ConvergeKnobKey, ConvergeKnob> {
-  KeyedRow { row_key: converge_knob_key(knob: knob), value: knob }
+fn converge_knob_row(knob: gunbc.host_converge.ConvergeKnob) -> KeyedRow<ConvergeKnobKey, ConvergeKnob> {
+  std.keyed_row.KeyedRow { row_key: converge_knob_key(knob: knob), value: knob }
 }
 
-fn converge_knobs_to_rows(knobs: List<ConvergeKnob>) -> List<KeyedRow<ConvergeKnobKey, ConvergeKnob>> {
+fn converge_knobs_to_rows(knobs: List<gunbc.host_converge.ConvergeKnob>) -> List<KeyedRow<ConvergeKnobKey, ConvergeKnob>> {
   fold(knobs, init: [], f: fn(acc, knob) { concat(acc, [converge_knob_row(knob: knob)]) })
 }
 
-fn host_converge_knobs(h: HostConverge) -> List<ConvergeKnob> {
+fn host_converge_knobs(h: gunbc.host_converge.HostConverge) -> List<gunbc.host_converge.ConvergeKnob> {
   h.knobs
 }
 
 fn host_converge_two_way_diff(
-  left: List<ConvergeKnob>,
-  right: List<ConvergeKnob>,
+  left: List<gunbc.host_converge.ConvergeKnob>,
+  right: List<gunbc.host_converge.ConvergeKnob>,
 ) -> KeyedPatch<ConvergeKnobKey, ConvergeKnob> {
   keyed_two_way_diff(
     left: converge_knobs_to_rows(knobs: left),
@@ -52,9 +52,9 @@ fn host_converge_two_way_diff(
 }
 
 fn host_converge_three_way_patch(
-  base: List<ConvergeKnob>,
-  observed: List<ConvergeKnob>,
-  desired: List<ConvergeKnob>,
+  base: List<gunbc.host_converge.ConvergeKnob>,
+  observed: List<gunbc.host_converge.ConvergeKnob>,
+  desired: List<gunbc.host_converge.ConvergeKnob>,
 ) -> KeyedThreeWayPatch<ConvergeKnobKey, ConvergeKnob> {
   keyed_three_way_fold(
     base: converge_knobs_to_rows(knobs: base),
@@ -66,9 +66,9 @@ fn host_converge_three_way_patch(
 }
 
 fn host_converge_apply_patch(
-  base: List<ConvergeKnob>,
+  base: List<gunbc.host_converge.ConvergeKnob>,
   patch: KeyedPatch<ConvergeKnobKey, ConvergeKnob>,
-) -> List<ConvergeKnob> {
+) -> List<gunbc.host_converge.ConvergeKnob> {
   let rows = keyed_apply_patch(
     rows: converge_knobs_to_rows(knobs: base),
     patch: patch,
@@ -107,7 +107,7 @@ fn host_converge_knob_in_patch(
 fn host_converge_knob_verdict(
   patch: KeyedThreeWayPatch<ConvergeKnobKey, ConvergeKnob>,
   key: ConvergeKnobKey,
-) -> KeyedLeafVerdict<ConvergeKnob>? {
+) -> KeyedLeafVerdict<gunbc.host_converge.ConvergeKnob>? {
   fold(patch.entries, init: none, f: fn(acc, entry) {
     if converge_knob_keys_equal(a: entry.entry_key, b: key) {
       Present { value: entry.verdict }

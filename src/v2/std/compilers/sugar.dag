@@ -79,23 +79,23 @@ fn sugar_rule_for_key(key: SugarKey) -> SugarRule? {
   })
 }
 
-fn sugar_malformed_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn sugar_malformed_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^sugar_reason_malformed,
     at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
-fn sugar_type_node(connective: Connective, children: List<Edge>, n: Node) -> Node {
-  Node {
+fn sugar_type_node(connective: v2.std.node.Connective, children: List<v2.std.node.Edge>, n: Node) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: connective },
     children: children,
     occurrence_id: n.occurrence_id
   }
 }
 
-fn sugar_positional_unwrap_child(children: List<Edge>) -> Node? {
+fn sugar_positional_unwrap_child(children: List<v2.std.node.Edge>) -> Node? {
   if count(children) == 1 {
     match children |> first {
       Present { value: e0 } =>
@@ -111,7 +111,7 @@ fn sugar_positional_unwrap_child(children: List<Edge>) -> Node? {
   }
 }
 
-fn sugar_named_child_optional(root: Node, name: Symbol) -> Node? {
+fn sugar_named_child_optional(root: Node, name: v2.std.node.Symbol) -> Node? {
   match find_named_child(root: root, name: name) {
     Accepted { value: child, diagnostics: _ } => optional_present(value: child)
     Rejected { diagnostics: _ } => optional_absent()
@@ -179,7 +179,7 @@ fn sugar_unwrap_production_shell(node: Node) -> Node {
   }
 }
 
-fn sugar_first_atom_identity_optional(node: Node) -> Symbol? {
+fn sugar_first_atom_identity_optional(node: Node) -> v2.std.node.Symbol? {
   let stripped = sugar_unwrap_production_shell(node: node)
   match node_atom_identity_optional(node: stripped) {
     Present { value: sym } => optional_present(value: sym)
@@ -197,12 +197,12 @@ fn sugar_first_atom_identity_optional(node: Node) -> Symbol? {
   }
 }
 
-fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
+fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<v2.std.node.Edge> {
   let variant = sugar_unwrap_production_shell(node: variant_node)
   match sugar_first_atom_identity_optional(node: variant) {
     Present { value: name } =>
       Accepted {
-        value: Edge { label: Named { name: name }, target: variant },
+        value: v2.std.node.Edge { label: Named { name: name }, target: variant },
         diagnostics: None
       }
     Absent =>
@@ -210,7 +210,7 @@ fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
   }
 }
 
-fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoid<Edge>> {
+fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoid<v2.std.node.Edge>> {
   fold_list(
     xs: variants,
     empty: outcome_accepted(std.algebra.Empty),

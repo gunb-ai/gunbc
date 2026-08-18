@@ -1,15 +1,15 @@
 module extdeps.tailscale.acl
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "tailscale.com/kb/1018"
   }
 }
 
 fn tailscale_grants_external_authority_holds() -> Bool {
-  uri_wire(uri: Uri {
+  uri_wire(uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "tailscale.com/kb/1018",
   }) == "https://tailscale.com/kb/1018"
@@ -17,21 +17,21 @@ fn tailscale_grants_external_authority_holds() -> Bool {
 
 data tailscale_acl_policy_language_uri: String = "tailscale.com/kb/1337/acl-syntax"
 
-data dashboard_cutover_mac_ip: NonEmptyStr = "100.65.94.55"
+data dashboard_cutover_mac_ip: std.types.NonEmptyStr = "100.65.94.55"
 
-data dashboard_cutover_mac_dissolution_trigger: Disposition = Scaffold {
+data dashboard_cutover_mac_dissolution_trigger: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.tailscale.acl",
     decl_name: "dashboard_cutover_mac_ip",
     field: WholeDeclaration
   }
 }
 
-data tag_ci: NonEmptyStr = "tag:ci"
-data tag_dashboard: NonEmptyStr = "tag:dashboard"
-data dashboard_tcp_port: NonEmptyStr = "tcp:3737"
-data ssh_tcp_port: NonEmptyStr = "tcp:22"
+data tag_ci: std.types.NonEmptyStr = "tag:ci"
+data tag_dashboard: std.types.NonEmptyStr = "tag:dashboard"
+data dashboard_tcp_port: std.types.NonEmptyStr = "tcp:3737"
+data ssh_tcp_port: std.types.NonEmptyStr = "tcp:22"
 
 type TailscaleAclSelector
   = AclTag { label: std.types.NonEmptyStr }
@@ -41,34 +41,34 @@ type TailscaleAclSelector
   | AclLiteralUser { name: std.types.NonEmptyStr }
   | AclWildcard
 
-fn render_tailscale_acl_selector(s: TailscaleAclSelector) -> NonEmptyStr {
+fn render_tailscale_acl_selector(s: TailscaleAclSelector) -> std.types.NonEmptyStr {
   match s {
     AclTag { label: l } => concat("tag:", l)
     AclAutogroup { group: g } => concat("autogroup:", g)
     AclIpv4 { address: a } => a
     AclProtoPort { spec: p } => p
     AclLiteralUser { name: n } => n
-    AclWildcard => "*" as NonEmptyStr
+    AclWildcard => "*" as std.types.NonEmptyStr
   }
 }
 
-fn sel_tag(label: NonEmptyStr) -> TailscaleAclSelector {
+fn sel_tag(label: std.types.NonEmptyStr) -> TailscaleAclSelector {
   AclTag { label: label }
 }
 
-fn sel_autogroup(group: NonEmptyStr) -> TailscaleAclSelector {
+fn sel_autogroup(group: std.types.NonEmptyStr) -> TailscaleAclSelector {
   AclAutogroup { group: group }
 }
 
-fn sel_ipv4(address: NonEmptyStr) -> TailscaleAclSelector {
+fn sel_ipv4(address: std.types.NonEmptyStr) -> TailscaleAclSelector {
   AclIpv4 { address: address }
 }
 
-fn sel_proto_port(spec: NonEmptyStr) -> TailscaleAclSelector {
+fn sel_proto_port(spec: std.types.NonEmptyStr) -> TailscaleAclSelector {
   AclProtoPort { spec: spec }
 }
 
-fn sel_literal_user(name: NonEmptyStr) -> TailscaleAclSelector {
+fn sel_literal_user(name: std.types.NonEmptyStr) -> TailscaleAclSelector {
   AclLiteralUser { name: name }
 }
 
@@ -76,8 +76,8 @@ fn sel_wildcard() -> TailscaleAclSelector {
   AclWildcard
 }
 
-data tag_ci_label: NonEmptyStr = "ci"
-data tag_dashboard_label: NonEmptyStr = "dashboard"
+data tag_ci_label: std.types.NonEmptyStr = "ci"
+data tag_dashboard_label: std.types.NonEmptyStr = "dashboard"
 
 fn sel_tag_ci() -> TailscaleAclSelector {
   sel_tag(label: tag_ci_label)
@@ -123,7 +123,7 @@ type TailscaleAclPolicy {
 
 fn member_baseline_grant() -> TailscaleGrant {
   TailscaleGrant {
-    src: [sel_autogroup(group: "member" as NonEmptyStr)],
+    src: [sel_autogroup(group: "member" as std.types.NonEmptyStr)],
     dst: [sel_wildcard()],
     ip: [sel_wildcard()],
   }
@@ -165,22 +165,22 @@ fn operator_tailscale_acl_grants() -> List<TailscaleGrant> {
 fn operator_tailscale_acl_ssh() -> List<TailscaleSshRule> {
   [
     TailscaleSshRule {
-      action: "accept" as NonEmptyStr,
-      src: [sel_autogroup(group: "member" as NonEmptyStr)],
-      dst: [sel_autogroup(group: "self" as NonEmptyStr)],
-      users: [sel_autogroup(group: "nonroot" as NonEmptyStr), sel_literal_user(name: "root" as NonEmptyStr)],
+      action: "accept" as std.types.NonEmptyStr,
+      src: [sel_autogroup(group: "member" as std.types.NonEmptyStr)],
+      dst: [sel_autogroup(group: "self" as std.types.NonEmptyStr)],
+      users: [sel_autogroup(group: "nonroot" as std.types.NonEmptyStr), sel_literal_user(name: "root" as std.types.NonEmptyStr)],
     },
     TailscaleSshRule {
-      action: "accept" as NonEmptyStr,
-      src: [sel_autogroup(group: "member" as NonEmptyStr)],
+      action: "accept" as std.types.NonEmptyStr,
+      src: [sel_autogroup(group: "member" as std.types.NonEmptyStr)],
       dst: [sel_tag_ci()],
-      users: [sel_autogroup(group: "nonroot" as NonEmptyStr)],
+      users: [sel_autogroup(group: "nonroot" as std.types.NonEmptyStr)],
     },
     TailscaleSshRule {
-      action: "accept" as NonEmptyStr,
+      action: "accept" as std.types.NonEmptyStr,
       src: [sel_tag_dashboard()],
       dst: [sel_tag_ci()],
-      users: [sel_autogroup(group: "nonroot" as NonEmptyStr), sel_literal_user(name: "root" as NonEmptyStr)],
+      users: [sel_autogroup(group: "nonroot" as std.types.NonEmptyStr), sel_literal_user(name: "root" as std.types.NonEmptyStr)],
     },
   ]
 }
@@ -188,16 +188,16 @@ fn operator_tailscale_acl_ssh() -> List<TailscaleSshRule> {
 fn operator_tailscale_acl_node_attrs() -> List<TailscaleNodeAttr> {
   [
     TailscaleNodeAttr {
-      target: ["autogroup:member" as NonEmptyStr],
-      attr: ["funnel" as NonEmptyStr],
+      target: ["autogroup:member" as std.types.NonEmptyStr],
+      attr: ["funnel" as std.types.NonEmptyStr],
     },
   ]
 }
 
 fn operator_tailscale_acl_tag_owners() -> List<TailscaleTagOwnerRow> {
   [
-    TailscaleTagOwnerRow { tag: tag_ci, owners: ["autogroup:admin" as NonEmptyStr] },
-    TailscaleTagOwnerRow { tag: tag_dashboard, owners: ["autogroup:admin" as NonEmptyStr] },
+    TailscaleTagOwnerRow { tag: tag_ci, owners: ["autogroup:admin" as std.types.NonEmptyStr] },
+    TailscaleTagOwnerRow { tag: tag_dashboard, owners: ["autogroup:admin" as std.types.NonEmptyStr] },
   ]
 }
 
@@ -267,7 +267,7 @@ fn ssh_rule_matches(
   dst: List<TailscaleAclSelector>,
   users: List<TailscaleAclSelector>
 ) -> Bool {
-  rule.action == ("accept" as NonEmptyStr)
+  rule.action == ("accept" as std.types.NonEmptyStr)
     && rule.src == src
     && rule.dst == dst
     && rule.users == users
@@ -278,9 +278,9 @@ fn ssh_members_reach_ci_nonroot_only(policy: TailscaleAclPolicy) -> Bool {
     policy.ssh,
     r => ssh_rule_matches(
       rule: r,
-      src: [sel_autogroup(group: "member" as NonEmptyStr)],
+      src: [sel_autogroup(group: "member" as std.types.NonEmptyStr)],
       dst: [sel_tag_ci()],
-      users: [sel_autogroup(group: "nonroot" as NonEmptyStr)]
+      users: [sel_autogroup(group: "nonroot" as std.types.NonEmptyStr)]
     )
   )
 }
@@ -292,7 +292,7 @@ fn ssh_dashboard_reaches_ci_root_and_nonroot(policy: TailscaleAclPolicy) -> Bool
       rule: r,
       src: [sel_tag_dashboard()],
       dst: [sel_tag_ci()],
-      users: [sel_autogroup(group: "nonroot" as NonEmptyStr), sel_literal_user(name: "root" as NonEmptyStr)]
+      users: [sel_autogroup(group: "nonroot" as std.types.NonEmptyStr), sel_literal_user(name: "root" as std.types.NonEmptyStr)]
     )
   )
 }

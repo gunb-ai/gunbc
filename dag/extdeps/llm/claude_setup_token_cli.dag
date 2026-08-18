@@ -1,17 +1,17 @@
 module extdeps.llm.claude_setup_token_cli
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = claude_cli_external_authority_anchor
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = claude_cli_external_authority_anchor
 
-data claude_setup_token_command: NonEmptyStr = "setup-token" as NonEmptyStr
+data claude_setup_token_command: std.types.NonEmptyStr = "setup-token" as std.types.NonEmptyStr
 
-data claude_code_oauth_token_env_var: NonEmptyStr = "CLAUDE_CODE_OAUTH_TOKEN" as NonEmptyStr
+data claude_code_oauth_token_env_var: std.types.NonEmptyStr = "CLAUDE_CODE_OAUTH_TOKEN" as std.types.NonEmptyStr
 
 data claude_setup_token_cli_authority_note: String = "Upstream Claude Code setup-token (code.claude.com/docs/en/cli-reference): generates a long-lived OAuth token for CI/scripts, prints to terminal, requires subscription. Managed enrollment uses ONLY this path plus CLAUDE_CODE_OAUTH_TOKEN — never ambient ~/.claude OAuth refresh home, never ANTHROPIC_API_KEY alongside it. Token prefix/length bounds are NOT assumed here; gunbc.claude_setup_token_enrollment admits captures only against ClaudeSetupTokenFormatMeasured receipts from the pinned executable."
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.llm.claude_setup_token_cli",
       decl_name: "claude_setup_token_command",
       field: WholeDeclaration
@@ -21,11 +21,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data claude_config_dir_env_var: NonEmptyStr = "CLAUDE_CONFIG_DIR" as NonEmptyStr
+data claude_config_dir_env_var: std.types.NonEmptyStr = "CLAUDE_CONFIG_DIR" as std.types.NonEmptyStr
 
 data claude_config_dir_consistency_gap_note: String = "CLAUDE_CONFIG_DIR has known upstream consistency issues (anthropics/claude-code issue 4739). Isolation for managed enrollment is established by execution-time path observation receipts, never by assuming this env var redirects every file Claude reads."
 
-fn shape_claude_setup_token_argv(executable: NonEmptyStr) -> List<String> {
+fn shape_claude_setup_token_argv(executable: std.types.NonEmptyStr) -> List<String> {
   [executable as String, claude_setup_token_command as String]
 }
 
@@ -94,7 +94,7 @@ fn first_https_url_token(line: String) -> String? {
 }
 
 fn parse_setup_token_challenge_from_terminal(
-  pane: RenderedTerminalText,
+  pane: std.types.RenderedTerminalText,
 ) -> ClaudeSetupTokenChallengeParse {
   let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
   let url_hit = lines
@@ -102,25 +102,25 @@ fn parse_setup_token_challenge_from_terminal(
     |> first
   match url_hit {
     Absent => SetupTokenChallengeParseRefused {
-      reason: "no verification uri in setup-token terminal output" as NonEmptyStr,
+      reason: "no verification uri in setup-token terminal output" as std.types.NonEmptyStr,
     }
     Present { value: url_line } =>
       match first_https_url_token(line: url_line) {
         Absent => SetupTokenChallengeParseRefused {
-          reason: "verification uri line contains no extractable https url token" as NonEmptyStr,
+          reason: "verification uri line contains no extractable https url token" as std.types.NonEmptyStr,
         }
         Present { value: url } =>
           match setup_token_code_scan(lines: lines) {
             SetupTokenCodeScanSeeking => SetupTokenChallengeParseRefused {
-              reason: "verification uri present but user code marker missing" as NonEmptyStr,
+              reason: "verification uri present but user code marker missing" as std.types.NonEmptyStr,
             }
             SetupTokenCodeScanAfterMarker => SetupTokenChallengeParseRefused {
-              reason: "user code marker present but code line not yet rendered" as NonEmptyStr,
+              reason: "user code marker present but code line not yet rendered" as std.types.NonEmptyStr,
             }
             SetupTokenCodeScanFound { code } => SetupTokenChallengeParsed {
               challenge: ClaudeSetupTokenBrowserChallenge {
-                verification_uri: url as NonEmptyStr,
-                user_code: code as NonEmptyStr,
+                verification_uri: url as std.types.NonEmptyStr,
+                user_code: code as std.types.NonEmptyStr,
               },
             }
           }
@@ -128,7 +128,7 @@ fn parse_setup_token_challenge_from_terminal(
   }
 }
 
-fn line_is_setup_token_candidate(line: String, prefix: NonEmptyStr) -> Bool {
+fn line_is_setup_token_candidate(line: String, prefix: std.types.NonEmptyStr) -> Bool {
   let trimmed = trim(line)
   if trimmed == "" {
     false
@@ -138,8 +138,8 @@ fn line_is_setup_token_candidate(line: String, prefix: NonEmptyStr) -> Bool {
 }
 
 fn count_setup_token_candidates(
-  pane: RenderedTerminalText,
-  prefix: NonEmptyStr,
+  pane: std.types.RenderedTerminalText,
+  prefix: std.types.NonEmptyStr,
 ) -> Int {
   let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
   fold(lines, init: 0, f: fn(count, line) {
@@ -152,8 +152,8 @@ fn count_setup_token_candidates(
 }
 
 fn extract_setup_token_candidate(
-  pane: RenderedTerminalText,
-  prefix: NonEmptyStr,
+  pane: std.types.RenderedTerminalText,
+  prefix: std.types.NonEmptyStr,
 ) -> String? {
   let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
   fold(lines, init: Absent, f: fn(found, line) {
@@ -170,8 +170,8 @@ fn extract_setup_token_candidate(
 
 fn setup_token_candidate_length_ok(
   token: String,
-  min_length: CharacterCount,
-  max_length: CharacterCount,
+  min_length: std.measure.CharacterCount,
+  max_length: std.measure.CharacterCount,
 ) -> Bool {
   let observed = character_count(count: string_length(s: token))
   measure_le(a: min_length, b: observed) && measure_le(a: observed, b: max_length)

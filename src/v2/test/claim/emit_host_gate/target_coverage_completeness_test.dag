@@ -1,7 +1,7 @@
 module v2.test.emit_host_gate.target_coverage_completeness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type EmitHostTargetCoverageRow {
   target: v2.std.compilers.target_model.TargetModel

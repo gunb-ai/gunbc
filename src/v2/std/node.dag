@@ -3,7 +3,7 @@ module v2.std.node
 
 
 type Symbol
-type Hash = Fnv1a64Structural
+type Hash = std.content_hash.Fnv1a64Structural
 
 
 data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 callers still construct and match this source-compatible coproduct while std.occurrence_identity.NodeOccurrenceId is the sole shared semantic authority. The total conversions below are the only bridge; new consumers use the shared carrier directly."
@@ -764,7 +764,7 @@ fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
   })
 }
 
-fn canonical_hash_of_connective(c: Connective) -> Fnv1a64Structural {
+fn canonical_hash_of_connective(c: Connective) -> std.content_hash.Fnv1a64Structural {
   match c {
     Atom { identity: sym } =>
       content_hash_combine_structural(
@@ -779,7 +779,7 @@ fn canonical_hash_of_connective(c: Connective) -> Fnv1a64Structural {
   }
 }
 
-fn canonical_hash_of_behavior(b: Behavior) -> Fnv1a64Structural {
+fn canonical_hash_of_behavior(b: Behavior) -> std.content_hash.Fnv1a64Structural {
   match b {
     Value => content_hash_atom(value: ^canonical_tag_value)
     Transform => content_hash_atom(value: ^canonical_tag_transform)
@@ -790,7 +790,7 @@ fn canonical_hash_of_behavior(b: Behavior) -> Fnv1a64Structural {
   }
 }
 
-fn canonical_hash_of_node_kind(kind: NodeKind) -> Fnv1a64Structural {
+fn canonical_hash_of_node_kind(kind: NodeKind) -> std.content_hash.Fnv1a64Structural {
   match kind {
     TypeNode { connective: c } =>
       content_hash_combine_structural(
@@ -805,7 +805,7 @@ fn canonical_hash_of_node_kind(kind: NodeKind) -> Fnv1a64Structural {
   }
 }
 
-fn canonical_hash_of_edge_label(label: EdgeLabel) -> Fnv1a64Structural {
+fn canonical_hash_of_edge_label(label: EdgeLabel) -> std.content_hash.Fnv1a64Structural {
   match label {
     Named { name: sym } =>
       content_hash_combine_structural(
@@ -816,7 +816,7 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Fnv1a64Structural {
   }
 }
 
-fn combine_hash(a: Fnv1a64Structural, b: Fnv1a64Structural) -> Fnv1a64Structural {
+fn combine_hash(a: std.content_hash.Fnv1a64Structural, b: std.content_hash.Fnv1a64Structural) -> std.content_hash.Fnv1a64Structural {
   content_hash_combine_structural(left: a, right: b)
 }
 
@@ -850,7 +850,7 @@ type ByteOffsetCacheKey
       witness: std.content_hash.Fnv1a64Structural
     }
 
-fn byte_limb_hash_peano_digest(limb: Int) -> Fnv1a64Structural {
+fn byte_limb_hash_peano_digest(limb: Int) -> std.content_hash.Fnv1a64Structural {
   if limb < 0 || limb > 255 {
     content_hash_atom(value: ^canonical_tag_byte_limb_out_of_range)
   } else if limb == 0 {
@@ -867,7 +867,7 @@ fn byte_limb_hash_peano_digest(limb: Int) -> Fnv1a64Structural {
   }
 }
 
-fn byte_offset_byte_digest(b: Int) -> Fnv1a64Structural {
+fn byte_offset_byte_digest(b: Int) -> std.content_hash.Fnv1a64Structural {
   combine_hash(
     a: content_hash_atom(value: ^canonical_tag_byte_offset_byte),
     b: byte_limb_hash_peano_digest(limb: b)
@@ -882,7 +882,7 @@ fn byte_offset_quotient_divide_by_256_steps(quotient: Int, steps: Int) -> Int {
   }
 }
 
-fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_steps: Int) -> Fnv1a64Structural {
+fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_steps: Int) -> std.content_hash.Fnv1a64Structural {
   let shifted = byte_offset_quotient_divide_by_256_steps(quotient: quotient, steps: shift_steps)
   if shift_steps == byte_offset_residual_quotient_magnitude_max_shift && shifted >= 256 * 256 {
     combine_hash(
@@ -897,7 +897,7 @@ fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_st
   }
 }
 
-fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> Fnv1a64Structural {
+fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> std.content_hash.Fnv1a64Structural {
   if quotient < 256 * 256 {
     combine_hash(
       a: content_hash_atom(value: ^canonical_tag_byte_offset_residual_quotient_limb_pair),
@@ -917,7 +917,7 @@ fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> Fnv1a64Struc
   }
 }
 
-fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> Fnv1a64Structural {
+fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> std.content_hash.Fnv1a64Structural {
   combine_hash(
     a: content_hash_atom(value: ^canonical_tag_byte_offset_residual_quotient_magnitude),
     b: combine_hash(
@@ -951,7 +951,7 @@ fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> Fnv1a64Struc
   )
 }
 
-fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_remaining: Int) -> Fnv1a64Structural {
+fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_remaining: Int) -> std.content_hash.Fnv1a64Structural {
   if limbs_remaining == 0 {
     if quotient == 0 {
       content_hash_atom(value: ^canonical_tag_byte_offset_zero)
@@ -979,7 +979,7 @@ fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_
   }
 }
 
-fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining: Int) -> Fnv1a64Structural {
+fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining: Int) -> std.content_hash.Fnv1a64Structural {
   if limbs_remaining == 0 {
     if quotient == 0 {
       content_hash_atom(value: ^canonical_tag_byte_offset_zero)
@@ -1010,7 +1010,7 @@ fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining
   }
 }
 
-fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> Fnv1a64Structural {
+fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> std.content_hash.Fnv1a64Structural {
   if quotient < 65536 {
     content_hash_atom(value: ^canonical_tag_byte_offset_overflow_residual_discarded_high_zero)
   } else {
@@ -1025,10 +1025,10 @@ fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> Fnv1a64
 }
 
 fn byte_offset_cache_digest_ineligible_witness_digest(
-  within_ceiling_digest: Fnv1a64Structural,
+  within_ceiling_digest: std.content_hash.Fnv1a64Structural,
   boundary_tag: Symbol,
   quotient: Int
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   if boundary_tag == ^canonical_tag_byte_offset_overflow_residual_unrepresentable {
     byte_offset_cache_digest_ineligible_hash(
       within_ceiling_digest: combine_hash(
@@ -1049,9 +1049,9 @@ fn byte_offset_cache_digest_ineligible_witness_digest(
 }
 
 fn byte_offset_cache_digest_ineligible_hash(
-  within_ceiling_digest: Fnv1a64Structural,
+  within_ceiling_digest: std.content_hash.Fnv1a64Structural,
   boundary_tag: Symbol
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   combine_hash(
     a: content_hash_atom(value: ^canonical_tag_byte_offset_cache_digest_ineligible),
     b: combine_hash(
@@ -1609,4 +1609,4 @@ type Diff {
   edits: List<Edit>
 }
 
-data node_occurrence_id_v2_facade_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: the counted v2.std.node imports of NodeOccurrenceId, SyntheticOccurrence, and MintedOccurrence reach zero after the bounded v2 import migration; then delete this compatibility coproduct and its two conversions.")
+data node_occurrence_id_v2_facade_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: the counted v2.std.node imports of NodeOccurrenceId, SyntheticOccurrence, and MintedOccurrence reach zero after the bounded v2 import migration; then delete this compatibility coproduct and its two conversions.")

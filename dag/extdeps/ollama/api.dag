@@ -5,8 +5,8 @@ module extdeps.ollama.api
 // independently versioned product gets its own extdeps module rather than a variant in a generic
 // serving-runtime enum. Adding vLLM or a NIM container later must not require editing this file, and
 // must not widen a central product enum -- each is its own module citing its own API.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/ollama/ollama/blob/main/docs/api.md"
   }
@@ -16,9 +16,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // fields this repository consumes. NOT the serving policy (which model, which host, which endpoint
 // binding: those are gunbc facts), and NOT the model artifacts themselves, which are separate
 // upstream subjects with their own publishers.
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ollama.api",
       decl_name: "OllamaEndpoint",
       field: WholeDeclaration
@@ -66,7 +66,7 @@ fn ollama_endpoint_method(endpoint: OllamaEndpoint) -> OllamaHttpMethod {
 // on 127.0.0.1 by default and OLLAMA_HOST changes it, but which address a given deployment binds is
 // a gunbc policy decision about reachability -- exactly the interface/policy split the extdeps rule
 // draws, and putting a bind address here would be the layer inversion it names.
-data ollama_default_port: Port = 11434
+data ollama_default_port: std.types.Port = 11434
 
 // A MODEL REFERENCE AS OLLAMA SPELLS IT: name plus tag, colon-separated on the wire. The two parts
 // are modeled separately because they are separate facts -- `gpt-oss` is the model, `20b` is the
@@ -115,6 +115,6 @@ fn strip_sha256_prefix(text: String) -> String {
   }
 }
 
-fn ollama_model_content_hash(digest: OllamaModelDigest) -> ContentHash {
+fn ollama_model_content_hash(digest: OllamaModelDigest) -> std.content_hash.ContentHash {
   as_content_hash_cryptographic(digest: digest.digest)
 }

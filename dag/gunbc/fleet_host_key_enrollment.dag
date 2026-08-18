@@ -60,9 +60,9 @@ type KnownHostKeyRow {
 // 🟡 dissolve-on: like the probe-receipt ledger, rows land here as the provenance-backed
 // transcription of an executed scan receipt; DISSOLVES WHEN scan-artifact ingestion
 // commits rows by machinery (same trigger as probe_receipt_ledger_transcription_scaffold).
-data host_key_enrollment_transcription_scaffold: Disposition = Scaffold {
+data host_key_enrollment_transcription_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_host_key_enrollment",
     decl_name: "fleet_host_key_enrollments",
     field: WholeDeclaration,
@@ -78,52 +78,52 @@ data host_key_enrollment_transcription_scaffold: Disposition = Scaffold {
 // DISTINCT across all six hosts (the identical-factory-keys claim stays refuted).
 data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
   KnownHostKeyRow {
-    host: "srv1" as HostIdentity,
+    host: "srv1" as product.placement_supply.HostIdentity,
     endpoint: "srv1",
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1UxiuCYkikYIV9DtuXiELy64bQpAXL",
     sha256_fingerprint: "SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86w",
-    provenance: ScannedFirstContact { scanned_from: "srv1 via ssh-keyscan -t ed25519 from the LAN probe position; no cited reservation, procurement, or external key authority exists" as NonEmptyStr },
+    provenance: ScannedFirstContact { scanned_from: "srv1 via ssh-keyscan -t ed25519 from the LAN probe position; no cited reservation, procurement, or external key authority exists" as std.types.NonEmptyStr },
   },
   KnownHostKeyRow {
-    host: "srv2" as HostIdentity,
+    host: "srv2" as product.placement_supply.HostIdentity,
     endpoint: "srv2",
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIOcg37ZIA2yVtNBV6dbVIvHjrNxzOI7gEOAF6uGAAJ48",
     sha256_fingerprint: "SHA256:XbC63cRNKr8kCy4UoXD20QKCNLNY4iMV1B61HMDHFno",
-    provenance: ScannedFirstContact { scanned_from: "srv2 via ssh-keyscan -t ed25519 from the LAN probe position; no cited reservation, procurement, or external key authority exists" as NonEmptyStr },
+    provenance: ScannedFirstContact { scanned_from: "srv2 via ssh-keyscan -t ed25519 from the LAN probe position; no cited reservation, procurement, or external key authority exists" as std.types.NonEmptyStr },
   },
   KnownHostKeyRow {
-    host: "srv3" as HostIdentity,
+    host: "srv3" as product.placement_supply.HostIdentity,
     endpoint: "srv3",
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFLymLSidHDQS5dyzq/KZTXsFsTxjZSmDUbSBqHUuWTN",
     sha256_fingerprint: "SHA256:y3Uq5S1Ibtd6RoN+bzyk79jKqhWVVoM37oL6lQg4tgk",
-    provenance: ScannedFirstContact { scanned_from: "srv3 via ssh-keyscan -t ed25519 from the LAN probe position; the operator's DHCP-table MAC is prose in fleet_intent_network, not a cited carrier row, so no external key authority" as NonEmptyStr },
+    provenance: ScannedFirstContact { scanned_from: "srv3 via ssh-keyscan -t ed25519 from the LAN probe position; the operator's DHCP-table MAC is prose in fleet_intent_network, not a cited carrier row, so no external key authority" as std.types.NonEmptyStr },
   },
   KnownHostKeyRow {
-    host: "srv4" as HostIdentity,
+    host: "srv4" as product.placement_supply.HostIdentity,
     endpoint: "srv4",
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAID5/OXS9/f1VdH5sOKS+RL5MDKrfGtwFtFDJDvSz+IPB",
     sha256_fingerprint: "SHA256:nU6X9fCjhRYdvvvuKCbS7egf9CJMbJI6vYJ/Wgf5zxI",
-    provenance: ScannedFirstContact { scanned_from: "srv4 via ssh-keyscan -t ed25519 from the LAN probe position; host address still a DHCP lease (not reserved), no cited external key authority" as NonEmptyStr },
+    provenance: ScannedFirstContact { scanned_from: "srv4 via ssh-keyscan -t ed25519 from the LAN probe position; host address still a DHCP lease (not reserved), no cited external key authority" as std.types.NonEmptyStr },
   },
   KnownHostKeyRow {
-    host: "srv5" as HostIdentity,
+    host: "srv5" as product.placement_supply.HostIdentity,
     endpoint: "192.168.1.222",
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAICIFwSNG7dFfeQLdMR70e/xbYdfGO9O/ArmOkB33kG/T",
     sha256_fingerprint: "SHA256:AnxYhYR+Cz5EbOCVxirsoZlUwLRENLJmeNyk0ukD/s4",
-    provenance: ScannedFirstContact { scanned_from: "192.168.1.222 via ssh-keyscan -t ed25519; slot->box IS decided (srv5->192.168.1.222, SPARK-ALLOC-LAND-0 2026-08-07) and a CR1000A reservation is cited, but the anchored-enrollment join (enrolled key + MAC-at-address + reservation match) has not been performed, so this stays first-contact until bold-eagle runs that join and flips it to IndependentlyAnchored" as NonEmptyStr },
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.222 via ssh-keyscan -t ed25519; slot->box IS decided (srv5->192.168.1.222, SPARK-ALLOC-LAND-0 2026-08-07) and a CR1000A reservation is cited, but the anchored-enrollment join (enrolled key + MAC-at-address + reservation match) has not been performed, so this stays first-contact until bold-eagle runs that join and flips it to IndependentlyAnchored" as std.types.NonEmptyStr },
   },
   KnownHostKeyRow {
-    host: "srv6" as HostIdentity,
+    host: "srv6" as product.placement_supply.HostIdentity,
     endpoint: "192.168.1.223",
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIEnpVavWbt8VTjUMprf+CbKCw0tS2nQIVuN49Ob5gEsc",
     sha256_fingerprint: "SHA256:Y5wB4G/qZFXZBaXbjWdK/HtWJP2pUgupsyjwBPehqMs",
-    provenance: ScannedFirstContact { scanned_from: "192.168.1.223 via ssh-keyscan -t ed25519; slot->box IS decided (srv6->192.168.1.223, SPARK-ALLOC-LAND-0 2026-08-07) and a CR1000A reservation is cited, but the anchored-enrollment join (enrolled key + MAC-at-address + reservation match) has not been performed, so this stays first-contact until bold-eagle runs that join and flips it to IndependentlyAnchored" as NonEmptyStr },
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.223 via ssh-keyscan -t ed25519; slot->box IS decided (srv6->192.168.1.223, SPARK-ALLOC-LAND-0 2026-08-07) and a CR1000A reservation is cited, but the anchored-enrollment join (enrolled key + MAC-at-address + reservation match) has not been performed, so this stays first-contact until bold-eagle runs that join and flips it to IndependentlyAnchored" as std.types.NonEmptyStr },
   },
 ]
 
@@ -159,7 +159,7 @@ data fleet_host_key_scan_receipt_path: String = "target/fleet-host-key-scan-rece
 fn scan_host_key_lines(host: String) -> String {
   let endpoint = fleet_probe_endpoint_for(host: host)
   let scan = run_shell_command_capture(
-    command: ArgvCommand { argv: ["ssh-keyscan", "-T", "5", "-t", "ed25519", endpoint] },
+    command: extdeps.exec.command.ArgvCommand { argv: ["ssh-keyscan", "-T", "5", "-t", "ed25519", endpoint] },
     transport: LocalExec,
   )
   if scan.success && trim(s: scan.stdout) != "" {
@@ -167,11 +167,11 @@ fn scan_host_key_lines(host: String) -> String {
     let w = Filesystem.Write(path: key_file, content: scan.stdout)
     let fp = if w.success {
       run_shell_command_capture(
-        command: ArgvCommand { argv: ["ssh-keygen", "-l", "-f", key_file] },
+        command: extdeps.exec.command.ArgvCommand { argv: ["ssh-keygen", "-l", "-f", key_file] },
         transport: LocalExec,
       )
     } else {
-      ShellCaptureResult { success: false, stdout: "", stderr: w.error }
+      gunbc.command_runner.ShellCaptureResult { success: false, stdout: "", stderr: w.error }
     }
     join([
       "scan host=", host, " endpoint=", endpoint, " outcome=observed\n",
@@ -185,7 +185,7 @@ fn scan_host_key_lines(host: String) -> String {
   }
 }
 
-func fleet_host_key_scan_wet() -> ProcessExit
+func fleet_host_key_scan_wet() -> std.process.ProcessExit
   uses net: Network
 {
   let body = join(map(fleet_reach_probe_targets, h => scan_host_key_lines(host: h)), "")
@@ -251,7 +251,7 @@ func fleet_host_key_enroll_apply() -> String
         "fi; chmod 600 \"$CFG\"",
       ], "")
       let applied = run_shell_commands(
-        commands: [ ArgvCommand { argv: ["sh", "-c", pin_cmd] } ],
+        commands: [ extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", pin_cmd] } ],
         transport: LocalExec,
       )
       match applied {
@@ -259,7 +259,7 @@ func fleet_host_key_enroll_apply() -> String
         ExitSuccess =>
           join(map(fleet_host_key_enrollments, k => {
             let f = run_shell_command_capture(
-              command: ArgvCommand { argv: ["ssh-keygen", "-F", k.endpoint, "-f", staged] },
+              command: extdeps.exec.command.ArgvCommand { argv: ["ssh-keygen", "-F", k.endpoint, "-f", staged] },
               transport: LocalExec,
             )
             join([
@@ -275,7 +275,7 @@ func fleet_host_key_enroll_apply() -> String
   }
 }
 
-func fleet_host_key_enroll_wet() -> ProcessExit
+func fleet_host_key_enroll_wet() -> std.process.ProcessExit
   uses net: Network
 {
   let receipt = fleet_host_key_enroll_apply()
@@ -308,29 +308,29 @@ fn fleet_automation_authorized_keys_line() -> String {
   ssh_public_key_line(k: fleet_automation_ssh_key)
 }
 
-func fleet_authorized_key_self_enroll_wet() -> ProcessExit
+func fleet_authorized_key_self_enroll_wet() -> std.process.ProcessExit
   uses net: Network
 {
-  let user = run_shell_command_capture(command: ArgvCommand { argv: ["whoami"] }, transport: LocalExec)
-  let hostname = run_shell_command_capture(command: ArgvCommand { argv: ["hostname"] }, transport: LocalExec)
+  let user = run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["whoami"] }, transport: LocalExec)
+  let hostname = run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["hostname"] }, transport: LocalExec)
   let line = fleet_automation_authorized_keys_line()
   let staged = "target/fleet-authorized-key-line"
   let w = Filesystem.Write(path: staged, content: concat(line, "\n"))
   let outcome = if w.success {
     let check = run_shell_command_capture(
-      command: ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" 2>/dev/null && echo present || echo absent"] },
+      command: extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" 2>/dev/null && echo present || echo absent"] },
       transport: LocalExec,
     )
     if trim(s: check.stdout) == "present" {
       "outcome=already-present"
     } else {
       let apply = run_shell_command_capture(
-        command: ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); mkdir -p \"$H/.ssh\" && chmod 700 \"$H/.ssh\" && touch \"$H/.ssh/authorized_keys\" && chmod 600 \"$H/.ssh/authorized_keys\" && cat target/fleet-authorized-key-line >> \"$H/.ssh/authorized_keys\""] },
+        command: extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); mkdir -p \"$H/.ssh\" && chmod 700 \"$H/.ssh\" && touch \"$H/.ssh/authorized_keys\" && chmod 600 \"$H/.ssh/authorized_keys\" && cat target/fleet-authorized-key-line >> \"$H/.ssh/authorized_keys\""] },
         transport: LocalExec,
       )
       if apply.success {
         let verify = run_shell_command_capture(
-          command: ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" && echo enrolled || echo ABSENT-after-apply"] },
+          command: extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" && echo enrolled || echo ABSENT-after-apply"] },
           transport: LocalExec,
         )
         concat("outcome=", trim(s: verify.stdout))

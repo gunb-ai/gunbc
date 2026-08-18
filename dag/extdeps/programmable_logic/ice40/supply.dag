@@ -11,8 +11,8 @@ data ice40_supply_note: String = "THE SUPPLY RAILS THE DEVICE REQUIRES, from Tab
 // This module's own citation of the same data sheet. It is a literal because the corpus wall reads
 // the anchor structurally and cannot see a binding to a sibling's value - see the note in
 // extdeps.programmable_logic.ice40.subject.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/iCE/FPGA-DS-02029-4-3-iCE40-LP-HX-Family-Data-Sheet.ashx?document_id=49312"
   }
@@ -26,7 +26,7 @@ type Ice40SupplyRail
   | NvcmProgrammingSupply
   | FastProgrammingSupply
 
-fn supply_rail_symbol(r: Ice40SupplyRail) -> NonEmptyStr {
+fn supply_rail_symbol(r: Ice40SupplyRail) -> std.types.NonEmptyStr {
   match r {
     CoreSupply => "VCC"
     PllSupply => "VCCPLL"
@@ -86,7 +86,7 @@ type Ice40ConfigurationMode
   | NvcmConfiguration
   | NvcmProgramming
 
-fn configuration_mode_name(m: Ice40ConfigurationMode) -> NonEmptyStr {
+fn configuration_mode_name(m: Ice40ConfigurationMode) -> std.types.NonEmptyStr {
   match m {
     SlaveSpiConfiguration => "slave SPI configuration"
     MasterSpiConfiguration => "master SPI configuration"
@@ -124,7 +124,7 @@ type RailRequirement
   = OperatingWindow { minimum: std.measure.Millivolt, maximum: std.measure.Millivolt }
   | MustBeLeftUnconnected
 
-fn requirement_admits(r: RailRequirement, v: Millivolt) -> Bool {
+fn requirement_admits(r: RailRequirement, v: std.measure.Millivolt) -> Bool {
   match r {
     MustBeLeftUnconnected => false
     OperatingWindow { minimum: lo, maximum: hi } =>
@@ -215,9 +215,9 @@ data ice40_inter_rail_constraints: List<Ice40InterRailConstraint> = [
   PinLeftUnconnected { rail: FastProgrammingSupply },
 ]
 
-data ice40_supply_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data ice40_supply_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.programmable_logic.ice40.supply",
       decl_name: "ice40_inter_rail_constraints",
       field: WholeDeclaration
@@ -227,4 +227,4 @@ data ice40_supply_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data extdeps_model_scope: ExternalModelScope = ice40_supply_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = ice40_supply_model_scope

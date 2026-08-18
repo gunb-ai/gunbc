@@ -253,7 +253,7 @@ fn native_scm_resolve_choice(
 
 fn native_scm_attach_projection(
   receipt: NativeScmReceipt,
-  projection: CompatibilityProjectionReceipt,
+  projection: gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt,
 ) -> NativeScmReceipt {
   NativeScmReceipt {
     identity: receipt.identity,
@@ -277,7 +277,7 @@ fn native_scm_attach_projection(
 
 fn native_scm_record_repaired_projection(
   receipt: NativeScmReceipt,
-  projection: CompatibilityProjectionReceipt,
+  projection: gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt,
 ) -> NativeScmProjectionRepairOutcome {
   match receipt.operational {
     NativeScmProjectionRepairPending => {

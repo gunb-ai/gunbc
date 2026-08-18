@@ -16,7 +16,7 @@ data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
 data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
 data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
 
-data gunbc_runner_slot_unit_placeholder: NonEmptyStr = "system-actions-runner.slice"
+data gunbc_runner_slot_unit_placeholder: std.types.NonEmptyStr = "system-actions-runner.slice"
 
 data gunbc_root_env_key: String = "GUNBC_ROOT"
 
@@ -32,9 +32,9 @@ data gunbc_fleet_pinned_binary_registry: String = "ghcr.io/gunb-ai/gunbc/bootstr
 
 data gunbc_fleet_pinned_binary_digest: String = "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER"
 
-data gunbc_fleet_pinned_binary_digest_marker: Disposition = Scaffold {
+data gunbc_fleet_pinned_binary_digest_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge",
     decl_name: "gunbc_fleet_pinned_binary_digest",
     field: WholeDeclaration
@@ -55,7 +55,7 @@ data gunbc_ctrl_green_place_marker_ts_prefix: String = "first_green_at="
 
 data gunbc_ctrl_quiescent_reload_hook: String = "scripts/session-dashboard/bin/gunbc-pin-quiescent-reload.mjs"
 
-data gunbc_spawn_retry_backstop_cadence: Second = second(count: 600)
+data gunbc_spawn_retry_backstop_cadence: std.measure.Second = second(count: 600)
 
 type GreenPlaceReadinessMarker {
   path: String
@@ -202,18 +202,18 @@ type ConvergeKnob {
   no_op: ConvergeNoOpPolicy
 }
 
-data gunbc_host_converge_knob_apply_semantics_marker: Disposition = Scaffold {
+data gunbc_host_converge_knob_apply_semantics_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge",
     decl_name: "ConvergeKnob",
     field: WholeDeclaration
   }
 }
 
-data gunbc_host_converge_runner_sessions_coupling_marker: Disposition = Scaffold {
+data gunbc_host_converge_runner_sessions_coupling_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge",
     decl_name: "HostConverge",
     field: WholeDeclaration
@@ -230,7 +230,7 @@ type HostConverge {
   membership: SessionsMembershipProbe
 }
 
-fn find_by_identity<T>(items: List<T>, identity: HostIdentity, key: fn(T) -> HostIdentity) -> T? {
+fn find_by_identity<T>(items: List<T>, identity: product.placement_supply.HostIdentity, key: fn(T) -> HostIdentity) -> T? {
   fold(
     items,
     init: none,
@@ -252,7 +252,7 @@ type ConvergePolicy
   = ConvergePolicyDerived { hosts: List<HostConverge> }
   | ConvergePolicyUnsound { reason: String }
 
-fn runner_instance_glob(host: HostIdentity) -> String {
+fn runner_instance_glob(host: product.placement_supply.HostIdentity) -> String {
   concat(concat("actions-runner@", host), "-*.service")
 }
 
@@ -378,7 +378,7 @@ fn gunbc_pinned_binary_provenance_policy() -> GunbcBinaryProvenancePolicy {
   }
 }
 
-fn gunbc_apply_mode_for_host(host: HostIdentity) -> ConvergeApplyMode {
+fn gunbc_apply_mode_for_host(host: product.placement_supply.HostIdentity) -> ConvergeApplyMode {
   if host == operator_host_srv3 { FreshStandup } else { ExistingHostQuiescentReload }
 }
 
@@ -410,7 +410,7 @@ fn slice_numeric_knob(slice: ConvergeSlice, name: String, unit: String, property
   )
 }
 
-fn gunbc_pinned_tree_knob(host: HostIdentity) -> ConvergeKnob {
+fn gunbc_pinned_tree_knob(host: product.placement_supply.HostIdentity) -> ConvergeKnob {
   ConvergeKnob {
     slice: GunbcSlice,
     name: "pinned_tree_sha",
@@ -430,13 +430,13 @@ fn gunbc_pinned_tree_knob(host: HostIdentity) -> ConvergeKnob {
   }
 }
 
-fn gunbc_pinned_tree_knobs(host: HostIdentity) -> List<ConvergeKnob> {
+fn gunbc_pinned_tree_knobs(host: product.placement_supply.HostIdentity) -> List<ConvergeKnob> {
   [gunbc_pinned_tree_knob(host: host)]
 }
 
 data codex_runtime_bundle_converge_knob_note: String = "RECURRING reconcile for the pinned Codex provider-runtime bundle — absent materialize, wrong identity replace, present noop. Registered on every fleet compute host in fleet_converge_policy; EXECUTION AUTHORITY is gunbc.fleet_converge_cli converge_provider_runtime_codex_receipt (ProvisionCodexRuntime via realize_provision_codex_runtime), not host_converge_realize interpret_converge_knob — slice1/knob-frontier routes bypass converge_apply today. host_standup P1c remains assimilation-time ensure."
 
-fn codex_runtime_bundle_knob(host: HostIdentity) -> ConvergeKnob {
+fn codex_runtime_bundle_knob(host: product.placement_supply.HostIdentity) -> ConvergeKnob {
   legacy_converge_knob(
     slice: GunbcSlice,
     name: "codex_runtime_bundle",
@@ -445,11 +445,11 @@ fn codex_runtime_bundle_knob(host: HostIdentity) -> ConvergeKnob {
   )
 }
 
-fn codex_runtime_bundle_knobs(host: HostIdentity) -> List<ConvergeKnob> {
+fn codex_runtime_bundle_knobs(host: product.placement_supply.HostIdentity) -> List<ConvergeKnob> {
   [codex_runtime_bundle_knob(host: host)]
 }
 
-fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
+fn runner_host_knobs(h: gunbc.ci_runner_placement.RunnerHostDeployment) -> List<ConvergeKnob> {
   let glob = runner_instance_glob(host: h.identity)
   [
     slice_numeric_knob(
@@ -529,7 +529,7 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
   ]
 }
 
-fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<ConvergeKnob> {
+fn session_host_knobs(slice_max: std.measure.ByteSize, per_session: std.measure.ByteSize) -> List<ConvergeKnob> {
   let kill_value = managed_oom_action_value(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure)
   let pct = to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit))
   [
@@ -581,7 +581,7 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
   ]
 }
 
-fn session_knobs_by_host(mode: SessionReservationMode) -> List<ConvergeKnob>? {
+fn session_knobs_by_host(mode: gunbc.ci_floor_measurement.SessionReservationMode) -> List<ConvergeKnob>? {
   match mode {
     SessionReservationModeUnset => none
     Regime1WorstCase { point: _ } => none
@@ -608,7 +608,7 @@ fn sessions_membership_probe(session_knobs: List<ConvergeKnob>) -> SessionsMembe
   }
 }
 
-fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) -> HostConverge {
+fn host_converge_of(h: gunbc.ci_runner_placement.RunnerHostDeployment, session_knobs: List<ConvergeKnob>) -> HostConverge {
   HostConverge {
     identity: h.identity,
     knobs: concat(
@@ -622,7 +622,7 @@ fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) 
   }
 }
 
-fn fleet_converge_policy_from(plan: RunnerDeploymentPlan, mode: SessionReservationMode) -> ConvergePolicy {
+fn fleet_converge_policy_from(plan: gunbc.ci_runner_placement.RunnerDeploymentPlan, mode: gunbc.ci_floor_measurement.SessionReservationMode) -> ConvergePolicy {
   match plan {
     PlanUnsound { reason: reason } =>
       ConvergePolicyUnsound { reason: concat("runner deployment unsound: ", reason) }

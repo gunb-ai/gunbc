@@ -22,7 +22,7 @@ type BoardRequirementIdentity
   | ProcessorPackageFit
   | MemoryModuleSocketPopulation { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity }
 
-fn requirement_name(r: BoardRequirementIdentity) -> NonEmptyStr {
+fn requirement_name(r: BoardRequirementIdentity) -> std.types.NonEmptyStr {
   match r {
     HostNetworkConnectivity => "host network connectivity"
     ManagementNetworkConnectivity => "management network connectivity"
@@ -43,7 +43,7 @@ fn requirement_name(r: BoardRequirementIdentity) -> NonEmptyStr {
   }
 }
 
-fn functional_obligation_text(r: BoardRequirementIdentity) -> NonEmptyStr {
+fn functional_obligation_text(r: BoardRequirementIdentity) -> std.types.NonEmptyStr {
   match r {
     HostNetworkConnectivity =>
       "host network connectivity is not established: an Ethernet PHY candidate alone does not realize MAC, magnetics, link partner, or stack integration"
@@ -100,31 +100,31 @@ type RequirementPartRealization {
 type PopulationRealizationRefusal
   = RequiredFunctionWithoutJustifiedPart { requirement: BoardRequirementIdentity }
 
-fn mt_jade_reference_platform_ref() -> DeclarationRef {
+fn mt_jade_reference_platform_ref() -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "extdeps.ocp.mt_jade.subject", decl_name: "mt_jade_reference_platform")
 }
 
-fn mt_jade_platform_authority_ref() -> DeclarationRef {
+fn mt_jade_platform_authority_ref() -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "extdeps.ocp.mt_jade.platform", decl_name: "extdeps_external_authority_anchor")
 }
 
-fn dp83867_candidate_ref() -> DeclarationRef {
+fn dp83867_candidate_ref() -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "extdeps.network.ti_dp83867", decl_name: "dp83867irrgz")
 }
 
-fn tps53688_candidate_ref() -> DeclarationRef {
+fn tps53688_candidate_ref() -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "extdeps.power.ti_tps53688", decl_name: "tps53688rsbr")
 }
 
-fn tps3808_candidate_ref() -> DeclarationRef {
+fn tps3808_candidate_ref() -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "extdeps.power.ti_tps3808", decl_name: "tps3808g01dbvr")
 }
 
-fn cdce913_candidate_ref() -> DeclarationRef {
+fn cdce913_candidate_ref() -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "extdeps.clock.ti_cdce913", decl_name: "cdce913pwr")
 }
 
-fn processor_power_rail_order_ref() -> DeclarationRef {
+fn processor_power_rail_order_ref() -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "extdeps.ocp.mt_jade.platform", decl_name: "processor_power_rail_enable_order")
 }
 
@@ -189,7 +189,7 @@ data altra_1p_requirement_part_realizations: List<RequirementPartRealization> = 
   },
 ]
 
-fn altra_1p_realization_provider_identities() -> List<NonEmptyStr> {
+fn altra_1p_realization_provider_identities() -> List<std.types.NonEmptyStr> {
   provider_identities_from_roster(roster: altra_1p_requirement_part_realizations)
 }
 
@@ -201,11 +201,11 @@ fn board_functional_obligations() -> List<BoardRequirementIdentity> {
   concat(board_clock_functional_obligations(), physical_population_requirements())
 }
 
-fn functional_requirement_name(f: BoardRequirementIdentity) -> NonEmptyStr {
+fn functional_requirement_name(f: BoardRequirementIdentity) -> std.types.NonEmptyStr {
   requirement_name(r: f)
 }
 
-fn functional_requirement_reason(f: BoardRequirementIdentity) -> NonEmptyStr {
+fn functional_requirement_reason(f: BoardRequirementIdentity) -> std.types.NonEmptyStr {
   functional_obligation_text(r: f)
 }
 
@@ -219,11 +219,11 @@ fn physical_population_requirements() -> List<BoardRequirementIdentity> {
   ]
 }
 
-fn identity_matches(id: NonEmptyStr, wanted: NonEmptyStr) -> Bool {
+fn identity_matches(id: std.types.NonEmptyStr, wanted: std.types.NonEmptyStr) -> Bool {
   (id as String) == (wanted as String)
 }
 
-fn plan_contains_identity(plan: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
+fn plan_contains_identity(plan: List<std.types.NonEmptyStr>, id: std.types.NonEmptyStr) -> Bool {
   fold(plan, init: false, f: fn(acc, x) { acc || identity_matches(id: x, wanted: id) })
 }
 
@@ -244,13 +244,13 @@ fn justification_discharges_required_function(j: RealizationJustification) -> Bo
   }
 }
 
-fn provider_identities_from_roster(roster: List<RequirementPartRealization>) -> List<NonEmptyStr> {
+fn provider_identities_from_roster(roster: List<RequirementPartRealization>) -> List<std.types.NonEmptyStr> {
   fold(roster, init: [], f: fn(acc, row) { concat(acc, row.providers) })
 }
 
 fn requirement_has_providers_on_plan(
   roster: List<RequirementPartRealization>,
-  plan: List<NonEmptyStr>,
+  plan: List<std.types.NonEmptyStr>,
   req: BoardRequirementIdentity,
 ) -> Bool {
   fold(roster, init: false, f: fn(acc, row) {
@@ -272,7 +272,7 @@ fn requirement_has_providers_on_plan(
 
 fn population_realization_refusals(
   roster: List<RequirementPartRealization>,
-  plan_identities: List<NonEmptyStr>,
+  plan_identities: List<std.types.NonEmptyStr>,
 ) -> List<PopulationRealizationRefusal> {
   fold(physical_population_requirements(), init: [], f: fn(acc, req) {
     if requirement_has_providers_on_plan(roster: roster, plan: plan_identities, req: req) {

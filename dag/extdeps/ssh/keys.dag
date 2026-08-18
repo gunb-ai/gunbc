@@ -1,8 +1,8 @@
 module extdeps.ssh
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "man.openbsd.org/sshd.8#AUTHORIZED_KEYS_FILE_FORMAT"
   }
@@ -13,16 +13,16 @@ type SshKeyAlgorithm
   | Rsa
   | EcdsaP256
 
-data ssh_key_algorithm_token_registry_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data ssh_key_algorithm_token_registry_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.iana.org/assignments/ssh-parameters/ssh-parameters.xhtml#ssh-parameters-19"
   }
 }
 
 // ssh_key_algorithm_token emits registered wire tokens: the token SET is owned by the IANA SSH Protocol Parameters public-key-algorithm-names registry (anchor above); each variant's cryptosystem and token carry their own upstream authorities in the per-variant rows below — a referenced entity carries ITS authority, never its consumer's (the Vendor<Domain> precedent).
-data ed25519_cryptosystem_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data ed25519_cryptosystem_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "ed25519.cr.yp.to/"
   }
@@ -30,8 +30,8 @@ data ed25519_cryptosystem_authority: ExternalAuthority = ExternalAuthority {
 
 data ed25519_authority_note: String = "Ed25519: design authority ed25519.cr.yp.to (Bernstein et al.); EdDSA specified in RFC 8032; the ssh-ed25519 wire token is registered by RFC 8709."
 
-data rsa_cryptosystem_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data rsa_cryptosystem_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc8017"
   }
@@ -39,15 +39,15 @@ data rsa_cryptosystem_authority: ExternalAuthority = ExternalAuthority {
 
 data rsa_authority_note: String = "Rsa: PKCS #1 v2.2 (RFC 8017); the ssh-rsa wire token is defined in RFC 4253 section 6.6. POSTURE: ssh-rsa SIGNATURES (SHA-1) are deprecated by RFC 8332 in favor of rsa-sha2-256/rsa-sha2-512 — an authorized_keys ssh-rsa KEY line remains valid, but selecting Rsa for new fleet keys is a deprecated posture and the fleet's declared keys are Ed25519."
 
-data ecdsa_p256_cryptosystem_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data ecdsa_p256_cryptosystem_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc5656"
   }
 }
 
 // EcdsaP256: ECC in SSH per RFC 5656; curve P-256 per FIPS 186 / SEC 2; wire token ecdsa-sha2-nistp256.
-fn ssh_key_algorithm_token(a: SshKeyAlgorithm) -> NonEmptyStr {
+fn ssh_key_algorithm_token(a: SshKeyAlgorithm) -> std.types.NonEmptyStr {
   match a {
     Ed25519 => "ssh-ed25519"
     Rsa => "ssh-rsa"

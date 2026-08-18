@@ -2,8 +2,8 @@ module extdeps.toolchain.types
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "wiki.debian.org/ArchitectureSpecificsMemo"
   }
@@ -12,19 +12,19 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type Architecture = X86_64 | X86 | Aarch64 | Arm | Armv7 | Mips | Mipsel | Mips64 | Mips64el | Riscv64 | Wasm32
 
 // A total variant name for Architecture, for DIAGNOSTICS ONLY — a refusal that cannot say which architecture it refused is typed but not located (§5). Deliberately NOT a wire label: every upstream that names architectures does so differently (debian arm64, Go GOARCH, sccache's musl tarball token, grub EFI filenames), and each of those already lives with its own upstream as a partial projection that REFUSES the arches that upstream does not publish. Reusing this name as a wire label would re-coin those authorities and defeat their fail-closed arms, so it is named for its purpose.
-fn architecture_diagnostic_name(arch: Architecture) -> NonEmptyStr {
+fn architecture_diagnostic_name(arch: Architecture) -> std.types.NonEmptyStr {
   match arch {
-    X86_64 => "X86_64" as NonEmptyStr
-    X86 => "X86" as NonEmptyStr
-    Aarch64 => "Aarch64" as NonEmptyStr
-    Arm => "Arm" as NonEmptyStr
-    Armv7 => "Armv7" as NonEmptyStr
-    Mips => "Mips" as NonEmptyStr
-    Mipsel => "Mipsel" as NonEmptyStr
-    Mips64 => "Mips64" as NonEmptyStr
-    Mips64el => "Mips64el" as NonEmptyStr
-    Riscv64 => "Riscv64" as NonEmptyStr
-    Wasm32 => "Wasm32" as NonEmptyStr
+    X86_64 => "X86_64" as std.types.NonEmptyStr
+    X86 => "X86" as std.types.NonEmptyStr
+    Aarch64 => "Aarch64" as std.types.NonEmptyStr
+    Arm => "Arm" as std.types.NonEmptyStr
+    Armv7 => "Armv7" as std.types.NonEmptyStr
+    Mips => "Mips" as std.types.NonEmptyStr
+    Mipsel => "Mipsel" as std.types.NonEmptyStr
+    Mips64 => "Mips64" as std.types.NonEmptyStr
+    Mips64el => "Mips64el" as std.types.NonEmptyStr
+    Riscv64 => "Riscv64" as std.types.NonEmptyStr
+    Wasm32 => "Wasm32" as std.types.NonEmptyStr
   }
 }
 

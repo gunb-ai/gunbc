@@ -1095,3 +1095,53 @@ string bytes" audit failure here, and a peer's read that `Cons`/`Empty` were
 desugarer-generated. It fails in the direction that INVENTS structure, which
 is the harder direction to doubt. Split on the literal and keep the
 even-indexed pieces instead.
+
+## Round 3 converges: the mechanical work is finished, the floor is design
+
+Round 3 was measured against a freshly re-run floor, applied, and re-measured.
+The calibration held first -- 48,512 rows locally against CI's 48,512 on the
+same tree -- so the instrument was measuring the same thing after the cycle
+bound changed the recursion.
+
+```
+                          round 3      round 4
+error rows                 48,512       23,726
+unresolved type            38,562       17,370
+```
+
+20,710 qualifications across 794 files. And the round-4 census is the point of
+the exercise:
+
+```
+VARIANT (blocked: no source spelling)  16,841
+kernel                                    184
+ambiguous fork                            148
+absent                                     26
+self                                        7
+APPLY                                       0
+```
+
+**APPLY is zero. The span-driven qualification is finished** -- not paused,
+not asymptotic, exhausted. Every remaining unresolved type is in a class that
+no source edit can fix.
+
+Monotone progress, tracked on tidy-pike-117's point that pair count is a
+difference of two opposing movements and cannot rank the work:
+
+```
+files carrying any diagnostic   2,126 -> 1,690    437 reached clean
+distinct unresolved symbols     3,294 -> 1,717  1,577 newly resolving
+```
+
+**A correction to the blocked-class size.** This document earlier put the
+variant class at ~11,836 spans. That count came from the pre-fix stream, where
+the crash truncated the run before it finished reporting. The first
+measurement taken after the run reaches its end puts it at 17,323, settling to
+16,841 once the surrounding noise clears. The earlier figure was another
+quantity read from behind the mask.
+
+**What the residue now is, exactly.** 16,841 variant constructions with no
+correct source spelling; 184 kernel-name failures, substantially the `List`
+fork; 148 ambiguous forks; 26 absent; 7 self. Every one of those is an
+answer someone has to decide, not a file someone has to edit. The branch has
+reached the point where grinding produces nothing.

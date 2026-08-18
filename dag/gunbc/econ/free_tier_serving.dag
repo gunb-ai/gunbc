@@ -38,7 +38,7 @@ type FreeTierServingFloorResult
   | FreeTierFloorRefused { cause: FreeTierServingRefusalCause }
 
 fn derive_free_tier_serving_floor(
-  box_row: HetznerDedicatedServerPriceRow,
+  box_row: extdeps.pricing.hetzner_dedicated.HetznerDedicatedServerPriceRow,
   assumptions_input: FreeTierServingAssumptionsInput
 ) -> FreeTierServingFloorResult {
   match assumptions_input {
@@ -67,7 +67,7 @@ fn derive_free_tier_serving_floor(
         FreeTierFloorComputed {
           floor: FreeTierServingFloor {
             box_count: box_count,
-            monthly_floor: MoneyPerMonth {
+            monthly_floor: std.measure.MoneyPerMonth {
               amount: money_amount_micro(count: box_count * money_per_month_micros(q: box_row.monthly)),
               currency: box_row.monthly.currency,
             },
@@ -80,8 +80,8 @@ fn derive_free_tier_serving_floor(
 
 // Top-down glean: annual cost of revenue divided by the filed registered-user FLOOR ('more than N million registered users', Item 1) is an UPPER BOUND on average serving cost per registered user -- actual users >= floor, so cost/floor >= cost/actual -- and the average itself is inflated by enterprise SaaS compute and support personnel inside cost of revenue. The marginal free git user sits far below it.
 fn average_serving_cost_per_registered_user_year_micros_upper_bound(
-  annual_cost_of_revenue: FiledMonetaryFact,
-  registered_users: RegisteredUserCountRow
+  annual_cost_of_revenue: extdeps.sec.facts.FiledMonetaryFact,
+  registered_users: extdeps.sec.operating_metrics.RegisteredUserCountRow
 ) -> std.nat.Nat? {
   match filed_amount(fact: annual_cost_of_revenue) {
     Present { value: c } => {

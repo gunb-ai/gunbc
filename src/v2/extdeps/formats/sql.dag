@@ -174,8 +174,8 @@ data sql_nonnumeric_facts_catalog: List<SqlNonNumericPrimitiveFacts> = [
   sql_facts_timestamp_with_time_zone,
 ]
 
-fn sql_inhabitant_atom(id: Symbol) -> Node {
-  Node {
+fn sql_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -183,7 +183,7 @@ fn sql_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -196,7 +196,7 @@ fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {
 }
 
 fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -209,7 +209,7 @@ fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> Node {
 }
 
 fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -225,7 +225,7 @@ fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
 }
 }
 
-fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
@@ -239,7 +239,7 @@ fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<Symbol, Node> 
   }
 }
 
-fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<Symbol, Node> {
+fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
@@ -251,7 +251,7 @@ fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<Symbol, Node> {
   }
 }
 
-fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<Symbol, Node> {
+fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
@@ -265,15 +265,15 @@ fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<Symbol, 
   }
 }
 
-fn sql_primitive_bundle_from_integer_facts(facts: SqlIntegerPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+fn sql_primitive_bundle_from_integer_facts(facts: SqlIntegerPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: sql_integer_facts_node(facts: facts),
     spec_facts: sql_integer_spec_facts(facts: facts)
   }
 }
 
-fn sql_primitive_bundle_from_float_facts(facts: SqlFloatPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+fn sql_primitive_bundle_from_float_facts(facts: SqlFloatPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: sql_float_facts_node(facts: facts),
     spec_facts: sql_float_spec_facts(facts: facts)
   }
@@ -281,8 +281,8 @@ fn sql_primitive_bundle_from_float_facts(facts: SqlFloatPrimitiveFacts) -> Primi
 
 fn sql_primitive_bundle_from_nonnumeric_facts(
   facts: SqlNonNumericPrimitiveFacts
-) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
+) -> v2.std.model_core.PrimitiveFactBundle {
+  v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: sql_nonnumeric_facts_node(facts: facts),
     spec_facts: sql_nonnumeric_spec_facts(facts: facts)
   }
@@ -310,28 +310,28 @@ fn sql_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
   )
 }
 
-fn sql_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+fn sql_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   sql_list_map(
     xs: sql_integer_facts_catalog,
     f: sql_primitive_bundle_from_integer_facts
   )
 }
 
-fn sql_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+fn sql_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   sql_list_map(
     xs: sql_float_facts_catalog,
     f: sql_primitive_bundle_from_float_facts
   )
 }
 
-fn sql_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> {
+fn sql_primitive_bundles_from_nonnumeric_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   sql_list_map(
     xs: sql_nonnumeric_facts_catalog,
     f: sql_primitive_bundle_from_nonnumeric_facts
   )
 }
 
-fn sql_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn sql_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: sql_primitive_bundles_from_integer_catalog(),
@@ -355,29 +355,29 @@ fn sql_join_strings(separator: String, parts: List<String>) -> String {
   })
 }
 
-data sql_serialize_diagnostic_anchor: Node = Node {
+data sql_serialize_diagnostic_anchor: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-fn sql_serialize_unsupported_operation_diagnostic(variant: Symbol) -> Diagnostic {
-  Diagnostic {
+fn sql_serialize_unsupported_operation_diagnostic(variant: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: variant,
     at: node_locus(node: sql_serialize_diagnostic_anchor),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn sql_serialize_unsupported_data_type_diagnostic(variant: Symbol) -> Diagnostic {
-  Diagnostic {
+fn sql_serialize_unsupported_data_type_diagnostic(variant: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: variant,
     at: node_locus(node: sql_serialize_diagnostic_anchor),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-data sql_serialize_policy: StageDiagnosticPolicy = StageDiagnosticPolicy {
+data sql_serialize_policy: v2.std.diagnostic.StageDiagnosticPolicy = v2.std.diagnostic.StageDiagnosticPolicy {
   accumulation: ShortCircuit
 }
 

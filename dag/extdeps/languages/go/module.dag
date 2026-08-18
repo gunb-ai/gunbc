@@ -2,8 +2,8 @@ module extdeps.languages.go.module
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "go.dev/ref/mod"
   }
@@ -29,11 +29,11 @@ fn go_semver_label(v: GoSemVer) -> String {
   }
 }
 
-fn go_semver_to_version_identity(v: GoSemVer) -> VersionIdentity {
+fn go_semver_to_version_identity(v: GoSemVer) -> extdeps.version.VersionIdentity {
   go_semver_label(v: v)
 }
 
-fn go_semver_compare(a: GoSemVer, b: GoSemVer) -> Ordering {
+fn go_semver_compare(a: GoSemVer, b: GoSemVer) -> std.algebra.Ordering {
   let mc = if a.major < b.major { Less } else { if a.major > b.major { Greater } else { Equal } }
   let nc = if a.minor < b.minor { Less } else { if a.minor > b.minor { Greater } else { Equal } }
   let pc = if a.patch < b.patch { Less } else { if a.patch > b.patch { Greater } else { Equal } }
@@ -62,11 +62,11 @@ fn go_semver_compare(a: GoSemVer, b: GoSemVer) -> Ordering {
   }
 }
 
-data go_module_version_scheme: VersionScheme = {
+data go_module_version_scheme: extdeps.version.VersionScheme = {
   compare: (a, b) => if a == b { Equal } else { Less }
 }
 
-type GoModulePath = NonEmptyStr where brand("GoModulePath")
+type GoModulePath = std.types.NonEmptyStr where brand("GoModulePath")
 
 type GoMajorVersionSuffix
   = MajorV0OrV1
@@ -79,9 +79,9 @@ fn go_major_suffix_str(suffix: GoMajorVersionSuffix) -> String {
   }
 }
 
-type GoLanguageVersion = NonEmptyStr where brand("GoLanguageVersion")
+type GoLanguageVersion = std.types.NonEmptyStr where brand("GoLanguageVersion")
 
-type GoToolchainName = NonEmptyStr where brand("GoToolchainName")
+type GoToolchainName = std.types.NonEmptyStr where brand("GoToolchainName")
 
 type GoRequireEntry {
   module_path: GoModulePath

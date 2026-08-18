@@ -2,8 +2,8 @@ module extdeps.cache.types
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/cache"
   }
@@ -46,7 +46,7 @@ type CatalogKeyDerivationFacts {
   invalidation_triggers: List<std.cache_interface.InvalidationTrigger>
 }
 
-fn invalidation_triggers_on_toolchain_change(triggers: List<InvalidationTrigger>) -> Bool {
+fn invalidation_triggers_on_toolchain_change(triggers: List<std.cache_interface.InvalidationTrigger>) -> Bool {
   triggers |> any(trigger => match trigger {
     ToolchainChange => true
     TtlExpiry { window: _ } => false
@@ -55,7 +55,7 @@ fn invalidation_triggers_on_toolchain_change(triggers: List<InvalidationTrigger>
   })
 }
 
-fn content_addressed_inputs(triggers: List<InvalidationTrigger>) -> List<CatalogInputSurface> {
+fn content_addressed_inputs(triggers: List<std.cache_interface.InvalidationTrigger>) -> List<CatalogInputSurface> {
   if invalidation_triggers_on_toolchain_change(triggers: triggers) {
     [UpsertSubject, ToolchainSpec]
   } else {
@@ -71,7 +71,7 @@ fn catalog_inputs_considered(kd: CatalogKeyDerivationFacts) -> List<CatalogInput
   }
 }
 
-fn catalog_key_derivation_classification(kd: CatalogKeyDerivationFacts) -> KeyDerivationClass {
+fn catalog_key_derivation_classification(kd: CatalogKeyDerivationFacts) -> std.cache_interface.KeyDerivationClass {
   match kd.key_inputs {
     ContentAddressed => ContentAddressedByValue
     NativeInternal { cited_inputs: _ } => NativeInternalHash

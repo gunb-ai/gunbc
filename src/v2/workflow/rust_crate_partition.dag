@@ -53,17 +53,17 @@ data rust_crate_partition_module_bearing_unit_target: Int = 6
 
 data stage0_r3_emit_shell_note: String = "R3-only emit shell crate (reexport surface, NOT a partition_fold CompilationUnit): modules list is the reexport bundle for render at cutover; those modules remain owned by module-bearing units in stage0_interim_explicit_assignment. Physical crate count = module_bearing (6) + emit_shell (1) = declared_core_target (7)."
 
-data stage0_unit_runtime: CompilationUnitId = "stage0-unit-runtime" as CompilationUnitId
-data stage0_unit_std_primitives: CompilationUnitId = "stage0-unit-std-primitives" as CompilationUnitId
-data stage0_unit_std_core: CompilationUnitId = "stage0-unit-std-core" as CompilationUnitId
-data stage0_unit_std_surface: CompilationUnitId = "stage0-unit-std-surface" as CompilationUnitId
-data stage0_unit_extdeps: CompilationUnitId = "stage0-unit-extdeps" as CompilationUnitId
-data stage0_unit_v1_infer: CompilationUnitId = "stage0-unit-v1-infer" as CompilationUnitId
-data stage0_unit_extdeps_languages: CompilationUnitId = "stage0-unit-extdeps-languages" as CompilationUnitId
-data stage0_unit_v1_artifact: CompilationUnitId = "stage0-unit-v1-artifact" as CompilationUnitId
-data stage0_unit_emit_core: CompilationUnitId = "stage0-unit-emit-core" as CompilationUnitId
+data stage0_unit_runtime: v2.std.compilers.compilation_unit.CompilationUnitId = "stage0-unit-runtime" as v2.std.compilers.compilation_unit.CompilationUnitId
+data stage0_unit_std_primitives: v2.std.compilers.compilation_unit.CompilationUnitId = "stage0-unit-std-primitives" as v2.std.compilers.compilation_unit.CompilationUnitId
+data stage0_unit_std_core: v2.std.compilers.compilation_unit.CompilationUnitId = "stage0-unit-std-core" as v2.std.compilers.compilation_unit.CompilationUnitId
+data stage0_unit_std_surface: v2.std.compilers.compilation_unit.CompilationUnitId = "stage0-unit-std-surface" as v2.std.compilers.compilation_unit.CompilationUnitId
+data stage0_unit_extdeps: v2.std.compilers.compilation_unit.CompilationUnitId = "stage0-unit-extdeps" as v2.std.compilers.compilation_unit.CompilationUnitId
+data stage0_unit_v1_infer: v2.std.compilers.compilation_unit.CompilationUnitId = "stage0-unit-v1-infer" as v2.std.compilers.compilation_unit.CompilationUnitId
+data stage0_unit_extdeps_languages: v2.std.compilers.compilation_unit.CompilationUnitId = "stage0-unit-extdeps-languages" as v2.std.compilers.compilation_unit.CompilationUnitId
+data stage0_unit_v1_artifact: v2.std.compilers.compilation_unit.CompilationUnitId = "stage0-unit-v1-artifact" as v2.std.compilers.compilation_unit.CompilationUnitId
+data stage0_unit_emit_core: v2.std.compilers.compilation_unit.CompilationUnitId = "stage0-unit-emit-core" as v2.std.compilers.compilation_unit.CompilationUnitId
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
 
@@ -90,10 +90,10 @@ data stage0_grounding_target_repointed_note: String = "REPOINTED, and the old ta
 
 The real dependency is the path-module binding authority, which is where module identity is DERIVED at parse rather than authored — v2.compiler.source_authority module_storage_binding_authority_note states that the hand-authored qualified-module rows project from it, not the other way round. So the interface maps ground when stage0 module ingest supplies real Node-carrier exports through that index."
 
-fn stage0_frontier_grounding_target() -> DeclarationRef {
-  DeclarationRef {
-    module_path: "v2.compiler.source_authority" as NonEmptyStr,
-    decl_name: "ModuleStorageIndex" as NonEmptyStr,
+fn stage0_frontier_grounding_target() -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
+    module_path: "v2.compiler.source_authority" as std.types.NonEmptyStr,
+    decl_name: "ModuleStorageIndex" as std.types.NonEmptyStr,
     field: WholeDeclaration,
   }
 }
@@ -116,22 +116,22 @@ fn stage0_module_dag_interface_grounding_is_debt() -> Bool {
   }
 }
 
-fn stage0_module_dag_exports_map() -> Map<ModuleId, List<Node>> {
+fn stage0_module_dag_exports_map() -> Map<v2.std.compilers.compilation_unit.ModuleId, List<Node>> {
   stage0_all_partitioned_modules()
     |> fold(init: empty_map(), f: fn(acc, basename) {
       map_insert(acc, stage0_module_id(basename: basename), Empty)
     })
 }
 
-fn stage0_module_dag_type_definitions_map() -> Map<ModuleId, List<ModuleTypeDefinitionRow>> {
+fn stage0_module_dag_type_definitions_map() -> Map<v2.std.compilers.compilation_unit.ModuleId, List<v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow>> {
   stage0_all_partitioned_modules()
     |> fold(init: empty_map(), f: fn(acc, basename) {
       map_insert(acc, stage0_module_id(basename: basename), Empty)
     })
 }
 
-fn stage0_module_id(basename: String) -> ModuleId {
-  basename as NonEmptyStr
+fn stage0_module_id(basename: String) -> v2.std.compilers.compilation_unit.ModuleId {
+  basename as std.types.NonEmptyStr
 }
 
 fn stage0_runtime_modules() -> List<String> {
@@ -259,17 +259,17 @@ fn stage0_all_partitioned_modules() -> List<String> {
 }
 
 fn stage0_assign_modules_to_unit(
-  assignment: Map<ModuleId, CompilationUnitId>,
+  assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>,
   modules: List<String>,
-  unit_id: CompilationUnitId
-) -> Map<ModuleId, CompilationUnitId> {
+  unit_id: v2.std.compilers.compilation_unit.CompilationUnitId
+) -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   modules
     |> fold(init: assignment, f: fn(acc, basename) {
       map_insert(acc, stage0_module_id(basename: basename), unit_id)
     })
 }
 
-fn stage0_interim_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
+fn stage0_interim_explicit_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   stage0_assign_modules_to_unit(
     assignment: stage0_assign_modules_to_unit(
       assignment: stage0_assign_modules_to_unit(
@@ -305,18 +305,18 @@ fn stage0_partition_parameter() -> PartitionParameter {
   ExplicitPartitionParam { partition: stage0_interim_explicit_partition() }
 }
 
-fn stage0_partition_provenance() -> PartitionProvenance {
+fn stage0_partition_provenance() -> v2.std.compilers.compilation_unit.PartitionProvenance {
   partition_provenance_hand_explicit()
 }
 
-fn stage0_module_dag_edge(from: String, to: String) -> ModuleDagEdge {
-  ModuleDagEdge {
+fn stage0_module_dag_edge(from: String, to: String) -> v2.std.compilers.compilation_unit.ModuleDagEdge {
+  v2.std.compilers.compilation_unit.ModuleDagEdge {
     from: stage0_module_id(basename: from),
     to: stage0_module_id(basename: to),
   }
 }
 
-fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
+fn stage0_cross_unit_import_edges() -> List<v2.std.compilers.compilation_unit.ModuleDagEdge> {
   [
     stage0_module_dag_edge(from: "std_algebra", to: "std_error_primitives"),
     stage0_module_dag_edge(from: "std_nat", to: "std_algebra"),
@@ -379,8 +379,8 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
   ]
 }
 
-fn stage0_module_dag() -> ModuleDag {
-  ModuleDag {
+fn stage0_module_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
+  v2.std.compilers.compilation_unit.ModuleDag {
     modules: stage0_all_partitioned_modules()
       |> map(basename => stage0_module_id(basename: basename)),
     edges: stage0_cross_unit_import_edges(),
@@ -391,7 +391,7 @@ fn stage0_module_dag() -> ModuleDag {
 
 fn resolve_partition_outcome(
   parameter: PartitionParameter,
-  module_dag: ModuleDag
+  module_dag: v2.std.compilers.compilation_unit.ModuleDag
 ) -> ResolvePartitionOutcome {
   match parameter {
     ExplicitPartitionParam { partition: explicit } =>
@@ -422,9 +422,9 @@ fn stage0_partition_receipt_outcome() -> Stage0PartitionReceiptOutcome {
 }
 
 fn module_dag_reaches(
-  edges: List<ModuleDagEdge>,
-  from: ModuleId,
-  to: ModuleId
+  edges: List<v2.std.compilers.compilation_unit.ModuleDagEdge>,
+  from: v2.std.compilers.compilation_unit.ModuleId,
+  to: v2.std.compilers.compilation_unit.ModuleId
 ) -> Bool {
   if from == to {
     true
@@ -436,9 +436,9 @@ fn module_dag_reaches(
 }
 
 fn module_pair_in_same_scc(
-  edges: List<ModuleDagEdge>,
-  left: ModuleId,
-  right: ModuleId
+  edges: List<v2.std.compilers.compilation_unit.ModuleDagEdge>,
+  left: v2.std.compilers.compilation_unit.ModuleId,
+  right: v2.std.compilers.compilation_unit.ModuleId
 ) -> Bool {
   (left != right)
     && module_dag_reaches(edges: edges, from: left, to: right)
@@ -446,8 +446,8 @@ fn module_pair_in_same_scc(
 }
 
 fn assignment_has_scc_split(
-  module_dag: ModuleDag,
-  assignment: Map<ModuleId, CompilationUnitId>
+  module_dag: v2.std.compilers.compilation_unit.ModuleDag,
+  assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>
 ) -> Bool {
   module_dag.modules |> any(left =>
     module_dag.modules |> any(right => {
@@ -470,24 +470,24 @@ fn assignment_has_scc_split(
   )
 }
 
-fn unit_graph_has_cycle(units: List<CompilationUnit>) -> Bool {
+fn unit_graph_has_cycle(units: List<v2.std.compilers.compilation_unit.CompilationUnit>) -> Bool {
   let unit_names = units |> map(unit => unit.id as String)
   let edges = units
     |> flat_map(unit =>
       unit.deps
-        |> map(dep => GraphEdge { caller: unit.id as String, callee: dep as String })
+        |> map(dep => std.graph.GraphEdge { caller: unit.id as String, callee: dep as String })
     )
   graph_has_multi_node_scc(
     names: unit_names,
-    graph: CallGraph { edges: edges }
+    graph: std.graph.CallGraph { edges: edges }
   )
 }
 
 fn validate_partition_r4(
-  module_dag: ModuleDag,
-  assignment: Map<ModuleId, CompilationUnitId>,
-  units: List<CompilationUnit>
-) -> PartitionR4ValidityVerdict {
+  module_dag: v2.std.compilers.compilation_unit.ModuleDag,
+  assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>,
+  units: List<v2.std.compilers.compilation_unit.CompilationUnit>
+) -> v2.std.compilers.compilation_unit.PartitionR4ValidityVerdict {
   if assignment_has_scc_split(module_dag: module_dag, assignment: assignment) {
     PartitionR4Refused {
       cause: SccSplit { detail: "Rust R4: mutually dependent modules assigned to different compilation units" }
@@ -501,7 +501,7 @@ fn validate_partition_r4(
   }
 }
 
-fn stage0_single_crate_assignment() -> Map<ModuleId, CompilationUnitId> {
+fn stage0_single_crate_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   stage0_assign_modules_to_unit(
     assignment: empty_map(),
     modules: stage0_all_partitioned_modules(),
@@ -509,7 +509,7 @@ fn stage0_single_crate_assignment() -> Map<ModuleId, CompilationUnitId> {
   )
 }
 
-fn stage0_single_crate_fold_outcome() -> PartitionFoldOutcome {
+fn stage0_single_crate_fold_outcome() -> v2.std.compilers.compilation_unit.PartitionFoldOutcome {
   let dag = stage0_module_dag()
   partition_fold_outcome(
     module_dag: dag,
@@ -517,12 +517,12 @@ fn stage0_single_crate_fold_outcome() -> PartitionFoldOutcome {
   )
 }
 
-fn compilation_unit_member_count(units: List<CompilationUnit>) -> Int {
+fn compilation_unit_member_count(units: List<v2.std.compilers.compilation_unit.CompilationUnit>) -> Int {
   units |> flat_map(unit => unit.members) |> count
 }
 
 fn stage0_partition_member_coverage_consistent(
-  left: PartitionFoldOutcome,
+  left: v2.std.compilers.compilation_unit.PartitionFoldOutcome,
   right: Stage0PartitionReceiptOutcome
 ) -> Bool {
   match left {
@@ -699,8 +699,8 @@ fn stage0_partition_fold_ok() -> Bool {
   }
 }
 
-data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — replace ExplicitPartition assignment with PolicyPartition \{ target_crate_count: declared_core_target } when balanced partition policy lands; provenance flips HandExplicit → PolicyDerived.")
+data rust_crate_partition_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — replace ExplicitPartition assignment with PolicyPartition \{ target_crate_count: declared_core_target } when balanced partition policy lands; provenance flips HandExplicit → PolicyDerived.")
 
-data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
+data stage0_compilation_units_list_wrapper_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
 
-data stage0_module_dag_interface_grounding_debt_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_module_dag_interface_grounding — populate ModuleDag.exports with frontier-derived cross-module export Nodes and type_definitions with by-value ModuleTypeDefinitionRow rows when stage0 module ingest provides them; until then R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain (not CompilationUnit.interface Nodes).")
+data stage0_module_dag_interface_grounding_debt_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_module_dag_interface_grounding — populate ModuleDag.exports with frontier-derived cross-module export Nodes and type_definitions with by-value ModuleTypeDefinitionRow rows when stage0 module ingest provides them; until then R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain (not CompilationUnit.interface Nodes).")

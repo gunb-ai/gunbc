@@ -3,7 +3,7 @@ module test.claim.state_durability_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-type FixtureTarget = NonEmptyStr where brand("FixtureTarget")
+type FixtureTarget = std.types.NonEmptyStr where brand("FixtureTarget")
 
 type FixtureReadbackSubject {
   path: std.types.NonEmptyStr
@@ -14,31 +14,31 @@ data fixture_subject: FixtureReadbackSubject = FixtureReadbackSubject {
   path: "/etc/fixture-policy",
 }
 
-data fixture_boundary: StateDurabilityBoundary = ControlPlaneRestartBoundary {
+data fixture_boundary: std.state_durability.StateDurabilityBoundary = ControlPlaneRestartBoundary {
   mode: LifecycleGracefulRestart,
 }
 
-data fixture_wrong_boundary: StateDurabilityBoundary = SoftwareReplacementBoundary {
+data fixture_wrong_boundary: std.state_durability.StateDurabilityBoundary = SoftwareReplacementBoundary {
   scope: ControlPlaneFirmwareReplacement,
 }
 
-data fixture_digest_a: Digest = sha256_digest(
+data fixture_digest_a: extdeps.crypto.hash.Digest = sha256_digest(
   hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 )
 
-data fixture_digest_b: Digest = sha256_digest(
+data fixture_digest_b: extdeps.crypto.hash.Digest = sha256_digest(
   hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 )
 
-fn fixture_definition_linkage(reason: NonEmptyStr) -> StateDefinitionLinkage {
+fn fixture_definition_linkage(reason: std.types.NonEmptyStr) -> std.state_durability.StateDefinitionLinkage {
   CallerAssertedDefinitionLinkage {
     reason: reason,
     dissolution: symbol_index_subtree_digest_dissolution,
   }
 }
 
-fn fixture_definition_linkages() -> StateRealizationDefinitionLinkages {
-  StateRealizationDefinitionLinkages {
+fn fixture_definition_linkages() -> std.state_durability.StateRealizationDefinitionLinkages {
+  std.state_durability.StateRealizationDefinitionLinkages {
     projection: fixture_definition_linkage(reason: "fixture projection definition is caller asserted"),
     verifier: fixture_definition_linkage(reason: "fixture verifier definition is caller asserted"),
     observer: fixture_definition_linkage(reason: "fixture observer definition is caller asserted"),
@@ -47,24 +47,24 @@ fn fixture_definition_linkages() -> StateRealizationDefinitionLinkages {
   }
 }
 
-data fixture_realization: StateRealizationIdentity = StateRealizationIdentity {
+data fixture_realization: std.state_durability.StateRealizationIdentity = std.state_durability.StateRealizationIdentity {
   realization_id: "fixture-realizer",
   definition_linkages: fixture_definition_linkages(),
 }
 
-data fixture_stale_realization: StateRealizationIdentity = StateRealizationIdentity {
+data fixture_stale_realization: std.state_durability.StateRealizationIdentity = std.state_durability.StateRealizationIdentity {
   realization_id: "fixture-stale-realizer",
   definition_linkages: fixture_definition_linkages(),
 }
 
-data fixture_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
+data fixture_capability_version: std.state_durability.StateDurabilityCapabilityVersion = std.state_durability.StateDurabilityCapabilityVersion {
   version: "fixture-capability-v1",
   definition_linkage: fixture_definition_linkage(
     reason: "fixture capability definition is caller asserted",
   ),
 }
 
-data fixture_stale_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
+data fixture_stale_capability_version: std.state_durability.StateDurabilityCapabilityVersion = std.state_durability.StateDurabilityCapabilityVersion {
   version: "fixture-capability-v0",
   definition_linkage: fixture_definition_linkage(
     reason: "fixture stale capability definition is caller asserted",
@@ -72,11 +72,11 @@ data fixture_stale_capability_version: StateDurabilityCapabilityVersion = StateD
 }
 
 fn fixture_admission(
-  realization: StateRealizationIdentity,
-  capability_version: StateDurabilityCapabilityVersion,
-  desired: Digest,
+  realization: std.state_durability.StateRealizationIdentity,
+  capability_version: std.state_durability.StateDurabilityCapabilityVersion,
+  desired: extdeps.crypto.hash.Digest,
 ) -> StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
-  StateDurabilityAdmission {
+  std.state_durability.StateDurabilityAdmission {
     target: fixture_target,
     desired_state_digest: desired,
     realization: realization,
@@ -95,10 +95,10 @@ fn current_admission() -> StateDurabilityAdmission<FixtureTarget, FixtureReadbac
 }
 
 fn fixture_capability(
-  realization: StateRealizationIdentity,
-  capability_version: StateDurabilityCapabilityVersion,
-) -> StateDurabilityCapability {
-  StateDurabilityCapability {
+  realization: std.state_durability.StateRealizationIdentity,
+  capability_version: std.state_durability.StateDurabilityCapabilityVersion,
+) -> std.state_durability.StateDurabilityCapability {
+  std.state_durability.StateDurabilityCapability {
     realization: realization,
     capability_version: capability_version,
     supported_boundaries: [fixture_boundary],
@@ -106,7 +106,7 @@ fn fixture_capability(
   }
 }
 
-fn current_capability() -> StateDurabilityCapability {
+fn current_capability() -> std.state_durability.StateDurabilityCapability {
   fixture_capability(
     realization: fixture_realization,
     capability_version: fixture_capability_version,
@@ -115,10 +115,10 @@ fn current_capability() -> StateDurabilityCapability {
 
 fn fixture_activation(
   admission: StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
-  receipt_id: NonEmptyStr,
+  receipt_id: std.types.NonEmptyStr,
 ) -> StateActivationEvidence<FixtureTarget, FixtureReadbackSubject> {
   ActivationVerified {
-    receipt: StateActivationReceipt {
+    receipt: std.state_durability.StateActivationReceipt {
       perturbation_receipt_id: receipt_id,
       target: admission.target,
       subject: admission.readback_subject,
@@ -131,10 +131,10 @@ fn fixture_activation(
 }
 
 fn fixture_before_readback(
-  receipt_id: NonEmptyStr,
-  digest: Digest,
+  receipt_id: std.types.NonEmptyStr,
+  digest: extdeps.crypto.hash.Digest,
 ) -> StateBeforeReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
-  StateBeforeReadbackReceipt {
+  std.state_durability.StateBeforeReadbackReceipt {
     perturbation_receipt_id: receipt_id,
     target: fixture_target,
     subject: fixture_subject,
@@ -144,10 +144,10 @@ fn fixture_before_readback(
 }
 
 fn fixture_after_readback(
-  receipt_id: NonEmptyStr,
-  digest: Digest,
+  receipt_id: std.types.NonEmptyStr,
+  digest: extdeps.crypto.hash.Digest,
 ) -> StateAfterReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
-  StateAfterReadbackReceipt {
+  std.state_durability.StateAfterReadbackReceipt {
     perturbation_receipt_id: receipt_id,
     target: fixture_target,
     subject: fixture_subject,
@@ -160,15 +160,15 @@ fn fixture_after_readback(
 
 fn fixture_evidence(
   admission: StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
-  boundary: StateDurabilityBoundary,
-  readback_receipt_id: NonEmptyStr,
-  before: Digest,
-  after: Digest,
+  boundary: std.state_durability.StateDurabilityBoundary,
+  readback_receipt_id: std.types.NonEmptyStr,
+  before: extdeps.crypto.hash.Digest,
+  after: extdeps.crypto.hash.Digest,
   activation: StateActivationEvidence<FixtureTarget, FixtureReadbackSubject>,
 ) -> StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
-  StateDurabilityEvidence {
+  std.state_durability.StateDurabilityEvidence {
     admission: admission,
-    perturbation: StatePerturbationReceipt {
+    perturbation: std.state_durability.StatePerturbationReceipt {
       receipt_id: "fixture-perturbation",
       target: fixture_target,
       boundary: boundary,
@@ -238,7 +238,7 @@ test fn boundary_requirements_are_nonempty_and_deduplicate_by_construction() -> 
 }
 
 test fn direct_duplicate_boundary_literal_reaches_typed_counted_refusal() -> Bool {
-  let duplicated = StateDurabilityBoundaryRequirements {
+  let duplicated = std.state_durability.StateDurabilityBoundaryRequirements {
     first: fixture_boundary,
     additional_unique: [fixture_boundary, fixture_boundary],
   }

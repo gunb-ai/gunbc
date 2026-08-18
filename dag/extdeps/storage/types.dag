@@ -2,8 +2,8 @@ module extdeps.storage.types
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/PCI_Express"
   }
@@ -14,7 +14,7 @@ type PcieGeneration =
   | Gen4
   | Gen5
 
-fn pcie_generation_per_lane_bandwidth(g: PcieGeneration) -> Bandwidth {
+fn pcie_generation_per_lane_bandwidth(g: PcieGeneration) -> std.measure.Bandwidth {
   match g {
     Gen3 => bandwidth(8000000000 * 128 / 130 / 8)
     Gen4 => bandwidth(16000000000 * 128 / 130 / 8)
@@ -28,12 +28,12 @@ type PcieLink {
   lane_count: Int
 }
 
-fn pcie_link_bandwidth(link: PcieLink) -> Bandwidth {
+fn pcie_link_bandwidth(link: PcieLink) -> std.measure.Bandwidth {
   bandwidth(bandwidth_count(pcie_generation_per_lane_bandwidth(g: link.generation)) * link.lane_count)
 }
 
-fn pcie_interconnect_link(link: PcieLink) -> InterconnectLink {
-  InterconnectLink {
+fn pcie_interconnect_link(link: PcieLink) -> std.machine_shape.InterconnectLink {
+  std.machine_shape.InterconnectLink {
     bandwidth: pcie_link_bandwidth(link: link)
     latency: none
   }
@@ -89,7 +89,7 @@ fn nvme_storage_device(catalog: NvmeDeviceCatalogRow, persistence: PersistenceKi
   }
 }
 
-fn storage_device_capacity(d: StorageDevice) -> ByteSize {
+fn storage_device_capacity(d: StorageDevice) -> std.measure.ByteSize {
   match d {
     NvmeDevice { catalog: c, serial: _, persistence: _ } => c.capacity_bytes
     BareDevice { capacity: cap, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } => cap
@@ -103,14 +103,14 @@ fn storage_device_medium(d: StorageDevice) -> StorageMedium {
   }
 }
 
-fn storage_device_read_bandwidth(d: StorageDevice) -> Bandwidth? {
+fn storage_device_read_bandwidth(d: StorageDevice) -> std.measure.Bandwidth? {
   match d {
     NvmeDevice { catalog: c, serial: _, persistence: _ } => Present { value: c.sequential_read }
     BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: bw, write_bandwidth: _, persistence: _ } => bw
   }
 }
 
-fn storage_device_write_bandwidth(d: StorageDevice) -> Bandwidth? {
+fn storage_device_write_bandwidth(d: StorageDevice) -> std.measure.Bandwidth? {
   match d {
     NvmeDevice { catalog: c, serial: _, persistence: _ } => Present { value: c.sequential_write }
     BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: bw, persistence: _ } => bw
@@ -124,7 +124,7 @@ fn storage_device_pcie_link(d: StorageDevice) -> PcieLink? {
   }
 }
 
-fn storage_device_serial(d: StorageDevice) -> NonEmptyStr? {
+fn storage_device_serial(d: StorageDevice) -> std.types.NonEmptyStr? {
   match d {
     NvmeDevice { catalog: _, serial: s, persistence: _ } => s
     BareDevice { capacity: _, medium: _, serial: s, read_bandwidth: _, write_bandwidth: _, persistence: _ } => s

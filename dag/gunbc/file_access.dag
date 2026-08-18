@@ -22,7 +22,7 @@ fn path_has_dotdot_segment(path: String) -> Bool {
     || string_contains(s: path, pattern: "/..")
 }
 
-fn path_within_file_tree_scope(scope: FileTreeScope, path: NonEmptyStr) -> Bool {
+fn path_within_file_tree_scope(scope: FileTreeScope, path: std.types.NonEmptyStr) -> Bool {
   let root = scope.root_path as String
   let candidate = path as String
   if path_has_dotdot_segment(path: candidate) {
@@ -36,7 +36,7 @@ fn path_within_file_tree_scope(scope: FileTreeScope, path: NonEmptyStr) -> Bool 
   }
 }
 
-fn classify_file_access(obs: FileAccessObservation) -> ObservationVerdict {
+fn classify_file_access(obs: FileAccessObservation) -> std.upsert_decision.ObservationVerdict {
   match obs {
     PathAbsent => Absent
     ReadOnlyWithinNamespace => Drifted
@@ -47,7 +47,7 @@ fn classify_file_access(obs: FileAccessObservation) -> ObservationVerdict {
 
 fn decision_for_file_access(obs: FileAccessObservation) -> UpsertDecision<FileAccessPlan> {
   match obs {
-    PathOutsideNamespace => Refuse { reason: "path outside file tree scope" as NonEmptyStr }
+    PathOutsideNamespace => Refuse { reason: "path outside file tree scope" as std.types.NonEmptyStr }
     ReadOnlyWithinNamespace => Apply { plan: ChmodOwnerWriteWithinTempTree }
     WritableWithinNamespace => Noop
     PathAbsent => Apply { plan: CreateParent }
@@ -58,7 +58,7 @@ fn classify_file_access_upsert(
   scope: FileTreeScope,
   obs: FileAccessObservation,
 ) -> std.upsert_decision.UpsertClassification<FileAccessPlan> {
-  UpsertClassification {
+  std.upsert_decision.UpsertClassification {
     verdict: classify_file_access(obs: obs),
     decision: decision_for_file_access(obs: obs),
   }

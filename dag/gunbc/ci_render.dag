@@ -1,7 +1,7 @@
 module gunbc.ci_render
 
 
-fn glyph_for(id: SymbolId, tier: Tier) -> String {
+fn glyph_for(id: std.symbols.SymbolId, tier: std.symbols.Tier) -> String {
   match resolve_symbol(id: id, tier: tier) {
     Present { value: s } => s
     Absent => ""
@@ -17,20 +17,20 @@ fn pad_to(text: String, width: Int) -> String {
   }
 }
 
-fn plain_span(text: String) -> Span {
-  Span { text: text, style: SpanStyle { color: none, bold: false, italic: false, symbol: none } }
+fn plain_span(text: String) -> std.render.Span {
+  std.render.Span { text: text, style: std.render.SpanStyle { color: none, bold: false, italic: false, symbol: none } }
 }
 
-fn dim_span(text: String) -> Span {
-  Span { text: text, style: SpanStyle { color: Present { value: Dim }, bold: false, italic: false, symbol: none } }
+fn dim_span(text: String) -> std.render.Span {
+  std.render.Span { text: text, style: std.render.SpanStyle { color: Present { value: Dim }, bold: false, italic: false, symbol: none } }
 }
 
 
-fn line_of(span: Span) -> Line {
-  Line { spans: [span], indent: 0, max_width: none }
+fn line_of(span: std.render.Span) -> std.render.Line {
+  std.render.Line { spans: [span], indent: 0, max_width: none }
 }
 
-fn box_top(title: String, width: Int, tier: Tier) -> Line {
+fn box_top(title: String, width: Int, tier: std.symbols.Tier) -> std.render.Line {
   let hz = glyph_for(id: BoxHorizontal, tier: tier)
   let tr = glyph_for(id: BoxCornerTopRight, tier: tier)
   let prefix = concat(glyph_for(id: BoxCornerTopLeft, tier: tier), concat(hz, concat(" ", concat(title, " "))))
@@ -38,7 +38,7 @@ fn box_top(title: String, width: Int, tier: Tier) -> Line {
   line_of(span: dim_span(text: concat(prefix, concat(repeat_string(s: hz, n: dashes), tr))))
 }
 
-fn box_bottom(width: Int, tier: Tier) -> Line {
+fn box_bottom(width: Int, tier: std.symbols.Tier) -> std.render.Line {
   let hz = glyph_for(id: BoxHorizontal, tier: tier)
   let bl = glyph_for(id: BoxCornerBottomLeft, tier: tier)
   let br = glyph_for(id: BoxCornerBottomRight, tier: tier)
@@ -46,20 +46,20 @@ fn box_bottom(width: Int, tier: Tier) -> Line {
   line_of(span: dim_span(text: concat(bl, concat(repeat_string(s: hz, n: dashes), br))))
 }
 
-fn box_content_line(text: String, width: Int, tier: Tier) -> Line {
+fn box_content_line(text: String, width: Int, tier: std.symbols.Tier) -> std.render.Line {
   let v = glyph_for(id: BoxVertical, tier: tier)
   let inner_budget = width - (2 * string_display_width(s: v)) - 2
   let inner = pad_to(text: truncate_text(text: text, max_width: inner_budget), width: inner_budget)
   line_of(span: plain_span(text: concat(v, concat(" ", concat(inner, concat(" ", v))))))
 }
 
-fn boxed_frame(title: String, body: List<String>, width: Int, tier: Tier) -> std.render.RenderFrame {
+fn boxed_frame(title: String, body: List<String>, width: Int, tier: std.symbols.Tier) -> std.render.RenderFrame {
   let content = map(body, l => box_content_line(text: l, width: width, tier: tier))
   let all = concat([box_top(title: title, width: width, tier: tier)], concat(content, [box_bottom(width: width, tier: tier)]))
   std.render.RenderFrame { lines: all, cursor_action: Append }
 }
 
-fn format_duration(d: Nanosecond) -> String {
+fn format_duration(d: std.measure.Nanosecond) -> String {
   let ns = nanosecond_count(n: d)
   if ns < 1000 {
     concat(to_string(ns), "ns")
@@ -72,11 +72,11 @@ fn format_duration(d: Nanosecond) -> String {
   }
 }
 
-fn timing_cell(label: String, d: Nanosecond) -> String {
+fn timing_cell(label: String, d: std.measure.Nanosecond) -> String {
   concat(label, concat(": ", format_duration(d: d)))
 }
 
-fn percentile_row(p50: Nanosecond, p90: Nanosecond, p95: Nanosecond, p99: Nanosecond, p100: Nanosecond) -> String {
+fn percentile_row(p50: std.measure.Nanosecond, p90: std.measure.Nanosecond, p95: std.measure.Nanosecond, p99: std.measure.Nanosecond, p100: std.measure.Nanosecond) -> String {
   concat(timing_cell(label: "p50", d: p50),
   concat("  ", concat(timing_cell(label: "p90", d: p90),
   concat("  ", concat(timing_cell(label: "p95", d: p95),
@@ -84,15 +84,15 @@ fn percentile_row(p50: Nanosecond, p90: Nanosecond, p95: Nanosecond, p99: Nanose
   concat("  ", timing_cell(label: "max", d: p100)))))))))
 }
 
-fn percentile_box_frame(title: String, p50: Nanosecond, p90: Nanosecond, p95: Nanosecond, p99: Nanosecond, p100: Nanosecond, width: Int, tier: Tier) -> std.render.RenderFrame {
+fn percentile_box_frame(title: String, p50: std.measure.Nanosecond, p90: std.measure.Nanosecond, p95: std.measure.Nanosecond, p99: std.measure.Nanosecond, p100: std.measure.Nanosecond, width: Int, tier: std.symbols.Tier) -> std.render.RenderFrame {
   boxed_frame(title: title, body: [percentile_row(p50: p50, p90: p90, p95: p95, p99: p99, p100: p100)], width: width, tier: tier)
 }
 
-fn render_capability(color: Bool) -> RenderCapability {
-  RenderCapability { color: color, tier: Unicode, cursor_addressable: false }
+fn render_capability(color: Bool) -> std.render.RenderCapability {
+  std.render.RenderCapability { color: color, tier: Unicode, cursor_addressable: false }
 }
 
-fn percentiles_box_frame_ns(title: String, p50: Int, p90: Int, p95: Int, p99: Int, p100: Int, width: Int, tier: Tier) -> std.render.RenderFrame {
+fn percentiles_box_frame_ns(title: String, p50: Int, p90: Int, p95: Int, p99: Int, p100: Int, width: Int, tier: std.symbols.Tier) -> std.render.RenderFrame {
   percentile_box_frame(
     title: title,
     p50: nanosecond(count: p50), p90: nanosecond(count: p90), p95: nanosecond(count: p95),
@@ -137,7 +137,7 @@ type HotRowAcc {
 data ansi_red_code: String = "\x1b[38;5;196m"
 data ansi_reset_code: String = "\x1b[0m"
 
-fn box_content_line_hot(text: String, width: Int, tier: Tier, hot: Bool, color: Bool) -> Line {
+fn box_content_line_hot(text: String, width: Int, tier: std.symbols.Tier, hot: Bool, color: Bool) -> std.render.Line {
   let v = glyph_for(id: BoxVertical, tier: tier)
   let marked = if hot { concat("🔥 ", text) } else { text }
   let inner_budget = width - (2 * string_display_width(s: v)) - 2
@@ -146,7 +146,7 @@ fn box_content_line_hot(text: String, width: Int, tier: Tier, hot: Bool, color: 
   line_of(span: plain_span(text: concat(v, concat(" ", concat(painted, concat(" ", v))))))
 }
 
-fn hot_content_lines(body: List<String>, hot_count: Int, width: Int, tier: Tier, color: Bool) -> List<Line> {
+fn hot_content_lines(body: List<String>, hot_count: Int, width: Int, tier: std.symbols.Tier, color: Bool) -> List<std.render.Line> {
   let acc = fold(body, init: HotRowAcc { lines: [], idx: 0 }, f: (a, text) =>
     HotRowAcc {
       lines: concat(a.lines, [box_content_line_hot(text: text, width: width, tier: tier, hot: a.idx < hot_count, color: color)]),
@@ -156,7 +156,7 @@ fn hot_content_lines(body: List<String>, hot_count: Int, width: Int, tier: Tier,
   acc.lines
 }
 
-fn boxed_frame_hot(title: String, body: List<String>, hot_count: Int, width: Int, tier: Tier, color: Bool) -> std.render.RenderFrame {
+fn boxed_frame_hot(title: String, body: List<String>, hot_count: Int, width: Int, tier: std.symbols.Tier, color: Bool) -> std.render.RenderFrame {
   let content = hot_content_lines(body: body, hot_count: hot_count, width: width, tier: tier, color: color)
   let all = concat([box_top(title: title, width: width, tier: tier)], concat(content, [box_bottom(width: width, tier: tier)]))
   std.render.RenderFrame { lines: all, cursor_action: Append }

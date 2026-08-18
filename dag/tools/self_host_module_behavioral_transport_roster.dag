@@ -45,15 +45,15 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     module_path: "src/v2/compiler/03_body_producer.dag",
     shim_lib_rel: "dag/tools/self_host_body_producer_shims/lib.rs",
     shim_writes: [
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_node.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_node.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_algebra.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_algebra.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_diagnostic.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_diagnostic.rs"
       }
@@ -61,7 +61,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     driver_rel: "dag/tools/self_host_body_producer_shims/witness_main.rs",
     pass_marker: "SELF_HOST_BODY_PRODUCER_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
-      CuratedSeedLinkedClaimRun {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedClaimRun {
         entry_rel: "src/v2/test/claim/manual/structured_body_dispatch.dag",
         function: "structured_body_dispatch_accepts_transform_call"
       }
@@ -81,55 +81,55 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     module_path: "src/v2/compiler/03_normalize.dag",
     shim_lib_rel: "dag/tools/self_host_03_normalize_shims/lib.rs",
     shim_writes: [
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_algebra.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_algebra.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_collection.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_collection.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_grammar.rs",
         source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_grammar.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_diagnostic.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_diagnostic.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_node.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_node.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_compilers_sugar.rs",
         source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_compilers_sugar.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_compiler_body_lowering_fold.rs",
         source_rel: "dag/tools/self_host_03_normalize_shims/v2_compiler_body_lowering_fold.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_compiler_normalized_tree.rs",
         source_rel: "dag/tools/self_host_03_normalize_shims/v2_compiler_normalized_tree.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_extdeps_languages_dag.rs",
         source_rel: "dag/tools/self_host_03_normalize_shims/v2_extdeps_languages_dag.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "std_algebra.rs",
         source_rel: "dag/tools/self_host_03_normalize_shims/std_algebra.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "std_types.rs",
         source_rel: "dag/tools/self_host_03_normalize_shims/std_types.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_integer.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_integer.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_compiler_namespace_graft.rs",
         source_rel: "dag/tools/self_host_03_normalize_shims/v2_compiler_namespace_graft.rs"
       }
@@ -155,7 +155,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     driver_rel: "dag/tools/self_host_04_infer_shims/witness_main.rs",
     pass_marker: "SELF_HOST_04_INFER_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
-      CuratedSeedLinkedClaimRun {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedClaimRun {
         entry_rel: "src/v2/test/compiler/pipeline/infer_stage_test.dag",
         function: "pipeline_infer_add_fixture_relationship_green"
       }
@@ -169,7 +169,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     driver_rel: "dag/tools/self_host_target_carriers_shims/witness_main.rs",
     pass_marker: "SELF_HOST_TARGET_CARRIERS_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
-      CuratedSeedLinkedClaimRun {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedClaimRun {
         entry_rel: "src/v2/test/claim/manual/target_carriers_fidelity_test.dag",
         function: "target_carriers_declared_loss_fidelity_holds"
       }
@@ -183,7 +183,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     driver_rel: "dag/tools/self_host_discovery_enumeration_shims/witness_main.rs",
     pass_marker: "SELF_HOST_DISCOVERY_ENUMERATION_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
-      CuratedSeedLinkedClaimRun {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedClaimRun {
         entry_rel: "src/v2/test/claim/discovery_enumeration_test.dag",
         function: "discovery_enumeration_unified_claim_arm_modules_holds"
       }
@@ -203,7 +203,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     module_path: "src/v2/compiler/parse_engine_hooks.dag",
     shim_lib_rel: "dag/tools/self_host_parse_engine_hooks_shims/lib.rs",
     shim_writes: [
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_node.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_node.rs"
       }
@@ -211,7 +211,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     driver_rel: "dag/tools/self_host_parse_engine_hooks_shims/witness_main.rs",
     pass_marker: "SELF_HOST_PARSE_ENGINE_HOOKS_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
-      CuratedSeedLinkedClaimRun {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedClaimRun {
         entry_rel: "src/v2/test/claim/parse_engine_hooks_test.dag",
         function: "parse_engine_hooks_symbols_match_grammar_productions"
       }
@@ -249,15 +249,15 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     module_path: "src/v2/compiler/use_site_verdict.dag",
     shim_lib_rel: "dag/tools/self_host_use_site_verdict_shims/lib.rs",
     shim_writes: [
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_node.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_node.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_algebra.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_algebra.rs"
       },
-      CuratedSeedLinkedShimWrite {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_collection.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_collection.rs"
       }
@@ -265,11 +265,11 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     driver_rel: "dag/tools/self_host_use_site_verdict_shims/witness_main.rs",
     pass_marker: "SELF_HOST_USE_SITE_VERDICT_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
-      CuratedSeedLinkedClaimRun {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedClaimRun {
         entry_rel: "src/v2/test/claim/use_site_verdict_test.dag",
         function: "use_site_verdict_round_trips_every_variant"
       },
-      CuratedSeedLinkedClaimRun {
+      tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedClaimRun {
         entry_rel: "src/v2/test/claim/use_site_verdict_test.dag",
         function: "use_site_verdict_absent_edge_is_distinguishable_from_unclassified"
       }

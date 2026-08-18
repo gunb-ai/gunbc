@@ -136,7 +136,7 @@ fn any_provision(components: List<ComponentInstance>, pred: fn(CapabilityProvisi
 // sub-facility rather than the mere presence of a provision of that kind, so a management
 // device offering power control but no recovery path does not satisfy a contract that asked
 // for recovery.
-fn requirement_met(components: List<ComponentInstance>, r: CapabilityRequirement) -> Bool {
+fn requirement_met(components: List<ComponentInstance>, r: product.compute_board.intent.CapabilityRequirement) -> Bool {
   match r {
     ComputeCores { minimum_cores: n } =>
       sum_over_components(components: components, f: provision_cores) >= hardware_thread_count_value(t: n)
@@ -173,29 +173,29 @@ fn requirement_met(components: List<ComponentInstance>, r: CapabilityRequirement
   }
 }
 
-fn justification_discharges(j: ComponentJustification, cap: BoardCapability) -> Bool {
+fn justification_discharges(j: ComponentJustification, cap: product.compute_board.intent.BoardCapability) -> Bool {
   match j {
     DischargesCapability { capability: c } => capability_eq(a: c, b: cap)
     ImposedByComponent { by: _, requirement: _, authority: _ } => false
   }
 }
 
-fn component_discharges(c: ComponentInstance, cap: BoardCapability) -> Bool {
+fn component_discharges(c: ComponentInstance, cap: product.compute_board.intent.BoardCapability) -> Bool {
   fold(c.justifications, init: false, f: fn(acc, j) {
     acc || justification_discharges(j: j, cap: cap)
   })
 }
 
-fn capability_satisfied(components: List<ComponentInstance>, cap: BoardCapability) -> Bool {
+fn capability_satisfied(components: List<ComponentInstance>, cap: product.compute_board.intent.BoardCapability) -> Bool {
   fold(components, init: false, f: fn(acc, c) {
     acc || component_discharges(c: c, cap: cap)
   })
 }
 
 fn unsatisfied_board_capabilities(
-  intent: ComputeBoardIntent,
+  intent: product.compute_board.intent.ComputeBoardIntent,
   components: List<ComponentInstance>
-) -> List<BoardCapability> {
+) -> List<product.compute_board.intent.BoardCapability> {
   intent.requirements
     |> filter(r => !requirement_met(components: components, r: r))
     |> map(r => requirement_capability(r: r))
@@ -260,7 +260,7 @@ fn board_is_ready(r: BoardReadiness) -> Bool {
 // COLLATERAL refusal, while an incomplete or duplicated population is a DESIGN refusal — the
 // same reading the family split exists to preserve.
 fn project_contact_map_standing(
-  standing: PackageContactMapStanding
+  standing: extdeps.cpu.ampere_altra_package.PackageContactMapStanding
 ) -> BoardReadiness {
   match standing {
     PackageContactMapAdmitted { resolved: _ } =>
@@ -294,7 +294,7 @@ fn project_contact_map_standing(
 
 // Reference-board collateral projects from its OWN type into the collateral family, so the two
 // subjects reach readiness by separate routes and neither can render as the other.
-fn project_reference_board_standing(standing: ReferenceBoardCollateralStanding) -> BoardReadiness {
+fn project_reference_board_standing(standing: extdeps.cpu.ampere_altra_package.ReferenceBoardCollateralStanding) -> BoardReadiness {
   match standing {
     ReferenceBoardCollateralAvailable =>
       BoardReadiness { collateral: [], design: [], manufacturing: [] }
@@ -316,7 +316,7 @@ fn merge_readiness(a: BoardReadiness, b: BoardReadiness) -> BoardReadiness {
 }
 
 fn composition_readiness(
-  intent: ComputeBoardIntent,
+  intent: product.compute_board.intent.ComputeBoardIntent,
   components: List<ComponentInstance>
 ) -> BoardReadiness {
   BoardReadiness {
@@ -343,10 +343,10 @@ fn composition_readiness(
 // and passed, proving the projection rather than its reachability. A claim about a fold must be
 // asserted THROUGH the fold; anything else tests a function that the product may not call.
 fn board_readiness(
-  intent: ComputeBoardIntent,
+  intent: product.compute_board.intent.ComputeBoardIntent,
   components: List<ComponentInstance>,
-  contact_standing: PackageContactMapStanding,
-  reference_board_standing: ReferenceBoardCollateralStanding
+  contact_standing: extdeps.cpu.ampere_altra_package.PackageContactMapStanding,
+  reference_board_standing: extdeps.cpu.ampere_altra_package.ReferenceBoardCollateralStanding
 ) -> BoardReadiness {
   merge_readiness(
     a: merge_readiness(

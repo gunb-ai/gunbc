@@ -10,10 +10,10 @@ data spark_serving_desired_note: String = "OPERATOR DECLARATION (2026-08-12): LA
 
 data spark_serving_configuration_digest_note: String = "ServingConfigurationIdentity.configuration_digest is derived by spark_serving_configuration_identity from typed policy fields — never authored as a parallel literal."
 
-data spark_serving_desired_runtime: SparkServingRuntimeKind = OllamaRuntime {}
+data spark_serving_desired_runtime: gunbc.spark_serving_release.SparkServingRuntimeKind = gunbc.spark_serving_release.OllamaRuntime {}
 
-data spark_serving_desired_bind_listen: SparkServingBindListen = SparkServingBindListen {
-  host: "0.0.0.0" as NonEmptyStr,
+data spark_serving_desired_bind_listen: gunbc.spark_serving_release.SparkServingBindListen = gunbc.spark_serving_release.SparkServingBindListen {
+  host: "0.0.0.0" as std.types.NonEmptyStr,
   port: ollama_default_port,
 }
 
@@ -21,15 +21,15 @@ fn spark_serving_desired_bind_host_port() -> String {
   spark_serving_bind_listen_wire(bind: spark_serving_desired_bind_listen)
 }
 
-data spark_serving_desired_endpoint_intent: ServingEndpointIntent = UnauthenticatedEndpoint
+data spark_serving_desired_endpoint_intent: gunbc.spark_serving_realization.ServingEndpointIntent = UnauthenticatedEndpoint
 
-data spark_serving_desired_model_ref: OllamaModelRef = ollama_gpt_oss_20b_model_ref
+data spark_serving_desired_model_ref: extdeps.ollama.api.OllamaModelRef = ollama_gpt_oss_20b_model_ref
 
-data spark_serving_desired_gpt_oss_manifest_digest: Sha256Digest = Sha256Digest {
-  hex: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" as Sha256DigestHex,
+data spark_serving_desired_gpt_oss_manifest_digest: std.content_hash.Sha256Digest = std.content_hash.Sha256Digest {
+  hex: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" as std.content_hash.Sha256DigestHex,
 }
 
-data spark_serving_desired_model_digest_value: OllamaModelDigest = OllamaModelDigest {
+data spark_serving_desired_model_digest_value: extdeps.ollama.api.OllamaModelDigest = extdeps.ollama.api.OllamaModelDigest {
   ref: spark_serving_desired_model_ref,
   digest: spark_serving_desired_gpt_oss_manifest_digest,
 }
@@ -38,13 +38,13 @@ type SparkServingDesiredAdmission
   = SparkServingDesiredAdmitted { serving_release: gunbc.spark_serving_release.SparkServingRelease }
   | SparkServingDesiredRefused { cause: std.types.NonEmptyStr }
 
-fn spark_serving_desired_model_digest() -> OllamaModelDigest {
+fn spark_serving_desired_model_digest() -> extdeps.ollama.api.OllamaModelDigest {
   spark_serving_desired_model_digest_value
 }
 
-fn spark_serving_desired_model_artifact() -> ModelArtifact {
+fn spark_serving_desired_model_artifact() -> gunbc.model_artifact.ModelArtifact {
   model_artifact_from_observed_digest(
-    publisher: "ollama" as NonEmptyStr,
+    publisher: "ollama" as std.types.NonEmptyStr,
     observed: spark_serving_desired_model_digest(),
   )
 }
@@ -58,9 +58,9 @@ fn spark_serving_desired_release_admission() -> SparkServingDesiredAdmission {
   ) {
     OllamaPlatformSupportApplicable =>
       SparkServingDesiredAdmitted {
-        serving_release: SparkServingRelease {
-          runtime: RuntimeArtifactIdentity {
-            closure_digest: ollama_runtime_closure_digest_for_required_release().digest as NonEmptyStr,
+        serving_release: gunbc.spark_serving_release.SparkServingRelease {
+          runtime: gunbc.spark_serving_release.RuntimeArtifactIdentity {
+            closure_digest: ollama_runtime_closure_digest_for_required_release().digest as std.types.NonEmptyStr,
           },
           model: spark_serving_desired_model_artifact(),
         },
@@ -80,8 +80,8 @@ type SparkServingFleetDesired
   = SparkServingFleetDesiredReady { occurrences: List<gunbc.spark_serving_release.SparkServingOccurrence> }
   | SparkServingFleetDesiredRefused { cause: std.types.NonEmptyStr }
 
-fn spark_serving_occurrence(host: product.placement_supply.HostIdentity, serving_release: SparkServingRelease) -> SparkServingOccurrence {
-  SparkServingOccurrence {
+fn spark_serving_occurrence(host: product.placement_supply.HostIdentity, serving_release: gunbc.spark_serving_release.SparkServingRelease) -> gunbc.spark_serving_release.SparkServingOccurrence {
+  gunbc.spark_serving_release.SparkServingOccurrence {
     host: host,
     release_identity: spark_serving_release_identity(spec: serving_release),
     serving_policy: spark_serving_desired_serving_policy(),
@@ -104,23 +104,23 @@ fn spark_serving_fleet_desired_from_admission() -> SparkServingFleetDesired {
 
 data spark_serving_fleet_desired: SparkServingFleetDesired = spark_serving_fleet_desired_from_admission()
 
-fn spark_serving_desired_serving_policy() -> SparkServingServingPolicy {
-  SparkServingServingPolicy {
+fn spark_serving_desired_serving_policy() -> gunbc.spark_serving_release.SparkServingServingPolicy {
+  gunbc.spark_serving_release.SparkServingServingPolicy {
     serving_configuration: spark_serving_configuration_identity(
       runtime: spark_serving_desired_runtime,
       model_ref: spark_serving_desired_model_ref,
       bind: spark_serving_desired_bind_listen,
       endpoint: spark_serving_desired_endpoint_intent,
     ),
-    capacity: InferenceCapacityPolicy {
+    capacity: gunbc.spark_serving_release.InferenceCapacityPolicy {
       max_model_len: 8192,
       shared_memory_budget_bytes: byte_size(120000000000),
     },
   }
 }
 
-fn spark_serving_terminal_intent() -> SparkServingIntent {
-  SparkServingIntent {
+fn spark_serving_terminal_intent() -> gunbc.spark_serving_realization.SparkServingIntent {
+  gunbc.spark_serving_realization.SparkServingIntent {
     lifecycle: SurvivesReboot,
     availability: RestartsOnFailure,
     authority: ManagedConvergenceOwned,
@@ -130,8 +130,8 @@ fn spark_serving_terminal_intent() -> SparkServingIntent {
   }
 }
 
-fn spark_serving_automation_principal_login() -> NonEmptyStr {
-  "gunbc-automation" as NonEmptyStr
+fn spark_serving_automation_principal_login() -> std.types.NonEmptyStr {
+  "gunbc-automation" as std.types.NonEmptyStr
 }
 
 fn spark_serving_automation_principal() -> NamedPrincipal {

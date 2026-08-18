@@ -22,10 +22,10 @@ type BmcFanMonitoringResult
 
 fn bmc_fan_assess_monitoring_samples_rec(
   remaining: List<BmcFanMonitoringSample>,
-  previous_elapsed: Second,
+  previous_elapsed: std.measure.Second,
   sample_count: Int,
-  required_elapsed: Second,
-  maximum_sample_gap: Second,
+  required_elapsed: std.measure.Second,
+  maximum_sample_gap: std.measure.Second,
 ) -> BmcFanMonitoringResult {
   if remaining.length() == 0 {
     let receipt = BmcFanMonitoringReceipt {
@@ -87,8 +87,8 @@ fn bmc_fan_assess_monitoring_samples_rec(
 
 fn bmc_fan_assess_monitoring_samples(
   samples: List<BmcFanMonitoringSample>,
-  required_elapsed: Second,
-  maximum_sample_gap: Second,
+  required_elapsed: std.measure.Second,
+  maximum_sample_gap: std.measure.Second,
 ) -> BmcFanMonitoringResult {
   if second_count(required_elapsed) <= 0 || second_count(maximum_sample_gap) <= 0 {
     BmcFanMonitoringRefused {

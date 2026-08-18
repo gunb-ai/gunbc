@@ -6,13 +6,13 @@ type EffectFact {
 }
 
 fn effect_classify(
-  tree: InferredTree,
-  view: DependencyView
-) -> ClassifiedDependencyView<EffectClassification> {
+  tree: v2.compiler.infer.InferredTree,
+  view: v2.std.dependency.DependencyView
+) -> ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification> {
   classify_dependency_view(classifier: effect_classifier, view: view)
 }
 
-fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> EffectFact {
+fn effect_fact(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> EffectFact {
   EffectFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
       list_snoc_item(xs: acc, item: effect_classify(tree: tree, view: view))
@@ -20,14 +20,14 @@ fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> Effect
   }
 }
 
-fn effect_usage_facts_witness(tree: InferredTree, source: Node) -> Witness<InferredFacts> {
+fn effect_usage_facts_witness(tree: v2.compiler.infer.InferredTree, source: Node) -> Witness<v2.compiler.infer.InferredFacts> {
   witness_from_optional(opt: tree.facts.lookup(source), absent: infer_facts_lookup_miss_diagnostic(key: source))
 }
 
 fn effect_first_upstream_diagnostic(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   fact: EffectFact
-) -> Optional<Diagnostic> {
+) -> Optional<v2.std.diagnostic.Diagnostic> {
   fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
     optional_prefer_first_present(
       left: acc,
@@ -43,15 +43,15 @@ fn effect_signature_deferred_unresolved(fact: EffectFact) -> Bool {
   non_empty(xs: fact.dependencies)
 }
 
-fn effect_witness_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn effect_witness_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^effect_reason_unresolved_projection,
     at: Textual { file: ^effect_projection_virtual_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
-fn effect_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<EffectFact> {
+fn effect_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<EffectFact> {
   let fact = effect_fact(tree: tree, dependencies: dependencies)
   let upstream = effect_first_upstream_diagnostic(tree: tree, fact: fact)
   match optional_present_witness(opt: upstream) {
@@ -66,13 +66,13 @@ fn effect_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Wit
   }
 }
 
-fn effect_classification_eq(a: EffectClassification, b: EffectClassification) -> Bool {
+fn effect_classification_eq(a: v2.lens.common.algebraic_composition.EffectClassification, b: v2.lens.common.algebraic_composition.EffectClassification) -> Bool {
   true
 }
 
 fn effect_classified_eq(
-  a: ClassifiedDependencyView<EffectClassification>,
-  b: ClassifiedDependencyView<EffectClassification>
+  a: ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>,
+  b: ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>
 ) -> Bool {
   classified_dependency_view_eq(a: a, b: b, classification_eq: effect_classification_eq)
 }
@@ -81,6 +81,6 @@ fn effect_fact_eq(a: EffectFact, b: EffectFact) -> Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: effect_classified_eq)
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

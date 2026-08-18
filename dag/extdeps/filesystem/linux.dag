@@ -3,22 +3,22 @@ module extdeps.filesystem.linux
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "docs.kernel.org/filesystems/overlayfs.html",
   },
 }
 
-data linux_rename_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data linux_rename_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "man7.org/linux/man-pages/man2/rename.2.html",
   },
 }
 
-data linux_sync_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data linux_sync_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "man7.org/linux/man-pages/man2/sync.2.html",
   },
@@ -107,7 +107,7 @@ type LinuxFilePublicationProtocol
 data linux_synchronized_rename_replace_publication: LinuxFilePublicationProtocol = LinuxSynchronizedRenameReplacePublication
 
 fn linux_filesystem_kind_from_mount_type(
-  mount_type: NonEmptyStr,
+  mount_type: std.types.NonEmptyStr,
 ) -> LinuxFilesystemKind {
   if mount_type == "overlay" {
     LinuxOverlayFs
@@ -120,10 +120,10 @@ fn linux_filesystem_kind_from_mount_type(
   }
 }
 
-fn linux_nonempty_whitespace_tokens(raw: String) -> List<NonEmptyStr> {
+fn linux_nonempty_whitespace_tokens(raw: String) -> List<std.types.NonEmptyStr> {
   split(s: trim(raw), delimiter: " ")
     |> filter(token => trim(token) != "")
-    |> map(token => trim(token) as NonEmptyStr)
+    |> map(token => trim(token) as std.types.NonEmptyStr)
 }
 
 fn linux_proc_mount_unescape(field: String) -> String {
@@ -192,10 +192,10 @@ fn linux_proc_mount_row_from_line(line: String) -> LinuxProcMountLineParse {
                 LinuxProcMountLineParsed {
                   row: LinuxProcMountRow {
                     mount: LinuxMountObservation {
-                      source: source as NonEmptyStr,
-                      target: target as NonEmptyStr,
+                      source: source as std.types.NonEmptyStr,
+                      target: target as std.types.NonEmptyStr,
                       filesystem: linux_filesystem_kind_from_mount_type(
-                        mount_type: mount_type as NonEmptyStr,
+                        mount_type: mount_type as std.types.NonEmptyStr,
                       ),
                     },
                     options: split(s: raw_options, delimiter: ",")
@@ -265,7 +265,7 @@ fn linux_proc_mounts_parse(proc_mounts: String) -> LinuxProcMountsParse {
 
 fn linux_proc_mount_row_for_target(
   rows: List<LinuxProcMountRow>,
-  target: NonEmptyStr,
+  target: std.types.NonEmptyStr,
 ) -> LinuxProcMountRow? {
   rows
     |> filter(row => row.mount.target == target)
@@ -273,8 +273,8 @@ fn linux_proc_mount_row_for_target(
 }
 
 fn linux_mount_target_contains_directory(
-  target: NonEmptyStr,
-  directory: NonEmptyStr,
+  target: std.types.NonEmptyStr,
+  directory: std.types.NonEmptyStr,
 ) -> Bool {
   if target == "/" {
     starts_with(s: directory as String, prefix: "/")
@@ -312,8 +312,8 @@ fn linux_more_specific_backing_mount(
 
 fn linux_proc_mount_backing_row(
   rows: List<LinuxProcMountRow>,
-  directory: NonEmptyStr,
-  excluded_target: NonEmptyStr,
+  directory: std.types.NonEmptyStr,
+  excluded_target: std.types.NonEmptyStr,
 ) -> LinuxProcMountRow? {
   fold(
     rows,
@@ -336,8 +336,8 @@ fn linux_proc_mount_backing_row(
 
 fn linux_mount_option_value(
   row: LinuxProcMountRow,
-  name: NonEmptyStr,
-) -> NonEmptyStr? {
+  name: std.types.NonEmptyStr,
+) -> std.types.NonEmptyStr? {
   fold(
     row.options,
     init: none,
@@ -357,7 +357,7 @@ fn linux_mount_option_value(
                 s: option,
                 start: name.length() + 1,
                 end: option.length(),
-              ) as NonEmptyStr,
+              ) as std.types.NonEmptyStr,
             }
           } else {
             none
@@ -485,4 +485,4 @@ fn linux_overlay_observation_is_flash_backed(
 
 data linux_file_publication_semantics_note: String = "Literal mechanism facts precede any durability judgment. Linux rename replacement is atomic when replacing an existing pathname on the same filesystem; Linux sync writes pending filesystem metadata and cached file data to the underlying filesystems and waits for I/O completion. OverlayFS names the writable upper directory separately from the lower directory. Synchronized durability commit is admitted only through the LinuxSynchronizedRenameReplacePublication unit variant; partial protocol records remain explicitly unsynchronized. This module records those operations and observed mount relationships; it does not itself claim survival across a lifecycle boundary."
 
-data linux_proc_mounts_parser_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: a cited proc_mounts grammar row set lands in the shared grammar substrate with forward ingest and escape decoding. linux_proc_mount_row_from_line then becomes that grammar forward fold, and the same rows own any later serialization; until then this parser is the declared six-field Linux wire scaffold, fail-closed through LinuxProcMountLineRefusal rather than a second typed represent")
+data linux_proc_mounts_parser_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: a cited proc_mounts grammar row set lands in the shared grammar substrate with forward ingest and escape decoding. linux_proc_mount_row_from_line then becomes that grammar forward fold, and the same rows own any later serialization; until then this parser is the declared six-field Linux wire scaffold, fail-closed through LinuxProcMountLineRefusal rather than a second typed represent")

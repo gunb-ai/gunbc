@@ -4,8 +4,8 @@ module extdeps.auth.jwt
 // The boundary is stated because the two are trivially confusable once claims are sitting in a typed record that looks authoritative. Reading unverified claims is legitimate for display and for deciding which account a credential names; it is NOT legitimate for authorization. Nothing here should be read as making the second safe, and a verification surface lands as its own module with the JWKS fetch it requires.
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "datatracker.ietf.org/doc/html/rfc7519"
   }
@@ -90,7 +90,7 @@ fn numeric_date_lifetime(
 // frequently NOT a JWT, so code that decodes every token it is handed to read an expiry works on the
 // access token and fails on the refresh token, and the failure looks like a corrupt credential rather
 // than a category error.
-type JwtCompactSerialization = NonEmptyStr where brand("JwtCompactSerialization")
+type JwtCompactSerialization = std.types.NonEmptyStr where brand("JwtCompactSerialization")
 
 // RFC 7519 section 2 defines StringOrURI as any JSON string, with the added requirement that a value
 // containing a colon MUST be a URI. THE FIRST CUT BRANDED THAT RULE WITHOUT ENFORCING IT: a brand over
@@ -170,7 +170,7 @@ fn jwt_scheme_valid(s: String, end: Int) -> Bool {
 }
 
 // This decoder is not an exception to the module's describe-not-verify boundary. It checks SYNTAX, which is decidable from the value alone; it does not check that the URI resolves, that the issuer is trusted, or that anyone signed anything.
-fn jwt_string_or_uri_of_wire(raw: NonEmptyStr) -> JwtStringOrUriDecode {
+fn jwt_string_or_uri_of_wire(raw: std.types.NonEmptyStr) -> JwtStringOrUriDecode {
   let s = raw as String
   match jwt_first_colon(s: s) {
     NoColonPresent =>
@@ -180,7 +180,7 @@ fn jwt_string_or_uri_of_wire(raw: NonEmptyStr) -> JwtStringOrUriDecode {
         StringOrUriDecoded {
           value: JwtUriString {
             value: raw,
-            scheme: substring(s: s, start: 0, end: index) as NonEmptyStr,
+            scheme: substring(s: s, start: 0, end: index) as std.types.NonEmptyStr,
           },
         }
       } else {
@@ -192,7 +192,7 @@ fn jwt_string_or_uri_of_wire(raw: NonEmptyStr) -> JwtStringOrUriDecode {
   }
 }
 
-fn jwt_string_or_uri_wire(value: JwtStringOrUri) -> NonEmptyStr {
+fn jwt_string_or_uri_wire(value: JwtStringOrUri) -> std.types.NonEmptyStr {
   match value {
     JwtBareString { value: raw } => raw
     JwtUriString { value: raw, scheme: _ } => raw

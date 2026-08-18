@@ -2,7 +2,7 @@ module v2.test.lens_mock_totality.sec_edgar_mock_totality
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedSecEdgarMock {
   tag: v2.std.node.Symbol
@@ -13,7 +13,7 @@ data sec_edgar_red_omit_keys: List<String> = [
   "sec.Edgar.GetCompanyConcept",
 ]
 
-fn materialize_sec_edgar_mock(case: PublishedMockCase) -> Outcome<MaterializedSecEdgarMock> {
+fn materialize_sec_edgar_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedSecEdgarMock> {
   if case.operation_key == "sec.Edgar.GetCompanyFacts" {
     outcome_accepted(value: MaterializedSecEdgarMock { tag: ^materialized_get_company_facts })
   } else if case.operation_key == "sec.Edgar.GetCompanyConcept" {
@@ -23,11 +23,11 @@ fn materialize_sec_edgar_mock(case: PublishedMockCase) -> Outcome<MaterializedSe
   }
 }
 
-fn real_consumer_handles(case: PublishedMockCase) -> Bool {
+fn real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   outcome_accepted_p(outcome: materialize_sec_edgar_mock(case: case))
 }
 
-fn omits_edgar_consumer_handles(case: PublishedMockCase) -> Bool {
+fn omits_edgar_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   omit_consumer_handles(
     case: case,
     omit_keys: sec_edgar_red_omit_keys,

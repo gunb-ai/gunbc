@@ -1,7 +1,7 @@
 module extdeps.container.oci.image_config
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/opencontainers/image-spec/blob/main/config.md"
   }
@@ -62,7 +62,7 @@ fn image_config_entrypoint(c: ImageConfiguration) -> List<String> {
   }
 }
 
-fn image_config_first_exposed_port(c: ImageConfiguration) -> ContainerExposedPort? {
+fn image_config_first_exposed_port(c: ImageConfiguration) -> extdeps.container.oci.types.ContainerExposedPort? {
   match c.config {
     null => null
     cfg =>
@@ -77,14 +77,14 @@ fn image_config_first_exposed_port(c: ImageConfiguration) -> ContainerExposedPor
   }
 }
 
-fn container_exposed_port_is(port: ContainerExposedPort, expected_port: Int, protocol: ContainerPortProtocol) -> Bool {
+fn container_exposed_port_is(port: extdeps.container.oci.types.ContainerExposedPort, expected_port: Int, protocol: extdeps.container.oci.types.ContainerPortProtocol) -> Bool {
   port.port == expected_port && port.protocol == protocol
 }
 
 fn image_config_has_exposed_port(
   c: ImageConfiguration,
   expected_port: Int,
-  protocol: ContainerPortProtocol,
+  protocol: extdeps.container.oci.types.ContainerPortProtocol,
 ) -> Bool {
   match image_config_first_exposed_port(c) {
     null => false

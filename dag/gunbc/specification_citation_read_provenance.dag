@@ -20,25 +20,25 @@ type SpecificationCitationReadReceipt {
   provenance: SpecificationCitationReadProvenance
 }
 
-data mt_jade_reference_platform_subject_ref: DeclarationRef = DeclarationRef {
+data mt_jade_reference_platform_subject_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "extdeps.ocp.mt_jade.subject",
   decl_name: "mt_jade_reference_platform",
   field: WholeDeclaration,
 }
 
-data mt_mitchell_reference_platform_subject_ref: DeclarationRef = DeclarationRef {
+data mt_mitchell_reference_platform_subject_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "extdeps.ocp.mt_mitchell.subject",
   decl_name: "mt_mitchell_reference_platform",
   field: WholeDeclaration,
 }
 
-data altra_platform_hw_design_specification_subject_ref: DeclarationRef = DeclarationRef {
+data altra_platform_hw_design_specification_subject_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
   decl_name: "altra_platform_hw_design_specification",
   field: WholeDeclaration,
 }
 
-data mt_collins_public_product_brief_subject_ref: DeclarationRef = DeclarationRef {
+data mt_collins_public_product_brief_subject_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "extdeps.ampere.mt_collins_product_brief.subject",
   decl_name: "mt_collins_public_product_brief",
   field: WholeDeclaration,
@@ -65,7 +65,7 @@ data mt_mitchell_publisher_citation_read_receipt: SpecificationCitationReadRecei
   },
 }
 
-data internet_archive_mt_mitchell_capture_date: SpecificationDocumentDate = SpecificationDocumentDate {
+data internet_archive_mt_mitchell_capture_date: extdeps.publication.SpecificationDocumentDate = extdeps.publication.SpecificationDocumentDate {
   year: 2022,
   month: 10,
   day: 26,

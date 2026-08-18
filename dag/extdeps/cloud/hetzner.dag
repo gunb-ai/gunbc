@@ -2,8 +2,8 @@ module extdeps.cloud.hetzner
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.hetzner.com/cloud/servers/overview"
   }
@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
 
-data hetzner_money_rate_frontier_rows: List<FrontierRow> = [
+data hetzner_money_rate_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "HetznerCloudServerCatalogRow"),
     reason: "hourly/monthly_cap: MoneyAmountMicro + separate currency forks std.measure MoneyRate<P> (MoneyPerHour/MoneyPerMonth); parallel representation fork",

@@ -1,7 +1,7 @@
 module gunbc.build_cache_instance
 
 
-data build_cache_instance_scope_disposition: Disposition = SingleAuthority
+data build_cache_instance_scope_disposition: std.disposition.Disposition = SingleAuthority
 
 data build_cache_instance_grain_note: String = "CATALOG IDENTITY IS NOT DEPLOYED-INSTANCE IDENTITY, and conflating them is why a host carrying two differently-configured uses of one implementation could not be described. gunbc.host_build_cache_provision speaks of provisioning `the sccache_local catalog` on a host; extdeps.cache.sccache.sccache_local_id names sccache's cache SEMANTICS and its pinned binary. Neither identifies a running daemon. srv1 and srv2 each run TWO sccache servers from that one catalog row — a CI server (principal ghrunner, /var/lib/ctrl/sccache-ci, endpoint /var/lib/ctrl/sccache-ci/server.sock) and a session server (principal briansrls, /var/lib/ctrl/sccache, 50G, endpoint /var/lib/ctrl/sccache/server.sock) — so 'provision the catalog on this host' names neither of them and cannot express that one is correctly placed while the other is not. BuildCacheInstance is the deployed grain: one row per (host, consumer class, instance name), carrying the endpoint and the INTENDED unit, principal, storage, capacity and compile pool that an observation is checked against. One concept with multiple data rows, never a second provisioning mechanism per use (DESIGN section 2 horizontal)."
 
@@ -139,55 +139,55 @@ fn placement_of_endpoint_observation(
         detail: concat(
           "the configured endpoint did not resolve to exactly one listening owner; candidate count ",
           to_string(n),
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       }
     EndpointObservationUnavailable { instance: _, reason: r } =>
       ServerPlacementUnknown { detail: unavailable_reason_detail(reason: r) }
   }
 }
 
-fn unavailable_reason_detail(reason: EndpointObservationUnavailableReason) -> NonEmptyStr {
+fn unavailable_reason_detail(reason: EndpointObservationUnavailableReason) -> std.types.NonEmptyStr {
   match reason {
     ReachRefused { detail: d } =>
-      concat("the host could not be reached, so placement is unobserved rather than absent: ", d as String) as NonEmptyStr
+      concat("the host could not be reached, so placement is unobserved rather than absent: ", d as String) as std.types.NonEmptyStr
     ProcTableUnreadable { detail: d } =>
-      concat("the process table could not be read, so the endpoint owner is unresolved: ", d as String) as NonEmptyStr
+      concat("the process table could not be read, so the endpoint owner is unresolved: ", d as String) as std.types.NonEmptyStr
     EndpointPathUnreadable { detail: d } =>
-      concat("the endpoint path could not be read, so listener ownership is unresolved: ", d as String) as NonEmptyStr
+      concat("the endpoint path could not be read, so listener ownership is unresolved: ", d as String) as std.types.NonEmptyStr
   }
 }
 
 data build_cache_desired_instances_note: String = "THE DESIRED DEPLOYED INSTANCES, one row per (host, consumer class). These state INTENT and are deliberately not a description of the live hosts: the whole point of the observer is that intent and observation are different things and their difference is refusable. As of the 2026-08-01 reads NO host satisfies intended_unit for its CI instance, and the four hosts fail in four DIFFERENT ways rather than along one ladder — srv1's endpoint is owned by a 31-day process in RETIRED slot srv1-10, srv2's by a process in an ACTIVE slot, srv3 had an owner in an active slot that later vanished with its runner cgroup, and srv4 has no owner at all because a stale socket makes every new server fail to bind. Every row below therefore currently refuses, which is the correct and intended reading rather than a defect in the rows.\n\nCI intended_capacity stays Absent on purpose and that is now the ONLY Absent here: the live 10 GiB is sccache's built-in default rather than a chosen number, and choosing one is a later increment, so declaring it would fabricate a decision nobody has made. The session rows previously carried Absent too while this note claimed they carried 50G — the note and the value disagreed, and the note was the true half: ctrl-sccache.service really does set 50G, so the value now states it. An Absent capacity cannot be read back or converged against, which is exactly why the CI Absent is a tracked gap rather than a resting state."
 
-fn ci_cache_instance(host: HostIdentity) -> BuildCacheInstance {
+fn ci_cache_instance(host: product.placement_supply.HostIdentity) -> BuildCacheInstance {
   BuildCacheInstance {
     identity: BuildCacheInstanceId {
       host: host,
       consumer_class: ContinuousIntegrationCompiles,
-      instance_name: "sccache-ci" as NonEmptyStr,
+      instance_name: "sccache-ci" as std.types.NonEmptyStr,
     },
     implementation: sccache_local_id,
-    endpoint: SccacheServerUnixSocket { path: "/var/lib/ctrl/sccache-ci/server.sock" as NonEmptyStr },
-    intended_unit: "gunbc-build-cache-ci.service" as NonEmptyStr,
-    intended_principal: "ghrunner" as NonEmptyStr,
-    intended_storage: "/var/lib/ctrl/sccache-ci" as NonEmptyStr,
+    endpoint: SccacheServerUnixSocket { path: "/var/lib/ctrl/sccache-ci/server.sock" as std.types.NonEmptyStr },
+    intended_unit: "gunbc-build-cache-ci.service" as std.types.NonEmptyStr,
+    intended_principal: "ghrunner" as std.types.NonEmptyStr,
+    intended_storage: "/var/lib/ctrl/sccache-ci" as std.types.NonEmptyStr,
     intended_capacity: none,
     intended_compile_pool: gunbc_managed_compile_pool_slice,
   }
 }
 
-fn session_cache_instance(host: HostIdentity) -> BuildCacheInstance {
+fn session_cache_instance(host: product.placement_supply.HostIdentity) -> BuildCacheInstance {
   BuildCacheInstance {
     identity: BuildCacheInstanceId {
       host: host,
       consumer_class: InteractiveSessionCompiles,
-      instance_name: "sccache-session" as NonEmptyStr,
+      instance_name: "sccache-session" as std.types.NonEmptyStr,
     },
     implementation: sccache_local_id,
-    endpoint: SccacheServerUnixSocket { path: "/var/lib/ctrl/sccache/server.sock" as NonEmptyStr },
-    intended_unit: "gunbc-build-cache-session.service" as NonEmptyStr,
-    intended_principal: "briansrls" as NonEmptyStr,
-    intended_storage: "/var/lib/ctrl/sccache" as NonEmptyStr,
+    endpoint: SccacheServerUnixSocket { path: "/var/lib/ctrl/sccache/server.sock" as std.types.NonEmptyStr },
+    intended_unit: "gunbc-build-cache-session.service" as std.types.NonEmptyStr,
+    intended_principal: "briansrls" as std.types.NonEmptyStr,
+    intended_storage: "/var/lib/ctrl/sccache" as std.types.NonEmptyStr,
     intended_capacity: Present { value: gibibyte_to_byte_size(g: gibibyte(50)) },
     intended_compile_pool: gunbc_managed_compile_pool_slice,
   }

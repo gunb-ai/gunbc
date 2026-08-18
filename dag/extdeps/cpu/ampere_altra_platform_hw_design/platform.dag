@@ -1,15 +1,15 @@
 module extdeps.cpu.ampere_altra_platform_hw_design.platform
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = altra_platform_hw_design_subject_authority_anchor
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = altra_platform_hw_design_subject_authority_anchor
 
 data platform_subject_edge_note: String = "THE DOCUMENT IDENTITY IS NOT RE-DECLARED HERE. extdeps.cpu.ampere_altra_platform_hw_design.subject owns the title, revision label, publication date, publisher and citation-read provenance of this specification; this module carries the design facts the document states in running text and binds every one of them to that declaration through the subject edge below, the same shape extdeps.ocp.mt_jade.platform uses. A second identity row beside the first is the fork the subject/platform split exists to prevent."
 
-data altra_platform_hw_design_subject: AltraPlatformHwDesignSpecification = altra_platform_hw_design_specification
+data altra_platform_hw_design_subject: extdeps.cpu.ampere_altra_platform_hw_design.subject.AltraPlatformHwDesignSpecification = altra_platform_hw_design_specification
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
       decl_name: "altra_platform_hw_design_specification",
       field: WholeDeclaration
@@ -38,7 +38,7 @@ fn platform_facts_are_from_the_latest_revision() -> Bool {
   }
 }
 
-data altra_platform_memory_generation: DramGeneration = dram_generation_ddr4
+data altra_platform_memory_generation: extdeps.memory.types.DramGeneration = dram_generation_ddr4
 
 // MEMORY TOPOLOGY (section 2.2.1). The specification admits exactly two linear
 // topologies. A population outside them is not a smaller version of a supported
@@ -183,7 +183,7 @@ data altra_two_socket_ccix_port_count: Int = 2
 // than being a flag a board designer may set either way.
 type AltraRefclkInput = RefclkSrns | RefclkSris
 
-data altra_refclk_frequency: Hertz = hertz(count: 100000000)
+data altra_refclk_frequency: std.measure.Hertz = hertz(count: 100000000)
 
 fn refclk_always_required(input: AltraRefclkInput) -> Bool {
   match input {
@@ -238,7 +238,7 @@ type MechanicalFactAvailability
 // fact about that document. The RULE that turns a status into what this
 // repository may carry is gunbc policy and lives in
 // gunbc.upstream_document_carriage; nothing in this module decides it.
-data altra_platform_hw_design_publication_status: DocumentPublicationStatus = PubliclyPublishedWithRestrictiveMarking {
+data altra_platform_hw_design_publication_status: extdeps.publication.DocumentPublicationStatus = PubliclyPublishedWithRestrictiveMarking {
   marking: "Ampere Computing Proprietary",
 }
 
@@ -286,13 +286,13 @@ data altra_platform_pad_array_geometry_availability: MechanicalFactAvailability 
 // instead of the two unjoined literals that were here before -- the defect was never the second
 // number, it was that nothing compared them. This is the same shape altra_pad_count already used
 // against the package's contact count.
-data altra_package_outline_width: Micrometer = micrometer(count: 77080)
+data altra_package_outline_width: std.measure.Micrometer = micrometer(count: 77080)
 
-data altra_package_outline_depth: Micrometer = micrometer(count: 67000)
+data altra_package_outline_depth: std.measure.Micrometer = micrometer(count: 67000)
 
-data altra_pad_pitch_dx: Micrometer = micrometer(count: 870)
+data altra_pad_pitch_dx: std.measure.Micrometer = micrometer(count: 870)
 
-data altra_pad_pitch_dy: Micrometer = micrometer(count: 500)
+data altra_pad_pitch_dy: std.measure.Micrometer = micrometer(count: 500)
 
 data altra_pad_count: Int = 4926
 
@@ -347,7 +347,7 @@ fn pad_array_is_positionable_from_running_text() -> Bool {
 // package mechanics is DERIVED from this roster rather than asserted, so a
 // later revision that adds a mechanical document changes the answer by changing
 // the rows.
-data altra_platform_bibliography: List<NonEmptyStr> = [
+data altra_platform_bibliography: List<std.types.NonEmptyStr> = [
   "Altra Architecture Specifications",
   "Altra Debug Architecture Specifications",
   "Altra I/O List",
@@ -359,7 +359,7 @@ data altra_platform_bibliography: List<NonEmptyStr> = [
   "Altra Software Overview",
 ]
 
-fn bibliography_entry_is_package_mechanical(title: NonEmptyStr) -> Bool {
+fn bibliography_entry_is_package_mechanical(title: std.types.NonEmptyStr) -> Bool {
   string_contains(s: title as String, pattern: "Mechanical")
     || string_contains(s: title as String, pattern: "Package")
     || string_contains(s: title as String, pattern: "Socket")

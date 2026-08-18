@@ -2,8 +2,8 @@ module extdeps.cache.catalog_placement
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/cache"
   }

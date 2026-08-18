@@ -39,9 +39,9 @@ fn node_keyed_store_node_count<V>(store: NodeKeyedStore<V>) -> Int {
 
 data node_keyed_graph_artifact_note: String = "NodeKeyedGraphArtifact is the persistent/streamed form of NodeKeyedStore (the S2b store shape, landed early as the settled encoding authority — inherited from the S2a lane, bound 2026-07-10). CODEC RULING (settled): a tree codec over the Rc-shared graph un-shares every shared subtree — the resolved-graph cache write measured a ~3.4GiB working set expanding to 17GiB under serde_json::to_vec; serde-streaming and packed-binary-tree keep the unsharing, so both are WRONG. The artifact form is an interned content-keyed node table: each node encoded exactly ONCE, keyed by its content hash, children referenced BY HASH and never inline; a decode rebuilds the structural sharing. Witness homes, precisely: the SIZE/TOPOLOGY/REFUSAL witnesses (shared-row-counted-once with the tree-double-count RED, missing-ref refusals, interning check) execute in v2.test.claim.realization_runner_witness; the two SHARING witnesses are pointer-identity facts only a host realization can observe, so they executed in the seed test module src/v1/tests/src/node_keyed_graph_artifact_codec_test.rs, DELETED 2026-08-11 by the gunbc#8146 test-suite cutover — that module was gated by --no-run and never actually ran, so the sharing claims are now UNWITNESSED rather than newly so (decode-rebuilds-sharing via Rc ptr-eq with a deliberately unshared tree-decode RED control, and reencode-byte-identity). ROWS CARRY ROW-LOCAL FACTS ONLY (encoded body length): a stored transitive size would be a dual representation of the child_refs topology, so transitive footprint is DERIVED, never stored. The reachable-set fold node_keyed_graph_transitive_bytes IS the single value-size authority — the eval-memo byte-cap admission (extdeps.realization.eval_memo) and the space-lens predictor both bind to it, and no parallel size walk may exist anywhere. Content hashes ground on the fnv1a64 authority surfaced by std.content_hash / the v1 intrinsics (DESIGN section 3 convergence thread) — this schema must not mint a third hash surface; ContentHash here is the std.types carrier. Failure arms REFUSE, never widen: a child ref with no row refuses with the missing hash, never a fabricated size. The walk is fuel-bounded by row count and settles within the fuel by construction (each pass either visits a new interned row or empties the frontier — a visited ref is skipped, so even a cyclic row table converges to its reachable set); the Unsettled arm is the typed fail-closed backstop should that bound argument ever be violated, not a reachable state we can construct. Artifact well-formedness itself (interning — at most one row per hash — and acyclicity via child-before-parent row order) is the codec's obligation: node_keyed_graph_rows_interned checks the former, and the hash-consed single-pass decode refuses a forward or missing child ref, which makes an encoded cycle unrepresentable."
 
-data node_keyed_graph_codec_seed_disposition: Disposition = Scaffold {
+data node_keyed_graph_codec_seed_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.realization_runner",
     decl_name: "NodeKeyedGraphArtifact",
     field: WholeDeclaration
@@ -66,7 +66,7 @@ type NodeKeyedGraphArtifact {
   entries: List<NodeKeyedGraphArtifactEntry>
 }
 
-fn node_keyed_graph_contains_hash(hashes: List<ContentHash>, content_hash: ContentHash) -> Bool {
+fn node_keyed_graph_contains_hash(hashes: List<std.content_hash.ContentHash>, content_hash: std.content_hash.ContentHash) -> Bool {
   contains(xs: hashes, item: content_hash, eq: fn(left, right) { left == right })
 }
 
@@ -89,7 +89,7 @@ fn node_keyed_graph_rows_interned(rows: List<NodeKeyedGraphRow>) -> Bool {
   checked.interned
 }
 
-fn node_keyed_graph_artifact_total_bytes(artifact: NodeKeyedGraphArtifact) -> ByteSize {
+fn node_keyed_graph_artifact_total_bytes(artifact: NodeKeyedGraphArtifact) -> std.measure.ByteSize {
   fold(artifact.rows, init: byte_size(count: 0), f: fn(total, row) {
     measure_add(a: total, b: row.encoded_length)
   })
@@ -99,7 +99,7 @@ type NodeKeyedGraphRowLookup
   = NodeKeyedGraphRowFound { row: NodeKeyedGraphRow }
   | NodeKeyedGraphRowMissing { content_hash: std.content_hash.ContentHash }
 
-fn node_keyed_graph_row_lookup(rows: List<NodeKeyedGraphRow>, content_hash: ContentHash) -> NodeKeyedGraphRowLookup {
+fn node_keyed_graph_row_lookup(rows: List<NodeKeyedGraphRow>, content_hash: std.content_hash.ContentHash) -> NodeKeyedGraphRowLookup {
   fold(rows, init: NodeKeyedGraphRowMissing { content_hash: content_hash }, f: fn(found, row) {
     match found {
       NodeKeyedGraphRowFound { row: _ } => found
@@ -158,7 +158,7 @@ type NodeKeyedGraphTransitiveBytes
 
 fn node_keyed_graph_transitive_bytes(
   artifact: NodeKeyedGraphArtifact,
-  root: ContentHash
+  root: std.content_hash.ContentHash
 ) -> NodeKeyedGraphTransitiveBytes {
   let seeded = node_keyed_graph_reach_step(
     rows: artifact.rows,
@@ -190,12 +190,12 @@ fn node_keyed_graph_entry_value_bytes(
   node_keyed_graph_transitive_bytes(artifact: artifact, root: entry.value_root)
 }
 
-fn runner_execution_dependencies(dependencies: List<DependencyView>) -> List<DependencyView> {
+fn runner_execution_dependencies(dependencies: List<v2.std.dependency.DependencyView>) -> List<v2.std.dependency.DependencyView> {
   scheduler_execution_dependencies(dependencies: dependencies)
 }
 
 fn runner_dependency_satisfied<V>(
-  dependency: DependencyView,
+  dependency: v2.std.dependency.DependencyView,
   store: NodeKeyedStore<V>,
   candidate: Node
 ) -> Bool {
@@ -207,7 +207,7 @@ fn runner_dependency_satisfied<V>(
 }
 
 fn runner_node_ready<V>(
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   store: NodeKeyedStore<V>,
   candidate: Node
 ) -> Bool {
@@ -229,7 +229,7 @@ type RunnerMissingPrerequisite
   | RunnerPrerequisiteMissing { node: Node }
 
 fn runner_first_missing_dependency<V>(
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   store: NodeKeyedStore<V>,
   candidate: Node
 ) -> Node {
@@ -258,8 +258,8 @@ type RunnerDispatchOutcome<V>
   | RunnerDispatchBlocked { evidence: RunnerBlockedEvidence }
 
 fn runner_dispatch_job<V>(
-  job: ExecutorJob,
-  dependencies: List<DependencyView>,
+  job: v2.workflow.executor.ExecutorJob,
+  dependencies: List<v2.std.dependency.DependencyView>,
   store: NodeKeyedStore<V>,
   value: V
 ) -> RunnerDispatchOutcome<V> {
@@ -282,8 +282,8 @@ fn runner_dispatch_job<V>(
 }
 
 fn runner_dispatch_jobs<V>(
-  jobs: List<ExecutorJob>,
-  dependencies: List<DependencyView>,
+  jobs: List<v2.workflow.executor.ExecutorJob>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   store: NodeKeyedStore<V>,
   value: V
 ) -> RunnerDispatchOutcome<V> {
@@ -303,8 +303,8 @@ fn runner_dispatch_jobs<V>(
 }
 
 fn runner_dispatch_batch<V>(
-  batch: ExecutorBatch,
-  dependencies: List<DependencyView>,
+  batch: v2.workflow.executor.ExecutorBatch,
+  dependencies: List<v2.std.dependency.DependencyView>,
   store: NodeKeyedStore<V>,
   value: V
 ) -> RunnerDispatchOutcome<V> {
@@ -317,8 +317,8 @@ fn runner_dispatch_batch<V>(
 }
 
 fn runner_walk_batches<V>(
-  batches: List<ExecutorBatch>,
-  dependencies: List<DependencyView>,
+  batches: List<v2.workflow.executor.ExecutorBatch>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   store: NodeKeyedStore<V>,
   value: V
 ) -> RunnerDispatchOutcome<V> {
@@ -346,7 +346,7 @@ type RunnerSchedulePlan<V>
 
 fn runner_schedule_plan_from_dependencies<V>(
   nodes: List<Node>,
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   value: V
 ) -> RunnerSchedulePlan<V> {
   let execution_dependencies = runner_execution_dependencies(dependencies: dependencies)
@@ -387,13 +387,13 @@ fn runner_schedule_store_covers_nodes<V>(
   })
 }
 
-fn runner_schedule_batch_count(batches: List<ExecutorBatch>) -> Int {
+fn runner_schedule_batch_count(batches: List<v2.workflow.executor.ExecutorBatch>) -> Int {
   fold(batches, init: 0, f: fn(count, _) { count + 1 })
 }
 
 fn runner_schedule_contains_batch(
-  batches: List<ExecutorBatch>,
-  batch: ExecutorBatch
+  batches: List<v2.workflow.executor.ExecutorBatch>,
+  batch: v2.workflow.executor.ExecutorBatch
 ) -> Bool {
   contains(xs: batches, item: batch, eq: fn(left, right) { left == right })
 }

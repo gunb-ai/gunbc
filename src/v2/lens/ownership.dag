@@ -5,11 +5,11 @@ type OwnershipFact {
   dependencies: List<ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>>
 }
 
-fn ownership_classify(view: DependencyView) -> ClassifiedDependencyView<OwnershipMode> {
+fn ownership_classify(view: v2.std.dependency.DependencyView) -> ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode> {
   classify_dependency_view(classifier: ownership_classifier, view: view)
 }
 
-fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> OwnershipFact {
+fn ownership_fact(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> OwnershipFact {
   OwnershipFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
       list_snoc_item(xs: acc, item: ownership_classify(view: view))
@@ -17,7 +17,7 @@ fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> Own
   }
 }
 
-fn ownership_mode_unresolved(mode: OwnershipMode) -> Bool {
+fn ownership_mode_unresolved(mode: v2.lens.common.algebraic_composition.OwnershipMode) -> Bool {
   match mode {
     RequiresAccessWitness => true
     UnknownOwnership => true
@@ -33,15 +33,15 @@ fn ownership_fact_unresolved(fact: OwnershipFact) -> Bool {
   })
 }
 
-fn ownership_witness_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn ownership_witness_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^ownership_reason_unresolved_projection,
     at: Textual { file: ^ownership_projection_virtual_file, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
-fn ownership_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<OwnershipFact> {
+fn ownership_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<OwnershipFact> {
   let fact = ownership_fact(tree: tree, dependencies: dependencies)
   if ownership_fact_unresolved(fact: fact) {
     Violates { diagnostic: ownership_witness_diagnostic() }
@@ -50,7 +50,7 @@ fn ownership_witness(tree: InferredTree, dependencies: List<DependencyView>) -> 
   }
 }
 
-fn ownership_mode_eq(a: OwnershipMode, b: OwnershipMode) -> Bool {
+fn ownership_mode_eq(a: v2.lens.common.algebraic_composition.OwnershipMode, b: v2.lens.common.algebraic_composition.OwnershipMode) -> Bool {
   match a {
     OwnedContainment => match b {
       OwnedContainment => true
@@ -76,8 +76,8 @@ fn ownership_mode_eq(a: OwnershipMode, b: OwnershipMode) -> Bool {
 }
 
 fn ownership_classified_eq(
-  a: ClassifiedDependencyView<OwnershipMode>,
-  b: ClassifiedDependencyView<OwnershipMode>
+  a: ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>,
+  b: ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>
 ) -> Bool {
   classified_dependency_view_eq(a: a, b: b, classification_eq: ownership_mode_eq)
 }
@@ -86,6 +86,6 @@ fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: ownership_classified_eq)
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

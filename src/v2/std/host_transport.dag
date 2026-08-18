@@ -57,16 +57,16 @@ type TargetEmitHostRuntimeRow
 
 data target_emit_host_runtime_row_unconfigured: TargetEmitHostRuntimeRow = HostRuntimeRowAbsent
 
-fn emit_host_runtime_row_unconfigured_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn emit_host_runtime_row_unconfigured_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_runtime_row_unconfigured_reason,
     at: port_locus(port: ^emit_host_runtime_row_unconfigured_reason),
     correction: None
   }
 }
 
-fn emit_host_runtime_row_parse_byte_width_mismatch_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn emit_host_runtime_row_parse_byte_width_mismatch_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_runtime_row_parse_byte_width_mismatch,
     at: port_locus(port: ^emit_host_runtime_row_parse_byte_width_mismatch),
     correction: None
@@ -83,7 +83,7 @@ fn runtime_value_codec_expected_byte_count(codec: RuntimeValueCodec) -> Int {
 fn runtime_value_parse_from_row(
   row: EmitHostRuntimeRow,
   bytes: ByteString
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   let expected = runtime_value_codec_expected_byte_count(codec: row.transport.runtime_value_codec)
   if length(xs: bytes) == expected {
     Accepted {

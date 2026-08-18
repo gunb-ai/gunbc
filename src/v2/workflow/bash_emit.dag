@@ -14,7 +14,7 @@ data bash_emit_empty_nodes: List<Node> = []
 
 data bash_emit_authority_note: String = "Node-tree shell emission via bash_build constructors + bash_command_fold_serialize (grammar-row emit). Replaces extdeps.languages.bash.program serialize_bash and v2.workflow.bash_program_sidecar_fold (sidecar FULL DELETE PR-C)."
 
-fn bash_emit_from_target(emitted: Node, target: TargetModel) -> Outcome<String> {
+fn bash_emit_from_target(emitted: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<String> {
   bash_fold_serialize_emit_from_node(emitted: emitted, target: target)
 }
 
@@ -114,7 +114,7 @@ fn bash_emit_env_prefixed(
 fn bash_emit_wrong_target_oracle_holds(
   emitted: Node,
   golden: String,
-  wrong_target_witness: Witness<TargetModel>
+  wrong_target_witness: Witness<v2.std.compilers.target_model.TargetModel>
 ) -> Bool {
   match wrong_target_witness {
     Holds { value: target } =>

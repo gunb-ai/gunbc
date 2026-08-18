@@ -1,7 +1,7 @@
 module v2.test.lens_complexity.algebra_receipts
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 type ComplexityProjectionClaim {
   input_cost: v2.lens.cost.SymbolicCost
   expected_complexity: v2.lens.complexity.ComplexityBound
@@ -15,27 +15,27 @@ type ComplexityDominanceClaim {
   falsification: v2.std.diagnostic.Diagnostic
 }
 
-data algebra_receipts_x: Node = Node {
+data algebra_receipts_x: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^algebra_receipts_x_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data algebra_receipts_y: Node = Node {
+data algebra_receipts_y: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^algebra_receipts_y_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data polynomial_degree_two_receipt: PolynomialDegree = PolynomialDegree {
-  predecessor_after_linear: NonZeroNat { prev: v2.std.nat.Zero }
+data polynomial_degree_two_receipt: v2.lens.cost.PolynomialDegree = v2.lens.cost.PolynomialDegree {
+  predecessor_after_linear: v2.std.cardinality.NonZeroNat { prev: v2.std.nat.Zero }
 }
 
-data polynomial_degree_four_receipt: PolynomialDegree = PolynomialDegree {
-  predecessor_after_linear: NonZeroNat { prev: v2.std.nat.Succ { prev: v2.std.nat.Succ { prev: v2.std.nat.Zero } } }
+data polynomial_degree_four_receipt: v2.lens.cost.PolynomialDegree = v2.lens.cost.PolynomialDegree {
+  predecessor_after_linear: v2.std.cardinality.NonZeroNat { prev: v2.std.nat.Succ { prev: v2.std.nat.Succ { prev: v2.std.nat.Zero } } }
 }
 
-data algebra_receipts_diagnostic: Diagnostic = Diagnostic {
+data algebra_receipts_diagnostic: v2.std.diagnostic.Diagnostic = v2.std.diagnostic.Diagnostic {
   reason: ^algebra_receipts_reason,
   at: Textual { file: ^algebra_receipts_file, extent: WholeFile },
   correction: Unavailable { reason: AmbiguousIntent }
@@ -44,18 +44,18 @@ data algebra_receipts_diagnostic: Diagnostic = Diagnostic {
 data polynomial_product_degree_claim: ComplexityProjectionClaim = ComplexityProjectionClaim {
   input_cost: ProductCost {
     lhs: PolynomialCost {
-      variable: SizeVariable { source: algebra_receipts_x },
+      variable: v2.lens.cost.SizeVariable { source: algebra_receipts_x },
       degree: polynomial_degree_two_receipt
     },
     rhs: PolynomialCost {
-      variable: SizeVariable { source: algebra_receipts_y },
+      variable: v2.lens.cost.SizeVariable { source: algebra_receipts_y },
       degree: polynomial_degree_two_receipt
     }
   },
   expected_complexity: multidimensional_polynomial_complexity(
     variables: composite_complexity_variables(
-      lhs: single_complexity_variable(size_var: SizeVariable { source: algebra_receipts_x }),
-      rhs: single_complexity_variable(size_var: SizeVariable { source: algebra_receipts_y })
+      lhs: single_complexity_variable(size_var: v2.lens.cost.SizeVariable { source: algebra_receipts_x }),
+      rhs: single_complexity_variable(size_var: v2.lens.cost.SizeVariable { source: algebra_receipts_y })
     ),
     degree: polynomial_degree_four_receipt
   ),
@@ -63,13 +63,13 @@ data polynomial_product_degree_claim: ComplexityProjectionClaim = ComplexityProj
 }
 
 data variable_sensitive_dominance_claim: ComplexityDominanceClaim = ComplexityDominanceClaim {
-  lhs: linear_complexity(size_var: SizeVariable { source: algebra_receipts_x }),
-  rhs: linear_complexity(size_var: SizeVariable { source: algebra_receipts_y }),
+  lhs: linear_complexity(size_var: v2.lens.cost.SizeVariable { source: algebra_receipts_x }),
+  rhs: linear_complexity(size_var: v2.lens.cost.SizeVariable { source: algebra_receipts_y }),
   expected_dominates: false,
   falsification: algebra_receipts_diagnostic
 }
 
-fn polynomial_product_projected_complexity() -> ComplexityBound {
+fn polynomial_product_projected_complexity() -> v2.lens.complexity.ComplexityBound {
   complexity_bound_from_cost(cost: polynomial_product_degree_claim.input_cost)
 }
 

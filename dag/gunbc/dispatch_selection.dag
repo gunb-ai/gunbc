@@ -171,13 +171,13 @@ type DispatchSelectionResult
 
 data dispatch_codex_process_fingerprint_note: String = "SUPERSEDED AS EVIDENCE (operator ruling 2026-08-13): the literal below is NOT a process fingerprint receipt — two branches agreeing on a hand-authored string is agreement, not observation. Authoritative standing lives in gunbc.codex_provider_runtime_receipt CodexProviderRuntimeReceipt.process_fingerprint, derived from the bundled runtime converge installs; #8224 must consume that receipt, not this constant. Until wet tmux observation on the bundled binary lands, process_fingerprint is CodexProcessFingerprintUnobserved and dispatch must refuse rather than substitute this literal. Historical context (srv1 npm-shim, 2026-07-27): authenticated /usr/bin/codex (0.133.0) reported pane_current_command node during exec — that observation applied to the npm launcher, not the bundled-native 0.146.0 tree this PR converges."
 
-data dispatch_codex_process_fingerprint: NonEmptyStr = "node" as NonEmptyStr
-data dispatch_codex_process_fingerprint_unobserved_selection_refusal: NonEmptyStr = "Codex dispatch selection refused: bundled-native process fingerprint unobserved; derive from CodexProviderRuntimeReceipt after wet tmux observation — never from dispatch_codex_process_fingerprint literal" as NonEmptyStr
-data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
-data dispatch_cursor_process_fingerprint: NonEmptyStr = "cursor-agent" as NonEmptyStr
+data dispatch_codex_process_fingerprint: std.types.NonEmptyStr = "node" as std.types.NonEmptyStr
+data dispatch_codex_process_fingerprint_unobserved_selection_refusal: std.types.NonEmptyStr = "Codex dispatch selection refused: bundled-native process fingerprint unobserved; derive from CodexProviderRuntimeReceipt after wet tmux observation — never from dispatch_codex_process_fingerprint literal" as std.types.NonEmptyStr
+data dispatch_claude_process_fingerprint: std.types.NonEmptyStr = "claude" as std.types.NonEmptyStr
+data dispatch_cursor_process_fingerprint: std.types.NonEmptyStr = "cursor-agent" as std.types.NonEmptyStr
 
-data dispatch_codex_default_model: NonEmptyStr = "account-default" as NonEmptyStr
-data dispatch_claude_default_model: NonEmptyStr = "account-default" as NonEmptyStr
+data dispatch_codex_default_model: std.types.NonEmptyStr = "account-default" as std.types.NonEmptyStr
+data dispatch_claude_default_model: std.types.NonEmptyStr = "account-default" as std.types.NonEmptyStr
 
 data dispatch_limit_draw_note: String = "LimitDispatchDrawAutomatic fail-closes on any observed ProviderNativeLimitBucket exhaustion because model-to-limitId join is unobserved (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note). ProfileExactOverride SelectCodex may carry operator_asserted_native_limit_bucket — a human-asserted native_key attribution recorded on the request, NOT a cited join and NOT inferred from model or limitName. DISSOLVES ON: cited model-to-bucket join lands; automatic draw becomes decidable without operator assertion."
 
@@ -185,8 +185,8 @@ data codex_operator_asserted_native_limit_bucket_note: String = "Operator assert
 
 fn codex_limit_dispatch_draw_for_selection(
   profile: ExecutionProfile,
-  operator_asserted_native_limit_bucket: NonEmptyStr?,
-) -> ProviderLimitDispatchDraw {
+  operator_asserted_native_limit_bucket: std.types.NonEmptyStr?,
+) -> gunbc.provider_standing.ProviderLimitDispatchDraw {
   match profile {
     ProfileExactOverride =>
       match operator_asserted_native_limit_bucket {
@@ -201,14 +201,14 @@ fn codex_limit_dispatch_draw_for_selection(
   }
 }
 
-fn claude_limit_dispatch_draw_for_model(model: NonEmptyStr) -> ProviderLimitDispatchDraw {
+fn claude_limit_dispatch_draw_for_model(model: std.types.NonEmptyStr) -> gunbc.provider_standing.ProviderLimitDispatchDraw {
   LimitDispatchDrawModel {
     credential: LimitCredentialUnspecified,
     model: model,
   }
 }
 
-fn limit_dispatch_draw_for_offer_automatic(offer: ProviderOffer) -> ProviderLimitDispatchDraw {
+fn limit_dispatch_draw_for_offer_automatic(offer: ProviderOffer) -> gunbc.provider_standing.ProviderLimitDispatchDraw {
   match offer {
     OfferCodex { offer: _ } => LimitDispatchDrawAutomatic
     OfferClaude { offer: _ } =>
@@ -220,7 +220,7 @@ fn limit_dispatch_draw_for_offer_automatic(offer: ProviderOffer) -> ProviderLimi
 fn limit_dispatch_draw_for_offer_and_request(
   offer: ProviderOffer,
   request: ProviderSelectionRequest,
-) -> ProviderLimitDispatchDraw {
+) -> gunbc.provider_standing.ProviderLimitDispatchDraw {
   match request {
     SelectAutomatically { profile: _ } =>
       limit_dispatch_draw_for_offer_automatic(offer: offer)
@@ -243,18 +243,18 @@ fn limit_dispatch_draw_for_offer_and_request(
 }
 
 fn dispatch_selection_automatic_native_bucket_join_undetermined_refusal(
-  native_key: NonEmptyStr,
-) -> NonEmptyStr {
+  native_key: std.types.NonEmptyStr,
+) -> std.types.NonEmptyStr {
   concat(
     "automatic dispatch cannot prove avoidance of native limit bucket ",
     native_key as String,
     " — model-to-limitId join unobserved (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note)",
-  ) as NonEmptyStr
+  ) as std.types.NonEmptyStr
 }
 
 fn automatic_refusal_reason_for_inventory(
   inventory: ProviderInventory,
-) -> NonEmptyStr? {
+) -> std.types.NonEmptyStr? {
   fold(
     inventory.offers,
     init: none,
@@ -273,22 +273,22 @@ fn automatic_refusal_reason_for_inventory(
     },
   )
 }
-data dispatch_claude_default_workflow_mode: NonEmptyStr = "default" as NonEmptyStr
+data dispatch_claude_default_workflow_mode: std.types.NonEmptyStr = "default" as std.types.NonEmptyStr
 data dispatch_claude_default_credential_root: std.types.FilePath = "~/.claude" as std.types.FilePath
 
 data claude_offer_inventory_wiring_note: String = "PRODUCTION WIRING DEFERRED (operator ruling msg_3b291a6a / msg_0ec68b71): OfferClaude is omitted from provider_inventory_for_instance until the WorkerTurn PR. resolve_provider_offer still delegates OfferClaude to resolve_claude_offer when a fixture or future inventory row includes it — production deferral is inventory omission, not a blanket resolver refusal. Fixture controls (fixture_inventory_codex_then_claude, resolve_dispatch_selection) prove a future eligible Claude standing is selectable."
 
-data dispatch_selection_temporal_unobserved_reason: NonEmptyStr = "selection time; temporal bounds assigned at spawn observation" as NonEmptyStr
-data dispatch_selection_usage_unobserved_reason: NonEmptyStr = "selection time; usage observations assigned during provider runtime" as NonEmptyStr
-data dispatch_selection_attempt_unassigned_reason: NonEmptyStr = "selection time; attempt identity assigned at spawn" as NonEmptyStr
+data dispatch_selection_temporal_unobserved_reason: std.types.NonEmptyStr = "selection time; temporal bounds assigned at spawn observation" as std.types.NonEmptyStr
+data dispatch_selection_usage_unobserved_reason: std.types.NonEmptyStr = "selection time; usage observations assigned during provider runtime" as std.types.NonEmptyStr
+data dispatch_selection_attempt_unassigned_reason: std.types.NonEmptyStr = "selection time; attempt identity assigned at spawn" as std.types.NonEmptyStr
 
-data claude_offer_not_wired_reason: NonEmptyStr = "Claude offer is not wired on this host inventory" as NonEmptyStr
+data claude_offer_not_wired_reason: std.types.NonEmptyStr = "Claude offer is not wired on this host inventory" as std.types.NonEmptyStr
 
 data claude_state_root_denotes_profile_not_authority_note: String = "CARRIER-SHAPE (eager-raven-845 live receipt, 2026-08-06): ClaudeStateRootRef { root: FilePath } denotes the credential profile tree on disk, not the authority to act. A faithful file-tree copy reproduces subscription metadata (claude_max, stripe_subscription) while tokenSource remains none. Slice C credential binding must derive authentication from token state; assuming file-residence silently mis-denotes. See gunbc.provider_standing claude_profile_present_token_absent_live_fixture_note."
 
-data dispatch_selection_standing_ineligible_reason: NonEmptyStr = "no provider offer is selection-eligible for the requested profile" as NonEmptyStr
+data dispatch_selection_standing_ineligible_reason: std.types.NonEmptyStr = "no provider offer is selection-eligible for the requested profile" as std.types.NonEmptyStr
 
-data dispatch_selection_shape_mismatch_reason: NonEmptyStr = "no provider offer matches the requested selection shape" as NonEmptyStr
+data dispatch_selection_shape_mismatch_reason: std.types.NonEmptyStr = "no provider offer matches the requested selection shape" as std.types.NonEmptyStr
 
 data dispatch_production_standing_unobserved_refusal_note: String = "Production Codex inventory rows carry declared provider_standing_inventory_unobserved standing and CodexProcessFingerprintUnobserved at selection time; wet probe-derived standing via provider_standing_from_live_codex_probes is reserved for dashboard readiness, not hermetic inventory build. Entitlement and account-limit axes stay honestly unobserved at this bridge; selection refuses when those axes block eligibility. RecordedFact standing observations (nimble-owl-833) supersede probe-derived bundles. Spawn-shape witnesses use fixture_inventory_* builders."
 
@@ -348,11 +348,11 @@ fn dispatch_resolved_execution_from_selection(
 }
 
 fn dispatch_execution_receipt(
-  node_sizing: NodeSizing,
+  node_sizing: gunbc.roadmap_model.NodeSizing,
   requested_selection: ProviderSelectionRequest,
   resolved_selection: ResolvedProviderSelection,
-  provider_kind: ProviderKind,
-  applied_effort: ReasoningEffort,
+  provider_kind: extdeps.llm.cli_lifecycle.ProviderKind,
+  applied_effort: extdeps.llm.cli.ReasoningEffort,
 ) -> DispatchExecutionReceipt {
   DispatchExecutionReceipt {
     node_sizing: node_sizing,
@@ -364,19 +364,19 @@ fn dispatch_execution_receipt(
   }
 }
 
-fn production_codex_process_fingerprint_standing() -> CodexProcessFingerprintStanding {
+fn production_codex_process_fingerprint_standing() -> gunbc.codex_provider_runtime_receipt.CodexProcessFingerprintStanding {
   CodexProcessFingerprintUnobserved {
     reason: codex_process_fingerprint_unobserved_reason,
   }
 }
 
-fn fixture_codex_process_fingerprint_standing() -> CodexProcessFingerprintStanding {
+fn fixture_codex_process_fingerprint_standing() -> gunbc.codex_provider_runtime_receipt.CodexProcessFingerprintStanding {
   CodexProcessFingerprintObserved {
     fingerprint: dispatch_codex_process_fingerprint,
   }
 }
 
-fn codex_offer_observed_process_fingerprint(offer: CodexOffer) -> NonEmptyStr? {
+fn codex_offer_observed_process_fingerprint(offer: CodexOffer) -> std.types.NonEmptyStr? {
   match offer.process_fingerprint {
     CodexProcessFingerprintObserved { fingerprint } => Present { value: fingerprint }
     CodexProcessFingerprintUnobserved { reason: _ } => none
@@ -384,29 +384,29 @@ fn codex_offer_observed_process_fingerprint(offer: CodexOffer) -> NonEmptyStr? {
 }
 
 fn codex_offer_for_instance_with_standing(
-  instance: HostDashboardInstance,
-  standing: ProviderStanding,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  standing: gunbc.provider_standing.ProviderStanding,
   executable: std.types.FilePath,
-  process_fingerprint: CodexProcessFingerprintStanding,
+  process_fingerprint: gunbc.codex_provider_runtime_receipt.CodexProcessFingerprintStanding,
 ) -> CodexOffer {
   CodexOffer {
-    instance: ProviderInstance {
+    instance: extdeps.llm.cli_lifecycle.ProviderInstance {
       kind: CodexCliProvider,
       host: ProviderInstanceFieldUnobserved {
-        reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+        reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
       },
-      executable: executable as NonEmptyStr,
+      executable: executable as std.types.NonEmptyStr,
       observed_version: ProviderInstanceFieldUnobserved {
-        reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+        reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
       },
       state_directory: ProviderInstanceFieldUnobserved {
-        reason: "account_state_root is the credential reference" as NonEmptyStr,
+        reason: "account_state_root is the credential reference" as std.types.NonEmptyStr,
       },
       credential_storage_method: ProviderInstanceFieldUnobserved {
-        reason: "codex stores credentials under account_state_root" as NonEmptyStr,
+        reason: "codex stores credentials under account_state_root" as std.types.NonEmptyStr,
       },
       service_identity: ProviderInstanceFieldUnobserved {
-        reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+        reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
       },
     },
     account_state_root: dashboard_instance_provider_state_root(instance: instance),
@@ -421,7 +421,7 @@ fn codex_offer_for_instance_with_standing(
   }
 }
 
-fn codex_inventory_offers_for_instance(instance: HostDashboardInstance) -> List<ProviderOffer> {
+fn codex_inventory_offers_for_instance(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> List<ProviderOffer> {
   match dashboard_instance_provider_executable(instance: instance) {
     Absent => []
     Present { value: executable } => [
@@ -438,8 +438,8 @@ fn codex_inventory_offers_for_instance(instance: HostDashboardInstance) -> List<
 }
 
 fn fixture_codex_offer_with_standing(
-  instance: HostDashboardInstance,
-  standing: ProviderStanding,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  standing: gunbc.provider_standing.ProviderStanding,
   executable: std.types.FilePath,
 ) -> ProviderOffer {
   OfferCodex {
@@ -453,9 +453,9 @@ fn fixture_codex_offer_with_standing(
 }
 
 fn fixture_inventory_codex_then_claude(
-  instance: HostDashboardInstance,
-  codex_standing: ProviderStanding,
-  claude_standing: ProviderStanding,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  codex_standing: gunbc.provider_standing.ProviderStanding,
+  claude_standing: gunbc.provider_standing.ProviderStanding,
 ) -> ProviderInventory {
   match dashboard_instance_provider_executable(instance: instance) {
     Absent =>
@@ -477,9 +477,9 @@ fn fixture_inventory_codex_then_claude(
 }
 
 fn fixture_inventory_claude_then_codex(
-  instance: HostDashboardInstance,
-  codex_standing: ProviderStanding,
-  claude_standing: ProviderStanding,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  codex_standing: gunbc.provider_standing.ProviderStanding,
+  claude_standing: gunbc.provider_standing.ProviderStanding,
 ) -> ProviderInventory {
   match dashboard_instance_provider_executable(instance: instance) {
     Absent =>
@@ -501,27 +501,27 @@ fn fixture_inventory_claude_then_codex(
 }
 
 fn claude_offer_for_instance_with_standing(
-  instance: HostDashboardInstance,
-  standing: ProviderStanding,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+  standing: gunbc.provider_standing.ProviderStanding,
 ) -> ClaudeOffer {
   ClaudeOffer {
-    instance: ProviderInstance {
+    instance: extdeps.llm.cli_lifecycle.ProviderInstance {
       kind: ClaudeCliProvider,
       host: ProviderInstanceFieldUnobserved {
-        reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+        reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
       },
-      executable: claude_cli_program as NonEmptyStr,
+      executable: claude_cli_program as std.types.NonEmptyStr,
       observed_version: ProviderInstanceFieldUnobserved {
-        reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+        reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
       },
       state_directory: ProviderInstanceFieldUnobserved {
-        reason: "ClaudeStateRootRef is the credential reference" as NonEmptyStr,
+        reason: "ClaudeStateRootRef is the credential reference" as std.types.NonEmptyStr,
       },
       credential_storage_method: ProviderInstanceFieldUnobserved {
-        reason: "claude credentials live under explicit state root or managed secret" as NonEmptyStr,
+        reason: "claude credentials live under explicit state root or managed secret" as std.types.NonEmptyStr,
       },
       service_identity: ProviderInstanceFieldUnobserved {
-        reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+        reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
       },
     },
     credential: ClaudeStateRootRef { root: dispatch_claude_default_credential_root },
@@ -532,14 +532,14 @@ fn claude_offer_for_instance_with_standing(
   }
 }
 
-fn claude_offer_for_instance(instance: HostDashboardInstance) -> ClaudeOffer {
+fn claude_offer_for_instance(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> ClaudeOffer {
   claude_offer_for_instance_with_standing(
     instance: instance,
     standing: provider_standing_inventory_unobserved(),
   )
 }
 
-fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderInventory {
+fn provider_inventory_for_instance(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> ProviderInventory {
   if instance.instance_id == srv2_dashboard_lab_id
     || instance.instance_id == srv2_dashboard_preview_id {
     ProviderInventory {
@@ -548,23 +548,23 @@ fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderI
         [
         OfferCursor {
           offer: CursorOffer {
-            instance: ProviderInstance {
+            instance: extdeps.llm.cli_lifecycle.ProviderInstance {
               kind: CursorCliProvider,
               host: ProviderInstanceFieldUnobserved {
-                reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+                reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
               },
-              executable: "cursor-agent" as NonEmptyStr,
+              executable: "cursor-agent" as std.types.NonEmptyStr,
               observed_version: ProviderInstanceFieldUnobserved {
-                reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+                reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
               },
               state_directory: ProviderInstanceFieldUnobserved {
-                reason: "cursor has no per-account state root" as NonEmptyStr,
+                reason: "cursor has no per-account state root" as std.types.NonEmptyStr,
               },
               credential_storage_method: ProviderInstanceFieldUnobserved {
-                reason: "cursor credentials are secret references only" as NonEmptyStr,
+                reason: "cursor credentials are secret references only" as std.types.NonEmptyStr,
               },
               service_identity: ProviderInstanceFieldUnobserved {
-                reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+                reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
               },
             },
             credential: CursorLocalLoginRef,
@@ -590,7 +590,7 @@ fn default_provider_selection_request() -> ProviderSelectionRequest {
 fn codex_effort_for_profile(
   offer: CodexOffer,
   profile: ExecutionProfile,
-  observed_fingerprint: NonEmptyStr,
+  observed_fingerprint: std.types.NonEmptyStr,
 ) -> DispatchSelectionResult {
   match profile {
     ProfileAutomatic => {
@@ -641,14 +641,14 @@ fn codex_effort_for_profile(
           DispatchSelectionRefused {
             node_sizing: Unsized,
             requested_selection: SelectAutomatically { profile: ProfileDeep },
-            reason: "provider offer has no configured Deep realization" as NonEmptyStr,
+            reason: "provider offer has no configured Deep realization" as std.types.NonEmptyStr,
           }
       }
     ProfileExactOverride =>
       DispatchSelectionRefused {
         node_sizing: Unsized,
         requested_selection: SelectAutomatically { profile: ProfileExactOverride },
-        reason: "ExactOverride requires an explicit provider selection arm" as NonEmptyStr,
+        reason: "ExactOverride requires an explicit provider selection arm" as std.types.NonEmptyStr,
       }
   }
 }
@@ -656,7 +656,7 @@ fn codex_effort_for_profile(
 fn resolve_codex_offer(
   offer: CodexOffer,
   request: ProviderSelectionRequest,
-  node_sizing: NodeSizing,
+  node_sizing: gunbc.roadmap_model.NodeSizing,
 ) -> DispatchSelectionResult {
   match codex_offer_observed_process_fingerprint(offer: offer) {
     Absent =>
@@ -677,9 +677,9 @@ fn resolve_codex_offer(
 
 fn resolve_codex_offer_with_observed_fingerprint(
   offer: CodexOffer,
-  observed_fingerprint: NonEmptyStr,
+  observed_fingerprint: std.types.NonEmptyStr,
   request: ProviderSelectionRequest,
-  node_sizing: NodeSizing,
+  node_sizing: gunbc.roadmap_model.NodeSizing,
 ) -> DispatchSelectionResult {
   match request {
     SelectAutomatically { profile } =>
@@ -755,7 +755,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
               DispatchSelectionRefused {
                 node_sizing: node_sizing,
                 requested_selection: request,
-                reason: "provider offer has no configured Deep realization" as NonEmptyStr,
+                reason: "provider offer has no configured Deep realization" as std.types.NonEmptyStr,
               }
           }
         ProfileExactOverride => {
@@ -786,7 +786,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
       DispatchSelectionRefused {
         node_sizing: node_sizing,
         requested_selection: request,
-        reason: "selection request shape does not match Codex offer" as NonEmptyStr,
+        reason: "selection request shape does not match Codex offer" as std.types.NonEmptyStr,
       }
   }
 }
@@ -794,7 +794,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
 fn resolve_claude_offer(
   offer: ClaudeOffer,
   request: ProviderSelectionRequest,
-  node_sizing: NodeSizing,
+  node_sizing: gunbc.roadmap_model.NodeSizing,
 ) -> DispatchSelectionResult {
   match request {
     SelectAutomatically { profile } =>
@@ -847,14 +847,14 @@ fn resolve_claude_offer(
               DispatchSelectionRefused {
                 node_sizing: node_sizing,
                 requested_selection: request,
-                reason: "Claude offer has no configured Deep realization" as NonEmptyStr,
+                reason: "Claude offer has no configured Deep realization" as std.types.NonEmptyStr,
               }
           }
         ProfileExactOverride =>
           DispatchSelectionRefused {
             node_sizing: node_sizing,
             requested_selection: request,
-            reason: "ExactOverride requires an explicit provider selection arm" as NonEmptyStr,
+            reason: "ExactOverride requires an explicit provider selection arm" as std.types.NonEmptyStr,
           }
       }
     SelectClaude { profile, credential, model, effort, workflow_mode } =>
@@ -907,7 +907,7 @@ fn resolve_claude_offer(
               DispatchSelectionRefused {
                 node_sizing: node_sizing,
                 requested_selection: request,
-                reason: "Claude offer has no configured Deep realization" as NonEmptyStr,
+                reason: "Claude offer has no configured Deep realization" as std.types.NonEmptyStr,
               }
           }
         ProfileExactOverride => {
@@ -942,13 +942,13 @@ fn resolve_claude_offer(
       DispatchSelectionRefused {
         node_sizing: node_sizing,
         requested_selection: request,
-        reason: "Codex selection request does not match a Claude offer" as NonEmptyStr,
+        reason: "Codex selection request does not match a Claude offer" as std.types.NonEmptyStr,
       }
     SelectCursor { profile: _, credential: _, model: _, agent_mode: _ } =>
       DispatchSelectionRefused {
         node_sizing: node_sizing,
         requested_selection: request,
-        reason: "Cursor selection request does not match a Claude offer" as NonEmptyStr,
+        reason: "Cursor selection request does not match a Claude offer" as std.types.NonEmptyStr,
       }
   }
 }
@@ -956,7 +956,7 @@ fn resolve_claude_offer(
 fn resolve_provider_offer(
   offer: ProviderOffer,
   request: ProviderSelectionRequest,
-  node_sizing: NodeSizing,
+  node_sizing: gunbc.roadmap_model.NodeSizing,
 ) -> DispatchSelectionResult {
   match offer {
     OfferCodex { offer: codex } => resolve_codex_offer(
@@ -976,7 +976,7 @@ fn resolve_provider_offer(
             selection: ResolvedCursorSelection {
               credential: cursor.credential,
               model: cursor.default_model,
-              agent_mode: "default-edit" as NonEmptyStr,
+              agent_mode: "default-edit" as std.types.NonEmptyStr,
               process_fingerprint: cursor.process_fingerprint,
             },
             instance: cursor.instance,
@@ -1017,7 +1017,7 @@ fn resolve_provider_offer(
               DispatchSelectionRefused {
                 node_sizing: node_sizing,
                 requested_selection: request,
-                reason: "Cursor offer has no configured Deep realization" as NonEmptyStr,
+                reason: "Cursor offer has no configured Deep realization" as std.types.NonEmptyStr,
               }
             ProfileExactOverride => {
               let resolved = ResolvedCursor {
@@ -1044,13 +1044,13 @@ fn resolve_provider_offer(
           DispatchSelectionRefused {
             node_sizing: node_sizing,
             requested_selection: request,
-            reason: "selection request shape does not match Cursor offer" as NonEmptyStr,
+            reason: "selection request shape does not match Cursor offer" as std.types.NonEmptyStr,
           }
       }
   }
 }
 
-fn provider_selection_request_for_kind(kind: ProviderKind) -> ProviderSelectionRequest {
+fn provider_selection_request_for_kind(kind: extdeps.llm.cli_lifecycle.ProviderKind) -> ProviderSelectionRequest {
   match kind {
     CodexCliProvider =>
       SelectCodex {
@@ -1073,12 +1073,12 @@ fn provider_selection_request_for_kind(kind: ProviderKind) -> ProviderSelectionR
         profile: ProfileAutomatic,
         credential: CursorLocalLoginRef,
         model: cursor_model_auto,
-        agent_mode: "default-edit" as NonEmptyStr,
+        agent_mode: "default-edit" as std.types.NonEmptyStr,
       }
   }
 }
 
-fn provider_offer_kind(offer: ProviderOffer) -> ProviderKind {
+fn provider_offer_kind(offer: ProviderOffer) -> extdeps.llm.cli_lifecycle.ProviderKind {
   match offer {
     OfferCodex { offer: o } => o.instance.kind
     OfferClaude { offer: o } => o.instance.kind
@@ -1086,7 +1086,7 @@ fn provider_offer_kind(offer: ProviderOffer) -> ProviderKind {
   }
 }
 
-fn provider_offer_standing(offer: ProviderOffer) -> ProviderStanding {
+fn provider_offer_standing(offer: ProviderOffer) -> gunbc.provider_standing.ProviderStanding {
   match offer {
     OfferCodex { offer: o } => o.standing
     OfferClaude { offer: o } => o.standing
@@ -1133,9 +1133,9 @@ fn offer_is_selection_eligible_for_automatic(offer: ProviderOffer) -> Bool {
 }
 
 fn accumulate_eligible_offer_kind(
-  acc: List<ProviderKind>,
+  acc: List<extdeps.llm.cli_lifecycle.ProviderKind>,
   offer: ProviderOffer,
-) -> List<ProviderKind> {
+) -> List<extdeps.llm.cli_lifecycle.ProviderKind> {
   if offer_is_selection_eligible_for_automatic(offer: offer) {
     concat(acc, [provider_offer_kind(offer: offer)])
   } else {
@@ -1143,7 +1143,7 @@ fn accumulate_eligible_offer_kind(
   }
 }
 
-fn eligible_provider_kinds_from_inventory(inventory: ProviderInventory) -> List<ProviderKind> {
+fn eligible_provider_kinds_from_inventory(inventory: ProviderInventory) -> List<extdeps.llm.cli_lifecycle.ProviderKind> {
   fold(
     inventory.offers,
     init: [],
@@ -1153,7 +1153,7 @@ fn eligible_provider_kinds_from_inventory(inventory: ProviderInventory) -> List<
 
 fn optional_offer_when_kind_matches(
   offer: ProviderOffer,
-  kind: ProviderKind,
+  kind: extdeps.llm.cli_lifecycle.ProviderKind,
 ) -> ProviderOffer? {
   if provider_offer_kind(offer: offer) == kind {
     optional_present(value: offer)
@@ -1162,7 +1162,7 @@ fn optional_offer_when_kind_matches(
   }
 }
 
-fn find_offer_for_kind(inventory: ProviderInventory, kind: ProviderKind) -> ProviderOffer? {
+fn find_offer_for_kind(inventory: ProviderInventory, kind: extdeps.llm.cli_lifecycle.ProviderKind) -> ProviderOffer? {
   fold(
     inventory.offers,
     init: none,
@@ -1175,7 +1175,7 @@ fn find_offer_for_kind(inventory: ProviderInventory, kind: ProviderKind) -> Prov
   )
 }
 
-fn automatic_selection_selected_kind(inventory: ProviderInventory) -> ProviderKind? {
+fn automatic_selection_selected_kind(inventory: ProviderInventory) -> extdeps.llm.cli_lifecycle.ProviderKind? {
   select_first_preferred_kind(
     preference: dispatch_automatic_provider_preference,
     eligible_kinds: eligible_provider_kinds_from_inventory(inventory: inventory),
@@ -1218,7 +1218,7 @@ fn inventory_has_shape_match(
 fn dispatch_selection_refusal_reason_for_miss(
   inventory: ProviderInventory,
   request: ProviderSelectionRequest,
-) -> NonEmptyStr {
+) -> std.types.NonEmptyStr {
   match request {
     SelectAutomatically { profile: _ } =>
       match automatic_refusal_reason_for_inventory(inventory: inventory) {
@@ -1240,13 +1240,13 @@ fn dispatch_selection_refusal_reason_for_miss(
 fn resolve_dispatch_selection(
   inventory: ProviderInventory,
   request: ProviderSelectionRequest,
-  node_sizing: NodeSizing,
+  node_sizing: gunbc.roadmap_model.NodeSizing,
 ) -> DispatchSelectionResult {
   if list_length(items: inventory.offers) == 0 {
     DispatchSelectionRefused {
       node_sizing: node_sizing,
       requested_selection: request,
-      reason: "provider inventory is empty" as NonEmptyStr,
+      reason: "provider inventory is empty" as std.types.NonEmptyStr,
     }
   } else {
     match find_offer_for_request(inventory: inventory, request: request) {
@@ -1270,9 +1270,9 @@ fn resolve_dispatch_selection(
 }
 
 fn dispatch_selection_for_instance(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   request: ProviderSelectionRequest,
-  node_sizing: NodeSizing,
+  node_sizing: gunbc.roadmap_model.NodeSizing,
 ) -> DispatchSelectionResult {
   resolve_dispatch_selection(
     inventory: provider_inventory_for_instance(instance: instance),
@@ -1281,7 +1281,7 @@ fn dispatch_selection_for_instance(
   )
 }
 
-fn resolved_provider_kind(resolved: ResolvedProviderSelection) -> ProviderKind {
+fn resolved_provider_kind(resolved: ResolvedProviderSelection) -> extdeps.llm.cli_lifecycle.ProviderKind {
   match resolved {
     ResolvedCodex { instance: _, selection: _, account_binding: _ } => CodexCliProvider
     ResolvedClaude { instance: _, selection: _ } => ClaudeCliProvider
@@ -1289,7 +1289,7 @@ fn resolved_provider_kind(resolved: ResolvedProviderSelection) -> ProviderKind {
   }
 }
 
-fn resolved_process_fingerprint(resolved: ResolvedProviderSelection) -> NonEmptyStr {
+fn resolved_process_fingerprint(resolved: ResolvedProviderSelection) -> std.types.NonEmptyStr {
   match resolved {
     ResolvedCodex { selection: s, instance: _, account_binding: _ } => s.process_fingerprint
     ResolvedClaude { selection: s, instance: _ } => s.process_fingerprint
@@ -1300,7 +1300,7 @@ fn resolved_process_fingerprint(resolved: ResolvedProviderSelection) -> NonEmpty
 fn selection_requests_match(
   requested: ProviderSelectionRequest,
   resolved: ResolvedProviderSelection,
-  codex_default_effort: ReasoningEffort,
+  codex_default_effort: extdeps.llm.cli.ReasoningEffort,
 ) -> Bool {
   match requested {
     SelectAutomatically { profile: ProfileAutomatic } =>
@@ -1321,7 +1321,7 @@ fn selection_requests_match(
 
 fn inventory_includes_provider_kind(
   inventory: ProviderInventory,
-  kind: ProviderKind,
+  kind: extdeps.llm.cli_lifecycle.ProviderKind,
 ) -> Bool {
   any(inventory.offers, offer =>
     match offer {
@@ -1332,7 +1332,7 @@ fn inventory_includes_provider_kind(
   )
 }
 
-fn automatic_codex_behavior_preservation_holds(instance: HostDashboardInstance) -> Bool {
+fn automatic_codex_behavior_preservation_holds(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> Bool {
   match dashboard_instance_provider_executable(instance: instance) {
     Absent => false
     Present { value: executable } => {
@@ -1381,26 +1381,26 @@ fn automatic_codex_behavior_preservation_holds(instance: HostDashboardInstance) 
   }
 }
 
-fn fixture_claude_offer(standing: ProviderStanding) -> ProviderOffer {
+fn fixture_claude_offer(standing: gunbc.provider_standing.ProviderStanding) -> ProviderOffer {
   OfferClaude {
     offer: ClaudeOffer {
-      instance: ProviderInstance {
+      instance: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: ClaudeCliProvider,
         host: ProviderInstanceFieldUnobserved {
-          reason: "fixture claude inventory row" as NonEmptyStr,
+          reason: "fixture claude inventory row" as std.types.NonEmptyStr,
         },
-        executable: "claude" as NonEmptyStr,
+        executable: "claude" as std.types.NonEmptyStr,
         observed_version: ProviderInstanceFieldUnobserved {
-          reason: "fixture claude inventory row" as NonEmptyStr,
+          reason: "fixture claude inventory row" as std.types.NonEmptyStr,
         },
         state_directory: ProviderInstanceFieldUnobserved {
-          reason: "fixture claude inventory row" as NonEmptyStr,
+          reason: "fixture claude inventory row" as std.types.NonEmptyStr,
         },
         credential_storage_method: ProviderInstanceFieldUnobserved {
-          reason: "fixture claude inventory row" as NonEmptyStr,
+          reason: "fixture claude inventory row" as std.types.NonEmptyStr,
         },
         service_identity: ProviderInstanceFieldUnobserved {
-          reason: "fixture claude inventory row" as NonEmptyStr,
+          reason: "fixture claude inventory row" as std.types.NonEmptyStr,
         },
       },
       credential: ClaudeStateRootRef { root: dispatch_claude_default_credential_root },
@@ -1412,7 +1412,7 @@ fn fixture_claude_offer(standing: ProviderStanding) -> ProviderOffer {
   }
 }
 
-fn fixture_inventory_codex_only_available(instance: HostDashboardInstance) -> ProviderInventory {
+fn fixture_inventory_codex_only_available(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> ProviderInventory {
   match dashboard_instance_provider_executable(instance: instance) {
     Absent => ProviderInventory { offers: [] }
     Present { value: executable } => {
@@ -1439,7 +1439,7 @@ fn fixture_inventory_codex_only_available(instance: HostDashboardInstance) -> Pr
 }
 
 fn fixture_inventory_codex_and_cursor_available(
-  instance: HostDashboardInstance,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> ProviderInventory {
   match dashboard_instance_provider_executable(instance: instance) {
     Absent => ProviderInventory { offers: [] }
@@ -1450,23 +1450,23 @@ fn fixture_inventory_codex_and_cursor_available(
     executable: executable,
     process_fingerprint: fixture_codex_process_fingerprint_standing(),
   )
-  let cursor_instance = ProviderInstance {
+  let cursor_instance = extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: CursorCliProvider,
     host: ProviderInstanceFieldUnobserved {
-      reason: "fixture cursor inventory row" as NonEmptyStr,
+      reason: "fixture cursor inventory row" as std.types.NonEmptyStr,
     },
-    executable: "cursor-agent" as NonEmptyStr,
+    executable: "cursor-agent" as std.types.NonEmptyStr,
     observed_version: ProviderInstanceFieldUnobserved {
-      reason: "fixture cursor inventory row" as NonEmptyStr,
+      reason: "fixture cursor inventory row" as std.types.NonEmptyStr,
     },
     state_directory: ProviderInstanceFieldUnobserved {
-      reason: "fixture cursor inventory row" as NonEmptyStr,
+      reason: "fixture cursor inventory row" as std.types.NonEmptyStr,
     },
     credential_storage_method: ProviderInstanceFieldUnobserved {
-      reason: "fixture cursor inventory row" as NonEmptyStr,
+      reason: "fixture cursor inventory row" as std.types.NonEmptyStr,
     },
     service_identity: ProviderInstanceFieldUnobserved {
-      reason: "fixture cursor inventory row" as NonEmptyStr,
+      reason: "fixture cursor inventory row" as std.types.NonEmptyStr,
     },
   }
   ProviderInventory {

@@ -20,8 +20,8 @@ type RosterRegistration {
   membership: GroupMembership
 }
 
-fn roster_decl(module_path: String, decl_name: String) -> DeclarationRef {
-  DeclarationRef {
+fn roster_decl(module_path: String, decl_name: String) -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
     field: WholeDeclaration

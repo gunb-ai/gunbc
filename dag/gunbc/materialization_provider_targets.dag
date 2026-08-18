@@ -5,8 +5,8 @@ data materialization_provider_targets_note: String = "The consumer-target fronti
 
 data materialization_provider_non_target_note: String = "DECLARED EXCLUSION, so the roster's coverage claim is checkable rather than merely asserted: extdeps.realization.artifact_store_fs is named in the 6B mandate's grounding list but is deliberately NOT a row here, and the reason is directional. Every row below is a cache that will one day CONSUME the contract; artifact_store_fs sits UNDER it — it is the filesystem transport handler bound to std.artifact_store's persistent tier (put/get with typed grant refusals), and std.materialization_provider already consumes that store directly via store_put. It also has no CacheInterfaceId, because it describes a transport rather than a cache system, so it cannot inhabit ProviderContractTarget's cache field at all. Its scope and remaining gaps are tracked on that module and deliberately not restated here — an earlier version of this sentence copied a claim from that module's prose that its own functions refuted (operator-flagged on PR 7385), which is why this note now carries a pointer instead of a duplicate. If a future rung gives the fs transport its own cited catalog row, it enrolls below like any other."
 
-fn target_decl(module_path: String, decl_name: String) -> DeclarationRef {
-  DeclarationRef {
+fn target_decl(module_path: String, decl_name: String) -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
     field: WholeDeclaration
@@ -77,7 +77,7 @@ fn materialization_provider_target_count() -> Int {
   materialization_provider_targets |> count()
 }
 
-fn materialization_provider_targets_contain(id: CacheInterfaceId) -> Bool {
+fn materialization_provider_targets_contain(id: std.cache_identity.CacheInterfaceId) -> Bool {
   materialization_provider_targets |> fold(init: false, f: (acc, t) => acc || (t.cache == id))
 }
 

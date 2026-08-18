@@ -9,19 +9,19 @@ module product.spatial_dimension
 // (std.claim_evidence.InferenceRuleId — a method that derives an estimate from evidence is exactly
 // an inference rule, so it is reused rather than nicknamed as a SpatialMethodId).
 
-type SurveyObligationId = NonEmptyStr where brand("SurveyObligationId")
+type SurveyObligationId = std.types.NonEmptyStr where brand("SurveyObligationId")
 
 // Length uncertainty is an ordered closed interval bounding the true value. It is the ONE-
 // DIMENSIONAL case, deliberately named for a length rather than for space in general: a point
 // needs a radius or bounding box and a pose needs separate translation and rotation error, and
 // those are separate carriers rather than a widened low/high.
-type LengthInterval = OrderedClosedInterval<Millimeter>
+type LengthInterval = OrderedClosedInterval<std.measure.Millimeter>
 
-fn millimeter_le(a: Millimeter, b: Millimeter) -> Bool {
+fn millimeter_le(a: std.measure.Millimeter, b: std.measure.Millimeter) -> Bool {
   millimeter_count(m: a) <= millimeter_count(m: b)
 }
 
-fn length_interval(low: Millimeter, high: Millimeter) -> IntervalConstruction<Millimeter> {
+fn length_interval(low: std.measure.Millimeter, high: std.measure.Millimeter) -> IntervalConstruction<std.measure.Millimeter> {
   closed_interval(low: low, high: high, le: millimeter_le)
 }
 

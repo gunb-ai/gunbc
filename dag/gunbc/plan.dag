@@ -12,11 +12,11 @@ type Plan {
   retirement: PlanRetirement,
 }
 
-fn plan_h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
-fn plan_h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
-fn plan_p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
+fn plan_h1(text: String) -> std.markdown.MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
+fn plan_h2(text: String) -> std.markdown.MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
+fn plan_p(text: String) -> std.markdown.MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
 
-fn plan_retirement_blocks(p: Plan) -> List<MarkdownBlock> {
+fn plan_retirement_blocks(p: Plan) -> List<std.markdown.MarkdownBlock> {
   match p.retirement {
     PlanRetiresWhen { condition } =>
       [plan_h2(text: "Dissolution trigger (DESIGN §6)"), plan_p(text: dissolution_description(condition: condition))]
@@ -24,12 +24,12 @@ fn plan_retirement_blocks(p: Plan) -> List<MarkdownBlock> {
   }
 }
 
-fn plan_to_blocks(p: Plan) -> List<MarkdownBlock> {
+fn plan_to_blocks(p: Plan) -> List<std.markdown.MarkdownBlock> {
   concat(concat([plan_h1(text: p.title)], p.body), plan_retirement_blocks(p: p))
 }
 
-fn plan_to_document(p: Plan) -> MarkdownDocument {
-  MarkdownDocument { blocks: plan_to_blocks(p: p) }
+fn plan_to_document(p: Plan) -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument { blocks: plan_to_blocks(p: p) }
 }
 
 // Retained deliberately. The payload is now a DissolutionCondition, whose own

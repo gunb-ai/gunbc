@@ -32,32 +32,32 @@ type DeployAuthorizationQuery {
   envelope: std.effect_grant.Envelope
 }
 
-data deploy_access_frame: Frame = Frame { name: "deploy", kind: SharedStateFrame }
+data deploy_access_frame: std.materialization_ladder.Frame = std.materialization_ladder.Frame { name: "deploy", kind: SharedStateFrame }
 
 data deploy_access_authorization_query_note: String = "Wave C (shell-intent-emit-realization-design.md): deploy-preflight is an AUTHORIZATION QUERY — the deploy frame requires the current principal to hold Execute grants over privileged command paths and to match the expected job principal (DeployRunnerPrincipal.job_user, never unit_user). Grants project from GroundedPosixPrincipal.sudo_grants via posix_sudo_grant_to_effect_grant (never a parallel grant vocabulary). Observation and typed-effect execution live in gunbc.ci_deploy_access_observe / gunbc.host_effect_realize at the runtime-present realization edge: present binaries use sudo.NopasswdExecuteProbe.Check; package-managed binaries that may not exist yet use sudo.NopasswdGrantList.Read plus an exact NOPASSWD-row check for the roster path. A successful list query alone is not authorization evidence. The duplicate in-script gunbc.ci_deploy_access_emit path is deleted; gunbc.ci_deploy_sudoers remains the roster-derived sudoers materialization."
 
 data deploy_access_refusal_prefix: String = "deploy_access: typed refusal before mutation"
 
-data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
+data gunbc_deploy_sudoers_dropin: std.types.NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
 
 data deploy_preflight_shell_header: String = "set -eu"
 
-data deploy_access_apt_get_binary_path: NonEmptyStr = fleet_apt_get_binary_path
+data deploy_access_apt_get_binary_path: std.types.NonEmptyStr = fleet_apt_get_binary_path
 
 fn deploy_access_apt_get_privileged_command() -> PrivilegedCommand {
   PrivilegedCommand {
-    grant: PosixSudoGrant {
+    grant: gunbc.fleet_posix_accounts.PosixSudoGrant {
       command_path: deploy_access_apt_get_binary_path,
       probe: NopasswdExecuteCheck { check_argv: "--help" },
     }
   }
 }
 
-fn posix_sudo_grant_to_privileged(g: PosixSudoGrant) -> PrivilegedCommand {
+fn posix_sudo_grant_to_privileged(g: gunbc.fleet_posix_accounts.PosixSudoGrant) -> PrivilegedCommand {
   PrivilegedCommand { grant: g }
 }
 
-fn grounded_principal_privileged_commands(p: GroundedPosixPrincipal) -> List<PrivilegedCommand> {
+fn grounded_principal_privileged_commands(p: gunbc.fleet_posix_accounts.GroundedPosixPrincipal) -> List<PrivilegedCommand> {
   map(p.sudo_grants, g => posix_sudo_grant_to_privileged(g: g))
 }
 
@@ -72,9 +72,9 @@ fn deploy_access_job_principal_refused_emit_poison(refusal: DeployAccessJobPrinc
 }
 
 fn deploy_access_or_refusal_for_runner(
-  runner: DeployRunnerPrincipal,
-  host: ComputeHost,
-  transport: HostEffectTransport,
+  runner: gunbc.fleet_posix_accounts.DeployRunnerPrincipal,
+  host: gunbc.fleet_intent.ComputeHost,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> DeployAccessOrRefusal {
   match fleet_deploy_job_principal(runner: runner) {
     Present { value: p } =>
@@ -122,7 +122,7 @@ fn ci_deploy_srv1_operator_ssh_access() -> DeployAccess {
   DeployAccess {
     principal: principal,
     host: srv1_host,
-    transport: SshShell { ssh_host: operator_host_srv1 as NonEmptyStr },
+    transport: SshShell { ssh_host: operator_host_srv1 as std.types.NonEmptyStr },
     privileged_commands: grounded_principal_privileged_commands(p: principal),
   }
 }
@@ -136,7 +136,7 @@ fn deploy_access_sudoers_line(access: DeployAccess, cmd: PrivilegedCommand) -> S
   )
 }
 
-fn deploy_target_proof_from_access(access: DeployAccess) -> DeployTargetHostProof {
+fn deploy_target_proof_from_access(access: DeployAccess) -> gunbc.ci_deploy_target_host.DeployTargetHostProof {
   deploy_target_proof(host: access.host.identity, transport: access.transport)
 }
 
@@ -148,7 +148,7 @@ fn deploy_target_host_preflight_script(access: DeployAccess) -> String {
   )
 }
 
-fn deploy_access_with_ssh_transport(access: DeployAccess, ssh_host: NonEmptyStr) -> DeployAccess {
+fn deploy_access_with_ssh_transport(access: DeployAccess, ssh_host: std.types.NonEmptyStr) -> DeployAccess {
   DeployAccess {
     principal: access.principal,
     host: access.host,
@@ -157,15 +157,15 @@ fn deploy_access_with_ssh_transport(access: DeployAccess, ssh_host: NonEmptyStr)
   }
 }
 
-fn deploy_access_projected_grants(access: DeployAccess) -> List<Grant> {
+fn deploy_access_projected_grants(access: DeployAccess) -> List<std.effect_grant.Grant> {
   map(
     access.principal.sudo_grants,
     g => posix_sudo_grant_to_effect_grant(g: g)
   )
 }
 
-fn deploy_access_grant_envelope(access: DeployAccess) -> Envelope {
-  Envelope {
+fn deploy_access_grant_envelope(access: DeployAccess) -> std.effect_grant.Envelope {
+  std.effect_grant.Envelope {
     frame: deploy_access_frame,
     grants: deploy_access_projected_grants(access: access),
   }
@@ -178,22 +178,22 @@ fn deploy_access_authorization_query(access: DeployAccess) -> DeployAuthorizatio
   }
 }
 
-fn deploy_access_read_principal_effect() -> HostEffect {
-  ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} }
+fn deploy_access_read_principal_effect() -> gunbc.host_effect.HostEffect {
+  ReadEffectivePosixPrincipal { read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead {} }
 }
 
-fn deploy_access_sudo_probe_effect(cmd: PrivilegedCommand) -> HostEffect {
+fn deploy_access_sudo_probe_effect(cmd: PrivilegedCommand) -> gunbc.host_effect.HostEffect {
   match cmd.grant.probe {
     NopasswdExecuteCheck { check_argv: check } =>
       SudoNopasswdExecuteProbe {
-        probe: SudoNopasswdExecuteProbeShape {
+        probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdExecuteProbeShape {
           command_path: cmd.grant.command_path,
           check_argv: check,
         }
       }
     NopasswdGrantListCheck =>
       SudoNopasswdGrantListProbe {
-        probe: cmd.grant.command_path as SudoNopasswdGrantListProbeShape
+        probe: cmd.grant.command_path as extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape
       }
   }
 }
@@ -201,7 +201,7 @@ fn deploy_access_sudo_probe_effect(cmd: PrivilegedCommand) -> HostEffect {
 fn deploy_access_grant_admits_probe(
   access: DeployAccess,
   cmd: PrivilegedCommand
-) -> AccessDecision {
+) -> std.access.AccessDecision {
   let grant = posix_sudo_grant_to_effect_grant(g: cmd.grant)
   admit_effect(
     env: deploy_access_grant_envelope(access: access),
@@ -210,13 +210,13 @@ fn deploy_access_grant_admits_probe(
   )
 }
 
-data deploy_access_preflight_shell_disposition: Disposition = Terminal {
+data deploy_access_preflight_shell_disposition: std.disposition.Disposition = Terminal {
   reason: "deploy_access_preflight_script dissolved (Wave B): deploy-preflight is an authorization query + typed effect-plan, not a concat shell script. Authority: deploy_access_authorization_query + deploy_access_preflight_plan; observation: gunbc.ci_deploy_access_observe."
 }
 
-data deploy_access_preflight_plan_disposition: Disposition = Scaffold {
+data deploy_access_preflight_plan_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_deploy_access_observe",
     decl_name: "deploy_access_preflight_plan",
     field: WholeDeclaration
@@ -230,7 +230,7 @@ fn deploy_access_privileged_fixture_actor(access: DeployAccess) -> DeployAccessA
   }
 }
 
-data deploy_access_unprivileged_fixture_principal: NonEmptyStr = "nobody"
+data deploy_access_unprivileged_fixture_principal: std.types.NonEmptyStr = "nobody"
 
 fn deploy_access_unprivileged_fixture_actor() -> DeployAccessActor {
   DeployAccessActor { observed_name: deploy_access_unprivileged_fixture_principal, sudo_granted: false }
@@ -247,7 +247,7 @@ fn deploy_access_sudo_miss_reason(access: DeployAccess) -> String {
   )
 }
 
-fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> AccessDecision {
+fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> std.access.AccessDecision {
   let expected = grounded_posix_principal_name(p: access.principal)
   if actor.observed_name != expected {
     access_policy_refusal(
@@ -269,19 +269,19 @@ fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> Access
   }
 }
 
-fn deploy_access_decision_reason(d: AccessDecision) -> String {
+fn deploy_access_decision_reason(d: std.access.AccessDecision) -> String {
   match d {
     Permit => ""
     Deny { refusal: refusal } => access_refusal_reason(refusal: refusal)
   }
 }
 
-fn deploy_access_principal_line(success: Bool, stdout: String) -> NonEmptyStr? {
+fn deploy_access_principal_line(success: Bool, stdout: String) -> std.types.NonEmptyStr? {
   if !success {
     none
   } else {
     let line = trim(stdout)
-    if line == "" { none } else { Present { value: line as NonEmptyStr } }
+    if line == "" { none } else { Present { value: line as std.types.NonEmptyStr } }
   }
 }
 

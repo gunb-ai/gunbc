@@ -29,15 +29,15 @@ fn named_length_token(name: String, px: Int) -> ScaleToken {
   ScaleToken { name: name, value: LengthValue { length: css_px(n: px) } }
 }
 
-fn font_token(name: String, families: List<CssFontFamily>) -> ScaleToken {
-  ScaleToken { name: name, value: FontStackValue { stack: CssFontStack { families: families } } }
+fn font_token(name: String, families: List<extdeps.languages.css.values.CssFontFamily>) -> ScaleToken {
+  ScaleToken { name: name, value: FontStackValue { stack: extdeps.languages.css.values.CssFontStack { families: families } } }
 }
 
 fn scale_var(t: ScaleToken) -> String {
   join(["var(--", t.name, ")"], "")
 }
 
-fn scale_decl(t: ScaleToken) -> CssDecl {
+fn scale_decl(t: ScaleToken) -> gunbc.design.material.CssDecl {
   decl(prop: CustomProperty { name: t.name }, value: scale_value_wire(v: t.value))
 }
 
@@ -124,7 +124,7 @@ fn all_scale_tokens() -> List<ScaleToken> {
   concat(concat(spacing_scale, type_scale), concat(font_stack, dimension_scale))
 }
 
-fn scale_var_decls() -> List<CssDecl> {
+fn scale_var_decls() -> List<gunbc.design.material.CssDecl> {
   map(all_scale_tokens(), t => scale_decl(t: t))
 }
 

@@ -41,33 +41,33 @@ fn gcp_token_smoke_script() -> String {
   }
 }
 
-data bmc_secrets_project_id: GcpProjectId = fleet_secrets_project_id
+data bmc_secrets_project_id: extdeps.cloud.gcp.gcp.GcpProjectId = fleet_secrets_project_id
 
 data bmc_secrets_project_number: String = fleet_secrets_project_number
 
 data bmc_srv3_secret_name: String = "bmc-srv3-admin"
 
-data bmc_assimilator_sa_email: ServiceAccountEmail = "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
+data bmc_assimilator_sa_email: extdeps.cloud.gcp.gcp.ServiceAccountEmail = "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
 
 data bmc_federated_github_repo: String = federated_github_repo
 
-data bmc_wif_pool_id: NonEmptyStr = github_wif_pool_id
+data bmc_wif_pool_id: std.types.NonEmptyStr = github_wif_pool_id
 
-data bmc_wif_pool_display_name: NonEmptyStr = github_wif_pool_display_name
+data bmc_wif_pool_display_name: std.types.NonEmptyStr = github_wif_pool_display_name
 
-data bmc_wif_provider_id: NonEmptyStr = github_wif_provider_id
+data bmc_wif_provider_id: std.types.NonEmptyStr = github_wif_provider_id
 
-data bmc_wif_issuer_uri: NonEmptyStr = github_wif_issuer_uri
+data bmc_wif_issuer_uri: std.types.NonEmptyStr = github_wif_issuer_uri
 
 data bmc_wif_attribute_mapping: Map<String, String> = github_wif_attribute_mapping
 
-data bmc_assimilator_account_id: NonEmptyStr = "bmc-assimilator"
+data bmc_assimilator_account_id: std.types.NonEmptyStr = "bmc-assimilator"
 
-data bmc_assimilator_display_name: NonEmptyStr = "BMC assimilator (keyless, srv3 secret only)"
+data bmc_assimilator_display_name: std.types.NonEmptyStr = "BMC assimilator (keyless, srv3 secret only)"
 
-data bmc_wif_pool: WifPool = github_wif_pool
+data bmc_wif_pool: extdeps.cloud.gcp.gcp.WifPool = github_wif_pool
 
-data bmc_wif_provider: WifProvider = github_wif_provider
+data bmc_wif_provider: extdeps.cloud.gcp.gcp.WifProvider = github_wif_provider
 
 fn bmc_assimilator_sa_member() -> String {
   federated_service_account_member(email: bmc_assimilator_sa_email)
@@ -109,7 +109,7 @@ data bmc_assimilator_bindings: List<SecretAccessBinding> = [
   bmc_secret_binding(role: role_secretmanager_secret_version_adder)
 ]
 
-fn gcp_wif_auth_step() -> Step {
+fn gcp_wif_auth_step() -> extdeps.github.actions.Step {
   UsesStep {
     name: Present { value: "Authenticate to GCP (keyless, Workload Identity Federation)" },
     id: Present { value: "gcp_auth" },
@@ -127,7 +127,7 @@ fn gcp_wif_auth_step() -> Step {
   }
 }
 
-fn gcp_token_smoke_step() -> Step {
+fn gcp_token_smoke_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Verify gcloud access token resolves (keyless)" },
     id: none,
@@ -141,7 +141,7 @@ fn gcp_token_smoke_step() -> Step {
   }
 }
 
-fn bmc_checkout_step() -> Step {
+fn bmc_checkout_step() -> extdeps.github.actions.Step {
   UsesStep {
     name: Present { value: "Checkout" },
     id: none,
@@ -154,8 +154,8 @@ fn bmc_checkout_step() -> Step {
   }
 }
 
-fn bmc_token_smoke_job() -> Job {
-  Job {
+fn bmc_token_smoke_job() -> extdeps.github.actions.Job {
+  extdeps.github.actions.Job {
     id: "bmc_token_smoke",
     name: none,
     runner: gunbc_ci_runner_spec(),
@@ -171,7 +171,7 @@ fn bmc_token_smoke_job() -> Job {
   }
 }
 
-data bmc_token_smoke_workflow: Workflow = {
+data bmc_token_smoke_workflow: extdeps.github.actions.Workflow = {
   name: "bmc-token-smoke",
   on: [
     WorkflowDispatch { inputs: [] }
@@ -179,7 +179,7 @@ data bmc_token_smoke_workflow: Workflow = {
   concurrency: none,
   env: none,
   permissions: Present {
-    value: WorkflowPermissions {
+    value: extdeps.github.actions.WorkflowPermissions {
       contents: Present { value: extdeps.github.actions.PermRead },
       pull_requests: none,
       issues: none,

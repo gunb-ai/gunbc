@@ -2,8 +2,8 @@ module extdeps.cache.materialization
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/cache"
   }
@@ -24,7 +24,7 @@ type CatalogProjectionRefusalReason
   | CapacityValueUnobservedForRole
   | CapacityValueUnresolvedForRole
 
-fn catalog_keying(kd: CatalogKeyDerivationFacts) -> CacheKeying {
+fn catalog_keying(kd: extdeps.cache.types.CatalogKeyDerivationFacts) -> std.materialization_ladder.CacheKeying {
   if kd.prefix_fallback_allowed {
     ExistenceKeyed
   } else {
@@ -36,7 +36,7 @@ fn catalog_keying(kd: CatalogKeyDerivationFacts) -> CacheKeying {
   }
 }
 
-fn catalog_tier(p: CacheInterfaceCatalogPlacement, keying: CacheKeying) -> ProviderTier {
+fn catalog_tier(p: extdeps.cache.catalog_placement.CacheInterfaceCatalogPlacement, keying: std.materialization_ladder.CacheKeying) -> std.materialization_ladder.ProviderTier {
   match p.locality {
     InProcess => MemoTier { keying: keying }
     PerRunnerFilesystem => ArtifactTier { keying: keying }
@@ -54,7 +54,7 @@ fn catalog_tier(p: CacheInterfaceCatalogPlacement, keying: CacheKeying) -> Provi
 // and the CONSUMER's obligation decides what it requires — a witness-frame memo
 // may legitimately be scope-released with unbounded capacity, while a promoted
 // entry-scoped memo or a cross-run store demands a real ceiling.
-fn catalog_retention(facts: CacheInterfaceCatalogFacts) -> ProviderRetention {
+fn catalog_retention(facts: extdeps.cache.types.CacheInterfaceCatalogFacts) -> std.cache_interface.ProviderRetention {
   facts.placement.retention
 }
 
@@ -66,10 +66,10 @@ fn catalog_retention(facts: CacheInterfaceCatalogFacts) -> ProviderRetention {
 // compiler consumer duly asked it and asserted the answer was zero, a witness
 // that is true by construction rather than discriminating.
 fn provider_from_catalog(
-  facts: CacheInterfaceCatalogFacts,
-  scope: List<Frame>,
-  coverage: CacheCoverage
-) -> CacheProvider {
+  facts: extdeps.cache.types.CacheInterfaceCatalogFacts,
+  scope: List<std.materialization_ladder.Frame>,
+  coverage: std.materialization_ladder.CacheCoverage
+) -> std.materialization_ladder.CacheProvider {
   let keying = catalog_keying(kd: facts.key_derivation)
   let tier = catalog_tier(p: facts.placement, keying: keying)
   provider_row(
@@ -111,9 +111,9 @@ type CatalogProviderEligibility
 
 fn provider_for_role(
   role: CatalogProviderRole,
-  facts: CacheInterfaceCatalogFacts,
-  scope: List<Frame>,
-  coverage: CacheCoverage
+  facts: extdeps.cache.types.CacheInterfaceCatalogFacts,
+  scope: List<std.materialization_ladder.Frame>,
+  coverage: std.materialization_ladder.CacheCoverage
 ) -> CatalogProviderEligibility {
   let retention = catalog_retention(facts: facts)
   match role_admits(role: role, r: retention) {
@@ -140,7 +140,7 @@ type RoleAdmission
 // so it needs a CapacityBounded arm it can never reach and someone fills it
 // with a false label. Matching the state once answers both questions at the
 // same time, and every arm below is reachable with a cause that is true.
-fn role_admits(role: CatalogProviderRole, r: ProviderRetention) -> RoleAdmission {
+fn role_admits(role: CatalogProviderRole, r: std.cache_interface.ProviderRetention) -> RoleAdmission {
   match role {
     GrowthBoundedRole => growth_admission(r: r)
     CapacityBoundedRole => capacity_admission(c: r.capacity)
@@ -150,7 +150,7 @@ fn role_admits(role: CatalogProviderRole, r: ProviderRetention) -> RoleAdmission
 
 // Mirrors std.materialization_ladder.retention_admission: scope release bounds
 // growth over time whatever the capacity, otherwise a ceiling must exist.
-fn growth_admission(r: ProviderRetention) -> RoleAdmission {
+fn growth_admission(r: std.cache_interface.ProviderRetention) -> RoleAdmission {
   match r.release_policy {
     ReleasedAtProviderScopeExit => RoleAdmitted
     ReleasedNever => capacity_admission(c: r.capacity)
@@ -158,7 +158,7 @@ fn growth_admission(r: ProviderRetention) -> RoleAdmission {
   }
 }
 
-fn capacity_admission(c: CapacityPolicy) -> RoleAdmission {
+fn capacity_admission(c: std.cache_interface.CapacityPolicy) -> RoleAdmission {
   match c {
     CapacityUnbounded => RoleRefused { reason: CapacityUnboundedForRole }
     CapacityUnobserved => RoleRefused { reason: CapacityUnobservedForRole }
@@ -170,7 +170,7 @@ fn capacity_admission(c: CapacityPolicy) -> RoleAdmission {
 // each way it fails has its own remedy: wrong unit needs a different cache,
 // a runtime-derived value needs the deriving authority to be resolved, and an
 // unobserved value needs a citation.
-fn exact_byte_admission(c: CapacityPolicy) -> RoleAdmission {
+fn exact_byte_admission(c: std.cache_interface.CapacityPolicy) -> RoleAdmission {
   match c {
     CapacityUnbounded => RoleRefused { reason: CapacityUnboundedForRole }
     CapacityUnobserved => RoleRefused { reason: CapacityUnobservedForRole }
@@ -178,7 +178,7 @@ fn exact_byte_admission(c: CapacityPolicy) -> RoleAdmission {
   }
 }
 
-fn exact_byte_limit_admission(l: CapacityLimit) -> RoleAdmission {
+fn exact_byte_limit_admission(l: std.cache_interface.CapacityLimit) -> RoleAdmission {
   match l {
     EntryCountCapacity { limit: _ } => RoleRefused { reason: CapacityUnitMismatchForRole }
     ByteCapacity { limit: v } => match v {
@@ -190,25 +190,25 @@ fn exact_byte_limit_admission(l: CapacityLimit) -> RoleAdmission {
 }
 
 fn provider_for_growth_bounded_role(
-  facts: CacheInterfaceCatalogFacts,
-  scope: List<Frame>,
-  coverage: CacheCoverage
+  facts: extdeps.cache.types.CacheInterfaceCatalogFacts,
+  scope: List<std.materialization_ladder.Frame>,
+  coverage: std.materialization_ladder.CacheCoverage
 ) -> CatalogProviderEligibility {
   provider_for_role(role: GrowthBoundedRole, facts: facts, scope: scope, coverage: coverage)
 }
 
 fn provider_for_capacity_bounded_role(
-  facts: CacheInterfaceCatalogFacts,
-  scope: List<Frame>,
-  coverage: CacheCoverage
+  facts: extdeps.cache.types.CacheInterfaceCatalogFacts,
+  scope: List<std.materialization_ladder.Frame>,
+  coverage: std.materialization_ladder.CacheCoverage
 ) -> CatalogProviderEligibility {
   provider_for_role(role: CapacityBoundedRole, facts: facts, scope: scope, coverage: coverage)
 }
 
 fn provider_for_exact_byte_budget_role(
-  facts: CacheInterfaceCatalogFacts,
-  scope: List<Frame>,
-  coverage: CacheCoverage
+  facts: extdeps.cache.types.CacheInterfaceCatalogFacts,
+  scope: List<std.materialization_ladder.Frame>,
+  coverage: std.materialization_ladder.CacheCoverage
 ) -> CatalogProviderEligibility {
   provider_for_role(role: ExactByteBudgetRole, facts: facts, scope: scope, coverage: coverage)
 }
@@ -224,7 +224,7 @@ fn eligibility_is_refused(e: CatalogProviderEligibility) -> Bool {
   }
 }
 
-fn eligible_providers(es: List<CatalogProviderEligibility>) -> List<CacheProvider> {
+fn eligible_providers(es: List<CatalogProviderEligibility>) -> List<std.materialization_ladder.CacheProvider> {
   es |> flat_map(e => match e {
     ProviderEligible { role: _, provider: prov } => [prov]
     ProviderIneligible { role: _, interface: _, reason: _ } => []

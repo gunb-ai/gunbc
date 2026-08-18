@@ -6,11 +6,11 @@ type HostnameAllocation {
   canonical_hostname: extdeps.dns.domain_name.DnsLabel
 }
 
-data gunbc_hostname_allocation_scope_disposition: Disposition = Terminal {
+data gunbc_hostname_allocation_scope_disposition: std.disposition.Disposition = Terminal {
   reason: "Single authority for the canonical hostname a fleet slot is allocated. A slot's HostIdentity is an internal placement identity; the hostname a machine answers to is a separate allocated fact governed by the DNS-label authority (extdeps.dns.domain_name — the DNS grammar is consumed here, never re-minted). Deriving one from the other by parsing the identity string is the §3 nicknaming violation: it makes the hostname a coincidence of how the slot happens to be spelled, so an identity that is not a legal label silently has no hostname and an identity that is one silently claims a hostname nobody allocated. Here the mapping is explicit and the lookup fails closed: an unallocated slot yields Absent, never a name reconstructed from the identity. srv1-srv4 carry LEGACY allocations whose hostname equals the slot spelling — that coincidence is now a stated row rather than a derivation rule, so the four deployed intents stay byte-identical while a fifth slot must be allocated a hostname rather than inheriting one. ROLE INDEPENDENCE is structural rather than witnessed: no function here takes a role, a ComputeHost, or any placement fact, so a role change cannot reach a hostname — there is no argument by which it could, which is why no test asserts it."
 }
 
-data gunbc_hostname_allocation_injectivity_disposition: Disposition = Terminal {
+data gunbc_hostname_allocation_injectivity_disposition: std.disposition.Disposition = Terminal {
   reason: "A hostname is a JOIN KEY that consumers copy — SSH known_hosts, DNS records, runner registrations, Docker contexts, Tailscale, sccache endpoints, certificate SANs — so two fleet slots claiming one canonical hostname is not a tidiness defect, it is two machines answering to one join key and every consumer resolving to whichever converged last. Both directions are refused: a slot allocated twice is an ambiguous desired state, a hostname claimed twice is the collision above. The rung is MECHANICALLY PREVENTABLE, not structural: the roster is an ordinary List literal, so a duplicate row remains WRITABLE and is caught by hostname_allocation_roster_verdict, which every production lookup consults before answering — a violating roster makes canonical_hostname_for_fleet_slot answer Absent for every slot rather than serving one arbitrary winner (§5: the failure arm refuses, it does not pick). ATTAINABLE CEILING is structural impossibility, and its NEXT-RUNG TRIGGER is a duplicate-refusing keyed roster carrier whose construction cannot admit a repeated key — the same shape std.occurrence_binding_candidates already builds with typed duplicate evidence; it is not adopted here because that carrier keys on one axis and this roster must stay injective on TWO."
 }
 
@@ -84,10 +84,10 @@ fn hostname_allocation_roster_verdict(
 }
 
 fn hostname_allocation_pick(
-  acc: DnsLabel?,
+  acc: extdeps.dns.domain_name.DnsLabel?,
   row: HostnameAllocation,
-  fleet_slot: HostIdentity,
-) -> DnsLabel? {
+  fleet_slot: product.placement_supply.HostIdentity,
+) -> extdeps.dns.domain_name.DnsLabel? {
   match acc {
     Present { value: found } => Present { value: found }
     Absent =>
@@ -101,8 +101,8 @@ fn hostname_allocation_pick(
 
 fn canonical_hostname_in_roster(
   allocations: List<HostnameAllocation>,
-  fleet_slot: HostIdentity,
-) -> DnsLabel? {
+  fleet_slot: product.placement_supply.HostIdentity,
+) -> extdeps.dns.domain_name.DnsLabel? {
   match hostname_allocation_roster_verdict(allocations: allocations) {
     HostnameAllocationRosterConsistent =>
       fold(
@@ -118,23 +118,23 @@ fn canonical_hostname_in_roster(
 data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
     fleet_slot: operator_host_srv1,
-    canonical_hostname: "srv1" as DnsLabel,
+    canonical_hostname: "srv1" as extdeps.dns.domain_name.DnsLabel,
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv2,
-    canonical_hostname: "srv2" as DnsLabel,
+    canonical_hostname: "srv2" as extdeps.dns.domain_name.DnsLabel,
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv3,
-    canonical_hostname: "srv3" as DnsLabel,
+    canonical_hostname: "srv3" as extdeps.dns.domain_name.DnsLabel,
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv4,
-    canonical_hostname: "srv4" as DnsLabel,
+    canonical_hostname: "srv4" as extdeps.dns.domain_name.DnsLabel,
   },
 ]
 
-fn canonical_hostname_for_fleet_slot(fleet_slot: HostIdentity) -> DnsLabel? {
+fn canonical_hostname_for_fleet_slot(fleet_slot: product.placement_supply.HostIdentity) -> extdeps.dns.domain_name.DnsLabel? {
   canonical_hostname_in_roster(
     allocations: gunbc_fleet_hostname_allocations,
     fleet_slot: fleet_slot,

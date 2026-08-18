@@ -27,8 +27,8 @@ data register_thesis_amendment_note: String = "THESIS REVISED (operator recalibr
 
 data register_thesis: String = "Calm field; luminous focus; physical response; every response true."
 
-fn principle_ref(module_path: String, decl_name: String) -> DeclarationRef {
-  DeclarationRef {
+fn principle_ref(module_path: String, decl_name: String) -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
     field: WholeDeclaration,

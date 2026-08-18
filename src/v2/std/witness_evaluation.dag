@@ -16,8 +16,8 @@ data evaluate_in_witness_frame_seed_note: String = "The v1 interpreter realizes 
 
 data unrealized_frame_refusal_note: String = "THE PURE BODY REFUSES; IT DOES NOT FABRICATE A SUCCESS. This previously returned WitnessReturned unconditionally, so an evaluator without the frame realization reported every refusal as a success - the fabricated-plausible-output failure §5 forbids, sitting in the one function whose entire job is to report whether a subject returned or refused. It was defended as scaffolding with a dissolve-on, but a declared trigger does not make a fail-open arm fail closed; it only schedules its removal (review 46769).\n\nREFUSING COSTS NOTHING THAT WAS REAL. The interpreter dispatches this boundary by module and name and never evaluates this body, so the realized path is unchanged and the nine replay witnesses prove it by execution. What changes is the unrealized path: it now answers WitnessRefused with a located reason naming the missing realization, so a consumer that reaches it learns that no frame was installed instead of being told its subject succeeded. The frame's absence is the fact, and the refusal states it.\n\nSTILL OPEN, SEPARATELY: witness_diagnostic_rendered_reason returns the empty string under a pure evaluator. That is a weaker defect than this one was - it can no longer disguise a refusal as a success, only render a real refusal's reason as empty - and it dissolves on the same trigger: Diagnostic gains a modeled rendering so the projection is authored rather than realized."
 
-fn witness_frame_unrealized_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn witness_frame_unrealized_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^witness_evaluation_frame_not_realized,
     at: Textual { file: ^witness_evaluation_unrealized_boundary, extent: WholeFile },
     correction: Unavailable { reason: AmbiguousIntent }
@@ -38,6 +38,6 @@ fn witness_evaluation_frame_active() -> Bool {
 
 data witness_diagnostic_rendered_reason_note: String = "Diagnostic.reason remains a Symbol in the shared diagnostic authority. This generic projection lets a witness compare an interpreter's full rendered refusal without weakening that authority to an arbitrary String carrier."
 
-fn witness_diagnostic_rendered_reason(diagnostic: Diagnostic) -> String {
+fn witness_diagnostic_rendered_reason(diagnostic: v2.std.diagnostic.Diagnostic) -> String {
   ""
 }

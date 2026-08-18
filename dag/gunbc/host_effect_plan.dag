@@ -1,7 +1,7 @@
 module gunbc.host_effect_plan
 
 
-type HostEffectPlan = EffectPlan<HostEffect>
+type HostEffectPlan = EffectPlan<gunbc.host_effect.HostEffect>
 
 type HostEffectPlanContext {
   target: gunbc.host_effect.NodeControlPlane
@@ -11,7 +11,7 @@ type HostEffectPlanContext {
 
 data host_effect_plan_unsupported_step_reason: String = "host_effect_plan_apply: control-flow step refuses on the typed host_effect_apply spine until predicate interpretation lands; only Do-effect leaves are supported (Wave A2 keystone, host-effect-orchestration.md std.effect_plan band)"
 
-fn host_effect_plan_placeholder_effect() -> HostEffect {
+fn host_effect_plan_placeholder_effect() -> gunbc.host_effect.HostEffect {
   ShellCommand { script: "" }
 }
 
@@ -20,7 +20,7 @@ fn host_effect_plan_unsupported_step_refusal(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   NotConverged {
     reason: host_effect_plan_unsupported_step_reason,
-    applied: HostEffectIntent {
+    applied: gunbc.host_effect.HostEffectIntent {
       target: ctx.target,
       effect: host_effect_plan_placeholder_effect(),
       evidence: ctx.evidence,
@@ -31,7 +31,7 @@ fn host_effect_plan_unsupported_step_refusal(
 }
 
 fn host_effect_plan_apply_step(
-  step: EffectPlanStep<HostEffect>,
+  step: EffectPlanStep<gunbc.host_effect.HostEffect>,
   ctx: HostEffectPlanContext,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match step {
@@ -59,7 +59,7 @@ fn host_effect_plan_apply_step(
 
 fn host_effect_plan_apply_rest(
   head_result: Reconciliation<HostEffectIntent, HostEffectEvidence>,
-  rest: FreeMonoid<EffectPlanStep<HostEffect>>,
+  rest: FreeMonoid<EffectPlanStep<gunbc.host_effect.HostEffect>>,
   ctx: HostEffectPlanContext,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   if !reconciliation_converged(r: head_result) {
@@ -88,7 +88,7 @@ fn host_effect_plan_apply(
     HeadAbsent =>
       NotConverged {
         reason: "host_effect_plan_apply: empty plan has no effect to apply",
-        applied: HostEffectIntent {
+        applied: gunbc.host_effect.HostEffectIntent {
           target: ctx.target,
           effect: host_effect_plan_placeholder_effect(),
           evidence: ctx.evidence,

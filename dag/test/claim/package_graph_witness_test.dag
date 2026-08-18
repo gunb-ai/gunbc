@@ -8,8 +8,8 @@ type ProbeSelection {
 
 type ProbeKind = ProbeRuntime | ProbeDev
 
-fn node(key: NonEmptyStr, name: NonEmptyStr, v: NonEmptyStr) -> PackageLockNode<NonEmptyStr, ProbeSelection, String> {
-  PackageLockNode {
+fn node(key: std.types.NonEmptyStr, name: std.types.NonEmptyStr, v: std.types.NonEmptyStr) -> PackageLockNode<NonEmptyStr, ProbeSelection, String> {
+  extdeps.package.PackageLockNode {
     key: key,
     selection: ProbeSelection { name: name, version: v },
     metadata: "",
@@ -17,27 +17,27 @@ fn node(key: NonEmptyStr, name: NonEmptyStr, v: NonEmptyStr) -> PackageLockNode<
 }
 
 fn graph() -> PackageLockGraph<NonEmptyStr, NonEmptyStr, ProbeSelection, String, ProbeKind> {
-  PackageLockGraph {
-    manager: "probe-pm" as NonEmptyStr,
-    roots: ["node_modules/a" as NonEmptyStr],
+  extdeps.package.PackageLockGraph {
+    manager: "probe-pm" as std.types.NonEmptyStr,
+    roots: ["node_modules/a" as std.types.NonEmptyStr],
     nodes: [
-      node(key: "node_modules/a" as NonEmptyStr, name: "a" as NonEmptyStr, v: "1.0.0" as NonEmptyStr),
-      node(key: "node_modules/b/node_modules/a" as NonEmptyStr, name: "a" as NonEmptyStr, v: "1.0.0" as NonEmptyStr),
+      node(key: "node_modules/a" as std.types.NonEmptyStr, name: "a" as std.types.NonEmptyStr, v: "1.0.0" as std.types.NonEmptyStr),
+      node(key: "node_modules/b/node_modules/a" as std.types.NonEmptyStr, name: "a" as std.types.NonEmptyStr, v: "1.0.0" as std.types.NonEmptyStr),
     ],
-    edges: [PackageDependencyEdge {
-      consumer: "node_modules/a" as NonEmptyStr,
-      dependency: "node_modules/b/node_modules/a" as NonEmptyStr,
+    edges: [extdeps.package.PackageDependencyEdge {
+      consumer: "node_modules/a" as std.types.NonEmptyStr,
+      dependency: "node_modules/b/node_modules/a" as std.types.NonEmptyStr,
       kind: ProbeRuntime,
     }],
   }
 }
 
 test fn same_name_version_different_paths_stay_distinct() -> Bool {
-  match package_lock_lookup_node(graph: graph(), key: "node_modules/a" as NonEmptyStr) {
+  match package_lock_lookup_node(graph: graph(), key: "node_modules/a" as std.types.NonEmptyStr) {
     PackageLockNodeUnique { node: _ } =>
-      match package_lock_lookup_node(graph: graph(), key: "node_modules/b/node_modules/a" as NonEmptyStr) {
+      match package_lock_lookup_node(graph: graph(), key: "node_modules/b/node_modules/a" as std.types.NonEmptyStr) {
         PackageLockNodeUnique { node: _ } =>
-          match package_lock_lookup_node(graph: graph(), key: "node_modules/c" as NonEmptyStr) {
+          match package_lock_lookup_node(graph: graph(), key: "node_modules/c" as std.types.NonEmptyStr) {
             PackageLockNodeAbsent { key: _ } => true
             PackageLockNodeUnique { node: _ } => false
             PackageLockNodeDuplicate { key: _, count: _ } => false
@@ -58,44 +58,44 @@ test fn admitted_graph_accepts_unique_keys() -> Bool {
 }
 
 test fn edge_to_missing_node_refuses() -> Bool {
-  let g = PackageLockGraph {
-    manager: "probe-pm" as NonEmptyStr,
+  let g = extdeps.package.PackageLockGraph {
+    manager: "probe-pm" as std.types.NonEmptyStr,
     roots: [],
-    nodes: [node(key: "node_modules/a" as NonEmptyStr, name: "a" as NonEmptyStr, v: "1.0.0" as NonEmptyStr)],
-    edges: [PackageDependencyEdge {
-      consumer: "node_modules/a" as NonEmptyStr,
-      dependency: "node_modules/missing" as NonEmptyStr,
+    nodes: [node(key: "node_modules/a" as std.types.NonEmptyStr, name: "a" as std.types.NonEmptyStr, v: "1.0.0" as std.types.NonEmptyStr)],
+    edges: [extdeps.package.PackageDependencyEdge {
+      consumer: "node_modules/a" as std.types.NonEmptyStr,
+      dependency: "node_modules/missing" as std.types.NonEmptyStr,
       kind: ProbeRuntime,
     }],
   }
   match package_lock_admit_graph(graph: g) {
     PackageLockGraphMissingEdgeDependency { key } =>
-      key == ("node_modules/missing" as NonEmptyStr)
+      key == ("node_modules/missing" as std.types.NonEmptyStr)
     _ => false
   }
 }
 
 test fn duplicate_identical_node_keys_refuse_admission() -> Bool {
-  let g = PackageLockGraph {
-    manager: "probe-pm" as NonEmptyStr,
-    roots: ["dup" as NonEmptyStr],
+  let g = extdeps.package.PackageLockGraph {
+    manager: "probe-pm" as std.types.NonEmptyStr,
+    roots: ["dup" as std.types.NonEmptyStr],
     nodes: [
-      node(key: "dup" as NonEmptyStr, name: "a" as NonEmptyStr, v: "1.0.0" as NonEmptyStr),
-      node(key: "dup" as NonEmptyStr, name: "a" as NonEmptyStr, v: "2.0.0" as NonEmptyStr),
+      node(key: "dup" as std.types.NonEmptyStr, name: "a" as std.types.NonEmptyStr, v: "1.0.0" as std.types.NonEmptyStr),
+      node(key: "dup" as std.types.NonEmptyStr, name: "a" as std.types.NonEmptyStr, v: "2.0.0" as std.types.NonEmptyStr),
     ],
-    edges: [PackageDependencyEdge {
-      consumer: "dup" as NonEmptyStr,
-      dependency: "dup" as NonEmptyStr,
+    edges: [extdeps.package.PackageDependencyEdge {
+      consumer: "dup" as std.types.NonEmptyStr,
+      dependency: "dup" as std.types.NonEmptyStr,
       kind: ProbeRuntime,
     }],
   }
-  match package_lock_lookup_node(graph: g, key: "dup" as NonEmptyStr) {
+  match package_lock_lookup_node(graph: g, key: "dup" as std.types.NonEmptyStr) {
     PackageLockNodeDuplicate { key, count } =>
-      key == ("dup" as NonEmptyStr)
+      key == ("dup" as std.types.NonEmptyStr)
         && count == 2
         && match package_lock_admit_graph(graph: g) {
           PackageLockGraphDuplicateNode { key: k2, count: c2 } =>
-            k2 == ("dup" as NonEmptyStr) && c2 == 2
+            k2 == ("dup" as std.types.NonEmptyStr) && c2 == 2
           _ => false
         }
     PackageLockNodeUnique { node: _ } => false
@@ -111,10 +111,10 @@ test fn package_delivery_boundary_readmits_raw_graph() -> Bool {
 }
 
 test fn admitted_nodes_do_not_surface_as_missing_root() -> Bool {
-  let g = PackageLockGraph {
-    manager: "probe-pm" as NonEmptyStr,
+  let g = extdeps.package.PackageLockGraph {
+    manager: "probe-pm" as std.types.NonEmptyStr,
     roots: [],
-    nodes: [node(key: "only" as NonEmptyStr, name: "a" as NonEmptyStr, v: "1.0.0" as NonEmptyStr)],
+    nodes: [node(key: "only" as std.types.NonEmptyStr, name: "a" as std.types.NonEmptyStr, v: "1.0.0" as std.types.NonEmptyStr)],
     edges: [],
   }
   match package_lock_admit_graph(graph: g) {

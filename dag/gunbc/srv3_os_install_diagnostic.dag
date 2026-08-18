@@ -1,15 +1,15 @@
 module gunbc.srv3_os_install_diagnostic
 
 
-data gunbc_srv3_os_install_diagnostic_scope_disposition: Disposition = Terminal {
+data gunbc_srv3_os_install_diagnostic_scope_disposition: std.disposition.Disposition = Terminal {
   reason: "srv3 OS install actuation diagnostic fold — multi-surface observation (nbd serve, BMC session, Redfish system boot/power, virtual media, SOL console, router DHCP lease, weak KVM) over InstallAttemptIntent → InstallDiagnosticVerdict; KVM frozen/keyboard-dead is weak evidence only."
 }
 
-data srv3_os_install_diagnostic_runbook_section: NonEmptyStr = "docs/runbooks/srv3-os-install-actuate.md#install-debug-diagnostic-fold"
+data srv3_os_install_diagnostic_runbook_section: std.types.NonEmptyStr = "docs/runbooks/srv3-os-install-actuate.md#install-debug-diagnostic-fold"
 
-data srv3_install_hang_no_installer_progress_ms: Milliseconds = 900000
+data srv3_install_hang_no_installer_progress_ms: std.types.Milliseconds = 900000
 
-data srv3_install_hang_no_router_lease_ms: Milliseconds = 4500000
+data srv3_install_hang_no_router_lease_ms: std.types.Milliseconds = 4500000
 
 type OsInstallHangStallCause
   = HangStallWithinBudget
@@ -84,7 +84,7 @@ data srv3_os_install_attempt_intent: OsInstallAttemptIntent = OsInstallAttemptIn
   bmc_endpoint: asrock_srv3_live_bmc_host,
   iso_path: srv3_actuator_virtual_media_iso_install_path,
   iso_content_hash: srv3_seeded_install_media_content_hash,
-  expected_hostname: "srv3" as NonEmptyStr,
+  expected_hostname: "srv3" as std.types.NonEmptyStr,
   boot_source: BootTargetCd,
   boot_override: BootOverrideOnce,
   serve_port: srv3_nbd_proxy_local_port,
@@ -321,8 +321,8 @@ fn nbd_serve_readiness_is_ready(verdict: NbdServeReadinessVerdict) -> Bool {
 }
 
 fn redfish_power_on_boot_verdict(
-  target: RedfishBootSourceOverrideTarget,
-  enabled: RedfishBootSourceOverrideEnabled,
+  target: extdeps.bmc.types.RedfishBootSourceOverrideTarget,
+  enabled: extdeps.bmc.types.RedfishBootSourceOverrideEnabled,
 ) -> RedfishSystemBootVerdict {
   match enabled {
     BootOverrideDisabled => BootOverrideDisabledAfterAttempt
@@ -417,8 +417,8 @@ fn classify_sol_console(obs: SolConsoleContentObservation) -> SolConsoleDiagnost
 }
 
 fn router_table_has_wrong_dynamic_hostname(
-  table: Cr1000aDhcpLeaseTable,
-  fleet_slot: HostIdentity,
+  table: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseTable,
+  fleet_slot: product.placement_supply.HostIdentity,
 ) -> Bool {
   fold(
     table.rows,
@@ -434,7 +434,7 @@ fn router_table_has_wrong_dynamic_hostname(
 }
 
 fn router_table_is_only_static_reservations(
-  table: Cr1000aDhcpLeaseTable,
+  table: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseTable,
 ) -> Bool {
   fold(
     table.rows,
@@ -449,8 +449,8 @@ fn router_table_is_only_static_reservations(
 }
 
 fn classify_router_lease_table(
-  table: Cr1000aDhcpLeaseTable,
-  fleet_slot: HostIdentity,
+  table: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseTable,
+  fleet_slot: product.placement_supply.HostIdentity,
 ) -> RouterLeaseDiagnosticVerdict {
   if lease_table_has_os_up_subsumption(table: table, fleet_slot: fleet_slot) {
     Srv3OsLeasePresent
@@ -839,14 +839,14 @@ fn sol_console_from_optional(sol: SolConsoleContentObservation?) -> SolConsoleCo
   }
 }
 
-fn router_table_from_optional(table: Cr1000aDhcpLeaseTable?) -> Cr1000aDhcpLeaseTable {
+fn router_table_from_optional(table: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseTable?) -> extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseTable {
   match table {
     Present { value: v } => v
     Absent => srv3_pre_install_lease_table
   }
 }
 
-fn elapsed_ms_from_optional(elapsed: Milliseconds?) -> Milliseconds {
+fn elapsed_ms_from_optional(elapsed: std.types.Milliseconds?) -> std.types.Milliseconds {
   match elapsed {
     Present { value: v } => v
     Absent => 0
@@ -906,7 +906,7 @@ fn diagnose_srv3_install_when_serve_observed(
   redfish: RedfishSystemBootVerdict,
   sol: SolConsoleDiagnosticVerdict,
   router: RouterLeaseDiagnosticVerdict,
-  elapsed: Milliseconds,
+  elapsed: std.types.Milliseconds,
 ) -> Srv3InstallDiagnostic {
   match observation.bmc_websocket {
     WebsocketUnavailable => BmcWebsocketUnavailable
@@ -945,7 +945,7 @@ fn diagnose_srv3_install_when_serve_ready(
   redfish: RedfishSystemBootVerdict,
   sol: SolConsoleDiagnosticVerdict,
   router: RouterLeaseDiagnosticVerdict,
-  elapsed: Milliseconds,
+  elapsed: std.types.Milliseconds,
 ) -> Srv3InstallDiagnostic {
   match redfish {
     BootOverrideCdOnceArmed => InstallerProbablyRunning
@@ -981,7 +981,7 @@ fn diagnose_srv3_install_post_boot(
   redfish: RedfishSystemBootVerdict,
   sol: SolConsoleDiagnosticVerdict,
   router: RouterLeaseDiagnosticVerdict,
-  elapsed: Milliseconds,
+  elapsed: std.types.Milliseconds,
 ) -> Srv3InstallDiagnostic {
   if sol_has_autoinstall_evidence(verdict: sol) {
     if elapsed < srv3_install_hang_no_router_lease_ms {
@@ -1135,7 +1135,7 @@ fn parse_serve_port_observation(stdout: String, intent: OsInstallAttemptIntent) 
   }
 }
 
-fn parse_observe_content_hash_observed(stdout: String) -> ContentHash? {
+fn parse_observe_content_hash_observed(stdout: String) -> std.content_hash.ContentHash? {
   let parts = split(s: stdout, delimiter: "content_hash_observed=")
   if parts.length() <= 1 {
     none
@@ -1255,7 +1255,7 @@ fn install_serve_session_active(observation: Srv3InstallDebugObservation) -> Boo
   }
 }
 
-fn parse_elapsed_boot_once_ms_observation(stdout: String) -> Milliseconds? {
+fn parse_elapsed_boot_once_ms_observation(stdout: String) -> std.types.Milliseconds? {
   let parts = split(s: stdout, delimiter: "surface=elapsed boot_once_ms=")
   match parts.length() <= 1 {
     true => Absent

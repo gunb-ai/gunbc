@@ -19,7 +19,7 @@ data extdeps_modeling_preflight_rows: List<ExtdepsPreflightRow> = [
   ExtdepsPreflightRow { question: "Proposed file map", required_answer: "One subject per implementation module" }
 ]
 
-fn extdeps_preflight_table() -> MarkdownBlock {
+fn extdeps_preflight_table() -> std.markdown.MarkdownBlock {
   TableBlock {
     header: gunbc.plans.md_helpers.row(cells: [cell(text: "Question"), cell(text: "Required answer")]),
     alignments: [AlignNone, AlignNone],
@@ -29,7 +29,7 @@ fn extdeps_preflight_table() -> MarkdownBlock {
   }
 }
 
-fn extdeps_modeling_preflight_body() -> List<MarkdownBlock> {
+fn extdeps_modeling_preflight_body() -> List<std.markdown.MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [p(text: "Operator-directed (verdict on gunbc#7556, 2026-08-01). Normative source: DESIGN §3 → \"External upstream decomposition\". The typed rows live in `gunbc.plans.extdeps_modeling_preflight` `extdeps_modeling_preflight_rows`; this table is rendered from them.")] },
     h2(text: "The preflight"),
@@ -47,7 +47,7 @@ fn extdeps_modeling_preflight_body() -> List<MarkdownBlock> {
   ]
 }
 
-data extdeps_modeling_preflight_plan: Plan = Plan {
+data extdeps_modeling_preflight_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "extdeps-modeling-preflight",
   title: "extdeps modeling preflight — one subject per upstream module",
   body: extdeps_modeling_preflight_body(),

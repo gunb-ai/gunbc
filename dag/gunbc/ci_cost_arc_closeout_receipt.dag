@@ -51,8 +51,8 @@ fn affected_ci_cost_audit_subject() -> AffectedCiCostAuditSubject {
   AffectedCiCostAuditSubject {
     harvest: HandHarvestedDatedAudit {},
     github_actions_run_id: 30863019228,
-    head_commit: "ed9785817ed8" as NonEmptyStr,
-    job_name: "ci" as NonEmptyStr,
+    head_commit: "ed9785817ed8" as std.types.NonEmptyStr,
+    job_name: "ci" as std.types.NonEmptyStr,
     selection: SelectionApplied {},
   }
 }
@@ -61,46 +61,46 @@ fn full_corpus_subject_harvest() -> FullCorpusSubjectHarvest {
   NotHarvested {}
 }
 
-fn build_wall() -> Millisecond {
+fn build_wall() -> std.measure.Millisecond {
   millisecond(count: 237000)
 }
 
-fn regen_wall() -> Millisecond {
+fn regen_wall() -> std.measure.Millisecond {
   millisecond(count: 510000)
 }
 
-fn ci_job_wall() -> Millisecond {
+fn ci_job_wall() -> std.measure.Millisecond {
   millisecond(count: 2509000)
 }
 
-fn pipeline_sum_wall() -> Millisecond {
+fn pipeline_sum_wall() -> std.measure.Millisecond {
   measure_add(a: measure_add(a: build_wall(), b: regen_wall()), b: ci_job_wall())
 }
 
-fn capture_wall() -> Millisecond {
+fn capture_wall() -> std.measure.Millisecond {
   millisecond(count: 110820)
 }
 
-fn discovery_resolve_wall() -> Millisecond {
+fn discovery_resolve_wall() -> std.measure.Millisecond {
   millisecond(count: 431122)
 }
 
-fn discovery_eval_wall() -> Millisecond {
+fn discovery_eval_wall() -> std.measure.Millisecond {
   millisecond(count: 65016)
 }
 
-fn classified_ci_wall() -> Millisecond {
+fn classified_ci_wall() -> std.measure.Millisecond {
   measure_add(
     a: measure_add(a: capture_wall(), b: discovery_resolve_wall()),
     b: discovery_eval_wall()
   )
 }
 
-fn unattributed_ci_wall() -> Millisecond {
+fn unattributed_ci_wall() -> std.measure.Millisecond {
   millisecond(count: millisecond_count(m: ci_job_wall()) - millisecond_count(m: classified_ci_wall()))
 }
 
-fn cold_admission_baseline_wall() -> Millisecond {
+fn cold_admission_baseline_wall() -> std.measure.Millisecond {
   millisecond(count: 197130)
 }
 
@@ -124,11 +124,11 @@ fn discovery_witness_deferred() -> std.nat.Nat {
   1020
 }
 
-fn floor_drain_peak_rss() -> ByteSize {
+fn floor_drain_peak_rss() -> std.measure.ByteSize {
   byte_size(count: 8513646592)
 }
 
-fn calibration_floor_peak_rss() -> ByteSize {
+fn calibration_floor_peak_rss() -> std.measure.ByteSize {
   byte_size(count: 10821181440)
 }
 
@@ -136,23 +136,23 @@ fn capture_swap_after() -> std.nat.Nat {
   0
 }
 
-fn assembly_symbol_index_merge_wall() -> Millisecond {
+fn assembly_symbol_index_merge_wall() -> std.measure.Millisecond {
   millisecond(count: 65161)
 }
 
-fn assembly_root_symbol_index_wall() -> Millisecond {
+fn assembly_root_symbol_index_wall() -> std.measure.Millisecond {
   millisecond(count: 32084)
 }
 
-fn assembly_rewire_import_str_wall() -> Millisecond {
+fn assembly_rewire_import_str_wall() -> std.measure.Millisecond {
   millisecond(count: 164938)
 }
 
-fn assembly_symbol_index_wall() -> Millisecond {
+fn assembly_symbol_index_wall() -> std.measure.Millisecond {
   millisecond(count: 43675)
 }
 
-fn assembly_root_variant_base_wall() -> Millisecond {
+fn assembly_root_variant_base_wall() -> std.measure.Millisecond {
   millisecond(count: 14178)
 }
 
@@ -166,7 +166,7 @@ fn native_fleet_settle() -> NativeFleetSettle {
 
 fn warm_hit_settle() -> WarmHitSettle {
   SkipProofWithdrawn {
-    reason: "PREVIOUS: ClosedSkipProofLanded on cross_process_hit_skips_semantic_recompute. WITHDRAWN 2026-08-11 (gunbc#8146): the module carrying that proof, v1_compiler_tests.resolve_cross_process_cache_test, was executed for the first time under the retained-kernel cutover and reports 53 passed / 3 FAILED in 1321s, so it cannot be enrolled in the required gate (it both fails and exceeds the 15-minute step budget). The skip proof itself was not among the failures, but it has no executing consumer while the module is unenrollable. This corrects a reported rung to the one executed evidence establishes rather than lowering a real one — the Landed claim was inflated from the day the suite went --no-run. RESTORATION: fix the failures, bring the module under budget, re-declare it in test.retirement.model." as NonEmptyStr
+    reason: "PREVIOUS: ClosedSkipProofLanded on cross_process_hit_skips_semantic_recompute. WITHDRAWN 2026-08-11 (gunbc#8146): the module carrying that proof, v1_compiler_tests.resolve_cross_process_cache_test, was executed for the first time under the retained-kernel cutover and reports 53 passed / 3 FAILED in 1321s, so it cannot be enrolled in the required gate (it both fails and exceeds the 15-minute step budget). The skip proof itself was not among the failures, but it has no executing consumer while the module is unenrollable. This corrects a reported rung to the one executed evidence establishes rather than lowering a real one — the Landed claim was inflated from the day the suite went --no-run. RESTORATION: fix the failures, bring the module under budget, re-declare it in test.retirement.model." as std.types.NonEmptyStr
   }
 }
 

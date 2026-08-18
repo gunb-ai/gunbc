@@ -5,10 +5,10 @@ data observer_role_note: String = "THIS IS THE HALF THAT TOUCHES THE NETWORK, SE
 
 data remote_branch_observation_note: String = "THE REFUSAL IS BUILT FROM A VALUE, NOT CAUGHT. git.Core.LsRemoteHeads declares exit_code/stderr as outputs, so a failed ref advertisement arrives as an ordinary record this function can match on. That is not true of every transport in the corpus - the REST dispatch raises on a non-2xx rather than returning one - and the difference is exactly why the remote-branch half of publication can be observed today and the pull-request half cannot.\\n\\nTHE TERMINATION FACT IS THE EXIT CODE, NOT A SUCCESS BOOL. An earlier cut of the operation declared both, and this function branched on the Bool - so a caller could pass a true success beside a nonzero exit code and a failed read would be reported as an ordinary negative result. The Bool is gone from the operation and from this signature, so that pair is unwritable rather than merely discouraged; see ls_remote_reports_termination_not_success_note in extdeps.git for the derivation and the 148-sibling census."
 
-fn advertised_ref_to_remote_branch(r: AdvertisedRef, remote: NonEmptyStr) -> RemoteBranch {
-  RemoteBranch {
+fn advertised_ref_to_remote_branch(r: extdeps.git.AdvertisedRef, remote: std.types.NonEmptyStr) -> gunbc.roadmap_publish.RemoteBranch {
+  gunbc.roadmap_publish.RemoteBranch {
     remote: remote,
-    branch: advertised_ref_branch_name(ref_name: r.ref_name) as NonEmptyStr,
+    branch: advertised_ref_branch_name(ref_name: r.ref_name) as std.types.NonEmptyStr,
     head_sha: r.object_id,
   }
 }
@@ -16,18 +16,18 @@ fn advertised_ref_to_remote_branch(r: AdvertisedRef, remote: NonEmptyStr) -> Rem
 data empty_branch_projection_note: String = "WHY AN EMPTY PROJECTED BRANCH NAME REFUSES INSTEAD OF BEING CAST. RemoteBranch.branch is NonEmptyStr, and a refinement brand in this corpus is NOT construction-enforced - `as NonEmptyStr` will happily mint an empty one. parse_advertised_ref_line already refuses an empty ref field, so the remaining way to reach an empty branch is an advertisement whose ref_name is exactly the heads prefix and nothing more: advertised_ref_branch_name strips the prefix and returns the empty string, which would then be cast into a type whose whole content is a promise that it is not empty. The consumer downstream compares that branch against the one it asked about, so a silently-empty name matches nothing and the answer becomes `not published` about a branch that is published. Checking before the cast is the only place the class is decidable, since the brand itself does not check."
 
 // COUNTING THE OFFENDERS THREW AWAY WHICH ONES THEY WERE. This returned an Int, the caller compared it to zero, and the refusal it built could say only that some head ref projected to an empty branch name. The identity was in hand at the moment of the test and discarded before the refusal was constructed, so a reader of the refusal had to re-run the projection over the whole advertisement to learn which ref caused it.\n\nRETURNING THE REFS THEMSELVES IS ALSO STRICTLY LESS WORK, which is the tell that the count was never the cheaper choice: the filter already built the offending set and count() then collapsed it. The caller now branches on whether that set is empty, so the same single filter decides the question AND supplies the evidence.\n\nTHE SET, NOT THE FIRST OF IT. This module's no_silent_pick_note bans reaching for the head of a list whose length was never established, and an advertisement may in principle carry more than one degenerate ref. Carrying every offender keeps the refusal 0/1/many-honest without adjudicating a uniqueness nobody established, and the arm is constructed only when the set is nonempty.
-fn advertised_refs_projecting_empty_branch(refs: List<AdvertisedRef>) -> List<AdvertisedRef> {
+fn advertised_refs_projecting_empty_branch(refs: List<extdeps.git.AdvertisedRef>) -> List<extdeps.git.AdvertisedRef> {
   filter(refs, r => advertised_ref_branch_name(ref_name: r.ref_name) == "")
 }
 
 data transport_shim_split_note: String = "THE READING IS PURE; ONLY THE CALL IS NOT. remote_branch_observation_of takes exactly the three values git.Core.LsRemoteHeads returns and decides everything from them, so every arm - refused, unparseable line, empty projected branch, read - is reachable in a hermetic witness with no remote and no credentials. observe_remote_branches is then a projection with no branches of its own.\\n\\nThe split exists because the alternative is a function whose refusal arms can only be reached by having a real remote fail in a real way, which is to say never reached in CI and therefore never proven. Keeping the decision above the transport is what makes the evidence executable rather than aspirational."
 
 fn remote_branch_observation_of(
-  remote: NonEmptyStr,
+  remote: std.types.NonEmptyStr,
   exit_code: Int,
   stderr: String,
   advertised: List<String>,
-) -> RemoteBranchObservation {
+) -> gunbc.roadmap_publish.RemoteBranchObservation {
   if exit_code != 0 {
     RemoteBranchesUnreadable {
       cause: RefAdvertisementRefused {
@@ -64,7 +64,7 @@ fn remote_branch_observation_of(
   }
 }
 
-fn observe_remote_branches(remote: NonEmptyStr) -> RemoteBranchObservation {
+fn observe_remote_branches(remote: std.types.NonEmptyStr) -> gunbc.roadmap_publish.RemoteBranchObservation {
   let result = git.Core.LsRemoteHeads(remote: remote as String)
   remote_branch_observation_of(
     remote: remote,
@@ -85,7 +85,7 @@ fn worktree_repository_binding_of(
   exit_code: Int,
   stderr: String,
   url: String,
-  expected: NonEmptyStr,
+  expected: std.types.NonEmptyStr,
 ) -> WorktreeRepositoryBinding {
   if exit_code != 0 {
     WorktreeRemoteUnreadable { exit_code: exit_code, stderr: stderr }
@@ -106,7 +106,7 @@ fn worktree_repository_binding_of(
 
 fn observe_worktree_repository_binding(
   worktree: String,
-  repo: Repository,
+  repo: extdeps.github.github.Repository,
 ) -> WorktreeRepositoryBinding {
   let result = git.Core.RemoteUrlIn(repository_path: worktree, remote: "origin")
   worktree_repository_binding_of(
@@ -127,8 +127,8 @@ type PublicationCredentialSource
 
 fn observe_pull_requests(
   credential: PublicationCredentialSource,
-  repo: Repository,
-) -> PullRequestObservation {
+  repo: extdeps.github.github.Repository,
+) -> gunbc.roadmap_publish.PullRequestObservation {
   match credential {
     CredentialSourceAbsent { reason } =>
       PullRequestsUnreadable {
@@ -180,8 +180,8 @@ data repository_bound_observation_note: String = "BOTH READS NAME THE SAME REPOS
 
 fn observe_publication_for_subject(
   credential: PublicationCredentialSource,
-  subject: RoadmapPublicationSubject,
-) -> PublicationOutcome {
+  subject: gunbc.roadmap_publish.RoadmapPublicationSubject,
+) -> gunbc.roadmap_publish.PublicationOutcome {
   let remote = publication_subject_remote(subject: subject)
   adjudicate_publication(
     pulls: observe_pull_requests(

@@ -40,24 +40,24 @@ type V4EffectIoHostRuntime {
 
 data effect_io_host_read_dispatch_note: String = "P-C per-grant binding (docs/plans/effect-namespace-grants.md line 62): read dispatch selects real-transport vs replay by the COVERING Read grant's HandlerBinding (covering_grant), NOT by re-reading the per-process ExecutionMode. Mode is consumed exactly once, at envelope construction (effect_io_host_envelope), where it picks the wet (RealTransport) or hermetic (Replay) preset; from there the envelope's grants are the sole authority (§3). An uncovered read is a located refusal (NoCoveringGrant -> effect_io_host_read_outside_grant), fail-closed. FRONTIER (operator-approved 2026-07-22): the Replay grant carries a fixture_store String identity, but the replay handler still resolves the concrete store from the passed EffectIoFixtureStore object rather than from that String -- the per-grant store-string resolution is the declared follow-on."
 
-fn effect_io_host_write_outside_grant_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn effect_io_host_write_outside_grant_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^effect_io_host_write_outside_grant,
     at: node_locus(node: effect_io_pure_operation_node()),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn effect_io_host_read_outside_grant_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn effect_io_host_read_outside_grant_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^effect_io_host_read_outside_grant,
     at: node_locus(node: effect_io_pure_operation_node()),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn effect_io_host_deferred_diagnostic(reason: Symbol) -> Diagnostic {
-  Diagnostic {
+fn effect_io_host_deferred_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: effect_io_pure_operation_node()),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -66,56 +66,56 @@ fn effect_io_host_deferred_diagnostic(reason: Symbol) -> Diagnostic {
 
 fn effect_io_host_file_read(
   _ctx: EffectIoHostFileContext,
-  _locator: EffectIoResourceLocator
-) -> Outcome<RuntimeValue> {
+  _locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_file_read_deferred))
 }
 
 fn effect_io_host_file_write(
   _ctx: EffectIoHostFileContext,
-  _locator: EffectIoResourceLocator,
-  _payload: RuntimeValue
-) -> Outcome<RuntimeValue> {
+  _locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator,
+  _payload: v2.std.runtime.RuntimeValue
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_file_write_deferred))
 }
 
 fn effect_io_host_http_read(
   _ctx: EffectIoHostHttpContext,
-  _locator: EffectIoResourceLocator
-) -> Outcome<RuntimeValue> {
+  _locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_http_read_deferred))
 }
 
 fn effect_io_host_http_write(
   _ctx: EffectIoHostHttpContext,
-  _locator: EffectIoResourceLocator,
-  _payload: RuntimeValue
-) -> Outcome<RuntimeValue> {
+  _locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator,
+  _payload: v2.std.runtime.RuntimeValue
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_http_write_deferred))
 }
 
 fn effect_io_host_storage_read(
   _ctx: EffectIoHostStorageContext,
-  _locator: EffectIoResourceLocator
-) -> Outcome<RuntimeValue> {
+  _locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_storage_read_deferred))
 }
 
 fn effect_io_host_storage_write(
   _ctx: EffectIoHostStorageContext,
-  _locator: EffectIoResourceLocator,
-  _payload: RuntimeValue
-) -> Outcome<RuntimeValue> {
+  _locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator,
+  _payload: v2.std.runtime.RuntimeValue
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_storage_write_deferred))
 }
 
 fn effect_io_host_dispatch_read(
-  backend: EffectIoResourceBackend,
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
-  read_envelope: Envelope,
-  fixture: EffectIoFixtureStore,
+  read_envelope: std.effect_grant.Envelope,
+  fixture: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore,
   request: EffectRequest
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>
       match covering_grant(
@@ -145,11 +145,11 @@ fn effect_io_host_dispatch_read(
 }
 
 fn effect_io_host_dispatch_write(
-  backend: EffectIoResourceBackend,
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
-  write_envelope: Envelope,
+  write_envelope: std.effect_grant.Envelope,
   request: EffectRequest
-) -> Outcome<RuntimeValue> {
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>
       match effect_io_pure_write_payload_from_args(args: request.arguments) {
@@ -177,10 +177,10 @@ fn effect_io_host_dispatch_write(
 }
 
 fn effect_io_host_handler_binding(
-  backend: EffectIoResourceBackend,
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
-  mode: ExecutionMode,
-  fixture: EffectIoFixtureStore
+  mode: std.execution_mode.ExecutionMode,
+  fixture: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
 ) -> EffectIoHostHandlerBundle {
   let envelope = effect_io_host_envelope(mode: mode, backend: backend)
   EffectIoHostHandlerBundle {
@@ -189,8 +189,8 @@ fn effect_io_host_handler_binding(
     mode: mode,
     envelope: envelope,
     fixture: fixture,
-    handlers: EffectHandlerBinding {
-      read_resource: EffectHandler {
+    handlers: v2.std.runtime.EffectHandlerBinding {
+      read_resource: v2.std.runtime.EffectHandler {
         handle: fn(request) {
           effect_io_host_dispatch_read(
             backend: backend,
@@ -201,7 +201,7 @@ fn effect_io_host_handler_binding(
           )
         }
       },
-      write_resource: EffectHandler {
+      write_resource: v2.std.runtime.EffectHandler {
         handle: fn(request) {
           effect_io_host_dispatch_write(
             backend: backend,
@@ -215,9 +215,9 @@ fn effect_io_host_handler_binding(
   }
 }
 
-data effect_io_host_placeholder_filesystem: Filesystem = Filesystem {}
+data effect_io_host_placeholder_filesystem: v2.extdeps.file_system.Filesystem = v2.extdeps.file_system.Filesystem {}
 
-data effect_io_host_placeholder_file_effects: ModeledFileEffects = ModeledFileEffects {
+data effect_io_host_placeholder_file_effects: v2.extdeps.file_system.ModeledFileEffects = v2.extdeps.file_system.ModeledFileEffects {
   file_read: fn(_) {
     outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_file_read_deferred))
   },
@@ -232,9 +232,9 @@ data effect_io_host_file_context: EffectIoHostFileContext = EffectIoHostFileCont
 }
 
 data effect_io_host_http_context: EffectIoHostHttpContext = EffectIoHostHttpContext {
-  authority: UriAuthority {
+  authority: v2.std.network.UriAuthority {
     userinfo: Absent,
-    host: UriHost {
+    host: v2.std.network.UriHost {
       spelling: "effect-io.local",
       grammar: rfc3986_host_abnf
     },
@@ -246,7 +246,7 @@ data effect_io_host_storage_context: EffectIoHostStorageContext = EffectIoHostSt
   bucket: ^effect_io_host_storage_bucket
 }
 
-fn effect_io_host_backend_context(backend: EffectIoResourceBackend) -> EffectIoHostBackendContext {
+fn effect_io_host_backend_context(backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend) -> EffectIoHostBackendContext {
   match backend {
     FileResourceBackend =>
       HostFileContext { context: effect_io_host_file_context }
@@ -258,9 +258,9 @@ fn effect_io_host_backend_context(backend: EffectIoResourceBackend) -> EffectIoH
 }
 
 fn effect_io_host_runtime(
-  backend: EffectIoResourceBackend,
-  mode: ExecutionMode,
-  fixture: EffectIoFixtureStore
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
+  mode: std.execution_mode.ExecutionMode,
+  fixture: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
 ) -> V4EffectIoHostRuntime {
   let host_ctx = effect_io_host_backend_context(backend: backend)
   let bundle = effect_io_host_handler_binding(
@@ -280,7 +280,7 @@ fn effect_io_host_runtime(
   }
 }
 
-fn effect_io_host_runtime_hermetic(backend: EffectIoResourceBackend) -> V4EffectIoHostRuntime {
+fn effect_io_host_runtime_hermetic(backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend) -> V4EffectIoHostRuntime {
   effect_io_host_runtime(
     backend: backend,
     mode: Hermetic,

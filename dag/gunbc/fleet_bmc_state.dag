@@ -1,9 +1,9 @@
 module gunbc.fleet_bmc_state
 
 
-data srv4_bmc_fan_publication_protocol: LinuxFilePublicationProtocol = linux_synchronized_rename_replace_publication
+data srv4_bmc_fan_publication_protocol: extdeps.filesystem.linux.LinuxFilePublicationProtocol = linux_synchronized_rename_replace_publication
 
-data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = bmc_fan_policy_projection_capability(
+data srv4_bmc_fan_projection_capability: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability = bmc_fan_policy_projection_capability(
   board: srv4_baseboard.catalog.model,
   firmware: srv4_bmc_firmware_observation.firmware,
   projected_curve: fleet_bmc_valid_state.fan_policy.curve,
@@ -19,7 +19,7 @@ data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = bmc_
   required_tach_inputs: srv4_bmc_fan_observed_tach_inputs,
 )
 
-data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = BmcFanRebootPersistenceReceipt {
+data srv4_bmc_fan_reboot_persistence_receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt = gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt {
   evidence_scope: HistoricalEvidenceSnapshot,
   host: srv4_host.identity,
   perturbation_receipt_id: "srv4-bmc-graceful-restart-2026-07-30T22:53:06Z",
@@ -27,7 +27,7 @@ data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = B
   perturbation_capability: srv4_bmc_fan_projection_capability,
   before: srv4_bmc_fan_convergence_receipt,
   post_reboot_policy: srv4_bmc_fan_post_reboot_policy_observation,
-  reset: RedfishManagerResetObservation {
+  reset: extdeps.bmc.types.RedfishManagerResetObservation {
     action_target: "/redfish/v1/Managers/bmc/Actions/Manager.Reset",
     reset_type: ResetGracefulRestart,
     http_status: 200,
@@ -45,16 +45,16 @@ data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = B
   pre_reboot_temp_soc: celsius(60),
   post_reboot_temp_soc: celsius(61),
   pre_reboot_tachs: [
-    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(4600) },
-    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(1200) },
-    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(1200) },
-    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(1200) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN1", reading: rpm(4600) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN2", reading: rpm(1200) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN3", reading: rpm(1200) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN4", reading: rpm(1200) },
   ],
   post_reboot_tachs: [
-    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(4600) },
-    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(1200) },
-    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(1200) },
-    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(1200) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN1", reading: rpm(4600) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN2", reading: rpm(1200) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN3", reading: rpm(1200) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN4", reading: rpm(1200) },
   ],
   post_reboot_active_config_digest: srv4_bmc_fan_active_config_digest,
   post_reboot_controller_active: true,
@@ -64,7 +64,7 @@ data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = B
   observed_at: 1785433000000,
 }
 
-data srv4_bmc_fan_durability_admission: BmcFanDurabilityAdmission = bmc_fan_policy_projection_durability_admission(
+data srv4_bmc_fan_durability_admission: gunbc.bmc_fan_projection.BmcFanDurabilityAdmission = bmc_fan_policy_projection_durability_admission(
   host: srv4_host.identity,
   capability: srv4_bmc_fan_projection_capability,
   perturbation_generation: srv4_bmc_fan_perturbation_generation,
@@ -98,7 +98,7 @@ type BmcFanRebootTimingReceipt
     }
 
 fn bmc_fan_reboot_timing_receipt(
-  receipt: BmcFanRebootPersistenceReceipt,
+  receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt,
 ) -> BmcFanRebootTimingReceipt {
   match positive_measure_count_from_int(
     count: receipt.reset.observed_at - receipt.before.observed_at,
@@ -139,7 +139,7 @@ fn bmc_fan_reboot_timing_receipt(
 }
 
 fn bmc_fan_reboot_activation_evidence(
-  receipt: BmcFanRebootPersistenceReceipt,
+  receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt,
   admission: StateDurabilityAdmission<HostIdentity, BmcFanConfigReadbackSubject>,
 ) -> StateActivationEvidence<HostIdentity, BmcFanConfigReadbackSubject> {
   match redfish_host_power_state_continuity_verdict(
@@ -162,7 +162,7 @@ fn bmc_fan_reboot_activation_evidence(
         && !receipt.post_reboot_zone_failsafe_active
         && receipt.post_reboot_observer_exit_success {
         ActivationVerified {
-          receipt: StateActivationReceipt {
+          receipt: std.state_durability.StateActivationReceipt {
             perturbation_receipt_id: receipt.perturbation_receipt_id,
             target: admission.target,
             subject: admission.readback_subject,
@@ -181,25 +181,25 @@ fn bmc_fan_reboot_activation_evidence(
 }
 
 fn bmc_fan_reboot_preservation_outcome(
-  receipt: BmcFanRebootPersistenceReceipt,
+  receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt,
   admission: StateDurabilityAdmission<HostIdentity, BmcFanConfigReadbackSubject>,
   timing: BmcFanRebootTimingBuilt,
 ) -> StatePreservationOutcome<HostIdentity, BmcFanConfigReadbackSubject> {
   if receipt.bmc_returned {
     StatePreserved {
-      before: StateBeforeReadbackReceipt {
+      before: std.state_durability.StateBeforeReadbackReceipt {
         perturbation_receipt_id: receipt.perturbation_receipt_id,
         target: receipt.before.host,
-        subject: BmcFanConfigReadbackSubject {
+        subject: gunbc.bmc_fan_projection.BmcFanConfigReadbackSubject {
           config_path: receipt.before.policy.board_config_path,
         },
         state_digest: receipt.before.active_config_digest,
         observed_at: receipt.before.observed_at,
       },
-      after: StateAfterReadbackReceipt {
+      after: std.state_durability.StateAfterReadbackReceipt {
         perturbation_receipt_id: receipt.perturbation_receipt_id,
         target: receipt.host,
-        subject: BmcFanConfigReadbackSubject {
+        subject: gunbc.bmc_fan_projection.BmcFanConfigReadbackSubject {
           config_path: receipt.post_reboot_policy.board_config_path,
         },
         state_digest: receipt.post_reboot_active_config_digest,
@@ -218,7 +218,7 @@ fn bmc_fan_reboot_preservation_outcome(
 }
 
 fn bmc_fan_reboot_durability_evidence_refusal(
-  receipt: BmcFanRebootPersistenceReceipt,
+  receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt,
 ) -> BmcFanDurabilityEvidenceConstructionRefusal? {
   if receipt.before.active_config_digest != receipt.perturbation_capability.projected_config_digest
     || receipt.post_reboot_active_config_digest != receipt.perturbation_capability.projected_config_digest {
@@ -251,7 +251,7 @@ fn bmc_fan_reboot_durability_evidence_refusal(
 }
 
 fn bmc_fan_reboot_durability_evidence_built(
-  receipt: BmcFanRebootPersistenceReceipt,
+  receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt,
   timing: BmcFanRebootTimingBuilt,
 ) -> BmcFanDurabilityEvidenceConstruction {
   let admission = bmc_fan_policy_projection_durability_admission(
@@ -260,9 +260,9 @@ fn bmc_fan_reboot_durability_evidence_built(
     perturbation_generation: receipt.perturbation_generation,
   )
   BmcFanDurabilityEvidenceBuilt {
-    evidence: StateDurabilityEvidence {
+    evidence: std.state_durability.StateDurabilityEvidence {
       admission: admission,
-      perturbation: StatePerturbationReceipt {
+      perturbation: std.state_durability.StatePerturbationReceipt {
         receipt_id: receipt.perturbation_receipt_id,
         target: receipt.host,
         boundary: fleet_bmc_fan_graceful_restart_boundary,
@@ -280,7 +280,7 @@ fn bmc_fan_reboot_durability_evidence_built(
 }
 
 fn bmc_fan_reboot_durability_evidence(
-  receipt: BmcFanRebootPersistenceReceipt,
+  receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt,
 ) -> BmcFanDurabilityEvidenceConstruction {
   match bmc_fan_reboot_durability_evidence_refusal(receipt: receipt) {
     Present { value: cause } =>
@@ -319,7 +319,7 @@ fn bmc_fan_durability_evidence_construction_refusal_reason(
 
 fn bmc_fan_durability_evidence_built_items(
   construction: BmcFanDurabilityEvidenceConstruction,
-) -> List<BmcFanDurabilityEvidence> {
+) -> List<gunbc.bmc_fan_projection.BmcFanDurabilityEvidence> {
   match construction {
     BmcFanDurabilityEvidenceBuilt { evidence: evidence } => [evidence]
     BmcFanDurabilityEvidenceConstructionRefused { cause: _ } => []

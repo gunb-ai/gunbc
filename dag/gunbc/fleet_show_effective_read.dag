@@ -59,13 +59,13 @@ type FleetHostEffectiveReadGroundedReceipt {
   probed_at: std.types.NonEmptyStr
 }
 
-data gunbc_fleet_show_effective_read_scope_disposition: Disposition = std.disposition.Terminal {
+data gunbc_fleet_show_effective_read_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Typed READ-ONLY live host-read seam for runner-allocation-v0 (three blocking knobs): (1) runner-slice MemoryMax on system-actions-runner.slice, (2) per-slot MemoryMax+MemorySwapMax on actions-runner@<host>-*.service, (3) runner_width active-unit count. systemctl show reads dissolve through extdeps.systemd.systemctl.ShowProperty typed argv (gunbc.systemctl_show_read) — no per-command HostEffect nicknames, no concat shell strings. Committed ShowEffectiveRead rows stay ReadAbsent until live or fixture-grounded read supplies ReadObserved. ManagedOOMMemoryPressureLimit percent-wire grounding lives in extdeps.systemd.oomd."
 }
 
-data fleet_show_effective_read_transport_script_scaffold: Disposition = Scaffold {
+data fleet_show_effective_read_transport_script_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.emit",
     decl_name: "live_deploy_emit_shell_dissolution_trigger",
     field: WholeDeclaration,
@@ -73,10 +73,10 @@ data fleet_show_effective_read_transport_script_scaffold: Disposition = Scaffold
 }
 
 fn fleet_runner_unit_memory_live_read(
-  host: HostIdentity,
-  unit: NonEmptyStr,
-  probed_at: NonEmptyStr,
-) -> RunnerUnitMemoryLiveRead? {
+  host: product.placement_supply.HostIdentity,
+  unit: std.types.NonEmptyStr,
+  probed_at: std.types.NonEmptyStr,
+) -> gunbc.runner_unit_live_read.RunnerUnitMemoryLiveRead? {
   match fleet_host_ssh_transport(host: host) {
     Present { value: transport } =>
       match systemctl_show_property_read(transport: transport, unit: unit, property: MemoryMax) {
@@ -87,7 +87,7 @@ fn fleet_runner_unit_memory_live_read(
                 SystemdPropertyCaptured { value: memory_high_raw } =>
                   Present {
                     value: runner_unit_live_read_typed(
-                      row: RunnerUnitLiveReadRow {
+                      row: gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
                         unit: unit,
                         memory_max_raw: memory_max_raw,
                         memory_swap_max_raw: memory_swap_max_raw,
@@ -108,8 +108,8 @@ fn fleet_runner_unit_memory_live_read(
 }
 
 fn fleet_runner_slice_cap_memory_max_raw(
-  host: HostIdentity,
-  slice_unit: NonEmptyStr,
+  host: product.placement_supply.HostIdentity,
+  slice_unit: std.types.NonEmptyStr,
 ) -> String? {
   match fleet_host_ssh_transport(host: host) {
     Present { value: transport } =>
@@ -122,14 +122,14 @@ fn fleet_runner_slice_cap_memory_max_raw(
 }
 
 fn runner_unit_live_read_row_from_stdout(
-  unit: NonEmptyStr,
+  unit: std.types.NonEmptyStr,
   stdout: String,
-  probed_at: NonEmptyStr,
-) -> RunnerUnitLiveReadRow? {
+  probed_at: std.types.NonEmptyStr,
+) -> gunbc.runner_unit_live_read.RunnerUnitLiveReadRow? {
   let parts = split(s: stdout, delimiter: "\n")
   if length(parts) >= 3 {
     Present {
-      value: RunnerUnitLiveReadRow {
+      value: gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
         unit: unit,
         memory_max_raw: trim(parts.first()),
         memory_swap_max_raw: trim(parts.skip(n: 1).first()),
@@ -144,10 +144,10 @@ fn runner_unit_live_read_row_from_stdout(
 }
 
 fn runner_unit_memory_live_read_from_stdout(
-  unit: NonEmptyStr,
+  unit: std.types.NonEmptyStr,
   stdout: String,
-  probed_at: NonEmptyStr,
-) -> RunnerUnitMemoryLiveRead? {
+  probed_at: std.types.NonEmptyStr,
+) -> gunbc.runner_unit_live_read.RunnerUnitMemoryLiveRead? {
   match runner_unit_live_read_row_from_stdout(unit: unit, stdout: stdout, probed_at: probed_at) {
     Present { value: row } => Present { value: runner_unit_live_read_typed(row: row) }
     Absent => none
@@ -155,16 +155,16 @@ fn runner_unit_memory_live_read_from_stdout(
 }
 
 fn show_effective_read_from_unit_row(
-  host: HostIdentity,
-  row: RunnerUnitLiveReadRow,
+  host: product.placement_supply.HostIdentity,
+  row: gunbc.runner_unit_live_read.RunnerUnitLiveReadRow,
 ) -> ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
   show_effective_read_from_runner_units(host: host, rows: [row])
 }
 
 fn per_slot_memory_cap_verdict_from_unit_read(
-  read: RunnerUnitMemoryLiveRead,
-  target: ConvergeTarget,
-) -> ConvergeVerdict? {
+  read: gunbc.runner_unit_live_read.RunnerUnitMemoryLiveRead,
+  target: gunbc.host_converge.ConvergeTarget,
+) -> gunbc.host_converge.ConvergeVerdict? {
   converge_target_live_verdict(read: read, target: target)
 }
 
@@ -198,7 +198,7 @@ data gunbc_srv1_oom_pressure_limit_fixture_row: OomPressureLimitLiveReadRow = Oo
   probed_at: "2026-07-03",
 }
 
-data gunbc_srv1_runner_unit_live_read_fixture_02: RunnerUnitLiveReadRow = RunnerUnitLiveReadRow {
+data gunbc_srv1_runner_unit_live_read_fixture_02: gunbc.runner_unit_live_read.RunnerUnitLiveReadRow = gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
   unit: "actions-runner@srv1-02.service",
   memory_max_raw: "8589934592",
   memory_swap_max_raw: "0",
@@ -207,7 +207,7 @@ data gunbc_srv1_runner_unit_live_read_fixture_02: RunnerUnitLiveReadRow = Runner
   probed_at: "2026-07-03",
 }
 
-data gunbc_srv2_runner_unit_live_read_fixture_01: RunnerUnitLiveReadRow = RunnerUnitLiveReadRow {
+data gunbc_srv2_runner_unit_live_read_fixture_01: gunbc.runner_unit_live_read.RunnerUnitLiveReadRow = gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
   unit: "actions-runner@srv2-01.service",
   memory_max_raw: "8589934592",
   memory_swap_max_raw: "0",
@@ -216,7 +216,7 @@ data gunbc_srv2_runner_unit_live_read_fixture_01: RunnerUnitLiveReadRow = Runner
   probed_at: "2026-07-03",
 }
 
-data gunbc_srv2_runner_unit_live_read_fixture_02: RunnerUnitLiveReadRow = RunnerUnitLiveReadRow {
+data gunbc_srv2_runner_unit_live_read_fixture_02: gunbc.runner_unit_live_read.RunnerUnitLiveReadRow = gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
   unit: "actions-runner@srv2-02.service",
   memory_max_raw: "8589934592",
   memory_swap_max_raw: "0",
@@ -225,7 +225,7 @@ data gunbc_srv2_runner_unit_live_read_fixture_02: RunnerUnitLiveReadRow = Runner
   probed_at: "2026-07-03",
 }
 
-data gunbc_fleet_runner_slice_cap_show_effective_read: ShowEffectiveRead<RunnerSliceCapEffectiveness> = ReadAbsent {
+data gunbc_fleet_runner_slice_cap_show_effective_read: ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> = ReadAbsent {
   reason: "no live systemctl show -p MemoryMax on system-actions-runner.slice has run on the fleet yet; typed parse + transport live in gunbc.fleet_show_effective_read — bind ReadObserved at the apply increment"
 }
 
@@ -241,7 +241,7 @@ data gunbc_fleet_host_effective_read_show_effective_read: ShowEffectiveRead<Flee
   reason: "no full-host effective read receipt has been collected on srv1/srv2 yet; compose the three v0-blocking knob reads here"
 }
 
-fn fleet_host_control_plane(host: HostIdentity) -> NodeControlPlane? {
+fn fleet_host_control_plane(host: product.placement_supply.HostIdentity) -> gunbc.host_effect.NodeControlPlane? {
   if host == operator_host_srv1 {
     Present { value: HostOs { node: srv1_host } }
   } else { if host == operator_host_srv2 {
@@ -249,7 +249,7 @@ fn fleet_host_control_plane(host: HostIdentity) -> NodeControlPlane? {
   } else { none } }
 }
 
-fn fleet_host_ssh_transport(host: HostIdentity) -> HostEffectTransport? {
+fn fleet_host_ssh_transport(host: product.placement_supply.HostIdentity) -> gunbc.host_effect.HostEffectTransport? {
   if host == operator_host_srv1 {
     Present { value: srv1_host_identity_ssh_transport() }
   } else { if host == operator_host_srv2 {
@@ -279,11 +279,11 @@ fn oom_pressure_limit_live_read_typed(row: OomPressureLimitLiveReadRow) -> OomPr
   }
 }
 
-fn runner_slice_cap_to_effectiveness(read: RunnerSliceCapLiveRead) -> RunnerSliceCapEffectiveness? {
+fn runner_slice_cap_to_effectiveness(read: RunnerSliceCapLiveRead) -> gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness? {
   memory_limit_to_cap_effectiveness(lim: read.memory_max)
 }
 
-fn show_effective_read_from_slice_cap_row(row: RunnerSliceCapLiveReadRow) -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+fn show_effective_read_from_slice_cap_row(row: RunnerSliceCapLiveReadRow) -> ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> {
   let read = runner_slice_cap_live_read_typed(row: row)
   match read.memory_max {
     MemoryLimitAbsent =>
@@ -297,7 +297,7 @@ fn show_effective_read_from_slice_cap_row(row: RunnerSliceCapLiveReadRow) -> Sho
   }
 }
 
-fn show_effective_read_from_runner_units(host: HostIdentity, rows: List<RunnerUnitLiveReadRow>) -> ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
+fn show_effective_read_from_runner_units(host: product.placement_supply.HostIdentity, rows: List<gunbc.runner_unit_live_read.RunnerUnitLiveReadRow>) -> ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
   if rows.length() == 0 {
     ReadAbsent { reason: "no runner unit rows to read; fail-closed" }
   } else {
@@ -320,8 +320,8 @@ fn show_effective_read_from_width_row(row: RunnerWidthLiveReadRow) -> ShowEffect
 fn slice_property_memory_max_verdict(
   read: RunnerSliceCapLiveRead,
   property: String,
-  expected: ByteSize,
-) -> ConvergeVerdict? {
+  expected: std.measure.ByteSize,
+) -> gunbc.host_converge.ConvergeVerdict? {
   if property != systemd_memory_max_property {
     none
   } else {
@@ -331,7 +331,7 @@ fn slice_property_memory_max_verdict(
   }
 }
 
-fn oom_pressure_limit_converge_verdict(read: OomPressureLimitLiveRead, desired: Percent) -> ConvergeVerdict {
+fn oom_pressure_limit_converge_verdict(read: OomPressureLimitLiveRead, desired: std.measure.Percent) -> gunbc.host_converge.ConvergeVerdict {
   if percent_count(p: read.pressure_limit) == percent_count(p: desired) {
     VerdictConverged
   } else {
@@ -366,11 +366,11 @@ fn runner_width_live_read_typed(row: RunnerWidthLiveReadRow) -> RunnerWidthLiveR
   }
 }
 
-fn runner_width_converge_verdict(observed: Int, desired: Int) -> ConvergeVerdict {
+fn runner_width_converge_verdict(observed: Int, desired: Int) -> gunbc.host_converge.ConvergeVerdict {
   if observed == desired { VerdictConverged } else { Drifted }
 }
 
-fn show_effective_read_cannot_converge(read: ShowEffectiveRead<RunnerSliceCapEffectiveness>) -> Bool {
+fn show_effective_read_cannot_converge(read: ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness>) -> Bool {
   match read {
     ReadAbsent { reason: _ } => true
     ReadObserved { value: CapUnbounded } => true
@@ -378,7 +378,7 @@ fn show_effective_read_cannot_converge(read: ShowEffectiveRead<RunnerSliceCapEff
   }
 }
 
-fn fleet_runner_units_from_rows(host: HostIdentity, rows: List<RunnerUnitLiveReadRow>) -> FleetRunnerUnitsLiveRead {
+fn fleet_runner_units_from_rows(host: product.placement_supply.HostIdentity, rows: List<gunbc.runner_unit_live_read.RunnerUnitLiveReadRow>) -> FleetRunnerUnitsLiveRead {
   FleetRunnerUnitsLiveRead {
     host: host,
     units: map(rows, f: fn(row) { runner_unit_live_read_typed(row: row) }),
@@ -386,9 +386,9 @@ fn fleet_runner_units_from_rows(host: HostIdentity, rows: List<RunnerUnitLiveRea
 }
 
 fn fleet_host_effective_read_receipt(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   slice_row: RunnerSliceCapLiveReadRow,
-  unit_rows: List<RunnerUnitLiveReadRow>,
+  unit_rows: List<gunbc.runner_unit_live_read.RunnerUnitLiveReadRow>,
   width_row: RunnerWidthLiveReadRow,
 ) -> FleetHostEffectiveReadReceipt? {
   match runner_width_live_read_typed(row: width_row) {
@@ -406,11 +406,11 @@ fn fleet_host_effective_read_receipt(
 }
 
 fn fleet_host_effective_read_grounded_from_fixture(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   slice_row: RunnerSliceCapLiveReadRow,
-  unit_rows: List<RunnerUnitLiveReadRow>,
+  unit_rows: List<gunbc.runner_unit_live_read.RunnerUnitLiveReadRow>,
   width_row: RunnerWidthLiveReadRow,
-  probed_at: NonEmptyStr,
+  probed_at: std.types.NonEmptyStr,
 ) -> FleetHostEffectiveReadGroundedReceipt? {
   match fleet_host_effective_read_receipt(
     host: host,
@@ -433,11 +433,11 @@ fn fleet_host_effective_read_grounded_from_fixture(
   }
 }
 
-fn fixture_srv1_runner_units_rows() -> List<RunnerUnitLiveReadRow> {
+fn fixture_srv1_runner_units_rows() -> List<gunbc.runner_unit_live_read.RunnerUnitLiveReadRow> {
   [gunbc_srv1_runner_unit_live_read_fixture, gunbc_srv1_runner_unit_live_read_fixture_02]
 }
 
-fn fixture_srv2_runner_units_rows() -> List<RunnerUnitLiveReadRow> {
+fn fixture_srv2_runner_units_rows() -> List<gunbc.runner_unit_live_read.RunnerUnitLiveReadRow> {
   [gunbc_srv2_runner_unit_live_read_fixture_01, gunbc_srv2_runner_unit_live_read_fixture_02]
 }
 
@@ -465,7 +465,7 @@ fn fleet_receipt_unit_count(receipt: FleetHostEffectiveReadReceipt) -> Int {
   receipt.runner_units.units.length()
 }
 
-fn fleet_receipt_lists_unit(receipt: FleetHostEffectiveReadReceipt, unit: NonEmptyStr) -> Bool {
+fn fleet_receipt_lists_unit(receipt: FleetHostEffectiveReadReceipt, unit: std.types.NonEmptyStr) -> Bool {
   any(receipt.runner_units.units, u => u.unit == unit)
 }
 

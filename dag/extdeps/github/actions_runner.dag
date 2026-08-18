@@ -1,8 +1,8 @@
 module extdeps.github.actions_runner
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/actions/runner/releases"
   }
@@ -16,14 +16,14 @@ type ActionsRunnerRelease {
 
 type ActionsRunnerPublishedLinuxArch = ActionsRunnerLinuxArm64 | ActionsRunnerLinuxX64
 
-fn actions_runner_published_linux_arch_key_of(arch: ActionsRunnerPublishedLinuxArch) -> NonEmptyStr {
+fn actions_runner_published_linux_arch_key_of(arch: ActionsRunnerPublishedLinuxArch) -> std.types.NonEmptyStr {
   match arch {
-    ActionsRunnerLinuxArm64 => "arm64" as NonEmptyStr
-    ActionsRunnerLinuxX64 => "x64" as NonEmptyStr
+    ActionsRunnerLinuxArm64 => "arm64" as std.types.NonEmptyStr
+    ActionsRunnerLinuxX64 => "x64" as std.types.NonEmptyStr
   }
 }
 
-fn actions_runner_published_linux_arch_of(arch: Architecture) -> ActionsRunnerPublishedLinuxArch? {
+fn actions_runner_published_linux_arch_of(arch: extdeps.toolchain.types.Architecture) -> ActionsRunnerPublishedLinuxArch? {
   match arch {
     Aarch64 => Present { value: ActionsRunnerLinuxArm64 }
     X86_64 => Present { value: ActionsRunnerLinuxX64 }
@@ -46,7 +46,7 @@ type ActionsRunnerBinaryArtifact {
 
 fn actions_runner_binary_artifact_for_arch(
   binary_release: ActionsRunnerRelease,
-  arch: Architecture,
+  arch: extdeps.toolchain.types.Architecture,
 ) -> ActionsRunnerBinaryArtifact? {
   match actions_runner_published_linux_arch_of(arch: arch) {
     Present { value: published } =>
@@ -60,7 +60,7 @@ fn actions_runner_binary_artifact_for_arch(
   }
 }
 
-fn actions_runner_release_digest(artifact: ActionsRunnerBinaryArtifact) -> Digest {
+fn actions_runner_release_digest(artifact: ActionsRunnerBinaryArtifact) -> extdeps.crypto.hash.Digest {
   match artifact.arch {
     ActionsRunnerLinuxArm64 => artifact.binary_release.digest_aarch64
     ActionsRunnerLinuxX64 => artifact.binary_release.digest_x86_64
@@ -98,9 +98,9 @@ data actions_runner_base_dir: String = "/opt/actions-runner"
 
 data actions_runner_cache_dir: String = "/opt/actions-runner-cache"
 
-data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
+data actions_runner_slot_extract_script_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
@@ -109,8 +109,8 @@ data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
 
 fn actions_runner_slot_extract_script(
   artifact: ActionsRunnerBinaryArtifact,
-  slot_dir: NonEmptyStr,
-  job_user: NonEmptyStr,
+  slot_dir: std.types.NonEmptyStr,
+  job_user: std.types.NonEmptyStr,
 ) -> String {
   let url = actions_runner_download_url(artifact: artifact)
   let digest = actions_runner_release_digest(artifact: artifact)
@@ -136,16 +136,16 @@ fn actions_runner_slot_extract_script(
   ], "\n")
 }
 
-data actions_runner_base_dir_ensure_script_scaffold: Disposition = Scaffold {
+data actions_runner_base_dir_ensure_script_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
   }
 }
 
-fn actions_runner_base_dir_ensure_script(runner_user: NonEmptyStr) -> String {
+fn actions_runner_base_dir_ensure_script(runner_user: std.types.NonEmptyStr) -> String {
   join([
     "set -e",
     join(["sudo install -d -m 755 -o ", runner_user as String, " -g ", runner_user as String, " ", actions_runner_base_dir], ""),
@@ -154,9 +154,9 @@ fn actions_runner_base_dir_ensure_script(runner_user: NonEmptyStr) -> String {
   ], "\n")
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.actions_runner",
       decl_name: "actions_runner_release_2_334_0",
       field: WholeDeclaration

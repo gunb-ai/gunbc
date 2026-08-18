@@ -1,8 +1,8 @@
 module extdeps.llm.codex_auth
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/openai/codex"
   }
@@ -30,7 +30,7 @@ fn codex_auth_mode_of_wire(raw: String) -> CodexAuthMode? {
 
 data codex_token_durability_note: String = "THREE TOKENS IN ONE FILE WITH LIFETIMES THREE ORDERS OF MAGNITUDE APART, which is why auth.json cannot be one SecretRef. Measured on the observed file: id_token and access_token carry iat and exp exactly 3600 seconds apart, so both are gone within the hour. The refresh_token is the durable root and is NOT a JWT — decoding its middle segment fails — so it is opaque and its expiry is not readable from the token at all.\\n\\nThat asymmetry is the whole handling story, and it is why the two token fields carry different types. Anything reasoning about whether this credential is still good must consult the refresh token, and the only way to learn whether an opaque token is live is to USE it: existence is not validity, the same lesson secret_existence_is_not_validity_note records for Secret Manager versions. A liveness check that read exp from the access token would report a dead credential every hour and a live one never.\\n\\nThe short-lived pair is derived state, reconstructible from the refresh token and not worth storing. If any part of this file is ever placed in a secret store, the refresh token is the part that matters and the other two are cache."
 
-type CodexOpaqueToken = NonEmptyStr where brand("CodexOpaqueToken")
+type CodexOpaqueToken = std.types.NonEmptyStr where brand("CodexOpaqueToken")
 
 type CodexOAuthTokens {
   id_token: extdeps.auth.jwt.JwtCompactSerialization
@@ -50,11 +50,11 @@ type CodexAuthFile
 
 data codex_state_root_isolation_note: String = "CODEX_HOME IS THE ISOLATION MECHANISM, AND IT IS CODEX'S, NOT OURS. The CLI resolves auth.json, config, logs and session state beneath whatever CODEX_HOME names, defaulting to ~/.codex — so two invocations with different CODEX_HOME values authenticate as different accounts with no interference, and that capability exists whether or not anyone builds a naming scheme on it.\\n\\nThe distinction matters for where a multi-account model lives. The MECHANISM belongs here because codex owns it; a convention for what to call the roots is a downstream choice that this module must not encode. Anything reading a state root path out of this module would be reading somebody's naming policy as though the CLI required it.\\n\\nObserved on srv2: three roots coexist under one user account, and seventeen concurrent sessions bind to one of them with no cross-talk to the others."
 
-type CodexStateRoot = NonEmptyStr where brand("CodexStateRoot")
+type CodexStateRoot = std.types.NonEmptyStr where brand("CodexStateRoot")
 
-data codex_state_root_env_var: NonEmptyStr = "CODEX_HOME" as NonEmptyStr
-data codex_state_root_default_relative: NonEmptyStr = ".codex" as NonEmptyStr
-data codex_auth_file_relative: NonEmptyStr = "auth.json" as NonEmptyStr
+data codex_state_root_env_var: std.types.NonEmptyStr = "CODEX_HOME" as std.types.NonEmptyStr
+data codex_state_root_default_relative: std.types.NonEmptyStr = ".codex" as std.types.NonEmptyStr
+data codex_auth_file_relative: std.types.NonEmptyStr = "auth.json" as std.types.NonEmptyStr
 
 data codex_refresh_persistence_note: String = "WHEN THE CREDENTIAL FILE IS WRITTEN DECIDES WHETHER IT CAN BE SHARED, and this is measured rather than assumed. Observed on srv2, 2026-07-30: the default state root's auth.json carries last_refresh 2026-07-27T04:22 and an mtime matching it, while codex sessions bound to that same root have been running for over two hours — well past the 3600-second access-token lifetime the id_token declares. Seventeen concurrent processes, three days, and the file was never rewritten.\\n\\nThe inference is narrow and worth stating precisely. If refresh rotated the refresh token, the CLI would have to persist the replacement or lose access on the next exchange; it did not write, and access did not lapse. So the durable token survives use and the file is written at LOGIN, not at refresh — which makes it read-mostly in normal operation, and read-mostly is what makes concurrent binding safe. The write contention this row was expected to document does not occur, because after login there are no writers.\\n\\nWHAT THIS IS NOT: proof. It is three days of one host, and it does not establish that a refresh exchange happens at all (a long-lived session may hold its connection), that the authorization server never rotates, or how simultaneous cold starts behave when several processes exchange at once. CodexPersistenceObservedLoginOnly records what was seen with its evidence; it is deliberately a different value from a proven CodexPersistsAtLoginOnly, because an observation that survived one workload is not a contract."
 
@@ -106,11 +106,11 @@ type CodexIdToken {
   openai_auth: CodexOpenAiAuthClaim
 }
 
-data codex_id_token_issuer: NonEmptyStr = "https://auth.openai.com" as NonEmptyStr
+data codex_id_token_issuer: std.types.NonEmptyStr = "https://auth.openai.com" as std.types.NonEmptyStr
 
 data codex_id_token_lifetime_carrier_note: String = "THE OBSERVED LIFETIME IS A std.measure.Second (review 45056). It was a bare Int named ..._seconds, which puts the unit in the identifier where no consumer can check it — the same flat-scalar duration fork the tree grounds everywhere else. The number is what decides how often a long-running host must refresh, so it is read by things that also handle milliseconds, and the name was the only thing keeping the two apart."
 
-data codex_id_token_observed_lifetime: Second = second(count: 3600)
+data codex_id_token_observed_lifetime: std.measure.Second = second(count: 3600)
 
 data codex_observed_profile_note: String = "WHAT ONE TOKEN CARRIED IS NOT WHAT THE STANDARD REQUIRES, and separating the two is the whole point of this row. The extdeps.auth.jwt and extdeps.auth.oidc types were first written by reading the codex id_token observed on srv2 on 2026-07-30 and marking every claim it contained as mandatory. That produced two modules that named IETF and OIDF documents as their authority while actually encoding one sample from one provider on one day — the precise failure the extdeps citation duty exists to prevent, because a reader would take this vendor's grant as the specification's demand.\\n\\nThe specs now say what they say: RFC 7519's registered claims are all optional, OIDC Core requires five in an ID Token and makes auth_time, acr, amr, azp, nonce and sid optional, and the standard claims arrive only with the scope that asks for them. This profile records, separately and as an OBSERVATION, which of those optional claims this provider's token was seen to carry.\\n\\nWHY IT IS WORTH KEEPING RATHER THAN DELETING: a consumer reading a codex credential needs to know whether acr is reliably there before writing code that depends on it, and the answer is a fact about OpenAI's issuer rather than about OIDC. Recording it as an observation with its date and version means a later reader can tell that it was measured rather than promised, and can re-measure it. It is the same distinction CodexPersistenceObservedLoginOnly draws for refresh behaviour: an observation that survived one workload is not a contract, and it must not be spelled like one."
 
@@ -120,35 +120,35 @@ type CodexObservedClaimPresence {
 }
 
 data codex_observed_id_token_claim_profile: List<CodexObservedClaimPresence> = [
-  CodexObservedClaimPresence { claim: "auth_time" as NonEmptyStr, observed_present: true },
-  CodexObservedClaimPresence { claim: "acr" as NonEmptyStr, observed_present: true },
-  CodexObservedClaimPresence { claim: "amr" as NonEmptyStr, observed_present: true },
-  CodexObservedClaimPresence { claim: "sid" as NonEmptyStr, observed_present: true },
-  CodexObservedClaimPresence { claim: "email" as NonEmptyStr, observed_present: true },
-  CodexObservedClaimPresence { claim: "email_verified" as NonEmptyStr, observed_present: true },
-  CodexObservedClaimPresence { claim: "name" as NonEmptyStr, observed_present: true },
-  CodexObservedClaimPresence { claim: "jti" as NonEmptyStr, observed_present: false },
-  CodexObservedClaimPresence { claim: "nbf" as NonEmptyStr, observed_present: false },
-  CodexObservedClaimPresence { claim: "azp" as NonEmptyStr, observed_present: false },
-  CodexObservedClaimPresence { claim: "nonce" as NonEmptyStr, observed_present: false },
+  CodexObservedClaimPresence { claim: "auth_time" as std.types.NonEmptyStr, observed_present: true },
+  CodexObservedClaimPresence { claim: "acr" as std.types.NonEmptyStr, observed_present: true },
+  CodexObservedClaimPresence { claim: "amr" as std.types.NonEmptyStr, observed_present: true },
+  CodexObservedClaimPresence { claim: "sid" as std.types.NonEmptyStr, observed_present: true },
+  CodexObservedClaimPresence { claim: "email" as std.types.NonEmptyStr, observed_present: true },
+  CodexObservedClaimPresence { claim: "email_verified" as std.types.NonEmptyStr, observed_present: true },
+  CodexObservedClaimPresence { claim: "name" as std.types.NonEmptyStr, observed_present: true },
+  CodexObservedClaimPresence { claim: "jti" as std.types.NonEmptyStr, observed_present: false },
+  CodexObservedClaimPresence { claim: "nbf" as std.types.NonEmptyStr, observed_present: false },
+  CodexObservedClaimPresence { claim: "azp" as std.types.NonEmptyStr, observed_present: false },
+  CodexObservedClaimPresence { claim: "nonce" as std.types.NonEmptyStr, observed_present: false },
 ]
 
-data codex_observed_profile_version: NonEmptyStr = "codex-cli 0.145.0" as NonEmptyStr
-data codex_observed_profile_date: NonEmptyStr = "2026-07-30" as NonEmptyStr
+data codex_observed_profile_version: std.types.NonEmptyStr = "codex-cli 0.145.0" as std.types.NonEmptyStr
+data codex_observed_profile_date: std.types.NonEmptyStr = "2026-07-30" as std.types.NonEmptyStr
 
 // The four amr values this token carried, kept as WIRE STRINGS so the decoder is exercised on them rather than trusted about them. Two are RFC 8176 registered short names and two are OpenAI's own URN-namespaced methods; that the urn:openai: values belong to OpenAI is a fact this module may state, because it observed them, and is exactly the inference extdeps.auth.oidc must not make from shape alone.
-data codex_observed_id_token_amr_wire: List<NonEmptyStr> = [
-  "pop" as NonEmptyStr,
-  "mfa" as NonEmptyStr,
-  "urn:openai:amr:passkey" as NonEmptyStr,
-  "urn:openai:amr:google" as NonEmptyStr,
+data codex_observed_id_token_amr_wire: List<std.types.NonEmptyStr> = [
+  "pop" as std.types.NonEmptyStr,
+  "mfa" as std.types.NonEmptyStr,
+  "urn:openai:amr:passkey" as std.types.NonEmptyStr,
+  "urn:openai:amr:google" as std.types.NonEmptyStr,
 ]
 
 fn codex_default_organization(token: CodexIdToken) -> CodexOrganizationMembership? {
   token.openai_auth.organizations |> filter(o => o.is_default) |> first
 }
 
-fn codex_organization_ids(token: CodexIdToken) -> List<NonEmptyStr> {
+fn codex_organization_ids(token: CodexIdToken) -> List<std.types.NonEmptyStr> {
   token.openai_auth.organizations |> map(o => o.id)
 }
 

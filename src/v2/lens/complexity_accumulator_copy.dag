@@ -13,7 +13,7 @@ type Finding
   = Poly2Suspect { at: Node, cost: v2.lens.cost.SymbolicCost }
   | Unclassifiable { at: Node, cause: v2.std.node.Symbol }
 
-fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
+fn symbol_in(needle: v2.std.node.Symbol, xs: List<v2.std.node.Symbol>) -> Bool {
   fold(xs, init: false, f: fn(acc, s) {
     if acc { true } else { s == needle }
   })
@@ -21,7 +21,7 @@ fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
 
 fn poly_two_cost(n: Node) -> v2.lens.cost.SymbolicCost {
   PolynomialCost {
-    variable: SizeVariable { source: n },
+    variable: v2.lens.cost.SizeVariable { source: n },
     degree: polynomial_degree_two()
   }
 }
@@ -30,13 +30,13 @@ fn some_finding(f: Finding) -> Optional<Finding> {
   Present { value: f }
 }
 
-fn any_symbol_in(needles: List<Symbol>, xs: List<Symbol>) -> Bool {
+fn any_symbol_in(needles: List<v2.std.node.Symbol>, xs: List<v2.std.node.Symbol>) -> Bool {
   fold(needles, init: false, f: fn(acc, n) {
     if acc { true } else { symbol_in(needle: n, xs: xs) }
   })
 }
 
-fn port_carries_carrier(p: PortReading, carriers: List<Symbol>) -> Bool {
+fn port_carries_carrier(p: PortReading, carriers: List<v2.std.node.Symbol>) -> Bool {
   match p {
     PortBareName { name: n } => symbol_in(needle: n, xs: carriers)
     PortPureLiteral => false
@@ -45,7 +45,7 @@ fn port_carries_carrier(p: PortReading, carriers: List<Symbol>) -> Bool {
   }
 }
 
-fn any_port_carries_carrier(ports: List<PortReading>, carriers: List<Symbol>) -> Bool {
+fn any_port_carries_carrier(ports: List<PortReading>, carriers: List<v2.std.node.Symbol>) -> Bool {
   fold(ports, init: false, f: fn(acc, p) {
     if acc { true } else { port_carries_carrier(p: p, carriers: carriers) }
   })
@@ -70,7 +70,7 @@ fn some_let_binding_fact(fact: LetBindingFact) -> Optional<LetBindingFact> {
   Present { value: fact }
 }
 
-fn let_binding_fact_for(name: Symbol, bindings: List<LetBinding>) -> Optional<LetBindingFact> {
+fn let_binding_fact_for(name: v2.std.node.Symbol, bindings: List<LetBinding>) -> Optional<LetBindingFact> {
   fold(bindings, init: no_let_binding_fact(), f: fn(acc, b) {
     match acc {
       Present { value: _ } => acc
@@ -101,7 +101,7 @@ fn resolve_port_reading(reading: PortReading, bindings: List<LetBinding>) -> Por
   }
 }
 
-fn classify_copied_port(at: Node, reading: PortReading, carriers: List<Symbol>) -> Optional<Finding> {
+fn classify_copied_port(at: Node, reading: PortReading, carriers: List<v2.std.node.Symbol>) -> Optional<Finding> {
   match reading {
     PortBareName { name: n } =>
       if symbol_in(needle: n, xs: carriers) {
@@ -119,9 +119,9 @@ fn classify_copied_port(at: Node, reading: PortReading, carriers: List<Symbol>) 
 
 fn classify_call(
   at: Node,
-  combiner: Symbol,
+  combiner: v2.std.node.Symbol,
   ports: List<PortReading>,
-  carriers: List<Symbol>
+  carriers: List<v2.std.node.Symbol>
 ) -> Optional<Finding> {
   match v2.lens.cost.copied_port_citations.copied_port_index_of(combiner: combiner) {
     Absent =>
@@ -140,6 +140,6 @@ fn classify_call(
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

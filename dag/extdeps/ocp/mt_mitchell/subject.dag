@@ -1,22 +1,22 @@
 module extdeps.ocp.mt_mitchell.subject
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "www.opencompute.org/documents/mt-mitchell-ocp-hardware-spec-v0-80-2-pdf",
   }
 }
 
-data mt_mitchell_subject_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data mt_mitchell_subject_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "www.opencompute.org/documents/mt-mitchell-ocp-hardware-spec-v0-80-2-pdf",
   }
 }
 
-data internet_archive_mt_mitchell_capture_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data internet_archive_mt_mitchell_capture_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "web.archive.org/web/20221026103641id_/https://www.opencompute.org/documents/mt-mitchell-ocp-hardware-spec-v0-80-2-pdf",
   }
@@ -28,11 +28,11 @@ type MtMitchellRev0_80 {}
 
 type MtMitchellSpecificationRevision = MtMitchellRev0_80
 
-data mt_mitchell_specification_version_label: NonEmptyStr = "v0.80"
+data mt_mitchell_specification_version_label: std.types.NonEmptyStr = "v0.80"
 
-data mt_mitchell_specification_license: OcpSpecificationLicense = Owfa1_0FinalSpecificationAgreement {}
+data mt_mitchell_specification_license: extdeps.ocp.publication.OcpSpecificationLicense = extdeps.ocp.publication.Owfa1_0FinalSpecificationAgreement {}
 
-data mt_mitchell_contribution_license: OcpContributionLicense = OcpContributionLicenseAgreement {}
+data mt_mitchell_contribution_license: extdeps.ocp.publication.OcpContributionLicense = extdeps.ocp.publication.OcpContributionLicenseAgreement {}
 
 type MtMitchellReferencePlatform {
   marketing_name: std.types.NonEmptyStr
@@ -52,9 +52,9 @@ data mt_mitchell_reference_platform: MtMitchellReferencePlatform = MtMitchellRef
   contribution_license: mt_mitchell_contribution_license,
 }
 
-data mt_mitchell_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data mt_mitchell_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ocp.mt_mitchell.subject",
       decl_name: "mt_mitchell_reference_platform",
       field: WholeDeclaration,
@@ -64,4 +64,4 @@ data mt_mitchell_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [internet_archive_mt_mitchell_capture_authority],
 }
 
-data extdeps_model_scope: ExternalModelScope = mt_mitchell_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = mt_mitchell_model_scope

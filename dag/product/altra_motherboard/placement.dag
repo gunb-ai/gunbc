@@ -43,7 +43,7 @@ type BoardComponentRole
 // through a rendered name is a role whose equality an edit to that name can redefine. Equality is
 // structural below; this exists so a refusal can say WHICH role, and nothing reads it to decide
 // whether two roles are the same.
-fn role_tag(r: BoardComponentRole) -> NonEmptyStr {
+fn role_tag(r: BoardComponentRole) -> std.types.NonEmptyStr {
   match r {
     ProcessorSocket => "ProcessorSocket"
     ProcessorPackage => "ProcessorPackage"
@@ -102,7 +102,7 @@ fn role_ordinal(r: BoardComponentRole) -> Int {
 
 // THE SLOT IS ABSENT, NOT A SENTINEL. A processor socket does not have channel minus one; it has
 // no channel at all, and the option is what says so.
-fn role_slot(r: BoardComponentRole) -> DdrSlotIdentity? {
+fn role_slot(r: BoardComponentRole) -> product.altra_motherboard.minimal_design.DdrSlotIdentity? {
   match r {
     MemoryModuleSlot { slot: s } => Present { value: s }
     ProcessorSocket => none
@@ -125,7 +125,7 @@ fn role_slot(r: BoardComponentRole) -> DdrSlotIdentity? {
 // channel integer, which could not distinguish the two DIMM positions on one channel at all: the
 // near and far slots differ in stub length and loading, and two connectors that compare equal are
 // two connectors that can silently become one.
-fn slots_equal(sa: DdrSlotIdentity?, sb: DdrSlotIdentity?) -> Bool {
+fn slots_equal(sa: product.altra_motherboard.minimal_design.DdrSlotIdentity?, sb: product.altra_motherboard.minimal_design.DdrSlotIdentity?) -> Bool {
   match sa {
     Present { value: x } =>
       match sb {
@@ -210,7 +210,7 @@ type BoardPlacementPlan {
   components: List<PlannedComponent>
 }
 
-fn altra_1p_minimum_ref() -> DeclarationRef {
+fn altra_1p_minimum_ref() -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "product.altra_motherboard.minimal_design", decl_name: "altra_1p_minimum")
 }
 
@@ -229,7 +229,7 @@ fn altra_1p_minimum_ref() -> DeclarationRef {
 // and projected as functional obligations without coordinates — putting them on the physical
 // roster made the exactly-one population join silently decide that one device provides them.
 
-fn plan_component_identities(plan: BoardPlacementPlan) -> List<NonEmptyStr> {
+fn plan_component_identities(plan: BoardPlacementPlan) -> List<std.types.NonEmptyStr> {
   fold(plan.components, init: [], f: fn(acc, c) { concat(acc, [c.identity]) })
 }
 
@@ -249,7 +249,7 @@ fn realization_placement_refusals(plan: BoardPlacementPlan) -> List<PlacementRef
   )
 }
 
-fn required_roles(d: AltraMinimalMotherboard) -> List<BoardComponentRole> {
+fn required_roles(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> List<BoardComponentRole> {
   let slots = fold(topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
     concat(acc, [MemoryModuleSlot { slot: s }])
   })
@@ -269,7 +269,7 @@ fn plan_fills_role(plan: BoardPlacementPlan, r: BoardComponentRole) -> Bool {
   role_fill_count(plan: plan, r: r) > 0
 }
 
-fn design_requires_role(d: AltraMinimalMotherboard, r: BoardComponentRole) -> Bool {
+fn design_requires_role(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, r: BoardComponentRole) -> Bool {
   fold(required_roles(d: d), init: false, f: fn(acc, q) { acc || roles_equal(a: q, b: r) })
 }
 
@@ -287,7 +287,7 @@ fn design_requires_role(d: AltraMinimalMotherboard, r: BoardComponentRole) -> Bo
 // becomes a projection of that role's declared multiplicity rather than a fixed comparison. It is
 // deliberately not written as one now: a multiplicity axis with a single inhabited value is a field
 // carried but never joined, which reads as a guarantee while deciding nothing.
-fn population_refusals(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+fn population_refusals(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   let missing = fold(required_roles(d: d), init: [], f: fn(acc, r) {
     let fills = role_fill_count(plan: plan, r: r)
     if fills == 1 {
@@ -320,11 +320,11 @@ fn envelope_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   })
 }
 
-fn planned_identity_occurrences(cs: List<PlannedComponent>, id: NonEmptyStr) -> Int {
+fn planned_identity_occurrences(cs: List<PlannedComponent>, id: std.types.NonEmptyStr) -> Int {
   fold(cs, init: 0, f: fn(acc, c) { if (c.identity as String) == (id as String) { acc + 1 } else { acc } })
 }
 
-fn planned_identity_seen(seen: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
+fn planned_identity_seen(seen: List<std.types.NonEmptyStr>, id: std.types.NonEmptyStr) -> Bool {
   fold(seen, init: false, f: fn(acc, s) { acc || (s as String) == (id as String) })
 }
 
@@ -353,7 +353,7 @@ fn identity_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
 // missing work. An eight-channel plan admitted against a four-channel design reports four
 // unjustified slots, which is what a board with four spare connectors would report, and the reader
 // fixes the wrong thing. Naming the mismatch says the two are not comparable at all.
-fn design_refusals(d_ref: DeclarationRef, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+fn design_refusals(d_ref: std.decl_ref.DeclarationRef, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   if declaration_ref_eq(a: plan.design, b: d_ref) {
     []
   } else {
@@ -366,7 +366,7 @@ fn design_refusals(d_ref: DeclarationRef, plan: BoardPlacementPlan) -> List<Plac
 // join answered the same question no matter which design was passed: a plan built from design A,
 // admitted against design B, agreed with A and passed. The caller is the one who knows which
 // declaration it read the design out of, so the caller states it and the mismatch becomes real.
-fn placement_causes(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+fn placement_causes(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   concat(
     concat(
       concat(
@@ -392,7 +392,7 @@ type PlacementAdmission
 // bring-up board that cannot be assembled is not a lesser failure than a production one. The
 // intent already decides what the design admits in minimal_design; it does not get a second,
 // weaker meaning here.
-fn admit_placement(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> PlacementAdmission {
+fn admit_placement(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: BoardPlacementPlan) -> PlacementAdmission {
   let causes = placement_causes(d: d, d_ref: d_ref, plan: plan)
   if placement_refusal_count(cs: causes) == 0 {
     PlacementAdmitted { plan: plan }
@@ -406,12 +406,12 @@ fn admit_placement(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: Boar
 // with no established envelope has no extent, so handing it to a geometric check would require
 // inventing one. The obligations are reported by the admission above rather than smuggled here
 // as zero-sized parts that collide with nothing.
-fn placeable_components(plan: BoardPlacementPlan) -> List<ComponentPlacement> {
+fn placeable_components(plan: BoardPlacementPlan) -> List<product.pcb.physical.ComponentPlacement> {
   fold(plan.components, init: [], f: fn(acc, c) {
     match c.envelope {
       EnvelopeNotEstablished { gap: _ } => acc
       EnvelopeEstablished { envelope: e, source: _ } =>
-        concat(acc, [ComponentPlacement { identity: c.identity, body_envelope: e, origin: c.origin }])
+        concat(acc, [product.pcb.physical.ComponentPlacement { identity: c.identity, body_envelope: e, origin: c.origin }])
     }
   })
 }
@@ -434,9 +434,9 @@ fn outstanding_obligation_count(plan: BoardPlacementPlan) -> Int {
 // the same spelling would compare equal while registering different quanta. The board's frame is
 // registered by its consumer with a micrometre quantum, which is what physical.dag's sub-millimetre
 // requirement checks — a half-millimetre package pitch is not expressible in whole millimetres.
-fn altra_board_frame() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 21) }
+fn altra_board_frame() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 21) }
 
-fn altra_board_outline() -> OrthogonalConstruction<AxisAlignedRectangle2> {
+fn altra_board_outline() -> OrthogonalConstruction<std.orthogonal_geometry.AxisAlignedRectangle2> {
   axis_aligned_rectangle2(
     min: point2(frame: altra_board_frame(), x: 0, y: 0),
     max: point2(frame: altra_board_frame(), x: 305000, y: 267000)
@@ -444,9 +444,9 @@ fn altra_board_outline() -> OrthogonalConstruction<AxisAlignedRectangle2> {
 }
 
 // Vendor body length is the drawing major axis; map it to board X (body_width) and width to Y (body_height).
-fn envelope_from_package_body(b: PackageBodyDimensions, source: DeclarationRef) -> ComponentEnvelopeStanding {
+fn envelope_from_package_body(b: extdeps.land_pattern.types.PackageBodyDimensions, source: std.decl_ref.DeclarationRef) -> ComponentEnvelopeStanding {
   EnvelopeEstablished {
-    envelope: PackageBodyEnvelope {
+    envelope: product.pcb.physical.PackageBodyEnvelope {
       package_designator: b.designator,
       body_width: b.body_length_max,
       body_height: b.body_width_max,
@@ -492,7 +492,7 @@ data board_control_envelope: ComponentEnvelopeStanding = EnvelopeEstablished {
 // its role remains an obligation. Two roles, two standings, and clearing one does not clear the
 // other — the distinction this PR's root defect erased.
 data processor_package_envelope: ComponentEnvelopeStanding = EnvelopeEstablished {
-  envelope: PackageBodyEnvelope {
+  envelope: product.pcb.physical.PackageBodyEnvelope {
     package_designator: altra_package_body_designator,
     body_width: altra_package_body_width,
     body_height: altra_package_body_height,
@@ -513,7 +513,7 @@ data processor_package_envelope: ComponentEnvelopeStanding = EnvelopeEstablished
 // vendor's drawing — not a fabricated obligation standing in for one. Answering with a plausible
 // blocker would report an established subject as blocked, which is the fabricated plausible output
 // pointed the other way.
-fn socket_envelope_blocker() -> FactAuthorityBlocker {
+fn socket_envelope_blocker() -> product.altra_motherboard.attachment_stack.FactAuthorityBlocker {
   match subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
     Present { value: b } => b
     Absent =>
@@ -523,7 +523,7 @@ fn socket_envelope_blocker() -> FactAuthorityBlocker {
   }
 }
 
-fn obligation(g: FactAuthorityBlocker, id: NonEmptyStr, r: BoardComponentRole, x: Int, y: Int) -> PlannedComponent {
+fn obligation(g: product.altra_motherboard.attachment_stack.FactAuthorityBlocker, id: std.types.NonEmptyStr, r: BoardComponentRole, x: Int, y: Int) -> PlannedComponent {
   PlannedComponent {
     identity: id,
     role: r,
@@ -536,7 +536,7 @@ fn obligation(g: FactAuthorityBlocker, id: NonEmptyStr, r: BoardComponentRole, x
 // would have given the two positions on one channel a single identity, which the identity-repeat
 // refusal above exists to catch -- but only once their envelopes land, and by then the board is
 // drawn. Naming them fully means the collision cannot be authored in the first place.
-fn memory_slot_obligations(d: AltraMinimalMotherboard) -> List<PlannedComponent> {
+fn memory_slot_obligations(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> List<PlannedComponent> {
   fold(topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
     let ch = ddr_channel_ordinal(c: s.channel)
     let pos = dimm_slot_position_ordinal(p: s.position)
@@ -641,8 +641,8 @@ fn altra_frame_registry() -> AltraFrameRegistryStanding {
   }
 }
 
-fn board_article(plan: BoardPlacementPlan) -> BoardPhysicalArticle {
-  BoardPhysicalArticle {
+fn board_article(plan: BoardPlacementPlan) -> product.pcb.physical.BoardPhysicalArticle {
+  product.pcb.physical.BoardPhysicalArticle {
     frame: plan.frame,
     outline: plan.outline,
     placements: placeable_components(plan: plan),
@@ -656,7 +656,7 @@ fn board_article(plan: BoardPlacementPlan) -> BoardPhysicalArticle {
 // have cited bodies on the plan — those parts were checked geometrically, so they do not belong
 // in this count. The other placement refusals describe parts that ARE present and are defects in
 // what was checked rather than gaps in what was not.
-fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> Int {
+fn parts_not_geometrically_checked(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: BoardPlacementPlan) -> Int {
   fold(placement_causes(d: d, d_ref: d_ref, plan: plan), init: 0, f: fn(acc, c) {
     match c {
       RequiredRoleUnfilled { role: _ } => acc + 1
@@ -686,13 +686,13 @@ type BoardBodyLayoutStanding
   | BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: Int, geometry: product.pcb.physical.PhysicalAdmission }
   | BodyLayoutRefused { causes: product.pcb.physical.PhysicalRefusalSet }
 
-fn board_body_layout_standing(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> BoardBodyLayoutStanding {
+fn board_body_layout_standing(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: BoardPlacementPlan) -> BoardBodyLayoutStanding {
   let owed = parts_not_geometrically_checked(d: d, d_ref: d_ref, plan: plan)
   let geometry = match altra_frame_registry() {
     FrameRegistryEstablished { registry: r } =>
       admit_body_envelopes(registry: r, article: board_article(plan: plan))
     FrameRegistryRefused { cause: c } =>
-      PhysicallyRefused { causes: PhysicalRefusalSet {
+      PhysicallyRefused { causes: product.pcb.physical.PhysicalRefusalSet {
         first: BoardFrameRegistrationRefused { cause: c },
         rest: [],
       } }

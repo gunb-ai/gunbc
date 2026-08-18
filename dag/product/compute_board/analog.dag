@@ -38,7 +38,7 @@ type ElectricalComponentInstance
       potential_difference: std.measure.Volt,
     }
 
-fn component_identity(c: ElectricalComponentInstance) -> ComponentInstanceIdentity {
+fn component_identity(c: ElectricalComponentInstance) -> product.electrical.connectivity.ComponentInstanceIdentity {
   match c {
     ResistorInstance { identity: i, part: _, positive_terminal: _, negative_terminal: _, resistance: _ } => i
     CapacitorInstance { identity: i, part: _, positive_terminal: _, negative_terminal: _, capacitance: _ } => i
@@ -46,7 +46,7 @@ fn component_identity(c: ElectricalComponentInstance) -> ComponentInstanceIdenti
   }
 }
 
-fn component_part(c: ElectricalComponentInstance) -> NonEmptyStr {
+fn component_part(c: ElectricalComponentInstance) -> std.types.NonEmptyStr {
   match c {
     ResistorInstance { identity: _, part: p, positive_terminal: _, negative_terminal: _, resistance: _ } => p
     CapacitorInstance { identity: _, part: p, positive_terminal: _, negative_terminal: _, capacitance: _ } => p
@@ -54,7 +54,7 @@ fn component_part(c: ElectricalComponentInstance) -> NonEmptyStr {
   }
 }
 
-fn component_positive_terminal(c: ElectricalComponentInstance) -> TerminalIdentity {
+fn component_positive_terminal(c: ElectricalComponentInstance) -> product.electrical.connectivity.TerminalIdentity {
   match c {
     ResistorInstance { identity: _, part: _, positive_terminal: t, negative_terminal: _, resistance: _ } => t
     CapacitorInstance { identity: _, part: _, positive_terminal: t, negative_terminal: _, capacitance: _ } => t
@@ -62,7 +62,7 @@ fn component_positive_terminal(c: ElectricalComponentInstance) -> TerminalIdenti
   }
 }
 
-fn component_negative_terminal(c: ElectricalComponentInstance) -> TerminalIdentity {
+fn component_negative_terminal(c: ElectricalComponentInstance) -> product.electrical.connectivity.TerminalIdentity {
   match c {
     ResistorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: t, resistance: _ } => t
     CapacitorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: t, capacitance: _ } => t
@@ -103,7 +103,7 @@ type ComponentModelBinding {
 // distinct state from 'on the reference net' — a floating terminal and a grounded one are not
 // the same circuit, and a projection that defaulted one to the other would emit a deck that
 // simulates cleanly and describes a different board.
-fn net_of_terminal(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> NetIdentity? {
+fn net_of_terminal(intent: AnalogCircuitIntent, t: product.electrical.connectivity.ElectricalTerminalRef) -> product.electrical.connectivity.NetIdentity? {
   fold(intent.nets, init: none, f: fn(acc, net) {
     match acc {
       Present { value: v } => Present { value: v }
@@ -117,20 +117,20 @@ fn net_of_terminal(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> Net
 // with the first match, so a caller asking only "is it netted" cannot tell a netted terminal
 // from a shorted one. The count is what makes that distinction available; the projection decides
 // what to do with it.
-fn net_membership_count(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> std.nat.Nat {
+fn net_membership_count(intent: AnalogCircuitIntent, t: product.electrical.connectivity.ElectricalTerminalRef) -> std.nat.Nat {
   fold(intent.nets, init: 0, f: fn(acc, net) {
     if net_contains_terminal(net: net, t: t) { acc + 1 } else { acc }
   })
 }
 
-fn component_terminals(c: ElectricalComponentInstance) -> List<ElectricalTerminalRef> {
+fn component_terminals(c: ElectricalComponentInstance) -> List<product.electrical.connectivity.ElectricalTerminalRef> {
   [
     terminal_ref(component: component_identity(c: c), terminal: component_positive_terminal(c: c)),
     terminal_ref(component: component_identity(c: c), terminal: component_negative_terminal(c: c)),
   ]
 }
 
-fn first_unnetted_terminal(intent: AnalogCircuitIntent) -> ElectricalTerminalRef? {
+fn first_unnetted_terminal(intent: AnalogCircuitIntent) -> product.electrical.connectivity.ElectricalTerminalRef? {
   fold(intent.components, init: none, f: fn(acc, c) {
     match acc {
       Present { value: v } => Present { value: v }

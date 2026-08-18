@@ -41,7 +41,7 @@ fn atlas_hex_prefix_value(hex: String, digits: Int) -> Int {
     |> fold(init: 0, f: (acc, cp) => acc * 16 + atlas_hex_digit_value(cp: cp))
 }
 
-fn atlas_cell_index(identity: ModuleIdentity) -> Int {
+fn atlas_cell_index(identity: v2.lens.module_impact_query.ModuleIdentity) -> Int {
   let digest = content_hash_atom(value: identity.name).digest
   atlas_hex_prefix_value(hex: digest, digits: 12) % atlas_total_cells()
 }
@@ -84,7 +84,7 @@ fn atlas_address_of_index(index: Int) -> AtlasAddress {
   AtlasAddress { ring: walk.ring, slot: walk.slot }
 }
 
-fn atlas_address_of_module(identity: ModuleIdentity) -> AtlasAddress {
+fn atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity) -> AtlasAddress {
   atlas_address_of_index(index: atlas_cell_index(identity: identity))
 }
 
@@ -110,7 +110,7 @@ data repo_atlas_cell_order_cost_note: String = "THE ORDER LIST CONSES AND REVERS
 
 data repo_atlas_cell_order_note: String = "The accumulator carries an ORDERED index list beside the occupancy map, and cells project by walking that list with a map probe per entry. Reading the map's own key order instead would expose host traversal order — the exact nondeterminism v2.std.determinism refuses at map_keys / map_values — and the atlas would render in an order the model does not control. This is the pattern that thread prescribes: meaningful order in a list, the map for membership only."
 
-fn atlas_accumulate_cell(acc: AtlasCellAccumulator, identity: ModuleIdentity) -> AtlasCellAccumulator {
+fn atlas_accumulate_cell(acc: AtlasCellAccumulator, identity: v2.lens.module_impact_query.ModuleIdentity) -> AtlasCellAccumulator {
   let index = atlas_cell_index(identity: identity)
   match map_lookup_where_rejected_unreachable(m: acc.occupants, key: index) {
     Present { value: existing } => AtlasCellAccumulator {
@@ -128,7 +128,7 @@ fn atlas_accumulate_cell(acc: AtlasCellAccumulator, identity: ModuleIdentity) ->
   }
 }
 
-fn atlas_cells_of_modules(identities: List<ModuleIdentity>) -> List<RepoAtlasCell> {
+fn atlas_cells_of_modules(identities: List<v2.lens.module_impact_query.ModuleIdentity>) -> List<RepoAtlasCell> {
   let acc = fold(
     identities,
     init: AtlasCellAccumulator { order: [], occupants: empty_map() },
@@ -150,17 +150,17 @@ type AtlasIdentityDedup {
   seen: Map<String, Bool>
 }
 
-fn atlas_dedup_step(acc: AtlasIdentityDedup, n: ModuleDeclarationFact) -> AtlasIdentityDedup {
+fn atlas_dedup_step(acc: AtlasIdentityDedup, n: v2.lens.module_graph.ModuleDeclarationFact) -> AtlasIdentityDedup {
   match map_lookup_where_rejected_unreachable(m: acc.seen, key: n.module) {
     Present { value: _ } => acc
     Absent => AtlasIdentityDedup {
-      order: concat([ModuleIdentity { name: n.module }], acc.order),
+      order: concat([v2.lens.module_impact_query.ModuleIdentity { name: n.module }], acc.order),
       seen: map_insert(m: acc.seen, key: n.module, value: true)
     }
   }
 }
 
-fn atlas_module_identities(nodes: List<ModuleDeclarationFact>) -> List<ModuleIdentity> {
+fn atlas_module_identities(nodes: List<v2.lens.module_graph.ModuleDeclarationFact>) -> List<v2.lens.module_impact_query.ModuleIdentity> {
   list_reverse(xs: fold(
     nodes,
     init: AtlasIdentityDedup { order: [], seen: empty_map() },
@@ -236,7 +236,7 @@ DiffPairingBrokenStatus is enumerated here deliberately. The ruling's status lis
 
 data repo_atlas_status_totality_note: String = "ALL NINE ARMS ARE ENUMERATED AND NO WILDCARD REMAINS in any of the three status folds. A wildcard here is not a shorthand — it is a standing decision about statuses that do not exist yet: a tenth upstream GitDiffChangeStatus arm would have compiled clean and silently become an ordinary, non-departed, non-refusing change, which is the fail-open direction on the one wall this carrier exists to hold. With the wildcards gone a new upstream arm fails to typecheck until the atlas makes a conscious decision about it, so the refusal is the substrate's rather than this module's diligence."
 
-fn atlas_status_refusal(entry: GitDiffStatusEntry) -> AtlasOverlayRefusalCause? {
+fn atlas_status_refusal(entry: extdeps.git.GitDiffStatusEntry) -> AtlasOverlayRefusalCause? {
   match entry.status {
     DiffAddedStatus => Absent
     DiffModifiedStatus => Absent
@@ -251,7 +251,7 @@ fn atlas_status_refusal(entry: GitDiffStatusEntry) -> AtlasOverlayRefusalCause? 
   }
 }
 
-fn atlas_first_refusal(entries: List<GitDiffStatusEntry>) -> AtlasOverlayRefusalCause? {
+fn atlas_first_refusal(entries: List<extdeps.git.GitDiffStatusEntry>) -> AtlasOverlayRefusalCause? {
   fold(entries, init: Absent, f: (acc, e) =>
     match acc {
       Present { value: cause } => Present { value: cause }
@@ -261,7 +261,7 @@ fn atlas_first_refusal(entries: List<GitDiffStatusEntry>) -> AtlasOverlayRefusal
 
 data repo_atlas_departed_status_note: String = "A DELETED path has departed. A RENAMED entry has TWO paths and they are projected differently: entry.path is the new location and resolves against the head like any modification, while old_path names a location that no longer exists, so it lands as departed. A COPIED entry's old_path still exists at head and is not departed — the copy source was not removed — so only the new path is projected and the source needs no readout."
 
-fn atlas_status_is_departure(status: GitDiffChangeStatus) -> Bool {
+fn atlas_status_is_departure(status: extdeps.git.GitDiffChangeStatus) -> Bool {
   match status {
     DiffDeletedStatus => true
     DiffAddedStatus => false
@@ -275,7 +275,7 @@ fn atlas_status_is_departure(status: GitDiffChangeStatus) -> Bool {
   }
 }
 
-fn atlas_status_carries_departed_old_path(status: GitDiffChangeStatus) -> Bool {
+fn atlas_status_carries_departed_old_path(status: extdeps.git.GitDiffChangeStatus) -> Bool {
   match status {
     DiffRenamedStatus { similarity: _ } => true
     DiffCopiedStatus { similarity: _ } => false
@@ -302,8 +302,8 @@ data repo_atlas_multi_seed_note: String = "A path may resolve to zero, one, or S
 
 fn atlas_project_entry(
   acc: AtlasProjectionAccumulator,
-  entry: GitDiffStatusEntry,
-  nodes: List<ModuleDeclarationFact>
+  entry: extdeps.git.GitDiffStatusEntry,
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>
 ) -> AtlasProjectionAccumulator {
   let with_old = if atlas_status_carries_departed_old_path(status: entry.status) {
     match entry.old_path {
@@ -352,8 +352,8 @@ fn atlas_project_entry(
 
 fn atlas_project_diff(
   comparison: AtlasComparison,
-  outcome: GitDiffNameStatusParseOutcome,
-  nodes: List<ModuleDeclarationFact>
+  outcome: extdeps.git.GitDiffNameStatusParseOutcome,
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>
 ) -> AtlasChangeOverlay {
   match outcome {
     GitDiffNameStatusTruncated { pending: _, entries: _ } =>
@@ -379,7 +379,7 @@ fn atlas_project_diff(
 
 fn atlas_change_overlay(
   observation: AtlasChangeObservation,
-  nodes: List<ModuleDeclarationFact>
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>
 ) -> AtlasChangeOverlay {
   match observation {
     AtlasChangesNotObserved => AtlasChangeNotObserved
@@ -402,7 +402,7 @@ type AtlasImpactOverlay
       standing: v2.lens.module_impact_query.ImpactStanding
     }
 
-fn atlas_impact_from_reading(reading: ImpactReading) -> AtlasImpactOverlay {
+fn atlas_impact_from_reading(reading: v2.lens.module_impact_query.ImpactReading) -> AtlasImpactOverlay {
   AtlasImpactComputed { reached: reading.reached, standing: reading.standing }
 }
 
@@ -432,7 +432,7 @@ type RepoAtlasSnapshot {
 
 fn repo_atlas_snapshot(
   subject: AtlasSubject,
-  nodes: List<ModuleDeclarationFact>,
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>,
   observation: AtlasChangeObservation,
   impact: AtlasImpactOverlay
 ) -> RepoAtlasSnapshot {
@@ -453,7 +453,7 @@ fn atlas_snapshot_occupant_total(snapshot: RepoAtlasSnapshot) -> Int {
     acc + atlas_cell_occupant_count(cell: c))
 }
 
-fn atlas_cell_carries_module(cell: RepoAtlasCell, identity: ModuleIdentity) -> Bool {
+fn atlas_cell_carries_module(cell: RepoAtlasCell, identity: v2.lens.module_impact_query.ModuleIdentity) -> Bool {
   any(cell.occupants, o => impact_module_eq(a: o, b: identity))
 }
 
@@ -465,11 +465,11 @@ fn atlas_overlay_marks(overlay: AtlasChangeOverlay) -> List<AtlasChangeMark> {
   }
 }
 
-fn atlas_module_is_marked(marks: List<AtlasChangeMark>, identity: ModuleIdentity) -> Bool {
+fn atlas_module_is_marked(marks: List<AtlasChangeMark>, identity: v2.lens.module_impact_query.ModuleIdentity) -> Bool {
   any(marks, m => impact_module_eq(a: m.module, b: identity))
 }
 
-fn atlas_module_is_impacted(overlay: AtlasImpactOverlay, identity: ModuleIdentity) -> Bool {
+fn atlas_module_is_impacted(overlay: AtlasImpactOverlay, identity: v2.lens.module_impact_query.ModuleIdentity) -> Bool {
   match overlay {
     AtlasImpactNotComputed => false
     AtlasImpactComputed { reached: reached, standing: _ } =>

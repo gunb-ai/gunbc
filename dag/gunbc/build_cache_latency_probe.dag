@@ -1,7 +1,7 @@
 module gunbc.build_cache_latency_probe
 
 
-data build_cache_latency_probe_disposition: Disposition = Terminal {
+data build_cache_latency_probe_disposition: std.disposition.Disposition = Terminal {
   reason: "The acceptance metric for the srvN build-cache placement lane, and the falsifier for any fix to it. It measures ONE thing — how long the CI `build` job takes, per host — because that duration is dominated by whether cache-miss compiles are served by a healthy sccache server, and because it is derivable from GitHub Actions job timings that already exist. No host access, no new instrumentation, no agent on the box."
 }
 
@@ -23,7 +23,7 @@ type BuildLatencyPopulation {
 }
 
 // Provenance sits on the POPULATION rather than on each sample, because the claim is distributional — 'every successful build job in this window' — and per-row run ids would not make it more checkable, only longer. The window string carries the query needed to reproduce the population exactly. Extreme samples are cited individually below, since claims about the fastest and slowest builds ARE per-run claims and must name their runs.
-data build_latency_observation_window: NonEmptyStr = "workflow=ci.yml job=build conclusion=success, all runs on 2026-08-05 UTC reachable from `gh run list --workflow ci.yml --limit 600` (285 completed runs, 937 job placements); duration = completed_at - started_at from the Actions jobs API"
+data build_latency_observation_window: std.types.NonEmptyStr = "workflow=ci.yml job=build conclusion=success, all runs on 2026-08-05 UTC reachable from `gh run list --workflow ci.yml --limit 600` (285 completed runs, 937 job placements); duration = completed_at - started_at from the Actions jobs API"
 
 data srv1_build_latency: BuildLatencyPopulation = BuildLatencyPopulation {
   host: operator_host_srv1,
@@ -77,7 +77,7 @@ data peer_build_latency_references: List<BuildLatencyReference> = [
   BuildLatencyReference { host: operator_host_srv4, sample_count: 58, median: millisecond(count: 229000) },
 ]
 
-data peer_combined_median: Millisecond = millisecond(count: 238000)
+data peer_combined_median: std.measure.Millisecond = millisecond(count: 238000)
 
 type MedianScan {
   index: Int
@@ -86,7 +86,7 @@ type MedianScan {
 
 data median_selection_note: String = "Selection is a single linear fold over the sorted list because this substrate exposes only first/last/length on List — there is no index accessor, and the alternatives are a quadratic rank-count or a hand-rolled recursion. One fold carrying (index, picked) is O(n) after the sort, which keeps the whole derivation at sort cost and clear of DESIGN section 6's standing rule that a quadratic fold is always fixed regardless of the realized n.\n\nEVEN-SIZED POPULATIONS take the LOWER median rather than averaging the middle pair. Declared rather than incidental: averaging would mint a duration that no build actually took, and every consumer here compares a real observation against a policy ratio, so a synthetic midpoint would be the only unmeasured number in the chain.\n\nRECEIPT FOR THE RULE, from this file: a sibling note first quoted srv1's median as 609000ms, taken from an averaging median computed in a shell during collection. The derivation returns 607000ms — a real sample — and 609000 is the mean of the two middle values, a duration no build on srv1 ever took. The witness comparing the recorded verdict to its re-derivation caught the discrepancy immediately. The convention was already declared here and violated two declarations away, which is the ordinary way a stated convention fails."
 
-fn population_median(p: BuildLatencyPopulation) -> Millisecond? {
+fn population_median(p: BuildLatencyPopulation) -> std.measure.Millisecond? {
   let n = p.durations |> length
   if n == 0 {
     none
@@ -125,7 +125,7 @@ type BuildLatencyVerdict
 
 fn build_latency_verdict(
   p: BuildLatencyPopulation,
-  reference: Millisecond,
+  reference: std.measure.Millisecond,
   policy: BuildLatencyDivergencePolicy
 ) -> BuildLatencyVerdict {
   match population_median(p: p) {
@@ -161,7 +161,7 @@ data acceptance_criterion_note: String = "THE FALSIFIER FOR THE FIX, declared BE
 
 data live_producer_frontier_note: String = "THE LIVE PRODUCER IS MODELED BUT NOT YET SCHEDULED. build_latency_population_from_actions_api folds a list of ActionsBuildJobObservation rows — the fields the GitHub Actions jobs API returns for each job — into per-host BuildLatencyPopulation values filtered to the CI build job with conclusion=success. A thin collector (gh api / gh run list + jobs) is the only missing seam; it needs no host access and no fleet SSH key. The 2026-08-05 hand-entered populations remain the pre-actuation baseline until a fresh window is collected through this fold and written back. WET ACTUATION of the srv1 repair is a separate gate: this instrument only measures whether the repair worked once builds run again."
 
-data build_cache_latency_producer_disposition: Disposition = SingleAuthority
+data build_cache_latency_producer_disposition: std.disposition.Disposition = SingleAuthority
 
 type ActionsBuildJobObservation {
   run_id: std.types.NonEmptyStr
@@ -175,14 +175,14 @@ type ActionsBuildJobObservation {
 // Each row is ONE successful or attempted CI build job as returned by the Actions jobs API: runner_name carries the self-hosted label (srv1-01, srv2-05, …), duration is completed_at minus started_at in milliseconds already computed by the collector. This module does not parse ISO-8601 timestamps — that parsing belongs in the collector, not in the verdict fold.
 fn actions_build_job_matches(
   job: ActionsBuildJobObservation,
-  job_name: NonEmptyStr,
-  conclusion: NonEmptyStr,
+  job_name: std.types.NonEmptyStr,
+  conclusion: std.types.NonEmptyStr,
 ) -> Bool {
   (job.job_name as String) == (job_name as String)
     && (job.conclusion as String) == (conclusion as String)
 }
 
-fn host_from_runner_name(runner: NonEmptyStr) -> HostIdentity? {
+fn host_from_runner_name(runner: std.types.NonEmptyStr) -> product.placement_supply.HostIdentity? {
   if starts_with(s: runner as String, prefix: "srv1-") {
     Present { value: operator_host_srv1 }
   } else if starts_with(s: runner as String, prefix: "srv2-") {
@@ -198,10 +198,10 @@ fn host_from_runner_name(runner: NonEmptyStr) -> HostIdentity? {
 
 fn build_latency_population_for_host(
   jobs: List<ActionsBuildJobObservation>,
-  host: HostIdentity,
-  job_name: NonEmptyStr,
-  conclusion: NonEmptyStr,
-  window: NonEmptyStr,
+  host: product.placement_supply.HostIdentity,
+  job_name: std.types.NonEmptyStr,
+  conclusion: std.types.NonEmptyStr,
+  window: std.types.NonEmptyStr,
 ) -> BuildLatencyPopulation {
   BuildLatencyPopulation {
     host: host,
@@ -218,13 +218,13 @@ fn build_latency_population_for_host(
   }
 }
 
-data gunbc_ci_build_job_name: NonEmptyStr = "build" as NonEmptyStr
+data gunbc_ci_build_job_name: std.types.NonEmptyStr = "build" as std.types.NonEmptyStr
 
-data gunbc_ci_build_success_conclusion: NonEmptyStr = "success" as NonEmptyStr
+data gunbc_ci_build_success_conclusion: std.types.NonEmptyStr = "success" as std.types.NonEmptyStr
 
 fn build_latency_population_from_actions_api(
   jobs: List<ActionsBuildJobObservation>,
-  window: NonEmptyStr,
+  window: std.types.NonEmptyStr,
 ) -> List<BuildLatencyPopulation> {
   [
     build_latency_population_for_host(

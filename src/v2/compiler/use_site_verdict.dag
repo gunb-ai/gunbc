@@ -13,15 +13,15 @@ type UseSiteVerdictLookup
   | VerdictAbsent
   | VerdictAmbiguous
 
-data use_site_verdict_edge: Symbol = ^use_site_verdict
-data use_site_verdict_field_edge: Symbol = ^use_site_verdict_field
-data use_site_verdict_move_whole_tag: Symbol = ^use_site_verdict_move_whole
-data use_site_verdict_move_field_tag: Symbol = ^use_site_verdict_move_field
-data use_site_verdict_borrow_tag: Symbol = ^use_site_verdict_borrow
-data use_site_verdict_clone_shared_tag: Symbol = ^use_site_verdict_clone_shared
-data use_site_verdict_unclassified_tag: Symbol = ^use_site_verdict_unclassified
+data use_site_verdict_edge: v2.std.node.Symbol = ^use_site_verdict
+data use_site_verdict_field_edge: v2.std.node.Symbol = ^use_site_verdict_field
+data use_site_verdict_move_whole_tag: v2.std.node.Symbol = ^use_site_verdict_move_whole
+data use_site_verdict_move_field_tag: v2.std.node.Symbol = ^use_site_verdict_move_field
+data use_site_verdict_borrow_tag: v2.std.node.Symbol = ^use_site_verdict_borrow
+data use_site_verdict_clone_shared_tag: v2.std.node.Symbol = ^use_site_verdict_clone_shared
+data use_site_verdict_unclassified_tag: v2.std.node.Symbol = ^use_site_verdict_unclassified
 
-fn use_site_verdict_atom(tag: Symbol) -> Node {
+fn use_site_verdict_atom(tag: v2.std.node.Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: tag } }, children: [])
 }
 
@@ -32,7 +32,7 @@ fn use_site_verdict_to_node(verdict: UseSiteVerdict) -> Node {
       node_synthetic(
         kind: TypeNode { connective: Atom { identity: use_site_verdict_move_field_tag } },
         children: [
-          Edge { label: Named { name: use_site_verdict_field_edge }, target: use_site_verdict_atom(tag: f) }
+          v2.std.node.Edge { label: Named { name: use_site_verdict_field_edge }, target: use_site_verdict_atom(tag: f) }
         ]
       )
     Borrow => use_site_verdict_atom(tag: use_site_verdict_borrow_tag)
@@ -41,7 +41,7 @@ fn use_site_verdict_to_node(verdict: UseSiteVerdict) -> Node {
   }
 }
 
-fn use_site_verdict_move_field_of(children: List<Edge>) -> UseSiteVerdict {
+fn use_site_verdict_move_field_of(children: List<v2.std.node.Edge>) -> UseSiteVerdict {
   match named_edge_target_lookup(children: children, name: use_site_verdict_field_edge) {
     Found { target: field_node } =>
       match field_node.kind {
@@ -84,7 +84,7 @@ fn attach_use_site_verdict(node: Node, verdict: UseSiteVerdict) -> Node {
     n: node,
     children: list_snoc_item(
       xs: node.children,
-      item: Edge { label: Named { name: use_site_verdict_edge }, target: use_site_verdict_to_node(verdict: verdict) }
+      item: v2.std.node.Edge { label: Named { name: use_site_verdict_edge }, target: use_site_verdict_to_node(verdict: verdict) }
     )
   )
 }

@@ -19,12 +19,12 @@ type PrincipalProjection
   = OidcProjection { claims: extdeps.auth.oidc.OidcIdTokenClaims }
   | PosixProjection { observation: extdeps.access.posix_effective_principal.EffectivePosixPrincipalObservation }
 
-fn oidc_principal_projection(claims: OidcIdTokenClaims) -> PrincipalProjection {
+fn oidc_principal_projection(claims: extdeps.auth.oidc.OidcIdTokenClaims) -> PrincipalProjection {
   OidcProjection { claims: claims }
 }
 
 fn posix_principal_projection(
-  observation: EffectivePosixPrincipalObservation,
+  observation: extdeps.access.posix_effective_principal.EffectivePosixPrincipalObservation,
 ) -> PrincipalProjection {
   PosixProjection { observation: observation }
 }

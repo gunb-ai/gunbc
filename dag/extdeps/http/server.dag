@@ -1,36 +1,36 @@
 module extdeps.http.server
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc9110"
   }
 }
 
-data media_type_grammar_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data media_type_grammar_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc9110#section-8.3.1"
   }
 }
 
-data media_top_level_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data media_top_level_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc6838#section-4.2"
   }
 }
 
-data media_type_registry_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data media_type_registry_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.iana.org/assignments/media-types/media-types.xhtml"
   }
 }
 
-data charset_registry_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data charset_registry_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.iana.org/assignments/character-sets/character-sets.xhtml"
   }
@@ -240,7 +240,7 @@ fn served_route_method<H>(r: ServedRoute<H>) -> std.types.HttpMethod {
   }
 }
 
-fn served_route_pattern<H>(r: ServedRoute<H>) -> PathTemplate {
+fn served_route_pattern<H>(r: ServedRoute<H>) -> std.http_path.PathTemplate {
   match r {
     StaticRoute { route: s } => s.path_pattern
     DynamicRoute { method: _, path_pattern: p, handler: _ } => p

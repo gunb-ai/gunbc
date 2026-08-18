@@ -8,16 +8,16 @@ module extdeps.gnu.libc
 // WHAT UPSTREAM ACTUALLY PUBLISHES. The library reports its own version through ldd, whose first output line ends with the version string on both the Debian and Ubuntu spellings -- the vendor text between them differs, which is why a consumer reads the trailing field positionally rather than matching a distribution's phrasing. The version is upstream's own numbering (2.36, 2.39); it is kept verbatim as the string the library reports rather than being re-encoded into an internal ordering, because a re-encoding would be a second naming scheme for a fact upstream already names.
 //
 // WHY A COPRODUCT AND NOT A BARE STRING. An unobserved C library and a C library observed to be absent are different states with different remedies, and the state that must never exist is a build environment silently identified without one. LibcUnobserved is representable so that a consumer must handle it explicitly; it is never the same value as any observed version, so an environment carrying it can never collide with one that was actually measured.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "sourceware.org/glibc/wiki/Glibc%20Timeline"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.gnu.libc",
       decl_name: "PlatformCLibrary",
       field: WholeDeclaration
@@ -38,9 +38,9 @@ fn render_platform_c_library(library: PlatformCLibrary) -> String {
   }
 }
 
-fn platform_c_library_identity_tag(library: PlatformCLibrary) -> NonEmptyStr {
+fn platform_c_library_identity_tag(library: PlatformCLibrary) -> std.types.NonEmptyStr {
   match library {
-    GnuLibc { version } => concat("gnu.libc.v1.", version as String) as NonEmptyStr
-    LibcUnobserved => "gnu.libc.v1.unobserved" as NonEmptyStr
+    GnuLibc { version } => concat("gnu.libc.v1.", version as String) as std.types.NonEmptyStr
+    LibcUnobserved => "gnu.libc.v1.unobserved" as std.types.NonEmptyStr
   }
 }

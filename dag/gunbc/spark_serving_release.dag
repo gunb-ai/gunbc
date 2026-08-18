@@ -35,7 +35,7 @@ fn spark_serving_runtime_kind_wire(runtime: SparkServingRuntimeKind) -> String {
   }
 }
 
-fn spark_serving_endpoint_intent_wire(intent: ServingEndpointIntent) -> String {
+fn spark_serving_endpoint_intent_wire(intent: gunbc.spark_serving_realization.ServingEndpointIntent) -> String {
   match intent {
     UnauthenticatedEndpoint => "lan-unauthenticated"
     AuthenticatedEndpoint => "authenticated"
@@ -48,23 +48,23 @@ fn spark_serving_bind_listen_wire(bind: SparkServingBindListen) -> String {
 
 fn spark_serving_configuration_seed(
   runtime: SparkServingRuntimeKind,
-  model_ref: OllamaModelRef,
+  model_ref: extdeps.ollama.api.OllamaModelRef,
   bind: SparkServingBindListen,
-  endpoint: ServingEndpointIntent,
-) -> NonEmptyStr {
+  endpoint: gunbc.spark_serving_realization.ServingEndpointIntent,
+) -> std.types.NonEmptyStr {
   join([
     "spark-serving|runtime=", spark_serving_runtime_kind_wire(runtime: runtime),
     "|model=", ollama_model_ref_wire(ref: model_ref),
     "|bind=", spark_serving_bind_listen_wire(bind: bind),
     "|endpoint=", spark_serving_endpoint_intent_wire(intent: endpoint),
-  ], "") as NonEmptyStr
+  ], "") as std.types.NonEmptyStr
 }
 
 fn spark_serving_configuration_identity(
   runtime: SparkServingRuntimeKind,
-  model_ref: OllamaModelRef,
+  model_ref: extdeps.ollama.api.OllamaModelRef,
   bind: SparkServingBindListen,
-  endpoint: ServingEndpointIntent,
+  endpoint: gunbc.spark_serving_realization.ServingEndpointIntent,
 ) -> ServingConfigurationIdentity {
   ServingConfigurationIdentity {
     configuration_digest: content_hash_atom(
@@ -74,7 +74,7 @@ fn spark_serving_configuration_identity(
         bind: bind,
         endpoint: endpoint,
       ),
-    ).digest as NonEmptyStr,
+    ).digest as std.types.NonEmptyStr,
   }
 }
 
@@ -115,12 +115,12 @@ type SparkServingReleaseIdentity { digest: std.content_hash.Fnv1a64Structural }
 // its own name, so two releases differing in any single input produce different seed text and
 // therefore a different digest -- which is what makes the identity a function of the release
 // rather than a label beside it.
-fn spark_serving_release_seed(spec: SparkServingRelease) -> NonEmptyStr {
+fn spark_serving_release_seed(spec: SparkServingRelease) -> std.types.NonEmptyStr {
   join([
     "spark-serving-release|runtime=", spec.runtime.closure_digest as String,
     "|model=", serialize_content_hash(hash: spec.model.identity) as String,
     "|serving_label=", spec.model.serving_label as String,
-  ], "") as NonEmptyStr
+  ], "") as std.types.NonEmptyStr
 }
 
 fn spark_serving_release_identity(spec: SparkServingRelease) -> SparkServingReleaseIdentity {
@@ -211,7 +211,7 @@ data no_further_refusals: List<SparkServingRefusal> = []
 // swap -- and it is the failure the two-replica design is most exposed to, because srv5 and srv6
 // are deliberately configured to share one release identity. The digest being right is exactly
 // what makes the subject being wrong invisible.
-fn host_matches(a: HostIdentity, b: HostIdentity) -> Bool {
+fn host_matches(a: product.placement_supply.HostIdentity, b: product.placement_supply.HostIdentity) -> Bool {
   (a as String) == (b as String)
 }
 
@@ -219,7 +219,7 @@ fn host_matches(a: HostIdentity, b: HostIdentity) -> Bool {
 // is missing instead of a bare false that erases which of several remedies applies. Only
 // prerequisites recorded FOR THE SUBJECT are consulted: another host's absent prerequisite is not
 // evidence about this one, in either direction.
-fn first_absent_prerequisite(subject: HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> SparkServingRefusal? {
+fn first_absent_prerequisite(subject: product.placement_supply.HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> SparkServingRefusal? {
   fold_list(xs: prerequisites, empty: no_absent_prerequisite, cons: fn(acc, p) {
     match acc {
       Present { value: found } => Present { value: found }
@@ -236,7 +236,7 @@ fn first_absent_prerequisite(subject: HostIdentity, prerequisites: List<SparkSer
 // row let an EMPTY prerequisite list read as satisfied -- silence answering as consent, which is
 // the empty-observation narrow (DESIGN section 5): "nobody recorded a prerequisite for srv5" and
 // "srv5's prerequisites hold" are different states and the first must not actuate.
-fn admits_identity_binding(subject: HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> Bool {
+fn admits_identity_binding(subject: product.placement_supply.HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> Bool {
   fold_list(xs: prerequisites, empty: false, cons: fn(acc, p) {
     match p {
       HostIdentityBindingAdmitted { host: h } => acc || host_matches(a: h, b: subject)
@@ -246,7 +246,7 @@ fn admits_identity_binding(subject: HostIdentity, prerequisites: List<SparkServi
   })
 }
 
-fn admits_managed_access(subject: HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> Bool {
+fn admits_managed_access(subject: product.placement_supply.HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> Bool {
   fold_list(xs: prerequisites, empty: false, cons: fn(acc, p) {
     match p {
       ManagedHostAccessGrounded { host: h } => acc || host_matches(a: h, b: subject)
@@ -308,7 +308,7 @@ fn reconcile_spark_serving(
                     converged_release: spark_serving_release_identity(spec: loaded),
                   }
                 } else {
-                  SparkServingDeltaRequired { plan_subject: "loaded release differs from desired release" as NonEmptyStr }
+                  SparkServingDeltaRequired { plan_subject: "loaded release differs from desired release" as std.types.NonEmptyStr }
                 }
               }
           }
@@ -364,13 +364,13 @@ type SparkServingPlan
 // The deployment target for a Spark serving unit under the named automation account. The actor is a
 // PARAMETER rather than a constant because the same plan computed for root is the control that
 // proves privilege is emergent -- run it as RootPrincipal and every shortfall empties.
-fn spark_serving_target(actor: SystemPrincipal) -> ServingDeploymentTarget {
-  ServingDeploymentTarget {
+fn spark_serving_target(actor: gunbc.spark_serving_realization.SystemPrincipal) -> gunbc.spark_serving_realization.ServingDeploymentTarget {
+  gunbc.spark_serving_realization.ServingDeploymentTarget {
     actor: actor,
-    unit_name: spark_serving_unit_name as NonEmptyStr,
-    unit_path: join(["/etc/systemd/system/", spark_serving_unit_name], "") as NonEmptyStr,
-    staged_unit_path: join(["/var/lib/gunbc/staged/", spark_serving_unit_name], "") as NonEmptyStr,
-    runtime_package: "ollama" as NonEmptyStr,
+    unit_name: spark_serving_unit_name as std.types.NonEmptyStr,
+    unit_path: join(["/etc/systemd/system/", spark_serving_unit_name], "") as std.types.NonEmptyStr,
+    staged_unit_path: join(["/var/lib/gunbc/staged/", spark_serving_unit_name], "") as std.types.NonEmptyStr,
+    runtime_package: "ollama" as std.types.NonEmptyStr,
   }
 }
 
@@ -391,11 +391,11 @@ fn spark_serving_plan_row(
   desired: SparkServingOccurrence,
   observation: SparkServingObservation,
   prerequisites: List<SparkServingPrerequisite>,
-  intent: SparkServingIntent,
-  realization: SparkServingRealization,
-  actor: SystemPrincipal,
-  expected_credential: ContentHash,
-  observed_grants: ObservedGrantPopulation,
+  intent: gunbc.spark_serving_realization.SparkServingIntent,
+  realization: gunbc.spark_serving_realization.SparkServingRealization,
+  actor: gunbc.spark_serving_realization.SystemPrincipal,
+  expected_credential: std.content_hash.ContentHash,
+  observed_grants: gunbc.spark_serving_realization.ObservedGrantPopulation,
 ) -> SparkServingPlanRow {
   SparkServingPlanRow {
     host: desired.host,
@@ -452,7 +452,7 @@ fn plan_row_verdict_admitted(row: SparkServingPlanRow) -> SparkServingPlanVerdic
   }
 }
 
-fn privilege_verdict(shortfall: EscalationShortfall) -> SparkServingPlanVerdict {
+fn privilege_verdict(shortfall: gunbc.spark_serving_realization.EscalationShortfall) -> SparkServingPlanVerdict {
   match shortfall {
     NoNewPrivilegeRequired => ServingReadyToApply
     NewPrivilegeRequired { first: f, more: _ } => ServingBlockedOnPrivilege { first_missing: f }

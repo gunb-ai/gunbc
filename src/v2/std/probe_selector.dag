@@ -284,7 +284,7 @@ fn probe_select_best_under_budget(
   }
 }
 
-fn ci_test_claim_coverage_for_frontier(claim: TestClaim, frontier: List<Node>) -> Int {
+fn ci_test_claim_coverage_for_frontier(claim: v2.std.verification.TestClaim, frontier: List<Node>) -> Int {
   if test_claim_ci_selection_fail_closed(c: claim) {
     1
   } else {
@@ -296,7 +296,7 @@ fn ci_test_claim_coverage_for_frontier(claim: TestClaim, frontier: List<Node>) -
   }
 }
 
-fn ci_test_claim_coverage_for_affected(claim: TestClaim, affected: AffectedSet) -> Int {
+fn ci_test_claim_coverage_for_affected(claim: v2.std.verification.TestClaim, affected: v2.std.change.AffectedSet) -> Int {
   if test_claim_ci_selection_fail_closed(c: claim) {
     1
   } else {
@@ -312,7 +312,7 @@ fn ci_test_claim_coverage_for_affected(claim: TestClaim, affected: AffectedSet) 
   }
 }
 
-fn ci_test_claim_coverage(claim: TestClaim, prior: ProbePrior) -> Int {
+fn ci_test_claim_coverage(claim: v2.std.verification.TestClaim, prior: ProbePrior) -> Int {
   match prior {
     HostHealthPrior { hypothesis: _ } => 0
     CiAffectedPrior { affected: affected } =>
@@ -324,7 +324,7 @@ fn ci_test_claim_coverage(claim: TestClaim, prior: ProbePrior) -> Int {
 }
 
 fn ci_probe_catalog_entry_for_claim_with_prior(
-  claim: TestClaim,
+  claim: v2.std.verification.TestClaim,
   prior: ProbePrior
 ) -> ProbeCatalogEntry {
   ProbeCatalogEntry {
@@ -336,7 +336,7 @@ fn ci_probe_catalog_entry_for_claim_with_prior(
 }
 
 fn ci_probe_catalog_entries_from_roster_with_prior(
-  roster: List<TestClaim>,
+  roster: List<v2.std.verification.TestClaim>,
   prior: ProbePrior
 ) -> List<ProbeCatalogEntry> {
   fold_list_right(
@@ -353,7 +353,7 @@ fn ci_probe_catalog_entries_from_roster_with_prior(
 
 fn probe_catalog_for_prior(
   prior: ProbePrior,
-  roster: List<TestClaim>
+  roster: List<v2.std.verification.TestClaim>
 ) -> ProbeCatalog<String> {
   match prior {
     HostHealthPrior { hypothesis: _ } =>
@@ -371,7 +371,7 @@ fn probe_select(
   prior: ProbePrior,
   budget: CostBudget,
   available: DiagnosticCapabilityFacts,
-  roster: List<TestClaim>
+  roster: List<v2.std.verification.TestClaim>
 ) -> List<ProbeCatalogEntry> {
   let catalog = probe_catalog_for_prior(prior: prior, roster: roster)
   probe_select_best_under_budget(
@@ -383,7 +383,7 @@ fn probe_select(
 }
 
 fn test_claim_selected_by_probe_catalog(
-  claim: TestClaim,
+  claim: v2.std.verification.TestClaim,
   selected: List<ProbeCatalogEntry>
 ) -> Bool {
   probe_catalog_contains_label(
@@ -393,11 +393,11 @@ fn test_claim_selected_by_probe_catalog(
 }
 
 fn probe_select_test_claims(
-  roster: List<TestClaim>,
+  roster: List<v2.std.verification.TestClaim>,
   prior: ProbePrior,
   budget: CostBudget,
   available: DiagnosticCapabilityFacts
-) -> List<TestClaim> {
+) -> List<v2.std.verification.TestClaim> {
   let selected = probe_select(
     prior: prior,
     budget: budget,
@@ -413,11 +413,11 @@ fn probe_select_test_claims(
 }
 
 fn probe_select_affected_test_claims(
-  roster: List<TestClaim>,
-  affected: AffectedSet,
+  roster: List<v2.std.verification.TestClaim>,
+  affected: v2.std.change.AffectedSet,
   budget: CostBudget,
   available: DiagnosticCapabilityFacts
-) -> List<TestClaim> {
+) -> List<v2.std.verification.TestClaim> {
   probe_select_test_claims(
     roster: roster,
     prior: CiAffectedPrior { affected: affected },
@@ -427,11 +427,11 @@ fn probe_select_affected_test_claims(
 }
 
 fn probe_select_rerun_test_claims(
-  roster: List<TestClaim>,
+  roster: List<v2.std.verification.TestClaim>,
   frontier: List<Node>,
   budget: CostBudget,
   available: DiagnosticCapabilityFacts
-) -> List<TestClaim> {
+) -> List<v2.std.verification.TestClaim> {
   probe_select_test_claims(
     roster: roster,
     prior: CiRerunPrior { frontier: frontier },

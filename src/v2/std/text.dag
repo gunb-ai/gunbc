@@ -1,6 +1,6 @@
 module v2.std.text
 
-type String = FreeMonoid<Char>
+type String = FreeMonoid<std.types.Char>
 
 type HostStringText {
   text: String
@@ -33,7 +33,7 @@ fn string_head(s: String) -> CharResult {
     HeadAbsent => CharAbsent
   }
 }
-fn string_tail(s: String) -> ListTailResult<Char> {
+fn string_tail(s: String) -> ListTailResult<std.types.Char> {
   list_tail(xs: s)
 }
 

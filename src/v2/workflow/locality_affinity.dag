@@ -1,7 +1,7 @@
 module v2.workflow.locality_affinity
 
 
-fn list_add_distinct_hash(xs: List<ContentHash>, v: ContentHash) -> List<ContentHash> {
+fn list_add_distinct_hash(xs: List<std.content_hash.ContentHash>, v: std.content_hash.ContentHash) -> List<std.content_hash.ContentHash> {
   if hashes_contain(hs: xs, h: v) { xs } else { concat(xs, [v]) }
 }
 
@@ -22,7 +22,7 @@ type AffinityCollectAcc
   = AffinityCollectOk { footprint: Optional<std.measure.ByteSize>, consumers: List<std.content_hash.ContentHash> }
   | AffinityCollectRefused { cause: AffinityRefusalCause }
 
-fn affinity_collect_step(expected: ContentHash, acc: AffinityCollectAcc, row: OperandFlowRow) -> AffinityCollectAcc {
+fn affinity_collect_step(expected: std.content_hash.ContentHash, acc: AffinityCollectAcc, row: v2.workflow.operand_flow.OperandFlowRow) -> AffinityCollectAcc {
   match acc {
     AffinityCollectRefused { cause: c } => AffinityCollectRefused { cause: c }
     AffinityCollectOk { footprint: fp, consumers: cs } =>
@@ -56,7 +56,7 @@ fn affinity_collect_step(expected: ContentHash, acc: AffinityCollectAcc, row: Op
   }
 }
 
-fn find_fitting_level(levels: List<MemoryLevel>, footprint: ByteSize) -> Optional<LevelId> {
+fn find_fitting_level(levels: List<std.machine_shape.MemoryLevel>, footprint: std.measure.ByteSize) -> Optional<std.machine_shape.LevelId> {
   fold(levels, init: optional_absent(), f: fn(found, level) {
     match found {
       Present { value: _ } => found
@@ -69,7 +69,7 @@ fn find_fitting_level(levels: List<MemoryLevel>, footprint: ByteSize) -> Optiona
   })
 }
 
-fn derive_affinity(operand: ContentHash, flows: List<OperandFlowRow>, domain: ExecutionDomain) -> AffinityDecision {
+fn derive_affinity(operand: std.content_hash.ContentHash, flows: List<v2.workflow.operand_flow.OperandFlowRow>, domain: std.machine_shape.ExecutionDomain) -> AffinityDecision {
   match fold(flows, init: AffinityCollectOk { footprint: optional_absent(), consumers: [] }, f: fn(acc, row) {
     affinity_collect_step(expected: operand, acc: acc, row: row)
   }) {
@@ -103,7 +103,7 @@ type BatchLookup
   | BatchLookupMissing
   | BatchLookupConflict { first: Int, second: Int }
 
-fn batch_for_consumer(assignment: List<ConsumerBatch>, consumer: ContentHash) -> BatchLookup {
+fn batch_for_consumer(assignment: List<ConsumerBatch>, consumer: std.content_hash.ContentHash) -> BatchLookup {
   fold(assignment, init: BatchLookupMissing, f: fn(found, cb) {
     match found {
       BatchLookupConflict { first: _, second: _ } => found
@@ -127,7 +127,7 @@ type BatchCollectResult
   | BatchCollectMissing { consumer: std.content_hash.ContentHash }
   | BatchCollectConflict { consumer: std.content_hash.ContentHash, first: Int, second: Int }
 
-fn distinct_batches_for_consumers(consumers: List<ContentHash>, assignment: List<ConsumerBatch>) -> BatchCollectResult {
+fn distinct_batches_for_consumers(consumers: List<std.content_hash.ContentHash>, assignment: List<ConsumerBatch>) -> BatchCollectResult {
   fold(consumers, init: BatchCollectOk { batches: [] }, f: fn(acc, consumer) {
     match acc {
       BatchCollectMissing { consumer: c } => BatchCollectMissing { consumer: c }
@@ -160,9 +160,9 @@ type TrafficPricing
   | TrafficPricingRefused { operand: std.content_hash.ContentHash, cause: TrafficPricingRefusalCause }
 
 fn price_operand_traffic(
-  operand: ContentHash,
-  flows: List<OperandFlowRow>,
-  domain: ExecutionDomain,
+  operand: std.content_hash.ContentHash,
+  flows: List<v2.workflow.operand_flow.OperandFlowRow>,
+  domain: std.machine_shape.ExecutionDomain,
   assignment: List<ConsumerBatch>
 ) -> TrafficPricing {
   match derive_affinity(operand: operand, flows: flows, domain: domain) {

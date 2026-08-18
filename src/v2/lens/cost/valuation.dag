@@ -34,7 +34,7 @@ type BindingScan {
   duplicates: List<SizeVariable>
 }
 
-fn cost_valuation_authority_locus() -> Locus {
+fn cost_valuation_authority_locus() -> v2.std.diagnostic.Locus {
   textual_whole_file_locus(file: ^cost_valuation_authority_virtual_file)
 }
 
@@ -127,7 +127,7 @@ fn multiply_evaluations(a: CostEvaluation, b: CostEvaluation) -> CostEvaluation 
   }
 }
 
-fn evaluate_size_expr(size: SizeExpr, env: CostValuationEnv) -> CostEvaluation {
+fn evaluate_size_expr(size: v2.lens.cost.expr.SizeExpr, env: CostValuationEnv) -> CostEvaluation {
   match size {
     SizeConst { value: v } => ExactCost { value: v }
     SizeOf { variable: v } =>
@@ -198,7 +198,7 @@ data cost_log_evaluation_note: String = "THREE distinct facts, reported as three
 
 fn evaluate_cost_log(
   base: v2.std.nat.Nat,
-  argument: SizeExpr,
+  argument: v2.lens.cost.expr.SizeExpr,
   env: CostValuationEnv
 ) -> CostEvaluation {
   if nat_lte(a: base, b: Succ { prev: Zero }) {
@@ -226,7 +226,7 @@ fn evaluate_cost_log(
   }
 }
 
-fn evaluate_cost_expr_in_env(expr: CostExpr, env: CostValuationEnv) -> CostEvaluation {
+fn evaluate_cost_expr_in_env(expr: v2.lens.cost.expr.CostExpr, env: CostValuationEnv) -> CostEvaluation {
   match expr {
     CostConst { value: v } => ExactCost { value: v }
     CostAdd { left: l, right: r } =>
@@ -334,7 +334,7 @@ fn duplicate_binding_refusal(
 data projection_path_binder_discard_debt_note: String = "TRACKED DEBT, on a path this module does not use. v2.lens.cost.expr normalize_cost_expr_to_symbolic matches CostSum with the binder DISCARDED, so a binder-dependent body projects a SymbolicCost naming a variable that is bound inside the sum; the magnitude may survive but the variable identity does not, and a consumer comparing on identity gets a well-formed wrong answer. It is reachable through a body of CostLog whose argument is SizeOf of the binder. This module's evaluator does not inherit the defect - it binds the binder and shadows lexically - so the two paths now disagree, which is why the defect is named HERE rather than left for the next reader to rediscover from the divergence. It is deliberately not fixed by the change that landed this evaluator: the projection feeds the enrolled Blocking cost wall and has its own consumers, so it is a separate subject with its own regression surface. It is also why the held partial-evaluation work must carry a rich CostExpr residual rather than a normalized SymbolicCost - normalization is exactly the lossy step. Trigger: fix normalize_cost_expr_to_symbolic to carry the binder, with a discriminating witness whose binder and bound variable are DISTINCT, since the existing bounded_summation fixture uses the same variable for both and therefore cannot see this class. This row dissolves when that witness is green."
 
 fn evaluate_cost_expr(
-  expr: CostExpr,
+  expr: v2.lens.cost.expr.CostExpr,
   bindings: List<CostValuationBinding>
 ) -> CostEvaluation {
   match duplicate_binding_refusal(

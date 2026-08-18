@@ -1,8 +1,8 @@
 module extdeps.realization.emit_on_demand_host
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "doc.rust-lang.org/cargo/"
   }
@@ -54,8 +54,8 @@ type ToolchainIdentityOutcome
 data emit_host_structural_identity_refusal_note: String = "emit_host_structural_identity_outcome refuses cryptographic ContentHash families at the structural projection boundary (review 45661). Sha256Hash, Sha1Hash, and Sha512Hash cannot collapse to a shared fnv1a64 sentinel — that was an absorbing fallback hiding distinct digests behind one cache key. Structural-only inputs proceed; crypto arms return EmitHostStructuralIdentityRefusedCrypto with component and identity (family is derived via content_hash_family, not stored in parallel — review 45721)."
 
 fn emit_host_structural_identity_outcome(
-  component: NonEmptyStr,
-  identity: ContentHash,
+  component: std.types.NonEmptyStr,
+  identity: std.content_hash.ContentHash,
 ) -> EmitHostStructuralIdentityOutcome {
   match identity {
     Fnv1a64(s) => EmitHostStructuralIdentityPresent { structural: s }
@@ -129,7 +129,7 @@ fn toolchain_identity_outcome(context: ResolvedBuildContext) -> ToolchainIdentit
 
 fn observed_tool_identity(
   context: ResolvedBuildContext,
-  tool_name: NonEmptyStr,
+  tool_name: std.types.NonEmptyStr,
 ) -> ObservedToolIdentityLookup {
   let matching = context.observed_tool_identities |> filter(row => row.tool_name == tool_name)
   if count(matching) == 0 {
@@ -161,15 +161,15 @@ fn resolved_build_context_identity_outcome(
             EmitHostStructuralIdentityPresent { structural: cargo_configuration } =>
               ResolvedBuildContextIdentityPresent {
                 identity: artifact_realization_digest(inputs: [
-                  ArtifactRealizationInput {
+                  std.artifact_store.ArtifactRealizationInput {
                     identity: "resolved-build-toolchain",
                     content_digest: toolchain
                   },
-                  ArtifactRealizationInput {
+                  std.artifact_store.ArtifactRealizationInput {
                     identity: "constructed-build-environment",
                     content_digest: environment
                   },
-                  ArtifactRealizationInput {
+                  std.artifact_store.ArtifactRealizationInput {
                     identity: "cargo-configuration",
                     content_digest: cargo_configuration
                   },
@@ -195,20 +195,20 @@ fn resolved_build_context_identity_outcome(
   }
 }
 
-fn native_cache_workspace_root(cache_root: String, key: ContentHash) -> String {
+fn native_cache_workspace_root(cache_root: String, key: std.content_hash.ContentHash) -> String {
   concat(cache_root, "/", serialize_content_hash(hash: key) as String)
 }
 
 fn native_cache_realization_workspace_root(
   workspace_root: String,
-  realization_digest: ContentHash
+  realization_digest: std.content_hash.ContentHash
 ) -> String {
   concat(workspace_root, "/", serialize_content_hash(hash: realization_digest) as String)
 }
 
 fn native_cache_resolved_build_context_workspace_root(
   realization_workspace_root: String,
-  resolved_build_context_identity: ContentHash
+  resolved_build_context_identity: std.content_hash.ContentHash
 ) -> String {
   concat(
     realization_workspace_root,
@@ -217,7 +217,7 @@ fn native_cache_resolved_build_context_workspace_root(
   )
 }
 
-fn emit_on_demand_evict_native_cache(cache_root: String, key: ContentHash) -> Bool {
+fn emit_on_demand_evict_native_cache(cache_root: String, key: std.content_hash.ContentHash) -> Bool {
   let workspace = native_cache_workspace_root(cache_root: cache_root, key: key)
   emit_host_native_cache_evict(workspace_dir: workspace)
 }

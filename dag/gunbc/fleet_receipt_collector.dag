@@ -23,7 +23,7 @@ type CollectedHostReceipt
 // Forward grammar lives in converge_cli_receipt_line; this is the backward read of the
 // SAME line shape: "converge-receipt host=H applied=N drifted=N verdict=V". A missing
 // prefix, missing field, or unknown verdict label refuses (Absent), never guesses.
-fn parse_converge_receipt_line(line: String) -> ConvergeCliReceipt? {
+fn parse_converge_receipt_line(line: String) -> gunbc.fleet_converge_cli.ConvergeCliReceipt? {
   let tokens = split(s: trim(s: line), delimiter: " ")
   if length(tokens) == 5
     && match tokens.first() { Present { value: t } => t == "converge-receipt" Absent => false } {
@@ -38,7 +38,7 @@ fn parse_converge_receipt_line(line: String) -> ConvergeCliReceipt? {
                     match parse_int(s: receipt_field_or_empty(tokens: tokens, key: "drifted=")) {
                       Present { value: drifted } =>
                         Present {
-                          value: ConvergeCliReceipt {
+                          value: gunbc.fleet_converge_cli.ConvergeCliReceipt {
                             host: host,
                             applied: applied,
                             drifted: drifted,
@@ -87,7 +87,7 @@ fn drop_prefix(s: String, prefix: String) -> String {
 // label), which returns Absent whenever effective is empty — silently re-classifying a
 // published Drifted as Absent on collection, exactly the state-space conflation the
 // header forbids (different remedies: run the converge vs build the observation).
-fn parse_converge_verdict_label(label: String) -> ConvergeVerdict? {
+fn parse_converge_verdict_label(label: String) -> gunbc.host_converge.ConvergeVerdict? {
   if label == "converged" {
     Present { value: VerdictConverged }
   } else {
@@ -118,7 +118,7 @@ fn collect_host_receipt(host: String) -> CollectedHostReceipt {
       }
     ProbeTargetReady { host: _, endpoint: e, remote_principal: p } =>
   match typed_argv_probe_over_ssh(
-    host: fleet_probe_ready_ssh_target(t_host: host, endpoint: e, remote_principal: p) as NonEmptyStr,
+    host: fleet_probe_ready_ssh_target(t_host: host, endpoint: e, remote_principal: p) as std.types.NonEmptyStr,
     argv: ["cat", fleet_converge_receipt_path(host: host)],
   ) {
     TypedArgvExecConverged { result: r } =>
@@ -191,7 +191,7 @@ fn converge_revision_observed_hex(raw: String) -> String? {
   })
 }
 
-fn collected_receipts_only(collected: List<CollectedHostReceipt>) -> List<ConvergeCliReceipt> {
+fn collected_receipts_only(collected: List<CollectedHostReceipt>) -> List<gunbc.fleet_converge_cli.ConvergeCliReceipt> {
   collected.flat_map(c => match c {
     ReceiptCollected { host: _, receipt: r } => [r]
     ReceiptAbsent { host: _, cause: _ } => []
@@ -225,7 +225,7 @@ data fleet_collect_receipt_path: String = "target/fleet-converge-collect-receipt
 // never lands here and the collector's ssh either refuses or falls back to ambient
 // known_hosts (the exact anchor hole the pin closes for the probe). Call it FIRST and
 // carry its readback in the collect receipt, mirroring the probe entry.
-func collect_fleet_convergence_wet() -> ProcessExit {
+func collect_fleet_convergence_wet() -> std.process.ProcessExit {
   let enroll_lines = fleet_host_key_enroll_apply()
   let collected = map(fleet_reach_probe_targets, h => collect_host_receipt(host: h))
   let verdict = fleet_convergence_verdict(

@@ -13,7 +13,7 @@ type HumanInterventionFrequency
   | EveryProvision
   | BreakGlassOnly
 
-type HumanInterventionIdentity = NonEmptyStr where brand("HumanInterventionIdentity")
+type HumanInterventionIdentity = std.types.NonEmptyStr where brand("HumanInterventionIdentity")
 
 // "The human did it" is a claim, and a claim must point at the declaration carrying the
 // evidence — an intervention must not be dischargeable by editing a flag beside it (DESIGN
@@ -77,14 +77,14 @@ fn human_intervention_count_at(
 // FleetOnce once ever. BreakGlassOnly is deliberately NOT a term — an emergency path is
 // not cheaper for being rare, it is a different kind of thing, and pricing it as routine
 // would let a strategy buy a better score by moving work into the emergency path.
-fn compare_int_ascending(a: Int, b: Int) -> Ordering {
+fn compare_int_ascending(a: Int, b: Int) -> std.algebra.Ordering {
   if a < b { Less } else if a > b { Greater } else { Equal }
 }
 
 fn compare_routine_human_burden(
   a: ProvisioningHumanBurden,
   b: ProvisioningHumanBurden
-) -> Ordering {
+) -> std.algebra.Ordering {
   match compare_int_ascending(
     a: human_intervention_count_at(burden: a, frequency: EveryProvision),
     b: human_intervention_count_at(burden: b, frequency: EveryProvision)

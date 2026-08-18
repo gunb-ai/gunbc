@@ -1,7 +1,7 @@
 module v2.lens.affected_set.corpus_dependency_view
 
 
-data corpus_dependency_view_resolve_budget: Minute = minute(count: 90)
+data corpus_dependency_view_resolve_budget: std.measure.Minute = minute(count: 90)
 
 type CorpusDependencyViewResolvePhaseMark {
   frontend_done: std.measure.Millisecond
@@ -36,9 +36,9 @@ data corpus_dependency_view_measurement_receipt: CorpusDependencyViewMeasurement
   last_phase: "post_normalize_stuck_in_reconcile"
 }
 
-data corpus_dependency_view_per_pr_execution_gate: Disposition = Scaffold {
+data corpus_dependency_view_per_pr_execution_gate: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.affected_set.corpus_dependency_view",
     decl_name: "corpus_dependency_views_live",
     field: WholeDeclaration
@@ -61,7 +61,7 @@ fn ensure_corpus_dependency_view_per_pr_substrate() -> Bool {
   }
 }
 
-fn corpus_dependency_views_live() -> List<DependencyView> {
+fn corpus_dependency_views_live() -> List<v2.std.dependency.DependencyView> {
   let _ready = ensure_corpus_dependency_view_per_pr_substrate()
   fold(fn_arrow_decl_facts_live(), init: [], f: fn(acc, decl) {
     append_dependency_views(

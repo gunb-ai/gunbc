@@ -16,8 +16,8 @@ fn floor0(v: Int) -> Int {
   if v < 0 { 0 } else { v }
 }
 
-fn lit_variant(m: Material) -> Material {
-  Material {
+fn lit_variant(m: gunbc.design.material.Material) -> gunbc.design.material.Material {
+  gunbc.design.material.Material {
     name: concat(m.name, "-lit"),
     hue: m.hue,
     sat_pct: cap100(v: m.sat_pct + 8),
@@ -26,8 +26,8 @@ fn lit_variant(m: Material) -> Material {
   }
 }
 
-fn edge_variant(m: Material) -> Material {
-  Material {
+fn edge_variant(m: gunbc.design.material.Material) -> gunbc.design.material.Material {
+  gunbc.design.material.Material {
     name: concat(m.name, "-edge"),
     hue: m.hue,
     sat_pct: floor0(v: m.sat_pct - 12),
@@ -36,19 +36,19 @@ fn edge_variant(m: Material) -> Material {
   }
 }
 
-data o_render: StarlightRender = StarlightRender { spectral: o_class, figure: Material { name: "o-starlight", hue: 228, sat_pct: 26, light_pct: 88, area: PointArea } }
+data o_render: StarlightRender = StarlightRender { spectral: o_class, figure: gunbc.design.material.Material { name: "o-starlight", hue: 228, sat_pct: 26, light_pct: 88, area: PointArea } }
 
-data b_render: StarlightRender = StarlightRender { spectral: b_class, figure: Material { name: "b-starlight", hue: 226, sat_pct: 20, light_pct: 89, area: PointArea } }
+data b_render: StarlightRender = StarlightRender { spectral: b_class, figure: gunbc.design.material.Material { name: "b-starlight", hue: 226, sat_pct: 20, light_pct: 89, area: PointArea } }
 
-data a_render: StarlightRender = StarlightRender { spectral: a_class, figure: Material { name: "a-starlight", hue: 222, sat_pct: 12, light_pct: 91, area: PointArea } }
+data a_render: StarlightRender = StarlightRender { spectral: a_class, figure: gunbc.design.material.Material { name: "a-starlight", hue: 222, sat_pct: 12, light_pct: 91, area: PointArea } }
 
-data f_render: StarlightRender = StarlightRender { spectral: f_class, figure: Material { name: "f-starlight", hue: 50, sat_pct: 14, light_pct: 90, area: PointArea } }
+data f_render: StarlightRender = StarlightRender { spectral: f_class, figure: gunbc.design.material.Material { name: "f-starlight", hue: 50, sat_pct: 14, light_pct: 90, area: PointArea } }
 
-data g_render: StarlightRender = StarlightRender { spectral: g_class, figure: Material { name: "g-starlight", hue: 45, sat_pct: 26, light_pct: 87, area: PointArea } }
+data g_render: StarlightRender = StarlightRender { spectral: g_class, figure: gunbc.design.material.Material { name: "g-starlight", hue: 45, sat_pct: 26, light_pct: 87, area: PointArea } }
 
-data k_render: StarlightRender = StarlightRender { spectral: k_class, figure: Material { name: "k-starlight", hue: 33, sat_pct: 34, light_pct: 81, area: PointArea } }
+data k_render: StarlightRender = StarlightRender { spectral: k_class, figure: gunbc.design.material.Material { name: "k-starlight", hue: 33, sat_pct: 34, light_pct: 81, area: PointArea } }
 
-data m_render: StarlightRender = StarlightRender { spectral: m_class, figure: Material { name: "m-starlight", hue: 15, sat_pct: 42, light_pct: 66, area: PointArea } }
+data m_render: StarlightRender = StarlightRender { spectral: m_class, figure: gunbc.design.material.Material { name: "m-starlight", hue: 15, sat_pct: 42, light_pct: 66, area: PointArea } }
 
 data starlight_renders: List<StarlightRender> = [o_render, b_render, a_render, f_render, g_render, k_render, m_render]
 
@@ -60,7 +60,7 @@ data signed_accent_is_a_selection_note: String = "THE SIGNATURE SELECTS A CLASS;
 
 data signed_accent_render: StarlightRender = g_render
 
-data verdigris_patina: Material = Material { name: "verdigris-patina", hue: 165, sat_pct: 28, light_pct: 52, area: HairlineArea }
+data verdigris_patina: gunbc.design.material.Material = gunbc.design.material.Material { name: "verdigris-patina", hue: 165, sat_pct: 28, light_pct: 52, area: HairlineArea }
 
 fn hue_is_green(hue: Int) -> Bool {
   hue >= 90 && hue <= 170
@@ -84,7 +84,7 @@ fn render_has_class(renders: List<StarlightRender>, code: String) -> Bool {
   fold(renders, init: false, f: (acc, r) => acc || r.spectral.code as String == code)
 }
 
-fn renders_cover_classification(renders: List<StarlightRender>, classes: List<SpectralClass>) -> Bool {
+fn renders_cover_classification(renders: List<StarlightRender>, classes: List<extdeps.astronomy.stellar_classification.SpectralClass>) -> Bool {
   all(classes, c => render_has_class(renders: renders, code: c.code as String))
     && renders.length() == classes.length()
 }

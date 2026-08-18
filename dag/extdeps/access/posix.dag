@@ -1,8 +1,8 @@
 module extdeps.access.posix
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/basedefs/sys_stat.h.html"
   }
@@ -44,7 +44,7 @@ type FilePermissions {
 // fails is an argv on a live host. It is deliberately NOT shared with DnsLabel -- DNS labels and
 // POSIX login names have different grammars, different length limits and different external
 // authorities, so one string validator over both would be a nickname for two concepts.
-type PosixLoginName = NonEmptyStr where brand("PosixLoginName")
+type PosixLoginName = std.types.NonEmptyStr where brand("PosixLoginName")
 
 fn posix_login_name_code_point_admitted(cp: Int) -> Bool {
   (cp >= 97 && cp <= 122)

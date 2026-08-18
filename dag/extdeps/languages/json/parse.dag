@@ -3,8 +3,8 @@ module extdeps.languages.json.parse
 
 data json_parse_note: String = "parse_json is the FORWARD reading of RFC 8259: text -> JsonValue, the inverse of extdeps.languages.json.emit.serialize_json. It reuses the recursive-descent span scanner in extdeps.languages.json.grammar (json_text_parse_string / json_text_parse_number / json_text_skip_ws) to find value boundaries, and builds the JsonValue at each span. Interim standalone parser (a second reading alongside emit); DISSOLVES WHEN json_production_rows are wired into the general GrammarRelationRow ingest machinery (src/v2/compiler/03_ingest) so parse is a witnessed instance of emit^-1 (DESIGN 4). Escapes: the span scanner in grammar.dag decides the escape SET (json_text_escape_end, RFC 8259 section 7), so an unknown escape or a short \\u refuses the parse before a value is built and never reaches the unescaper below - see json_escape_production_note for why that refusal lives at the scan and what it prevents (review 45642). The unknown-escape arm in json_unescape_from is therefore unreachable for any span this parser accepts; it is retained as a total fallback because json_unescape is exported and a caller could hand it an unvalidated span. \\uXXXX IS decoded to its code point, which is what makes the round-trip total against escape_json_string: that emitter maps code points 0-31 other than the six with short escapes to \\uXXXX, so a parser that passed \\u through would silently corrupt every control character a receipt detail field can carry. Surrogate PAIRS are not recombined - serialize_json never emits one (it escapes only 0-31), so a lone \\uXXXX decode is exact over this emitter's output; foreign JSON carrying an astral character as a surrogate pair is outside the declared fragment. A malformed \\u (fewer than four hex digits, or a non-hex digit) refuses at the scanner, so json_hex4_at's negative arm is likewise unreachable from parse_json and kept only for the exported-caller case."
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc8259"
   }
@@ -113,7 +113,7 @@ fn parse_json_number_at(s: String, i: Int) -> JsonParse {
   }
 }
 
-fn parse_json_literal_at(s: String, i: Int, lit: String, v: JsonValue) -> JsonParse {
+fn parse_json_literal_at(s: String, i: Int, lit: String, v: extdeps.languages.json.emit.JsonValue) -> JsonParse {
   if substring(s: s, start: i, end: i + lit.length()) == lit {
     JsonParsed { value: v, next: i + lit.length() }
   } else {
@@ -123,7 +123,7 @@ fn parse_json_literal_at(s: String, i: Int, lit: String, v: JsonValue) -> JsonPa
 
 data json_exhaustive_match_note: String = "The matches over JsonValue below name every variant instead of closing with a wildcard, and that is the point rather than a style choice: JsonValue is a CLOSED coproduct, so a wildcard throws away the one thing closing it buys - that adding a seventh variant BREAKS every reader and forces a decision at each. Under a wildcard the new variant silently acquires whatever the catch-all does, which here would mean a new kind of document quietly reading as `not an object` or as the empty string. The non-fold-residue lens counts exactly this shape (src/v2/lens/non_fold_residue, a wildcard arm over a closed-coproduct PARAMETER), and it counted these two when they first landed; they are written out rather than rostered because the residue is removable, and a roster row is for residue that is not."
 
-fn json_string_value_or_empty(v: JsonValue) -> String {
+fn json_string_value_or_empty(v: extdeps.languages.json.emit.JsonValue) -> String {
   match v {
     JsonString { value: sv } => sv
     JsonNull => ""
@@ -142,11 +142,11 @@ type JsonMemberLookup
   | JsonMemberDuplicated { count: Int }
   | JsonMemberNotAnObject
 
-fn json_object_members_named(members: List<JsonKeyValue>, key: String) -> List<JsonValue> {
+fn json_object_members_named(members: List<extdeps.languages.json.emit.JsonKeyValue>, key: String) -> List<extdeps.languages.json.emit.JsonValue> {
   map(filter(members, m => m.key == key), m => m.value)
 }
 
-fn json_object_unique_member(v: JsonValue, key: String) -> JsonMemberLookup {
+fn json_object_unique_member(v: extdeps.languages.json.emit.JsonValue, key: String) -> JsonMemberLookup {
   match v {
     JsonObject { members: ms } => {
       let hits = json_object_members_named(members: ms, key: key)
@@ -173,7 +173,7 @@ type JsonArrayAcc =
 
 data json_trailing_comma_note: String = "RFC 8259's array production is `[ ws ]` or `[ value *( , value ) ]` - the empty form is reachable only at the OPENING bracket, never after a separator. An accumulator that checks for the closing bracket at the top of each round reaches that check again after consuming a comma, which silently accepts a trailing comma; the same shape accepts `\{\"a\": 1,}`. That is not a cosmetic leniency: json_text_parseable is the guard the Codex JSONL reader uses to refuse a malformed provider line, and a parser that accepts a trailing comma lets a truncated-then-closed event read as well-formed. The element and member folds below therefore REQUIRE a value, and the empty-container case is decided once by the opening reader."
 
-fn parse_json_array_elements(s: String, i: Int, acc: List<JsonValue>) -> JsonArrayAcc {
+fn parse_json_array_elements(s: String, i: Int, acc: List<extdeps.languages.json.emit.JsonValue>) -> JsonArrayAcc {
   match parse_json_value_at(s: s, i: i) {
     JsonParseFail { at: a } => JsonArrayAccFail { at: a }
     JsonParsed { value: v, next: n } => {
@@ -206,7 +206,7 @@ type JsonObjectAcc =
     JsonObjectAccOk { members: List<extdeps.languages.json.emit.JsonKeyValue>, next: Int }
   | JsonObjectAccFail { at: Int }
 
-fn parse_json_object_members(s: String, i: Int, acc: List<JsonKeyValue>) -> JsonObjectAcc {
+fn parse_json_object_members(s: String, i: Int, acc: List<extdeps.languages.json.emit.JsonKeyValue>) -> JsonObjectAcc {
   let p = json_text_skip_ws(s: s, i: i)
   match parse_json_string_at(s: s, i: p) {
     JsonParseFail { at: a } => JsonObjectAccFail { at: a }
@@ -263,11 +263,11 @@ fn parse_json_value_at(s: String, i: Int) -> JsonParse {
   }
 }
 
-fn some_json_value(v: JsonValue) -> JsonValue? {
+fn some_json_value(v: extdeps.languages.json.emit.JsonValue) -> extdeps.languages.json.emit.JsonValue? {
   Present { value: v }
 }
 
-fn parse_json_fully_consumed(s: String, v: JsonValue, n: Int) -> JsonValue? {
+fn parse_json_fully_consumed(s: String, v: extdeps.languages.json.emit.JsonValue, n: Int) -> extdeps.languages.json.emit.JsonValue? {
   if json_text_skip_ws(s: s, i: n) == s.length() {
     some_json_value(v: v)
   } else {
@@ -275,7 +275,7 @@ fn parse_json_fully_consumed(s: String, v: JsonValue, n: Int) -> JsonValue? {
   }
 }
 
-fn parse_json(s: String) -> JsonValue? {
+fn parse_json(s: String) -> extdeps.languages.json.emit.JsonValue? {
   match parse_json_value_at(s: s, i: 0) {
     JsonParseFail { at: _ } => none
     JsonParsed { value: v, next: n } => parse_json_fully_consumed(s: s, v: v, n: n)

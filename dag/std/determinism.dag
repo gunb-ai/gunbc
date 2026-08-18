@@ -5,7 +5,7 @@ type Determinism
   = Deterministic
   | NonDeterministic { source: std.decl_ref.DeclarationRef }
 
-fn determinism_from_perturbation(verdict: std.perturbation.PerturbationVerdict, reached: DeclarationRef) -> Determinism {
+fn determinism_from_perturbation(verdict: std.perturbation.PerturbationVerdict, reached: std.decl_ref.DeclarationRef) -> Determinism {
   match verdict {
     ResponseConsistent => Deterministic
     ResponseViolation => NonDeterministic { source: reached }

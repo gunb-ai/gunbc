@@ -50,7 +50,7 @@ type SimulationOutcome
   | SimulationRefusedByTool { run: SimulationRun, diagnostic: std.types.NonEmptyStr }
 
 data icarus_verilog_tool: SimulationTool = SimulationTool {
-  subject: DeclarationRef {
+  subject: std.decl_ref.DeclarationRef {
     module_path: "extdeps.simulators.icarus_verilog.subject",
     decl_name: "icarus_verilog_simulator",
     field: WholeDeclaration,
@@ -59,7 +59,7 @@ data icarus_verilog_tool: SimulationTool = SimulationTool {
 }
 
 data ngspice_tool: SimulationTool = SimulationTool {
-  subject: DeclarationRef {
+  subject: std.decl_ref.DeclarationRef {
     module_path: "extdeps.simulators.ngspice.subject",
     decl_name: "ngspice_simulator",
     field: WholeDeclaration,
@@ -135,7 +135,7 @@ data executed_runs: List<SimulationOutcome> = [interlock_verilog_run, conditioni
 // declare — so a passing run is a check on the pin chain that no amount of internal agreement
 // could substitute for.
 data yosys_tool: SimulationTool = SimulationTool {
-  subject: DeclarationRef {
+  subject: std.decl_ref.DeclarationRef {
     module_path: "extdeps.toolchain.icestorm.subject",
     decl_name: "icestorm_project",
     field: WholeDeclaration,
@@ -144,7 +144,7 @@ data yosys_tool: SimulationTool = SimulationTool {
 }
 
 data nextpnr_tool: SimulationTool = SimulationTool {
-  subject: DeclarationRef {
+  subject: std.decl_ref.DeclarationRef {
     module_path: "extdeps.toolchain.icestorm.subject",
     decl_name: "icestorm_project",
     field: WholeDeclaration,
@@ -170,7 +170,7 @@ data interlock_place_and_route_observation: String = "nextpnr-ice40 --hx1k --pac
 // re-derive from the artifact, which is exactly why it should not be buried in another tool's
 // report.
 data icepack_tool: SimulationTool = SimulationTool {
-  subject: DeclarationRef {
+  subject: std.decl_ref.DeclarationRef {
     module_path: "extdeps.toolchain.icestorm.subject",
     decl_name: "icestorm_project",
     field: WholeDeclaration,

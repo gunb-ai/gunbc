@@ -124,7 +124,7 @@ type V1ComplexityInventoryRow {
   disposition: ComplexityCapabilityDisposition
 }
 
-fn v1_ref(decl_name: String) -> DeclarationRef {
+fn v1_ref(decl_name: String) -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "v1.compiler.complexity", decl_name: decl_name)
 }
 
@@ -133,7 +133,7 @@ data asymptotic_class_and_dominance: V1ComplexityInventoryRow = V1ComplexityInve
   v1_carrier: v1_ref(decl_name: "classify_complexity"),
   disposition: CompleteInV2 {
     carrier: decl_ref(module_path: "v2.lens.cost", decl_name: "asymptotic_class_of_cost"),
-    note: "v2 carries AsymptoticClass with asymptotic_class_dominates and a bounded lattice — the parity note's own table calls this row better factored than v1's String-returning classifier. No work owed." as NonEmptyStr
+    note: "v2 carries AsymptoticClass with asymptotic_class_dominates and a bounded lattice — the parity note's own table calls this row better factored than v1's String-returning classifier. No work owed." as std.types.NonEmptyStr
   }
 }
 
@@ -142,7 +142,7 @@ data polynomial_degree_reading: V1ComplexityInventoryRow = V1ComplexityInventory
   v1_carrier: v1_ref(decl_name: "cost_expr_degree"),
   disposition: CompleteInV2 {
     carrier: decl_ref(module_path: "v2.lens.cost", decl_name: "add_polynomial_degree"),
-    note: "Audited by reading the composition path, not by matching names: IterativeCost composes as ProductCost, and asymptotic_class_of_cost routes ProductCost through multiply_classes to add_polynomial_degree, so nested iteration does climb degree structurally in v2. The exact per-element reading needs the binder that BoundedSummation carries and is rostered there." as NonEmptyStr
+    note: "Audited by reading the composition path, not by matching names: IterativeCost composes as ProductCost, and asymptotic_class_of_cost routes ProductCost through multiply_classes to add_polynomial_degree, so nested iteration does climb degree structurally in v2. The exact per-element reading needs the binder that BoundedSummation carries and is rostered there." as std.types.NonEmptyStr
   }
 }
 
@@ -153,7 +153,7 @@ data size_expression_algebra: V1ComplexityInventoryRow = V1ComplexityInventoryRo
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC1ExpressionAuthority,
-    note: "v1 carries SizeConst/SizeVar/SizeLen/SizeAdd/SizeMax; v2 carries only SizeVariable { source: Node } with no algebra over it. Per parity section 6 the String-keyed SizeVar and SizeLen re-ground onto exact identities rather than carrying their String leaves across." as NonEmptyStr
+    note: "v1 carries SizeConst/SizeVar/SizeLen/SizeAdd/SizeMax; v2 carries only SizeVariable { source: Node } with no algebra over it. Per parity section 6 the String-keyed SizeVar and SizeLen re-ground onto exact identities rather than carrying their String leaves across." as std.types.NonEmptyStr
   }
 }
 
@@ -164,7 +164,7 @@ data cost_expression_algebra: V1ComplexityInventoryRow = V1ComplexityInventoryRo
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC1ExpressionAuthority,
-    note: "Verified against both carriers: v2's SymbolicCost has no Max constructor, no binder-carrying Sum, and no extern arm. Per the signed ruling SymbolicCost stays as the normalized asymptotic projection of the richer CostExpr — one authority at two levels of detail, never two competing cost types. Operator ruling 2026-08-05: this migration belongs to parity C1, not to the generic seed-shrink lane; seed deletion CONSUMES the migrated authority, it does not decide its semantics." as NonEmptyStr
+    note: "Verified against both carriers: v2's SymbolicCost has no Max constructor, no binder-carrying Sum, and no extern arm. Per the signed ruling SymbolicCost stays as the normalized asymptotic projection of the richer CostExpr — one authority at two levels of detail, never two competing cost types. Operator ruling 2026-08-05: this migration belongs to parity C1, not to the generic seed-shrink lane; seed deletion CONSUMES the migrated authority, it does not decide its semantics." as std.types.NonEmptyStr
   }
 }
 
@@ -175,7 +175,7 @@ data bounded_summation: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC1ExpressionAuthority,
-    note: "CostSum { binder, upper, body } expresses the element-dependent fold body, which v2's SumCost { lhs, rhs } cannot represent because it carries no binder. This is the shape an exact per-element count needs and the sibling note names it a prerequisite for its own C2." as NonEmptyStr
+    note: "CostSum { binder, upper, body } expresses the element-dependent fold body, which v2's SumCost { lhs, rhs } cannot represent because it carries no binder. This is the shape an exact per-element count needs and the sibling note names it a prerequisite for its own C2." as std.types.NonEmptyStr
   }
 }
 
@@ -186,7 +186,7 @@ data retained_max_expression: V1ComplexityInventoryRow = V1ComplexityInventoryRo
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC1ExpressionAuthority,
-    note: "v2's symbolic_max is a lattice join that collapses eagerly to the dominating arm; v1's CostMax is retained. The distinction is load-bearing for exact-at-input evaluation: an eagerly collapsed max has already discarded the arm a known condition would select, so a retained Max is what makes charging only the taken arm expressible without changing the existing fold's meaning for current consumers." as NonEmptyStr
+    note: "v2's symbolic_max is a lattice join that collapses eagerly to the dominating arm; v1's CostMax is retained. The distinction is load-bearing for exact-at-input evaluation: an eagerly collapsed max has already discarded the arm a known condition would select, so a retained Max is what makes charging only the taken arm expressible without changing the existing fold's meaning for current consumers." as std.types.NonEmptyStr
   }
 }
 
@@ -197,7 +197,7 @@ data work_and_span: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC2SummaryRestored,
-    note: "v1 carries both axes with cost_seq and cost_par as composition laws; v2 carries neither. Operator ruling 2026-08-05: span stays in C2 and is NOT deferred — deferring it would create an incomplete summary immediately and would prevent derived and measured parallel composition from agreeing, since std.realization_measurement already models that asymmetry on the measured side." as NonEmptyStr
+    note: "v1 carries both axes with cost_seq and cost_par as composition laws; v2 carries neither. Operator ruling 2026-08-05: span stays in C2 and is NOT deferred — deferring it would create an incomplete summary immediately and would prevent derived and measured parallel composition from agreeing, since std.realization_measurement already models that asymmetry on the measured side." as std.types.NonEmptyStr
   }
 }
 
@@ -208,7 +208,7 @@ data output_size_derivation: V1ComplexityInventoryRow = V1ComplexityInventoryRow
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC2SummaryRestored,
-    note: "v1's output_size is Map<String, CostExpr> keyed by an output name with a single 'result' convention; the String key re-grounds onto a modeled output identity. Deriving how large a result is as a function of input size has no v2 counterpart at all." as NonEmptyStr
+    note: "v1's output_size is Map<String, CostExpr> keyed by an output name with a single 'result' convention; the String key re-grounds onto a modeled output identity. Deriving how large a result is as a function of input size has no v2 counterpart at all." as std.types.NonEmptyStr
   }
 }
 
@@ -219,7 +219,7 @@ data peak_space_derivation: V1ComplexityInventoryRow = V1ComplexityInventoryRow 
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC2SummaryRestored,
-    note: "peak_space is space_of(work) plus the retained output term, set only at the finalized summary. v1 leaves it absent on intermediate and error summaries — a counted unknown-space frontier rather than a fabricated bound — and that fail-closed posture is what the migrated form must preserve." as NonEmptyStr
+    note: "peak_space is space_of(work) plus the retained output term, set only at the finalized summary. v1 leaves it absent on intermediate and error summaries — a counted unknown-space frontier rather than a fabricated bound — and that fail-closed posture is what the migrated form must preserve." as std.types.NonEmptyStr
   }
 }
 
@@ -230,7 +230,7 @@ data space_time_duality: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC2SummaryRestored,
-    note: "The dual that makes peak space derivable from work rather than separately modeled: sequential steps release so time's sum becomes space's max, concurrent steps co-reside so time's max becomes space's sum, and a fold's iterations release so the summation collapses to its body's peak. Migrating peak space without the dual would re-derive space independently, which is the redundancy the dual removes." as NonEmptyStr
+    note: "The dual that makes peak space derivable from work rather than separately modeled: sequential steps release so time's sum becomes space's max, concurrent steps co-reside so time's max becomes space's sum, and a fold's iterations release so the summation collapses to its body's peak. Migrating peak space without the dual would re-derive space independently, which is the redundancy the dual removes." as std.types.NonEmptyStr
   }
 }
 
@@ -241,7 +241,7 @@ data certainty_axis: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC2SummaryRestored,
-    note: "Recording whether a derived bound is proven or conservative is genuinely needed and absent from v2. Its FORM is constrained: parity section 6 rules that it reconciles with the existing DescentEvidence and measurement bases rather than being minted as a third confidence vocabulary. Migrating the axis is owed; minting the enum is not." as NonEmptyStr
+    note: "Recording whether a derived bound is proven or conservative is genuinely needed and absent from v2. Its FORM is constrained: parity section 6 rules that it reconciles with the existing DescentEvidence and measurement bases rather than being minted as a third confidence vocabulary. Migrating the axis is owed; minting the enum is not." as std.types.NonEmptyStr
   }
 }
 
@@ -252,7 +252,7 @@ data concrete_input_evaluation: V1ComplexityInventoryRow = V1ComplexityInventory
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: DiscreteCostC1Valuation,
-    note: "CENSUS CORRECTION to the sibling note's correction 1, which said no environment binding a size variable to a value existed anywhere in the tree. The seed has one: eval_size_expr_concrete and eval_cost_expr_concrete take env: Map<String, Int> and return Int?, refusing with Absent on CostUnknown / CostExtern / CostLog rather than fabricating a number. The accurate claim is narrower and more useful — the seam is absent from V2, and v1's is String-keyed with a limited evaluation and refusal surface, so C1 inherits a refusal posture to preserve and a key to re-ground rather than a blank page." as NonEmptyStr
+    note: "CENSUS CORRECTION to the sibling note's correction 1, which said no environment binding a size variable to a value existed anywhere in the tree. The seed has one: eval_size_expr_concrete and eval_cost_expr_concrete take env: Map<String, Int> and return Int?, refusing with Absent on CostUnknown / CostExtern / CostLog rather than fabricating a number. The accurate claim is narrower and more useful — the seam is absent from V2, and v1's is String-keyed with a limited evaluation and refusal surface, so C1 inherits a refusal posture to preserve and a key to re-ground rather than a blank page." as std.types.NonEmptyStr
   }
 }
 
@@ -263,7 +263,7 @@ data interprocedural_summary_memo: V1ComplexityInventoryRow = V1ComplexityInvent
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC4Interprocedural,
-    note: "CostInternTable memoizes a summary per function so it is reused across call sites; its Map<String, ComplexitySummary> re-grounds onto declaration-keyed identity. See SummaryEviction for the fail-open arm that must not migrate with it." as NonEmptyStr
+    note: "CostInternTable memoizes a summary per function so it is reused across call sites; its Map<String, ComplexitySummary> re-grounds onto declaration-keyed identity. See SummaryEviction for the fail-open arm that must not migrate with it." as std.types.NonEmptyStr
   }
 }
 
@@ -274,7 +274,7 @@ data summary_eviction: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC4Interprocedural,
-    note: "CENSUS HAZARD. evict_summary does not remove an entry — it overwrites it with a zero-work, zero-span, Proven summary, so a later lookup on an evicted function returns 'costs nothing, proven' rather than 'not computed'. That is the state-space conflation this repository names and the zero-for-unmodelled arm the sibling note's honesty states forbid. The eviction capability may migrate; this realization may not. The migrated form removes the entry or refuses, and the discriminating control executes the seed behavior rather than matching its source text." as NonEmptyStr
+    note: "CENSUS HAZARD. evict_summary does not remove an entry — it overwrites it with a zero-work, zero-span, Proven summary, so a later lookup on an evicted function returns 'costs nothing, proven' rather than 'not computed'. That is the state-space conflation this repository names and the zero-for-unmodelled arm the sibling note's honesty states forbid. The eviction capability may migrate; this realization may not. The migrated form removes the entry or refuses, and the discriminating control executes the seed behavior rather than matching its source text." as std.types.NonEmptyStr
   }
 }
 
@@ -284,7 +284,7 @@ data call_graph_and_scc: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
   disposition: IntegrationOwed {
     substrate_carrier: decl_ref(module_path: "std.graph", decl_name: "graph_multi_node_scc_members"),
     phase: ParityC4Interprocedural,
-    note: "CENSUS CORRECTION to the parity table, which read 'Call graph / SCC — v1 yes, v2 no' and would have made this migration work. std.graph already carries CallGraph, forward and reverse adjacency, dfs_finish_order, dfs_collect_component, graph_multi_node_scc_members, graph_cycle_members and is_valid_proof, and v1.compiler.complexity reaches them by import; v2's lens modules import std.graph nowhere. Corrected again on operator review: the work is INTEGRATION, not nothing. Calling it discharged understated C4 — v2 must still consume the substrate and produce the facts it consumes." as NonEmptyStr
+    note: "CENSUS CORRECTION to the parity table, which read 'Call graph / SCC — v1 yes, v2 no' and would have made this migration work. std.graph already carries CallGraph, forward and reverse adjacency, dfs_finish_order, dfs_collect_component, graph_multi_node_scc_members, graph_cycle_members and is_valid_proof, and v1.compiler.complexity reaches them by import; v2's lens modules import std.graph nowhere. Corrected again on operator review: the work is INTEGRATION, not nothing. Calling it discharged understated C4 — v2 must still consume the substrate and produce the facts it consumes." as std.types.NonEmptyStr
   }
 }
 
@@ -294,7 +294,7 @@ data descent_evidence_vocabulary: V1ComplexityInventoryRow = V1ComplexityInvento
   disposition: IntegrationOwed {
     substrate_carrier: decl_ref(module_path: "std.termination", decl_name: "DescentEvidence"),
     phase: ParityC4Interprocedural,
-    note: "std.termination owns DescentEvidence, RankingDimension, DescentSource, TerminationProof and ProofEdge with the lattice meet and evidence rank, all imported by v1.compiler.complexity. The vocabulary a recursion bound is stated in is already consolidated on its single authority; what remains is v2 producing and consuming those facts, tracked with the walker row separately." as NonEmptyStr
+    note: "std.termination owns DescentEvidence, RankingDimension, DescentSource, TerminationProof and ProofEdge with the lattice meet and evidence rank, all imported by v1.compiler.complexity. The vocabulary a recursion bound is stated in is already consolidated on its single authority; what remains is v2 producing and consuming those facts, tracked with the walker row separately." as std.types.NonEmptyStr
   }
 }
 
@@ -304,7 +304,7 @@ data cost_bound_vocabulary: V1ComplexityInventoryRow = V1ComplexityInventoryRow 
   disposition: IntegrationOwed {
     substrate_carrier: decl_ref(module_path: "std.induction", decl_name: "derive_bound"),
     phase: ParityC1ExpressionAuthority,
-    note: "std.induction carries SubValueRelation, CostBound with its Constant/Atomic/Forever/Error arms, AtomicCost, PolyCost, catamorphism_bound and derive_bound — a bound vocabulary derived from sub-value structure, imported by the seed. Named so C1 does not re-mint a cost-bound taxonomy the substrate already carries; the sibling note's do-not-re-mint list did not include it and now does." as NonEmptyStr
+    note: "std.induction carries SubValueRelation, CostBound with its Constant/Atomic/Forever/Error arms, AtomicCost, PolyCost, catamorphism_bound and derive_bound — a bound vocabulary derived from sub-value structure, imported by the seed. Named so C1 does not re-mint a cost-bound taxonomy the substrate already carries; the sibling note's do-not-re-mint list did not include it and now does." as std.types.NonEmptyStr
   }
 }
 
@@ -314,7 +314,7 @@ data lowering_target_vocabulary: V1ComplexityInventoryRow = V1ComplexityInventor
   disposition: IntegrationOwed {
     substrate_carrier: decl_ref(module_path: "std.computation", decl_name: "lower_call_pattern"),
     phase: ParityC4Interprocedural,
-    note: "std.computation owns CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension and ShrinkFactor, all imported by the seed. The recursion-shape vocabulary a bounded recursive cost is computed against is shared substrate awaiting a v2 consumer." as NonEmptyStr
+    note: "std.computation owns CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension and ShrinkFactor, all imported by the seed. The recursion-shape vocabulary a bounded recursive cost is computed against is shared substrate awaiting a v2 consumer." as std.types.NonEmptyStr
   }
 }
 
@@ -325,7 +325,7 @@ data descent_derivation_walkers: V1ComplexityInventoryRow = V1ComplexityInventor
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC4Interprocedural,
-    note: "What is genuinely seed-local: the walkers that PRODUCE the shared vocabulary by traversing the v1 AST — collect_descent_vars, classify_self_call_evidence, all_self_calls_descend and their neighbours, each threading a source index. They do not port; they are re-expressed as a fold over the closed v2 Node kernel, which is why the ruling says not to port the seed module wholesale. With the integration rows above discharging the vocabulary, C4's real surface is this derivation layer plus the interprocedural memo." as NonEmptyStr
+    note: "What is genuinely seed-local: the walkers that PRODUCE the shared vocabulary by traversing the v1 AST — collect_descent_vars, classify_self_call_evidence, all_self_calls_descend and their neighbours, each threading a source index. They do not port; they are re-expressed as a fold over the closed v2 Node kernel, which is why the ruling says not to port the seed module wholesale. With the integration rows above discharging the vocabulary, C4's real surface is this derivation layer plus the interprocedural memo." as std.types.NonEmptyStr
   }
 }
 
@@ -336,7 +336,7 @@ data recursion_pattern_classification: V1ComplexityInventoryRow = V1ComplexityIn
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC4Interprocedural,
-    note: "Selects a LoweringTarget from a function body and its termination proof, against which bounded_recursive_cost charges the per-iteration cost. The target vocabulary is shared; the classifier is a v1-AST walker and migrates with the derivation layer." as NonEmptyStr
+    note: "Selects a LoweringTarget from a function body and its termination proof, against which bounded_recursive_cost charges the per-iteration cost. The target vocabulary is shared; the classifier is a v1-AST walker and migrates with the derivation layer." as std.types.NonEmptyStr
   }
 }
 
@@ -347,7 +347,7 @@ data parser_progress_fact_production: V1ComplexityInventoryRow = V1ComplexityInv
     destination: MigrateToV2LensCost,
     producer: FactsFromV2Parser,
     phase: ParityC4Interprocedural,
-    note: "OPERATOR RULING 2026-08-05 — the semantic capability SURVIVES: parser recursion advances token position, cycles carry strict descent, and depth derives from input. Those are facts a v2 parser plus std.termination integration must produce. This row replaces the previous DispositionDeferred row, which the ruling resolved; deferral is no longer a disposition this census can express." as NonEmptyStr
+    note: "OPERATOR RULING 2026-08-05 — the semantic capability SURVIVES: parser recursion advances token position, cycles carry strict descent, and depth derives from input. Those are facts a v2 parser plus std.termination integration must produce. This row replaces the previous DispositionDeferred row, which the ruling resolved; deferral is no longer a disposition this census can express." as std.types.NonEmptyStr
   }
 }
 
@@ -356,7 +356,7 @@ data parser_progress_v1_walker: V1ComplexityInventoryRow = V1ComplexityInventory
   v1_carrier: v1_ref(decl_name: "parser_state_expr_progress"),
   disposition: RetirementOwed {
     trigger: RetiresWhenReplacementExecutes { replacement: ParserProgressFactProduction },
-    note: "OPERATOR RULING 2026-08-05 — the v1 AST and source-index walker realization does NOT survive. It is not retired yet: retiring before the replacement executes would delete a live capability, so the obligation is owed and the trigger names the capability whose execution discharges it. This is the arm the previous revision could not express — the old DeliberatelyRetired arm belonged to no work-state partition, so exhaustiveness was green only because nothing inhabited it." as NonEmptyStr
+    note: "OPERATOR RULING 2026-08-05 — the v1 AST and source-index walker realization does NOT survive. It is not retired yet: retiring before the replacement executes would delete a live capability, so the obligation is owed and the trigger names the capability whose execution discharges it. This is the arm the previous revision could not express — the old DeliberatelyRetired arm belonged to no work-state partition, so exhaustiveness was green only because nothing inhabited it." as std.types.NonEmptyStr
   }
 }
 
@@ -367,7 +367,7 @@ data collection_method_cost_shapes: V1ComplexityInventoryRow = V1ComplexityInven
     destination: MigrateToV2LensCost,
     producer: FactsFromCostLens,
     phase: ParityC2SummaryRestored,
-    note: "Charges a collection method by its CostShape and CollectionSizeEffect, resolving a callback's own cost into the per-element body. The shape vocabulary is shared substrate; the dispatch is keyed on v1's MethodSemantics, so the migrated form derives the shape from the closed Node kernel's Loop and fold seam rather than from a method-name table." as NonEmptyStr
+    note: "Charges a collection method by its CostShape and CollectionSizeEffect, resolving a callback's own cost into the per-element body. The shape vocabulary is shared substrate; the dispatch is keyed on v1's MethodSemantics, so the migrated form derives the shape from the closed Node kernel's Loop and fold seam rather than from a method-name table." as std.types.NonEmptyStr
   }
 }
 
@@ -378,7 +378,7 @@ data structural_bound_report: V1ComplexityInventoryRow = V1ComplexityInventoryRo
     destination: MigrateToV2LensComplexity,
     producer: FactsFromCostLens,
     phase: ParityC6LiveConsumers,
-    note: "The consumer-facing surface — ComplexityViolation, StructuralBoundResult, ComplexityReport — turning derived summaries into locatable findings. C6 needs this shape because lens_contract_complexity_derived_kernel is AuditOnly with no consumer witness today, and a mode flip without a consumer is the inert-lens lie. It cites the derived-kernel row specifically: the C0(c) split replaced the mixed lens_contract_complexity row with that one plus lens_contract_complexity_optimality, and only the derived kernel is AuditOnly PENDING a consumer — optimality is AuditOnly permanently, so a consumer surface would not move it." as NonEmptyStr
+    note: "The consumer-facing surface — ComplexityViolation, StructuralBoundResult, ComplexityReport — turning derived summaries into locatable findings. C6 needs this shape because lens_contract_complexity_derived_kernel is AuditOnly with no consumer witness today, and a mode flip without a consumer is the inert-lens lie. It cites the derived-kernel row specifically: the C0(c) split replaced the mixed lens_contract_complexity row with that one plus lens_contract_complexity_optimality, and only the derived kernel is AuditOnly PENDING a consumer — optimality is AuditOnly permanently, so a consumer surface would not move it." as std.types.NonEmptyStr
   }
 }
 
@@ -389,7 +389,7 @@ data cost_expression_rendering: V1ComplexityInventoryRow = V1ComplexityInventory
     destination: MigrateToV2LensComplexity,
     producer: FactsFromCostLens,
     phase: ParityC6LiveConsumers,
-    note: "simplify_cost, normalize_asymptotic and format_cost_class render a cost expression for a diagnostic. Presentation grain and low priority, but absent from v2, and a report nobody can read is not a consumer. Gated on C1 because it renders the richer algebra." as NonEmptyStr
+    note: "simplify_cost, normalize_asymptotic and format_cost_class render a cost expression for a diagnostic. Presentation grain and low priority, but absent from v2, and a report nobody can read is not a consumer. Gated on C1 because it renders the richer algebra." as std.types.NonEmptyStr
   }
 }
 
@@ -400,7 +400,7 @@ data size_variable_legend: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
     destination: MigrateToV2LensComplexity,
     producer: FactsFromCostLens,
     phase: ParityC6LiveConsumers,
-    note: "Assigns short display names to size variables so a multi-variable bound reads compactly. Migrates as a rendering projection over grounded identities, never by re-introducing String-keyed size variables to make rendering easy." as NonEmptyStr
+    note: "Assigns short display names to size variables so a multi-variable bound reads compactly. Migrates as a rendering projection over grounded identities, never by re-introducing String-keyed size variables to make rendering easy." as std.types.NonEmptyStr
   }
 }
 
@@ -411,7 +411,7 @@ data cost_account_space_bridge: V1ComplexityInventoryRow = V1ComplexityInventory
     destination: MigrateToStdRealizationSchedule,
     producer: FactsFromCostLens,
     phase: ParityC5RealizationBridge,
-    note: "CENSUS FINDING and the receipt behind the CostBasis ruling. The seed function's note says it fills CostAccount.space with a Derived basis; it returns a bare ByteSize?, constructs no CostAccount, and the seed does not import std.realization_schedule, while CostBasis is Predicted | Measured with no Derived arm. OPERATOR RULING 2026-08-05: the three evidence classes Derived | PredictedFromCalibration | Measured are approved, applied PER RESOURCE AXIS rather than once per account — one account may legitimately carry time PredictedFromCalibration, space Derived and power Measured, which a record-level basis cannot represent honestly." as NonEmptyStr
+    note: "CENSUS FINDING and the receipt behind the CostBasis ruling. The seed function's note says it fills CostAccount.space with a Derived basis; it returns a bare ByteSize?, constructs no CostAccount, and the seed does not import std.realization_schedule, while CostBasis is Predicted | Measured with no Derived arm. OPERATOR RULING 2026-08-05: the three evidence classes Derived | PredictedFromCalibration | Measured are approved, applied PER RESOURCE AXIS rather than once per account — one account may legitimately carry time PredictedFromCalibration, space Derived and power Measured, which a record-level basis cannot represent honestly." as std.types.NonEmptyStr
   }
 }
 
@@ -475,7 +475,7 @@ fn capability_work_owed(c: V1ComplexityInventoryRow) -> Bool {
 
 data capability_cited_carrier_note: String = "Returns the destination citation for the arms that carry one. Retired and RetirementOwed cite no destination declaration by construction — a retirement names a trigger, not a carrier — and return Absent. Absent here means 'this arm cites no declaration by construction', never 'the declaration could not be resolved'; the two are different states and the resolution witness must not conflate them."
 
-fn capability_cited_carrier(c: V1ComplexityInventoryRow) -> DeclarationRef? {
+fn capability_cited_carrier(c: V1ComplexityInventoryRow) -> std.decl_ref.DeclarationRef? {
   match c.disposition {
     CompleteInV2 { carrier: r, note: _ } => Present { value: r }
     IntegrationOwed { substrate_carrier: r, phase: _, note: _ } => Present { value: r }
@@ -486,7 +486,7 @@ fn capability_cited_carrier(c: V1ComplexityInventoryRow) -> DeclarationRef? {
   }
 }
 
-fn capability_all_declaration_refs(rows: List<V1ComplexityInventoryRow>) -> List<DeclarationRef> {
+fn capability_all_declaration_refs(rows: List<V1ComplexityInventoryRow>) -> List<std.decl_ref.DeclarationRef> {
   fold(rows, init: [], f: fn(acc, c) {
     match capability_cited_carrier(c: c) {
       Present { value: r } => concat(concat(acc, [c.v1_carrier]), [r])
@@ -596,4 +596,4 @@ fn inventory_identity_keys_distinct() -> Bool {
   keys_are_distinct(keys: inventory_identity_keys())
 }
 
-data capability_retirement_trigger_naming_note: DissolutionCondition = unbound_dissolution(description: "NAMED CapabilityRetirementTrigger, not RetirementTrigger, and the reason is a §3 finding this census caught in itself. A bare RetirementTrigger ALREADY EXISTS in the tree as a VARIANT of gunbc.stage0_rust_honest_frontier_projection RustHonestFrontierDeferredAxis. Declaring a top-level type of that name shadowed the variant and broke lifecycle_totality_counts_retirement_trigger_as_underived_axis wi")
+data capability_retirement_trigger_naming_note: std.dissolution.DissolutionCondition = unbound_dissolution(description: "NAMED CapabilityRetirementTrigger, not RetirementTrigger, and the reason is a §3 finding this census caught in itself. A bare RetirementTrigger ALREADY EXISTS in the tree as a VARIANT of gunbc.stage0_rust_honest_frontier_projection RustHonestFrontierDeferredAxis. Declaring a top-level type of that name shadowed the variant and broke lifecycle_totality_counts_retirement_trigger_as_underived_axis wi")

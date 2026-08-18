@@ -2,16 +2,16 @@ module extdeps.systems.nvidia_fleet_lifecycle
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.nvidia.com/dgx/dgx-spark/enterprise-fleet-lifecycle.html"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.systems.nvidia_fleet_lifecycle",
       decl_name: "FleetLifecycleOperation",
       field: WholeDeclaration
@@ -48,7 +48,7 @@ fn fleet_lifecycle_operation_class(op: FleetLifecycleOperation) -> FleetLifecycl
   }
 }
 
-fn fleet_lifecycle_operation_tool_name(op: FleetLifecycleOperation) -> NonEmptyStr {
+fn fleet_lifecycle_operation_tool_name(op: FleetLifecycleOperation) -> std.types.NonEmptyStr {
   match op {
     DeviceIdentity => "device_identity.py"
     HardwareConfig => "hardware_config.py"

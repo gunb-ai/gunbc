@@ -53,7 +53,7 @@ fn prior_history_from_merge_base_carrier_or_authority_bootstrap(
   carrier_stderr: String,
 ) -> RoadmapAcceptanceHistoryPriorObservation {
   let base_authority = git.Core.Show(
-    ref: baseline_sha as GitRef,
+    ref: baseline_sha as std.types.GitRef,
     path: authority_repo_path,
     expect: ExpectSuccess,
   )
@@ -70,7 +70,7 @@ fn prior_history_from_merge_base_carrier_or_authority_bootstrap(
 }
 
 fn observe_roadmap_acceptance_history_prior(
-  current_history: List<RoadmapAcceptanceEvent>,
+  current_history: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
   carrier_repo_path: String,
   authority_repo_path: String,
   base_ref: String,
@@ -83,8 +83,8 @@ fn observe_roadmap_acceptance_history_prior(
   } else {
     let revision = head.sha as String
     let baseline = git.Inspect.MergeBase(
-      left: revision as GitRef,
-      right: base_ref as GitRef,
+      left: revision as std.types.GitRef,
+      right: base_ref as std.types.GitRef,
       expect: ExpectSuccess,
     )
     if !baseline.success || (baseline.sha as String) == "" {
@@ -93,7 +93,7 @@ fn observe_roadmap_acceptance_history_prior(
       }
     } else {
       let head_manifest = git.Core.Show(
-        ref: revision as GitRef,
+        ref: revision as std.types.GitRef,
         path: carrier_repo_path,
         expect: ExpectSuccess,
       )
@@ -103,7 +103,7 @@ fn observe_roadmap_acceptance_history_prior(
         }
       } else {
         let base_manifest = git.Core.Show(
-          ref: baseline.sha as GitRef,
+          ref: baseline.sha as std.types.GitRef,
           path: carrier_repo_path,
           expect: ExpectSuccess,
         )
@@ -138,7 +138,7 @@ fn observe_roadmap_acceptance_history_prior(
 
 // A function, not top-level data, so importing this module cannot reach git.Inspect.HeadCommit by import alone (gunbc.stage0_rust_host_observation host_observation_invocation_note). When HEAD and merge-base carrier identities match, prior_history is parsed from git.Core.Show(HEAD carrier) — not the working-tree load — so uncommitted local carrier edits refuse against the committed prior rather than self-matching.
 fn current_roadmap_acceptance_history_prior_observation(
-  current_history: List<RoadmapAcceptanceEvent>,
+  current_history: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
 ) -> RoadmapAcceptanceHistoryPriorObservation {
   observe_roadmap_acceptance_history_prior(
     current_history: current_history,
@@ -150,8 +150,8 @@ fn current_roadmap_acceptance_history_prior_observation(
 
 fn acceptance_history_integrity_verdict_from_prior_observation(
   observation: RoadmapAcceptanceHistoryPriorObservation,
-  history: List<RoadmapAcceptanceEvent>,
-) -> AcceptanceHistoryIntegrityVerdict {
+  history: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
+) -> gunbc.roadmap_model.AcceptanceHistoryIntegrityVerdict {
   match observation {
     PriorHistoryGitObservationRefused { detail: detail } =>
       AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: detail }
@@ -165,7 +165,7 @@ fn acceptance_history_integrity_verdict_from_prior_observation(
 
 fn acceptance_history_integrity_holds_from_prior_observation_with_prior(
   observation: RoadmapAcceptanceHistoryPriorObservation,
-  history: List<RoadmapAcceptanceEvent>,
+  history: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
 ) -> Bool {
   match acceptance_history_integrity_verdict_from_prior_observation(
     observation: observation,
@@ -183,9 +183,9 @@ data roadmap_acceptance_history_observation_bootstrap_compat_note: String = "SCA
 
 fn acceptance_history_integrity_holds_from_prior_observation(
   observation: RoadmapAcceptanceHistoryPriorObservation,
-  history: List<RoadmapAcceptanceEvent>,
+  history: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
   sealed_event_count: Int,
-  sealed_chain_digest: Fnv1a64Structural,
+  sealed_chain_digest: std.content_hash.Fnv1a64Structural,
 ) -> Bool {
   let _ = sealed_event_count
   let _ = sealed_chain_digest

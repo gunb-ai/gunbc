@@ -1,15 +1,15 @@
 module extdeps.auth.oidc
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "openid.net/specs/openid-connect-core-1_0.html"
   }
 }
 
-data oidc_amr_external_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data oidc_amr_external_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "datatracker.ietf.org/doc/html/rfc8176"
   }
@@ -41,7 +41,7 @@ data amr_mfa_wire: String = "mfa"
 data amr_pwd_wire: String = "pwd"
 data amr_otp_wire: String = "otp"
 
-fn oidc_amr_of_wire(raw: NonEmptyStr) -> OidcAmrDecode {
+fn oidc_amr_of_wire(raw: std.types.NonEmptyStr) -> OidcAmrDecode {
   let s = raw as String
   if s == amr_pop_wire {
     AmrDecoded { method: AmrProofOfPossession }
@@ -84,8 +84,8 @@ type OidcIdTokenClaims {
 }
 
 // The ID Token's required core PROJECTED back onto the RFC 7519 shape, for consumers that handle JWTs generically and do not know this token is an ID Token. It is a derived read over the profile's stricter carrier — the direction that loses nothing — and never the storage form. Going the other way is what the earlier model did by embedding an all-required JwtRegisteredClaims, and that is what made the base type unable to describe a conforming JWT.
-fn oidc_id_token_registered_claims(claims: OidcIdTokenClaims) -> JwtRegisteredClaims {
-  JwtRegisteredClaims {
+fn oidc_id_token_registered_claims(claims: OidcIdTokenClaims) -> extdeps.auth.jwt.JwtRegisteredClaims {
+  extdeps.auth.jwt.JwtRegisteredClaims {
     issuer: Present { value: claims.issuer },
     subject: Present { value: claims.subject },
     audience: Present { value: claims.audience },

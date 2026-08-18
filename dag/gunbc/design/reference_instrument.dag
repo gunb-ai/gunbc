@@ -5,19 +5,19 @@ data reference_instrument_note: String = "THE JOIN, NOT A HUB (DESIGN section 3 
 
 data subject_identity_note: String = "SUBJECTS ARE REFERENCED SYMBOLICALLY, NEVER RENAMED (review finding, 2026-08-04). An earlier revision declared a local coproduct — CitedInstrument = PipBoy3000FalloutNewVegas | PipBoy3000MkVTvSeries — beside the real extdeps subject declarations, which is a second identity system for subjects the containment tree already names, and exactly the nicknaming class DESIGN section 3 forbids. Identity now travels as ExternalSubjectRef over DeclarationRef, the same carrier extdeps.external_authority uses for scope subjects, so a subject is named by module and declaration or not at all. The refs are built here rather than imported because both product modules name their scope declaration extdeps_model_scope, so importing the pair would collide; the symbolic form is the same one every scope row already carries."
 
-data pip_boy_3000_subject: ExternalSubjectRef = ExternalSubjectRef {
+data pip_boy_3000_subject: extdeps.external_authority.ExternalSubjectRef = extdeps.external_authority.ExternalSubjectRef {
   declaration: decl_ref(
     module_path: "extdeps.instrument.pip_boy_3000",
     decl_name: "pip_boy_3000"),
 }
 
-data pip_boy_mk_v_subject: ExternalSubjectRef = ExternalSubjectRef {
+data pip_boy_mk_v_subject: extdeps.external_authority.ExternalSubjectRef = extdeps.external_authority.ExternalSubjectRef {
   declaration: decl_ref(
     module_path: "extdeps.instrument.pip_boy_3000_mk_v",
     decl_name: "pip_boy_3000_mk_v"),
 }
 
-data reference_instrument_subjects: List<ExternalSubjectRef> = [
+data reference_instrument_subjects: List<extdeps.external_authority.ExternalSubjectRef> = [
   pip_boy_3000_subject,
   pip_boy_mk_v_subject
 ]
@@ -106,7 +106,7 @@ fn axis_citations(a: InstrumentBehaviourAxis) -> List<InstrumentCitation> {
   }
 }
 
-fn axis_is_cited_on(axis: InstrumentBehaviourAxis, subject: ExternalSubjectRef) -> Bool {
+fn axis_is_cited_on(axis: InstrumentBehaviourAxis, subject: extdeps.external_authority.ExternalSubjectRef) -> Bool {
   fold(axis_citations(a: axis), init: false, f: (acc, c) =>
     acc || external_subject_ref_eq(a: c.subject, b: subject))
 }
@@ -149,7 +149,7 @@ fn all_evidence_is_contained() -> Bool {
     acc && axis_citations_are_contained(a: a))
 }
 
-data named_referent: ExternalSubjectRef = pip_boy_3000_subject
+data named_referent: extdeps.external_authority.ExternalSubjectRef = pip_boy_3000_subject
 
 data named_referent_note: String = "The product the frontend directive said it was referring to: the Fallout 3 / New Vegas unit. Held as its own declaration so that 'what was named' and 'what the axes resolve to' stay two rows that can be compared, rather than a sentence someone keeps true by hand."
 
@@ -159,7 +159,7 @@ data directive_requested_axes: List<InstrumentBehaviourAxis> = [
   ImpulseThreshold
 ]
 
-fn subject_covers_axes(subject: ExternalSubjectRef, axes: List<InstrumentBehaviourAxis>) -> Bool {
+fn subject_covers_axes(subject: extdeps.external_authority.ExternalSubjectRef, axes: List<InstrumentBehaviourAxis>) -> Bool {
   fold(axes, init: true, f: (acc, axis) =>
     acc && axis_is_cited_on(axis: axis, subject: subject))
 }

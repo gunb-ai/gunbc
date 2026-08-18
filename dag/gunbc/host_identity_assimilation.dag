@@ -11,7 +11,7 @@ type HostIdentityAssimilationTarget {
   desired: gunbc.deployed_intent_v1.DeployedIntentV1?
 }
 
-fn host_identity_assimilation_target_srv1(transport: HostEffectTransport) -> HostIdentityAssimilationTarget {
+fn host_identity_assimilation_target_srv1(transport: gunbc.host_effect.HostEffectTransport) -> HostIdentityAssimilationTarget {
   HostIdentityAssimilationTarget {
     fleet_slot: operator_host_srv1,
     target_host: srv1_host,
@@ -23,7 +23,7 @@ fn host_identity_assimilation_target_srv1(transport: HostEffectTransport) -> Hos
   }
 }
 
-fn host_identity_assimilation_target_srv2(transport: HostEffectTransport) -> HostIdentityAssimilationTarget {
+fn host_identity_assimilation_target_srv2(transport: gunbc.host_effect.HostEffectTransport) -> HostIdentityAssimilationTarget {
   HostIdentityAssimilationTarget {
     fleet_slot: operator_host_srv2,
     target_host: srv2_host,
@@ -51,26 +51,26 @@ type HostIdentityAssimilationReceipt {
   model_hash: std.content_hash.ContentHash
 }
 
-data gunbc_host_identity_assimilation_scope_disposition: Disposition = std.disposition.Terminal {
+data gunbc_host_identity_assimilation_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Closed-loop converge-from-base: host_identity_converge_from_base takes the PERSISTED DeployedIntentV0 (a committed .dag data row — gunbc.deployed_intent_v0's gunbc_srv1_deployed_intent_v0_persisted / gunbc_srv2_deployed_intent_v0_persisted) as its base ARGUMENT, never re-derives base from a live read. Adoption (gunbc.host_identity_adopt, run once, out of band) and converge (this module, run every reconcile pass) are split so a run cannot silently promote drift into the new base — the three-way merge's Conflict arm stays reachable (host_identity_plan_from_verdict maps Conflict to ConflictPlan, whose plan_effect_script is structurally Absent, so host_identity_apply_gated never constructs a shell script for a conflicted leaf — no-shell-on-conflict by construction, not by a runtime check on the Conflict variant)."
 }
 
-data gunbc_host_identity_assimilation_model_marker: NonEmptyStr = "gunbc.host_identity_assimilation.v0"
+data gunbc_host_identity_assimilation_model_marker: std.types.NonEmptyStr = "gunbc.host_identity_assimilation.v0"
 
-fn host_identity_assimilation_model_hash() -> ContentHash {
+fn host_identity_assimilation_model_hash() -> std.content_hash.ContentHash {
   content_hash_atom(value: gunbc_host_identity_assimilation_model_marker)
 }
 
 fn host_identity_assimilation_receipt(
   target: HostIdentityAssimilationTarget,
-  desired: DeployedIntentV1,
-  patch: HostIdentityLeafVerdict,
+  desired: gunbc.deployed_intent_v1.DeployedIntentV1,
+  patch: gunbc.host_identity_knob.HostIdentityLeafVerdict,
   precondition_observed: String,
   apply_converged: Bool,
   read_back_observed: String,
   read_back_converged: Bool,
   reapply_noop: Bool,
-  probed_at: NonEmptyStr,
+  probed_at: std.types.NonEmptyStr,
 ) -> HostIdentityAssimilationReceipt {
   HostIdentityAssimilationReceipt {
     host: target.fleet_slot,
@@ -101,9 +101,9 @@ fn host_identity_assimilation_receipt_is_valid(receipt: HostIdentityAssimilation
 
 fn host_identity_converge_with_observation(
   target: HostIdentityAssimilationTarget,
-  desired: DeployedIntentV1,
-  precondition_obs: HostIdentityObservation,
-  probed_at: NonEmptyStr,
+  desired: gunbc.deployed_intent_v1.DeployedIntentV1,
+  precondition_obs: gunbc.host_identity_observation.HostIdentityObservation,
+  probed_at: std.types.NonEmptyStr,
 ) -> HostIdentityAssimilationReceipt? {
   let patch = host_identity_precondition_verdict(
     base: target.persisted_base,
@@ -112,7 +112,7 @@ fn host_identity_converge_with_observation(
   )
   let plan = host_identity_plan_from_verdict(
     verdict: patch,
-    base: deployed_intent_observed_short_hostname(d: target.persisted_base) as DnsLabel,
+    base: deployed_intent_observed_short_hostname(d: target.persisted_base) as extdeps.dns.domain_name.DnsLabel,
     desired: desired.desired_hostname_short,
   )
   if host_identity_precondition_is_conflict(verdict: patch) {
@@ -170,7 +170,7 @@ fn host_identity_converge_with_observation(
                   read_back_converged: read_back_ok,
                   reapply_noop: keyed_leaf_verdict_fold(
                     verdict: reapply_patch,
-                    fold: KeyedLeafVerdictFold {
+                    fold: std.change.KeyedLeafVerdictFold {
                       unchanged: true,
                       conflict: false,
                       apply_hunk: fn(_, _) { false },
@@ -191,7 +191,7 @@ fn host_identity_converge_with_observation(
 
 fn host_identity_converge_from_base(
   target: HostIdentityAssimilationTarget,
-  probed_at: NonEmptyStr,
+  probed_at: std.types.NonEmptyStr,
 ) -> HostIdentityAssimilationReceipt? {
   match target.desired {
     Absent => none
@@ -231,7 +231,7 @@ fn host_identity_assimilation_receipt_message(receipt: HostIdentityAssimilationR
   )
 }
 
-fn host_identity_assimilate_exit(receipt: HostIdentityAssimilationReceipt?) -> ProcessExit {
+fn host_identity_assimilate_exit(receipt: HostIdentityAssimilationReceipt?) -> std.process.ProcessExit {
   match receipt {
     Present { value: r } =>
       if host_identity_assimilation_receipt_is_valid(receipt: r) {
@@ -252,13 +252,13 @@ fn host_identity_assimilate_exit(receipt: HostIdentityAssimilationReceipt?) -> P
   }
 }
 
-func host_identity_assimilate_srv1_wet() -> ProcessExit {
+func host_identity_assimilate_srv1_wet() -> std.process.ProcessExit {
   let probed_at = host_identity_observed_probed_at()
   let target = host_identity_assimilation_target_srv1(transport: srv1_host_identity_ssh_transport())
   host_identity_assimilate_exit(receipt: host_identity_converge_from_base(target: target, probed_at: probed_at))
 }
 
-func host_identity_assimilate_srv2_wet() -> ProcessExit {
+func host_identity_assimilate_srv2_wet() -> std.process.ProcessExit {
   let probed_at = host_identity_observed_probed_at()
   let target = host_identity_assimilation_target_srv2(transport: srv2_host_identity_ssh_transport())
   host_identity_assimilate_exit(receipt: host_identity_converge_from_base(target: target, probed_at: probed_at))

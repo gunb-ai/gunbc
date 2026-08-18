@@ -32,7 +32,7 @@ fn work_tag(p: WorkProduct) -> String {
   }
 }
 
-fn review_to_reduce(r: Review) -> ReduceVerdict {
+fn review_to_reduce(r: Review) -> std.reducible.ReduceVerdict {
   match r.verdict {
     Approve => Reduced { last_parts: 1 }
     ApproveWithComments => Reduced { last_parts: 1 }
@@ -42,7 +42,7 @@ fn review_to_reduce(r: Review) -> ReduceVerdict {
   }
 }
 
-fn produce_step(p: WorkProduct, verdict: ReduceVerdict) -> StageStep {
+fn produce_step(p: WorkProduct, verdict: std.reducible.ReduceVerdict) -> StageStep {
   StageStep { stage: Produce { product: p }, verdict: verdict }
 }
 
@@ -50,7 +50,7 @@ fn review_step(r: Review) -> StageStep {
   StageStep { stage: ReviewOf { product: r.subject }, verdict: review_to_reduce(r) }
 }
 
-fn settle(spine: List<StageStep>) -> ReduceVerdict {
+fn settle(spine: List<StageStep>) -> std.reducible.ReduceVerdict {
   reduce_verdicts_located(
     verdicts: map(collection: spine, f: fn(s) { s.verdict }),
     empty_missing: "idea-pr:idea-input:no-stages"

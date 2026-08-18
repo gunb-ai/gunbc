@@ -56,7 +56,7 @@ type ChangeRealizationClassification
 
 fn classify_change(
   subject: ChangeSubject,
-  subject_label: NonEmptyStr,
+  subject_label: std.types.NonEmptyStr,
   continuity: AddressContinuity,
   declared_intermediates: StagedIntermediates?,
 ) -> ChangeRealizationClassification {

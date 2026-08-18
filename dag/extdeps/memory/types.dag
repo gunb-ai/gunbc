@@ -2,8 +2,8 @@ module extdeps.memory.types
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Registered_memory"
   }
@@ -109,8 +109,8 @@ type DramModuleCatalogRow {
   rank_count: Int
 }
 
-data dram_data_word_width: BitWidth = bit_width(count: 64)
-data dram_ecc_word_width: BitWidth = bit_width(count: 72)
+data dram_data_word_width: std.measure.BitWidth = bit_width(count: 64)
+data dram_ecc_word_width: std.measure.BitWidth = bit_width(count: 72)
 
 fn dram_chips_per_rank(module: DramModuleCatalogRow) -> Int {
   bit_width_count(b: dram_ecc_word_width) / bit_width_count(b: module.chip_width)
@@ -120,7 +120,7 @@ fn dram_data_chips_per_rank(module: DramModuleCatalogRow) -> Int {
   bit_width_count(b: dram_data_word_width) / bit_width_count(b: module.chip_width)
 }
 
-fn dram_module_required_die_density(module: DramModuleCatalogRow) -> ByteSize {
+fn dram_module_required_die_density(module: DramModuleCatalogRow) -> std.measure.ByteSize {
   byte_size(count: byte_size_count(b: module.capacity_bytes) / (dram_data_chips_per_rank(module: module) * module.rank_count))
 }
 

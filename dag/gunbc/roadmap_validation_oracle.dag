@@ -61,14 +61,14 @@ fn validation_oracle_unpinned_dependencies(source: String) -> List<String> {
     |> filter(m => validation_oracle_import_is_oracle_side(module_path: m))
 }
 
-data validation_oracle_identity_tag: NonEmptyStr = "gunbc.validation-oracle/v1"
+data validation_oracle_identity_tag: std.types.NonEmptyStr = "gunbc.validation-oracle/v1"
 
-data validation_oracle_set_tag: NonEmptyStr = "gunbc.validation-oracle-set/v1"
+data validation_oracle_set_tag: std.types.NonEmptyStr = "gunbc.validation-oracle-set/v1"
 
-fn validation_oracle_source_identity(source: String) -> Fnv1a64Structural {
+fn validation_oracle_source_identity(source: String) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(
     tag: validation_oracle_identity_tag,
-    payload: content_hash_atom(value: source as NonEmptyStr),
+    payload: content_hash_atom(value: source as std.types.NonEmptyStr),
   )
 }
 
@@ -76,7 +76,7 @@ data validation_oracle_declaration_keywords: List<String> = ["fn ", "test fn "]
 
 fn validation_oracle_declaration_line_matches(
   line: String,
-  function: NonEmptyStr,
+  function: std.types.NonEmptyStr,
 ) -> Bool {
   any(
     validation_oracle_declaration_keywords,
@@ -92,7 +92,7 @@ fn validation_oracle_declaration_line_matches(
 
 fn validation_oracle_declaration_count(
   source: String,
-  function: NonEmptyStr,
+  function: std.types.NonEmptyStr,
 ) -> Int {
   count(filter(
     xs: split(s: source, delimiter: "\n"),
@@ -165,7 +165,7 @@ type OraclePinScope
       reason: String,
     }
 
-fn validation_oracle_scope(validation: ValidationOperation) -> OraclePinScope {
+fn validation_oracle_scope(validation: gunbc.roadmap_execution_contract.ValidationOperation) -> OraclePinScope {
   match validation {
     GunbcClaimValidation { entry, function } =>
       OraclePinnable {
@@ -188,7 +188,7 @@ fn validation_oracle_scope(validation: ValidationOperation) -> OraclePinScope {
 }
 
 fn validation_oracle_scopes(
-  contract: WorkItemExecutionContract,
+  contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
 ) -> List<OraclePinScope> {
   match contract {
     ExecutionContractUnspecified => []
@@ -210,7 +210,7 @@ type OracleSetObservation
 
 fn validation_oracle_observation_identity(
   observation: OracleObservation,
-) -> Fnv1a64Structural? {
+) -> std.content_hash.Fnv1a64Structural? {
   match observation {
     OracleFound { oracle: _, identity } => Present { value: identity }
     OracleMissing { oracle: _, detail: _ } => none
@@ -361,7 +361,7 @@ fn validation_oracle_incomplete_cause(
 }
 
 // The pin adjudication is extdeps.pin's admit_pin_integrity and nothing else — this module builds the Pin and reads its answer, so expected-versus-observed has one home. Only expected_identity crosses the disk seam between dispatch and verification, because it is the only fact that cannot be re-derived at verification time: the subject comes from the node's own execution contract, the selection is ExactPin by construction (a dispatch pin records an identity OBSERVED from the freshly created worktree, never one resolved from a moving reference), and the version is the revision that worktree was created at, which is captured beside the identity for the same reason. Re-deriving the subject rather than persisting it is deliberate and it fails closed: if the contract changed between dispatch and verification, the re-derived oracle no longer matches the stored identity and the run refuses, which is the correct answer — the pin recorded at dispatch is no longer the pin the contract now names.
-fn validation_oracle_parse_pinned_identity_wire(text: String) -> ContentHash? {
+fn validation_oracle_parse_pinned_identity_wire(text: String) -> std.content_hash.ContentHash? {
   if text == "" {
     none
   } else {
@@ -373,17 +373,17 @@ fn validation_oracle_parse_pinned_identity_wire(text: String) -> ContentHash? {
   }
 }
 
-fn validation_oracle_parse_pinned_revision_wire(text: String) -> VersionIdentity? {
+fn validation_oracle_parse_pinned_revision_wire(text: String) -> extdeps.version.VersionIdentity? {
   if text == "" {
     none
   } else {
-    Present { value: text as NonEmptyStr as VersionIdentity }
+    Present { value: text as std.types.NonEmptyStr as extdeps.version.VersionIdentity }
   }
 }
 
 fn validation_oracle_pin_recorded(
-  identity: ContentHash?,
-  revision: VersionIdentity?,
+  identity: std.content_hash.ContentHash?,
+  revision: extdeps.version.VersionIdentity?,
 ) -> Bool {
   match identity {
     Present { value: _ } =>
@@ -397,10 +397,10 @@ fn validation_oracle_pin_recorded(
 
 fn validation_oracle_pin(
   oracles: List<ValidationOracleRef>,
-  expected_identity: ContentHash,
-  revision: VersionIdentity,
+  expected_identity: std.content_hash.ContentHash,
+  revision: extdeps.version.VersionIdentity,
 ) -> Pin<List<ValidationOracleRef>> {
-  Pin {
+  extdeps.pin.Pin {
     subject: oracles,
     version: revision,
     expected_identity: expected_identity,
@@ -409,7 +409,7 @@ fn validation_oracle_pin(
 }
 
 fn validation_oracle_pin_refusal_cause(
-  cause: PinRefusalCause,
+  cause: extdeps.pin.PinRefusalCause,
 ) -> ValidationRefusalCause {
   match cause {
     ObservedIdentityMismatch { expected, observed } =>
@@ -449,11 +449,11 @@ type ValidationOracleGate
 data validation_oracle_gate_note: String = "The one place a validation run becomes permitted. It is a GATE rather than a check beside the runner because the run is an effect: the only way to reach the exec is through an Admitted answer carrying the identity that admitted it, so there is no code path that runs the declared command with an unsatisfied pin. That is weaker than making the bad state unwritable in the type system and it is not claimed to be more — a caller could ignore this fn — but it removes the shape where a run happens first and its pin is consulted afterwards, which is the shape that greens an agent's edits to its own witness."
 
 fn validation_oracle_gate(
-  contract: WorkItemExecutionContract,
+  contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
   observations: List<OracleObservation>,
   pin_recorded: Bool,
-  expected_identity: ContentHash,
-  revision: VersionIdentity,
+  expected_identity: std.content_hash.ContentHash,
+  revision: extdeps.version.VersionIdentity,
   pin_read_detail: String,
 ) -> ValidationOracleGate {
   match contract {
@@ -521,7 +521,7 @@ fn validation_oracle_gate(
   }
 }
 
-fn change_window_preparation_refusal_detail(cause: ChangeWindowPreparationRefusal) -> String {
+fn change_window_preparation_refusal_detail(cause: gunbc.git_diff_change_window.ChangeWindowPreparationRefusal) -> String {
   match cause {
     ChangeWindowMergeBaseRefused { observation: observation } =>
       match observation {
@@ -709,7 +709,7 @@ fn validation_refusal_cause_decode(
   } else if cause_kind == "oracle-pin-unrecorded" {
     Present {
       value: ValidationOraclePinUnrecorded {
-        channel: cause_detail as NonEmptyStr as VersionIdentity,
+        channel: cause_detail as std.types.NonEmptyStr as extdeps.version.VersionIdentity,
       },
     }
   } else {
@@ -755,7 +755,7 @@ fn validation_verdict_detail(verdict: ValidationVerdict) -> String {
   }
 }
 
-data validation_receipt_schema: NonEmptyStr = "roadmap-validation-receipt/v1"
+data validation_receipt_schema: std.types.NonEmptyStr = "roadmap-validation-receipt/v1"
 
 data validation_receipt_identity_note: String = "The persisted verdict used to be identified by its LEADING BYTES: the emitter always writes schema then verdict first, so a reader required the document to START with the byte prefix this same emitter derives for a given verdict. That defeated the attack it was built for - a reader that SCANS for the word `passed` is satisfied from any value position, so a refusal whose detail carries the word reads as a pass, and no nested value can occupy a document prefix. It was honest about its ceiling and it has now been reached: a prefix recovers only LEADING members, so every field after the second is unreadable, which is why the receipt could be identified but never actually read. The reader below parses the document into a JsonValue and reads schema and verdict as MEMBERS. That subsumes the positional guarantee rather than weakening it - a `passed` sitting in a detail string is a different member and cannot be mistaken for the verdict, because the reader asks for the verdict by name instead of asking where the bytes fall - and it lifts the ceiling, so the exact-head subject fields the Verify rework adds become readable by the same mechanism with no new decoder."
 
@@ -767,7 +767,7 @@ type ValidationReceiptMember
   | ValidationReceiptMemberUnreadable { reason: String }
 
 fn validation_receipt_string_member(
-  doc: JsonValue,
+  doc: extdeps.languages.json.emit.JsonValue,
   key: String,
 ) -> ValidationReceiptMember {
   match json_object_unique_member(v: doc, key: key) {
@@ -808,7 +808,7 @@ fn validation_receipt_string_member(
 
 fn validation_oracle_observation_json(
   observation: OracleObservation,
-) -> JsonValue {
+) -> extdeps.languages.json.emit.JsonValue {
   match observation {
     OracleFound { oracle, identity } =>
       json_object(members: [
@@ -878,7 +878,7 @@ type ValidationReceiptDecode
   = ValidationReceiptDecoded { verdict_key: String }
   | ValidationReceiptUndecodable { reason: String }
 
-fn validation_receipt_decode_document(doc: JsonValue) -> ValidationReceiptDecode {
+fn validation_receipt_decode_document(doc: extdeps.languages.json.emit.JsonValue) -> ValidationReceiptDecode {
   match validation_receipt_string_member(doc: doc, key: "schema") {
     ValidationReceiptMemberUnreadable { reason: r } =>
       ValidationReceiptUndecodable { reason: r }

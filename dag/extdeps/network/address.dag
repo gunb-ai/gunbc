@@ -1,8 +1,8 @@
 module extdeps.network.address
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "www.iana.org/assignments/address-family-numbers/address-family-numbers.xhtml",
   }
@@ -14,15 +14,15 @@ type IpAddress =
     IpV4 { v4: extdeps.network.ipv4.Ipv4Address }
   | IpV6 { v6: extdeps.network.ipv6.Ipv6Address }
 
-fn ip_v4(addr: Ipv4Address) -> IpAddress {
+fn ip_v4(addr: extdeps.network.ipv4.Ipv4Address) -> IpAddress {
   IpV4 { v4: addr }
 }
 
-fn ip_v6(addr: Ipv6Address) -> IpAddress {
+fn ip_v6(addr: extdeps.network.ipv6.Ipv6Address) -> IpAddress {
   IpV6 { v6: addr }
 }
 
-fn render_ip_address(addr: IpAddress) -> NonEmptyStr? {
+fn render_ip_address(addr: IpAddress) -> std.types.NonEmptyStr? {
   match addr {
     IpV4 { v4: a } => Present { value: render_ipv4_address(addr: a) }
     IpV6 { v6: _ } => none

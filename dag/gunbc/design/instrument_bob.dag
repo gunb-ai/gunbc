@@ -15,7 +15,7 @@ data bob_idle_character_px: Int = 2
 
 data idle_character_note: String = "The resting character is a couple of pixels: enough that the plate reads as a physical object with a little life rather than a rectangle, small enough that nobody watching it would call it motion. It is the floor the bob returns TO, not a separate animation, and the caused response is several times larger precisely so that a knock is unmistakably a knock."
 
-data bob_half_life_ms: Milliseconds = 180
+data bob_half_life_ms: std.types.Milliseconds = 180
 
 data bob_visibility_floor_milli_px: Int = 250
 
@@ -81,7 +81,7 @@ fn motion_preference_key(m: MotionPreference) -> String {
   }
 }
 
-fn apply_impulse(i: PhysicalImpulse, m: MotionPreference) -> BobState {
+fn apply_impulse(i: gunbc.capability_binding.PhysicalImpulse, m: MotionPreference) -> BobState {
   match m {
     MotionReduced => bob_at_rest
     MotionFull => BobState {
@@ -106,7 +106,7 @@ data interpolation_note: String = "BETWEEN TWO HALF-LIFE BOUNDARIES THE ENVELOPE
 
 It stays MONOTONE by construction rather than by tuning: the subtrahend is a non-decreasing function of the offset into the segment, and at the segment's end it has removed exactly half, which is the value the next boundary independently produces. So the interpolated curve and the halving lattice agree at every boundary and the sequence cannot rise between them."
 
-fn amplitude_at(initial_milli: Int, elapsed_ms: Milliseconds) -> Int {
+fn amplitude_at(initial_milli: Int, elapsed_ms: std.types.Milliseconds) -> Int {
   let whole = halve_n_times(milli: initial_milli, n: elapsed_ms / bob_half_life_ms)
   let into_segment = elapsed_ms % bob_half_life_ms
   whole - ((whole * into_segment) / (bob_half_life_ms * 2))
@@ -120,7 +120,7 @@ fn bob_amplitude_milli(s: BobState) -> Int {
   }
 }
 
-fn advance(s: BobState, dt_ms: Milliseconds) -> BobState {
+fn advance(s: BobState, dt_ms: std.types.Milliseconds) -> BobState {
   let next_elapsed = s.elapsed_ms + dt_ms
   let next_amp = amplitude_at(initial_milli: s.initial_milli_px, elapsed_ms: next_elapsed)
   if next_amp < bob_visibility_floor_milli_px {
@@ -134,7 +134,7 @@ data descent_note: String = "The settle claim, carried as evidence rather than a
 
 Comparing the two amplitudes makes the evidence a fact about what happened. Strict when the envelope actually decreased, NonIncreasing when integer arithmetic left it equal near the floor, and DescentUnknown — which is the fail-closed bottom of the lattice — if it ever GREW. A model that started growing would surface here as lost evidence rather than as a bob that looked wrong."
 
-fn advance_descent_evidence(s: BobState, dt_ms: Milliseconds) -> DescentEvidence {
+fn advance_descent_evidence(s: BobState, dt_ms: std.types.Milliseconds) -> std.termination.DescentEvidence {
   match s.phase {
     BobAtRest => Strict
     BobSettled => Strict
@@ -162,11 +162,11 @@ fn half_lives_to_settle(initial_milli: Int) -> Int {
   }
 }
 
-fn settle_time_ms(initial_milli: Int) -> Milliseconds {
+fn settle_time_ms(initial_milli: Int) -> std.types.Milliseconds {
   half_lives_to_settle(initial_milli: initial_milli) * bob_half_life_ms
 }
 
-fn max_settle_time_ms() -> Milliseconds {
+fn max_settle_time_ms() -> std.types.Milliseconds {
   settle_time_ms(initial_milli: bob_max_travel_px * 1000)
 }
 
@@ -195,17 +195,17 @@ data oscillation_note: String = "A BOBBER CROSSES THE WATERLINE, WHICH IS WHAT M
 
 A triangle answers the same question with the intermediate positions present. It starts AT REST and travels down, because a knock pushes the plate away from the hand rather than toward it, reaches full reach a quarter-period in, returns through rest, rises to the opposite extreme, and comes back — the shape a float actually makes, sampled at whatever interval the renderer asks for. Period and half-life stay independent constants on purpose: the half-life decides how long the ringing lasts, the period how quickly it oscillates within that."
 
-data bob_half_period_ms: Milliseconds = 90
+data bob_half_period_ms: std.types.Milliseconds = 90
 
 data oscillation_unit_milli: Int = 1000
 
-fn bob_quarter_period_ms() -> Milliseconds {
+fn bob_quarter_period_ms() -> std.types.Milliseconds {
   bob_half_period_ms / 2
 }
 
 data quarter_leg_note: String = "Four legs make one full period, and each is a straight line between a zero and an extreme. Leg 0 falls from rest to full down, leg 1 returns to rest, leg 2 rises to full up, leg 3 returns. Naming the legs rather than writing one closed form keeps each endpoint checkable by inspection, and the endpoints are what the crossing claim depends on."
 
-fn oscillation_leg_milli(leg: Int, into_leg: Milliseconds) -> Int {
+fn oscillation_leg_milli(leg: Int, into_leg: std.types.Milliseconds) -> Int {
   let travelled = (oscillation_unit_milli * into_leg) / bob_quarter_period_ms()
   if leg == 0 {
     0 - travelled
@@ -218,7 +218,7 @@ fn oscillation_leg_milli(leg: Int, into_leg: Milliseconds) -> Int {
   }
 }
 
-fn oscillation_milli(elapsed_ms: Milliseconds) -> Int {
+fn oscillation_milli(elapsed_ms: std.types.Milliseconds) -> Int {
   oscillation_leg_milli(
     leg: (elapsed_ms / bob_quarter_period_ms()) % 4,
     into_leg: elapsed_ms % bob_quarter_period_ms())
@@ -256,7 +256,7 @@ fn frame_budget(settle_ms: Int, interval: Int) -> Int {
   }
 }
 
-fn max_frame_count(interval_ms: Milliseconds) -> Int {
+fn max_frame_count(interval_ms: std.types.Milliseconds) -> Int {
   frame_budget(settle_ms: max_settle_time_ms(), interval: interval_ms)
 }
 
@@ -289,7 +289,7 @@ fn bob_frame_of(s: BobState) -> BobFrame {
   }
 }
 
-fn bob_frames_from(s: BobState, interval_ms: Milliseconds, budget: Int, budget_allowed: Int) -> BobSequence {
+fn bob_frames_from(s: BobState, interval_ms: std.types.Milliseconds, budget: Int, budget_allowed: Int) -> BobSequence {
   if budget <= 0 {
     BobSequenceRefused {
       cause: BudgetExhaustedBeforeSettling,
@@ -312,7 +312,7 @@ fn bob_frames_from(s: BobState, interval_ms: Milliseconds, budget: Int, budget_a
   }
 }
 
-fn bob_sequence(i: PhysicalImpulse, m: MotionPreference, interval_ms: Milliseconds) -> BobSequence {
+fn bob_sequence(i: gunbc.capability_binding.PhysicalImpulse, m: MotionPreference, interval_ms: std.types.Milliseconds) -> BobSequence {
   if interval_ms <= 0 {
     BobSequenceRefused { cause: NonPositiveFrameInterval, frames_emitted: 0, budget_allowed: 0 }
   } else {

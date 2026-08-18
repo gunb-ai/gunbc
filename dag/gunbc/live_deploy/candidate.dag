@@ -280,7 +280,7 @@ fn render_candidate_paths(paths: List<String>) -> String {
 
 fn candidate_release_matches_identity(
   candidate: CandidateRelease,
-  identity: RunningReleaseIdentity,
+  identity: gunbc.running_release_identity.RunningReleaseIdentity,
 ) -> Bool {
   running_release_revision_equals(identity: identity, expected: candidate.revision)
     && running_release_surface_equals(identity: identity, expected: candidate.expected_surface_identity)

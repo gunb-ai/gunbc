@@ -10,7 +10,7 @@ type OsInstallDelivery
   = NetworkBoot { delivery: NetworkBootDelivery }
   | VirtualMediaIso { autoinstall: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload }
 
-fn os_install_delivery_for(mechanism: OsInstallMechanism, pxe_chain: NetworkBootChain, autoinstall: UbuntuAutoinstallPayload) -> OsInstallDelivery {
+fn os_install_delivery_for(mechanism: gunbc.os_install_mechanism.OsInstallMechanism, pxe_chain: extdeps.provisioning.network_boot.NetworkBootChain, autoinstall: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload) -> OsInstallDelivery {
   match mechanism {
     NbdProxyVirtualMediaInstall => VirtualMediaIso { autoinstall: autoinstall }
     VirtualMediaInstall => VirtualMediaIso { autoinstall: autoinstall }
@@ -29,7 +29,7 @@ type LanInstallInfraSurvey {
   dedicated_install_server_present: Bool
 }
 
-fn survey_implied_dhcp_direction(survey: LanInstallInfraSurvey) -> DhcpBootDirection {
+fn survey_implied_dhcp_direction(survey: LanInstallInfraSurvey) -> extdeps.provisioning.network_boot.DhcpBootDirection {
   if survey.existing_dhcp_configurable {
     NativeDhcpBootOptions
   } else {
@@ -47,7 +47,7 @@ type Srv3OsInstallPlan {
   post_stage_reset: extdeps.bmc.types.RedfishResetType
 }
 
-fn srv3_os_install_plan_autoinstall(plan: Srv3OsInstallPlan) -> UbuntuAutoinstallPayload {
+fn srv3_os_install_plan_autoinstall(plan: Srv3OsInstallPlan) -> extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
   match plan.delivery {
     NetworkBoot { delivery: d } => d.autoinstall
     VirtualMediaIso { autoinstall: a } => a
@@ -64,8 +64,8 @@ type Srv3OsInstallPlanStanding
   | OsInstallPlanRefused { cause: gunbc.os_install_mechanism.OsInstallMechanismRefusalCause }
 
 fn srv3_os_install_plan_for(
-  mechanism: OsInstallMechanism,
-  autoinstall: UbuntuAutoinstallPayload,
+  mechanism: gunbc.os_install_mechanism.OsInstallMechanism,
+  autoinstall: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload,
 ) -> Srv3OsInstallPlan {
   Srv3OsInstallPlan {
     os_target: UbuntuOs { distro: NobleNumbat2404Lts },
@@ -83,8 +83,8 @@ fn srv3_os_install_plan_for(
 }
 
 fn srv3_os_install_plan_standing_for(
-  solution: OsInstallMechanismSolution,
-  autoinstall: UbuntuAutoinstallPayload,
+  solution: gunbc.os_install_mechanism.OsInstallMechanismSolution,
+  autoinstall: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload,
 ) -> Srv3OsInstallPlanStanding {
   match solution {
     OsInstallMechanismSelected { mechanism: m } =>
@@ -100,29 +100,29 @@ data srv3_lan_install_survey: LanInstallInfraSurvey = LanInstallInfraSurvey {
   dedicated_install_server_present: false,
 }
 
-data srv3_pxe_network_boot_chain: NetworkBootChain = NetworkBootChain {
+data srv3_pxe_network_boot_chain: extdeps.provisioning.network_boot.NetworkBootChain = extdeps.provisioning.network_boot.NetworkBootChain {
   boot_mode: UefiHttpBoot,
   dhcp_direction: survey_implied_dhcp_direction(survey: srv3_lan_install_survey),
-  image_http_root: Uri {
+  image_http_root: extdeps.uri.Uri {
     scheme: Https,
     locator: "install.srv3.lan/ubuntu-24.04/",
   },
 }
 
 
-data srv3_autoinstall_bootstrap_password_hash: NonEmptyStr = "$6$exDY1mhS4KUYCE/2$zmn9ToZwTKLhCw.b4/b.ZRTIZM30JZ4QrOQ2aOXJ8yk96xpcCof0kxKwuX1kqLG/ygbJ1f8wxED22bTL4F46P0"
+data srv3_autoinstall_bootstrap_password_hash: std.types.NonEmptyStr = "$6$exDY1mhS4KUYCE/2$zmn9ToZwTKLhCw.b4/b.ZRTIZM30JZ4QrOQ2aOXJ8yk96xpcCof0kxKwuX1kqLG/ygbJ1f8wxED22bTL4F46P0"
 
-data srv3_autoinstall_identity: AutoinstallIdentity = AutoinstallIdentity {
+data srv3_autoinstall_identity: extdeps.os.ubuntu_autoinstall.AutoinstallIdentity = extdeps.os.ubuntu_autoinstall.AutoinstallIdentity {
   hostname: operator_host_srv3,
   username: "ubuntu",
   realname: "gunbc fleet node srv3",
   hashed_password: srv3_autoinstall_bootstrap_password_hash,
 }
 
-data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+data srv3_ubuntu_autoinstall: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
   autoinstall_version: 1,
   delivery: NoCloudNet {
-    seed_url: Uri {
+    seed_url: extdeps.uri.Uri {
       scheme: Https,
       locator: "install.srv3.lan/ubuntu-24.04/autoinstall/",
     },
@@ -138,7 +138,7 @@ data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayloa
   storage_policy: StoragePolicyAbsent,
 }
 
-data srv3_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+data srv3_ubuntu_autoinstall_on_iso: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
   autoinstall_version: 1,
   delivery: NoCloudLocal,
   fully_automated: true,
@@ -152,16 +152,16 @@ data srv3_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   storage_policy: StoragePolicyDirectLayout,
 }
 
-data srv4_console_password_hash: NonEmptyStr = "$6$gYMJusSKbtQHFdti$ouwvFuAeH0gdZkTSVJgEWwotvA7TzhxKch/pjg/2RyuR3cc4rEnnCsUnB.gH3cGz9vlszdSdiTZznCVmVrxv60"
+data srv4_console_password_hash: std.types.NonEmptyStr = "$6$gYMJusSKbtQHFdti$ouwvFuAeH0gdZkTSVJgEWwotvA7TzhxKch/pjg/2RyuR3cc4rEnnCsUnB.gH3cGz9vlszdSdiTZznCVmVrxv60"
 
-data srv4_autoinstall_identity: AutoinstallIdentity = AutoinstallIdentity {
+data srv4_autoinstall_identity: extdeps.os.ubuntu_autoinstall.AutoinstallIdentity = extdeps.os.ubuntu_autoinstall.AutoinstallIdentity {
   hostname: operator_host_srv4,
   username: "ubuntu",
   realname: "gunbc fleet node srv4",
   hashed_password: srv4_console_password_hash,
 }
 
-data srv4_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+data srv4_ubuntu_autoinstall_on_iso: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
   autoinstall_version: 1,
   delivery: NoCloudLocal,
   fully_automated: true,
@@ -217,7 +217,7 @@ type InstallServerSpec {
   serving_segment: product.network_topology.NetworkSegment
 }
 
-fn fleet_install_server_specs_for(mechanism: OsInstallMechanism) -> List<InstallServerSpec> {
+fn fleet_install_server_specs_for(mechanism: gunbc.os_install_mechanism.OsInstallMechanism) -> List<InstallServerSpec> {
   match mechanism {
     PxeHttpInstall => [srv3_install_server_spec]
     NbdProxyVirtualMediaInstall => []

@@ -1,7 +1,7 @@
 module gunbc.compile_pool_ensure
 
 
-data compile_pool_ensure_scope_disposition: Disposition = SingleAuthority
+data compile_pool_ensure_scope_disposition: std.disposition.Disposition = SingleAuthority
 
 data ensure_is_idempotent_note: String = "THE COMPILE-POOL SLICE IS A RECONCILE TARGET, NOT AN INSTALL-ON-EVERY-PASS MUTATION. A slice whose memory.max and memory.high already match the derived pool size is EnsureAlreadyConverged — writing the unit again would churn systemd and risk a brief cgroup reset while cache-miss compilers are the slice's children. The admission therefore compares OBSERVED limits against the sizing authority before emitting lines, exactly as build_cache_ensure consults placement before rendering a cache unit."
 
@@ -38,15 +38,15 @@ fn ensure_compile_pool_admission_fold<R>(
   }
 }
 
-fn slice_limits_match_declared(limits: CgroupMemoryLimits, required: ByteSize) -> Bool {
+fn slice_limits_match_declared(limits: gunbc.build_cache_instance.CgroupMemoryLimits, required: std.measure.ByteSize) -> Bool {
   (byte_size_count(b: limits.memory_max) == byte_size_count(b: required))
     && (byte_size_count(b: limits.memory_high) == byte_size_count(b: required))
 }
 
 fn slice_already_converged(
-  observed: CompilePoolObservation,
-  declared: NonEmptyStr,
-  required: ByteSize,
+  observed: gunbc.host_compile_pool.CompilePoolObservation,
+  declared: std.types.NonEmptyStr,
+  required: std.measure.ByteSize,
 ) -> Bool {
   match observed {
     CompilePoolSliceObserved { slice_unit: u, limits: lim } =>
@@ -58,13 +58,13 @@ fn slice_already_converged(
 
 fn ensure_compile_pool_slice_from_observation(
   declared: String,
-  sized: ByteSize,
-  observed: CompilePoolObservation,
+  sized: std.measure.ByteSize,
+  observed: gunbc.host_compile_pool.CompilePoolObservation,
 ) -> EnsureCompilePoolAdmission {
-  match slice_already_converged(observed: observed, declared: declared as NonEmptyStr, required: sized) {
+  match slice_already_converged(observed: observed, declared: declared as std.types.NonEmptyStr, required: sized) {
     true =>
       EnsureCompilePoolAlreadyConverged {
-        slice_unit: declared as NonEmptyStr,
+        slice_unit: declared as std.types.NonEmptyStr,
         sized_bytes: sized,
       }
     false =>
@@ -77,24 +77,24 @@ fn ensure_compile_pool_slice_from_observation(
           }
         CompilePoolSliceAbsent { slice_unit: _ } =>
           EnsureCompilePoolAdmitted {
-            slice_unit: declared as NonEmptyStr,
+            slice_unit: declared as std.types.NonEmptyStr,
             sized_bytes: sized,
-            slice_lines: render_compile_pool_slice(slice_unit: declared as NonEmptyStr, sized: sized),
+            slice_lines: render_compile_pool_slice(slice_unit: declared as std.types.NonEmptyStr, sized: sized),
           }
         CompilePoolSliceObserved { slice_unit: obs, limits: _ } =>
           match (obs as String) == declared {
             false =>
               EnsureCompilePoolRefused {
                 reason: EnsurePoolSliceNamedDoesNotMatch {
-                  declared: declared as NonEmptyStr,
+                  declared: declared as std.types.NonEmptyStr,
                   observed: obs,
                 },
               }
             true =>
               EnsureCompilePoolAdmitted {
-                slice_unit: declared as NonEmptyStr,
+                slice_unit: declared as std.types.NonEmptyStr,
                 sized_bytes: sized,
-                slice_lines: render_compile_pool_slice(slice_unit: declared as NonEmptyStr, sized: sized),
+                slice_lines: render_compile_pool_slice(slice_unit: declared as std.types.NonEmptyStr, sized: sized),
               }
           }
       }
@@ -102,23 +102,23 @@ fn ensure_compile_pool_slice_from_observation(
 }
 
 fn admit_ensure_compile_pool_slice(
-  topology: CompilePoolPlacement,
-  sizing: CompilePoolResolution,
-  cache_placement: BuildCacheServerPlacement,
-  observed: CompilePoolObservation,
+  topology: gunbc.fleet_host_budget.CompilePoolPlacement,
+  sizing: gunbc.fleet_host_budget.CompilePoolResolution,
+  cache_placement: gunbc.build_cache_instance.BuildCacheServerPlacement,
+  observed: gunbc.host_compile_pool.CompilePoolObservation,
 ) -> EnsureCompilePoolAdmission {
   match topology {
     CompilePoolInRunnerSlots =>
       EnsureCompilePoolRefused {
         reason: EnsurePoolTopologyUndeclared {
-          detail: "gunbc_compile_pool_placement is CompilePoolInRunnerSlots: no managed compile-pool slice is declared, so there is no pool unit to ensure" as NonEmptyStr,
+          detail: "gunbc_compile_pool_placement is CompilePoolInRunnerSlots: no managed compile-pool slice is declared, so there is no pool unit to ensure" as std.types.NonEmptyStr,
         },
       }
     CompilePoolSliceDeclared { slice_unit: declared } =>
       match sizing {
         CompilePoolUnresolved { reason: sr } =>
           EnsureCompilePoolRefused {
-            reason: EnsurePoolSizingUnresolved { detail: sr as NonEmptyStr },
+            reason: EnsurePoolSizingUnresolved { detail: sr as std.types.NonEmptyStr },
           }
         CompilePoolDerived { bytes: b } =>
           match cache_placement {

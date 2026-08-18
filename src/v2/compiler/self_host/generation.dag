@@ -47,7 +47,7 @@ type ObservedArtifactDigest sole_constructor {
   observed: std.content_hash.Sha512Digest
 }
 
-fn observed_artifact_digest(observed: Sha512Digest) -> ObservedArtifactDigest {
+fn observed_artifact_digest(observed: std.content_hash.Sha512Digest) -> ObservedArtifactDigest {
   ObservedArtifactDigest { observed: observed }
 }
 
@@ -200,11 +200,11 @@ fn roster_order_verdict(roster: SourceClosureRoster) -> RosterOrderVerdict {
   ).verdict
 }
 
-fn member_identity_digest(identity: String) -> Hash {
+fn member_identity_digest(identity: String) -> v2.std.node.Hash {
   symbol_identity_digest(sym: identity)
 }
 
-fn source_closure_member_digest(member: SourceClosureMember) -> Hash {
+fn source_closure_member_digest(member: SourceClosureMember) -> v2.std.node.Hash {
   combine_hash(
     a: member_identity_digest(identity: member.identity),
     b: member.content
@@ -213,7 +213,7 @@ fn source_closure_member_digest(member: SourceClosureMember) -> Hash {
 
 // Only reachable for a roster whose order verdict is canonical; the caller-facing
 // surface is source_closure_axis_digest, which refuses first.
-fn source_closure_roster_fold(roster: SourceClosureRoster) -> Hash {
+fn source_closure_roster_fold(roster: SourceClosureRoster) -> v2.std.node.Hash {
   fold_list(
     xs: roster.members,
     empty: symbol_identity_digest(sym: ^source_closure_roster_empty),
@@ -311,7 +311,7 @@ fn generation_identity_mismatched_axes(
   )
 }
 
-fn generation_axis_symbol(axis: GenerationAxis) -> Symbol {
+fn generation_axis_symbol(axis: GenerationAxis) -> v2.std.node.Symbol {
   match axis {
     ProducerCompilerAxis => ^generation_axis_producer_compiler
     SourceClosureAxis => ^generation_axis_source_closure
@@ -322,8 +322,8 @@ fn generation_axis_symbol(axis: GenerationAxis) -> Symbol {
   }
 }
 
-fn generation_axis_stale_diagnostic(axis: GenerationAxis) -> Diagnostic {
-  Diagnostic {
+fn generation_axis_stale_diagnostic(axis: GenerationAxis) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: generation_axis_symbol(axis: axis),
     at: port_locus(port: ^generation_identity_axis_port),
     correction: Unavailable { reason: ExternalContractUnknown }

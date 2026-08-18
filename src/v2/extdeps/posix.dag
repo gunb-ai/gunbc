@@ -25,22 +25,22 @@ fn signal_num_admits(value: Int) -> Bool {
   value > 0
 }
 
-data process_id_validation: Validation<Int> = Validation {
+data process_id_validation: Validation<Int> = v2.std.refinement.Validation {
   reason: ^process_id_out_of_range,
   admits: process_id_admits
 }
 
-data exit_code_validation: Validation<Int> = Validation {
+data exit_code_validation: Validation<Int> = v2.std.refinement.Validation {
   reason: ^exit_code_out_of_range,
   admits: exit_code_admits
 }
 
-data signal_num_validation: Validation<Int> = Validation {
+data signal_num_validation: Validation<Int> = v2.std.refinement.Validation {
   reason: ^signal_num_out_of_range,
   admits: signal_num_admits
 }
 
-fn make_process_id(value: Int, at: Locus) -> Outcome<ProcessId> {
+fn make_process_id(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<ProcessId> {
   match refine(base: value, by: process_id_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       Accepted { value: ProcessId { refined: refined }, diagnostics: diagnostics }
@@ -48,7 +48,7 @@ fn make_process_id(value: Int, at: Locus) -> Outcome<ProcessId> {
   }
 }
 
-fn make_exit_code(value: Int, at: Locus) -> Outcome<ExitCode> {
+fn make_exit_code(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<ExitCode> {
   match refine(base: value, by: exit_code_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       Accepted { value: ExitCode { refined: refined }, diagnostics: diagnostics }
@@ -56,7 +56,7 @@ fn make_exit_code(value: Int, at: Locus) -> Outcome<ExitCode> {
   }
 }
 
-fn make_signal_num(value: Int, at: Locus) -> Outcome<SignalNum> {
+fn make_signal_num(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<SignalNum> {
   match refine(base: value, by: signal_num_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       Accepted { value: SignalNum { refined: refined }, diagnostics: diagnostics }

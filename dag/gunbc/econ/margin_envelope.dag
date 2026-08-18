@@ -35,8 +35,8 @@ fn margin_envelope_from_whole_dollar_counts(revenue: std.nat.Nat, profit: std.na
 }
 
 fn derive_margin_envelope_from_filed_facts(
-  revenue: FiledMonetaryFact,
-  profit: FiledMonetaryFact,
+  revenue: extdeps.sec.facts.FiledMonetaryFact,
+  profit: extdeps.sec.facts.FiledMonetaryFact,
   margin_kind: MarginKind,
 ) -> MarginEnvelopeResult {
   match filed_amount(fact: revenue) {
@@ -61,7 +61,7 @@ fn derive_margin_envelope_from_filed_facts(
   }
 }
 
-fn margin_envelope_in_band(envelope: MarginEnvelope, low_bp: BasisPoint, high_bp: BasisPoint) -> Bool {
+fn margin_envelope_in_band(envelope: MarginEnvelope, low_bp: std.measure.BasisPoint, high_bp: std.measure.BasisPoint) -> Bool {
   (basis_point_count(bp: envelope.margin_low_bp) >= basis_point_count(bp: low_bp))
     && (basis_point_count(bp: envelope.margin_high_bp) <= basis_point_count(bp: high_bp))
     && (basis_point_count(bp: envelope.margin_low_bp) <= basis_point_count(bp: envelope.margin_high_bp))

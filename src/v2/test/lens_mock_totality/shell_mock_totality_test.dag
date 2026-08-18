@@ -1,7 +1,7 @@
 module v2.test.lens_mock_totality.shell_mock_totality
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedShellMock {
   tag: v2.std.node.Symbol
@@ -9,7 +9,7 @@ type MaterializedShellMock {
 
 data shell_red_omit_keys: List<String> = ["shell.Exec.Run"]
 
-fn materialize_shell_mock(case: PublishedMockCase) -> Outcome<MaterializedShellMock> {
+fn materialize_shell_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedShellMock> {
   if case.operation_key == "shell.Find.ListDirs" {
     outcome_accepted(value: MaterializedShellMock { tag: ^materialized_find_list_dirs })
   } else if case.operation_key == "shell.Which.Check" {
@@ -23,11 +23,11 @@ fn materialize_shell_mock(case: PublishedMockCase) -> Outcome<MaterializedShellM
   }
 }
 
-fn shell_real_consumer_handles(case: PublishedMockCase) -> Bool {
+fn shell_real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   outcome_accepted_p(outcome: materialize_shell_mock(case: case))
 }
 
-fn shell_omits_exec_run_consumer_handles(case: PublishedMockCase) -> Bool {
+fn shell_omits_exec_run_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   omit_consumer_handles(
     case: case,
     omit_keys: shell_red_omit_keys,

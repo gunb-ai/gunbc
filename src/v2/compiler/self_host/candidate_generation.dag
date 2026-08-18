@@ -31,9 +31,9 @@ type WrittenProvenancedRustArtifact {
 
 data candidate_generation_serialize_target_note: String = "Lane B direct v2 Rust door: generate_rust_emission_candidate wires serialize_target composed with translate (v2.compiler.emit); mint_written_provenanced_rust_artifact writes Cargo.toml and src/main.rs through Filesystem.Write so ingest-assemble-infer-translate-serialize-write is one candidate_generation surface."
 
-data direct_rust_door_scaffold_build_cause: Symbol = ^direct_rust_door_scaffold_build
+data direct_rust_door_scaffold_build_cause: v2.std.node.Symbol = ^direct_rust_door_scaffold_build
 
-data direct_rust_door_awaiting_cargo_cause: Symbol = ^direct_rust_door_awaiting_cargo
+data direct_rust_door_awaiting_cargo_cause: v2.std.node.Symbol = ^direct_rust_door_awaiting_cargo
 
 data direct_rust_door_behavioral_probe_note: String = "The direct-door receipt binds NO behavioral probe, and that is the observed fact rather than a gap left open. The door's production path is ingest -> assemble -> infer -> emit: it never compiles the emitted Rust, never runs it, and never compares behavior against the seed, so no witness in this repository stands as its behavioral probe. Two entries were pointed at these fields historically; the most recent was the acceptance group root, which folds source fidelity, producer identity, seed-emitter absence, qualification and missing-rule refusal and executes none of the three behavioral steps. Naming it here would have made the receipt's own self-description the first false claim in a chain that ProducerEmissionExecutedGreenReceipt matching and the BehavioralEquivalent advance later consume. Binding returns when the write -> Cargo -> behavior seam exists, which is the successor lane and is blocked behind the door reaching ArtifactProduced at all."
 
@@ -42,9 +42,9 @@ data direct_rust_door_cargo_toml_scaffold_note: String = "SCAFFOLD: feature:medi
 data direct_rust_door_cargo_toml: String = "[package]\nname = \"direct_rust_door_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\""
 
 fn generate_stage_candidate_from_ingest(
-  ingest: SourceRootIngest,
-  admission: Admission,
-  target: TargetModel
+  ingest: v2.compiler.source_authority.SourceRootIngest,
+  admission: v2.compiler.name_resolve.Admission,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<StageEmissionCandidate> {
   let lm = dag_language_model()
   bind_outcome(
@@ -69,7 +69,7 @@ fn generate_stage_candidate_from_ingest(
 
 fn generate_translate_self_emit_candidate(
   resolved_module: Node,
-  dag_target: TargetModel
+  dag_target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<StageEmissionCandidate> {
   bind_outcome(
     o: infer(tree: resolved_module),
@@ -87,8 +87,8 @@ fn generate_translate_self_emit_candidate(
 }
 
 fn generate_rust_emission_candidate(
-  inferred: InferredTree,
-  target: TargetModel
+  inferred: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<RustEmissionCandidate> {
   bind_outcome(
     o: v2.compiler.emit.emit(tree: inferred, target: target),
@@ -143,7 +143,7 @@ fn mint_artifact_from_rust_emission_candidate(
       )
     Absent =>
       outcome_rejected(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: ^direct_rust_door_producer_receipt_refused,
           at: port_locus(port: ^candidate_generation),
           correction: Unavailable { reason: ExternalContractUnknown }
@@ -153,8 +153,8 @@ fn mint_artifact_from_rust_emission_candidate(
 }
 
 fn mint_provenanced_rust_artifact(
-  inferred: InferredTree,
-  target: TargetModel,
+  inferred: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel,
   module_path: String
 ) -> Outcome<ProvenancedRustArtifact> {
   bind_outcome(
@@ -169,8 +169,8 @@ fn mint_provenanced_rust_artifact(
 }
 
 fn mint_written_provenanced_rust_artifact(
-  inferred: InferredTree,
-  target: TargetModel,
+  inferred: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel,
   module_path: String,
   workspace_dir: String
 ) -> Outcome<WrittenProvenancedRustArtifact> {
@@ -204,9 +204,9 @@ type ProvenancedRustEmissionObservation
   | ArtifactProduced { artifact: ProvenancedRustArtifact }
 
 fn observe_provenanced_rust_emission_from_ingest(
-  ingest: SourceRootIngest,
-  admission: Admission,
-  target: TargetModel,
+  ingest: v2.compiler.source_authority.SourceRootIngest,
+  admission: v2.compiler.name_resolve.Admission,
+  target: v2.std.compilers.target_model.TargetModel,
   module_path: String
 ) -> ProvenancedRustEmissionObservation {
   let lm = dag_language_model()
@@ -245,9 +245,9 @@ fn provenanced_rust_emission_observation_outcome(
 }
 
 fn generate_provenanced_rust_candidate_from_ingest(
-  ingest: SourceRootIngest,
-  admission: Admission,
-  target: TargetModel,
+  ingest: v2.compiler.source_authority.SourceRootIngest,
+  admission: v2.compiler.name_resolve.Admission,
+  target: v2.std.compilers.target_model.TargetModel,
   module_path: String
 ) -> Outcome<ProvenancedRustArtifact> {
   provenanced_rust_emission_observation_outcome(
@@ -284,9 +284,9 @@ fn advance_written_provenanced_rust_artifact_cargo_green(
 }
 
 fn generate_written_rust_candidate_from_ingest(
-  ingest: SourceRootIngest,
-  admission: Admission,
-  target: TargetModel,
+  ingest: v2.compiler.source_authority.SourceRootIngest,
+  admission: v2.compiler.name_resolve.Admission,
+  target: v2.std.compilers.target_model.TargetModel,
   module_path: String,
   workspace_dir: String
 ) -> Outcome<WrittenProvenancedRustArtifact> {

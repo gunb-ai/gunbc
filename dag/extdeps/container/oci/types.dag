@@ -2,8 +2,8 @@ module extdeps.container.oci.types
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/opencontainers/image-spec/blob/main/spec.md"
   }
@@ -46,7 +46,7 @@ fn parse_image_config_goarch(raw: String) -> ImageConfigGoarchParse {
   else { ImageConfigGoarchUnknown { wire: raw } }
 }
 
-fn image_config_goarch_label(arch: Architecture) -> ImageConfigGoarchLabel {
+fn image_config_goarch_label(arch: extdeps.toolchain.types.Architecture) -> ImageConfigGoarchLabel {
   match arch {
     X86_64 => ImageConfigGoarchWireLabel { wire: goarch_amd64_wire }
     Aarch64 => ImageConfigGoarchWireLabel { wire: goarch_arm64_wire }
@@ -69,7 +69,7 @@ fn parse_image_config_goos(raw: String) -> ImageConfigGoosParse {
   else { ImageConfigGoosUnknown { wire: raw } }
 }
 
-fn image_config_goos_label(os: Os) -> ImageConfigGoosLabel {
+fn image_config_goos_label(os: extdeps.toolchain.types.Os) -> ImageConfigGoosLabel {
   match os {
     Linux => ImageConfigGoosWireLabel { wire: goos_linux_wire }
     Windows => ImageConfigGoosWireLabel { wire: goos_windows_wire }
@@ -129,7 +129,7 @@ fn runtime_mount_source_label(source: RuntimeMountSource) -> String {
   }
 }
 
-type OciRuntimeVersion = SemVer
+type OciRuntimeVersion = std.types.SemVer
 
 type OciMediaType
   = OciImageManifestV1

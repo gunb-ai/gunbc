@@ -3,7 +3,7 @@ module tools.publication_publisher
 
 data publication_publisher_note: String = "Slice-1 sole modeled publisher (model + shadow only). Ordinary ModeledSessionId values are OrdinarySession and carry no PublicationAuthority. Exactly one sole_modeled_publisher_session may consume a change-locally admitted PublicProjectionPlan derived from PublicationPolicy — never a pathname census or placement-gate roster. Ordinary sessions do NOT yet lose live public-write capability in this slice; credentials and push machinery are unchanged."
 
-type ModeledSessionId = NonEmptyStr where brand("ModeledSessionId")
+type ModeledSessionId = std.types.NonEmptyStr where brand("ModeledSessionId")
 
 type SessionPublicationPosture
   = OrdinarySession { session: ModeledSessionId }
@@ -58,7 +58,7 @@ type PublicWriteRefusal
 
 data sole_modeled_publisher_session: ModeledSessionId = "gunbc-publication-publisher" as ModeledSessionId
 
-data sole_publication_authority_id: PublicationAuthorityId = "gunbc-publication-publisher" as PublicationAuthorityId
+data sole_publication_authority_id: gunbc.publication_decision.PublicationAuthorityId = "gunbc-publication-publisher" as gunbc.publication_decision.PublicationAuthorityId
 
 fn session_publication_posture(session: ModeledSessionId) -> SessionPublicationPosture {
   if session == sole_modeled_publisher_session {
@@ -79,7 +79,7 @@ fn session_publication_posture_fold<T>(
   }
 }
 
-fn change_local_admission_detail(outcome: ChangeLocalAdmissionOutcome) -> String {
+fn change_local_admission_detail(outcome: gunbc.publication_admission_delta.ChangeLocalAdmissionOutcome) -> String {
   match outcome {
     ChangeLocalAdmitted { delta: delta, candidate: _ } =>
       join(["change-local admission admitted; delta_count=", to_string(count(delta))], "")
@@ -93,10 +93,10 @@ fn change_local_admission_detail(outcome: ChangeLocalAdmissionOutcome) -> String
 }
 
 fn receipt_authorizes_newly_public(
-  receipts: List<PublicationDecisionReceipt>,
-  subject: PublicProjectionSubject,
-  policy_version: NonEmptyStr,
-  authority: PublicationAuthorityId,
+  receipts: List<gunbc.publication_decision.PublicationDecisionReceipt>,
+  subject: gunbc.public_projection.PublicProjectionSubject,
+  policy_version: std.types.NonEmptyStr,
+  authority: gunbc.publication_decision.PublicationAuthorityId,
 ) -> Bool {
   fold(receipts, init: false, f: fn(found, receipt) {
     found || publication_decision_authorizes_newly_public(
@@ -109,8 +109,8 @@ fn receipt_authorizes_newly_public(
 }
 
 fn receipt_binds_subject_content(
-  receipts: List<PublicationDecisionReceipt>,
-  subject: PublicProjectionSubject,
+  receipts: List<gunbc.publication_decision.PublicationDecisionReceipt>,
+  subject: gunbc.public_projection.PublicProjectionSubject,
 ) -> Bool {
   fold(receipts, init: false, f: fn(found, receipt) {
     found || publication_decision_binds_content(
@@ -122,10 +122,10 @@ fn receipt_binds_subject_content(
 }
 
 fn newly_public_subject_receipt_refusal(
-  delta: List<ProjectionDeltaClass>,
-  decisions: List<PublicationDecisionReceipt>,
-  policy_version: NonEmptyStr,
-  authority: PublicationAuthorityId,
+  delta: List<gunbc.publication_admission_delta.ProjectionDeltaClass>,
+  decisions: List<gunbc.publication_decision.PublicationDecisionReceipt>,
+  policy_version: std.types.NonEmptyStr,
+  authority: gunbc.publication_decision.PublicationAuthorityId,
   session: ModeledSessionId,
 ) -> PublicWriteRefusal? {
   fold(delta, init: none, f: fn(acc, item) {
@@ -164,8 +164,8 @@ fn newly_public_subject_receipt_refusal(
 }
 
 fn pushed_refs_match_candidate(
-  pushed_refs: List<PrePushStdinRow>,
-  candidate: PublicProjectionPlan,
+  pushed_refs: List<extdeps.git.hooks.PrePushStdinRow>,
+  candidate: gunbc.public_projection.PublicProjectionPlan,
 ) -> Bool {
   if count(pushed_refs) == 0 {
     false
@@ -177,8 +177,8 @@ fn pushed_refs_match_candidate(
 }
 
 fn unauthorized_push_detail(
-  pushed_refs: List<PrePushStdinRow>,
-  candidate: PublicProjectionPlan,
+  pushed_refs: List<extdeps.git.hooks.PrePushStdinRow>,
+  candidate: gunbc.public_projection.PublicProjectionPlan,
 ) -> String {
   join([
     "public write refused: pushed ref head does not match candidate source_revision; push_count=",
@@ -190,10 +190,10 @@ fn unauthorized_push_detail(
 
 fn admit_public_write(
   session: ModeledSessionId,
-  current: PublicProjectionPlan?,
-  candidate: PublicProjectionPlan,
-  decisions: List<PublicationDecisionReceipt>,
-  pushed_refs: List<PrePushStdinRow>,
+  current: gunbc.public_projection.PublicProjectionPlan?,
+  candidate: gunbc.public_projection.PublicProjectionPlan,
+  decisions: List<gunbc.publication_decision.PublicationDecisionReceipt>,
+  pushed_refs: List<extdeps.git.hooks.PrePushStdinRow>,
 ) -> PublicWriteAdmission {
   match session_publication_posture(session: session) {
     OrdinarySession { session: ordinary } =>
@@ -205,7 +205,7 @@ fn admit_public_write(
         },
       }
     SoleModeledPublisher { session: publisher } =>
-      let admission = admit_change_local_projection(request: ChangeLocalAdmissionRequest {
+      let admission = admit_change_local_projection(request: gunbc.publication_admission_delta.ChangeLocalAdmissionRequest {
         current: current,
         candidate: candidate,
       })

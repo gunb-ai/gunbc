@@ -44,7 +44,7 @@ fn publication_status_is_publicly_published(status: DocumentPublicationStatus) -
   }
 }
 
-fn publication_status_restrictive_marking(status: DocumentPublicationStatus) -> NonEmptyStr? {
+fn publication_status_restrictive_marking(status: DocumentPublicationStatus) -> std.types.NonEmptyStr? {
   match status {
     PubliclyPublishedUnderOpenLicense { license: _ } => Absent
     PubliclyPublishedWithRestrictiveMarking { marking } => Present { value: marking }

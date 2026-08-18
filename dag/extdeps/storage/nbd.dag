@@ -2,8 +2,8 @@ module extdeps.storage.nbd
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "manpages.debian.org/bookworm/nbd-server/nbd-server.5.en.html",
   }
@@ -16,7 +16,7 @@ type NbdExport {
   read_only: Bool
 }
 
-data nbd_server_config_render_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: nbd_server_config_text — the NbdExport is the typed authority; this renders it to nbd-server's INI config-file format (a rendered artifact like grub_config_render, not shell). The section/key layout is joined inline. DISSOLVES WHEN a shared std ini/config-file grammar (emit direction of extdeps.languages) renders NbdExport structurally instead of the inline join.")
+data nbd_server_config_render_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: nbd_server_config_text — the NbdExport is the typed authority; this renders it to nbd-server's INI config-file format (a rendered artifact like grub_config_render, not shell). The section/key layout is joined inline. DISSOLVES WHEN a shared std ini/config-file grammar (emit direction of extdeps.languages) renders NbdExport structurally instead of the inline join.")
 
 fn nbd_bool_word(b: Bool) -> String {
   if b { "true" } else { "false" }
@@ -37,8 +37,8 @@ fn nbd_server_config_text(export: NbdExport) -> String {
   )
 }
 
-fn nbd_server_command(config_path: NonEmptyStr) -> ArgvCommand {
-  ArgvCommand {
+fn nbd_server_command(config_path: std.types.NonEmptyStr) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.ArgvCommand {
     argv: ["nbd-server", "-C", config_path as String],
   }
 }
@@ -50,8 +50,8 @@ type NbdClientAttach {
   device: std.types.NonEmptyStr
 }
 
-fn nbd_client_attach_command(attach: NbdClientAttach) -> ArgvCommand {
-  ArgvCommand {
+fn nbd_client_attach_command(attach: NbdClientAttach) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.ArgvCommand {
     argv: [
       "nbd-client",
       "-N", attach.export_name as String,
@@ -62,8 +62,8 @@ fn nbd_client_attach_command(attach: NbdClientAttach) -> ArgvCommand {
   }
 }
 
-fn nbd_client_disconnect_command(device: NonEmptyStr) -> ArgvCommand {
-  ArgvCommand {
+fn nbd_client_disconnect_command(device: std.types.NonEmptyStr) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.ArgvCommand {
     argv: ["nbd-client", "-d", device as String],
   }
 }

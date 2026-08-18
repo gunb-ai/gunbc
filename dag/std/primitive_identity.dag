@@ -119,7 +119,7 @@ type PrimitiveJoinViolation
   | DuplicateSemanticDefinition { identity: PrimitiveIdentity }
 
 fn primitive_identity_slug(name: String) -> PrimitiveIdentity {
-  PrimitiveIdentity { slug: concat("primitive.", name) as NonEmptyStr }
+  PrimitiveIdentity { slug: concat("primitive.", name) as std.types.NonEmptyStr }
 }
 
 fn primitive_identity_eq(left: PrimitiveIdentity, right: PrimitiveIdentity) -> Bool {
@@ -133,22 +133,22 @@ data primitive_index_by: PrimitiveIdentity = primitive_identity_slug(name: "inde
 
 data primitive_map_keys_definition: PrimitiveDefinition = PrimitiveDefinition {
   identity: primitive_map_keys,
-  semantic_contract: PrimitiveSemanticContract { canonical_name: "map_keys" as NonEmptyStr },
+  semantic_contract: PrimitiveSemanticContract { canonical_name: "map_keys" as std.types.NonEmptyStr },
 }
 
 data primitive_map_values_definition: PrimitiveDefinition = PrimitiveDefinition {
   identity: primitive_map_values,
-  semantic_contract: PrimitiveSemanticContract { canonical_name: "map_values" as NonEmptyStr },
+  semantic_contract: PrimitiveSemanticContract { canonical_name: "map_values" as std.types.NonEmptyStr },
 }
 
 data primitive_fold_list_definition: PrimitiveDefinition = PrimitiveDefinition {
   identity: primitive_fold_list,
-  semantic_contract: PrimitiveSemanticContract { canonical_name: "fold_list" as NonEmptyStr },
+  semantic_contract: PrimitiveSemanticContract { canonical_name: "fold_list" as std.types.NonEmptyStr },
 }
 
 data primitive_index_by_definition: PrimitiveDefinition = PrimitiveDefinition {
   identity: primitive_index_by,
-  semantic_contract: PrimitiveSemanticContract { canonical_name: "index_by" as NonEmptyStr },
+  semantic_contract: PrimitiveSemanticContract { canonical_name: "index_by" as std.types.NonEmptyStr },
 }
 
 data primitive_d0_definitions: List<PrimitiveDefinition> = [
@@ -161,13 +161,13 @@ data primitive_d0_definitions: List<PrimitiveDefinition> = [
 fn surface_row(
   authority: PrimitiveSurfaceAuthority,
   authored_symbol: String,
-  authority_ref: DeclarationRef,
+  authority_ref: std.decl_ref.DeclarationRef,
   primitive: PrimitiveIdentity?,
   provenance: PrimitiveSurfaceCensusProvenance
 ) -> PrimitiveSurfaceRow {
   PrimitiveSurfaceRow {
     authority: authority,
-    authored_symbol: authored_symbol as NonEmptyStr,
+    authored_symbol: authored_symbol as std.types.NonEmptyStr,
     authority_ref: authority_ref,
     primitive: primitive,
     provenance: provenance,
@@ -185,82 +185,82 @@ data primitive_d0_surface_alias_bindings_note: String = "D0 specimen alias table
 data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
   PrimitiveSurfaceAliasBinding {
     authority: BuiltinRegistry,
-    authored_symbol: "map_keys" as NonEmptyStr,
+    authored_symbol: "map_keys" as std.types.NonEmptyStr,
     identity: primitive_map_keys,
   },
   PrimitiveSurfaceAliasBinding {
     authority: BuiltinRegistry,
-    authored_symbol: "map_values" as NonEmptyStr,
+    authored_symbol: "map_values" as std.types.NonEmptyStr,
     identity: primitive_map_values,
   },
   PrimitiveSurfaceAliasBinding {
     authority: PrimitiveContractRow,
-    authored_symbol: "map_keys" as NonEmptyStr,
+    authored_symbol: "map_keys" as std.types.NonEmptyStr,
     identity: primitive_map_keys,
   },
   PrimitiveSurfaceAliasBinding {
     authority: PrimitiveContractRow,
-    authored_symbol: "map_values" as NonEmptyStr,
+    authored_symbol: "map_values" as std.types.NonEmptyStr,
     identity: primitive_map_values,
   },
   PrimitiveSurfaceAliasBinding {
     authority: PrimitiveContractRow,
-    authored_symbol: "fold" as NonEmptyStr,
+    authored_symbol: "fold" as std.types.NonEmptyStr,
     identity: primitive_fold_list,
   },
   PrimitiveSurfaceAliasBinding {
     authority: PrimitiveContractRow,
-    authored_symbol: "index_by" as NonEmptyStr,
+    authored_symbol: "index_by" as std.types.NonEmptyStr,
     identity: primitive_index_by,
   },
   PrimitiveSurfaceAliasBinding {
     authority: AlgebraTemplate,
-    authored_symbol: "map_keys" as NonEmptyStr,
+    authored_symbol: "map_keys" as std.types.NonEmptyStr,
     identity: primitive_map_keys,
   },
   PrimitiveSurfaceAliasBinding {
     authority: AlgebraTemplate,
-    authored_symbol: "map_values" as NonEmptyStr,
+    authored_symbol: "map_values" as std.types.NonEmptyStr,
     identity: primitive_map_values,
   },
   PrimitiveSurfaceAliasBinding {
     authority: AlgebraTemplate,
-    authored_symbol: "fold" as NonEmptyStr,
+    authored_symbol: "fold" as std.types.NonEmptyStr,
     identity: primitive_fold_list,
   },
   PrimitiveSurfaceAliasBinding {
     authority: EmitHandler,
-    authored_symbol: "map_keys" as NonEmptyStr,
+    authored_symbol: "map_keys" as std.types.NonEmptyStr,
     identity: primitive_map_keys,
   },
   PrimitiveSurfaceAliasBinding {
     authority: EmitHandler,
-    authored_symbol: "map_values" as NonEmptyStr,
+    authored_symbol: "map_values" as std.types.NonEmptyStr,
     identity: primitive_map_values,
   },
   PrimitiveSurfaceAliasBinding {
     authority: EmitHandler,
-    authored_symbol: "index_by" as NonEmptyStr,
+    authored_symbol: "index_by" as std.types.NonEmptyStr,
     identity: primitive_index_by,
   },
   PrimitiveSurfaceAliasBinding {
     authority: InterpreterDispatch,
-    authored_symbol: "map_keys" as NonEmptyStr,
+    authored_symbol: "map_keys" as std.types.NonEmptyStr,
     identity: primitive_map_keys,
   },
   PrimitiveSurfaceAliasBinding {
     authority: InterpreterDispatch,
-    authored_symbol: "map_values" as NonEmptyStr,
+    authored_symbol: "map_values" as std.types.NonEmptyStr,
     identity: primitive_map_values,
   },
   PrimitiveSurfaceAliasBinding {
     authority: InterpreterDispatch,
-    authored_symbol: "fold_list" as NonEmptyStr,
+    authored_symbol: "fold_list" as std.types.NonEmptyStr,
     identity: primitive_fold_list,
   },
   PrimitiveSurfaceAliasBinding {
     authority: InterpreterDispatch,
-    authored_symbol: "index_by" as NonEmptyStr,
+    authored_symbol: "index_by" as std.types.NonEmptyStr,
     identity: primitive_index_by,
   },
 ]
@@ -533,7 +533,7 @@ fn primitive_incompatible_invocation_assignment_violation(
   } else {
     Present {
       value: IncompatibleInvocationAssignment {
-        authored_symbol: authored_symbol as NonEmptyStr,
+        authored_symbol: authored_symbol as std.types.NonEmptyStr,
         first: first,
         second: second,
       },

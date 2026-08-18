@@ -48,9 +48,9 @@ type ModelArtifact sole_constructor {
 // downstream comparison trusts, and an artifact whose digest was asserted rather than observed would
 // make those comparisons vacuous.
 fn model_artifact_seal(
-  identity: ContentHash,
+  identity: std.content_hash.ContentHash,
   provenance: ModelArtifactProvenance,
-  serving_label: NonEmptyStr,
+  serving_label: std.types.NonEmptyStr,
 ) -> ModelArtifact
   admit_callers: [
     decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_observed_digest"),
@@ -59,11 +59,11 @@ fn model_artifact_seal(
   = ModelArtifact { identity: identity, provenance: provenance, serving_label: serving_label }
 
 // The stock path: an artifact whose digest came off /api/tags or /api/show.
-fn model_artifact_from_observed_digest(publisher: NonEmptyStr, observed: OllamaModelDigest) -> ModelArtifact {
+fn model_artifact_from_observed_digest(publisher: std.types.NonEmptyStr, observed: extdeps.ollama.api.OllamaModelDigest) -> ModelArtifact {
   model_artifact_seal(
     identity: ollama_model_content_hash(digest: observed),
     provenance: PulledFromUpstream { publisher: publisher, reference: observed.ref },
-    serving_label: ollama_model_ref_wire(ref: observed.ref) as NonEmptyStr,
+    serving_label: ollama_model_ref_wire(ref: observed.ref) as std.types.NonEmptyStr,
   )
 }
 
@@ -82,11 +82,11 @@ fn model_artifact_from_observed_digest(publisher: NonEmptyStr, observed: OllamaM
 // deployed beside a stock one. Narrowing the parameter makes the mixed-family artifact unwritable
 // instead of merely unequal.
 fn model_artifact_from_tuning_run(
-  produced_digest: Sha256Digest,
+  produced_digest: std.content_hash.Sha256Digest,
   base: ModelArtifact,
-  dataset_identity: ContentHash,
-  run_identity: NonEmptyStr,
-  serving_label: NonEmptyStr,
+  dataset_identity: std.content_hash.ContentHash,
+  run_identity: std.types.NonEmptyStr,
+  serving_label: std.types.NonEmptyStr,
 ) -> ModelArtifact {
   model_artifact_seal(
     identity: as_content_hash_cryptographic(digest: produced_digest),
@@ -113,7 +113,7 @@ fn compare_model_artifact(desired: ModelArtifact, loaded: ModelArtifact) -> Mode
     ContentHashEqual => ArtifactIdentical
     ContentHashDifferent => ArtifactDiffers { desired: desired.identity, loaded: loaded.identity }
     ContentHashCrossFamilyIncomparable => ArtifactIncomparable {
-      cause: "desired and loaded model identities are in different hash families, so agreement was not established" as NonEmptyStr,
+      cause: "desired and loaded model identities are in different hash families, so agreement was not established" as std.types.NonEmptyStr,
     }
   }
 }
@@ -136,7 +136,7 @@ fn model_artifact_same(left: ModelArtifact, right: ModelArtifact) -> Bool {
 // The lineage as a walkable fact rather than prose. Depth is bounded by construction: an artifact
 // carries its base's IDENTITY, not the base itself, so this reports one step and a consumer holding
 // a roster resolves further -- there is no recursive structure here to make unbounded.
-fn model_artifact_base_identity(artifact: ModelArtifact) -> ContentHash? {
+fn model_artifact_base_identity(artifact: ModelArtifact) -> std.content_hash.ContentHash? {
   match artifact.provenance {
     PulledFromUpstream { publisher: _, reference: _ } => none
     DerivedByTuning { base_identity: b, dataset_identity: _, run_identity: _ } => Present { value: b }

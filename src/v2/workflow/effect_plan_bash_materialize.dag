@@ -15,8 +15,8 @@ type BashBoundOperationInvocation {
 data bash_bound_operation_invocation_authority_note: String = "Bash realization wrapper over the agnostic BoundOperationInvocation. executable_position is transport-only: it cannot change which operation row is named or which declared inputs bind; it only selects whether argv[0] emits as the declaration literal or as a grammar-owned host env var reference."
 
 fn bash_bind_operation_invocation(
-  at: OperationRef,
-  bindings: List<OperationInputBinding>
+  at: v2.std.operation_argv.OperationRef,
+  bindings: List<v2.std.operation_argv.OperationInputBinding>
 ) -> BashBoundOperationInvocation {
   BashBoundOperationInvocation {
     invocation: bind_operation_invocation(at: at, bindings: bindings),
@@ -25,8 +25,8 @@ fn bash_bind_operation_invocation(
 }
 
 fn bash_bind_operation_invocation_host_env_executable(
-  at: OperationRef,
-  bindings: List<OperationInputBinding>,
+  at: v2.std.operation_argv.OperationRef,
+  bindings: List<v2.std.operation_argv.OperationInputBinding>,
   env_var: String
 ) -> BashBoundOperationInvocation {
   BashBoundOperationInvocation {
@@ -72,7 +72,7 @@ type EffectPlanBashMaterialization
 
 fn effect_plan_bash_refuse(
   step_index: Int,
-  operation: Optional<OperationRef>,
+  operation: Optional<v2.std.operation_argv.OperationRef>,
   cause: EffectPlanBashRefusalCause
 ) -> EffectPlanBashEncodeResult {
   EffectPlanBashEncodingRefused {
@@ -305,7 +305,7 @@ fn effect_plan_bash_unsupported_step_label(
   }
 }
 
-fn effect_plan_bash_failure_policy_label(policy: FailurePolicy) -> String {
+fn effect_plan_bash_failure_policy_label(policy: v2.std.orchestration.FailurePolicy) -> String {
   match policy {
     Continue => "Continue"
     FailFast => "FailFast"
@@ -337,7 +337,7 @@ fn effect_plan_bash_cause_label(cause: EffectPlanBashRefusalCause) -> String {
 }
 
 fn effect_plan_bash_operation_label(
-  operation: Optional<OperationRef>
+  operation: Optional<v2.std.operation_argv.OperationRef>
 ) -> String {
   match operation {
     Present { value: at } => concat(" at ", operation_argv_ref_label(at: at))

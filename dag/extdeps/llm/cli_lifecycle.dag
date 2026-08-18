@@ -1,21 +1,21 @@
 module extdeps.llm.cli_lifecycle
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "learn.chatgpt.com/docs/agent-approvals-security"
   }
 }
 
-data codex_cli_auth_external_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data codex_cli_auth_external_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "learn.chatgpt.com/docs/auth"
   }
 }
 
-data claude_cli_lifecycle_external_authority: ExternalAuthority = claude_cli_external_authority_anchor
+data claude_cli_lifecycle_external_authority: extdeps.external_authority.ExternalAuthority = claude_cli_external_authority_anchor
 
 type ProviderKind
   = ClaudeCliProvider

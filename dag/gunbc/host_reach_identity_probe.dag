@@ -85,7 +85,7 @@ type ProbeRunProvenance {
 data probe_receipts_run_provenance: ProbeRunProvenance = ProbeRunProvenance {
   workflow_run_id: 31346260819,
   job_id: "probe_fleet_reach",
-  probed_at: "2026-08-10T01:11:35Z" as NonEmptyStr,
+  probed_at: "2026-08-10T01:11:35Z" as std.types.NonEmptyStr,
   head_branch: "session/wise-moth-430",
 }
 
@@ -98,9 +98,9 @@ data probe_receipts_run_provenance: ProbeRunProvenance = ProbeRunProvenance {
 // receipt file's typed parse committed into this registry by the commit workflow (the
 // same artifact->typed-parse->committed-rows path the operator's join 4 names), at which
 // point a stale hand row is unwritable rather than merely provenance-annotated.
-data probe_receipt_ledger_transcription_scaffold: Disposition = Scaffold {
+data probe_receipt_ledger_transcription_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_reach_identity_probe",
     decl_name: "host_reach_identity_probe_receipts",
     field: WholeDeclaration,
@@ -117,44 +117,44 @@ data probe_receipt_ledger_transcription_scaffold: Disposition = Scaffold {
 // principal unobserved → no SSH), which is why those rows carry no auth diagnostic.
 data host_reach_identity_probe_receipts: List<HostReachIdentityProbeReceipt> = [
   HostReachIdentityProbeReceipt {
-    host: "srv1" as HostIdentity,
-    probed_at: "2026-08-10T01:11:35Z" as NonEmptyStr,
+    host: "srv1" as product.placement_supply.HostIdentity,
+    probed_at: "2026-08-10T01:11:35Z" as std.types.NonEmptyStr,
     requested_principal: "gunbc-fleet",
     outcome: ProbeReachable { observed_short_hostname: "srv1", observed_principal: "gunbc-fleet" },
   },
   HostReachIdentityProbeReceipt {
-    host: "srv2" as HostIdentity,
-    probed_at: "2026-08-10T01:11:35Z" as NonEmptyStr,
+    host: "srv2" as product.placement_supply.HostIdentity,
+    probed_at: "2026-08-10T01:11:35Z" as std.types.NonEmptyStr,
     requested_principal: "gunbc-fleet",
     outcome: ProbeReachable { observed_short_hostname: "srv2", observed_principal: "gunbc-fleet" },
   },
   HostReachIdentityProbeReceipt {
-    host: "srv3" as HostIdentity,
-    probed_at: "2026-08-10T01:11:35Z" as NonEmptyStr,
+    host: "srv3" as product.placement_supply.HostIdentity,
+    probed_at: "2026-08-10T01:11:35Z" as std.types.NonEmptyStr,
     requested_principal: "gunbc-fleet",
     outcome: ProbeAuthenticationRefused { cause: "Permission denied, please try again." },
   },
   HostReachIdentityProbeReceipt {
-    host: "srv4" as HostIdentity,
-    probed_at: "2026-08-10T01:11:35Z" as NonEmptyStr,
+    host: "srv4" as product.placement_supply.HostIdentity,
+    probed_at: "2026-08-10T01:11:35Z" as std.types.NonEmptyStr,
     requested_principal: "gunbc-fleet",
     outcome: ProbeAuthenticationRefused { cause: "gunbc-fleet@srv4: Permission denied (publickey)." },
   },
   HostReachIdentityProbeReceipt {
-    host: "srv5" as HostIdentity,
-    probed_at: "2026-08-10T01:11:35Z" as NonEmptyStr,
+    host: "srv5" as product.placement_supply.HostIdentity,
+    probed_at: "2026-08-10T01:11:35Z" as std.types.NonEmptyStr,
     requested_principal: "",
     outcome: ProbeTargetUnobserved { cause: "principal unobserved (no SSH attempted): Spark account that accepted the fleet key at OOBE is unverified recollection; awaits an authorized read-only observation" },
   },
   HostReachIdentityProbeReceipt {
-    host: "srv6" as HostIdentity,
-    probed_at: "2026-08-10T01:11:35Z" as NonEmptyStr,
+    host: "srv6" as product.placement_supply.HostIdentity,
+    probed_at: "2026-08-10T01:11:35Z" as std.types.NonEmptyStr,
     requested_principal: "",
     outcome: ProbeTargetUnobserved { cause: "principal unobserved (no SSH attempted): Spark account that accepted the fleet key at OOBE is unverified recollection; awaits an authorized read-only observation" },
   },
 ]
 
-fn host_reach_identity_probe_receipt_for(host: HostIdentity) -> HostReachIdentityProbeReceipt? {
+fn host_reach_identity_probe_receipt_for(host: product.placement_supply.HostIdentity) -> HostReachIdentityProbeReceipt? {
   fold(host_reach_identity_probe_receipts, init: none, f: fn(acc, r) {
     match acc {
       Present { value: _ } => acc
@@ -215,7 +215,7 @@ fn classify_reach_probe_wire(
 // NOT converged (operator ruling 2026-08-09: a Mismatch/Absent cell counts as
 // unobserved-grade, never as satisfied); only the REMEDY differs — enroll the
 // fingerprint registry vs investigate a real contradiction.
-fn reach_verdict_from_outcome(o: ReachProbeOutcome) -> ObservationVerdict {
+fn reach_verdict_from_outcome(o: ReachProbeOutcome) -> std.upsert_decision.ObservationVerdict {
   match o {
     ProbeReachable { observed_short_hostname: _, observed_principal: _ } => Converged
     ProbeTransportUnavailable { cause: _ } => Inaccessible
@@ -226,7 +226,7 @@ fn reach_verdict_from_outcome(o: ReachProbeOutcome) -> ObservationVerdict {
   }
 }
 
-fn observe_reach_secrets_network(host: HostIdentity) -> ObservationVerdict? {
+fn observe_reach_secrets_network(host: product.placement_supply.HostIdentity) -> std.upsert_decision.ObservationVerdict? {
   match host_reach_identity_probe_receipt_for(host: host) {
     Present { value: r } => Present { value: reach_verdict_from_outcome(o: r.outcome) }
     _ => none
@@ -240,7 +240,7 @@ fn observe_reach_secrets_network(host: HostIdentity) -> ObservationVerdict? {
 // or unauthenticated host is Inaccessible (cannot say), and a host-key mismatch is
 // Conflict (the machine answering may not be the enrolled host at all; treating its
 // hostname as an identity observation would launder a wrong-machine read into drift).
-fn host_identity_desired_short_hostname(host: HostIdentity) -> String {
+fn host_identity_desired_short_hostname(host: product.placement_supply.HostIdentity) -> String {
   host as String
 }
 
@@ -248,7 +248,7 @@ fn host_identity_desired_short_hostname(host: HostIdentity) -> String {
 // the enrolled slot name AND the observed principal (id -un) equals the requested one. A
 // hostname match under a different account is Drifted, not Converged: the machine is the
 // right host but the probe did not reach the account the model asked for.
-fn identity_verdict_from_outcome(host: HostIdentity, requested_principal: String, o: ReachProbeOutcome) -> ObservationVerdict {
+fn identity_verdict_from_outcome(host: product.placement_supply.HostIdentity, requested_principal: String, o: ReachProbeOutcome) -> std.upsert_decision.ObservationVerdict {
   match o {
     ProbeReachable { observed_short_hostname: observed, observed_principal: obs_principal } =>
       if observed == host_identity_desired_short_hostname(host: host) && obs_principal == requested_principal {
@@ -264,7 +264,7 @@ fn identity_verdict_from_outcome(host: HostIdentity, requested_principal: String
   }
 }
 
-fn observe_host_identity_converge(host: HostIdentity) -> ObservationVerdict? {
+fn observe_host_identity_converge(host: product.placement_supply.HostIdentity) -> std.upsert_decision.ObservationVerdict? {
   match host_reach_identity_probe_receipt_for(host: host) {
     Present { value: r } => Present { value: identity_verdict_from_outcome(host: host, requested_principal: r.requested_principal, o: r.outcome) }
     _ => none
@@ -295,7 +295,7 @@ type FleetReachProbeRun {
 // identity and `id -un` for the account actually reached — so ProbeReachable carries both
 // dimensions and the receipt carries the requested principal for the identity verdict.
 fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> ReachProbeOutcome {
-  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: ["id", "-un"]) {
+  match typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: ["id", "-un"]) {
     TypedArgvExecConverged { result: idr } =>
       if idr.success {
         ProbeReachable { observed_short_hostname: trim(hostname_stdout), observed_principal: trim(idr.stdout) }
@@ -308,7 +308,7 @@ fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> Re
 
 fn probe_ready_target_once(host: String, endpoint: String, remote_principal: String) -> ReachProbeOutcome {
   let target = fleet_probe_ready_ssh_target(t_host: host, endpoint: endpoint, remote_principal: remote_principal)
-  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: ["hostname"]) {
+  match typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: ["hostname"]) {
     TypedArgvExecConverged { result: r } =>
       if r.success {
         probe_reachable_with_principal(target: target, hostname_stdout: r.stdout)
@@ -328,15 +328,15 @@ fn probe_host_reach_once(host: String, probed_at: String) -> HostReachIdentityPr
   match fleet_probe_target_for(host: host) {
     ProbeTargetReady { host: _, endpoint: e, remote_principal: p } =>
       HostReachIdentityProbeReceipt {
-        host: host as HostIdentity,
-        probed_at: probed_at as NonEmptyStr,
+        host: host as product.placement_supply.HostIdentity,
+        probed_at: probed_at as std.types.NonEmptyStr,
         requested_principal: p,
         outcome: probe_ready_target_once(host: host, endpoint: e, remote_principal: p),
       }
     ProbeTargetRefused { host: _, cause: c } =>
       HostReachIdentityProbeReceipt {
-        host: host as HostIdentity,
-        probed_at: probed_at as NonEmptyStr,
+        host: host as product.placement_supply.HostIdentity,
+        probed_at: probed_at as std.types.NonEmptyStr,
         requested_principal: "",
         outcome: ProbeTargetUnobserved {
           cause: match c {
@@ -351,7 +351,7 @@ fn probe_host_reach_once(host: String, probed_at: String) -> HostReachIdentityPr
 // Enrollment rides with the run (CI job HOME is ephemeral — see the measured
 // correction at fleet_host_key_enroll_apply): materialize the committed registry into
 // THIS process's known_hosts first, and carry its readback in the receipt.
-func probe_fleet_reach_wet() -> ProcessExit {
+func probe_fleet_reach_wet() -> std.process.ProcessExit {
   let enroll_lines = fleet_host_key_enroll_apply()
   let now = clock_now_probed_at()
   let run = FleetReachProbeRun {

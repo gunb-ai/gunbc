@@ -205,32 +205,32 @@ type SpiceIoContract {
   parse: SpiceParse
   emit: SpiceEmit
 }
-fn spice_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+fn spice_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.lexing.LexPattern) -> v2.std.compilers.lexing.LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
 
-fn spice_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+fn spice_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-fn spice_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+fn spice_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
   Sequence { left: left, right: right }
 }
 
-fn spice_identifier_pattern() -> LexPattern {
+fn spice_identifier_pattern() -> v2.std.compilers.lexing.LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
     right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
 
-fn spice_value_pattern() -> LexPattern {
+fn spice_value_pattern() -> v2.std.compilers.lexing.LexPattern {
   OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
 }
 
-fn spice_lex() -> LexRules {
+fn spice_lex() -> v2.std.compilers.lexing.LexRules {
   ModeledLexRules {
-    root: LexRuleSet {
+    root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
         spice_lex_token(token_class: ^spice_token_ident, pattern: spice_identifier_pattern()),
@@ -240,7 +240,7 @@ fn spice_lex() -> LexRules {
   }
 }
 
-fn spice_resistor_statement_expr() -> GrammarExpr {
+fn spice_resistor_statement_expr() -> v2.std.grammar.GrammarExpr {
   spice_grammar_sequence(
     left: spice_grammar_terminal(token_class: ^spice_token_ident),
     right: spice_grammar_sequence(
@@ -253,14 +253,14 @@ fn spice_resistor_statement_expr() -> GrammarExpr {
   )
 }
 
-fn spice_grammar() -> ParseGrammar {
-  let start = GrammarProduction {
+fn spice_grammar() -> v2.std.grammar.ParseGrammar {
+  let start = v2.std.grammar.GrammarProduction {
     name: ^spice_production_resistor_statement,
     expression: spice_resistor_statement_expr(),
     emitted: grammar_atom(identity: ^spice_surface_resistor_statement)
   }
   ModeledGrammar {
-    root: GrammarRoot {
+    root: v2.std.grammar.GrammarRoot {
       start: ^spice_production_resistor_statement,
       productions: [start],
       sync_tokens: grammar_empty_sync_tokens()
@@ -268,8 +268,8 @@ fn spice_grammar() -> ParseGrammar {
   }
 }
 
-fn spice_resistor_statement_formal_production() -> FormalProduction {
-  FormalProduction {
+fn spice_resistor_statement_formal_production() -> v2.std.grammar.FormalProduction {
+  v2.std.grammar.FormalProduction {
     lhs: grammar_formal_nonterminal(identity: ^spice_production_resistor_statement),
     rhs: [
       grammar_formal_terminal(identity: ^spice_token_ident),
@@ -280,17 +280,17 @@ fn spice_resistor_statement_formal_production() -> FormalProduction {
   }
 }
 
-fn spice_format_grammar_schema() -> GrammarSchema {
-  GrammarSchema {
+fn spice_format_grammar_schema() -> v2.std.grammar.GrammarSchema {
+  v2.std.grammar.GrammarSchema {
     lex: spice_lex(),
     grammar: spice_grammar()
   }
 }
 
-fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
-  GrammarSchemaProbeBinding {
+fn spice_format_grammar_probe() -> v2.std.grammar.GrammarSchemaProbeBinding {
+  v2.std.grammar.GrammarSchemaProbeBinding {
     schema: spice_format_grammar_schema(),
-    probe: GrammarSchemaProbe {
+    probe: v2.std.grammar.GrammarSchemaProbe {
       fixture: "R1 n1 n2 1",
       production: spice_resistor_statement_formal_production(),
       expected_parse_surface: grammar_atom(identity: ^spice_surface_resistor_statement)
@@ -512,7 +512,7 @@ data spice_probe_resistor_line: String = "R1 n1 n2 1"
 
 fn spice_parse_reject_unsupported() -> Outcome<SpiceNetlist> {
   outcome_rejected(
-    d: Diagnostic {
+    d: v2.std.diagnostic.Diagnostic {
       reason: ^spice_parse_unsupported,
       at: Textual { file: ^spice_fixture_file, extent: WholeFile },
       correction: Unavailable { reason: ExternalContractUnknown }

@@ -12,7 +12,7 @@ type RunnerMemoryRegime
   = SlotCarved { desired: gunbc.runner_slot_allocation.RunnerSlotDesired }
   | WholeMachine { ram: std.measure.ByteSize }
 
-fn ci_runner_target_spec(target: CiRunnerTarget) -> RunnerSpec {
+fn ci_runner_target_spec(target: CiRunnerTarget) -> extdeps.github.actions.RunnerSpec {
   match target {
     FleetSelfHosted => runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
     UbicloudRunner { row: row } => SelfHosted { labels: [row.runs_on_label] }
@@ -30,7 +30,7 @@ fn ci_runner_target_memory_regime(target: CiRunnerTarget) -> RunnerMemoryRegime 
   }
 }
 
-fn ci_runner_target_ram_speed_budget(target: CiRunnerTarget) -> ByteSize {
+fn ci_runner_target_ram_speed_budget(target: CiRunnerTarget) -> std.measure.ByteSize {
   match ci_runner_target_memory_regime(target: target) {
     SlotCarved { desired: _ } => gunbc_ci_runner_slot_ram_speed_ceiling()
     WholeMachine { ram: ram } => ram
@@ -43,6 +43,6 @@ fn selected_ci_runner_target() -> CiRunnerTarget {
   FleetSelfHosted
 }
 
-fn gunbc_ci_selected_runner_spec() -> RunnerSpec {
+fn gunbc_ci_selected_runner_spec() -> extdeps.github.actions.RunnerSpec {
   ci_runner_target_spec(target: selected_ci_runner_target())
 }

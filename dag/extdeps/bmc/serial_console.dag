@@ -2,22 +2,22 @@ module extdeps.bmc.serial_console
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/openbmc/obmc-console"
   }
 }
 
-data redfish_serial_interface_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data redfish_serial_interface_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "redfish.dmtf.org/schemas/v1/SerialInterface.json"
   }
 }
 
-data ipmi_sol_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data ipmi_sol_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.intel.com/content/dam/www/public/us/en/documents/product-briefs/ipmi-second-gen-interface-spec-v2-rev1-1.pdf"
   }
@@ -48,7 +48,7 @@ type SolConsoleCaptureReceipt {
   outcome: SolConsoleCaptureOutcome
 }
 
-fn sol_console_transport_wire(transport: SolConsoleTransport) -> NonEmptyStr {
+fn sol_console_transport_wire(transport: SolConsoleTransport) -> std.types.NonEmptyStr {
   match transport {
     ObmcConsoleCli => "obmc-console"
     RedfishSerialInterface => "redfish-serial-interface"
@@ -56,7 +56,7 @@ fn sol_console_transport_wire(transport: SolConsoleTransport) -> NonEmptyStr {
   }
 }
 
-fn sol_console_transport_authority_for(transport: SolConsoleTransport) -> ExternalAuthority {
+fn sol_console_transport_authority_for(transport: SolConsoleTransport) -> extdeps.external_authority.ExternalAuthority {
   match transport {
     ObmcConsoleCli => extdeps_external_authority_anchor
     RedfishSerialInterface => redfish_serial_interface_authority
@@ -64,9 +64,9 @@ fn sol_console_transport_authority_for(transport: SolConsoleTransport) -> Extern
   }
 }
 
-data sol_console_capture_bash_emit_dissolution_trigger: Disposition = Scaffold {
+data sol_console_capture_bash_emit_dissolution_trigger: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.bmc.serial_console",
     decl_name: "sol_console_capture_script",
     field: WholeDeclaration
@@ -82,7 +82,7 @@ type SolConsoleSendIntent {
   read_timeout_seconds: std.types.Seconds
 }
 
-data sol_console_send_bash_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: sol_console_send — ipmitool/obmc-console interactive send composed as shell transport (medium-as-string, IPMI_PASSWORD via -E env); DISSOLVES WHEN host_effect_apply binds SolConsoleSend without concat-built runner glue and dag/extdeps/bmc/serial_console.dag retires its concat-built transport")
+data sol_console_send_bash_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: sol_console_send — ipmitool/obmc-console interactive send composed as shell transport (medium-as-string, IPMI_PASSWORD via -E env); DISSOLVES WHEN host_effect_apply binds SolConsoleSend without concat-built runner glue and dag/extdeps/bmc/serial_console.dag retires its concat-built transport")
 
 fn sol_console_send_script(intent: SolConsoleSendIntent) -> String {
   let h = intent.bmc_host as String

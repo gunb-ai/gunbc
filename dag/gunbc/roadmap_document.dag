@@ -12,19 +12,19 @@ type RoadmapDocument {
   sections: List<RoadmapSection>
 }
 
-fn section_blocks(s: RoadmapSection, merged: List<Int>) -> List<MarkdownBlock> {
+fn section_blocks(s: RoadmapSection, merged: List<Int>) -> List<std.markdown.MarkdownBlock> {
   project_roadmap_section(title: s.title, elements: s.elements, merged: merged).blocks
 }
 
-fn lead_lane_blocks(s: RoadmapSection, merged: List<Int>) -> List<MarkdownBlock> {
+fn lead_lane_blocks(s: RoadmapSection, merged: List<Int>) -> List<std.markdown.MarkdownBlock> {
   project_roadmap_section(title: concat("✦ ", s.title), elements: s.elements, merged: merged).blocks
 }
 
-fn project_roadmap_to_markdown(doc: RoadmapDocument, merged: List<Int>) -> MarkdownDocument {
+fn project_roadmap_to_markdown(doc: RoadmapDocument, merged: List<Int>) -> std.markdown.MarkdownDocument {
   let after_lanes = fold(doc.lead_lanes, init: doc.preamble, f: fn(acc, s) {
     concat(acc, lead_lane_blocks(s: s, merged: merged))
   })
-  MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: fold(doc.sections, init: after_lanes, f: fn(acc, s) {
       concat(acc, section_blocks(s: s, merged: merged))
     })

@@ -62,8 +62,8 @@ fn pijul_env_args(
   )
 }
 
-fn pijul_fixture_path() -> PijulPath {
-  PijulPath {
+fn pijul_fixture_path() -> extdeps.pijul.PijulPath {
+  extdeps.pijul.PijulPath {
     octets: [102, 105, 108, 101, 46, 116, 120, 116],
   }
 }
@@ -655,11 +655,11 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
                     diagnostic: "reverse-log-decode-refused",
                   }
                 PijulChannelLogObserved { observation: reverse } =>
-                  let root = trim(s: root_hash.stdout) as PijulChangeHash
-                  let base = trim(s: base_hash.stdout) as PijulChangeHash
-                  let left = trim(s: left_hash.stdout) as PijulChangeHash
-                  let right = trim(s: right_hash.stdout) as PijulChangeHash
-                  let expected = PijulChannelStateIdentity {
+                  let root = trim(s: root_hash.stdout) as extdeps.pijul.PijulChangeHash
+                  let base = trim(s: base_hash.stdout) as extdeps.pijul.PijulChangeHash
+                  let left = trim(s: left_hash.stdout) as extdeps.pijul.PijulChangeHash
+                  let right = trim(s: right_hash.stdout) as extdeps.pijul.PijulChangeHash
+                  let expected = extdeps.pijul.PijulChannelStateIdentity {
                     state: forward.head.state,
                     changes: forward.changes,
                     producer: PijulLogStateObserved {
@@ -676,7 +676,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
                       }
                     PijulChannelLogReadBackMatches { observation: _ } =>
                       match pijul_assess_dependency_text(
-                        observation: PijulDependencyTextObservation {
+                        observation: extdeps.pijul.PijulDependencyTextObservation {
                           change: left,
                           dependency: base,
                           change_text: left_change.stdout,
@@ -691,7 +691,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
                           dependency: _,
                         } =>
                           match pijul_assess_rendered_order_conflict(
-                            observation: PijulRenderedOrderConflictObservation {
+                            observation: extdeps.pijul.PijulRenderedOrderConflictObservation {
                               path: pijul_fixture_path(),
                               left: left,
                               right: right,

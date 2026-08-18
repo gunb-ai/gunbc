@@ -21,29 +21,29 @@ data roadmap_tombstone_roster_note: String = "The first retirement landed 2026-0
 fn roadmap_tombstoned_identities() -> List<RoadmapIdentityRecord> {
   [
     TombstonedIdentity {
-      identity: "rn_SMUGMQLFC6PJT7CF2AKG745O2Y" as RoadmapNodeIdentity,
-      former_slug: "v2-phase-carriers" as RoadmapNodeId,
-      superseded_by: Present { value: "rn_PBIAB7X2M6IXIKMOXT3D7DKIXQ" as RoadmapNodeIdentity },
+      identity: "rn_SMUGMQLFC6PJT7CF2AKG745O2Y" as gunbc.roadmap_model.RoadmapNodeIdentity,
+      former_slug: "v2-phase-carriers" as gunbc.roadmap_model.RoadmapNodeId,
+      superseded_by: Present { value: "rn_PBIAB7X2M6IXIKMOXT3D7DKIXQ" as gunbc.roadmap_model.RoadmapNodeIdentity },
     },
     TombstonedIdentity {
-      identity: "rn_A7QX5QZMWKC6STOGGDGD4KMIHQ" as RoadmapNodeIdentity,
-      former_slug: "floor-method-existence-wall" as RoadmapNodeId,
-      superseded_by: Present { value: "rn_IGN7UM5UQQPZ6MNMIX5TVUMNSK" as RoadmapNodeIdentity },
+      identity: "rn_A7QX5QZMWKC6STOGGDGD4KMIHQ" as gunbc.roadmap_model.RoadmapNodeIdentity,
+      former_slug: "floor-method-existence-wall" as gunbc.roadmap_model.RoadmapNodeId,
+      superseded_by: Present { value: "rn_IGN7UM5UQQPZ6MNMIX5TVUMNSK" as gunbc.roadmap_model.RoadmapNodeIdentity },
     },
     TombstonedIdentity {
-      identity: "rn_DYQZBEQKOWIYI776266OWMZREQ" as RoadmapNodeIdentity,
-      former_slug: "floor-call-shape-wall" as RoadmapNodeId,
-      superseded_by: Present { value: "rn_EDXPW53NQMZVLEPYNYH6X4VNKM" as RoadmapNodeIdentity },
+      identity: "rn_DYQZBEQKOWIYI776266OWMZREQ" as gunbc.roadmap_model.RoadmapNodeIdentity,
+      former_slug: "floor-call-shape-wall" as gunbc.roadmap_model.RoadmapNodeId,
+      superseded_by: Present { value: "rn_EDXPW53NQMZVLEPYNYH6X4VNKM" as gunbc.roadmap_model.RoadmapNodeIdentity },
     },
     TombstonedIdentity {
-      identity: "rn_6W5ACS5ZE3ZMTA7BFCQLY76VW4" as RoadmapNodeIdentity,
-      former_slug: "floor-inhabitance-wall" as RoadmapNodeId,
-      superseded_by: Present { value: "rn_4ELCVV2EIHCBGHMOG6T4IZEMT3" as RoadmapNodeIdentity },
+      identity: "rn_6W5ACS5ZE3ZMTA7BFCQLY76VW4" as gunbc.roadmap_model.RoadmapNodeIdentity,
+      former_slug: "floor-inhabitance-wall" as gunbc.roadmap_model.RoadmapNodeId,
+      superseded_by: Present { value: "rn_4ELCVV2EIHCBGHMOG6T4IZEMT3" as gunbc.roadmap_model.RoadmapNodeIdentity },
     },
     TombstonedIdentity {
-      identity: "rn_J5XDQKBF6J4YPGFKWQXE45KOQM" as RoadmapNodeIdentity,
-      former_slug: "compiler-accepted-obligation-closure" as RoadmapNodeId,
-      superseded_by: Present { value: "rn_6QXWDNSCBUAK6JWU7VSUWBXWMH" as RoadmapNodeIdentity },
+      identity: "rn_J5XDQKBF6J4YPGFKWQXE45KOQM" as gunbc.roadmap_model.RoadmapNodeIdentity,
+      former_slug: "compiler-accepted-obligation-closure" as gunbc.roadmap_model.RoadmapNodeId,
+      superseded_by: Present { value: "rn_6QXWDNSCBUAK6JWU7VSUWBXWMH" as gunbc.roadmap_model.RoadmapNodeIdentity },
     },
   ]
 }
@@ -94,7 +94,7 @@ fn resolve_slug(slug: String) -> RoadmapIdentityResolution {
     IdentityAmbiguous { slug: slug, matches: count(hits) }
   } else {
     match hits |> map(r => record_identity(r: r)) |> first {
-      Present { value: i } => IdentityResolved { identity: i as RoadmapNodeIdentity }
+      Present { value: i } => IdentityResolved { identity: i as gunbc.roadmap_model.RoadmapNodeIdentity }
       Absent => IdentityUnknown { slug: slug }
     }
   }

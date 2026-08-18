@@ -1,7 +1,7 @@
 module gunbc.host_disk_observation
 
 
-data host_disk_observation_authority_disposition: Disposition = SingleAuthority
+data host_disk_observation_authority_disposition: std.disposition.Disposition = SingleAuthority
 
 // DISK FREE SPACE IS AN OBSERVATION AXIS, not a hand-authored width cap.
 // gunbc.runner_slot_allocation.host_disk_admitted_width admits width only for srv4 from a deploy row;
@@ -49,9 +49,9 @@ fn host_disk_fleet_unobserved_count() -> Int {
   host_disk_unobserved_count(hosts: fleet_subsumption_hosts)
 }
 
-data host_disk_observed_producer_dissolve_on: Disposition = Scaffold {
+data host_disk_observed_producer_dissolve_on: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,

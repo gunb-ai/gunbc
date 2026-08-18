@@ -38,7 +38,7 @@ type LiveRustObservationExpectation
 
 fn admit_live_rust_observation(
   request: LiveRustObservationRequest,
-  observation: RustSourceHostObservation
+  observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation
 ) -> LiveRustObservationOutcome {
   match observation {
     GitObservationRefused { detail: detail } =>
@@ -87,21 +87,21 @@ fn admit_live_rust_observation(
   }
 }
 
-fn current_actions_sha_observation() -> ActionsShaObservation {
-  let reading = shell.Env.Get(name: github_sha_variable_name as NonEmptyStr)
+fn current_actions_sha_observation() -> extdeps.github.actions_environment.ActionsShaObservation {
+  let reading = shell.Env.Get(name: github_sha_variable_name as std.types.NonEmptyStr)
   match reading.value {
     Present { value: value } =>
       if value == "" {
         ActionsShaEmpty { detail: "GITHUB_SHA was present but empty" }
       } else {
-        ActionsShaObserved { sha: value as CommitSha }
+        ActionsShaObserved { sha: value as std.types.CommitSha }
       }
     Absent => ActionsShaMissing { detail: "GITHUB_SHA was not set" }
   }
 }
 
 fn live_rust_observation_expectation(
-  actions: ActionsShaObservation
+  actions: extdeps.github.actions_environment.ActionsShaObservation
 ) -> LiveRustObservationExpectation {
   match actions {
     ActionsShaMissing { detail: detail } =>
@@ -116,8 +116,8 @@ fn live_rust_observation_expectation(
 }
 
 fn admit_current_actions_rust_observation(
-  actions: ActionsShaObservation,
-  observation: RustSourceHostObservation
+  actions: extdeps.github.actions_environment.ActionsShaObservation,
+  observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation
 ) -> LiveRustObservationOutcome {
   match live_rust_observation_expectation(actions: actions) {
     LiveExpectationRefused { cause: cause } => LiveObservationRefused { cause: cause }

@@ -1,7 +1,7 @@
 module v2.test.lens_mock_totality.github_mock_totality
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedGithubMock {
   tag: v2.std.node.Symbol
@@ -9,7 +9,7 @@ type MaterializedGithubMock {
 
 data github_red_omit_keys: List<String> = ["github.Pulls.ListReviews"]
 
-fn materialize_github_mock(case: PublishedMockCase) -> Outcome<MaterializedGithubMock> {
+fn materialize_github_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedGithubMock> {
   if case.operation_key == "github.Gist.Create" {
     outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_gist_create })
   } else if case.operation_key == "github.Pulls.List" {
@@ -31,11 +31,11 @@ fn materialize_github_mock(case: PublishedMockCase) -> Outcome<MaterializedGithu
   }
 }
 
-fn github_real_consumer_handles(case: PublishedMockCase) -> Bool {
+fn github_real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   outcome_accepted_p(outcome: materialize_github_mock(case: case))
 }
 
-fn github_omits_list_reviews_consumer_handles(case: PublishedMockCase) -> Bool {
+fn github_omits_list_reviews_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   omit_consumer_handles(
     case: case,
     omit_keys: github_red_omit_keys,

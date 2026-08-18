@@ -1,9 +1,9 @@
 module gunbc.scm_compatibility.mercurial
 
 
-data mercurial_compatibility_binding_note: NonEmptyStr = "The Mercurial R1 handler consumes Mercurial's own projection decoder, portable changeset identities, named-branch relation, and independent read-back assessment. Clone-local revisions, phases, bookmarks, tags, evolution, repository completeness, and node identities remain in MercurialCompatibilityReceipt. The shared carrier does not rename any of them commit, ref, or branch authority, and R0 honestly reports conditional advance as unavailable."
+data mercurial_compatibility_binding_note: std.types.NonEmptyStr = "The Mercurial R1 handler consumes Mercurial's own projection decoder, portable changeset identities, named-branch relation, and independent read-back assessment. Clone-local revisions, phases, bookmarks, tags, evolution, repository completeness, and node identities remain in MercurialCompatibilityReceipt. The shared carrier does not rename any of them commit, ref, or branch authority, and R0 honestly reports conditional advance as unavailable."
 
-data mercurial_compatibility_read_back_identity_note: NonEmptyStr = "A MercurialCompatibilityReceipt is constructible by this handler only after mercurial_assess_read_back proves that the independently decoded observation equals repository. The common read-back handle therefore fingerprints that complete decoded repository state plus observed_by; it never treats the observer label itself as the state identity."
+data mercurial_compatibility_read_back_identity_note: std.types.NonEmptyStr = "A MercurialCompatibilityReceipt is constructible by this handler only after mercurial_assess_read_back proves that the independently decoded observation equals repository. The common read-back handle therefore fingerprints that complete decoded repository state plus observed_by; it never treats the observer label itself as the state identity."
 
 type MercurialCompatibilityReceipt {
   target: extdeps.mercurial.MercurialNamedBranchName
@@ -55,9 +55,9 @@ fn mercurial_compatibility_binding_outcome_fold<R>(
 }
 
 fn mercurial_compatibility_bind(
-  projection: MercurialRepositoryProjection,
-  target: MercurialNamedBranchName,
-  read_back: MercurialReadBackObservation,
+  projection: extdeps.mercurial.MercurialRepositoryProjection,
+  target: extdeps.mercurial.MercurialNamedBranchName,
+  read_back: extdeps.mercurial.MercurialReadBackObservation,
 ) -> MercurialCompatibilityBindingOutcome {
   match mercurial_decode_projection(projection: projection) {
     MercurialDecodeRefused { cause } =>
@@ -129,8 +129,8 @@ fn mercurial_compatibility_bind(
 }
 
 fn mercurial_compatibility_history_handle(
-  history: List<MercurialNodeId>,
-) -> NonEmptyStr {
+  history: List<extdeps.mercurial.MercurialNodeId>,
+) -> std.types.NonEmptyStr {
   concat(
     "mercurial-portable-history:",
     history
@@ -140,9 +140,9 @@ fn mercurial_compatibility_history_handle(
 }
 
 fn mercurial_compatibility_node_identity(
-  tag: NonEmptyStr,
-  node: MercurialNodeId,
-) -> Fnv1a64Structural {
+  tag: std.types.NonEmptyStr,
+  node: extdeps.mercurial.MercurialNodeId,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_text(
     tag: tag,
     value: mercurial_node_id_text(node: node),
@@ -150,9 +150,9 @@ fn mercurial_compatibility_node_identity(
 }
 
 fn mercurial_compatibility_octets_identity(
-  tag: NonEmptyStr,
+  tag: std.types.NonEmptyStr,
   octets: List<std.integer.UInt8>,
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: octets
@@ -166,9 +166,9 @@ fn mercurial_compatibility_octets_identity(
 }
 
 fn mercurial_compatibility_path_identity(
-  tag: NonEmptyStr,
-  path: MercurialPath,
-) -> Fnv1a64Structural {
+  tag: std.types.NonEmptyStr,
+  path: extdeps.mercurial.MercurialPath,
+) -> std.content_hash.Fnv1a64Structural {
   mercurial_compatibility_octets_identity(
     tag: tag,
     octets: path.octets,
@@ -176,8 +176,8 @@ fn mercurial_compatibility_path_identity(
 }
 
 fn mercurial_compatibility_local_revision_identity(
-  entry: MercurialLocalRevisionEntry,
-) -> Fnv1a64Structural {
+  entry: extdeps.mercurial.MercurialLocalRevisionEntry,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "mercurial-local-revision",
     members: [
@@ -194,8 +194,8 @@ fn mercurial_compatibility_local_revision_identity(
 }
 
 fn mercurial_compatibility_bookmark_identity(
-  bookmark: MercurialBookmark,
-) -> Fnv1a64Structural {
+  bookmark: extdeps.mercurial.MercurialBookmark,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "mercurial-bookmark",
     members: [
@@ -212,8 +212,8 @@ fn mercurial_compatibility_bookmark_identity(
 }
 
 fn mercurial_compatibility_tag_source_identity(
-  source: MercurialTagSource,
-) -> Fnv1a64Structural {
+  source: extdeps.mercurial.MercurialTagSource,
+) -> std.content_hash.Fnv1a64Structural {
   let label = match source {
     MercurialVersionedTag => "versioned"
     MercurialLocalTag => "local"
@@ -225,8 +225,8 @@ fn mercurial_compatibility_tag_source_identity(
 }
 
 fn mercurial_compatibility_tag_identity(
-  tag: MercurialTag,
-) -> Fnv1a64Structural {
+  tag: extdeps.mercurial.MercurialTag,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "mercurial-tag",
     members: [
@@ -244,8 +244,8 @@ fn mercurial_compatibility_tag_identity(
 }
 
 fn mercurial_compatibility_phase_value_identity(
-  phase: MercurialPhase,
-) -> Fnv1a64Structural {
+  phase: extdeps.mercurial.MercurialPhase,
+) -> std.content_hash.Fnv1a64Structural {
   let label = match phase {
     MercurialPublic => "public"
     MercurialDraft => "draft"
@@ -258,8 +258,8 @@ fn mercurial_compatibility_phase_value_identity(
 }
 
 fn mercurial_compatibility_phase_identity(
-  entry: MercurialPhaseEntry,
-) -> Fnv1a64Structural {
+  entry: extdeps.mercurial.MercurialPhaseEntry,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "mercurial-phase-entry",
     members: [
@@ -273,8 +273,8 @@ fn mercurial_compatibility_phase_identity(
 }
 
 fn mercurial_compatibility_publishing_identity(
-  publishing: MercurialPublishingBehavior,
-) -> Fnv1a64Structural {
+  publishing: extdeps.mercurial.MercurialPublishingBehavior,
+) -> std.content_hash.Fnv1a64Structural {
   let label = match publishing {
     MercurialPublishingServer => "publishing"
     MercurialNonPublishingServer => "non-publishing"
@@ -286,8 +286,8 @@ fn mercurial_compatibility_publishing_identity(
 }
 
 fn mercurial_compatibility_subrepository_identity(
-  repository: MercurialSubrepository,
-) -> Fnv1a64Structural {
+  repository: extdeps.mercurial.MercurialSubrepository,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "mercurial-subrepository",
     members: [
@@ -308,8 +308,8 @@ fn mercurial_compatibility_subrepository_identity(
 }
 
 fn mercurial_compatibility_marker_identity(
-  marker: MercurialObsolescenceMarker,
-) -> Fnv1a64Structural {
+  marker: extdeps.mercurial.MercurialObsolescenceMarker,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "mercurial-obsolescence-marker",
     members: [
@@ -336,8 +336,8 @@ fn mercurial_compatibility_marker_identity(
 }
 
 fn mercurial_compatibility_evolution_identity(
-  evolution: MercurialEvolutionMetadata,
-) -> Fnv1a64Structural {
+  evolution: extdeps.mercurial.MercurialEvolutionMetadata,
+) -> std.content_hash.Fnv1a64Structural {
   match evolution {
     MercurialEvolutionNotEnabled =>
       compatibility_identity_sequence(
@@ -356,11 +356,11 @@ fn mercurial_compatibility_evolution_identity(
 }
 
 fn mercurial_compatibility_completeness_identity(
-  completeness: MercurialRepositoryCompleteness,
-) -> Fnv1a64Structural {
+  completeness: extdeps.mercurial.MercurialRepositoryCompleteness,
+) -> std.content_hash.Fnv1a64Structural {
   mercurial_repository_completeness_fold(
     completeness: completeness,
-    fold: MercurialRepositoryCompletenessFold {
+    fold: extdeps.mercurial.MercurialRepositoryCompletenessFold {
       complete: fn() {
         compatibility_identity_sequence(
           tag: "mercurial-complete",
@@ -413,8 +413,8 @@ fn mercurial_compatibility_completeness_identity(
 }
 
 fn mercurial_compatibility_observed_state_identity(
-  repository: MercurialRepositoryState,
-) -> Fnv1a64Structural {
+  repository: extdeps.mercurial.MercurialRepositoryState,
+) -> std.content_hash.Fnv1a64Structural {
   let contents = repository.contents
   compatibility_identity_sequence(
     tag: "mercurial-readback-state-v1",
@@ -519,8 +519,8 @@ fn mercurial_compatibility_observed_state_identity(
   )
 }
 
-fn mercurial_compatibility_fidelity() -> CompatibilityFidelityProfile {
-  CompatibilityFidelityProfile {
+fn mercurial_compatibility_fidelity() -> gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
+  gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
     endpoint_state: CompatibilityFidelityPreserved,
     upstream_change_evidence: CompatibilityFidelityDowngraded {
       cause: "portable changeset history preserves upstream history but not the authored source operation",
@@ -541,7 +541,7 @@ fn mercurial_compatibility_fidelity() -> CompatibilityFidelityProfile {
 
 fn mercurial_compatibility_projection_receipt(
   receipt: MercurialCompatibilityReceipt,
-) -> CompatibilityProjectionReceipt {
+) -> gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
   let generation = mercurial_compatibility_history_handle(
     history: receipt.target_history,
   )
@@ -550,9 +550,9 @@ fn mercurial_compatibility_projection_receipt(
   )
   match receipt.advance {
     MercurialConditionalAdvanceUnavailable { reason } =>
-      CompatibilityProjectionReceipt {
+      gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
         realization: "mercurial-r0",
-        target: receipt.target as NonEmptyStr,
+        target: receipt.target as std.types.NonEmptyStr,
         generation_evidence: generation,
         projection: compatibility_projection_handle(
           realization: "mercurial-r0",
@@ -571,7 +571,7 @@ fn mercurial_compatibility_projection_receipt(
 
 fn mercurial_compatibility_projection_handler(
 ) -> CompatibilityProjectionHandler<MercurialCompatibilityReceipt> {
-  CompatibilityProjectionHandler {
+  gunbc.scm_compatibility_shape.CompatibilityProjectionHandler {
     project: fn(receipt) {
       mercurial_compatibility_projection_receipt(receipt: receipt)
     },

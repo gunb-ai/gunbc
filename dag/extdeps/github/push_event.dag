@@ -1,8 +1,8 @@
 module extdeps.github.push_event
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/webhooks/webhook-events-and-payloads#push"
   }
@@ -12,9 +12,9 @@ data push_event_note: String = "The push webhook payload's `before` member: the 
 
 data push_event_before_member: String = "before"
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.push_event",
       decl_name: "push_event_before_member",
       field: WholeDeclaration
@@ -34,7 +34,7 @@ type PushBeforeObservation
 fn push_before_commit_sha_from_hex(hex: String) -> PushBeforeObservation {
   match git_sha1_object_id(hex: hex) {
     Present { value: oid } =>
-      PushBeforeObserved { sha: git_object_id_wire_hex(oid: oid) as CommitSha }
+      PushBeforeObserved { sha: git_object_id_wire_hex(oid: oid) as std.types.CommitSha }
     Absent =>
       PushBeforeMalformed { detail: "push event before member is not a valid git object id" }
   }

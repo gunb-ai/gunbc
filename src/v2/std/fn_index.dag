@@ -13,9 +13,9 @@ type FnArrowDecl {
   params: List<FnArrowParam>
 }
 
-data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition = Scaffold {
+data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.std.fn_index",
     decl_name: "fn_arrow_decl_facts_live",
     field: WholeDeclaration

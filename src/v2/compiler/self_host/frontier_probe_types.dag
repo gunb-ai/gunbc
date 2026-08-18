@@ -4,7 +4,7 @@ module v2.compiler.self_host.frontier_probe_types
 
 data frontier_nonempty_carrier_pattern_note: String = "NonEmptySymbolChain and NonEmptyGrammarChoiceAmbiguityRows join NonEmptyDiagnostics, NonEmptyProcessNodeIds and v2.std.collection FiniteSet as hand-rolled nonempty carriers. The generic carrier is NO LONGER fixture-only: std.algebra FreeSemigroup is a real construction wall in the tree, so this count is now migration debt with a reachable destination rather than a pattern with nowhere to go. Counted here so the pattern is visible rather than silently repeated. Dissolve triggers: non_empty_symbol_chain_dissolve_trigger (this module); NonEmptyGrammarChoiceAmbiguityRows trigger on v2.std.grammar_choice_ambiguity. NonEmptyDiagnostics, NonEmptyProcessNodeIds and FiniteSet carry NO trigger and are untracked stalls owed one - see std.algebra free_semigroup_grounding_note, which names them at the grain a grep decides."
 
-data non_empty_symbol_chain_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "migrate_when_free_semigroup_available — NonEmptySymbolChain dissolves into std.algebra FreeSemigroup<Symbol>. RETARGETED: this trigger previously named the promotion of the manual Refined<List<T>> fixture to std, and the generic carrier that landed is a record with a head field rather than that refinement, with the NonEmptyList alias deliberately withheld while the fixture lives - so the event as previously spelled will not occur and this row would have stalled untracked. The construction wall is now available; see std.algebra free_semigroup_grounding_note.")
+data non_empty_symbol_chain_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "migrate_when_free_semigroup_available — NonEmptySymbolChain dissolves into std.algebra FreeSemigroup<Symbol>. RETARGETED: this trigger previously named the promotion of the manual Refined<List<T>> fixture to std, and the generic carrier that landed is a record with a head field rather than that refinement, with the NonEmptyList alias deliberately withheld while the fixture lives - so the event as previously spelled will not occur and this row would have stalled untracked. The construction wall is now available; see std.algebra free_semigroup_grounding_note.")
 
 data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g. add_arrow_eval_allocate_literal, pick-lit hardcoding) — not by frontier_classify_rejection_reason (assemble/emit stage only)."
 
@@ -27,9 +27,9 @@ type FrontierProbeStage
 
 data upstream_semantic_refusal_vocabulary_note: String = "UNRESOLVED_CompilerError at emit establishes upstream semantic refusal, not inference failure and not emit-surface gap: the emitter plants compile_error when is_compiler_error(n.inferred) — the underlying refusal may originate in parse, normalize, resolve, infer, or translate. UpstreamSemanticRefusal names the ORIGINAL typed diagnostic (class + name); the UNRESOLVED marker is a consistency control after pre-emit capture lands, not the classification source. ProbeStageSemanticDerivation is the interim located stage — not ProbeStageEmit. gunbc.bootstrap.CompilerStage is the compiler-pipeline authority (Tokenize|Parse|…|Emit); FrontierProbeStage names harness positions (Assemble is not a compiler stage). Dissolve-on (interim): frontier_probe_pre_emit_upstream_semantic_scan binds infer-tree CompilerError messages before emit. Dissolve-on (durable): ProbeStageSemanticDerivation grounds compiler-stage provenance on CompilerStage when the probe can supply it; until then do not fabricate stage labels."
 
-data frontier_probe_pre_emit_upstream_semantic_scan_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "migrate_when_frontier_probe_pre_emit_upstream_semantic_scan — infer-tree walk binds CompilerError message into UpstreamSemanticRefusal.diagnostic_name before emit; UNRESOLVED_CompilerError becomes a consistency control only after this lands.")
+data frontier_probe_pre_emit_upstream_semantic_scan_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "migrate_when_frontier_probe_pre_emit_upstream_semantic_scan — infer-tree walk binds CompilerError message into UpstreamSemanticRefusal.diagnostic_name before emit; UNRESOLVED_CompilerError becomes a consistency control only after this lands.")
 
-data upstream_semantic_compiler_error_class: Symbol = ^CompilerError
+data upstream_semantic_compiler_error_class: v2.std.node.Symbol = ^CompilerError
 
 type FrontierProbeDetail
   = FrontierProbeDetailAbsent
@@ -71,7 +71,7 @@ type FrontierProbeCauseLocation
   | CauseLocationPort { port: v2.std.node.Symbol }
   | CauseLocationNodeNotSerializable
 
-fn frontier_probe_cause_location_from_locus(at: Locus) -> FrontierProbeCauseLocation {
+fn frontier_probe_cause_location_from_locus(at: v2.std.diagnostic.Locus) -> FrontierProbeCauseLocation {
   match at {
     Textual { file: f, extent: e } =>
       CauseLocationTextual { file: symbol_lexeme(sym: f), extent: e }
@@ -107,7 +107,7 @@ fn frontier_probe_receipt_blocker_class(receipt: FrontierProbeReceipt) -> Fronti
   receipt.blocker_class
 }
 
-fn frontier_probe_receipt_located_reason(receipt: FrontierProbeReceipt) -> Symbol {
+fn frontier_probe_receipt_located_reason(receipt: FrontierProbeReceipt) -> v2.std.node.Symbol {
   receipt.located_reason
 }
 
@@ -115,7 +115,7 @@ fn frontier_probe_receipt_without_assemble_detail(
   module_path: String,
   blocker: FrontierBlockerClass,
   located_stage: FrontierProbeStage,
-  located_reason: Symbol,
+  located_reason: v2.std.node.Symbol,
   detail: FrontierProbeDetail
 ) -> FrontierProbeReceipt {
   FrontierProbeReceipt {
@@ -145,13 +145,13 @@ type FrontierSurveyManifest {
   receipts: List<FrontierProbeReceipt>
 }
 
-data frontier_probe_policy_revision_atom: Fnv1a64Structural = content_hash_atom(value: "frontier-probe-survey-policy-v1")
+data frontier_probe_policy_revision_atom: std.content_hash.Fnv1a64Structural = content_hash_atom(value: "frontier-probe-survey-policy-v1")
 
-fn frontier_probe_policy_revision() -> ContentHash {
+fn frontier_probe_policy_revision() -> std.content_hash.ContentHash {
   as_content_hash_structural(structural: frontier_probe_policy_revision_atom)
 }
 
-fn frontier_probe_source_roots_digest(source_roots: List<String>) -> Fnv1a64Structural {
+fn frontier_probe_source_roots_digest(source_roots: List<String>) -> std.content_hash.Fnv1a64Structural {
   fold_list(
     xs: source_roots,
     empty: content_hash_atom(value: "frontier-probe-source-roots"),
@@ -161,19 +161,19 @@ fn frontier_probe_source_roots_digest(source_roots: List<String>) -> Fnv1a64Stru
   )
 }
 
-fn frontier_survey_executable_sha256_holds(digest: Sha256Digest) -> Bool {
+fn frontier_survey_executable_sha256_holds(digest: std.content_hash.Sha256Digest) -> Bool {
   content_hash_validate_lower_hex_length(text: digest.hex, expected_hex_digits: 64)
 }
 
-fn frontier_survey_source_roots_digest_holds(digest: Fnv1a64Structural) -> Bool {
+fn frontier_survey_source_roots_digest_holds(digest: std.content_hash.Fnv1a64Structural) -> Bool {
   content_hash_validate_lower_hex_length(text: digest.digest, expected_hex_digits: 16)
 }
 
 fn frontier_survey_commit_tree_binding_holds(
-  commit: CommitSha,
-  tree: GitObjectId
+  commit: std.types.CommitSha,
+  tree: extdeps.git.object_store.GitObjectId
 ) -> Bool {
-  let result = git.Inspect.ShowTree(ref: commit as GitRef)
+  let result = git.Inspect.ShowTree(ref: commit as std.types.GitRef)
   if !result.success {
     false
   } else {
@@ -200,7 +200,7 @@ fn frontier_survey_subject_eq(
 
 data frontier_survey_build_provenance_note: String = "survey_executable SHA-256 alone does not prove the binary was built from source_tree — a clean worktree can still run a stale target/release/frontier_probe_survey. Closeout requires a build receipt binding commit, tree, compiler sources, probe executable digest, source-root set, and probe-policy revision from a clean detached worktree. The seed bin embeds FRONTIER_PROBE_SURVEY_BUILD_COMMIT, BUILD_TREE, and BUILD_DIRTY at compile time (build.rs); verify_build_provenance refuses missing/empty stamps, runtime commit/tree mismatch, and dirty-worktree builds (hole 2 closed for local build; cross-machine binary provenance open). TSV rows carry all five subject fields; load_probe_rows_from_tsv enforces per-row equality before aggregation (hole 3 — seed producer only; see frontier_survey_subject_grounding_note)."
 
-fn frontier_blocker_is_name_resolution_reason(reason: Symbol) -> Bool {
+fn frontier_blocker_is_name_resolution_reason(reason: v2.std.node.Symbol) -> Bool {
   reason == ^resolve_reason_unbound_symbol
     || reason == ^resolve_ambiguous_export
     || reason == ^resolve_reason_malformed_imported_root
@@ -213,7 +213,7 @@ fn frontier_blocker_is_name_resolution_reason(reason: Symbol) -> Bool {
     || reason == ^normalize_rejected
 }
 
-fn frontier_blocker_is_emit_surface_reason(reason: Symbol) -> Bool {
+fn frontier_blocker_is_emit_surface_reason(reason: v2.std.node.Symbol) -> Bool {
   reason == ^translate_target_bundle_malformed
     || reason == ^translate_target_bundle_duplicate_edge
     || reason == ^translate_grammar_relation_row_not_found
@@ -226,19 +226,19 @@ fn frontier_blocker_is_emit_surface_reason(reason: Symbol) -> Bool {
     || reason == ^target_use_site_ownership_lookup_ambiguous
 }
 
-fn frontier_blocker_is_realization_reason(reason: Symbol) -> Bool {
+fn frontier_blocker_is_realization_reason(reason: v2.std.node.Symbol) -> Bool {
   reason == ^compiler_import_closure_cyclic
     || reason == ^self_host_runner_not_realized
     || reason == ^emit_host_run_transport_unrealized
     || reason == ^parse_grammar_choice_overlap_residue
 }
 
-fn frontier_blocker_is_upstream_semantic_marker_reason(reason: Symbol) -> Bool {
+fn frontier_blocker_is_upstream_semantic_marker_reason(reason: v2.std.node.Symbol) -> Bool {
   reason == gate_a_flip_probe_unresolved_compiler_error_reason
 }
 
 fn frontier_upstream_semantic_refusal_from_marker_reason(
-  reason: Symbol
+  reason: v2.std.node.Symbol
 ) -> FrontierBlockerClass {
   UpstreamSemanticRefusal {
     diagnostic_class: upstream_semantic_compiler_error_class,
@@ -281,37 +281,37 @@ data frontier_probe_survey_host_unknown_reason_scaffold_note: String = "Seed `fr
 
 data frontier_blocker_is_probe_survey_host_reason_dispatch_note: String = "frontier_blocker_is_probe_survey_host_reason is the reason-table authority for P5 seed-bin UnknownProbeCause symbols (^frontier_probe_runtime_error, ^frontier_probe_oom_or_budget, ^probe_emit_accept_self_host_bar_unbound). Wired through frontier_classify_rejection_reason and frontier_probe_survey_host_failure_reason; the seed bin reads the latter at runtime — no parallel Rust symbol strings. Dissolves with the P5 bin scaffold."
 
-fn frontier_blocker_is_probe_survey_host_reason(reason: Symbol) -> Bool {
+fn frontier_blocker_is_probe_survey_host_reason(reason: v2.std.node.Symbol) -> Bool {
   reason == frontier_probe_survey_host_runtime_error_reason
     || reason == frontier_probe_survey_host_oom_or_budget_reason
     || reason == ^probe_emit_accept_self_host_bar_unbound
 }
 
-data frontier_probe_survey_host_runtime_error_reason: Symbol = ^frontier_probe_runtime_error
+data frontier_probe_survey_host_runtime_error_reason: v2.std.node.Symbol = ^frontier_probe_runtime_error
 
-data frontier_probe_survey_host_oom_or_budget_reason: Symbol = ^frontier_probe_oom_or_budget
+data frontier_probe_survey_host_oom_or_budget_reason: v2.std.node.Symbol = ^frontier_probe_oom_or_budget
 
-data gate_a_flip_probe_unresolved_compiler_error_reason: Symbol = ^gate_a_flip_probe_unresolved_compiler_error
+data gate_a_flip_probe_unresolved_compiler_error_reason: v2.std.node.Symbol = ^gate_a_flip_probe_unresolved_compiler_error
 
-data gate_a_flip_probe_witness_std_dup_reason: Symbol = ^gate_a_flip_probe_witness_std_dup
+data gate_a_flip_probe_witness_std_dup_reason: v2.std.node.Symbol = ^gate_a_flip_probe_witness_std_dup
 
-data gate_a_flip_probe_formal_nonterminal_btree_set_ord_reason: Symbol = ^gate_a_flip_probe_formal_nonterminal_btree_set_ord
+data gate_a_flip_probe_formal_nonterminal_btree_set_ord_reason: v2.std.node.Symbol = ^gate_a_flip_probe_formal_nonterminal_btree_set_ord
 
-data curated_cargo_probe_namespace_qualified_rust_emit_reason: Symbol = ^curated_cargo_probe_namespace_qualified_rust_emit
+data curated_cargo_probe_namespace_qualified_rust_emit_reason: v2.std.node.Symbol = ^curated_cargo_probe_namespace_qualified_rust_emit
 
-data curated_cargo_probe_import_closure_cargo_refuse_reason: Symbol = ^curated_cargo_probe_import_closure_cargo_refuse
+data curated_cargo_probe_import_closure_cargo_refuse_reason: v2.std.node.Symbol = ^curated_cargo_probe_import_closure_cargo_refuse
 
-data curated_cargo_probe_emit_assemble_refuse_reason: Symbol = ^curated_cargo_probe_emit_assemble_refuse
+data curated_cargo_probe_emit_assemble_refuse_reason: v2.std.node.Symbol = ^curated_cargo_probe_emit_assemble_refuse
 
-data curated_cargo_probe_generic_type_render_reason: Symbol = ^curated_cargo_probe_generic_type_render
+data curated_cargo_probe_generic_type_render_reason: v2.std.node.Symbol = ^curated_cargo_probe_generic_type_render
 
-data curated_cargo_probe_type_ref_import_missing_reason: Symbol = ^curated_cargo_probe_type_ref_import_missing
+data curated_cargo_probe_type_ref_import_missing_reason: v2.std.node.Symbol = ^curated_cargo_probe_type_ref_import_missing
 
-data curated_cargo_probe_emit_shape_reason: Symbol = ^curated_cargo_probe_emit_shape
+data curated_cargo_probe_emit_shape_reason: v2.std.node.Symbol = ^curated_cargo_probe_emit_shape
 
-data curated_cargo_probe_struct_literal_body_reason: Symbol = ^curated_cargo_probe_struct_literal_body
+data curated_cargo_probe_struct_literal_body_reason: v2.std.node.Symbol = ^curated_cargo_probe_struct_literal_body
 
-data curated_cargo_probe_record_fold_accumulator_reason: Symbol = ^curated_cargo_probe_record_fold_accumulator
+data curated_cargo_probe_record_fold_accumulator_reason: v2.std.node.Symbol = ^curated_cargo_probe_record_fold_accumulator
 
 data curated_cargo_probe_record_fold_accumulator_note: String = "Named 2026-07-23 (smart-crane-730, hit by execution while landing the strip_repeated_use_symbols emitter pass): the v1 emitter cannot faithfully emit a fold whose accumulator is a compound anonymous record — the emitted Rust mixes a named struct init (Rc<DeduplicateAcc>) with tuple-typed closure params ((Rc<HashMap<..>>, Rc<Vec<()>>)), drops the receiver on field access inside record-literal positions (v1_rt::rc_map_insert(.0.clone(), ..)), and mistypes an empty-list record field as Rc<Vec<()>>; a sibling shape (list accumulator read via any/flat_map inside the lambda) also failed rustc E0282 on the un-annotated empty-vec init. Workaround proven by execution: restructure to single-list accumulators with per-step derivation from already-typed lists (see strip_repeated_use_symbols / rust_use_line_bound_symbols in v1.compiler.emit_rust) — same shape as the fold_node accumulator idiom the emitter provably handles. This is a Gate-A emit-surface class: any .dag module whose bodies fold over compound record accumulators will emit non-compiling Rust; classify a cargo/regen refusal here when the emitted fold shows dropped-receiver field access or unit-typed Vec accumulator fields."
 
@@ -335,7 +335,7 @@ WHAT DID NOT MOVE: materialization_carriers stays on curated_cargo_probe_import_
 
 DOTTED IS THE DOMINANT BLOCKER, not import-closure: 4 of the 5 probed modules (01_tokenize, 02_parse, 04_infer, program_partition) refuse on it, and it is emitted into std.collection itself — 'pub type List<T> = std.algebra.FreeMonoid<T>' in v2_std_collection.rs, invalid Rust — so it sits in essentially every deep-module closure. PR 6934 ('6848 cleanup') is MERGED and the class is still live, so it is not a closed lane. Compounding it, emit REPORTS SUCCESS while producing that line ('compiled: 50 files emitted, 0 diagnostics') — a section-5 fail-open in which invalid Rust leaves the emitter with a clean bill of health and is caught only downstream by rustc."
 
-fn frontier_probe_survey_host_failure_reason(is_oom_or_budget: Bool) -> Symbol {
+fn frontier_probe_survey_host_failure_reason(is_oom_or_budget: Bool) -> v2.std.node.Symbol {
   if is_oom_or_budget {
     frontier_probe_survey_host_oom_or_budget_reason
   } else {
@@ -343,7 +343,7 @@ fn frontier_probe_survey_host_failure_reason(is_oom_or_budget: Bool) -> Symbol {
   }
 }
 
-fn frontier_classify_rejection_reason(reason: Symbol) -> FrontierBlockerClass {
+fn frontier_classify_rejection_reason(reason: v2.std.node.Symbol) -> FrontierBlockerClass {
   if frontier_blocker_is_name_resolution_reason(reason: reason) {
     NameResolutionGap
   } else if frontier_blocker_is_upstream_semantic_marker_reason(reason: reason) {
@@ -411,13 +411,13 @@ fn frontier_blocker_class_matches(
   }
 }
 
-fn frontier_located_reason_is_stale_knowledge_attributed(symbol: Symbol) -> Bool {
+fn frontier_located_reason_is_stale_knowledge_attributed(symbol: v2.std.node.Symbol) -> Bool {
   symbol == gate_a_flip_probe_witness_std_dup_reason
 }
 
 fn frontier_upstream_semantic_refusal_located_reason(
   refusal: FrontierBlockerClass
-) -> Symbol {
+) -> v2.std.node.Symbol {
   match refusal {
     UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: name } => name
     _ => ^frontier_upstream_semantic_refusal_located_reason_mismatch_red_control

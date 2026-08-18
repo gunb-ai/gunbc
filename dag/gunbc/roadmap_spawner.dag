@@ -1,41 +1,41 @@
 module gunbc.roadmap_spawner
 
 
-fn element_nodes(e: SectionElement) -> List<RoadmapNode> {
+fn element_nodes(e: gunbc.roadmap_model.SectionElement) -> List<gunbc.roadmap_model.RoadmapNode> {
   match e {
     Prose { prose: _ } => []
     Group { group } => group.nodes
   }
 }
 
-fn element_edges(e: SectionElement) -> List<RoadmapEdge> {
+fn element_edges(e: gunbc.roadmap_model.SectionElement) -> List<gunbc.roadmap_model.RoadmapEdge> {
   match e {
     Prose { prose: _ } => []
     Group { group } => group.edges
   }
 }
 
-fn section_nodes(s: RoadmapSection) -> List<RoadmapNode> {
+fn section_nodes(s: gunbc.roadmap_document.RoadmapSection) -> List<gunbc.roadmap_model.RoadmapNode> {
   fold(s.elements, init: [], f: (acc, e) => concat(acc, element_nodes(e: e)))
 }
 
-fn section_edges(s: RoadmapSection) -> List<RoadmapEdge> {
+fn section_edges(s: gunbc.roadmap_document.RoadmapSection) -> List<gunbc.roadmap_model.RoadmapEdge> {
   fold(s.elements, init: [], f: (acc, e) => concat(acc, element_edges(e: e)))
 }
 
-fn doc_all_nodes(doc: RoadmapDocument) -> List<RoadmapNode> {
+fn doc_all_nodes(doc: gunbc.roadmap_document.RoadmapDocument) -> List<gunbc.roadmap_model.RoadmapNode> {
   let lane_nodes = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_nodes(s: s)))
   fold(doc.sections, init: lane_nodes, f: (acc, s) => concat(acc, section_nodes(s: s)))
 }
 
-fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
+fn doc_all_edges(doc: gunbc.roadmap_document.RoadmapDocument) -> List<gunbc.roadmap_model.RoadmapEdge> {
   let lane_edges = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_edges(s: s)))
   fold(doc.sections, init: lane_edges, f: (acc, s) => concat(acc, section_edges(s: s)))
 }
 
 data roadmap_rendered_containment_note: String = "RENDERED IS CONTAINED IN DECLARED-OR-DERIVED, witnessed — membership is the WHOLE NODE VALUE, never the identity alone, and the traversal is doc_all_nodes, the one canonical document walker. The 2026-07-31 operator verdict on gunbc#7489 found the guarantee-ladder nodes rendered from a section-local list outside declared_roadmap_nodes() — a second roadmap universe: uncounted, receipt-unreachable, invisible to active_roadmap_nodes() and the identity/endpoint/acyclicity witnesses. The section was deleted and the nodes joined the declared graph; these predicates close the CLASS: every node any rendered document carries must be value-equal to a declared node or a projection-derived closing-contract task. Two refused first cuts are recorded because each was a review catch of this wall violating the laws it enforces: identity-only membership (review 45406 — an altered copy reusing a declared identity would pass as sanctioned while forking content, the drifting duplicate authority DESIGN 3 forbids) and a hand-rolled document walker beside doc_all_nodes (review 45412 — a traversal fork; the predicates live HERE, in the walker's module, because roadmap_spawner already imports roadmap_authority and the reverse import would cycle). Two RED probes, each a synthetic document the wall must red: a fresh-identity ghost, and an altered copy of a real declared node (same identity, one field changed — derived from the canonical node so the probe duplicates no literals). Neither probe node enters the declared graph; the altered-copy probe returns 0 if its anchor node disappears, failing its witness loudly rather than vacuously passing."
 
-fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
+fn roadmap_rendered_ghost_count(doc: gunbc.roadmap_document.RoadmapDocument) -> Int {
   match closing_contract_task_pairs_projection() {
     ClosingContractTaskPairsProjectionRefused { detail: _ } =>
       count(doc_all_nodes(doc: doc))
@@ -47,12 +47,12 @@ fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
   }
 }
 
-fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
+fn ghost_probe_document(ghost: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_document.RoadmapDocument {
   let base = roadmap_authority_for(focus: NoFocus)
-  RoadmapDocument {
+  gunbc.roadmap_document.RoadmapDocument {
     preamble: base.preamble,
     lead_lanes: base.lead_lanes,
-    sections: concat(base.sections, [RoadmapSection {
+    sections: concat(base.sections, [gunbc.roadmap_document.RoadmapSection {
       title: "SYNTHETIC ghost section (test probe only)",
       elements: [section_group(label: "", nodes: [ghost], edges: [])],
     }]),
@@ -80,7 +80,7 @@ fn roadmap_ghost_node_red_probe_count() -> Int {
 fn roadmap_altered_copy_red_probe_count() -> Int {
   match declared_roadmap_nodes() |> filter(n => (n.node as String) == "ladder-claims-carrier") |> first {
     Absent => 0
-    Present { value: n } => roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: RoadmapNode {
+    Present { value: n } => roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: gunbc.roadmap_model.RoadmapNode {
       identity: n.identity,
       node: n.node,
       line: n.line,
@@ -95,28 +95,28 @@ fn roadmap_altered_copy_red_probe_count() -> Int {
 
 data spawn_frontier_completion_note: String = "Work-item acceptance is separate from implementation evidence. A merged PR or authored/ticket checkbox moves the page status to review, but never completes the node, removes its dispatch action, or unblocks a dependent node. Only an accepting operator sign-off completes work. Supersession is a separate terminal disposition: it never enters the done bucket, but it closes dependency edges because the named successor owns the work. The same acceptance and dependency-closure predicates drive ready, upcoming, done, and unmet-parent projections."
 
-fn node_is_accepted(n: RoadmapNode) -> Bool {
+fn node_is_accepted(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
   signoff_accepts(s: n.signoff)
 }
 
-fn node_is_complete(n: RoadmapNode) -> Bool {
+fn node_is_complete(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
   node_is_accepted(n: n)
 }
 
-fn frontier_node_is_superseded(n: RoadmapNode) -> Bool {
+fn frontier_node_is_superseded(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
   !(item_superseded_by(item: n.line) == "")
 }
 
-fn node_closes_dependency(n: RoadmapNode) -> Bool {
+fn node_closes_dependency(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
   node_is_accepted(n: n) || frontier_node_is_superseded(n: n)
 }
 
-fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> Bool {
+fn node_dep_done(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, id: gunbc.roadmap_model.RoadmapNodeId) -> Bool {
   all(roadmap_parent_ids(edges: edges, node: id), pid =>
     any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
 }
 
-fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
+fn node_is_spawnable(n: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> Bool {
   match n.sizing {
     Unsized => false
     Sized { intricacy: _, volume: _, repo: _, acceptance: _ } =>
@@ -126,27 +126,27 @@ fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<Roadm
   }
 }
 
-fn next_spawnable(doc: RoadmapDocument, merged: List<Int>) -> List<RoadmapNode> {
+fn next_spawnable(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>) -> List<gunbc.roadmap_model.RoadmapNode> {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   nodes |> filter(n => node_is_spawnable(n: n, nodes: nodes, edges: edges))
 }
 
-fn node_is_sized(n: RoadmapNode) -> Bool {
+fn node_is_sized(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
   match n.sizing {
     Unsized => false
     Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => true
   }
 }
 
-fn node_is_upcoming(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
+fn node_is_upcoming(n: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> Bool {
   node_is_sized(n: n)
     && !node_is_complete(n: n)
     && !frontier_node_is_superseded(n: n)
     && !node_dep_done(nodes: nodes, edges: edges, id: n.node)
 }
 
-fn node_is_frontier_done(n: RoadmapNode) -> Bool {
+fn node_is_frontier_done(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
   node_is_sized(n: n)
     && node_is_complete(n: n)
     && !frontier_node_is_superseded(n: n)
@@ -159,7 +159,7 @@ type SpawnFrontier {
   superseded: List<gunbc.roadmap_model.RoadmapNode>
 }
 
-fn spawn_frontier(doc: RoadmapDocument, merged: List<Int>) -> SpawnFrontier {
+fn spawn_frontier(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>) -> SpawnFrontier {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   SpawnFrontier {
@@ -174,7 +174,7 @@ fn json_str(s: String) -> String {
   quote_json_string(s: s)
 }
 
-fn intricacy_str(i: Intricacy) -> String {
+fn intricacy_str(i: gunbc.roadmap_model.Intricacy) -> String {
   match i {
     IntricacyLow => "low"
     IntricacyMedium => "medium"
@@ -182,7 +182,7 @@ fn intricacy_str(i: Intricacy) -> String {
   }
 }
 
-fn volume_str(v: Volume) -> String {
+fn volume_str(v: gunbc.roadmap_model.Volume) -> String {
   match v {
     VolumeSmall => "small"
     VolumeMedium => "medium"
@@ -190,7 +190,7 @@ fn volume_str(v: Volume) -> String {
   }
 }
 
-fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
+fn acceptance_json_value(a: gunbc.roadmap_model.Acceptance, line: gunbc.roadmap_status.RoadmapItem) -> extdeps.languages.json.emit.JsonValue {
   match a {
     PrsMerged => match line {
       DerivableLine { prs, title: _, description: _ } =>
@@ -226,7 +226,7 @@ fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
   }
 }
 
-fn node_title(item: RoadmapItem) -> String {
+fn node_title(item: gunbc.roadmap_status.RoadmapItem) -> String {
   match item {
     DerivableLine { prs: _, title, description: _ } => title
     AuthoredLine { done: _, content } => content
@@ -236,7 +236,7 @@ fn node_title(item: RoadmapItem) -> String {
   }
 }
 
-fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
+fn node_plan_doc_json(carriers: List<gunbc.roadmap_model.Pointer>) -> extdeps.languages.json.emit.JsonValue {
   let plans = carriers |> filter(p => p.label == "plan")
   if count(plans) > 0 {
     fold(plans, init: json_null(), f: (acc, p) => match acc {
@@ -248,7 +248,7 @@ fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
   }
 }
 
-fn node_json_value(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> JsonValue {
+fn node_json_value(n: gunbc.roadmap_model.RoadmapNode, intricacy: gunbc.roadmap_model.Intricacy, volume: gunbc.roadmap_model.Volume, repo: String, acceptance: gunbc.roadmap_model.Acceptance, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> extdeps.languages.json.emit.JsonValue {
   let parent_id_value = match roadmap_primary_parent(edges: edges, node: n.node) {
     TopLevel => json_null()
     UnderParent { parent: pid } => json_string(s: pid)
@@ -269,16 +269,16 @@ fn node_json_value(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: S
   ])
 }
 
-fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> String {
+fn node_json(n: gunbc.roadmap_model.RoadmapNode, intricacy: gunbc.roadmap_model.Intricacy, volume: gunbc.roadmap_model.Volume, repo: String, acceptance: gunbc.roadmap_model.Acceptance, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> String {
   serialize_json(v: node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges))
 }
 
-fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> List<RoadmapNodeId> {
+fn node_unmet_parent_ids(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, id: gunbc.roadmap_model.RoadmapNodeId) -> List<gunbc.roadmap_model.RoadmapNodeId> {
   roadmap_parent_ids(edges: edges, node: id)
     |> filter(pid => !any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
 }
 
-fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {
+fn ready_array_json(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> String {
   serialize_json(v: json_array(elements: nodes |> map(n => match n.sizing {
     Unsized => json_object(members: [])
     Sized { intricacy, volume, repo, acceptance } =>
@@ -286,7 +286,7 @@ fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Strin
   })))
 }
 
-fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_commit: String) -> String {
+fn roadmap_spawn_request_json(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>, anchor_commit: String) -> String {
   let nodes = next_spawnable(doc: doc, merged: merged)
   let edges = doc_all_edges(doc: doc)
   serialize_json(v: json_object(members: [
@@ -300,7 +300,7 @@ fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_co
   ]))
 }
 
-fn upcoming_node_json(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
+fn upcoming_node_json(n: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>) -> String {
   let unmet = node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node)
   serialize_json(v: json_object(members: [
     json_kv(key: "node_id", value: json_string(s: n.node)),
@@ -309,7 +309,7 @@ fn upcoming_node_json(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<Road
   ]))
 }
 
-fn upcoming_array_json(frontier_upcoming: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
+fn upcoming_array_json(frontier_upcoming: List<gunbc.roadmap_model.RoadmapNode>, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>) -> String {
   serialize_json(v: json_array(elements: frontier_upcoming |> map(n =>
     json_object(members: [
       json_kv(key: "node_id", value: json_string(s: n.node)),
@@ -319,13 +319,13 @@ fn upcoming_array_json(frontier_upcoming: List<RoadmapNode>, nodes: List<Roadmap
   )))
 }
 
-fn done_ids_json(frontier_done: List<RoadmapNode>) -> String {
+fn done_ids_json(frontier_done: List<gunbc.roadmap_model.RoadmapNode>) -> String {
   json_str_list(items: frontier_done |> map(n => n.node))
 }
 
 data dispatch_brief_template: String = "Node: <node_id>\nWhy now: <displaced cost / what it unblocks>\nNon-goals: <explicitly out of scope>\nM0 evidence: <prove current state / reproduce the gap>\nM1 smallest change: <first implementation slice>\nM2 RED control: <perturbation that goes red>\nM3 green receipt: <execution on the real path>\nStop and return if: <named hand-back conditions>\nFiles likely touched: <paths>\nCommands to run: <repro/verify commands>\nExpected artifact: <what comes back even if the fix does not land>"
 
-fn roadmap_dispatch_json_value(doc: RoadmapDocument, merged: List<Int>) -> JsonValue {
+fn roadmap_dispatch_json_value(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>) -> extdeps.languages.json.emit.JsonValue {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   let frontier = spawn_frontier(doc: doc, merged: merged)
@@ -353,11 +353,11 @@ fn roadmap_dispatch_json_value(doc: RoadmapDocument, merged: List<Int>) -> JsonV
   ])
 }
 
-fn roadmap_dispatch_json(doc: RoadmapDocument, merged: List<Int>) -> String {
+fn roadmap_dispatch_json(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>) -> String {
   serialize_json(v: roadmap_dispatch_json_value(doc: doc, merged: merged))
 }
 
-fn roadmap_dispatch_file_content_for_projection(proj: RoadmapAuthorityProjection) -> String {
+fn roadmap_dispatch_file_content_for_projection(proj: gunbc.roadmap_authority.RoadmapAuthorityProjection) -> String {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       serialize_json(v: json_object(members: [

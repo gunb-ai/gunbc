@@ -1,7 +1,7 @@
 module v2.compiler.materialization_carriers
 
 
-data v2_compiler_materialization_memo_gate_predicate_contract: Disposition = Terminal {
+data v2_compiler_materialization_memo_gate_predicate_contract: std.disposition.Disposition = Terminal {
   reason: "Structural coproduct reader over std.realization.Materialization (materialization_allows_memo_store — Memoize => store permitted, Recompute/Share => refused) — closed by the three declared Materialization variants; .dag authority for parse_table_lookup/insert and cached_stage_governed; discriminating corpus: parse_table_memo_governed_witness_test.dag + compiler_materialization_witness_test.dag."
 }
 
@@ -9,7 +9,7 @@ data v2_compiler_materialization_note: String = "The .dag-substrate demonstratio
 
 data materialization_carriers_tail_probe_note: String = "TAIL probe 2026-07-17 (cssl_assemble, smart-newt-39): execution-measured Gate-A-shaped rustc refusal (UNRESOLVED_CompilerError on emitter Rc/Optional surface) — NOT materialize-spine. Frontier migration_trigger reclassified to ^migrate_when_closure_self_emits_cargo_green (#6775 lane). Receipt: TSV deleted 2026-08-16 (operator ruling: delete anything not actively derived)."
 
-fn materialization_allows_memo_store(m: Materialization) -> Bool {
+fn materialization_allows_memo_store(m: std.realization.Materialization) -> Bool {
   match m {
     Memoize => true
     Recompute => false
@@ -28,27 +28,27 @@ fn v2_compile_process_site() -> List<std.materialization_ladder.Frame> {
 data parse_table_memo_demand_identity: String = "parse-nonterminal-memo"
 data compile_stage_memo_demand_identity: String = "compile-pipeline-stage"
 
-fn parse_table_memo_demand() -> FrameDemand {
-  FrameDemand {
+fn parse_table_memo_demand() -> std.materialization_ladder.FrameDemand {
+  std.materialization_ladder.FrameDemand {
     identity: parse_table_memo_demand_identity,
     site: v2_compile_process_site(),
     nature: PureComputation
   }
 }
 
-fn compile_stage_memo_demand() -> FrameDemand {
-  FrameDemand {
+fn compile_stage_memo_demand() -> std.materialization_ladder.FrameDemand {
+  std.materialization_ladder.FrameDemand {
     identity: compile_stage_memo_demand_identity,
     site: v2_compile_process_site(),
     nature: PureComputation
   }
 }
 
-fn v2_compiler_materialization_demands() -> List<FrameDemand> {
+fn v2_compiler_materialization_demands() -> List<std.materialization_ladder.FrameDemand> {
   [parse_table_memo_demand(), compile_stage_memo_demand()]
 }
 
-fn parse_table_memo_provider() -> CacheProvider {
+fn parse_table_memo_provider() -> std.materialization_ladder.CacheProvider {
   provider_from_catalog(
     facts: parse_table_memo_facts,
     scope: v2_compile_process_site(),
@@ -56,7 +56,7 @@ fn parse_table_memo_provider() -> CacheProvider {
   )
 }
 
-fn compile_stage_memo_provider() -> CacheProvider {
+fn compile_stage_memo_provider() -> std.materialization_ladder.CacheProvider {
   provider_from_catalog(
     facts: compile_stage_memo_facts,
     scope: v2_compile_process_site(),
@@ -64,23 +64,23 @@ fn compile_stage_memo_provider() -> CacheProvider {
   )
 }
 
-fn v2_compiler_cache_providers() -> List<CacheProvider> {
+fn v2_compiler_cache_providers() -> List<std.materialization_ladder.CacheProvider> {
   [parse_table_memo_provider(), compile_stage_memo_provider()]
 }
 
-fn parse_table_memo_provider_id() -> CacheInterfaceId {
+fn parse_table_memo_provider_id() -> std.cache_identity.CacheInterfaceId {
   extdeps.realization.parse_table_memo.parse_table_memo_id
 }
 
-fn compile_stage_memo_provider_id() -> CacheInterfaceId {
+fn compile_stage_memo_provider_id() -> std.cache_identity.CacheInterfaceId {
   extdeps.realization.compile_stage_memo.compile_stage_memo_id
 }
 
-fn parse_table_memo_artifact_kind() -> ArtifactKindId {
+fn parse_table_memo_artifact_kind() -> std.cache_identity.ArtifactKindId {
   parse_table_artifact_kind
 }
 
-fn v2_compiler_materialization_verdicts() -> List<LadderVerdict> {
+fn v2_compiler_materialization_verdicts() -> List<std.materialization_ladder.LadderVerdict> {
   materialization_ladder(
     demands: v2_compiler_materialization_demands(),
     providers: v2_compiler_cache_providers(),
@@ -96,11 +96,11 @@ fn v2_compiler_materialization_ladder_holds() -> Bool {
   )
 }
 
-fn parse_table_memo_materialization() -> Materialization {
+fn parse_table_memo_materialization() -> std.realization.Materialization {
   Memoize
 }
 
-fn compile_stage_memo_materialization() -> Materialization {
+fn compile_stage_memo_materialization() -> std.realization.Materialization {
   Memoize
 }
 
@@ -130,7 +130,7 @@ fn cached_stage_governed<A, B>(
 }
 
 fn parse_table_realized_step() -> RealizedStep<Nano> {
-  RealizedStep {
+  std.realization.RealizedStep {
     shape: ReadEffect,
     placement: LocalInProcess,
     materialization: parse_table_memo_materialization(),
@@ -139,7 +139,7 @@ fn parse_table_realized_step() -> RealizedStep<Nano> {
 }
 
 fn compile_stage_realized_step() -> RealizedStep<Nano> {
-  RealizedStep {
+  std.realization.RealizedStep {
     shape: ReadEffect,
     placement: LocalInProcess,
     materialization: compile_stage_memo_materialization(),
@@ -188,9 +188,9 @@ fn v2_compile_run_frame(name: String) -> std.materialization_ladder.Frame {
   std.materialization_ladder.Frame { name: name, kind: SharedStateFrame }
 }
 
-fn parse_table_memo_plural_demands() -> List<FrameDemand> {
+fn parse_table_memo_plural_demands() -> List<std.materialization_ladder.FrameDemand> {
   [
-    FrameDemand {
+    std.materialization_ladder.FrameDemand {
       identity: parse_table_memo_demand_identity,
       site: [
         v2_compile_workflow_frame(),
@@ -199,7 +199,7 @@ fn parse_table_memo_plural_demands() -> List<FrameDemand> {
       ],
       nature: PureComputation
     },
-    FrameDemand {
+    std.materialization_ladder.FrameDemand {
       identity: parse_table_memo_demand_identity,
       site: [
         v2_compile_workflow_frame(),
@@ -211,7 +211,7 @@ fn parse_table_memo_plural_demands() -> List<FrameDemand> {
   ]
 }
 
-fn parse_table_memo_plural_verdicts(providers: List<CacheProvider>) -> List<LadderVerdict> {
+fn parse_table_memo_plural_verdicts(providers: List<std.materialization_ladder.CacheProvider>) -> List<std.materialization_ladder.LadderVerdict> {
   materialization_ladder(
     demands: parse_table_memo_plural_demands(),
     providers: providers,

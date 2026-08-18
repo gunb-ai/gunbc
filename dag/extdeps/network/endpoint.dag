@@ -1,8 +1,8 @@
 module extdeps.network.endpoint
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "www.rfc-editor.org/rfc/rfc3986#section-3.2.2",
   }
@@ -14,17 +14,17 @@ type NetworkHost =
     HostByName { name: extdeps.dns.domain_name.HostName }
   | HostByAddress { address: extdeps.network.address.IpAddress }
 
-fn host_by_name(name: HostName) -> NetworkHost {
+fn host_by_name(name: extdeps.dns.domain_name.HostName) -> NetworkHost {
   HostByName { name: name }
 }
 
-fn host_by_ipv4(addr: Ipv4Address) -> NetworkHost {
+fn host_by_ipv4(addr: extdeps.network.ipv4.Ipv4Address) -> NetworkHost {
   HostByAddress { address: ip_v4(addr: addr) }
 }
 
-fn render_network_host(host: NetworkHost) -> NonEmptyStr? {
+fn render_network_host(host: NetworkHost) -> std.types.NonEmptyStr? {
   match host {
-    HostByName { name: n } => Present { value: domain_name_wire(name: n.name) as NonEmptyStr }
+    HostByName { name: n } => Present { value: domain_name_wire(name: n.name) as std.types.NonEmptyStr }
     HostByAddress { address: a } => render_ip_address(addr: a)
   }
 }
@@ -35,6 +35,6 @@ type SocketAddress {
   port: std.types.Port
 }
 
-fn socket_address(host: NetworkHost, port: Port) -> SocketAddress {
+fn socket_address(host: NetworkHost, port: std.types.Port) -> SocketAddress {
   SocketAddress { host: host, port: port }
 }

@@ -1,23 +1,23 @@
 module extdeps.llm.cursor_sdk_facts
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "cursor.com/docs/sdk/typescript"
   }
 }
 
-data cursor_sdk_probe_receipt_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data cursor_sdk_probe_receipt_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "registry.npmjs.org/@cursor/sdk"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.llm.cursor_sdk_facts",
       decl_name: "CursorSdkPackageClosure",
       field: WholeDeclaration
@@ -69,13 +69,13 @@ type CursorSdkLocalAccountUsageUnobservable {
   missing_capability: std.types.NonEmptyStr
 }
 
-data cursor_sdk_local_usage_missing_capability: NonEmptyStr = "cursor-sdk-local-account-usage-api" as NonEmptyStr
+data cursor_sdk_local_usage_missing_capability: std.types.NonEmptyStr = "cursor-sdk-local-account-usage-api" as std.types.NonEmptyStr
 
-data cursor_sdk_local_limit_standing_reason: NonEmptyStr = "cursor local account-level usage is upstream-unobservable (cursor-sdk-local-account-usage-api)" as NonEmptyStr
+data cursor_sdk_local_limit_standing_reason: std.types.NonEmptyStr = "cursor local account-level usage is upstream-unobservable (cursor-sdk-local-account-usage-api)" as std.types.NonEmptyStr
 
 fn cursor_sdk_local_account_usage_unobservable() -> CursorSdkLocalAccountUsageUnobservable {
   CursorSdkLocalAccountUsageUnobservable {
-    reason: "Cursor SDK local runtime has no account-level remaining-capacity API; usage is per-agent and cloud-only" as NonEmptyStr,
+    reason: "Cursor SDK local runtime has no account-level remaining-capacity API; usage is per-agent and cloud-only" as std.types.NonEmptyStr,
     missing_capability: cursor_sdk_local_usage_missing_capability,
   }
 }
@@ -87,11 +87,11 @@ type CursorSdkLocalProvisionGap {
   missing_capability: std.types.NonEmptyStr
 }
 
-data cursor_sdk_local_provision_missing_capability: NonEmptyStr = "cursor-sdk-local-package-provisioned" as NonEmptyStr
+data cursor_sdk_local_provision_missing_capability: std.types.NonEmptyStr = "cursor-sdk-local-package-provisioned" as std.types.NonEmptyStr
 
 fn cursor_sdk_local_package_unprovisioned_on_deployed_host() -> CursorSdkLocalProvisionGap {
   CursorSdkLocalProvisionGap {
-    reason: "Provider-interface audit §7: @cursor/sdk 1.0.26 inspected in disposable probe only; not admitted in srv1 runtime dependency closure" as NonEmptyStr,
+    reason: "Provider-interface audit §7: @cursor/sdk 1.0.26 inspected in disposable probe only; not admitted in srv1 runtime dependency closure" as std.types.NonEmptyStr,
     missing_capability: cursor_sdk_local_provision_missing_capability,
   }
 }

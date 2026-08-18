@@ -1,7 +1,7 @@
 module gunbc.scm_compatibility.git
 
 
-data git_compatibility_binding_note: NonEmptyStr = "The Git R1 handler consumes Git's own decoded projection, independent read-back, and exact-old-OID transition model. GitObjectId, GitRefName, tree/index/worktree facts, and unsupported-boundary rows remain in GitCompatibilityReceipt; the common projection contains no Git object, ref, commit, or branch type. CompatibilityAdvanceModeled is deliberately weaker than P3's executed-and-read-back transition receipt."
+data git_compatibility_binding_note: std.types.NonEmptyStr = "The Git R1 handler consumes Git's own decoded projection, independent read-back, and exact-old-OID transition model. GitObjectId, GitRefName, tree/index/worktree facts, and unsupported-boundary rows remain in GitCompatibilityReceipt; the common projection contains no Git object, ref, commit, or branch type. CompatibilityAdvanceModeled is deliberately weaker than P3's executed-and-read-back transition receipt."
 
 type GitCompatibilityReceipt {
   target: extdeps.git.object_store.GitRefName
@@ -89,7 +89,7 @@ fn git_compatibility_binding_outcome_fold<R>(
 
 fn git_compatibility_object_refusal(
   purpose: GitCompatibilityObjectPurpose,
-  lookup: ObjectLookupResult,
+  lookup: extdeps.git.object_store.ObjectLookupResult,
 ) -> GitCompatibilityRefusal {
   match lookup {
     ObjectFound { stored } =>
@@ -123,12 +123,12 @@ fn git_compatibility_object_refusal(
 }
 
 fn git_compatibility_bind_commit(
-  repository: GitRepositoryState,
-  tree: GitObjectId,
-  read_back: GitR0ReadBackObservation,
-  target: GitRefName,
-  expected_generation: GitObjectId,
-  proposed_generation: GitObjectId,
+  repository: extdeps.git.object_store.GitRepositoryState,
+  tree: extdeps.git.object_store.GitObjectId,
+  read_back: extdeps.git.object_store.GitR0ReadBackObservation,
+  target: extdeps.git.object_store.GitRefName,
+  expected_generation: extdeps.git.object_store.GitObjectId,
+  proposed_generation: extdeps.git.object_store.GitObjectId,
 ) -> GitCompatibilityBindingOutcome {
   match git_project_repository(
     repo: repository,
@@ -260,7 +260,7 @@ fn git_compatibility_bind_commit(
 }
 
 fn git_compatibility_generation_wrong_kind(
-  stored: StoredObject,
+  stored: extdeps.git.object_store.StoredObject,
 ) -> GitCompatibilityBindingOutcome {
   GitCompatibilityBindingRefused {
     cause: GitCompatibilityObjectWrongKind {
@@ -271,11 +271,11 @@ fn git_compatibility_generation_wrong_kind(
 }
 
 fn git_compatibility_bind(
-  repository: GitRepositoryState,
-  read_back: GitR0ReadBackObservation,
-  target: GitRefName,
-  expected_generation: GitObjectId,
-  proposed_generation: GitObjectId,
+  repository: extdeps.git.object_store.GitRepositoryState,
+  read_back: extdeps.git.object_store.GitR0ReadBackObservation,
+  target: extdeps.git.object_store.GitRefName,
+  expected_generation: extdeps.git.object_store.GitObjectId,
+  proposed_generation: extdeps.git.object_store.GitObjectId,
 ) -> GitCompatibilityBindingOutcome {
   match git_lookup_object(
     repo: repository,
@@ -284,7 +284,7 @@ fn git_compatibility_bind(
     ObjectFound { stored } =>
       store_object_fold(
         object: stored.object,
-        fold: StoreObjectFold {
+        fold: extdeps.git.object_store.StoreObjectFold {
           blob: fn(_) {
             git_compatibility_generation_wrong_kind(stored: stored)
           },
@@ -317,9 +317,9 @@ fn git_compatibility_bind(
 }
 
 fn git_compatibility_octets_identity(
-  tag: NonEmptyStr,
+  tag: std.types.NonEmptyStr,
   octets: List<std.integer.UInt8>,
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: octets
@@ -333,9 +333,9 @@ fn git_compatibility_octets_identity(
 }
 
 fn git_compatibility_bytes_identity(
-  tag: NonEmptyStr,
+  tag: std.types.NonEmptyStr,
   bytes: Bytes,
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   git_compatibility_octets_identity(
     tag: tag,
     octets: bytes_octets(b: bytes),
@@ -343,8 +343,8 @@ fn git_compatibility_bytes_identity(
 }
 
 fn git_compatibility_object_id_identity(
-  oid: GitObjectId,
-) -> Fnv1a64Structural {
+  oid: extdeps.git.object_store.GitObjectId,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_text(
     tag: "git-object-id",
     value: git_object_id_wire_hex(oid: oid) as String,
@@ -352,8 +352,8 @@ fn git_compatibility_object_id_identity(
 }
 
 fn git_compatibility_object_format_identity(
-  format: GitObjectFormat,
-) -> Fnv1a64Structural {
+  format: extdeps.git.object_store.GitObjectFormat,
+) -> std.content_hash.Fnv1a64Structural {
   let label = match format {
     GitObjectFormatSha1 => "sha1"
     GitObjectFormatSha256 => "sha256"
@@ -365,8 +365,8 @@ fn git_compatibility_object_format_identity(
 }
 
 fn git_compatibility_tree_wire_entry_identity(
-  entry: GitTreeWireEntry,
-) -> Fnv1a64Structural {
+  entry: extdeps.git.object_store.GitTreeWireEntry,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "git-tree-wire-entry",
     members: [
@@ -388,8 +388,8 @@ fn git_compatibility_tree_wire_entry_identity(
 }
 
 fn git_compatibility_ref_target_identity(
-  target: RefTarget,
-) -> Fnv1a64Structural {
+  target: extdeps.git.object_store.RefTarget,
+) -> std.content_hash.Fnv1a64Structural {
   match target {
     DirectTarget { oid } =>
       compatibility_identity_sequence(
@@ -405,8 +405,8 @@ fn git_compatibility_ref_target_identity(
 }
 
 fn git_compatibility_ref_identity(
-  record: GitRefRecord,
-) -> Fnv1a64Structural {
+  record: extdeps.git.object_store.GitRefRecord,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "git-ref",
     members: [
@@ -420,8 +420,8 @@ fn git_compatibility_ref_identity(
 }
 
 fn git_compatibility_tree_mode_identity(
-  mode: GitTreeMode,
-) -> Fnv1a64Structural {
+  mode: extdeps.git.object_store.GitTreeMode,
+) -> std.content_hash.Fnv1a64Structural {
   let label = match mode {
     GitRegularBlobMode => "regular"
     GitExecutableBlobMode => "executable"
@@ -436,8 +436,8 @@ fn git_compatibility_tree_mode_identity(
 }
 
 fn git_compatibility_index_stage_identity(
-  stage: GitIndexStage,
-) -> Fnv1a64Structural {
+  stage: extdeps.git.object_store.GitIndexStage,
+) -> std.content_hash.Fnv1a64Structural {
   let label = match stage {
     GitIndexStageNormal => "normal"
     GitIndexStageBase => "base"
@@ -451,8 +451,8 @@ fn git_compatibility_index_stage_identity(
 }
 
 fn git_compatibility_index_entry_identity(
-  entry: GitIndexEntry,
-) -> Fnv1a64Structural {
+  entry: extdeps.git.object_store.GitIndexEntry,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "git-index-entry",
     members: [
@@ -468,8 +468,8 @@ fn git_compatibility_index_entry_identity(
 }
 
 fn git_compatibility_worktree_entry_identity(
-  entry: GitWorktreeEntry,
-) -> Fnv1a64Structural {
+  entry: extdeps.git.object_store.GitWorktreeEntry,
+) -> std.content_hash.Fnv1a64Structural {
   match entry {
     GitWorktreeRegular { path, executable, content } =>
       compatibility_identity_sequence(
@@ -518,11 +518,11 @@ fn git_compatibility_worktree_entry_identity(
 }
 
 fn git_compatibility_unavailable_identity(
-  unavailable: GitUnavailableObject,
-) -> Fnv1a64Structural {
+  unavailable: extdeps.git.object_store.GitUnavailableObject,
+) -> std.content_hash.Fnv1a64Structural {
   git_unavailable_object_fold(
     unavailable: unavailable,
-    fold: GitUnavailableObjectFold {
+    fold: extdeps.git.object_store.GitUnavailableObjectFold {
       promisor: fn(oid, promisor) {
         compatibility_identity_sequence(
           tag: "git-promisor-unavailable",
@@ -558,8 +558,8 @@ fn git_compatibility_unavailable_identity(
 }
 
 fn git_compatibility_observed_state_identity(
-  observation: GitR0ReadBackObservation,
-) -> Fnv1a64Structural {
+  observation: extdeps.git.object_store.GitR0ReadBackObservation,
+) -> std.content_hash.Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "git-readback-state-v1",
     members: [
@@ -611,8 +611,8 @@ fn git_compatibility_observed_state_identity(
   )
 }
 
-fn git_compatibility_fidelity() -> CompatibilityFidelityProfile {
-  CompatibilityFidelityProfile {
+fn git_compatibility_fidelity() -> gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
+  gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
     endpoint_state: CompatibilityFidelityPreserved,
     upstream_change_evidence: CompatibilityFidelityDowngraded {
       cause: "an exact Git endpoint and history do not recover an authored source operation",
@@ -633,14 +633,14 @@ fn git_compatibility_fidelity() -> CompatibilityFidelityProfile {
 
 fn git_compatibility_projection_receipt(
   receipt: GitCompatibilityReceipt,
-) -> CompatibilityProjectionReceipt {
-  let generation = git_object_id_wire_hex(oid: receipt.generation) as NonEmptyStr
+) -> gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
+  let generation = git_object_id_wire_hex(oid: receipt.generation) as std.types.NonEmptyStr
   let state = git_compatibility_observed_state_identity(
     observation: receipt.read_back,
   )
-  CompatibilityProjectionReceipt {
+  gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
     realization: "git-r0",
-    target: receipt.target as NonEmptyStr,
+    target: receipt.target as std.types.NonEmptyStr,
     generation_evidence: generation,
     projection: compatibility_projection_handle(
       realization: "git-r0",
@@ -659,7 +659,7 @@ fn git_compatibility_projection_receipt(
 }
 
 fn git_compatibility_projection_handler() -> CompatibilityProjectionHandler<GitCompatibilityReceipt> {
-  CompatibilityProjectionHandler {
+  gunbc.scm_compatibility_shape.CompatibilityProjectionHandler {
     project: fn(receipt) {
       git_compatibility_projection_receipt(receipt: receipt)
     },

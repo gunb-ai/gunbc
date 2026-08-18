@@ -3,14 +3,14 @@ module extdeps.crm.salesforce_opportunity
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_opportunitystage.htm"
   }
 }
 
-data salesforce_opportunity_subject: Vendor<Securities> = salesforce
+data salesforce_opportunity_subject: Vendor<extdeps.securities.Securities> = salesforce
 
 data salesforce_opportunity_provenance_note: String = "Vocabulary facts live-fetched 2026-08-01 from the Salesforce Platform object reference (en-us, API version 252.0, read through the docs content endpoint get_document_content because the doc site shell is client-rendered): the Opportunity object page for StageName and the OpportunityStage object page (the anchor) for the stage row schema and the ForecastCategory value set. These are vocabulary facts about the upstream product's published surface -- no sales-process opinion lives in this module."
 

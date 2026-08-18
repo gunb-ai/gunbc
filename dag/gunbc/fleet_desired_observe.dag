@@ -11,7 +11,7 @@ module gunbc.fleet_desired_observe
 // routing), decode the advertised object id through the ONE untagged-hex decoder the
 // object-store authority provides, and refuse (typed cause, never a fabricated target)
 // on transport refusal, an unadvertised ref, or an undecodable advertisement.
-fn observe_fleet_desired_revision(repo: std.types.FilePath) -> FleetDesiredRevision {
+fn observe_fleet_desired_revision(repo: std.types.FilePath) -> gunbc.fleet_main_revision.FleetDesiredRevision {
   let read = git.Core.LsRemoteRefInRepo(repo: repo, remote: "origin", ref_name: fleet_desired_ref_name)
   if read.exit_code == 0 {
     let line = trim(s: read.advertised)
@@ -38,8 +38,8 @@ fn observe_fleet_desired_revision(repo: std.types.FilePath) -> FleetDesiredRevis
 // The local half of the comparison: what revision THIS host's deployed tree is at.
 // Absent (typed, located in the cause the caller renders) when the repo path is not a
 // git repository or HEAD does not decode — never a fabricated revision.
-fn observe_local_tree_revision(repo: std.types.FilePath) -> GitObjectId? {
-  let read = git.Core.RevParseInRepo(repo: repo, target: "HEAD" as GitRef)
+fn observe_local_tree_revision(repo: std.types.FilePath) -> extdeps.git.object_store.GitObjectId? {
+  let read = git.Core.RevParseInRepo(repo: repo, target: "HEAD" as std.types.GitRef)
   if read.exit_code == 0 {
     git_object_id_from_untagged_hex(hex: trim(s: read.revision))
   } else {

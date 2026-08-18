@@ -1,8 +1,8 @@
 module extdeps.llm.anthropic
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/plain_text_source_param.py"
   }
@@ -93,30 +93,30 @@ type AnthropicToolResultBlock
     }
   | AnthropicToolReferenceBlock { tool_name: String }
 
-data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<Disposition> = [
+data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<std.disposition.Disposition> = [
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "cache_control" } }
+    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "cache_control" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "citations" } }
+    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "citations" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicImageBlock", field: NamedField { field_name: "cache_control" } }
+    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicImageBlock", field: NamedField { field_name: "cache_control" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolReferenceBlock", field: NamedField { field_name: "cache_control" } }
+    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolReferenceBlock", field: NamedField { field_name: "cache_control" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "CacheControl", field: NamedField { field_name: "ttl" } }
+    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "CacheControl", field: NamedField { field_name: "ttl" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicDocumentBlock", field: WholeDeclaration }
+    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicDocumentBlock", field: WholeDeclaration }
   },
   Terminal {
     reason: "external_spec_watch: AnthropicSearchResultBlock optional fields track upstream Anthropic OpenAPI; no local construction dissolves this, re-justified by advisory if upstream drifts"
@@ -239,7 +239,7 @@ type AnthropicMessages200Body {
   container: Json?
 }
 
-data structural_coverage_gap_anthropic_messages_200_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_anthropic_messages_200_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "AnthropicMessages200Body" },
@@ -297,7 +297,7 @@ data structural_coverage_gap_anthropic_messages_200_residual: List<CoverageClosu
   }
 ]
 
-data rest_request_wire_serde_alignment_receipt: List<CoverageClosureEntry> = [
+data rest_request_wire_serde_alignment_receipt: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "llm.Anthropic.Messages" },
@@ -340,7 +340,7 @@ data rest_request_wire_serde_alignment_receipt: List<CoverageClosureEntry> = [
   }
 ]
 
-data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<CoverageClosureEntry> = [
+data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "ImageSource" },
@@ -351,7 +351,7 @@ data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<Cov
   }
 ]
 
-data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<CoverageClosureEntry> = [
+data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "llm.Anthropic.Messages" },

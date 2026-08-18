@@ -1,20 +1,20 @@
 module extdeps.bmc.webui.nbd_proxy_serve
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/openbmc/jsnbd"
   }
 }
 
-data bmcweb_session_token_env_ref: NonEmptyStr = concat("$", "BMCWEB_SESSION_TOKEN") as NonEmptyStr
+data bmcweb_session_token_env_ref: std.types.NonEmptyStr = concat("$", "BMCWEB_SESSION_TOKEN") as std.types.NonEmptyStr
 
 data srv3_nbd_proxy_local_port: Int = 10809
 
-data nbd_proxy_serve_systemd_realization_dissolution_trigger: Disposition = Scaffold {
+data nbd_proxy_serve_systemd_realization_dissolution_trigger: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.bmc.webui.nbd_proxy_serve",
     decl_name: "nbd_proxy_serve_websocat_argv",
     field: WholeDeclaration
@@ -29,17 +29,17 @@ type NbdProxyServeTransportIntent {
   local_nbd_port: Int
 }
 
-data nbd_proxy_serve_cited_tool_names: List<NonEmptyStr> = [
+data nbd_proxy_serve_cited_tool_names: List<std.types.NonEmptyStr> = [
   nbdkit_cli_tool.name,
   websocat_cli_tool.name,
   socat_cli_tool.name,
 ]
 
 fn nbd_proxy_serve_transport_intent(
-  bmc_host: NonEmptyStr,
-  session_token: NonEmptyStr,
-  ws_path: NonEmptyStr,
-  iso_path: NonEmptyStr,
+  bmc_host: std.types.NonEmptyStr,
+  session_token: std.types.NonEmptyStr,
+  ws_path: std.types.NonEmptyStr,
+  iso_path: std.types.NonEmptyStr,
   local_nbd_port: Int,
 ) -> NbdProxyServeTransportIntent {
   NbdProxyServeTransportIntent {
@@ -51,7 +51,7 @@ fn nbd_proxy_serve_transport_intent(
   }
 }
 
-fn nbd_proxy_serve_intent_of_virtual_media(vm: VirtualMediaIntent, params: NbdProxyWebsocatParams) -> NbdProxyServeTransportIntent {
+fn nbd_proxy_serve_intent_of_virtual_media(vm: extdeps.bmc.virtual_media.VirtualMediaIntent, params: extdeps.bmc.virtual_media.NbdProxyWebsocatParams) -> NbdProxyServeTransportIntent {
   NbdProxyServeTransportIntent {
     bmc_host: vm.bmc_host,
     session_token: params.session_token,
@@ -62,9 +62,9 @@ fn nbd_proxy_serve_intent_of_virtual_media(vm: VirtualMediaIntent, params: NbdPr
 }
 
 fn bmcweb_session_login_curl_args(
-  bmc_host: NonEmptyStr,
-  request_body_file: NonEmptyStr,
-  response_path: NonEmptyStr,
+  bmc_host: std.types.NonEmptyStr,
+  request_body_file: std.types.NonEmptyStr,
+  response_path: std.types.NonEmptyStr,
 ) -> List<String> {
   [
     "-sk",
@@ -81,9 +81,9 @@ fn bmcweb_session_login_curl_args(
 }
 
 fn bmcweb_session_login_argv(
-  bmc_host: NonEmptyStr,
-  request_body_file: NonEmptyStr,
-  response_path: NonEmptyStr,
+  bmc_host: std.types.NonEmptyStr,
+  request_body_file: std.types.NonEmptyStr,
+  response_path: std.types.NonEmptyStr,
 ) -> List<String> {
   fold(
     bmcweb_session_login_curl_args(
@@ -96,16 +96,16 @@ fn bmcweb_session_login_argv(
   )
 }
 
-fn nbd_proxy_serve_session_fingerprint() -> NonEmptyStr {
-  "gunbc-nbd-proxy" as NonEmptyStr
+fn nbd_proxy_serve_session_fingerprint() -> std.types.NonEmptyStr {
+  "gunbc-nbd-proxy" as std.types.NonEmptyStr
 }
 
-fn nbd_proxy_serve_nbdkit_unit_name(lease_key: NonEmptyStr) -> NonEmptyStr {
-  concat(concat("nbd-proxy-", lease_key as String), "-nbdkit") as NonEmptyStr
+fn nbd_proxy_serve_nbdkit_unit_name(lease_key: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
+  concat(concat("nbd-proxy-", lease_key as String), "-nbdkit") as std.types.NonEmptyStr
 }
 
-fn nbd_proxy_serve_websocat_unit_name(lease_key: NonEmptyStr) -> NonEmptyStr {
-  concat(concat("nbd-proxy-", lease_key as String), "-ws") as NonEmptyStr
+fn nbd_proxy_serve_websocat_unit_name(lease_key: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
+  concat(concat("nbd-proxy-", lease_key as String), "-ws") as std.types.NonEmptyStr
 }
 
 fn nbd_proxy_serve_nbdkit_argv(intent: NbdProxyServeTransportIntent) -> List<String> {

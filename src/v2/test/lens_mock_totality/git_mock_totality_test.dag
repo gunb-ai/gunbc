@@ -1,7 +1,7 @@
 module v2.test.lens_mock_totality.git_mock_totality
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedGitMock {
   tag: v2.std.node.Symbol
@@ -11,7 +11,7 @@ data git_red_omit_keys: List<String> = ["git.Core.DiffNameOnlyMerge"]
 
 data git_phase3b_red_omit_keys: List<String> = ["git.Inspect.ShowTree"]
 
-fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock> {
+fn materialize_git_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedGitMock> {
   if case.operation_key == "git.Inspect.Toplevel" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_toplevel })
   } else if case.operation_key == "git.Core.CurrentBranch" {
@@ -57,11 +57,11 @@ fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock>
   }
 }
 
-fn git_real_consumer_handles(case: PublishedMockCase) -> Bool {
+fn git_real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   outcome_accepted_p(outcome: materialize_git_mock(case: case))
 }
 
-fn git_omits_diff_name_only_merge_consumer_handles(case: PublishedMockCase) -> Bool {
+fn git_omits_diff_name_only_merge_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   omit_consumer_handles(
     case: case,
     omit_keys: git_red_omit_keys,
@@ -69,7 +69,7 @@ fn git_omits_diff_name_only_merge_consumer_handles(case: PublishedMockCase) -> B
   )
 }
 
-fn git_omits_show_tree_consumer_handles(case: PublishedMockCase) -> Bool {
+fn git_omits_show_tree_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
   omit_consumer_handles(
     case: case,
     omit_keys: git_phase3b_red_omit_keys,

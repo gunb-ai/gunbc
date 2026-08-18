@@ -13,17 +13,17 @@ type BmcVirtualMediaPlan {
   nbd_config_path: std.types.NonEmptyStr
 }
 
-data srv4_virtual_media_source: VirtualMediaSource = VirtualMediaSource {
+data srv4_virtual_media_source: extdeps.bmc.virtual_media.VirtualMediaSource = extdeps.bmc.virtual_media.VirtualMediaSource {
   iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv4-seeded.iso",
 }
 
-data srv4_virtual_media_intent: VirtualMediaIntent = VirtualMediaIntent {
+data srv4_virtual_media_intent: extdeps.bmc.virtual_media.VirtualMediaIntent = extdeps.bmc.virtual_media.VirtualMediaIntent {
   bmc_host: "192.168.1.195",
   source: srv4_virtual_media_source,
   read_only: true,
 }
 
-data srv4_configfs_params: ConfigfsGadgetParams = ConfigfsGadgetParams {
+data srv4_configfs_params: extdeps.bmc.virtual_media.ConfigfsGadgetParams = extdeps.bmc.virtual_media.ConfigfsGadgetParams {
   nbd_server_host: srv1_host_lan_endpoint.address,
   nbd_port: srv3_nbd_proxy_local_port,
   export_name: "srv4iso",
@@ -31,14 +31,14 @@ data srv4_configfs_params: ConfigfsGadgetParams = ConfigfsGadgetParams {
   udc: "1e6a0000.usb-vhub:p3",
 }
 
-data srv4_configfs_transport: VirtualMediaTransport = ConfigfsGadgetTransport {
+data srv4_configfs_transport: extdeps.bmc.virtual_media.VirtualMediaTransport = ConfigfsGadgetTransport {
   params: srv4_configfs_params,
 }
 
-fn bmc_virtual_media_plan_of(intent: VirtualMediaIntent, params: ConfigfsGadgetParams) -> BmcVirtualMediaPlan {
+fn bmc_virtual_media_plan_of(intent: extdeps.bmc.virtual_media.VirtualMediaIntent, params: extdeps.bmc.virtual_media.ConfigfsGadgetParams) -> BmcVirtualMediaPlan {
   BmcVirtualMediaPlan {
     bmc_host: intent.bmc_host,
-    bmc_ssh_target: join(["root@", intent.bmc_host as String], "") as NonEmptyStr,
+    bmc_ssh_target: join(["root@", intent.bmc_host as String], "") as std.types.NonEmptyStr,
     srv1_host: params.nbd_server_host,
     iso_path: intent.source.iso_path,
     export_name: params.export_name,
@@ -54,8 +54,8 @@ data srv4_bmc_virtual_media_plan: BmcVirtualMediaPlan = bmc_virtual_media_plan_o
   params: srv4_configfs_params,
 )
 
-fn plan_nbd_export(plan: BmcVirtualMediaPlan) -> NbdExport {
-  NbdExport {
+fn plan_nbd_export(plan: BmcVirtualMediaPlan) -> extdeps.storage.nbd.NbdExport {
+  extdeps.storage.nbd.NbdExport {
     export_name: plan.export_name,
     backing_path: plan.iso_path,
     port: plan.nbd_port,
@@ -63,8 +63,8 @@ fn plan_nbd_export(plan: BmcVirtualMediaPlan) -> NbdExport {
   }
 }
 
-fn plan_nbd_client_attach(plan: BmcVirtualMediaPlan) -> NbdClientAttach {
-  NbdClientAttach {
+fn plan_nbd_client_attach(plan: BmcVirtualMediaPlan) -> extdeps.storage.nbd.NbdClientAttach {
+  extdeps.storage.nbd.NbdClientAttach {
     server: plan.srv1_host,
     port: plan.nbd_port,
     export_name: plan.export_name,
@@ -72,8 +72,8 @@ fn plan_nbd_client_attach(plan: BmcVirtualMediaPlan) -> NbdClientAttach {
   }
 }
 
-fn plan_vm_gadget(plan: BmcVirtualMediaPlan) -> UsbGadget {
-  UsbGadget {
+fn plan_vm_gadget(plan: BmcVirtualMediaPlan) -> extdeps.linux.usb_gadget.UsbGadget {
+  extdeps.linux.usb_gadget.UsbGadget {
     config_root: "/sys/kernel/config/usb_gadget",
     name: "gunbcvm",
     id_vendor: "0x1d6b",
@@ -82,7 +82,7 @@ fn plan_vm_gadget(plan: BmcVirtualMediaPlan) -> UsbGadget {
     product: "gunbc-virtual-media",
     serial: "srv4-0001",
     config_label: "c.1",
-    lun: MassStorageLun {
+    lun: extdeps.linux.usb_gadget.MassStorageLun {
       backing_device: plan.nbd_device,
       cdrom: false,
       read_only: true,
@@ -104,7 +104,7 @@ fn srv4_nbd_client_attach_command_text() -> String {
   shell_command_render(command: nbd_client_attach_command(attach: plan_nbd_client_attach(plan: srv4_bmc_virtual_media_plan)))
 }
 
-fn srv4_vm_gadget_setup_ops() -> List<ConfigfsOp> {
+fn srv4_vm_gadget_setup_ops() -> List<extdeps.linux.usb_gadget.ConfigfsOp> {
   usb_gadget_setup_ops(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
 }
 

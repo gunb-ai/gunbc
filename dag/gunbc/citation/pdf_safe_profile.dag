@@ -50,18 +50,18 @@ type NavigableUriSafeProjection
   | NavigableUriSafeRefused { cause: NavigableUriSafeRefusalCause }
 
 fn pdf_safe_open_page(page: std.integer.PositiveInt) -> PdfSafeProfileParameterConstruction {
-  SafeParameterConstructed(SafeOpenPage(PdfOpenPage { page: page }))
+  SafeParameterConstructed(SafeOpenPage(extdeps.standards.rfc_8118.PdfOpenPage { page: page }))
 }
 
-fn pdf_safe_open_nameddest(name: NonEmptyStr) -> PdfSafeProfileParameterConstruction {
-  SafeParameterConstructed(SafeOpenNamedDest(PdfOpenNamedDest { name: name }))
+fn pdf_safe_open_nameddest(name: std.types.NonEmptyStr) -> PdfSafeProfileParameterConstruction {
+  SafeParameterConstructed(SafeOpenNamedDest(extdeps.standards.rfc_8118.PdfOpenNamedDest { name: name }))
 }
 
-fn pdf_safe_open_structelem(struct_id: NonEmptyStr) -> PdfSafeProfileParameterConstruction {
-  SafeParameterConstructed(SafeOpenStructElem(PdfOpenStructElem { struct_id: struct_id }))
+fn pdf_safe_open_structelem(struct_id: std.types.NonEmptyStr) -> PdfSafeProfileParameterConstruction {
+  SafeParameterConstructed(SafeOpenStructElem(extdeps.standards.rfc_8118.PdfOpenStructElem { struct_id: struct_id }))
 }
 
-fn admit_rfc_pdf_profile_parameter(construction: PdfProfileParameterConstruction) -> PdfSafeProfileParameterConstruction {
+fn admit_rfc_pdf_profile_parameter(construction: extdeps.standards.rfc_8118.PdfProfileParameterConstruction) -> PdfSafeProfileParameterConstruction {
   match construction {
     ParameterConstructed(parameter) =>
       match parameter {
@@ -100,7 +100,7 @@ fn admit_rfc_pdf_profile_parameter(construction: PdfProfileParameterConstruction
   }
 }
 
-fn pdf_safe_parameter_sequence(constructions: List<PdfProfileParameterConstruction>) -> PdfSafeParameterSequenceConstruction {
+fn pdf_safe_parameter_sequence(constructions: List<extdeps.standards.rfc_8118.PdfProfileParameterConstruction>) -> PdfSafeParameterSequenceConstruction {
   match fold(constructions, init: SafeSequenceFoldBuilding { parameters: [] }, f: fn(acc, construction) {
     match acc {
       SafeSequenceFoldRefused { cause: _ } => acc
@@ -118,8 +118,8 @@ fn pdf_safe_parameter_sequence(constructions: List<PdfProfileParameterConstructi
   }
 }
 
-fn pdf_safe_parameter_sequence_to_rfc(sequence: PdfSafeParameterSequence) -> PdfOpenParameterSequence {
-  PdfOpenParameterSequence {
+fn pdf_safe_parameter_sequence_to_rfc(sequence: PdfSafeParameterSequence) -> extdeps.standards.rfc_8118.PdfOpenParameterSequence {
+  extdeps.standards.rfc_8118.PdfOpenParameterSequence {
     parameters: map(
       sequence.parameters,
       parameter => match parameter {
@@ -131,7 +131,7 @@ fn pdf_safe_parameter_sequence_to_rfc(sequence: PdfSafeParameterSequence) -> Pdf
   }
 }
 
-fn project_navigable_uri_safe(base: Uri, construction: PdfSafeParameterSequenceConstruction) -> NavigableUriSafeProjection {
+fn project_navigable_uri_safe(base: extdeps.uri.Uri, construction: PdfSafeParameterSequenceConstruction) -> NavigableUriSafeProjection {
   match construction {
     SafeSequenceConstructionRefused { cause: cause } =>
       NavigableUriSafeRefused {

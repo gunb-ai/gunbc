@@ -18,8 +18,8 @@ type RegionalPremiumResult
 
 // premium_bp is the region's excess over the baseline in basis points: (region - baseline) * 10000 / baseline. A region at parity reads 0; Sao Paulo against US East reads about 5937 (a 59.4 percent premium). Integer basis points on integer micro-USD, so there is no float in the derivation and the value is exact for the cited rates.
 fn derive_regional_premium(
-  baseline: RegionalComputeRow,
-  region: RegionalComputeRow,
+  baseline: extdeps.pricing.regional_compute.RegionalComputeRow,
+  region: extdeps.pricing.regional_compute.RegionalComputeRow,
 ) -> RegionalPremiumResult {
   if !compute_provider_eq(a: baseline.provider, b: region.provider) {
     RegionalPremiumRefused { cause: ProviderMismatch }
@@ -45,14 +45,14 @@ fn derive_regional_premium(
 }
 
 // Monthly cost for the row's whole instance at the conventional 730-hour billing month, and the same figure divided by the instance's vCPU count -- the per-vCPU number is what makes a 2-vCPU cloud instance comparable to a 12-thread dedicated box (extdeps.pricing.hetzner_dedicated), which is the comparison that shows on-demand cloud compute costing several times a rented machine.
-fn monthly_micros(row: RegionalComputeRow) -> std.nat.Nat? {
+fn monthly_micros(row: extdeps.pricing.regional_compute.RegionalComputeRow) -> std.nat.Nat? {
   match hourly_micros(row: row) {
     Present { value: h } => Present { value: h * 730 }
     _ => none
   }
 }
 
-fn per_vcpu_month_micros(row: RegionalComputeRow) -> std.nat.Nat? {
+fn per_vcpu_month_micros(row: extdeps.pricing.regional_compute.RegionalComputeRow) -> std.nat.Nat? {
   let cores = hardware_thread_count_value(t: row.vcpus)
   if cores <= 0 {
     none

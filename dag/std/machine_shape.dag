@@ -1,8 +1,8 @@
 module std.machine_shape
 
 
-type DomainId = NonEmptyStr where brand("DomainId")
-type LevelId = NonEmptyStr where brand("LevelId")
+type DomainId = std.types.NonEmptyStr where brand("DomainId")
+type LevelId = std.types.NonEmptyStr where brand("LevelId")
 
 type MemoryLevel {
   id: LevelId
@@ -56,7 +56,7 @@ type MachineShapeValidationIndex {
   owner_levels: Map<DomainId, Map<LevelId, Bool>>
 }
 
-fn execution_shape_independent_lanes(lane_count: HardwareThreadCount) -> ExecutionShape {
+fn execution_shape_independent_lanes(lane_count: std.measure.HardwareThreadCount) -> ExecutionShape {
   ExecutionShape { lane_count: lane_count, grouping: IndependentLanes }
 }
 
@@ -118,7 +118,7 @@ fn machine_shape_is_single_domain(shape: MachineShape) -> Bool {
   list_length(items: shape.domains) == 1
 }
 
-fn machine_shape_domain_lane_count(shape: MachineShape) -> HardwareThreadCount? {
+fn machine_shape_domain_lane_count(shape: MachineShape) -> std.measure.HardwareThreadCount? {
   fold(shape.domains, init: Absent, f: (found, d) =>
     match found {
       Present { value: _ } => found
@@ -126,7 +126,7 @@ fn machine_shape_domain_lane_count(shape: MachineShape) -> HardwareThreadCount? 
     })
 }
 
-fn first_memory_level_capacity(levels: List<MemoryLevel>) -> ByteSize? {
+fn first_memory_level_capacity(levels: List<MemoryLevel>) -> std.measure.ByteSize? {
   fold(levels, init: Absent, f: (lvl_found, m) =>
     match lvl_found {
       Present { value: _ } => lvl_found
@@ -134,7 +134,7 @@ fn first_memory_level_capacity(levels: List<MemoryLevel>) -> ByteSize? {
     })
 }
 
-fn first_memory_level_bandwidth(levels: List<MemoryLevel>) -> Bandwidth? {
+fn first_memory_level_bandwidth(levels: List<MemoryLevel>) -> std.measure.Bandwidth? {
   fold(levels, init: Absent, f: (lvl_found, m) =>
     match lvl_found {
       Present { value: _ } => lvl_found
@@ -142,7 +142,7 @@ fn first_memory_level_bandwidth(levels: List<MemoryLevel>) -> Bandwidth? {
     })
 }
 
-fn machine_shape_device_level_capacity(shape: MachineShape) -> ByteSize? {
+fn machine_shape_device_level_capacity(shape: MachineShape) -> std.measure.ByteSize? {
   fold(shape.domains, init: Absent, f: (found, d) =>
     match found {
       Present { value: _ } => found
@@ -150,7 +150,7 @@ fn machine_shape_device_level_capacity(shape: MachineShape) -> ByteSize? {
     })
 }
 
-fn machine_shape_device_level_bandwidth(shape: MachineShape) -> Bandwidth? {
+fn machine_shape_device_level_bandwidth(shape: MachineShape) -> std.measure.Bandwidth? {
   fold(shape.domains, init: Absent, f: (found, d) =>
     match found {
       Present { value: _ } => found

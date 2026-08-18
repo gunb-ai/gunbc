@@ -2,56 +2,56 @@ module extdeps.git.object_store
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/book/en/v2/Git-Internals-Git-Objects"
   }
 }
 
-data git_object_store_config: CasAddressingConfig = CasAddressingConfig {
-  container: ObjectContainer { name: "objects" }
+data git_object_store_config: extdeps.object_storage.content_addressed.CasAddressingConfig = extdeps.object_storage.content_addressed.CasAddressingConfig {
+  container: extdeps.object_storage.ObjectContainer { name: "objects" }
   key_derivation: ContentAddressedByValue
   write_mode: WriteOnce
 }
 
-data git_ls_tree_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_ls_tree_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/git-ls-tree"
   }
 }
 
-data git_ls_files_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_ls_files_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/git-ls-files"
   }
 }
 
-data git_gitattributes_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_gitattributes_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/gitattributes#_conflict_marker_size"
   }
 }
 
-data git_update_ref_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_update_ref_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/git-update-ref"
   }
 }
 
-data git_hash_transition_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_hash_transition_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/hash-function-transition"
   }
 }
 
-data git_partial_clone_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data git_partial_clone_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/partial-clone"
   }
@@ -348,14 +348,14 @@ fn git_object_id_format(oid: GitObjectId) -> GitObjectFormat {
   }
 }
 
-fn git_object_id_wire_hex(oid: GitObjectId) -> NonEmptyStr {
+fn git_object_id_wire_hex(oid: GitObjectId) -> std.types.NonEmptyStr {
   match oid {
     GitSha1ObjectId { digest } => digest.hex
     GitSha256ObjectId { digest } => digest.hex
   }
 }
 
-fn git_object_id_content_hash(oid: GitObjectId) -> ContentHash {
+fn git_object_id_content_hash(oid: GitObjectId) -> std.content_hash.ContentHash {
   match oid {
     GitSha1ObjectId { digest } => as_content_hash_sha1(digest: digest)
     GitSha256ObjectId { digest } => as_content_hash_cryptographic(digest: digest)
@@ -513,7 +513,7 @@ type ObjectLookupResult
   | ObjectCorrupt { oid: GitObjectId, reason: std.types.NonEmptyStr }
   | ObjectRepositoryInvalid { cause: GitRepositoryDecodeRefusal }
 
-type GitRefName = NonEmptyStr where brand("GitRefName")
+type GitRefName = std.types.NonEmptyStr where brand("GitRefName")
 
 type RefTarget
   = DirectTarget { oid: GitObjectId }
@@ -958,7 +958,7 @@ fn git_store_object_canonical_hash_input(
   }
 }
 
-fn git_store_object_canonical_size(object: StoreObject) -> ByteSize? {
+fn git_store_object_canonical_size(object: StoreObject) -> std.measure.ByteSize? {
   match git_store_object_canonical_payload(object: object) {
     GitCanonicalHashInputReady { bytes } =>
       Present {
@@ -1581,7 +1581,7 @@ type GitTreeModeDecodeOutcome
   = GitTreeModeDecoded { mode: GitTreeMode }
   | GitTreeModeRefused
 
-fn git_decode_tree_mode(text: NonEmptyStr) -> GitTreeModeDecodeOutcome {
+fn git_decode_tree_mode(text: std.types.NonEmptyStr) -> GitTreeModeDecodeOutcome {
   if text == "100644" {
     GitTreeModeDecoded { mode: GitRegularBlobMode }
   } else if text == "100755" {
@@ -1597,7 +1597,7 @@ fn git_decode_tree_mode(text: NonEmptyStr) -> GitTreeModeDecodeOutcome {
   }
 }
 
-fn git_tree_mode_object_type(mode: GitTreeMode) -> NonEmptyStr {
+fn git_tree_mode_object_type(mode: GitTreeMode) -> std.types.NonEmptyStr {
   match mode {
     GitRegularBlobMode => "blob"
     GitExecutableBlobMode => "blob"
@@ -1955,12 +1955,12 @@ fn git_decode_object_id_text(
     match format {
       GitObjectFormatSha1 => GitObjectIdTextDecoded {
         oid: GitSha1ObjectId {
-          digest: Sha1Digest { hex: text as Sha1DigestHex },
+          digest: std.content_hash.Sha1Digest { hex: text as std.content_hash.Sha1DigestHex },
         }
       }
       GitObjectFormatSha256 => GitObjectIdTextDecoded {
         oid: GitSha256ObjectId {
-          digest: Sha256Digest { hex: text as Sha256DigestHex },
+          digest: std.content_hash.Sha256Digest { hex: text as std.content_hash.Sha256DigestHex },
         }
       }
     }
@@ -1977,13 +1977,13 @@ type GitLsTreeZDecodeOutcome
   = GitLsTreeZDecoded { entries: List<GitTreeWireEntry> }
   | GitLsTreeZRefused { cause: GitLsTreeZRefusal }
 
-fn git_ascii_field_text(octets: List<std.integer.UInt8>) -> NonEmptyStr? {
+fn git_ascii_field_text(octets: List<std.integer.UInt8>) -> std.types.NonEmptyStr? {
   if all(octets, octet => octet > 0 && octet < 128) {
     Present {
       value: join(
         octets |> map(octet => from_code_point(octet)),
         "",
-      ) as NonEmptyStr,
+      ) as std.types.NonEmptyStr,
     }
   } else {
     none
@@ -2071,7 +2071,7 @@ type GitIndexStageDecodeOutcome
   = GitIndexStageDecoded { stage: GitIndexStage }
   | GitIndexStageRefused { text: std.types.NonEmptyStr }
 
-fn git_decode_index_stage(text: NonEmptyStr) -> GitIndexStageDecodeOutcome {
+fn git_decode_index_stage(text: std.types.NonEmptyStr) -> GitIndexStageDecodeOutcome {
   if text == "0" {
     GitIndexStageDecoded { stage: GitIndexStageNormal }
   } else if text == "1" {
@@ -2426,7 +2426,7 @@ type GitUpdateRefOutcome
       object_type: ObjectType,
     }
 
-data git_modeled_ref_transition_boundary_note: NonEmptyStr = "git_model_update_ref_exact is the pure R0 transition model only. It proves the exact-old-OID decision and returned state, including Git's default recursive symbolic-ref dereference while retaining the symbolic ref itself; a symbolic cycle refuses. It mints no execution or read-back receipt. The independent receipt is witness_git_cli_fixture_hashes_projects_and_independently_reads_back in test.manual.git_upstream_model_execution: a fresh upstream Git process performs update-ref through symbolic HEAD, observes the direct target advance and retained HEAD target, and rejects stale/nonexistent targets. P3 must consume an executing transport observation, never promote this model transition to Applied."
+data git_modeled_ref_transition_boundary_note: std.types.NonEmptyStr = "git_model_update_ref_exact is the pure R0 transition model only. It proves the exact-old-OID decision and returned state, including Git's default recursive symbolic-ref dereference while retaining the symbolic ref itself; a symbolic cycle refuses. It mints no execution or read-back receipt. The independent receipt is witness_git_cli_fixture_hashes_projects_and_independently_reads_back in test.manual.git_upstream_model_execution: a fresh upstream Git process performs update-ref through symbolic HEAD, observes the direct target advance and retained HEAD target, and rejects stale/nonexistent targets. P3 must consume an executing transport observation, never promote this model transition to Applied."
 
 fn git_replace_direct_ref(
   refs: List<GitRefRecord>,
@@ -2586,7 +2586,7 @@ fn git_model_update_ref_exact(
   }
 }
 
-data git_repository_decode_boundary_note: NonEmptyStr = "GitRepositoryState is a raw bounded observation, not an admission token. git_decode_repository establishes unique stored and unavailable identities, disjoint present/unavailable sets, admitted content-address observations, unique ref names, object-format consistency, and local object-reference closure before lookup, projection, or exact-ref transition proceeds. Promisor absence remains an explicit partial observation; unexpected absence and corruption refuse. GitHashObjectCallerAssertion can record an assertion but can never admit an object. GitHashObjectCliExecuted records the independently executed hash-object boundary used by the wet fixture; it is evidence of that execution, not an in-model cryptographic reimplementation."
+data git_repository_decode_boundary_note: std.types.NonEmptyStr = "GitRepositoryState is a raw bounded observation, not an admission token. git_decode_repository establishes unique stored and unavailable identities, disjoint present/unavailable sets, admitted content-address observations, unique ref names, object-format consistency, and local object-reference closure before lookup, projection, or exact-ref transition proceeds. Promisor absence remains an explicit partial observation; unexpected absence and corruption refuse. GitHashObjectCallerAssertion can record an assertion but can never admit an object. GitHashObjectCliExecuted records the independently executed hash-object boundary used by the wet fixture; it is evidence of that execution, not an in-model cryptographic reimplementation."
 
 type GitR0UnsupportedBoundary
   = GitAttributesTransformExecution

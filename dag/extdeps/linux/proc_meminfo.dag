@@ -1,8 +1,8 @@
 module extdeps.linux.proc_meminfo
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "man7.org/linux/man-pages/man5/proc.5.html#/proc/meminfo"
   }
@@ -24,7 +24,7 @@ type ProcMeminfo {
   all_metrics: List<MemoryMetric>
 }
 
-data meminfo_field_names: List<NonEmptyStr> = [
+data meminfo_field_names: List<std.types.NonEmptyStr> = [
   "MemTotal",
   "MemFree",
   "MemAvailable",

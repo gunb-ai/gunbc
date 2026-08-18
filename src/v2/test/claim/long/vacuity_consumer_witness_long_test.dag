@@ -1,6 +1,6 @@
 module v2.test.long.vacuity_consumer_witness
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data vacuity_consumer_witness_long_lane_note: String = "Rehomed from src/v2/test/claim/vacuity_consumer_witness_test.dag to test/claim/long/ (operator 5-second rule, 2026-07-12; authority: gunbc_ci_fast_lane_witness_eval_budget in v2.workflow.ci_floor_plan; home mechanism: long_lane_exclusion_note in gunbc.ci_layer_roots) after CI run 30731820103 measured this file's four corpus-ingesting witnesses well over the 5000ms fast-lane budget (fixture_ingest_is_accepted_by_execution, derived_equals_classified_sites: 32423ms, shadows_reconcile_with_admitted_exceptions: 29754ms, real_test_fn_gap_stays_unknown_by_execution: 88996ms, measured locally). These four each drive a real tokenize/parse/normalize pass over the vacuity-owned fixture file per witness (vacuity_consumer_witness_live_derived_sites), which is genuine corpus-reading cost, not a fixture-shaped defect — so per long_lane_exclusion_note's HOME pattern (not a per-function SubstrateLongLaneRow exclusion) the file itself moves. The two fast, self-contained witnesses that do not call the corpus-ingest path (fixture_module_reached_by_direct_call: 6ms, pr7614_shape_red_control_classifies_proven_duplicate: 19ms) stay in the original per-PR-discovered file — splitting rather than moving the whole file keeps their fast-lane coverage from being lost. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag --functions <csv>. Dissolve-on: same as long_lane_exclusion_note's own trigger — a per-witness declared cost envelope (witness-cost-locality admission law) subsumes the dir grain, or the corpus-ingest path this file drives amortizes under 5s on a measured run and the four witnesses re-enroll per-PR."
 
@@ -58,9 +58,9 @@ fn vacuity_consumer_witness_live_derived_sites() -> List<VacuitySiteKey> {
   }
 }
 
-fn vacuity_consumer_witness_evidence_for_site(site: VacuitySiteKey) -> VacuityEvidence {
+fn vacuity_consumer_witness_evidence_for_site(site: VacuitySiteKey) -> v2.lens.vacuity.VacuityEvidence {
   classify_unified_test_claim_vacuity(
-    claim: BoolWitnessClaim { witness: BoolWitness { entry: site.file, function: site.function } },
+    claim: BoolWitnessClaim { witness: v2.std.verification.BoolWitness { entry: site.file, function: site.function } },
     lhs_provenance: OperandProvenanceUnknown,
     rhs_provenance: OperandProvenanceUnknown,
     operand_provenance: OperandProvenanceUnknown
@@ -133,7 +133,7 @@ data vacuity_consumer_witness_real_test_fn_gap_distinguishes_failure_note: Strin
 data vacuity_consumer_witness_constant_unknown_collapse_control_note: String = "Correction (review 47124): the three-part shape above still could not distinguish a genuinely working classifier from classify_unified_test_claim_vacuity being replaced wholesale with a function that unconditionally returns Unknown — every one of its three assertions is equally satisfied by that degenerate collapse, because the ONLY path this witness drove through the dispatcher was the Absent-fn arm, whose real behavior IS Unknown. A collapsed constant-Unknown dispatcher is indistinguishable from the honest one along that single path. Fixed by adding a fourth, independent assertion that drives the SAME public dispatcher (classify_unified_test_claim_vacuity — not a different function, and not a bypass of it) through its NodeCorpus{EqualsClaim} arm with lhs_provenance: LiveSurfaceSnapshot / rhs_provenance: LiteralOracle — the PR #7614 shape, which classify_vacuity_same_eval_record's vacuity_same_eval_is_live_snapshot_duplicate branch classifies ProvenDuplicate by construction, independent of the operand Node values themselves (that branch is reached before operands_structurally_equal is ever consulted). This does not reintroduce the fabrication DESIGN.md §5 forbids: the record shape here is intentionally synthetic (a hand-built claim reaching a known dispatcher branch), the same license already exercised by the pre-existing PR7614 RED control (vacuity_consumer_witness_pr7614_shape_red_control_classifies_proven_duplicate, src/v2/test/claim/vacuity_consumer_witness_test.dag, kept fast-lane) — the difference is that control calls classify_vacuity_same_eval_record directly, bypassing classify_unified_test_claim_vacuity's own dispatch, so it never previously proved the DISPATCHER (the thing the contract actually binds to) does anything but return Unknown. With this fourth assertion ANDed into the same bound witness, a wholesale collapse of classify_unified_test_claim_vacuity to `_ => Unknown` now reds here (ProvenDuplicate != Unknown), so the witness is no longer indistinguishable from that degenerate case. Paired with vacuity_consumer_witness_classified_sites no longer appending Unknown-classified sites unconditionally (review 47124's second finding, fixed at its own definition site) so the derived/classified set check is no longer invariant to classifier output either."
 
 fn vacuity_consumer_witness_synthetic_equals_operand() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -159,7 +159,7 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
         Present { value: _ } => false
       }
       let classified = classify_unified_test_claim_vacuity(
-        claim: BoolWitnessClaim { witness: BoolWitness { entry: target_file, function: target_fn } },
+        claim: BoolWitnessClaim { witness: v2.std.verification.BoolWitness { entry: target_file, function: target_fn } },
         lhs_provenance: OperandProvenanceUnknown,
         rhs_provenance: OperandProvenanceUnknown,
         operand_provenance: OperandProvenanceUnknown
@@ -175,7 +175,7 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
           anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
           lhs: operand,
           rhs: operand,
-          classification: TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
         },
         transport: EvalOnly
       },

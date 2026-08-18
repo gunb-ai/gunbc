@@ -25,7 +25,7 @@ type BoardEmission<R>
   | BoardArticleNotAdmitted { causes: product.compute_board.admission.BoardArticleRefusalSet }
   | BoardTargetRefused { cause: R }
 
-fn emit_spice_for(article: BoardPowerInterfaceArticle) -> BoardEmission<SpiceProjectionRefusal> {
+fn emit_spice_for(article: product.compute_board.article.BoardPowerInterfaceArticle) -> BoardEmission<product.compute_board.spice_projection.SpiceProjectionRefusal> {
   match admit_board_article(a: article) {
     BoardArticleRefused { causes: cs } => BoardArticleNotAdmitted { causes: cs }
     BoardArticleAdmitted { article: adm } =>
@@ -36,7 +36,7 @@ fn emit_spice_for(article: BoardPowerInterfaceArticle) -> BoardEmission<SpicePro
   }
 }
 
-fn emit_verilog_for(article: BoardPowerInterfaceArticle) -> BoardEmission<VerilogProjectionRefusal> {
+fn emit_verilog_for(article: product.compute_board.article.BoardPowerInterfaceArticle) -> BoardEmission<product.compute_board.verilog_projection.VerilogProjectionRefusal> {
   match admit_board_article(a: article) {
     BoardArticleRefused { causes: cs } => BoardArticleNotAdmitted { causes: cs }
     BoardArticleAdmitted { article: adm } =>
@@ -47,7 +47,7 @@ fn emit_verilog_for(article: BoardPowerInterfaceArticle) -> BoardEmission<Verilo
   }
 }
 
-fn emit_ngspice_run_for(article: BoardPowerInterfaceArticle) -> BoardEmission<SpiceProjectionRefusal> {
+fn emit_ngspice_run_for(article: product.compute_board.article.BoardPowerInterfaceArticle) -> BoardEmission<product.compute_board.spice_projection.SpiceProjectionRefusal> {
   match admit_board_article(a: article) {
     BoardArticleRefused { causes: cs } => BoardArticleNotAdmitted { causes: cs }
     BoardArticleAdmitted { article: adm } =>
@@ -59,10 +59,10 @@ fn emit_ngspice_run_for(article: BoardPowerInterfaceArticle) -> BoardEmission<Sp
 }
 
 fn emit_pin_constraints_for(
-  article: BoardPowerInterfaceArticle,
-  realization: ProgrammableDeviceRealization,
-  assignments: List<DevicePinAssignment>
-) -> BoardEmission<PinChainRefusalSet> {
+  article: product.compute_board.article.BoardPowerInterfaceArticle,
+  realization: product.compute_board.device_binding.ProgrammableDeviceRealization,
+  assignments: List<product.compute_board.device_binding.DevicePinAssignment>
+) -> BoardEmission<product.compute_board.device_binding.PinChainRefusalSet> {
   match admit_board_article(a: article) {
     BoardArticleRefused { causes: cs } => BoardArticleNotAdmitted { causes: cs }
     BoardArticleAdmitted { article: adm } =>
@@ -80,19 +80,19 @@ fn emit_pin_constraints_for(
 
 // The production article, through the same entries. A host wanting this board's bytes calls
 // these; nothing else in the product hardcodes it.
-fn emit_spice() -> BoardEmission<SpiceProjectionRefusal> {
+fn emit_spice() -> BoardEmission<product.compute_board.spice_projection.SpiceProjectionRefusal> {
   emit_spice_for(article: power_interlock_article)
 }
 
-fn emit_verilog() -> BoardEmission<VerilogProjectionRefusal> {
+fn emit_verilog() -> BoardEmission<product.compute_board.verilog_projection.VerilogProjectionRefusal> {
   emit_verilog_for(article: power_interlock_article)
 }
 
-fn emit_ngspice_run() -> BoardEmission<SpiceProjectionRefusal> {
+fn emit_ngspice_run() -> BoardEmission<product.compute_board.spice_projection.SpiceProjectionRefusal> {
   emit_ngspice_run_for(article: power_interlock_article)
 }
 
-fn emit_pin_constraints() -> BoardEmission<PinChainRefusalSet> {
+fn emit_pin_constraints() -> BoardEmission<product.compute_board.device_binding.PinChainRefusalSet> {
   emit_pin_constraints_for(
     article: power_interlock_article,
     realization: interlock_device_realization,

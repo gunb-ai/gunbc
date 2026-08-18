@@ -45,19 +45,19 @@ type PinConstraintProjection
   = PinConstraintsEmitted { receipt: PinConstraintReceipt }
   | PinConstraintsRefused { causes: PinChainRefusalSet }
 
-fn assignment_count_for_signal(assignments: List<DevicePinAssignment>, name: SignalName) -> std.nat.Nat {
+fn assignment_count_for_signal(assignments: List<DevicePinAssignment>, name: product.compute_board.digital_control.SignalName) -> std.nat.Nat {
   fold(assignments, init: 0, f: fn(acc, a) {
     if signal_names_equal(a: a.signal, b: name) { acc + 1 } else { acc }
   })
 }
 
-fn assignment_count_for_pin(assignments: List<DevicePinAssignment>, pin: NonEmptyStr) -> std.nat.Nat {
+fn assignment_count_for_pin(assignments: List<DevicePinAssignment>, pin: std.types.NonEmptyStr) -> std.nat.Nat {
   fold(assignments, init: 0, f: fn(acc, a) {
     if (a.pin as String) == (pin as String) { acc + 1 } else { acc }
   })
 }
 
-fn pin_for_signal(assignments: List<DevicePinAssignment>, name: SignalName) -> NonEmptyStr? {
+fn pin_for_signal(assignments: List<DevicePinAssignment>, name: product.compute_board.digital_control.SignalName) -> std.types.NonEmptyStr? {
   fold(assignments, init: none, f: fn(acc, a) {
     match acc {
       Present { value: v } => Present { value: v }
@@ -68,7 +68,7 @@ fn pin_for_signal(assignments: List<DevicePinAssignment>, name: SignalName) -> N
 
 // The port name is the VERILOG binding's spelling. Nothing in this module can supply one, which
 // is what makes the constraint file and the module declaration incapable of disagreeing.
-fn target_spelling_for(bindings: List<VerilogBinding>, name: SignalName) -> String? {
+fn target_spelling_for(bindings: List<product.compute_board.verilog_projection.VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> String? {
   fold(bindings, init: none, f: fn(acc, b) {
     match acc {
       Present { value: v } => Present { value: v }
@@ -79,24 +79,24 @@ fn target_spelling_for(bindings: List<VerilogBinding>, name: SignalName) -> Stri
 
 fn assignment_refusals(
   realization: ProgrammableDeviceRealization,
-  control: DigitalControlIntent,
-  bindings: List<VerilogBinding>,
+  control: product.compute_board.digital_control.DigitalControlIntent,
+  bindings: List<product.compute_board.verilog_projection.VerilogBinding>,
   assignments: List<DevicePinAssignment>
 ) -> List<PinChainRefusal> {
   fold(assignments, init: [], f: fn(acc, a) {
     let on_package = if roster_admits_pin(r: realization.roster, pin: a.pin) {
       []
     } else {
-      [PinNotOnPackage { signal: a.signal as NonEmptyStr, pin: a.pin }]
+      [PinNotOnPackage { signal: a.signal as std.types.NonEmptyStr, pin: a.pin }]
     }
     let declared = if intent_declares_signal(intent: control, name: a.signal) {
       []
     } else {
-      [AssignedSignalNotDeclared { signal: a.signal as NonEmptyStr }]
+      [AssignedSignalNotDeclared { signal: a.signal as std.types.NonEmptyStr }]
     }
     let spelled = match target_spelling_for(bindings: bindings, name: a.signal) {
       Present { value: _ } => []
-      Absent => [SignalHasNoTargetSpelling { signal: a.signal as NonEmptyStr }]
+      Absent => [SignalHasNoTargetSpelling { signal: a.signal as std.types.NonEmptyStr }]
     }
     concat(acc, concat(on_package, concat(declared, spelled)))
   })
@@ -116,7 +116,7 @@ type CollisionScan {
   out: List<PinChainRefusal>
 }
 
-fn scan_has_seen(xs: List<NonEmptyStr>, key: NonEmptyStr) -> Bool {
+fn scan_has_seen(xs: List<std.types.NonEmptyStr>, key: std.types.NonEmptyStr) -> Bool {
   fold(xs, init: false, f: fn(acc, k) { acc || (k as String) == (key as String) })
 }
 
@@ -125,7 +125,7 @@ fn collision_refusals(assignments: List<DevicePinAssignment>) -> List<PinChainRe
     assignments,
     init: CollisionScan { seen_pins: [], seen_signals: [], out: [] },
     f: fn(acc, a) {
-      let signal_key = a.signal as NonEmptyStr
+      let signal_key = a.signal as std.types.NonEmptyStr
       let pin_first = assignment_count_for_pin(assignments: assignments, pin: a.pin) > 1 && !scan_has_seen(xs: acc.seen_pins, key: a.pin)
       let signal_first = assignment_count_for_signal(assignments: assignments, name: a.signal) > 1 && !scan_has_seen(xs: acc.seen_signals, key: signal_key)
       let pin_cause = if pin_first { [PinAssignedToSeveralSignals { pin: a.pin }] } else { [] }
@@ -145,12 +145,12 @@ fn collision_refusals(assignments: List<DevicePinAssignment>) -> List<PinChainRe
 // the walk has to run the other way as well. This is the arm that would otherwise emit a
 // constraint file the tool accepts while placing an unmentioned port wherever it pleased.
 fn unassigned_signal_refusals(
-  control: DigitalControlIntent,
+  control: product.compute_board.digital_control.DigitalControlIntent,
   assignments: List<DevicePinAssignment>
 ) -> List<PinChainRefusal> {
   fold(control.signals, init: [], f: fn(acc, s) {
     if assignment_count_for_signal(assignments: assignments, name: s.name) == 0 {
-      concat(acc, [DeclaredSignalHasNoPin { signal: s.name as NonEmptyStr }])
+      concat(acc, [DeclaredSignalHasNoPin { signal: s.name as std.types.NonEmptyStr }])
     } else {
       acc
     }
@@ -159,8 +159,8 @@ fn unassigned_signal_refusals(
 
 fn pin_chain_refusals(
   realization: ProgrammableDeviceRealization,
-  control: DigitalControlIntent,
-  bindings: List<VerilogBinding>,
+  control: product.compute_board.digital_control.DigitalControlIntent,
+  bindings: List<product.compute_board.verilog_projection.VerilogBinding>,
   assignments: List<DevicePinAssignment>
 ) -> List<PinChainRefusal> {
   concat(
@@ -184,10 +184,10 @@ fn pin_refusal_set_count(s: PinChainRefusalSet) -> std.nat.Nat {
 }
 
 fn constraint_statements(
-  control: DigitalControlIntent,
-  bindings: List<VerilogBinding>,
+  control: product.compute_board.digital_control.DigitalControlIntent,
+  bindings: List<product.compute_board.verilog_projection.VerilogBinding>,
   assignments: List<DevicePinAssignment>
-) -> List<PcfStatement> {
+) -> List<v2.extdeps.formats.icestorm_pcf.PcfStatement> {
   fold(control.signals, init: [], f: fn(acc, s) {
     match target_spelling_for(bindings: bindings, name: s.name) {
       Absent => acc
@@ -195,7 +195,7 @@ fn constraint_statements(
         match pin_for_signal(assignments: assignments, name: s.name) {
           Absent => acc
           Present { value: p } =>
-            concat(acc, [SetIo { port: sp as PcfPortName, pin: (p as String) as PcfPin }])
+            concat(acc, [SetIo { port: sp as v2.extdeps.formats.icestorm_pcf.PcfPortName, pin: (p as String) as v2.extdeps.formats.icestorm_pcf.PcfPin }])
         }
     }
   })
@@ -205,9 +205,9 @@ fn constraint_statements(
 // file's population is the module's port population by construction rather than by agreement
 // between two hand-maintained lists.
 fn project_article_to_pin_constraints(
-  admitted: AdmittedBoardPowerInterfaceArticle,
+  admitted: product.compute_board.admission.AdmittedBoardPowerInterfaceArticle,
   realization: ProgrammableDeviceRealization,
-  bindings: List<VerilogBinding>,
+  bindings: List<product.compute_board.verilog_projection.VerilogBinding>,
   assignments: List<DevicePinAssignment>
 ) -> PinConstraintProjection {
   let article = admitted_article(a: admitted)
@@ -219,7 +219,7 @@ fn project_article_to_pin_constraints(
   ) {
     Present { value: s } => PinConstraintsRefused { causes: s }
     Absent =>
-      match pcf_emit(c: PcfConstraints {
+      match pcf_emit(c: v2.extdeps.formats.icestorm_pcf.PcfConstraints {
         statements: constraint_statements(control: control, bindings: bindings, assignments: assignments),
       }) {
         PcfEmitted { source: src } =>
@@ -233,7 +233,7 @@ fn project_article_to_pin_constraints(
           }
         PcfEmissionRefused { reason: why } =>
           PinConstraintsRefused {
-            causes: PinChainRefusalSet { first: ConstraintNotEmittable { reason: why as NonEmptyStr }, rest: [] },
+            causes: PinChainRefusalSet { first: ConstraintNotEmittable { reason: why as std.types.NonEmptyStr }, rest: [] },
           }
       }
   }
@@ -251,31 +251,31 @@ fn project_article_to_pin_constraints(
 // by a third inclusion rule. The comparison is now kind-tagged, so a cross-population comparison
 // is not false, it is NotComparable, and the projection from vendor categories to placeable pins
 // is a declared claim a later document can refute.
-fn vendor_general_purpose_population(realization: ProgrammableDeviceRealization) -> ContactPopulation {
-  ContactPopulation {
+fn vendor_general_purpose_population(realization: ProgrammableDeviceRealization) -> product.compute_board.contact_population.ContactPopulation {
+  product.compute_board.contact_population.ContactPopulation {
     kind: VendorGeneralPurposeIo,
     count: bank_population_general_purpose(p: realization.banks),
     authority: "iCE40 LP/HX family data sheet per-bank I/O table",
   }
 }
 
-fn configuration_population(realization: ProgrammableDeviceRealization) -> ContactPopulation {
-  ContactPopulation {
+fn configuration_population(realization: ProgrammableDeviceRealization) -> product.compute_board.contact_population.ContactPopulation {
+  product.compute_board.contact_population.ContactPopulation {
     kind: ConfigurationContacts,
     count: realization.banks.configuration,
     authority: "iCE40 LP/HX family data sheet per-bank I/O table",
   }
 }
 
-fn toolchain_placeable_population(realization: ProgrammableDeviceRealization) -> ContactPopulation {
-  ContactPopulation {
+fn toolchain_placeable_population(realization: ProgrammableDeviceRealization) -> product.compute_board.contact_population.ContactPopulation {
+  product.compute_board.contact_population.ContactPopulation {
     kind: PlaceableLogicPins,
     count: roster_pin_count(r: realization.roster),
     authority: "Project IceStorm package pin roster",
   }
 }
 
-fn realization_population_comparison(realization: ProgrammableDeviceRealization) -> PopulationComparison {
+fn realization_population_comparison(realization: ProgrammableDeviceRealization) -> product.compute_board.contact_population.PopulationComparison {
   match project_population(
     p: placeable_from_vendor_categories,
     parts: [vendor_general_purpose_population(realization: realization), configuration_population(realization: realization)]

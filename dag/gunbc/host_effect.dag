@@ -124,17 +124,17 @@ fn fleet_ssh_leaf_unmigrated_refused() -> Bool {
   false
 }
 
-data host_effect_emit_artifact_transport_scope_disposition: Disposition = Terminal {
+data host_effect_emit_artifact_transport_scope_disposition: std.disposition.Disposition = Terminal {
   reason: "EmitArtifactThenThinRun transport mint (shell-emission slice 1+2): fresh-standup bootstrap routes through emit(intent,Bash) (bootstrap_fragment_script_carrier_scaffold dissolved); ThinInvocation.argv remains a medium-as-string scaffold until steady-state typed argv dispatch dissolves thin_invocation_argv_carrier_scaffold."
 }
 
-data bootstrap_fragment_script_carrier_scaffold: Disposition = Terminal {
+data bootstrap_fragment_script_carrier_scaffold: std.disposition.Disposition = Terminal {
   reason: "fresh-standup bootstrap emits through orch_emit_pipeline(intent,Bash) on fresh_standup_bootstrap_intent; BootstrapFragment.script is no longer a hand-spelled concat surface for the fleet-converge bootstrap arm (fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger dissolved)"
 }
 
-data thin_invocation_argv_carrier_scaffold: Disposition = Scaffold {
+data thin_invocation_argv_carrier_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_converge_apply",
     decl_name: "fleet_converge_thin_invocation",
     field: WholeDeclaration,
@@ -154,7 +154,7 @@ type HostEffectEvidence =
     ShellEffectApplied { exit_code: Int, stdout: String, stderr: String }
   | ConvergePlanApplied { exit_code: Int, stdout: String }
 
-fn host_effect_drive_from_evidence(evidence: IdempotencyEvidence) -> Drive {
+fn host_effect_drive_from_evidence(evidence: std.effects.IdempotencyEvidence) -> Drive {
   if host_effect_is_converge_loop_evidence(evidence: evidence) {
     ConvergeLoop
   } else {
@@ -168,19 +168,19 @@ fn host_effect_drive(intent: HostEffectIntent) -> Drive {
 
 data host_effect_converge_loop_reason: String = "converge to fixpoint — external redrive until observed state matches desired"
 
-data host_effect_identity_evidence: IdempotencyEvidence = IdentityEffect
+data host_effect_identity_evidence: std.effects.IdempotencyEvidence = IdentityEffect
 
-data host_effect_read_evidence: IdempotencyEvidence = LatticeEffect { shape: ReadEffect }
+data host_effect_read_evidence: std.effects.IdempotencyEvidence = LatticeEffect { shape: ReadEffect }
 
-data host_effect_converge_loop_evidence: IdempotencyEvidence = NonIdempotent {
+data host_effect_converge_loop_evidence: std.effects.IdempotencyEvidence = NonIdempotent {
   shape: AppendEffect,
   reason: host_effect_converge_loop_reason,
 }
 
-fn host_effect_is_converge_loop_evidence(evidence: IdempotencyEvidence) -> Bool {
+fn host_effect_is_converge_loop_evidence(evidence: std.effects.IdempotencyEvidence) -> Bool {
   evidence == host_effect_converge_loop_evidence
 }
 
-fn host_effect_lattice_evidence(shape: EffectShape<KeySource>) -> IdempotencyEvidence {
+fn host_effect_lattice_evidence(shape: EffectShape<std.effects.KeySource>) -> std.effects.IdempotencyEvidence {
   LatticeEffect { shape: shape }
 }

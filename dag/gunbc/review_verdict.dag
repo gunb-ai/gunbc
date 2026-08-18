@@ -184,9 +184,9 @@ service gunbc.ReviewVerdicts {
 
   operation Tally {
     input {
-      repo: NonEmptyStr
+      repo: std.types.NonEmptyStr
       pr_number: Int
-      head_sha: CommitSha
+      head_sha: std.types.CommitSha
       reports: List<ReviewVerdictReport>
       mergeable_clean: Bool
     }

@@ -3,14 +3,14 @@ module extdeps.advertising.google_ads
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "support.google.com/google-ads/answer/2472725"
   }
 }
 
-data google_ads_subject: Vendor<Securities> = alphabet
+data google_ads_subject: Vendor<extdeps.securities.Securities> = alphabet
 
 data google_ads_subject_note: String = "Subject and source are orthogonal axes (operator ruling 2026-07-25, extdeps.pricing.gitlab_subscription precedent): the anchor above is the SOURCE (Google's own product help pages under support.google.com/google-ads), and the subject edge names the ENTITY -- the SEC issuer Alphabet Inc., the filing parent whose income statement reports Google advertising revenue. The consumer-facing product brand is Google Ads; no separate legal-entity row is minted for the operating subsidiary because no fact in this module is about corporate structure."
 
@@ -64,7 +64,7 @@ fn google_ads_billable_unit_catalog() -> List<GoogleAdsBillableUnitRow> {
 
 data google_ads_bid_strategy_roster_note: String = "Bid-strategy names transcribed verbatim from the anchor page 2026-08-01. Kept as a wire-label roster rather than a closed enum: this roster is product-versioned help prose, not a machine-facing API enum (the machine-facing contrast is extdeps.advertising.meta_ads, where billing_event and bid_strategy ARE published API enums). Strategies select what the auction optimizes; the billable unit stays one of the four rows above."
 
-data google_ads_bid_strategy_wire_labels: List<NonEmptyStr> = [
+data google_ads_bid_strategy_wire_labels: List<std.types.NonEmptyStr> = [
   "Target cost per action (CPA)",
   "Target return on ad spend (ROAS)",
   "Maximize Conversions",
@@ -93,7 +93,7 @@ type GoogleAdsAuctionTimeSignal
   | GoogleSignalOperatingSystem
 
 // Coarse-grain targeting dimensions exactly as the anchor page enumerates them, quoted: Smart Bidding 'factors in a wide range of auction-time signals such as device, location, time of day, language, and operating system to capture the unique context of every search.' The page says 'such as' -- this enum models the five signals the vendor names, and is deliberately NOT claimed closed over everything the auction reads.
-data google_ads_media_rate: AdPriceDetermination = AuctionDetermined {
+data google_ads_media_rate: extdeps.advertising.types.AdPriceDetermination = AuctionDetermined {
   mechanism_citation: "support.google.com/google-ads/answer/142918",
 }
 

@@ -8,8 +8,8 @@ type OsInstallMechanism
   | FirmwareUpdateThenVirtualMedia
 
 fn solve_install_mechanism(
-  current: BmcFirmwareCapabilityRow,
-  catalog: List<BmcFirmwareCapabilityRow>
+  current: extdeps.bmc.capability.BmcFirmwareCapabilityRow,
+  catalog: List<extdeps.bmc.capability.BmcFirmwareCapabilityRow>
 ) -> OsInstallMechanism {
   if firmware_has_capability(row: current, cap: CapabilityVirtualMedia) {
     VirtualMediaInstall
@@ -111,8 +111,8 @@ type OsInstallMechanismSolution
 // a BMC boot override), and the PXE arm additionally requires a declared network-boot delivery
 // rather than falling out of an else.
 fn solve_delivery_from_capability_row(
-  row: BmcFirmwareCapabilityRow,
-  catalog: List<BmcFirmwareCapabilityRow>,
+  row: extdeps.bmc.capability.BmcFirmwareCapabilityRow,
+  catalog: List<extdeps.bmc.capability.BmcFirmwareCapabilityRow>,
   network_boot: NetworkBootDeliveryStanding,
   firmware_transition: FirmwareTransitionStanding,
 ) -> OsInstallMechanismSolution {
@@ -159,8 +159,8 @@ fn solve_delivery_from_capability_row(
 // firmware release, so the shipped row is a fact about what the board left the factory with,
 // never about what a given BMC is running now.
 fn solve_install_mechanism_from_evidence(
-  evidence: BmcFirmwareEvidence,
-  catalog: List<BmcFirmwareCapabilityRow>,
+  evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidence,
+  catalog: List<extdeps.bmc.capability.BmcFirmwareCapabilityRow>,
   network_boot: NetworkBootDeliveryStanding,
   firmware_transition: FirmwareTransitionStanding,
 ) -> OsInstallMechanismSolution {
@@ -183,7 +183,7 @@ fn solve_install_mechanism_from_evidence(
   }
 }
 
-data srv3_firmware_catalog: List<BmcFirmwareCapabilityRow> = asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog
+data srv3_firmware_catalog: List<extdeps.bmc.capability.BmcFirmwareCapabilityRow> = asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog
 
 // Network-boot standings, per host. NOTHING in the fleet positively establishes a network-boot
 // delivery today: no host carries an observation of a completed network boot, of the client boot
@@ -273,7 +273,7 @@ data srv3_install_mechanism: OsInstallMechanism = solve_install_mechanism(
   catalog: srv3_firmware_catalog
 )
 
-fn install_boot_target_for(mechanism: OsInstallMechanism) -> RedfishBootSourceOverrideTarget {
+fn install_boot_target_for(mechanism: OsInstallMechanism) -> extdeps.bmc.types.RedfishBootSourceOverrideTarget {
   match mechanism {
     VirtualMediaInstall => BootTargetCd
     NbdProxyVirtualMediaInstall => BootTargetCd

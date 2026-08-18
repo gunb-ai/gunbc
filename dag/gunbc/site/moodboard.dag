@@ -3,24 +3,24 @@ module gunbc.site.moodboard
 
 data moodboard_note: String = "Layer 6: the page. Everything visible projects from the layers below — principles (laws) -> tokens (themes/materials/timing) -> interaction (behavior rows) -> mark / constellation (figures) -> this composition. Every color routes through a theme role var: :root carries the night theme, one prefers-color-scheme media block carries the day theme, both derived from the same Theme rows (one rule set, N themes — a hardcoded hsl in a page rule is the fork this construction removes). The stylesheet is DERIVED from the behavior rows via realize_behavior, so a declared behavior with no realization is countable."
 
-data moodboard_elements: List<InteractiveElement> = [
-  InteractiveElement { element: StarElement, verbs: [Approach] },
-  InteractiveElement { element: HashElement, verbs: [Approach] },
-  InteractiveElement { element: SwatchElement, verbs: [Approach] },
+data moodboard_elements: List<gunbc.design.interaction.InteractiveElement> = [
+  gunbc.design.interaction.InteractiveElement { element: StarElement, verbs: [Approach] },
+  gunbc.design.interaction.InteractiveElement { element: HashElement, verbs: [Approach] },
+  gunbc.design.interaction.InteractiveElement { element: SwatchElement, verbs: [Approach] },
 ]
 
-data moodboard_behaviors: List<BehaviorRow> = [
-  BehaviorRow { element: StarElement, verb: Approach, response: Brighten, timing: respond_fast },
-  BehaviorRow { element: StarElement, verb: Approach, response: Reveal, timing: reveal_deliberate },
-  BehaviorRow { element: HashElement, verb: Approach, response: Reveal, timing: reveal_deliberate },
-  BehaviorRow { element: SwatchElement, verb: Approach, response: Brighten, timing: respond_fast },
+data moodboard_behaviors: List<gunbc.design.interaction.BehaviorRow> = [
+  gunbc.design.interaction.BehaviorRow { element: StarElement, verb: Approach, response: Brighten, timing: respond_fast },
+  gunbc.design.interaction.BehaviorRow { element: StarElement, verb: Approach, response: Reveal, timing: reveal_deliberate },
+  gunbc.design.interaction.BehaviorRow { element: HashElement, verb: Approach, response: Reveal, timing: reveal_deliberate },
+  gunbc.design.interaction.BehaviorRow { element: SwatchElement, verb: Approach, response: Brighten, timing: respond_fast },
 ]
 
-fn approach_triggers() -> List<MotionTrigger> {
+fn approach_triggers() -> List<gunbc.design.material.MotionTrigger> {
   [OnHover, OnFocusVisible]
 }
 
-fn star_brighten_rules(timing: TimingToken) -> List<BuildRule> {
+fn star_brighten_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(approach_triggers(), t =>
     ResponseRule {
       subject: ClassSelector { name: "star" },
@@ -33,7 +33,7 @@ fn star_brighten_rules(timing: TimingToken) -> List<BuildRule> {
     })
 }
 
-fn star_legend_reveal_rules(timing: TimingToken) -> List<BuildRule> {
+fn star_legend_reveal_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   fold(layer_stars, init: [], f: (acc, s) =>
     concat(acc, map(approach_triggers(), t =>
       ResponseRule {
@@ -47,7 +47,7 @@ fn star_legend_reveal_rules(timing: TimingToken) -> List<BuildRule> {
       })))
 }
 
-fn hash_reveal_rules(timing: TimingToken) -> List<BuildRule> {
+fn hash_reveal_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(approach_triggers(), t =>
     ResponseRule {
       subject: ClassSelector { name: "hash" },
@@ -60,7 +60,7 @@ fn hash_reveal_rules(timing: TimingToken) -> List<BuildRule> {
     })
 }
 
-fn swatch_brighten_rules(timing: TimingToken) -> List<BuildRule> {
+fn swatch_brighten_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(approach_triggers(), t =>
     ResponseRule {
       subject: ClassSelector { name: "swatch" },
@@ -77,7 +77,7 @@ type RealizedBehavior
   = RealizedRules { rules: List<gunbc.design.material.BuildRule> }
   | UnrealizedBehavior { element: String, verb: String, response: String }
 
-fn realize_behavior(row: BehaviorRow) -> RealizedBehavior {
+fn realize_behavior(row: gunbc.design.interaction.BehaviorRow) -> RealizedBehavior {
   let e = row.element
   let r = response_key(r: row.response)
   if element_id_eq(a: e, b: StarElement) && r == "brighten" {
@@ -93,7 +93,7 @@ fn realize_behavior(row: BehaviorRow) -> RealizedBehavior {
   }
 }
 
-fn unrealized_behaviors(rows: List<BehaviorRow>) -> List<RealizedBehavior> {
+fn unrealized_behaviors(rows: List<gunbc.design.interaction.BehaviorRow>) -> List<RealizedBehavior> {
   fold(rows, init: [], f: (acc, row) => match realize_behavior(row: row) {
     RealizedRules { rules: _ } => acc
     UnrealizedBehavior { element, verb, response } =>
@@ -101,14 +101,14 @@ fn unrealized_behaviors(rows: List<BehaviorRow>) -> List<RealizedBehavior> {
   })
 }
 
-fn behavior_rules(rows: List<BehaviorRow>) -> List<BuildRule> {
+fn behavior_rules(rows: List<gunbc.design.interaction.BehaviorRow>) -> List<gunbc.design.material.BuildRule> {
   fold(rows, init: [], f: (acc, row) => match realize_behavior(row: row) {
     RealizedRules { rules } => concat(acc, rules)
     UnrealizedBehavior { element: _, verb: _, response: _ } => acc
   })
 }
 
-fn figure_rules() -> List<BuildRule> {
+fn figure_rules() -> List<gunbc.design.material.BuildRule> {
   [
     StaticRule { selector: ClassSelector { name: "mark-point" }, decls: [ role_decl(prop: Fill, r: FigureRole) ] },
     StaticRule { selector: ClassSelector { name: "mark-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
@@ -120,7 +120,7 @@ fn figure_rules() -> List<BuildRule> {
   ]
 }
 
-fn static_rules() -> List<BuildRule> {
+fn static_rules() -> List<gunbc.design.material.BuildRule> {
   [
     StaticRule { selector: ElementSelector { tag: "body" }, decls: [
       role_decl(prop: Background, r: CanvasRole),
@@ -221,7 +221,7 @@ fn static_rules() -> List<BuildRule> {
   ]
 }
 
-fn moodboard_rules() -> List<BuildRule> {
+fn moodboard_rules() -> List<gunbc.design.material.BuildRule> {
   concat(concat(static_rules(), figure_rules()), behavior_rules(rows: moodboard_behaviors))
 }
 
@@ -238,7 +238,7 @@ fn moodboard_nav_js() -> String {
   reframe_watcher_js()
 }
 
-fn theme_paint_of(t: Theme, r: ThemeRole) -> String {
+fn theme_paint_of(t: gunbc.design.theme.Theme, r: gunbc.design.theme.ThemeRole) -> String {
   fold(t.assignments, init: "", f: (acc, a) =>
     if role_eq(a: a.role, b: r) { assignment_paint(a: a) } else { acc })
 }
@@ -249,21 +249,21 @@ fn themes_serialized() -> String {
 }
 
 fn moodboard_digest() -> String {
-  content_hash_atom(value: concat(register_thesis, themes_serialized()) as NonEmptyStr).digest as String
+  content_hash_atom(value: concat(register_thesis, themes_serialized()) as std.types.NonEmptyStr).digest as String
 }
 
 fn short_digest(digest: String) -> String {
   substring(s: digest, start: 0, end: 8)
 }
 
-fn masthead() -> Fragment {
+fn masthead() -> std.markup.Fragment {
   el_class("header", "masthead", [
     el_class("p", "wordmark", [ txt("gunb.ai") ]),
     el_class("p", "thesis", [ txt(register_thesis) ]),
   ])
 }
 
-fn mark_section() -> Fragment {
+fn mark_section() -> std.markup.Fragment {
   el("section", [
     el("h2", [ txt("the mark — one spec, three depths") ]),
     el_class("div", "panel", [
@@ -274,15 +274,15 @@ fn mark_section() -> Fragment {
   ])
 }
 
-fn hero_section() -> Fragment {
+fn hero_section() -> std.markup.Fragment {
   el("section", [
     el("h2", [ txt("the layer dag as an asterism — touch a star") ]),
     el_class("div", "panel", [ constellation_figure() ]),
   ])
 }
 
-fn theme_chip(paint_value: String) -> Fragment {
-  Element {
+fn theme_chip(paint_value: String) -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "span",
     attributes: [
       attr(name: "class", value: "chip-inline" ),
@@ -292,13 +292,13 @@ fn theme_chip(paint_value: String) -> Fragment {
   }
 }
 
-fn theme_cell(t: Theme, r: ThemeRole) -> Fragment {
+fn theme_cell(t: gunbc.design.theme.Theme, r: gunbc.design.theme.ThemeRole) -> std.markup.Fragment {
   let p = theme_paint_of(t: t, r: r)
-  Element {
+  extdeps.browser.Element {
     tag: "td",
     attributes: [],
     children: [
-      Element {
+      extdeps.browser.Element {
         tag: "span",
         attributes: [
           attr(name: "class", value: "swatch" ),
@@ -310,7 +310,7 @@ fn theme_cell(t: Theme, r: ThemeRole) -> Fragment {
   }
 }
 
-fn theme_role_row(r: ThemeRole) -> Fragment {
+fn theme_role_row(r: gunbc.design.theme.ThemeRole) -> std.markup.Fragment {
   el("tr", [
     el_class("td", "mono", [ txt(role_key(r: r)) ]),
     theme_cell(t: night_theme, r: r),
@@ -318,7 +318,7 @@ fn theme_role_row(r: ThemeRole) -> Fragment {
   ])
 }
 
-fn themes_section() -> Fragment {
+fn themes_section() -> std.markup.Fragment {
   el("section", [
     el("h2", [ txt("themes — one role model, night and day projections") ]),
     el_class("table", "ledger", concat(
@@ -331,21 +331,21 @@ fn themes_section() -> Fragment {
   ])
 }
 
-fn timing_row(t: TimingToken) -> Fragment {
+fn timing_row(t: gunbc.design.material.TimingToken) -> std.markup.Fragment {
   el("tr", [
     el_class("td", "mono", [ txt(t.name) ]),
     el_class("td", "mono", [ txt(join([to_string(t.duration_ms), "ms ", t.easing], "")) ]),
   ])
 }
 
-fn timing_section() -> Fragment {
+fn timing_section() -> std.markup.Fragment {
   el("section", [
     el("h2", [ txt("the timing scale — three tokens, no other durations exist") ]),
     el_class("table", "ledger", map(timing_scale, t => timing_row(t: t))),
   ])
 }
 
-fn principle_row(p: RegisterPrinciple) -> Fragment {
+fn principle_row(p: gunbc.design.principles.RegisterPrinciple) -> std.markup.Fragment {
   el("tr", [
     el_class("td", "mono", [ txt(principle_id_key(id: p.id)) ]),
     el("td", [ txt(p.law) ]),
@@ -353,14 +353,14 @@ fn principle_row(p: RegisterPrinciple) -> Fragment {
   ])
 }
 
-fn principles_section() -> Fragment {
+fn principles_section() -> std.markup.Fragment {
   el("section", [
     el("h2", [ txt("base principles — each law names its enforcing carrier") ]),
     el_class("table", "ledger", map(register_principles, p => principle_row(p: p))),
   ])
 }
 
-fn boundary_section() -> Fragment {
+fn boundary_section() -> std.markup.Fragment {
   el("section", [
     el("h2", [ txt("a boundary — refusal does not glow") ]),
     el_class("div", "panel boundary", [
@@ -371,9 +371,9 @@ fn boundary_section() -> Fragment {
   ])
 }
 
-fn hallmark() -> Fragment {
+fn hallmark() -> std.markup.Fragment {
   let digest = moodboard_digest()
-  Element {
+  extdeps.browser.Element {
     tag: "footer",
     attributes: [
       attr(name: "class", value: "foot hash" ),
@@ -386,8 +386,8 @@ fn hallmark() -> Fragment {
   }
 }
 
-fn moodboard_page() -> Fragment {
-  Element { tag: "html", attributes: [ attr(name: "lang", value: "en" ) ], children: [
+fn moodboard_page() -> std.markup.Fragment {
+  extdeps.browser.Element { tag: "html", attributes: [ attr(name: "lang", value: "en" ) ], children: [
     el("head", [
       Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
       Element { tag: "meta", attributes: [

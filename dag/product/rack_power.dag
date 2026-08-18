@@ -52,7 +52,7 @@ type AssetLoad
   | DeclaredApparentPower { asset: product.placement_supply.PhysicalAssetIdentity, draw: std.measure.VoltAmpere }
   | LoadUnobserved { asset: product.placement_supply.PhysicalAssetIdentity }
 
-fn asset_load_subject(l: AssetLoad) -> PhysicalAssetIdentity {
+fn asset_load_subject(l: AssetLoad) -> product.placement_supply.PhysicalAssetIdentity {
   match l {
     ObservedRealPower { asset: a, draw: _ } => a
     DeclaredApparentPower { asset: a, draw: _ } => a
@@ -97,31 +97,31 @@ type PowerFeed sole_constructor {
   catalog: extdeps.power.types.PduCatalogRow
 }
 
-fn power_feed(identity: PhysicalAssetIdentity, catalog: PduCatalogRow) -> PowerFeed {
+fn power_feed(identity: product.placement_supply.PhysicalAssetIdentity, catalog: extdeps.power.types.PduCatalogRow) -> PowerFeed {
   PowerFeed { identity: identity, catalog: catalog }
 }
 
 // DERIVED FROM THE CITED ROW, never stored beside it: the capacity is the product of the two figures
 // the datasheet states, so an edit to either cannot leave a stale total behind.
-fn feed_capacity(f: PowerFeed) -> VoltAmpere {
+fn feed_capacity(f: PowerFeed) -> std.measure.VoltAmpere {
   apparent_power_from_supply(supply_voltage: f.catalog.nominal_supply_voltage, rated_current: f.catalog.rated_current)
 }
 
 fn feed_outlet_count(f: PowerFeed) -> Int { f.catalog.outlet_count }
 
-fn asset_eq(a: PhysicalAssetIdentity, b: PhysicalAssetIdentity) -> Bool {
+fn asset_eq(a: product.placement_supply.PhysicalAssetIdentity, b: product.placement_supply.PhysicalAssetIdentity) -> Bool {
   (a as String) == (b as String)
 }
 
-fn mounted_assets(r: RackInstance) -> List<PhysicalAssetIdentity> {
+fn mounted_assets(r: product.rack_mount.RackInstance) -> List<product.placement_supply.PhysicalAssetIdentity> {
   fold(rack_mounts(r: r), init: [], f: (acc, m) => concat(acc, [m.asset]))
 }
 
-fn contains_asset(assets: List<PhysicalAssetIdentity>, wanted: PhysicalAssetIdentity) -> Bool {
+fn contains_asset(assets: List<product.placement_supply.PhysicalAssetIdentity>, wanted: product.placement_supply.PhysicalAssetIdentity) -> Bool {
   fold(assets, init: false, f: (hit, a) => hit || asset_eq(a: a, b: wanted))
 }
 
-fn count_loads_for(loads: List<AssetLoad>, wanted: PhysicalAssetIdentity) -> Int {
+fn count_loads_for(loads: List<AssetLoad>, wanted: product.placement_supply.PhysicalAssetIdentity) -> Int {
   fold(loads, init: 0, f: (n, l) => if asset_eq(a: asset_load_subject(l: l), b: wanted) { n + 1 } else { n })
 }
 
@@ -129,7 +129,7 @@ fn count_loads_for(loads: List<AssetLoad>, wanted: PhysicalAssetIdentity) -> Int
 // separate remedies: a load row for an asset that is not in the rack is a stale inventory, and a
 // mounted asset with no row is an unmeasured machine. Reporting either as "the counts disagree"
 // would tell an operator nothing about which one to go and fix.
-fn scan_loads_against_rack(r: RackInstance, loads: List<AssetLoad>) -> PowerRefusal? {
+fn scan_loads_against_rack(r: product.rack_mount.RackInstance, loads: List<AssetLoad>) -> PowerRefusal? {
   let assets = mounted_assets(r: r)
   let orphaned = fold(loads, init: none, f: (found, l) =>
     match found {
@@ -216,7 +216,7 @@ fn feed_carries_load(capacity: Int, apparent: Int, real: Int, percent: Int) -> B
 // meaningful - which is why the crossing is a single expression rather than a pair of running
 // scalars that could have been added together anywhere upstream.
 fn rack_power_budget(
-  rack: RackInstance,
+  rack: product.rack_mount.RackInstance,
   feed: PowerFeed,
   loads: List<AssetLoad>,
   power_factor: DeclaredPowerFactor,
@@ -263,8 +263,8 @@ fn rack_power_budget(
   }
 }
 
-fn budget_real_load(b: PowerBudget) -> Watt { b.real_load }
-fn budget_apparent_load(b: PowerBudget) -> VoltAmpere { b.apparent_load }
+fn budget_real_load(b: PowerBudget) -> std.measure.Watt { b.real_load }
+fn budget_apparent_load(b: PowerBudget) -> std.measure.VoltAmpere { b.apparent_load }
 fn budget_outlets_used(b: PowerBudget) -> Int { b.outlets_used }
 // NO DERATING IS APPLIED, and its absence is deliberate rather than an oversight. Electrical codes
 // limit a continuous load to a fraction of a circuit's rating, and applying such a limit here would
@@ -272,4 +272,4 @@ fn budget_outlets_used(b: PowerBudget) -> Int { b.outlets_used }
 // exists to prevent. The capacity compared against is the manufacturer's rating exactly as cited.
 // Dissolve-on: a cited continuous-load rule in an extdeps authority of its own, at which point the
 // admission takes the derated capacity and this note is replaced by the citation.
-fn budget_capacity(b: PowerBudget) -> VoltAmpere { feed_capacity(f: b.feed) }
+fn budget_capacity(b: PowerBudget) -> std.measure.VoltAmpere { feed_capacity(f: b.feed) }

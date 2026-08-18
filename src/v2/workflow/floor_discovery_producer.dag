@@ -173,7 +173,7 @@ fn floor_discovery_initializer_rest_is_strict_single_token(rest: String, token: 
   }
 }
 
-fn floor_discovery_disposition_row_variant(line: String) -> Optional<LiveTreeDisposition> {
+fn floor_discovery_disposition_row_variant(line: String) -> Optional<v2.std.live_tree.LiveTreeDisposition> {
   let init_rest = trim(s: floor_discovery_after_first_equals(s: line))
   let first_token = floor_discovery_first_token_before_space(seg: init_rest)
   if (first_token == "")
@@ -304,7 +304,7 @@ fn floor_discovery_entry_live_tree_disposition_refusal_for_content(
 }
 
 fn floor_discovery_rows_contain_key(
-  rows: List<FloorDiscoveryRow>,
+  rows: List<v2.workflow.floor_discovery.FloorDiscoveryRow>,
   entry: String,
   function: String
 ) -> Bool {
@@ -323,7 +323,7 @@ fn floor_discovery_rows_contain_key(
 
 fn floor_discovery_append_row(
   state: FloorDiscoveryWalkState,
-  row: FloorDiscoveryRow
+  row: v2.workflow.floor_discovery.FloorDiscoveryRow
 ) -> FloorDiscoveryWalkState {
   if floor_discovery_rows_contain_key(
     rows: state.rows,
@@ -345,7 +345,7 @@ fn floor_discovery_append_row(
 fn floor_discovery_collect_sidecar_violation(
   state: FloorDiscoveryWalkState,
   entry_path: String,
-  kind: FloorDiscoverySidecarKind,
+  kind: v2.workflow.floor_discovery.FloorDiscoverySidecarKind,
   required_suffix: String
 ) -> FloorDiscoveryWalkState {
   FloorDiscoveryWalkState {
@@ -353,7 +353,7 @@ fn floor_discovery_collect_sidecar_violation(
     walk_failures: state.walk_failures,
     walk_failure_path: state.walk_failure_path,
     sidecar_violations: concat(state.sidecar_violations, [
-      FloorDiscoverySidecarViolation {
+      v2.workflow.floor_discovery.FloorDiscoverySidecarViolation {
         entry_path: entry_path,
         kind: kind,
         required_suffix: required_suffix
@@ -383,7 +383,7 @@ fn floor_discovery_apply_test_sidecar_rules(
             } else {
               floor_discovery_append_row(
                 state: acc,
-                row: FloorDiscoveryRow {
+                row: v2.workflow.floor_discovery.FloorDiscoveryRow {
                   label: name,
                   entry: repo_path,
                   function: name,
@@ -509,7 +509,7 @@ fn floor_discovery_unified_claim_label(decl_name: String) -> String {
 
 fn floor_discovery_merge_owned_data_record(
   state: FloorDiscoveryWalkState,
-  rec: OwnedDataDeclRecord
+  rec: v2.compiler.discovery_enumeration.OwnedDataDeclRecord
 ) -> FloorDiscoveryWalkState {
   match rec.initializer {
     OwnedBoolWitnessClaimInit { witness_entry: entry, witness_function: function } =>
@@ -536,7 +536,7 @@ fn floor_discovery_merge_owned_data_record(
             EntryLiveTreeResolved { disposition: reads_live } =>
               floor_discovery_append_row(
                 state: state,
-                row: FloorDiscoveryRow {
+                row: v2.workflow.floor_discovery.FloorDiscoveryRow {
                   label: floor_discovery_unified_claim_label(decl_name: rec.decl_name),
                   entry: entry,
                   function: function,
@@ -552,8 +552,8 @@ fn floor_discovery_merge_owned_data_record(
 }
 
 fn floor_discovery_paths_for_sidecar_kind(
-  violations: List<FloorDiscoverySidecarViolation>,
-  kind: FloorDiscoverySidecarKind
+  violations: List<v2.workflow.floor_discovery.FloorDiscoverySidecarViolation>,
+  kind: v2.workflow.floor_discovery.FloorDiscoverySidecarKind
 ) -> String {
   fold_list(
     xs: violations,
@@ -573,7 +573,7 @@ fn floor_discovery_paths_for_sidecar_kind(
 }
 
 fn floor_discovery_sidecar_refusal_reason(
-  violations: List<FloorDiscoverySidecarViolation>
+  violations: List<v2.workflow.floor_discovery.FloorDiscoverySidecarViolation>
 ) -> String {
   let test_paths = floor_discovery_paths_for_sidecar_kind(
     violations: violations,
@@ -626,7 +626,7 @@ fn floor_discovery_finalize(state: FloorDiscoveryWalkState) -> FloorDiscoveryPro
 fn discover_floor_corpus_rows_from_host_facts(
   source_roots: List<String>,
   exclude_substrings: List<String>,
-  owned_data_records: List<OwnedDataDeclRecord>
+  owned_data_records: List<v2.compiler.discovery_enumeration.OwnedDataDeclRecord>
 ) -> FloorDiscoveryProducerResult {
   floor_discovery_finalize(
     state: fold(
@@ -669,17 +669,17 @@ data floor_discovery_exact_admission_note: String = "The per-PR discovery roster
 
 data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List/Read host facts, owned-data transport records (host-materialized from scan_dirs by invoke_floor_discovery_producer before the producer call — scan_dirs is not a producer parameter), witness_exclusion_substrings, and *_test.dag naming rules. List/read failures increment walk_failures with a located Optional path; finalize refuses, never an empty roster. Interior directory candidates (basename has no '.') are descended; dotted basenames are skipped as non-dag files."
 
-data floor_discovery_surface_text_scan_scaffold: Disposition = Scaffold {
+data floor_discovery_surface_text_scan_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.floor_naming_hygiene",
     decl_name: "floor_discovery_scan_test_decl_names",
     field: WholeDeclaration
   }
 }
 
-data floor_discovery_directory_candidate_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_discovery_directory_candidate — basename-without-dot descent heuristic dissolves when Filesystem.List surfaces entry kind (file | directory) and the walker consumes it; live dag/ + src/v2/ corpora have zero dotted directory basenames today (find -type d -name '*.*' empty).")
+data floor_discovery_directory_candidate_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_discovery_directory_candidate — basename-without-dot descent heuristic dissolves when Filesystem.List surfaces entry kind (file | directory) and the walker consumes it; live dag/ + src/v2/ corpora have zero dotted directory basenames today (find -type d -name '*.*' empty).")
 
-data floor_discovery_live_tree_disposition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_discovery_live_tree_disposition — producer reads and refuses malformed/duplicate `data live_tree_disposition: LiveTreeDisposition = …` rows (undeclared = ReadsLiveTree). Effect-reach reclassification remains on the Rust bridge until discovery admission consumes `v2.lens.effect_reach` directly (same trigger as cli_run `reads_live_tree_effective` scaffold).")
+data floor_discovery_live_tree_disposition_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_discovery_live_tree_disposition — producer reads and refuses malformed/duplicate `data live_tree_disposition: LiveTreeDisposition = …` rows (undeclared = ReadsLiveTree). Effect-reach reclassification remains on the Rust bridge until discovery admission consumes `v2.lens.effect_reach` directly (same trigger as cli_run `reads_live_tree_effective` scaffold).")
 
-data floor_discovery_surface_text_scan_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: floor_discovery_surface_text_scan — naming hygiene recovers test-decl names (and the producer recovers live_tree_disposition rows + CoproductWireContract markers) via hand-rolled line/token splitting over raw source text (§4 grammar-owned-reads violation); DISSOLVES WHEN discovery enumeration consumes grammar-owned parse/AST facts from the same ingress surface as v2.compiler so stru")
+data floor_discovery_surface_text_scan_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: floor_discovery_surface_text_scan — naming hygiene recovers test-decl names (and the producer recovers live_tree_disposition rows + CoproductWireContract markers) via hand-rolled line/token splitting over raw source text (§4 grammar-owned-reads violation); DISSOLVES WHEN discovery enumeration consumes grammar-owned parse/AST facts from the same ingress surface as v2.compiler so stru")

@@ -3,14 +3,14 @@ module extdeps.advertising.meta_ads
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "developers.facebook.com/docs/marketing-api/reference/ad-campaign"
   }
 }
 
-data meta_ads_subject: Vendor<Securities> = meta_platforms
+data meta_ads_subject: Vendor<extdeps.securities.Securities> = meta_platforms
 
 data meta_ads_provenance_note: String = "Interface facts live-fetched 2026-08-01 from the Meta Marketing API developer docs: the anchor page (which, per the API's legacy object naming, is the AD SET reference -- billing_event, bid_strategy, and optimization_goal are ad-set-level fields) and the bidding overview at developers.facebook.com/docs/marketing-api/bidding, which states the billing-event concept verbatim: the system 'defines events you want to pay for, including impressions, clicks, or various actions.' Two Business Help Center pages were attempted and are client-rendered (this fetch reads only their titles): 'About Ad Auctions | Meta Business Help Center' (facebook.com/business/help/430291176997542) and 'Best Practices for Minimum Budgets | Meta Business Help Center' (facebook.com/business/help/203183363050448) -- the latter is why the minimum-budget row below is RateUnavailable with that cause, never a remembered number."
 
@@ -163,7 +163,7 @@ fn meta_bid_strategy_catalog() -> List<MetaBidStrategyRow> {
 
 data meta_optimization_goal_note: String = "optimization_goal wire values transcribed verbatim from the anchor reference 2026-08-01. Kept as a wire-value roster rather than a closed enum: this is the coarse-grain record that the axis EXISTS and is distinct from billing_event; per-goal modeling waits for a consumer that needs it (second-consumer discipline), and a 33-variant enum nobody eliminates over would be roster theater."
 
-data meta_optimization_goal_wire_values: List<NonEmptyStr> = [
+data meta_optimization_goal_wire_values: List<std.types.NonEmptyStr> = [
   "NONE",
   "APP_INSTALLS",
   "AD_RECALL_LIFT",
@@ -199,10 +199,10 @@ data meta_optimization_goal_wire_values: List<NonEmptyStr> = [
   "MESSAGING_APPOINTMENT_CONVERSION",
 ]
 
-data meta_ads_media_rate: AdPriceDetermination = AuctionDetermined {
+data meta_ads_media_rate: extdeps.advertising.types.AdPriceDetermination = AuctionDetermined {
   mechanism_citation: "developers.facebook.com/docs/marketing-api/bidding",
 }
 
-data meta_ads_minimum_daily_budget_rate: AdPriceDetermination = RateUnavailable {
+data meta_ads_minimum_daily_budget_rate: extdeps.advertising.types.AdPriceDetermination = RateUnavailable {
   cause: "Meta publishes minimum daily budget figures in the Business Help Center page 'Best Practices for Minimum Budgets' (facebook.com/business/help/203183363050448), but that page is client-rendered and this fetch reads only its title (2026-08-01) -- refused, never filled from memory",
 }

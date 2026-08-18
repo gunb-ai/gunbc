@@ -29,7 +29,7 @@ fn bb_config_path(plan: BusyboxCrossBuildPlan) -> String {
   join([plan.build_dir as String, "/.config"], "")
 }
 
-fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<ArgvCommand> {
+fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<extdeps.exec.command.ArgvCommand> {
   let bd = plan.build_dir as String
   let arch = bb_make_var(key: "ARCH", value: plan.kernel_arch as String)
   let cross = bb_make_var(key: "CROSS_COMPILE", value: plan.cross_compile as String)
@@ -47,7 +47,7 @@ fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<ArgvCommand> {
   ]
 }
 
-func busybox_bmc_build_run() -> ProcessExit
+func busybox_bmc_build_run() -> std.process.ProcessExit
   uses net: Network
 {
   run_shell_commands(commands: busybox_build_commands(plan: bmc_busybox_build_plan), transport: LocalExec)

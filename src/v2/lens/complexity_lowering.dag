@@ -7,7 +7,7 @@ type ComplexityLowering {
   after: v2.lens.cost.AsymptoticClass
 }
 
-fn asymptotic_class_equal(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
+fn asymptotic_class_equal(a: v2.lens.cost.AsymptoticClass, b: v2.lens.cost.AsymptoticClass) -> Bool {
   asymptotic_class_dominates(a: a, b: b) && asymptotic_class_dominates(a: b, b: a)
 }
 
@@ -32,19 +32,19 @@ fn catalog_is_sound() -> Bool {
   for_all(xs: lowering_catalog(), predicate: strictly_lowers)
 }
 
-fn lowering_matches_class(r: ComplexityLowering, cls: AsymptoticClass) -> Bool {
+fn lowering_matches_class(r: ComplexityLowering, cls: v2.lens.cost.AsymptoticClass) -> Bool {
   asymptotic_class_equal(a: r.before, b: cls)
 }
 
-fn cost_class_is_lowerable(cls: AsymptoticClass) -> Bool {
+fn cost_class_is_lowerable(cls: v2.lens.cost.AsymptoticClass) -> Bool {
   any(xs: lowering_catalog(), predicate: fn(r) { lowering_matches_class(r: r, cls: cls) })
 }
 
-fn cost_is_lowerable(c: SymbolicCost) -> Bool {
+fn cost_is_lowerable(c: v2.lens.cost.SymbolicCost) -> Bool {
   cost_class_is_lowerable(cls: asymptotic_class_of_cost(cost: c))
 }
 
-fn minimized_class(c: SymbolicCost) -> AsymptoticClass {
+fn minimized_class(c: v2.lens.cost.SymbolicCost) -> v2.lens.cost.AsymptoticClass {
   fold_list(
     xs: lowering_catalog(),
     empty: asymptotic_class_of_cost(cost: c),
@@ -58,6 +58,6 @@ fn minimized_class(c: SymbolicCost) -> AsymptoticClass {
   )
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

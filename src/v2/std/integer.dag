@@ -11,17 +11,17 @@ type Representation
 
 type OverflowDisposition = Wrapping | Saturating | UndefinedBehavior | Trapping
 
-type Int8 = Compose<Int, MachineWidth<Word8>>
-type Int16 = Compose<Int, MachineWidth<Word16>>
-type Int32 = Compose<Int, MachineWidth<Word32>>
-type Int64 = Compose<Int, MachineWidth<Word64>>
-type Int128 = Compose<Int, MachineWidth<Word128>>
+type Int8 = Compose<Int, MachineWidth<std.bit.Word8>>
+type Int16 = Compose<Int, MachineWidth<std.bit.Word16>>
+type Int32 = Compose<Int, MachineWidth<std.bit.Word32>>
+type Int64 = Compose<Int, MachineWidth<std.bit.Word64>>
+type Int128 = Compose<Int, MachineWidth<std.bit.Word128>>
 
-type UInt8 = Compose<UInt, MachineWidth<Word8>>
-type UInt16 = Compose<UInt, MachineWidth<Word16>>
-type UInt32 = Compose<UInt, MachineWidth<Word32>>
-type UInt64 = Compose<UInt, MachineWidth<Word64>>
-type UInt128 = Compose<UInt, MachineWidth<Word128>>
+type UInt8 = Compose<UInt, MachineWidth<std.bit.Word8>>
+type UInt16 = Compose<UInt, MachineWidth<std.bit.Word16>>
+type UInt32 = Compose<UInt, MachineWidth<std.bit.Word32>>
+type UInt64 = Compose<UInt, MachineWidth<std.bit.Word64>>
+type UInt128 = Compose<UInt, MachineWidth<std.bit.Word128>>
 
 type IntPlatform = Compose<Int, MachineWidth<v2.std.machine.PointerWidth>>
 type UIntPlatform = Compose<UInt, MachineWidth<v2.std.machine.PointerWidth>>
@@ -76,16 +76,16 @@ type IntegerIntervalSpec {
   inclusive_max: IntegerIntervalBound
 }
 
-fn integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
-  Diagnostic {
+fn integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^integer_standard_integer_type_decode_invalid,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn integer_signed_i32_le_decode_invalid_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn integer_signed_i32_le_decode_invalid_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^integer_standard_integer_type_decode_invalid,
     at: port_locus(port: ^integer_signed_i32_le_decode_invalid),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -251,11 +251,11 @@ fn integer_pow2_magnitude(exponent: Int) -> DecimalNonZeroMagnitude {
   }
 }
 
-fn decimal_digit_compare(left: DecimalDigit, right: DecimalDigit) -> Ordering {
+fn decimal_digit_compare(left: DecimalDigit, right: DecimalDigit) -> std.algebra.Ordering {
   int_compare(a: decimal_digit_value(d: left), b: decimal_digit_value(d: right))
 }
 
-fn decimal_digit_list_compare(left: FreeMonoid<DecimalDigit>, right: FreeMonoid<DecimalDigit>) -> Ordering {
+fn decimal_digit_list_compare(left: FreeMonoid<DecimalDigit>, right: FreeMonoid<DecimalDigit>) -> std.algebra.Ordering {
   match left {
     Empty => match right {
       Empty => Equal
@@ -273,7 +273,7 @@ fn decimal_digit_list_compare(left: FreeMonoid<DecimalDigit>, right: FreeMonoid<
   }
 }
 
-fn decimal_nonzero_magnitude_compare(left: DecimalNonZeroMagnitude, right: DecimalNonZeroMagnitude) -> Ordering {
+fn decimal_nonzero_magnitude_compare(left: DecimalNonZeroMagnitude, right: DecimalNonZeroMagnitude) -> std.algebra.Ordering {
   let left_len = 1 + length(xs: left.tail)
   let right_len = 1 + length(xs: right.tail)
   if left_len < right_len {
@@ -292,7 +292,7 @@ fn decimal_nonzero_magnitude_compare(left: DecimalNonZeroMagnitude, right: Decim
   }
 }
 
-fn ordering_invert(ordering: Ordering) -> Ordering {
+fn ordering_invert(ordering: std.algebra.Ordering) -> std.algebra.Ordering {
   match ordering {
     Less => Greater
     Equal => Equal
@@ -312,7 +312,7 @@ type StandardIntegerType
   | UInt16
   | UInt8
 
-fn integer_standard_integer_type_signedness(standard_integer_type: StandardIntegerType) -> Signedness {
+fn integer_standard_integer_type_signedness(standard_integer_type: StandardIntegerType) -> std.integer.Signedness {
   match standard_integer_type {
     Int128 => Signed
     Int64 => Signed
@@ -350,7 +350,7 @@ fn integer_magnitude_upper_bound(magnitude: DecimalMagnitude) -> IntegerInterval
   }
 }
 
-fn integer_machine_interval_spec(signedness: Signedness, width_bits: Int) -> IntegerIntervalSpec {
+fn integer_machine_interval_spec(signedness: std.integer.Signedness, width_bits: Int) -> IntegerIntervalSpec {
   match signedness {
     Signed =>
       integer_interval(
@@ -407,11 +407,11 @@ fn integer_standard_integer_type_from_node(node: Node) -> Outcome<StandardIntege
 }
 
 fn integer_pointer_width_bound_compare(
-  left_signedness: Signedness,
+  left_signedness: std.integer.Signedness,
   left_endpoint: IntegerRangeEndpoint,
-  right_signedness: Signedness,
+  right_signedness: std.integer.Signedness,
   right_endpoint: IntegerRangeEndpoint
-) -> Ordering {
+) -> std.algebra.Ordering {
   match left_signedness {
     Signed => match right_signedness {
       Signed => match left_endpoint {
@@ -443,9 +443,9 @@ fn integer_pointer_width_bound_compare(
 }
 
 fn integer_concrete_zero_compare_to_pointer_width(
-  right_signedness: Signedness,
+  right_signedness: std.integer.Signedness,
   right_endpoint: IntegerRangeEndpoint
-) -> Ordering {
+) -> std.algebra.Ordering {
   match right_signedness {
     Signed => match right_endpoint {
       IntegerRangeInclusiveMin => Greater
@@ -460,9 +460,9 @@ fn integer_concrete_zero_compare_to_pointer_width(
 
 fn integer_concrete_bound_compare_to_pointer_width(
   left_sign: IntegerBoundSign,
-  right_signedness: Signedness,
+  right_signedness: std.integer.Signedness,
   right_endpoint: IntegerRangeEndpoint
-) -> Ordering {
+) -> std.algebra.Ordering {
   match right_signedness {
     Signed => match right_endpoint {
       IntegerRangeInclusiveMin => Greater
@@ -478,7 +478,7 @@ fn integer_concrete_bound_compare_to_pointer_width(
   }
 }
 
-fn integer_interval_bound_compare(left: IntegerIntervalBound, right: IntegerIntervalBound) -> Ordering {
+fn integer_interval_bound_compare(left: IntegerIntervalBound, right: IntegerIntervalBound) -> std.algebra.Ordering {
   match left {
     IntegerConcreteZero => match right {
       IntegerConcreteZero => Equal
@@ -629,7 +629,7 @@ fn integer_concrete_bound(
 }
 
 fn integer_pointer_width_bound(
-  signedness: Signedness,
+  signedness: std.integer.Signedness,
   endpoint: IntegerRangeEndpoint
 ) -> IntegerIntervalBound {
   IntegerPointerWidthBound { signedness: signedness, endpoint: endpoint }
@@ -689,16 +689,16 @@ fn uint_platform_interval_spec() -> IntegerIntervalSpec {
   )
 }
 
-fn integer_inhabitant_atom(id: Symbol) -> Node {
-  Node {
+fn integer_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn integer_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn integer_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
 fn integer_bound_sign_node(sign: IntegerBoundSign) -> Node {
@@ -708,7 +708,7 @@ fn integer_bound_sign_node(sign: IntegerBoundSign) -> Node {
   }
 }
 
-fn integer_signedness_node(signedness: Signedness) -> Node {
+fn integer_signedness_node(signedness: std.integer.Signedness) -> Node {
   match signedness {
     Signed => integer_inhabitant_atom(id: ^integer_tag_signed)
     Unsigned => integer_inhabitant_atom(id: ^integer_tag_unsigned)
@@ -774,7 +774,7 @@ fn integer_decimal_magnitude_node(magnitude: DecimalMagnitude) -> Node {
 
 fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
   match bound {
-    IntegerConcreteZero => Node {
+    IntegerConcreteZero => v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
         integer_named_edge(
@@ -784,7 +784,7 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
       ],
       occurrence_id: SyntheticOccurrence
 }
-    IntegerConcreteBound { sign, magnitude } => Node {
+    IntegerConcreteBound { sign, magnitude } => v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
         integer_named_edge(
@@ -802,7 +802,7 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
       ],
       occurrence_id: SyntheticOccurrence
 }
-    IntegerPointerWidthBound { signedness, endpoint } => Node {
+    IntegerPointerWidthBound { signedness, endpoint } => v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
         integer_named_edge(
@@ -824,7 +824,7 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
 }
 
 fn integer_interval_spec_node(spec: IntegerIntervalSpec) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       integer_named_edge(
@@ -851,7 +851,7 @@ fn int_mul(a: Int, b: Int) -> Int {
   a * b
 }
 
-fn int_compare(a: Int, b: Int) -> Ordering {
+fn int_compare(a: Int, b: Int) -> std.algebra.Ordering {
   if a < b {
     Less
   } else {
@@ -923,13 +923,13 @@ fn int_div_result(a: Int, b: Int) -> Result<Int, DivError> {
   }
 }
 
-data int_abelian_group: AbelianGroup<Int> = AbelianGroup {
+data int_abelian_group: AbelianGroup<Int> = std.algebra.AbelianGroup {
   op: int_add,
   identity: 0,
   inverse: int_negate
 }
 
-data int_ordered_ring: OrderedRing<Int> = OrderedRing {
+data int_ordered_ring: OrderedRing<Int> = std.algebra.OrderedRing {
   add: int_add,
   sub: int_sub,
   zero: 0,
@@ -945,22 +945,22 @@ data int_ordered_ring: OrderedRing<Int> = OrderedRing {
   gt: int_gt,
   ge: int_ge
 }
-fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
+fn integer_divide_by_zero_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^integer_div_by_zero,
     at: at,
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
-fn integer_modulo_by_zero_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
+fn integer_modulo_by_zero_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^integer_modulo_by_zero,
     at: at,
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
-fn int_div(a: Int, b: Int, at: Locus) -> Outcome<Int> {
+fn int_div(a: Int, b: Int, at: v2.std.diagnostic.Locus) -> Outcome<Int> {
   if int_is_zero(a: b) {
     Rejected {
       diagnostics: diagnostics_singleton(d: integer_divide_by_zero_diagnostic(at: at))
@@ -970,7 +970,7 @@ fn int_div(a: Int, b: Int, at: Locus) -> Outcome<Int> {
   }
 }
 
-fn int_mod(a: Int, b: Int, at: Locus) -> Outcome<Int> {
+fn int_mod(a: Int, b: Int, at: v2.std.diagnostic.Locus) -> Outcome<Int> {
   if int_is_zero(a: b) {
     Rejected {
       diagnostics: diagnostics_singleton(d: integer_modulo_by_zero_diagnostic(at: at))
@@ -980,7 +980,7 @@ fn int_mod(a: Int, b: Int, at: Locus) -> Outcome<Int> {
   }
 }
 
-fn integer_char_code_to_decimal_digit_optional(c: Char) -> Optional<DecimalDigit> {
+fn integer_char_code_to_decimal_digit_optional(c: std.types.Char) -> Optional<DecimalDigit> {
   if c == 48 {
     optional_present(value: D0)
   } else if c == 49 {
@@ -1167,7 +1167,7 @@ fn integer_signed_i32_le_bytes_to_int_value(b0: Int, b1: Int, b2: Int, b3: Int) 
   }
 }
 
-fn integer_decimal_digit_from_tag_atom(id: Symbol) -> Optional<DecimalDigit> {
+fn integer_decimal_digit_from_tag_atom(id: v2.std.node.Symbol) -> Optional<DecimalDigit> {
   if id == ^integer_tag_digit_0 {
     optional_present(value: D0)
   } else if id == ^integer_tag_digit_1 {

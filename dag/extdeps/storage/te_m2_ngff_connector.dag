@@ -4,8 +4,8 @@ module extdeps.storage.te_m2_ngff_connector
 // Application Specification 114-115006, "67 Positions 0.5 Pitch M.2(NGFF) MINICARD", Rev C dated
 // 04JAN23, read 2026-08-14. The fetched file is the Rev B delivery URL and its content is Rev C;
 // the revision recorded below is the one printed on the sheets.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Specification+Or+Standard%7F114-115006%7FB%7Fpdf%7FEnglish%7FENG_SS_114-115006_B_114-115006_REV_B.pdf%7F2199119-3"
   }
@@ -35,9 +35,9 @@ data m2_ngff_minicard_67_position: M2ConnectorCatalogRow = M2ConnectorCatalogRow
   },
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.storage.te_m2_ngff_connector",
       decl_name: "m2_ngff_minicard_67_position",
       field: WholeDeclaration

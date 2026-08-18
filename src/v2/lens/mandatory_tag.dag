@@ -35,7 +35,7 @@ fn mandatory_tag_regions() -> List<MandatoryTagRegion> {
   [extdeps_external_authority_region]
 }
 
-fn mandatory_tag_symbols_contain(xs: List<Symbol>, s: Symbol) -> Bool {
+fn mandatory_tag_symbols_contain(xs: List<v2.std.node.Symbol>, s: v2.std.node.Symbol) -> Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || x == s })
 }
 
@@ -58,10 +58,10 @@ fn mandatory_tag_region_applies(region: MandatoryTagRegion, dotted: String) -> B
     && !mandatory_tag_any_suffix(xs: region.exempt_module_suffixes, dotted: dotted)
 }
 
-fn mandatory_tag_subtree_atoms(n: Node) -> List<Symbol> {
+fn mandatory_tag_subtree_atoms(n: Node) -> List<v2.std.node.Symbol> {
   fold_node(
     n: n,
-    algebra: NodeFold {
+    algebra: v2.std.node.NodeFold {
       init: fn(n0) {
         match n0.kind {
           TypeNode { connective: Atom { identity: s } } => [s]
@@ -73,10 +73,10 @@ fn mandatory_tag_subtree_atoms(n: Node) -> List<Symbol> {
   )
 }
 
-fn mandatory_tag_subtree_has_production(n: Node, want: Symbol) -> Bool {
+fn mandatory_tag_subtree_has_production(n: Node, want: v2.std.node.Symbol) -> Bool {
   fold_node(
     n: n,
-    algebra: NodeFold {
+    algebra: v2.std.node.NodeFold {
       init: fn(n0) {
         match parse_production_emitted_identity_optional(node: n0) {
           Present { value: id } => id == want
@@ -88,7 +88,7 @@ fn mandatory_tag_subtree_has_production(n: Node, want: Symbol) -> Bool {
   )
 }
 
-fn mandatory_tag_node_production_is(n: Node, want: Symbol) -> Bool {
+fn mandatory_tag_node_production_is(n: Node, want: v2.std.node.Symbol) -> Bool {
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } => id == want
     Absent => false
@@ -221,7 +221,7 @@ type MandatoryTagDeclScan {
   projection_gated_count: Int
 }
 
-fn mandatory_tag_scan_decls(subtree: Node, required_name: Symbol) -> MandatoryTagDeclScan {
+fn mandatory_tag_scan_decls(subtree: Node, required_name: v2.std.node.Symbol) -> MandatoryTagDeclScan {
   if mandatory_tag_node_production_is(n: subtree, want: ^dag_surface_data_decl) {
     match mandatory_tag_decl_name(d: subtree) {
       DeclNameRead { name: nm } =>
@@ -250,47 +250,47 @@ fn mandatory_tag_scan_decls(subtree: Node, required_name: Symbol) -> MandatoryTa
   }
 }
 
-fn mandatory_tag_missing_decl_diagnostic(module_node: Node) -> Diagnostic {
-  Diagnostic {
+fn mandatory_tag_missing_decl_diagnostic(module_node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^mandatory_tag_missing_required_decl,
     at: node_locus(node: module_node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn mandatory_tag_projection_gated_diagnostic(module_node: Node) -> Diagnostic {
-  Diagnostic {
+fn mandatory_tag_projection_gated_diagnostic(module_node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^mandatory_tag_name_projection_gated,
     at: node_locus(node: module_node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn mandatory_tag_type_mismatch_diagnostic(d: Node) -> Diagnostic {
-  Diagnostic {
+fn mandatory_tag_type_mismatch_diagnostic(d: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^mandatory_tag_required_decl_type_mismatch,
     at: node_locus(node: d),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn mandatory_tag_value_unreadable_diagnostic(d: Node) -> Diagnostic {
-  Diagnostic {
+fn mandatory_tag_value_unreadable_diagnostic(d: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^mandatory_tag_value_vocabulary_unreadable,
     at: node_locus(node: d),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn mandatory_tag_value_not_accepted_diagnostic(d: Node) -> Diagnostic {
-  Diagnostic {
+fn mandatory_tag_value_not_accepted_diagnostic(d: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^mandatory_tag_value_not_accepted,
     at: node_locus(node: d),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn mandatory_tag_type_findings(d: Node, region: MandatoryTagRegion) -> List<Diagnostic> {
+fn mandatory_tag_type_findings(d: Node, region: MandatoryTagRegion) -> List<v2.std.diagnostic.Diagnostic> {
   match mandatory_tag_decl_type_node(d: d) {
     Absent => [mandatory_tag_type_mismatch_diagnostic(d: d)]
     Present { value: ty } =>
@@ -305,7 +305,7 @@ fn mandatory_tag_type_findings(d: Node, region: MandatoryTagRegion) -> List<Diag
   }
 }
 
-fn mandatory_tag_vocabulary_hits(atoms: List<Symbol>, vocabulary: List<Symbol>) -> List<Symbol> {
+fn mandatory_tag_vocabulary_hits(atoms: List<v2.std.node.Symbol>, vocabulary: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   fold(atoms, init: [], f: fn(acc, a) {
     if mandatory_tag_symbols_contain(xs: vocabulary, s: a) {
       concat(acc, [a])
@@ -315,7 +315,7 @@ fn mandatory_tag_vocabulary_hits(atoms: List<Symbol>, vocabulary: List<Symbol>) 
   })
 }
 
-fn mandatory_tag_value_findings(d: Node, region: MandatoryTagRegion) -> List<Diagnostic> {
+fn mandatory_tag_value_findings(d: Node, region: MandatoryTagRegion) -> List<v2.std.diagnostic.Diagnostic> {
   match mandatory_tag_decl_value_node(d: d) {
     Absent => []
     Present { value: v } =>
@@ -347,7 +347,7 @@ fn mandatory_tag_region_module_findings(
   region: MandatoryTagRegion,
   module_node: Node,
   dotted: String
-) -> List<Diagnostic> {
+) -> List<v2.std.diagnostic.Diagnostic> {
   if mandatory_tag_region_applies(region: region, dotted: dotted) {
     let scan = mandatory_tag_scan_decls(
       subtree: module_node,
@@ -371,7 +371,7 @@ fn mandatory_tag_region_module_findings(
   }
 }
 
-fn mandatory_tag_module_findings(n: Node) -> List<Diagnostic> {
+fn mandatory_tag_module_findings(n: Node) -> List<v2.std.diagnostic.Diagnostic> {
   if mandatory_tag_node_production_is(n: n, want: ^dag_surface_module) {
     match qualified_name_from_module_node(root: n) {
       Rejected { diagnostics: _ } => []
@@ -394,10 +394,10 @@ fn mandatory_tag_module_findings(n: Node) -> List<Diagnostic> {
 }
 
 // A dag_surface_module wrapper whose qualified name cannot be read contributes no region findings here - machine_shape parity, not an absorbing arm: name resolution over the same tree refuses malformed module headers upstream of every root lens, so the nameless-wrapper arm is unreachable on a tree that reached the lens roster; keying region membership on a fabricated name would be the fabricated-plausible-output trap the arm avoids.
-fn mandatory_tag_findings(root: Node) -> List<Diagnostic> {
+fn mandatory_tag_findings(root: Node) -> List<v2.std.diagnostic.Diagnostic> {
   fold_node(
     n: root,
-    algebra: NodeFold {
+    algebra: v2.std.node.NodeFold {
       init: fn(n0) { mandatory_tag_module_findings(n: n0) },
       step: fn(acc, _edge, child) { concat(acc, child) }
     }
@@ -412,12 +412,12 @@ fn mandatory_tag_compile_gate(node: Node) -> Outcome<Witness<Node>> {
   match mandatory_tag_findings(root: node) {
     Cons { head: first, tail: rest } =>
       Rejected {
-        diagnostics: NonEmptyDiagnostics { head: first, tail: rest }
+        diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
       }
     Empty => outcome_accepted(value: Holds { value: node })
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallNow
 }

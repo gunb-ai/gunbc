@@ -11,7 +11,7 @@ type RetainedShellScript {
 
 data retained_shell_script_to_transport_note: String = "The SINGLE sanctioned script-body -> TransportScript bridge. Takes the record (not a raw String), so the only route from a script body to a TransportScript is to author a counted RetainedShellScript row. Replaces the deleted free minter extdeps.shell.exec.transport_script_from_body(body: String). It is one of exactly two decls named in extdeps.shell.exec.transport_script_seal's admit_callers; the other is the emitted-bash adapter gunbc.bash_materialized_transport.bash_materialized_transport."
 
-fn retained_shell_script_to_transport(rss: RetainedShellScript) -> TransportScript {
+fn retained_shell_script_to_transport(rss: RetainedShellScript) -> extdeps.shell.exec.TransportScript {
   transport_script_seal(body: rss.body)
 }
 
@@ -19,15 +19,15 @@ data retained_transport_note: String = "The roster-gated counted bridge for dire
 
 fn retained_transport(
   body: String,
-  reason: NonEmptyStr,
-  dissolves_to: DeclarationRef,
-) -> TransportScript {
+  reason: std.types.NonEmptyStr,
+  dissolves_to: std.decl_ref.DeclarationRef,
+) -> extdeps.shell.exec.TransportScript {
   retained_shell_script_to_transport(
     rss: RetainedShellScript { body: body, reason: reason, dissolves_to: dissolves_to }
   )
 }
 
-data retained_srvn_takeover_ref: DeclarationRef = DeclarationRef {
+data retained_srvn_takeover_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.plans.fleet_subsumption_manual_gaps",
   decl_name: "fleet_subsumption_manual_gaps_plan",
   field: WholeDeclaration,
@@ -35,7 +35,7 @@ data retained_srvn_takeover_ref: DeclarationRef = DeclarationRef {
 
 data retained_srvn_note: String = "Default dissolve-on for host-effect script bodies (srv3/live_deploy/host converge/hostname-set): the srvN-takeover lane's typed effects (gunbc.plans.fleet_subsumption_manual_gaps — this wall is item 1 of its needs-list; these scripts are its work-list). retained_srvn is the 2-arg convenience over RetainedShellScript for that shared dissolve target."
 
-fn retained_srvn(body: String, reason: NonEmptyStr) -> RetainedShellScript {
+fn retained_srvn(body: String, reason: std.types.NonEmptyStr) -> RetainedShellScript {
   RetainedShellScript {
     body: body,
     reason: reason,
@@ -43,7 +43,7 @@ fn retained_srvn(body: String, reason: NonEmptyStr) -> RetainedShellScript {
   }
 }
 
-data retained_foreign_emit_ref: DeclarationRef = DeclarationRef {
+data retained_foreign_emit_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.workflow.bash_emit",
   decl_name: "bash_emit_program",
   field: WholeDeclaration,
@@ -51,12 +51,12 @@ data retained_foreign_emit_ref: DeclarationRef = DeclarationRef {
 
 data retained_foreign_note: String = "Default dissolve-on for foreign-executor / bootstrap shell.Exec.Run sites (GHA run:, cron, git hooks, CI gates, pre-runtime bootstrap): the v2 bash emit backend (emit(intent, Bash) via v2.workflow.bash_emit), a bounded roster not a growth surface (shell->dag census section 5.C). retained_foreign is the 2-arg counted bridge for that shared dissolve target; it returns TransportScript for direct shell.Exec.Run positions."
 
-fn retained_foreign(body: String, reason: NonEmptyStr) -> TransportScript {
+fn retained_foreign(body: String, reason: std.types.NonEmptyStr) -> extdeps.shell.exec.TransportScript {
   retained_transport(body: body, reason: reason, dissolves_to: retained_foreign_emit_ref)
 }
 
 data retained_runtime_note: String = "Counted bridge for runtime-present direct shell.Exec.Run sites (host converge, host identity, srv3 install/diagnostic) whose dissolve-on is the same srvN-takeover typed effects as the ShellOnHost edge. Returns TransportScript for the direct shell.Exec.Run position; the ShellOnHost cell path uses retained_srvn (RetainedShellScript) instead."
 
-fn retained_runtime(body: String, reason: NonEmptyStr) -> TransportScript {
+fn retained_runtime(body: String, reason: std.types.NonEmptyStr) -> extdeps.shell.exec.TransportScript {
   retained_transport(body: body, reason: reason, dissolves_to: retained_srvn_takeover_ref)
 }

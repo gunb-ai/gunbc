@@ -172,8 +172,8 @@ fn evaluate_mark_ready_for_review(
 fn evaluate_record_merge_ready(
   facts: CodeChangeFacts,
   github_pr: CodeChangeGithubPrContext?,
-  digest: MergeReadinessVerdict?,
-  tally: MergeReadinessTally?,
+  digest: gunbc.pr_digests.MergeReadinessVerdict?,
+  tally: gunbc.review_verdict.MergeReadinessTally?,
   policy_permitted: Bool?,
 ) -> CodeChangeDecision {
   match facts.stage {

@@ -1,38 +1,38 @@
 module gunbc.source_integration_landing_spine
 
 
-data source_integration_landing_spine_note: NonEmptyStr = "P0 landing spine. Full P−1 claims and admitted evidence flow into one readiness receipt; the proposal guarantee population is the readiness policy population by construction. Support-only, challenge-only, conflict, missing evidence, admission refusal, and duplicate requirements remain distinct. One closed-space receipt owns ready evidence, admission contract, equivalence, candidate population, and seven semantic closure axes; zero, one, and many are projections of that receipt, never caller labels. Admission nests the exact closed-one receipt. A transition nests the exact admission, independent read-back nests that transition, and each compatibility projection names the same accepted transition through a typed semantic-to-native target binding. Only a matched read-back can project Landed. Normative options own their material result or proposal amendment, and the selected structural position remains in the resume identity; a free token is only a transport hint. Audience-projected text is distinct from internal cause and locus. The terminal surface is exactly Landed | ChoiceRequired | CouldNotLand; unfinished work is a separate machine-owned arm. Commit freshness is a transition-time exact-parent precondition, not an early semantic closure certificate. This is P0 construction, not the P1 proof kernel, P2 capture, P3 effect transport, or a CLI."
+data source_integration_landing_spine_note: std.types.NonEmptyStr = "P0 landing spine. Full P−1 claims and admitted evidence flow into one readiness receipt; the proposal guarantee population is the readiness policy population by construction. Support-only, challenge-only, conflict, missing evidence, admission refusal, and duplicate requirements remain distinct. One closed-space receipt owns ready evidence, admission contract, equivalence, candidate population, and seven semantic closure axes; zero, one, and many are projections of that receipt, never caller labels. Admission nests the exact closed-one receipt. A transition nests the exact admission, independent read-back nests that transition, and each compatibility projection names the same accepted transition through a typed semantic-to-native target binding. Only a matched read-back can project Landed. Normative options own their material result or proposal amendment, and the selected structural position remains in the resume identity; a free token is only a transport hint. Audience-projected text is distinct from internal cause and locus. The terminal surface is exactly Landed | ChoiceRequired | CouldNotLand; unfinished work is a separate machine-owned arm. Commit freshness is a transition-time exact-parent precondition, not an early semantic closure certificate. This is P0 construction, not the P1 proof kernel, P2 capture, P3 effect transport, or a CLI."
 
-type LandingProposalOccurrenceId = NonEmptyStr where brand("LandingProposalOccurrenceId")
-type LandingAttemptId = NonEmptyStr where brand("LandingAttemptId")
-type LandingTargetHandle = NonEmptyStr where brand("LandingTargetHandle")
-type LandingAcceptedStateHandle = NonEmptyStr where brand("LandingAcceptedStateHandle")
-type LandingTransformationHandle = NonEmptyStr where brand("LandingTransformationHandle")
-type LandingFactHandle = NonEmptyStr where brand("LandingFactHandle")
-type LandingScopeHandle = NonEmptyStr where brand("LandingScopeHandle")
-type LandingActorAuthorityHandle = NonEmptyStr where brand("LandingActorAuthorityHandle")
-type LandingResultHandle = NonEmptyStr where brand("LandingResultHandle")
-type LandingContinuationHandle = NonEmptyStr where brand("LandingContinuationHandle")
-type LandingClaimBound = NonEmptyStr where brand("LandingClaimBound")
-type LandingEvidenceAuthorityHandle = NonEmptyStr where brand("LandingEvidenceAuthorityHandle")
-type LandingFidelityBoundaryHandle = NonEmptyStr where brand("LandingFidelityBoundaryHandle")
-type LandingEvidenceIndependenceHandle = NonEmptyStr where brand("LandingEvidenceIndependenceHandle")
-type LandingEvidencePolicyHandle = NonEmptyStr where brand("LandingEvidencePolicyHandle")
-type LandingAdmissionContractHandle = NonEmptyStr where brand("LandingAdmissionContractHandle")
-type LandingEquivalenceHandle = NonEmptyStr where brand("LandingEquivalenceHandle")
-type LandingAtomicGroupHandle = NonEmptyStr where brand("LandingAtomicGroupHandle")
-type LandingAtomicIndependenceReceipt = ContentHash where brand("LandingAtomicIndependenceReceipt")
-type LandingTransitionIdentity = NonEmptyStr where brand("LandingTransitionIdentity")
-type LandingResultingStateHandle = NonEmptyStr where brand("LandingResultingStateHandle")
-type LandingObservationAuthorityHandle = NonEmptyStr where brand("LandingObservationAuthorityHandle")
-type LandingTargetBindingReceipt = ContentHash where brand("LandingTargetBindingReceipt")
-type LandingAudienceQuestion = NonEmptyStr where brand("LandingAudienceQuestion")
-type LandingAudienceLabel = NonEmptyStr where brand("LandingAudienceLabel")
-type LandingAudiencePreview = NonEmptyStr where brand("LandingAudiencePreview")
-type LandingAudienceReason = NonEmptyStr where brand("LandingAudienceReason")
-type LandingAudienceParty = NonEmptyStr where brand("LandingAudienceParty")
-type LandingAudienceAction = NonEmptyStr where brand("LandingAudienceAction")
-type LandingAudienceStatus = NonEmptyStr where brand("LandingAudienceStatus")
+type LandingProposalOccurrenceId = std.types.NonEmptyStr where brand("LandingProposalOccurrenceId")
+type LandingAttemptId = std.types.NonEmptyStr where brand("LandingAttemptId")
+type LandingTargetHandle = std.types.NonEmptyStr where brand("LandingTargetHandle")
+type LandingAcceptedStateHandle = std.types.NonEmptyStr where brand("LandingAcceptedStateHandle")
+type LandingTransformationHandle = std.types.NonEmptyStr where brand("LandingTransformationHandle")
+type LandingFactHandle = std.types.NonEmptyStr where brand("LandingFactHandle")
+type LandingScopeHandle = std.types.NonEmptyStr where brand("LandingScopeHandle")
+type LandingActorAuthorityHandle = std.types.NonEmptyStr where brand("LandingActorAuthorityHandle")
+type LandingResultHandle = std.types.NonEmptyStr where brand("LandingResultHandle")
+type LandingContinuationHandle = std.types.NonEmptyStr where brand("LandingContinuationHandle")
+type LandingClaimBound = std.types.NonEmptyStr where brand("LandingClaimBound")
+type LandingEvidenceAuthorityHandle = std.types.NonEmptyStr where brand("LandingEvidenceAuthorityHandle")
+type LandingFidelityBoundaryHandle = std.types.NonEmptyStr where brand("LandingFidelityBoundaryHandle")
+type LandingEvidenceIndependenceHandle = std.types.NonEmptyStr where brand("LandingEvidenceIndependenceHandle")
+type LandingEvidencePolicyHandle = std.types.NonEmptyStr where brand("LandingEvidencePolicyHandle")
+type LandingAdmissionContractHandle = std.types.NonEmptyStr where brand("LandingAdmissionContractHandle")
+type LandingEquivalenceHandle = std.types.NonEmptyStr where brand("LandingEquivalenceHandle")
+type LandingAtomicGroupHandle = std.types.NonEmptyStr where brand("LandingAtomicGroupHandle")
+type LandingAtomicIndependenceReceipt = std.content_hash.ContentHash where brand("LandingAtomicIndependenceReceipt")
+type LandingTransitionIdentity = std.types.NonEmptyStr where brand("LandingTransitionIdentity")
+type LandingResultingStateHandle = std.types.NonEmptyStr where brand("LandingResultingStateHandle")
+type LandingObservationAuthorityHandle = std.types.NonEmptyStr where brand("LandingObservationAuthorityHandle")
+type LandingTargetBindingReceipt = std.content_hash.ContentHash where brand("LandingTargetBindingReceipt")
+type LandingAudienceQuestion = std.types.NonEmptyStr where brand("LandingAudienceQuestion")
+type LandingAudienceLabel = std.types.NonEmptyStr where brand("LandingAudienceLabel")
+type LandingAudiencePreview = std.types.NonEmptyStr where brand("LandingAudiencePreview")
+type LandingAudienceReason = std.types.NonEmptyStr where brand("LandingAudienceReason")
+type LandingAudienceParty = std.types.NonEmptyStr where brand("LandingAudienceParty")
+type LandingAudienceAction = std.types.NonEmptyStr where brand("LandingAudienceAction")
+type LandingAudienceStatus = std.types.NonEmptyStr where brand("LandingAudienceStatus")
 
 type LandingGuaranteeProposition {
   statement: std.types.NonEmptyStr
@@ -90,8 +90,8 @@ type LandingProposalContract {
 
 fn landing_native_identity(
   proposal: LandingProposalContract,
-) -> NativeScmProposalIdentity {
-  NativeScmProposalIdentity {
+) -> gunbc.native_scm_interaction_contract.NativeScmProposalIdentity {
+  gunbc.native_scm_interaction_contract.NativeScmProposalIdentity {
     name: proposal.occurrence as String,
     attempt_key: proposal.attempt as String,
   }
@@ -173,7 +173,7 @@ fn landing_requirement_block(
 ) -> List<LandingEvidenceBlock> {
   claim_requirement_readiness_fold(
     readiness: readiness,
-    fold: ClaimRequirementReadinessFold {
+    fold: std.claim_evidence.ClaimRequirementReadinessFold {
       ready: fn(claim, _) {
         if landing_requirement_is_duplicated(
           proposal: proposal,
@@ -217,7 +217,7 @@ fn landing_evidence_readiness(
   links: List<LandingEvidenceLink>,
 ) -> LandingEvidenceReadiness {
   let readiness = claim_readiness_receipt(
-    policy: ClaimReadinessPolicy {
+    policy: std.claim_evidence.ClaimReadinessPolicy {
       first_required: proposal.ensures_guarantees.first,
       remaining_required: proposal.ensures_guarantees.remaining,
       evidence_admission: admission,
@@ -380,8 +380,8 @@ type LandingRefusal {
 
 fn landing_native_refusal(
   refusal: LandingRefusal,
-) -> NativeScmRefusal {
-  NativeScmRefusal {
+) -> gunbc.native_scm_interaction_contract.NativeScmRefusal {
+  gunbc.native_scm_interaction_contract.NativeScmRefusal {
     plain_reason: refusal.plain_reason as String,
     responsible_party: refusal.responsible_party as String,
     next_action: refusal.next_action as String,
@@ -412,20 +412,20 @@ type LandingNormativeQuestion {
 
 fn landing_native_option(
   option: LandingNormativeOption,
-) -> NativeScmContinuationOption {
-  NativeScmContinuationOption {
-    label: option.label as NonEmptyStr,
-    result_preview: option.preview as NonEmptyStr,
+) -> gunbc.native_scm_interaction_contract.NativeScmContinuationOption {
+  gunbc.native_scm_interaction_contract.NativeScmContinuationOption {
+    label: option.label as std.types.NonEmptyStr,
+    result_preview: option.preview as std.types.NonEmptyStr,
     resume_token: option.resume_hint,
   }
 }
 
 fn landing_question_continuation(
   question: LandingNormativeQuestion,
-) -> NativeScmContinuation {
-  NativeScmContinuation {
+) -> gunbc.native_scm_interaction_contract.NativeScmContinuation {
+  gunbc.native_scm_interaction_contract.NativeScmContinuation {
     proposal: landing_native_identity(proposal: question.proposal),
-    options: NativeScmContinuationOptions {
+    options: gunbc.native_scm_interaction_contract.NativeScmContinuationOptions {
       first_option: landing_native_option(
         option: question.options.first_option,
       ),
@@ -479,7 +479,7 @@ type LandingChoiceResolution
 
 fn landing_alternative_for_choice(
   options: LandingNormativeOptions,
-  choice: NativeScmContinuationChoice,
+  choice: gunbc.native_scm_interaction_contract.NativeScmContinuationChoice,
 ) -> Optional<LandingNormativeAlternative> {
   match choice {
     NativeScmFirstContinuationOption =>
@@ -496,7 +496,7 @@ fn landing_alternative_for_choice(
 
 fn landing_resolve_question(
   prior: LandingClosedManyReceipt,
-  choice: NativeScmContinuationChoice,
+  choice: gunbc.native_scm_interaction_contract.NativeScmContinuationChoice,
 ) -> LandingChoiceResolution {
   let question = prior.question
   let continuation = landing_question_continuation(question: question)
@@ -890,7 +890,7 @@ type LandingProjectionRelation
 fn landing_projection_of_transition(
   transition: LandingTransitionReceipt,
   binding: LandingCompatibilityTargetBinding,
-  projection: CompatibilityProjectionReceipt,
+  projection: gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt,
 ) -> LandingProjectionRelation {
   let semantic_target = transition.admitted.admission.semantic.closed_space.subject.ready_evidence.proposal.target
   if binding.semantic_target != semantic_target {
@@ -1213,4 +1213,4 @@ fn landing_user_boundary(
   }
 }
 
-data landing_timestamp_non_authority_note: NonEmptyStr = "LandingProposalContract.submitted_at is provenance only. Evidence readiness, closed-space classification, admission, and transition never use it to establish precedence. Exact-parent validity is carried by LandingProposalContract.authored_parent inside the admitted result and checked again by the transition realization; it is not represented by a semantic closure certificate."
+data landing_timestamp_non_authority_note: std.types.NonEmptyStr = "LandingProposalContract.submitted_at is provenance only. Evidence readiness, closed-space classification, admission, and transition never use it to establish precedence. Exact-parent validity is carried by LandingProposalContract.authored_parent inside the admitted result and checked again by the transition realization; it is not represented by a semantic closure certificate."

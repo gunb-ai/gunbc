@@ -2,8 +2,8 @@ module extdeps.pricing.github_actions
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/billing/reference/actions-runner-pricing"
   }
@@ -33,7 +33,7 @@ data github_actions_linux_slim_price: GithubActionsRunnerPriceRow = GithubAction
   sku_wire_label: "actions_linux_slim",
   vcpus: hardware_thread_count(1),
   cpu_architecture: X86_64,
-  per_minute: MoneyPerMinute {
+  per_minute: std.measure.MoneyPerMinute {
     amount: money_amount_micro(count: 2000),
     currency: Usd,
   },
@@ -45,7 +45,7 @@ data github_actions_linux_2core_price: GithubActionsRunnerPriceRow = GithubActio
   sku_wire_label: "actions_linux",
   vcpus: hardware_thread_count(2),
   cpu_architecture: X86_64,
-  per_minute: MoneyPerMinute {
+  per_minute: std.measure.MoneyPerMinute {
     amount: money_amount_micro(count: 6000),
     currency: Usd,
   },
@@ -57,7 +57,7 @@ data github_actions_linux_arm_2core_price: GithubActionsRunnerPriceRow = GithubA
   sku_wire_label: "actions_linux_arm",
   vcpus: hardware_thread_count(2),
   cpu_architecture: Aarch64,
-  per_minute: MoneyPerMinute {
+  per_minute: std.measure.MoneyPerMinute {
     amount: money_amount_micro(count: 5000),
     currency: Usd,
   },
@@ -69,7 +69,7 @@ data github_actions_linux_4core_price: GithubActionsRunnerPriceRow = GithubActio
   sku_wire_label: "linux_4_core",
   vcpus: hardware_thread_count(4),
   cpu_architecture: X86_64,
-  per_minute: MoneyPerMinute {
+  per_minute: std.measure.MoneyPerMinute {
     amount: money_amount_micro(count: 12000),
     currency: Usd,
   },
@@ -81,7 +81,7 @@ data github_actions_linux_8core_price: GithubActionsRunnerPriceRow = GithubActio
   sku_wire_label: "linux_8_core",
   vcpus: hardware_thread_count(8),
   cpu_architecture: X86_64,
-  per_minute: MoneyPerMinute {
+  per_minute: std.measure.MoneyPerMinute {
     amount: money_amount_micro(count: 22000),
     currency: Usd,
   },
@@ -93,7 +93,7 @@ data github_actions_linux_16core_price: GithubActionsRunnerPriceRow = GithubActi
   sku_wire_label: "linux_16_core",
   vcpus: hardware_thread_count(16),
   cpu_architecture: X86_64,
-  per_minute: MoneyPerMinute {
+  per_minute: std.measure.MoneyPerMinute {
     amount: money_amount_micro(count: 42000),
     currency: Usd,
   },

@@ -1,7 +1,7 @@
 module gunbc.host_standup_assimilation_deduction
 
 
-data gunbc_host_standup_assimilation_deduction_scope_disposition: Disposition = std.disposition.Terminal {
+data gunbc_host_standup_assimilation_deduction_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Level-triggered assimilation deduction: OsInstalled from DHCP option-12 subsumption satisfies prefix:os-install-actuated and unlocks P0:host-identity-converge. Verdict authority is std.upsert_decision.ObservationVerdict (no parallel level enum). Happy path = lease read only; unreadable lease table → UnknownRefused, never Absent/Pending. Converged → UpsertDecision Noop. KVM/BMC weak surfaces consulted ONLY inside stall cause-fold."
 }
 
@@ -49,17 +49,17 @@ data srv3_post_install_lease_observation: DhcpLeaseTableObservation = LeaseTable
 }
 
 data srv3_unreadable_lease_observation: DhcpLeaseTableObservation = LeaseTableUnreadable {
-  reason: "router dhcp lease table unreachable" as NonEmptyStr,
+  reason: "router dhcp lease table unreachable" as std.types.NonEmptyStr,
 }
 
-data srv3_os_install_to_host_identity_transition: NonEmptyStr = "os-install-actuated-to-host-identity-converge" as NonEmptyStr
+data srv3_os_install_to_host_identity_transition: std.types.NonEmptyStr = "os-install-actuated-to-host-identity-converge" as std.types.NonEmptyStr
 
-fn hang_budget_millisecond(ms: Milliseconds) -> Millisecond {
+fn hang_budget_millisecond(ms: std.types.Milliseconds) -> std.measure.Millisecond {
   millisecond(count: ms)
 }
 
-fn srv3_os_install_to_host_identity_budget(elapsed: Millisecond) -> EffectStallBudget {
-  EffectStallBudget {
+fn srv3_os_install_to_host_identity_budget(elapsed: std.measure.Millisecond) -> std.temporal_effect.EffectStallBudget {
+  std.temporal_effect.EffectStallBudget {
     step_id: srv3_os_install_to_host_identity_transition,
     limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
     elapsed_ms: elapsed,
@@ -76,7 +76,7 @@ fn stall_transition_cause_priority(cause: StallTransitionCause) -> Int {
   }
 }
 
-fn stall_failure_reason(stall: StallBudgetVerdict) -> NonEmptyStr? {
+fn stall_failure_reason(stall: std.temporal_effect.StallBudgetVerdict) -> std.types.NonEmptyStr? {
   match stall {
     StallWithinBudget => none
     StallBudgetExceeded { step_id: sid, elapsed_ms: e, limit_ms: l } =>
@@ -87,7 +87,7 @@ fn stall_failure_reason(stall: StallBudgetVerdict) -> NonEmptyStr? {
             concat(" elapsed_ms=", to_string(millisecond_count(m: e)))
           ),
           concat(" limit_ms=", to_string(millisecond_count(m: l)))
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       }
   }
 }
@@ -95,8 +95,8 @@ fn stall_failure_reason(stall: StallBudgetVerdict) -> NonEmptyStr? {
 fn deduce_os_install_actuation_verdict(
   obs: DhcpLeaseTableObservation,
   fleet_slot: product.placement_supply.HostIdentity,
-  stall: StallBudgetVerdict,
-) -> ObservationVerdict {
+  stall: std.temporal_effect.StallBudgetVerdict,
+) -> std.upsert_decision.ObservationVerdict {
   match obs {
     LeaseTableUnreadable { reason: _ } => UnknownRefused
     LeaseTableObserved { table: t } =>
@@ -113,8 +113,8 @@ fn deduce_os_install_actuation_verdict(
 
 fn refusal_reason_for_os_install_actuation_verdict(
   obs: DhcpLeaseTableObservation,
-  stall: StallBudgetVerdict,
-) -> NonEmptyStr? {
+  stall: std.temporal_effect.StallBudgetVerdict,
+) -> std.types.NonEmptyStr? {
   match obs {
     LeaseTableUnreadable { reason: r } => Present { value: r }
     LeaseTableObserved { table: _ } => stall_failure_reason(stall: stall)
@@ -122,9 +122,9 @@ fn refusal_reason_for_os_install_actuation_verdict(
 }
 
 fn decision_for_os_install_actuation_verdict(
-  verdict: ObservationVerdict,
+  verdict: std.upsert_decision.ObservationVerdict,
   obs: DhcpLeaseTableObservation,
-  stall: StallBudgetVerdict,
+  stall: std.temporal_effect.StallBudgetVerdict,
 ) -> UpsertDecision<OsInstallActuationAssertPlan> {
   match verdict {
     Converged => Noop
@@ -134,7 +134,7 @@ fn decision_for_os_install_actuation_verdict(
         Present { value: r } => Refuse { reason: r }
         Absent =>
           Refuse {
-            reason: "os-install actuation drifted without located refusal reason" as NonEmptyStr,
+            reason: "os-install actuation drifted without located refusal reason" as std.types.NonEmptyStr,
           }
       }
     UnknownRefused =>
@@ -142,27 +142,27 @@ fn decision_for_os_install_actuation_verdict(
         LeaseTableUnreadable { reason: r } => Refuse { reason: r }
         LeaseTableObserved { table: _ } =>
           Refuse {
-            reason: "dhcp lease table observation refused" as NonEmptyStr,
+            reason: "dhcp lease table observation refused" as std.types.NonEmptyStr,
           }
       }
     Conflict =>
-      Refuse { reason: "os-install actuation observation conflict" as NonEmptyStr }
+      Refuse { reason: "os-install actuation observation conflict" as std.types.NonEmptyStr }
     Inaccessible =>
-      Refuse { reason: "os-install actuation observation inaccessible" as NonEmptyStr }
+      Refuse { reason: "os-install actuation observation inaccessible" as std.types.NonEmptyStr }
   }
 }
 
 fn classify_os_install_actuation_upsert(
   obs: DhcpLeaseTableObservation,
   fleet_slot: product.placement_supply.HostIdentity,
-  stall: StallBudgetVerdict,
+  stall: std.temporal_effect.StallBudgetVerdict,
 ) -> std.upsert_decision.UpsertClassification<OsInstallActuationAssertPlan> {
   let verdict = deduce_os_install_actuation_verdict(
     obs: obs,
     fleet_slot: fleet_slot,
     stall: stall,
   )
-  UpsertClassification {
+  std.upsert_decision.UpsertClassification {
     verdict: verdict,
     decision: decision_for_os_install_actuation_verdict(
       verdict: verdict,
@@ -174,8 +174,8 @@ fn classify_os_install_actuation_upsert(
 
 fn srv3_deduce_os_install_to_host_identity_verdict(
   obs: DhcpLeaseTableObservation,
-  elapsed: Millisecond,
-) -> ObservationVerdict {
+  elapsed: std.measure.Millisecond,
+) -> std.upsert_decision.ObservationVerdict {
   deduce_os_install_actuation_verdict(
     obs: obs,
     fleet_slot: operator_host_srv3,
@@ -185,28 +185,28 @@ fn srv3_deduce_os_install_to_host_identity_verdict(
   )
 }
 
-fn srv3_pre_install_actuation_verdict(elapsed: Millisecond) -> ObservationVerdict {
+fn srv3_pre_install_actuation_verdict(elapsed: std.measure.Millisecond) -> std.upsert_decision.ObservationVerdict {
   srv3_deduce_os_install_to_host_identity_verdict(
     obs: srv3_pre_install_lease_observation,
     elapsed: elapsed,
   )
 }
 
-fn srv3_post_install_actuation_verdict(elapsed: Millisecond) -> ObservationVerdict {
+fn srv3_post_install_actuation_verdict(elapsed: std.measure.Millisecond) -> std.upsert_decision.ObservationVerdict {
   srv3_deduce_os_install_to_host_identity_verdict(
     obs: srv3_post_install_lease_observation,
     elapsed: elapsed,
   )
 }
 
-fn srv3_unreadable_lease_actuation_verdict(elapsed: Millisecond) -> ObservationVerdict {
+fn srv3_unreadable_lease_actuation_verdict(elapsed: std.measure.Millisecond) -> std.upsert_decision.ObservationVerdict {
   srv3_deduce_os_install_to_host_identity_verdict(
     obs: srv3_unreadable_lease_observation,
     elapsed: elapsed,
   )
 }
 
-fn deduce_os_install_actuated_satisfied(verdict: ObservationVerdict) -> Bool {
+fn deduce_os_install_actuated_satisfied(verdict: std.upsert_decision.ObservationVerdict) -> Bool {
   match verdict {
     Converged => true
     Absent => false
@@ -218,7 +218,7 @@ fn deduce_os_install_actuated_satisfied(verdict: ObservationVerdict) -> Bool {
 }
 
 fn stall_cause_boot_mode_legacy_probe(
-  mode: RedfishBootSourceOverrideMode?,
+  mode: extdeps.bmc.types.RedfishBootSourceOverrideMode?,
 ) -> StallTransitionCause? {
   match mode {
     Present { value: BootOverrideModeLegacy } =>
@@ -236,7 +236,7 @@ fn stall_cause_media_probe(nbd_serve_session_active: Bool) -> StallTransitionCau
   }
 }
 
-fn stall_cause_kvm_probe(screen: KvmObservedScreen?) -> StallTransitionCause? {
+fn stall_cause_kvm_probe(screen: gunbc.os_install_deduction.KvmObservedScreen?) -> StallTransitionCause? {
   match screen {
     Present { value: SubiquityStorageScreen } =>
       Present { value: StallCauseSeedNotFoundAwaitingStorage }

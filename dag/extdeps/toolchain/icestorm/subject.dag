@@ -1,8 +1,8 @@
 module extdeps.toolchain.icestorm.subject
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "github.com/YosysHQ/icestorm"
   }
@@ -20,7 +20,7 @@ fn roster_pin_count(r: IcestormPackagePinRoster) -> std.nat.Nat {
   fold(r.pins, init: 0, f: fn(acc, _p) { acc + 1 })
 }
 
-fn roster_admits_pin(r: IcestormPackagePinRoster, pin: NonEmptyStr) -> Bool {
+fn roster_admits_pin(r: IcestormPackagePinRoster, pin: std.types.NonEmptyStr) -> Bool {
   fold(r.pins, init: false, f: fn(acc, p) { acc || (p as String) == (pin as String) })
 }
 
@@ -29,11 +29,11 @@ fn roster_admits_pin(r: IcestormPackagePinRoster, pin: NonEmptyStr) -> Bool {
 // roster says 96, which is evidence only if the roster's 96 are 96 DISTINCT positions. A duplicate
 // would hold the count while shrinking the real population, so the agreement would still read
 // green against a roster that had quietly lost a pin.
-fn roster_pin_occurrences(r: IcestormPackagePinRoster, pin: NonEmptyStr) -> std.nat.Nat {
+fn roster_pin_occurrences(r: IcestormPackagePinRoster, pin: std.types.NonEmptyStr) -> std.nat.Nat {
   fold(r.pins, init: 0, f: fn(acc, p) { if (p as String) == (pin as String) { acc + 1 } else { acc } })
 }
 
-data icestorm_hx1k_tq144_pins: List<NonEmptyStr> = [
+data icestorm_hx1k_tq144_pins: List<std.types.NonEmptyStr> = [
   "1",
   "2",
   "3",
@@ -143,9 +143,9 @@ type Icestorm
 
 data icestorm_project: Icestorm = IcestormProject
 
-data icestorm_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data icestorm_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.toolchain.icestorm.subject",
       decl_name: "icestorm_project",
       field: WholeDeclaration
@@ -155,4 +155,4 @@ data icestorm_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data extdeps_model_scope: ExternalModelScope = icestorm_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = icestorm_model_scope

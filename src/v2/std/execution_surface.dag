@@ -28,7 +28,7 @@ type ProvisioningWindow
   = BootstrapBeforeRuntime { until: RuntimeAvailabilityGate }
   | SteadyState
 
-type ShellEmissionSiteId = Symbol
+type ShellEmissionSiteId = v2.std.node.Symbol
 
 type ShellEmissionRosterEntry {
   site: ShellEmissionSiteId

@@ -21,7 +21,7 @@ type PullRequestReadFailure
   | PullRequestTransportRefused { repository: String, cause: std.types.NonEmptyStr }
   | PullRequestBodyUndecodable { repository: String, status: std.types.HttpStatus, cause: std.types.NonEmptyStr }
 
-data pulls_list_operation: OperationRef = OperationRef {
+data pulls_list_operation: v2.std.operation_argv.OperationRef = v2.std.operation_argv.OperationRef {
   path: "dag/extdeps/github/pulls.dag",
   service: "github.Pulls",
   operation: "List",
@@ -65,7 +65,7 @@ type RemoteBranchReadFailure
   | AdvertisedLineUnparsed { remote: std.types.NonEmptyStr, index: Int, line: String }
   | AdvertisedRefProjectsEmptyBranch { remote: std.types.NonEmptyStr, ref_names: List<String> }
 
-data ls_remote_operation: OperationRef = OperationRef {
+data ls_remote_operation: v2.std.operation_argv.OperationRef = v2.std.operation_argv.OperationRef {
   path: "dag/extdeps/git/git.dag",
   service: "git.Core",
   operation: "LsRemoteHeads",
@@ -150,19 +150,19 @@ data draft_is_carried_not_judged_note: String = "Draft is REPORTED, never derive
 data no_silent_pick_note: String = "0/1/MANY, NEVER first() (review correction, 2026-07-31). The previous cut selected the FIRST pull request whose head ref matched the branch. Nothing in the model establishes that the match is unique — a branch can carry pull requests against different bases — so first() silently picked one and reported it as THE publication. That is the same silent-pick defect the namespace lane is eliminating, reintroduced in a module whose whole thesis is that the subject must be exact.\\n\\nUniqueness is therefore established rather than assumed: the match is keyed by head branch AND expected base, and a two-or-more result is its own arm carrying every matching number, so an ambiguous binding is visible instead of resolved by list order.\\n\\nTHE SAME RULE, APPLIED TO THE FOLD BESIDE IT (self-review, 2026-07-31). The first cut of this correction fixed the pull-request fold and left adjudicate_remote_branch handling 0 and then taking the first of the rest — so the note above declared a rule the module did not uniformly keep, one screen below where it was written. A well-formed ref listing cannot carry two refs of one name, so no live observation reaches it; that is exactly the argument this note already rejects for pull requests, because the observation is a caller-supplied list and nothing in the MODEL establishes the uniqueness the code was relying on. Both folds are now 0/1/many. The old singleton arm was worse than a silent pick on top of that: count was already known to be nonzero, so its Absent branch was unreachable, and if reached it answered BranchNotPublished — a confident wrong answer to a question it had not decided. An unreachable arm still has to name what it would mean, and the honest meaning is that the binding was not established, never that the branch is absent.\\n\\nWHAT `NEVER first()` MEANS, because a grep falsifies the headline and the distinction is the whole point. first() survives in the pull-request fold and sole_remote_branch does the same job below, and both are correct: they run only AFTER count has proven the match set is a singleton, so they EXTRACT the one element rather than SELECT among several. The banned move is reaching for the head of a list whose length was never established — that is where list order silently becomes the answer. Extraction after a proven count is not that move, and reading the rule as banning the call rather than the selection would push a reviewer toward replacing a correct guarded extractor with something less clear."
 
 fn pull_requests_for_target(
-  pulls: List<PullRequest>,
-  branch: NonEmptyStr,
-  expected_base: NonEmptyStr,
-) -> List<PullRequest> {
+  pulls: List<extdeps.github.pulls.PullRequest>,
+  branch: std.types.NonEmptyStr,
+  expected_base: std.types.NonEmptyStr,
+) -> List<extdeps.github.pulls.PullRequest> {
   filter(pulls, p =>
     (p.head.ref as String) == (branch as String)
       && (p.base.ref as String) == (expected_base as String))
 }
 
 fn adjudicate_bound_pull_request(
-  pr: PullRequest,
-  branch: NonEmptyStr,
-  expected_head: CommitSha,
+  pr: extdeps.github.pulls.PullRequest,
+  branch: std.types.NonEmptyStr,
+  expected_head: std.types.CommitSha,
 ) -> PublicationOutcome {
   if (pr.head.sha as String) == (expected_head as String) {
     PublicationBound {
@@ -185,8 +185,8 @@ fn adjudicate_bound_pull_request(
 
 fn remote_branch_for(
   branches: List<RemoteBranch>,
-  remote: NonEmptyStr,
-  branch: NonEmptyStr,
+  remote: std.types.NonEmptyStr,
+  branch: std.types.NonEmptyStr,
 ) -> List<RemoteBranch> {
   filter(branches, b =>
     (b.remote as String) == (remote as String)
@@ -199,9 +199,9 @@ fn sole_remote_branch(branches: List<RemoteBranch>) -> RemoteBranch? {
 
 fn adjudicate_remote_branch(
   branches: List<RemoteBranch>,
-  remote: NonEmptyStr,
-  branch: NonEmptyStr,
-  expected_head: CommitSha,
+  remote: std.types.NonEmptyStr,
+  branch: std.types.NonEmptyStr,
+  expected_head: std.types.CommitSha,
 ) -> PublicationOutcome {
   let matches = remote_branch_for(branches: branches, remote: remote, branch: branch)
   let matched = count(matches)
@@ -244,10 +244,10 @@ fn adjudicate_remote_branch(
 fn adjudicate_publication(
   pulls: PullRequestObservation,
   remotes: RemoteBranchObservation,
-  remote: NonEmptyStr,
-  branch: NonEmptyStr,
-  expected_base: NonEmptyStr,
-  expected_head: CommitSha,
+  remote: std.types.NonEmptyStr,
+  branch: std.types.NonEmptyStr,
+  expected_base: std.types.NonEmptyStr,
+  expected_head: std.types.CommitSha,
 ) -> PublicationOutcome {
   match pulls {
     PullRequestsUnreadable { cause } =>
@@ -385,7 +385,7 @@ type RoadmapPublicationSubject {
   expected_head: std.types.CommitSha
 }
 
-fn publication_subject_remote(subject: RoadmapPublicationSubject) -> NonEmptyStr {
+fn publication_subject_remote(subject: RoadmapPublicationSubject) -> std.types.NonEmptyStr {
   github_https_clone_url(repo: subject.repository)
 }
 
@@ -438,7 +438,7 @@ fn publication_receipt_outcome_of(outcome: PublicationOutcome) -> PublicationRec
   }
 }
 
-fn publication_receipt_outcome_key(outcome: PublicationReceiptOutcome) -> NonEmptyStr {
+fn publication_receipt_outcome_key(outcome: PublicationReceiptOutcome) -> std.types.NonEmptyStr {
   match outcome {
     ReceiptBound { pr_number: _, url: _, draft: _ } => "publication-bound"
     ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => "publication-head-diverged"
@@ -489,11 +489,11 @@ fn publication_receipt_of(
   }
 }
 
-data publication_receipt_schema: NonEmptyStr = "roadmap-publication-receipt/v2"
+data publication_receipt_schema: std.types.NonEmptyStr = "roadmap-publication-receipt/v2"
 
 data publication_receipt_schema_v2_note: String = "v2, not v1, because the v1 shape is not a subset of this one. v1 stored an outcome key and a rendered sentence; v2 stores the variant's own fields and a six-part subject. A v1 document cannot be read as a v2 document with missing optional members - the fields Review needs were never written - so silently accepting one would hand a consumer a receipt whose pull-request binding does not exist. The decoder refuses any schema that is not exactly this string, which makes the version a wall rather than a hint. No v1 receipt was ever produced by a merged path, so there is no migration to write."
 
-fn publication_receipt_outcome_json(outcome: PublicationReceiptOutcome) -> JsonValue {
+fn publication_receipt_outcome_json(outcome: PublicationReceiptOutcome) -> extdeps.languages.json.emit.JsonValue {
   match outcome {
     ReceiptBound { pr_number, url, draft } =>
       json_object(members: [
@@ -548,7 +548,7 @@ fn publication_receipt_outcome_json(outcome: PublicationReceiptOutcome) -> JsonV
   }
 }
 
-fn publication_repository_json(repo: Repository) -> JsonValue {
+fn publication_repository_json(repo: extdeps.github.github.Repository) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "owner", value: json_string(s: repo.owner)),
     json_kv(key: "name", value: json_string(s: repo.name)),
@@ -558,7 +558,7 @@ fn publication_repository_json(repo: Repository) -> JsonValue {
   ])
 }
 
-fn publication_subject_json(subject: RoadmapPublicationSubject) -> JsonValue {
+fn publication_subject_json(subject: RoadmapPublicationSubject) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "node_id", value: json_string(s: subject.node_id)),
     json_kv(key: "attempt_key", value: json_string(s: subject.attempt_key)),
@@ -587,7 +587,7 @@ type PublicationReceiptMember
   = ReceiptMemberRead { value: String }
   | ReceiptMemberUnreadable { reason: String }
 
-fn publication_receipt_member(doc: JsonValue, key: String) -> PublicationReceiptMember {
+fn publication_receipt_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> PublicationReceiptMember {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberNotAnObject =>
       ReceiptMemberUnreadable { reason: "publication receipt is not a JSON object" }
@@ -620,7 +620,7 @@ type PublicationReceiptDecode
   | ReceiptUndecodable { reason: String }
 
 // A REFUSAL THAT DOES NOT NAME WHAT WAS WRONG IS A TYPED SHRUG. The first cut of these decoders returned Optionals, so five different situations - not an object, member absent, member present with the wrong JSON type, an outcome kind nobody writes, a kind whose own fields are missing - all arrived as `none` and were rendered by the caller as one sentence about `a required member`. Whoever read that sentence had to open the document and diff it against the encoder by hand, which is the work the decoder had already done and thrown away.\n\nSO EACH DECODER RETURNS ITS OWN COPRODUCT and the reason names the member, and for an outcome the KIND as well - because `publication-bound is missing pr_number` and `nobody writes published-ok` send a reader to different places. The reason is built where the fact is known, not reconstructed by the caller.
-fn publication_receipt_int_member(doc: JsonValue, key: String) -> Int? {
+fn publication_receipt_int_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> Int? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
@@ -631,7 +631,7 @@ fn publication_receipt_int_member(doc: JsonValue, key: String) -> Int? {
   }
 }
 
-fn publication_receipt_bool_member(doc: JsonValue, key: String) -> Bool? {
+fn publication_receipt_bool_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> Bool? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
@@ -644,7 +644,7 @@ fn publication_receipt_bool_member(doc: JsonValue, key: String) -> Bool? {
 
 data pr_numbers_survive_the_round_trip_note: String = "THE AMBIGUOUS SET IS DECODED, NOT REPLACED BY AN EMPTY ONE. An earlier cut of this decoder answered `publication-binding-ambiguous` with `pr_numbers: []`, discarding the very list the encoder had just written - so a receipt recording that four pull requests matched decoded to one recording that none did, while reporting the same outcome kind and passing every claim that only checked the kind. An ambiguity whose members are gone is not an ambiguity anyone can resolve."
 
-fn publication_receipt_int_array_member(doc: JsonValue, key: String) -> List<Int>? {
+fn publication_receipt_int_array_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> List<Int>? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
@@ -686,7 +686,7 @@ fn outcome_member_missing(kind: String, member: String) -> PublicationOutcomeDec
   }
 }
 
-fn publication_receipt_outcome_decode(doc: JsonValue) -> PublicationOutcomeDecode {
+fn publication_receipt_outcome_decode(doc: extdeps.languages.json.emit.JsonValue) -> PublicationOutcomeDecode {
   match publication_receipt_member(doc: doc, key: "kind") {
     ReceiptMemberUnreadable { reason: r } => OutcomeUndecodable { reason: r }
     ReceiptMemberRead { value: kind } =>
@@ -704,7 +704,7 @@ fn publication_receipt_outcome_decode(doc: JsonValue) -> PublicationOutcomeDecod
                     OutcomeDecoded {
                       outcome: ReceiptBound {
                         pr_number: n,
-                        url: u as NonEmptyStr,
+                        url: u as std.types.NonEmptyStr,
                         draft: d,
                       },
                     }
@@ -726,8 +726,8 @@ fn publication_receipt_outcome_decode(doc: JsonValue) -> PublicationOutcomeDecod
                     OutcomeDecoded {
                       outcome: ReceiptHeadDiverged {
                         pr_number: n,
-                        pr_head: h as CommitSha,
-                        url: u as NonEmptyStr,
+                        pr_head: h as std.types.CommitSha,
+                        url: u as std.types.NonEmptyStr,
                       },
                     }
                 }
@@ -745,7 +745,7 @@ fn publication_receipt_outcome_decode(doc: JsonValue) -> PublicationOutcomeDecod
             outcome_member_missing(kind: kind, member: "head_sha")
           ReceiptMemberRead { value: h } =>
             OutcomeDecoded {
-              outcome: ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: h as CommitSha },
+              outcome: ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: h as std.types.CommitSha },
             }
         }
       } else if kind == "remote-branch-head-diverged" {
@@ -754,7 +754,7 @@ fn publication_receipt_outcome_decode(doc: JsonValue) -> PublicationOutcomeDecod
             outcome_member_missing(kind: kind, member: "remote_head")
           ReceiptMemberRead { value: h } =>
             OutcomeDecoded {
-              outcome: ReceiptRemoteBranchHeadDiverged { remote_head: h as CommitSha },
+              outcome: ReceiptRemoteBranchHeadDiverged { remote_head: h as std.types.CommitSha },
             }
         }
       } else if kind == "remote-branch-binding-ambiguous" {
@@ -798,7 +798,7 @@ fn subject_member_missing(member: String) -> PublicationSubjectDecode {
   }
 }
 
-fn publication_repository_decode(doc: JsonValue) -> Repository? {
+fn publication_repository_decode(doc: extdeps.languages.json.emit.JsonValue) -> extdeps.github.github.Repository? {
   match publication_receipt_member(doc: doc, key: "owner") {
     ReceiptMemberUnreadable { reason: _ } => none
     ReceiptMemberRead { value: owner } =>
@@ -815,7 +815,7 @@ fn publication_repository_decode(doc: JsonValue) -> Repository? {
                     ReceiptMemberUnreadable { reason: _ } => none
                     ReceiptMemberRead { value: default_branch } =>
                       Present {
-                        value: Repository {
+                        value: extdeps.github.github.Repository {
                           owner: owner,
                           name: name,
                           full_name: full_name,
@@ -830,7 +830,7 @@ fn publication_repository_decode(doc: JsonValue) -> Repository? {
   }
 }
 
-fn publication_subject_decode(doc: JsonValue) -> PublicationSubjectDecode {
+fn publication_subject_decode(doc: extdeps.languages.json.emit.JsonValue) -> PublicationSubjectDecode {
   match publication_receipt_member(doc: doc, key: "node_id") {
     ReceiptMemberUnreadable { reason: _ } => subject_member_missing(member: "node_id")
     ReceiptMemberRead { value: node_id } =>
@@ -859,9 +859,9 @@ fn publication_subject_decode(doc: JsonValue) -> PublicationSubjectDecode {
                                   node_id: node_id,
                                   attempt_key: attempt_key,
                                   repository: repository,
-                                  branch: branch as NonEmptyStr,
-                                  expected_base: base as NonEmptyStr,
-                                  expected_head: head as CommitSha,
+                                  branch: branch as std.types.NonEmptyStr,
+                                  expected_base: base as std.types.NonEmptyStr,
+                                  expected_head: head as std.types.CommitSha,
                                 },
                               }
                           }
@@ -874,7 +874,7 @@ fn publication_subject_decode(doc: JsonValue) -> PublicationSubjectDecode {
   }
 }
 
-fn publication_receipt_decode_document(doc: JsonValue) -> PublicationReceiptDecode {
+fn publication_receipt_decode_document(doc: extdeps.languages.json.emit.JsonValue) -> PublicationReceiptDecode {
   match publication_receipt_member(doc: doc, key: "schema") {
     ReceiptMemberUnreadable { reason: r } => ReceiptUndecodable { reason: r }
     ReceiptMemberRead { value: schema } =>

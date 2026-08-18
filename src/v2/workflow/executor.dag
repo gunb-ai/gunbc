@@ -34,13 +34,13 @@ fn executor_job_for_node(node: Node) -> ExecutorJob {
   ExecutorJob { node: node }
 }
 
-fn executor_jobs_for_frontier(frontier: RunnableFrontier) -> List<ExecutorJob> {
+fn executor_jobs_for_frontier(frontier: v2.workflow.scheduler.RunnableFrontier) -> List<ExecutorJob> {
   fold(frontier.ready, init: [], f: fn(jobs, node) {
     list_snoc_item(xs: jobs, item: executor_job_for_node(node: node))
   })
 }
 
-fn executor_batch_for_frontier(frontier: RunnableFrontier) -> ExecutorBatch {
+fn executor_batch_for_frontier(frontier: v2.workflow.scheduler.RunnableFrontier) -> ExecutorBatch {
   ExecutorBatch {
     jobs: executor_jobs_for_frontier(frontier: frontier)
   }
@@ -62,7 +62,7 @@ fn executor_append_batch(batches: List<ExecutorBatch>, batch: ExecutorBatch) -> 
 
 fn parallel_executor_plan_from_dependencies(
   nodes: List<Node>,
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   scheduled: List<Node>
 ) -> ExecutorRunPlan {
   executor_plan_from_scheduler_plan(
@@ -76,7 +76,7 @@ fn parallel_executor_plan_from_dependencies(
 
 fn parallel_executor_step_plan_from_dependencies(
   nodes: List<Node>,
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   scheduled: List<Node>
 ) -> ExecutorRunPlan {
   executor_plan_from_scheduler_plan(
@@ -88,7 +88,7 @@ fn parallel_executor_step_plan_from_dependencies(
   )
 }
 
-fn executor_plan_from_scheduler_plan(scheduler_plan: SchedulerPlan) -> ExecutorRunPlan {
+fn executor_plan_from_scheduler_plan(scheduler_plan: v2.workflow.scheduler.SchedulerPlan) -> ExecutorRunPlan {
   match scheduler_plan {
     SchedulerPlanComplete { layers: layers, scheduled: scheduled_nodes } => ExecutorRunComplete {
       batches: executor_batches_for_layers(layers: layers),
@@ -107,7 +107,7 @@ fn executor_plan_from_scheduler_plan(scheduler_plan: SchedulerPlan) -> ExecutorR
     }
   }
 }
-fn parallel_executor_plan_from_layers(layers: List<ReadinessLayer>) -> ExecutorRunPlan {
+fn parallel_executor_plan_from_layers(layers: List<v2.std.dependency.ReadinessLayer>) -> ExecutorRunPlan {
   let batches = executor_batches_for_layers(layers: layers)
   ExecutorRunComplete {
     batches: batches,
@@ -119,21 +119,21 @@ fn executor_batch_contains_node(batch: ExecutorBatch, node: Node) -> Bool {
   contains(xs: executor_job_nodes(jobs: batch.jobs), item: node, eq: fn(left, right) { left == right })
 }
 
-fn executor_batches_preserve_frontiers(batches: List<ExecutorBatch>, layers: List<ReadinessLayer>) -> Bool {
+fn executor_batches_preserve_frontiers(batches: List<ExecutorBatch>, layers: List<v2.std.dependency.ReadinessLayer>) -> Bool {
   fold(layers, init: true, f: fn(ok, layer) {
     ok && contains(
       xs: batches,
-      item: executor_batch_for_frontier(frontier: RunnableFrontier { ready: layer.ready }),
+      item: executor_batch_for_frontier(frontier: v2.workflow.scheduler.RunnableFrontier { ready: layer.ready }),
       eq: fn(left, right) { left == right }
     )
   })
 }
 
-fn executor_batches_for_layers(layers: List<ReadinessLayer>) -> List<ExecutorBatch> {
+fn executor_batches_for_layers(layers: List<v2.std.dependency.ReadinessLayer>) -> List<ExecutorBatch> {
   fold(layers, init: [], f: fn(acc, layer) {
     executor_append_batch(
       batches: acc,
-      batch: executor_batch_for_frontier(frontier: RunnableFrontier { ready: layer.ready })
+      batch: executor_batch_for_frontier(frontier: v2.workflow.scheduler.RunnableFrontier { ready: layer.ready })
     )
   })
 }

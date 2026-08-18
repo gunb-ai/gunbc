@@ -1,22 +1,22 @@
 module extdeps.instrument.pip_boy_3000
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.thewandcompany.com/pip-boy-3000/"
   }
 }
 
-data pip_boy_3000_manual_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data pip_boy_3000_manual_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.thewandcompany.com/pip-boy-3000-manual/"
   }
 }
 
-data pip_boy_3000_retail_listing_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data pip_boy_3000_retail_listing_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.amazon.com/dp/B0G6LX9ML8"
   }
@@ -27,9 +27,9 @@ type PipBoy3000
 
 data pip_boy_3000: PipBoy3000 = PipBoy3000Replica
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.instrument.pip_boy_3000",
       decl_name: "pip_boy_3000",
       field: WholeDeclaration
@@ -44,7 +44,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data manufacturer_edge_note: String = "THE SHARED MANUFACTURER IS A TYPED EDGE, NOT A SENTENCE (review finding 48251, 2026-08-04: the vendor row was standalone and nothing read it). Both products are manufactured by the same company, and an earlier revision stated that only in the separation notes — a claim about a real entity, asserted in prose, where the graph could carry it. The edge points at the one cited vendor declaration, so 'same manufacturer, different subjects' becomes a fact a consumer can derive instead of a sentence two modules each restate. This is the same axis the SEC issuer corpus settled: the folder says which authority produced the facts, a typed edge says which entity they are about."
 
-data pip_boy_3000_manufacturer: Vendor<Hardware> = the_wand_company
+data pip_boy_3000_manufacturer: Vendor<extdeps.hardware.Hardware> = the_wand_company
 
 data subject_separation_note: String = "This module models the Fallout 3 / New Vegas Pip-Boy 3000 ONLY. The Fallout TV series Pip-Boy 3000 Mk V is a SEPARATE independently governed product with its own module (extdeps.instrument.pip_boy_3000_mk_v), its own manual, its own settings menu, and — the fact that most plainly settles the question — a DIFFERENT LICENSOR: this product's retail listing states Bethesda, the Mk V listing states Amazon Studios. DESIGN section 3 'External upstream decomposition': one shared shape does not merge independently governed entities that inhabit it. A change to the Mk V's settings must not require editing this file, and the agnostic axis both inhabit lives in the downstream join (gunbc.design.reference_instrument), never in a hub here that enumerates both."
 
@@ -62,7 +62,7 @@ type PipBoy3000Setting
   | SoundEffectsVolume
   | MuteSpeakerWhenHeadphonesConnected
 
-fn pip_boy_3000_setting_label(s: PipBoy3000Setting) -> NonEmptyStr {
+fn pip_boy_3000_setting_label(s: PipBoy3000Setting) -> std.types.NonEmptyStr {
   match s {
     DisplayTimeout => "Display timeout"
     GlitchOnTap => "Glitch on tap"
@@ -146,7 +146,7 @@ type PipBoy3000GlitchMode
   | GlitchShort
   | GlitchPersistent
 
-fn pip_boy_3000_glitch_mode_label(m: PipBoy3000GlitchMode) -> NonEmptyStr {
+fn pip_boy_3000_glitch_mode_label(m: PipBoy3000GlitchMode) -> std.types.NonEmptyStr {
   match m {
     GlitchOff => "Off"
     GlitchShort => "Short"
@@ -167,7 +167,7 @@ type PipBoy3000MotionFeature
   | AccelerometerEngineeringReadout
   | ImpulseGlitchOnTap
 
-fn pip_boy_3000_motion_feature_label(f: PipBoy3000MotionFeature) -> NonEmptyStr {
+fn pip_boy_3000_motion_feature_label(f: PipBoy3000MotionFeature) -> std.types.NonEmptyStr {
   match f {
     TiltDerivedGeigerSimulation => "tilt-derived Geiger simulation"
     AccelerometerEngineeringReadout => "accelerometer engineering readout"
@@ -175,9 +175,9 @@ fn pip_boy_3000_motion_feature_label(f: PipBoy3000MotionFeature) -> NonEmptyStr 
   }
 }
 
-data tilt_geiger_wording: NonEmptyStr = "Using the Pip-Boy internal accelerometer, tilting the Pip-Boy at different angles increases or decreases the apparent amount of ambient ionizing radiation."
+data tilt_geiger_wording: std.types.NonEmptyStr = "Using the Pip-Boy internal accelerometer, tilting the Pip-Boy at different angles increases or decreases the apparent amount of ambient ionizing radiation."
 
-data accelerometer_readout_wording: NonEmptyStr = "The Pip-Boy's unique serial number, software version, chip core temperature, system clock and charging status are displayed along with a graphical representation of the accelerometer measurements."
+data accelerometer_readout_wording: std.types.NonEmptyStr = "The Pip-Boy's unique serial number, software version, chip core temperature, system clock and charging status are displayed along with a graphical representation of the accelerometer measurements."
 
 data pip_boy_3000_motion_features: List<PipBoy3000MotionFeature> = [
   TiltDerivedGeigerSimulation,
@@ -189,8 +189,8 @@ data motion_feature_note: String = "THREE accelerometer-derived behaviours, all 
 
 data retail_listing_shape_note: String = "The listing facts below are flat cited leaves rather than a RetailListingFacts record, deliberately. The record shape has no single home today: it cannot live in either product module without the sibling re-declaring it (the section 2 failure — net concepts growing by re-invention), it cannot live in a generic extdeps hub because a hub may not carry product-specific rows, and it cannot live in the downstream join without inverting the citation direction. Two verbatim quotations beside an already-typed authority do not need a shape to be grounded. Dissolve-on: a second consumer needs the listing as a subject, at which point the shape gets a real home and both products reference it."
 
-data pip_boy_3000_retail_listing_title: NonEmptyStr = "The Wand Company Pip-Boy 3000 Fallout 3 New Vegas die-cast Replica. FM Radio and Alarm, LCD Screen, with Memory Foam Cuff and Stand. Officially Licensed by Bethesda."
+data pip_boy_3000_retail_listing_title: std.types.NonEmptyStr = "The Wand Company Pip-Boy 3000 Fallout 3 New Vegas die-cast Replica. FM Radio and Alarm, LCD Screen, with Memory Foam Cuff and Stand. Officially Licensed by Bethesda."
 
-data pip_boy_3000_licensing_statement: NonEmptyStr = "Officially Licensed by Bethesda."
+data pip_boy_3000_licensing_statement: std.types.NonEmptyStr = "Officially Licensed by Bethesda."
 
 data licensing_statement_grain_note: String = "licensing_statement is the listing's own sentence, quoted — deliberately NOT a modeled licensor entity. Bethesda has no declaration in this repository, and minting a Vendor row for a company we reference exactly once, in order to hold a fact whose whole job is to distinguish two products, would invent an authority instead of citing one (DESIGN section 2: net concepts must not grow by re-invention). Dissolve-on: a consumer needs the licensor as a subject in its own right, at which point it gets a cited extdeps.vendor row and this field references it."

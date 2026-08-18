@@ -1,16 +1,16 @@
 module v2.std.verification
 
 
-fn test_claim_expected_outcome_undeclared_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn test_claim_expected_outcome_undeclared_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^test_claim_expected_outcome_undeclared,
     at: Textual { file: ^v2_std_verification_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
-fn unified_test_claim_bool_witness_absent_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn unified_test_claim_bool_witness_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^unified_test_claim_bool_witness_absent,
     at: Textual { file: ^v2_std_verification_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
@@ -54,15 +54,15 @@ fn impossible_bug_class_coproduct_variants() -> List<ImpossibleBugClass> {
   ]
 }
 
-fn impossible_bug_diagnostic_reason_unmapped_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn impossible_bug_diagnostic_reason_unmapped_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^impossible_bug_diagnostic_reason_unmapped,
     at: Textual { file: ^v2_std_verification_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
-fn impossible_bug_class_from_diagnostic_reason(reason: Symbol) -> Outcome<ImpossibleBugClass> {
+fn impossible_bug_class_from_diagnostic_reason(reason: v2.std.node.Symbol) -> Outcome<ImpossibleBugClass> {
   if reason == ^impossible_bug_reason_suboptimal_complexity ||
     reason == ^impossible_bug_reason_suboptimal_inhabitance {
     Accepted { value: SuboptimalComplexity, diagnostics: None }
@@ -204,7 +204,7 @@ fn test_claim_coproduct_variant(c: TestClaim) -> TestClaimCoproductVariant {
   }
 }
 
-fn locus_evaluation_nodes(at: Locus) -> List<Node> {
+fn locus_evaluation_nodes(at: v2.std.diagnostic.Locus) -> List<Node> {
   match at {
     NodeLocus { anchor: a } => list_snoc_item(xs: Empty, item: a.at)
     Textual { file: _, extent: _ } => Empty
@@ -212,21 +212,21 @@ fn locus_evaluation_nodes(at: Locus) -> List<Node> {
   }
 }
 
-fn correction_evaluation_nodes(c: Correction) -> List<Node> {
+fn correction_evaluation_nodes(c: v2.std.diagnostic.Correction) -> List<Node> {
   match c {
     Suggested { node: n } => list_snoc_item(xs: Empty, item: n)
     Unavailable { reason: _ } => Empty
   }
 }
 
-fn diagnostic_evaluation_nodes(d: Diagnostic) -> List<Node> {
+fn diagnostic_evaluation_nodes(d: v2.std.diagnostic.Diagnostic) -> List<Node> {
   list_append(
     left: locus_evaluation_nodes(at: d.at),
     right: correction_evaluation_nodes(c: d.correction)
   )
 }
 
-fn diagnostic_list_evaluation_nodes(ds: List<Diagnostic>) -> List<Node> {
+fn diagnostic_list_evaluation_nodes(ds: List<v2.std.diagnostic.Diagnostic>) -> List<Node> {
   fold_list(
     xs: ds,
     empty: Empty,
@@ -236,7 +236,7 @@ fn diagnostic_list_evaluation_nodes(ds: List<Diagnostic>) -> List<Node> {
   )
 }
 
-fn non_empty_diagnostics_evaluation_nodes(d: NonEmptyDiagnostics) -> List<Node> {
+fn non_empty_diagnostics_evaluation_nodes(d: v2.std.diagnostic.NonEmptyDiagnostics) -> List<Node> {
   list_append(
     left: diagnostic_evaluation_nodes(d: d.head),
     right: diagnostic_list_evaluation_nodes(ds: d.tail)
@@ -401,7 +401,7 @@ fn unified_test_claim_bool_witness(c: UnifiedTestClaim) -> Outcome<BoolWitness> 
 fn bool_witness_matches_entry_function(
   w: BoolWitness,
   entry: String,
-  function: Symbol
+  function: v2.std.node.Symbol
 ) -> Bool {
   w.entry == entry && w.function == function
 }
