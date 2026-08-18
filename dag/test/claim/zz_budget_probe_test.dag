@@ -2,11 +2,10 @@ module gunbc.test.claim.zz_budget_probe_test
 
 import v2.std.text { String }
 import v2.std.logic { Bool }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.collection { List, Map, Set, empty_map, map_insert }
 import v2.std.algebra { fold_list, length }
-import v2.std.set { Set }
 import v2.std.grammar { GrammarRoot, GrammarProduction, ParseGrammar, ModeledGrammar, VoidGrammar }
-import v2.std.symbol { Symbol }
+import v2.std.node { Symbol }
 import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
 import v2.compiler.tokenize { lex_walk_artifact }
 import v2.compiler.parse {
