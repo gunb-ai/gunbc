@@ -3682,7 +3682,7 @@ fn match_pattern(
                     Some(bindings)
                 }
                 Value::Record { type_name, fields } => {
-                    if *type_name != ctx.sym(name) && *type_name != ctx.sym(name_last) {
+                    if *type_name != ctx.sym(name) {
                         return None;
                     }
                     let mut bindings = HashMap::new();
