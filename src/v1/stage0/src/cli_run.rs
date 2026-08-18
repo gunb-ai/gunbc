@@ -14660,6 +14660,72 @@ fn render_batch_summary_line(
     }
 }
 
+/// Mirror of `gunbc.observation_ci_render.ci_witness_claim_result_text` and
+/// `ci_human_elapsed`. Hot-path render for per-witness floor lines: interpreter
+/// eval per printed line (~800 anomaly rows) dominated the fold and pushed marginal
+/// witnesses over the 500ms receipt budget. Format authority stays in `.dag`;
+/// `observation_ci_render_witness_test` is the oracle (same pattern as
+/// `render_heartbeat_line_mirror`).
+const WITNESS_CLAIM_COLUMN_WIDTH: usize = 60;
+const WITNESS_CLAIM_MINUTE_SWITCH_SECONDS: u64 = 90;
+
+fn witness_claim_package_path(subject: &str) -> String {
+    if subject.contains('/') {
+        if subject.ends_with(".dag") {
+            subject[..subject.len() - 4].to_string()
+        } else {
+            subject.to_string()
+        }
+    } else {
+        subject.replace('.', "/")
+    }
+}
+
+fn witness_bazel_target_label(subject: &str, function: &str) -> String {
+    format!("//{}:{}", witness_claim_package_path(subject), function)
+}
+
+fn witness_claim_human_duration(ms: u64) -> String {
+    if ms < 1_000 {
+        format!("{ms}ms")
+    } else if ms < WITNESS_CLAIM_MINUTE_SWITCH_SECONDS * 1_000 {
+        format!("{} seconds", ms / 1_000)
+    } else {
+        format!("{} minutes", ms / 60_000)
+    }
+}
+
+fn witness_claim_human_elapsed(wall_nanos: u128) -> String {
+    if wall_nanos < 1_000_000 {
+        format!("{wall_nanos}ns")
+    } else {
+        witness_claim_human_duration((wall_nanos / 1_000_000) as u64)
+    }
+}
+
+fn render_witness_claim_result_text_mirror(
+    subject: &str,
+    function: &str,
+    wall_nanos: u128,
+    passed: bool,
+) -> String {
+    let label = witness_bazel_target_label(subject, function);
+    let padded = if label.len() >= WITNESS_CLAIM_COLUMN_WIDTH {
+        label
+    } else {
+        format!(
+            "{}{}",
+            label,
+            " ".repeat(WITNESS_CLAIM_COLUMN_WIDTH - label.len())
+        )
+    };
+    let token = if passed { "PASSED" } else { "FAILED" };
+    format!(
+        "{padded}{token} in {}",
+        witness_claim_human_elapsed(wall_nanos)
+    )
+}
+
 /// Render one per-witness claim-result line through the `.dag` authority. Every choice about
 /// how the line READS lives in `gunbc.observation_ci_render ci_witness_claim_result_text`; the
 /// seed transports subject, function, verdict and wall time only.
@@ -14669,37 +14735,11 @@ fn render_witness_claim_result_text(
     wall_nanos: u128,
     passed: bool,
 ) -> Option<String> {
-    use v1_interpreter::Value;
-    let roots = OBSERVATION_SOURCE_ROOTS.get()?;
-    let entry = "dag/gunbc/observation_ci_render.dag";
-    let (graph, indices) = resolve_entry_graph_shared(roots, entry).ok()?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let wall = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "nanosecond",
-        &[(Some("count".to_string()), Value::Int(wall_nanos as i64))],
-        false,
-    )
-    .ok()?;
-    let out = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "ci_witness_claim_result_text",
-        &[
-            (Some("subject".to_string()), str_value(subject.to_string())),
-            (
-                Some("function".to_string()),
-                str_value(function.to_string()),
-            ),
-            (Some("passed".to_string()), Value::Bool(passed)),
-            (Some("wall".to_string()), wall),
-        ],
-        false,
-    )
-    .ok()?;
-    match out {
-        Value::Str(s) => Some(s.to_string()),
-        _ => None,
-    }
+    // Fail-closed: policy install must have run before any witness line prints.
+    OBSERVATION_SOURCE_ROOTS.get()?;
+    Some(render_witness_claim_result_text_mirror(
+        subject, function, wall_nanos, passed,
+    ))
 }
 
 pub fn install_output_policy(source_roots: &[String]) {
