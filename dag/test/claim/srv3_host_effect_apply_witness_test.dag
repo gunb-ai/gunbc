@@ -4,7 +4,7 @@ module test.claim.srv3_host_effect_apply_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv3_actuator_target() -> gunbc.host_effect.NodeControlPlane {
-  HostOs { node: srv3_os_install_actuator_host }
+  gunbc.host_effect.HostOs { node: srv3_os_install_actuator_host }
 }
 
 fn srv3_bmc_target() -> gunbc.host_effect.NodeControlPlane {
@@ -36,7 +36,7 @@ test fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
     target: srv3_actuator_target(),
     effect: Srv3BmcwebTokenExtract,
     evidence: host_effect_identity_evidence,
-    transport: gunbc.host_effect.SshShell { ssh_host: "203.0.113.1" as NonEmptyStr },
+    transport: gunbc.host_effect.SshShell { ssh_host: "203.0.113.1" as std.types.NonEmptyStr },
   ) {
     NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "SshShell transport is a fail-closed Unimplemented stub")
@@ -47,13 +47,13 @@ test fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
 test fn witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash() -> Bool {
   let curl_args = bmcweb_session_login_curl_args(
     bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
-    response_path: gunbc.srv3_actuate_shell_paths.srv3_bmcweb_login_response_path as NonEmptyStr,
+    request_body_file: srv3_bmcweb_login_body_path as std.types.NonEmptyStr,
+    response_path: gunbc.srv3_actuate_shell_paths.srv3_bmcweb_login_response_path as std.types.NonEmptyStr,
   )
   let argv = bmcweb_session_login_argv(
     bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
-    response_path: gunbc.srv3_actuate_shell_paths.srv3_bmcweb_login_response_path as NonEmptyStr,
+    request_body_file: srv3_bmcweb_login_body_path as std.types.NonEmptyStr,
+    response_path: gunbc.srv3_actuate_shell_paths.srv3_bmcweb_login_response_path as std.types.NonEmptyStr,
   )
   let curl_args_surface = fold(
     curl_args,
@@ -75,7 +75,7 @@ test fn witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash
 test fn witness_srv3_apply_shell_failure_refuses_typed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: srv3_actuator_target(),
-    effect: ShellCommand { script: "exit 1" },
+    effect: gunbc.host_effect.ShellCommand { script: "exit 1" },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
@@ -84,7 +84,7 @@ test fn witness_srv3_apply_shell_failure_refuses_typed() -> Bool {
 test fn witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated() -> Bool {
   match host_effect_apply(
     target: srv3_actuator_target(),
-    effect: ShellCommand { script: "echo srv3-apply-red-marker && exit 1" },
+    effect: gunbc.host_effect.ShellCommand { script: "echo srv3-apply-red-marker && exit 1" },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
   ) {
@@ -98,7 +98,7 @@ test fn witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated() -> 
 test fn witness_srv3_apply_failure_no_fabricated_stdout() -> Bool {
   let r = host_effect_apply(
     target: srv3_actuator_target(),
-    effect: ShellCommand { script: "exit 1" },
+    effect: gunbc.host_effect.ShellCommand { script: "exit 1" },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
   )
@@ -123,7 +123,7 @@ test fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
     target: srv3_actuator_target(),
     effect: Srv3InstallMediaFetch,
     evidence: host_effect_identity_evidence,
-    transport: gunbc.host_effect.SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
+    transport: gunbc.host_effect.SshShell { ssh_host: "203.0.113.1" as std.types.NonEmptyStr }
   ) {
     NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "SshShell transport is a fail-closed Unimplemented stub")
@@ -140,8 +140,8 @@ test fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Boo
         obs: gunbc.session_lease.PortObserved {
           observed_port: i.local_nbd_port,
           pid: 424242,
-          cmdline: "foreign-nbdkit" as NonEmptyStr,
-          process_fingerprint: "foreign-nbdkit" as NonEmptyStr,
+          cmdline: "foreign-nbdkit" as std.types.NonEmptyStr,
+          process_fingerprint: "foreign-nbdkit" as std.types.NonEmptyStr,
         },
         transport: LocalShell,
       ) {
@@ -160,15 +160,15 @@ test fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() ->
       let stale = gunbc.session_lease.PortObservedStaleExpected {
         observed_port: i.local_nbd_port,
         pid: 99999,
-        cmdline: "gunbc-nbd-proxy" as NonEmptyStr,
-        process_fingerprint: "gunbc-nbd-proxy" as NonEmptyStr,
-        stale_reason: "prior-generation lease holder" as NonEmptyStr,
+        cmdline: "gunbc-nbd-proxy" as std.types.NonEmptyStr,
+        process_fingerprint: "gunbc-nbd-proxy" as std.types.NonEmptyStr,
+        stale_reason: "prior-generation lease holder" as std.types.NonEmptyStr,
       }
       let foreign = gunbc.session_lease.PortObserved {
         observed_port: i.local_nbd_port,
         pid: 424242,
-        cmdline: "foreign-nbdkit" as NonEmptyStr,
-        process_fingerprint: "foreign-nbdkit" as NonEmptyStr,
+        cmdline: "foreign-nbdkit" as std.types.NonEmptyStr,
+        process_fingerprint: "foreign-nbdkit" as std.types.NonEmptyStr,
       }
       host_effect_nbd_proxy_serve_apply_drains_stale_matching(binding: binding, obs: stale)
         && !host_effect_nbd_proxy_serve_apply_drains_stale_matching(binding: binding, obs: foreign)
@@ -184,7 +184,7 @@ test fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_re
     Srv3NbdProxyServe { intent: i, lease_key: _ } =>
       host_effect_nbd_proxy_serve_websocat_argv_materialized_omits_shell_env_ref(
         intent: i,
-        token: "materialized-bmcweb-token" as NonEmptyStr,
+        token: "materialized-bmcweb-token" as std.types.NonEmptyStr,
       )
     _ => false
   }
@@ -210,7 +210,7 @@ test fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool {
         binding =>
           binding.lease_key == srv3_nbd_proxy_lease_key
             && binding.scope.listen_port == i.local_nbd_port
-            && binding.scope.expected_owner_label == "gunbc-nbd-proxy" as NonEmptyStr
+            && binding.scope.expected_owner_label == "gunbc-nbd-proxy" as std.types.NonEmptyStr
             && host_effect_nbd_proxy_serve_session_policy_is_held_lease(lease_key: k)
       }
     _ => false
