@@ -85,7 +85,7 @@ type SparkServingObservedLingerState
   | LingerUnobservedState
 
 type SparkServingObservedMemberProjection
-  = SparkServingObservedMembers { members: List<SparkServingMember>, unit_observed: Bool, linger_observed: Bool }
+  = SparkServingObservedMembers { members: List<SparkServingMember>, unit_observed: Bool, enablement_observed: Bool, linger_observed: Bool }
   | SparkServingObservedMembersRefused { cause: String }
 
 // A member is present in the OBSERVED list only when something was actually observed to be there.
@@ -163,11 +163,12 @@ fn spark_serving_observed_members(
         members: concat(
           concat(
             spark_serving_observed_unit_members(host: h, unit: unit),
-            spark_serving_observed_unit_enablement_members(host: h, unit: unit, enablement: enablement),
+            spark_serving_observed_unit_enablement_members(host: h, enablement: enablement),
           ),
           spark_serving_observed_linger_members(host: h, linger: linger),
         ),
         unit_observed: spark_serving_unit_state_was_observed(unit: unit),
+        enablement_observed: spark_serving_enablement_was_observed(enablement: enablement),
         linger_observed: spark_serving_linger_state_was_observed(linger: linger),
       }
     SparkServingObserved { host: h, loaded_release: loaded } =>
@@ -192,12 +193,13 @@ fn spark_serving_observed_members(
           concat(
             concat(
               spark_serving_observed_unit_members(host: h, unit: unit),
-              spark_serving_observed_unit_enablement_members(host: h, unit: unit, enablement: enablement),
+              spark_serving_observed_unit_enablement_members(host: h, enablement: enablement),
             ),
             spark_serving_observed_linger_members(host: h, linger: linger),
           ),
         ),
         unit_observed: spark_serving_unit_state_was_observed(unit: unit),
+        enablement_observed: spark_serving_enablement_was_observed(enablement: enablement),
         linger_observed: spark_serving_linger_state_was_observed(linger: linger),
       }
   }
@@ -212,6 +214,18 @@ fn spark_serving_observed_members(
 // The completeness fact therefore travels beside the members exactly as the unit's does, and the
 // consumer refuses on it. It is NOT repaired by filtering the member list, because a projection that
 // dropped the member would still be reporting a population it could not vouch for.
+// ENABLEMENT CARRIES ITS OWN COMPLETENESS FACT. It used to borrow `unit_observed=false` as an
+// indirect refusal wall, which only worked because the content classifier was erasing itself on the
+// enablement's behalf. With the subjects separated, each owes its own answer to "was this measured".
+fn spark_serving_enablement_was_observed(enablement: SparkServingUnitEnablement) -> Bool {
+  match enablement {
+    UserUnitEnabled => true
+    UserUnitDisabled => true
+    UserUnitEnablementNotFound => true
+    UserUnitEnablementUnobserved => false
+  }
+}
+
 fn spark_serving_linger_state_was_observed(linger: SparkServingObservedLingerState) -> Bool {
   match linger {
     LingerObservedEnabled => true
@@ -290,27 +304,23 @@ type SparkServingUnitEnablement
 // A failed read is NOT absence: `cat` exits non-zero both when the file is missing and when it
 // cannot be read, and only the first means the member is absent. The remedies differ -- write the
 // unit, versus fix why it is unreadable -- so they stay distinct states.
+// THE CONTENT CLASSIFIER READS ONLY THE FILE-READ EVIDENCE.
+//
+// It took `enablement`, and UserUnitEnablementUnobserved turned a SUCCESSFULLY READ FILE into
+// UserUnitStateUnobserved -- so failing to observe one subject erased an established fact about a
+// different one. Splitting the member addresses did not fix that; it left the collapse one level up,
+// in the classifier, where a subject's own evidence is the only thing entitled to decide it.
+//
+// A read that succeeded establishes the content. Whether the unit is enabled is a separate question
+// answered by separate evidence, and its failure scopes to its own member.
 fn classify_observed_user_unit(
   read_succeeded: Bool,
   read_stdout: String,
   file_absent: Bool,
-  enablement: SparkServingUnitEnablement,
 ) -> SparkServingObservedUnitState {
   if read_succeeded {
-    match enablement {
-      UserUnitEnablementUnobserved => UserUnitStateUnobserved
-      UserUnitEnabled =>
-        UserUnitStateObserved {
-          unit_state_digest: spark_serving_user_unit_content_identity(bytes: read_stdout),
-        }
-      UserUnitDisabled =>
-        UserUnitStateObserved {
-          unit_state_digest: spark_serving_user_unit_content_identity(bytes: read_stdout),
-        }
-      UserUnitEnablementNotFound =>
-        UserUnitStateObserved {
-          unit_state_digest: spark_serving_user_unit_content_identity(bytes: read_stdout),
-        }
+    UserUnitStateObserved {
+      unit_state_digest: spark_serving_user_unit_content_identity(bytes: read_stdout),
     }
   } else {
     if file_absent { UserUnitStateAbsent } else { UserUnitStateUnobserved }
@@ -328,14 +338,9 @@ fn classify_observed_user_unit(
 // appear -- and the projection's completeness bit is what stops that absence being read as drift.
 fn spark_serving_observed_unit_enablement_members(
   host: HostIdentity,
-  unit: SparkServingObservedUnitState,
   enablement: SparkServingUnitEnablement,
 ) -> List<SparkServingMember> {
-  match unit {
-    UserUnitStateUnobserved => []
-    UserUnitStateAbsent => []
-    UserUnitStateObserved { unit_state_digest: _ } =>
-      match enablement {
+  match enablement {
         UserUnitEnablementUnobserved => []
         UserUnitEnabled => [
           spark_serving_member(
@@ -355,15 +360,15 @@ fn spark_serving_observed_unit_enablement_members(
             ownership: Owned,
           ),
         ]
-        UserUnitEnablementNotFound => [
-          spark_serving_member(
-            host: host,
-            principal: spark_serving_serving_principal(),
-            address: SparkServingUserUnitEnablementAddress,
-            state_digest: spark_serving_user_unit_not_registered_state,
-            ownership: Owned,
-          ),
-        ]
-      }
+    UserUnitEnablementNotFound => [
+      spark_serving_member(
+        host: host,
+        principal: spark_serving_serving_principal(),
+        address: SparkServingUserUnitEnablementAddress,
+        state_digest: spark_serving_user_unit_not_registered_state,
+        ownership: Owned,
+      ),
+    ]
   }
 }
+

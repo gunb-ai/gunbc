@@ -566,3 +566,77 @@ test fn a_disabled_linger_plans_rather_than_refusing() -> Bool {
       ) == 1
   }
 }
+
+// ── Subject independence: one subject's failure stays in its own lane ────────────────────────────
+
+fn observed_addresses(p: SparkServingObservedMemberProjection) -> Int {
+  match p {
+    SparkServingObservedMembersRefused { cause: _ } => 0 - 1
+    SparkServingObservedMembers { members: ms, unit_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
+  }
+}
+
+// THE CLASS THIS PINS, and it is the one my own split missed. Splitting the member ADDRESSES did not
+// separate the subjects: `classify_observed_user_unit` still took the enablement, and an unobserved
+// enablement turned a SUCCESSFULLY READ FILE into unobserved content. Failure to establish one fact
+// erased an established fact about a different one.
+//
+// A read that succeeded establishes the content whatever happened to the enablement probe. The unit
+// member is present; only the enablement member is missing.
+test fn an_unobserved_enablement_leaves_the_observed_content_intact() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      match project(
+        obs: SparkServingObserved { host: subject_host, loaded_release: r },
+        unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+        enablement: UserUnitEnablementUnobserved,
+        linger: LingerObservedEnabled,
+      ) {
+        SparkServingObservedMembersRefused { cause: _ } => false
+        SparkServingObservedMembers { members: _, unit_observed: unit_seen, enablement_observed: enab_seen, linger_observed: _ } =>
+          unit_seen && !enab_seen
+      }
+  }
+}
+
+// And the mirror: an unreadable unit file does not erase an observed enablement. Without both
+// directions this passes on a projection that simply reports everything as observed.
+test fn an_unobserved_unit_leaves_the_observed_enablement_intact() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      match project(
+        obs: SparkServingObserved { host: subject_host, loaded_release: r },
+        unit: UserUnitStateUnobserved,
+        enablement: UserUnitEnabled,
+        linger: LingerObservedEnabled,
+      ) {
+        SparkServingObservedMembersRefused { cause: _ } => false
+        SparkServingObservedMembers { members: _, unit_observed: unit_seen, enablement_observed: enab_seen, linger_observed: _ } =>
+          !unit_seen && enab_seen
+      }
+  }
+}
+
+// A DISABLED-BUT-CORRECT UNIT PLANS EXACTLY ONE WRITE. This is the payoff of the whole split and the
+// direct refutation of the `disabled:` encoding: byte-perfect content that is merely disabled owes
+// EnableUserUnit alone, not a file rewrite plus a manager reload.
+test fn a_correct_but_disabled_unit_plans_exactly_one_member() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      plan_writes(
+        p: spark_serving_full_membership_plan(
+          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
+          serving_release: r,
+          projection: project(
+            obs: SparkServingObserved { host: subject_host, loaded_release: r },
+            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+            enablement: UserUnitDisabled,
+            linger: LingerObservedEnabled,
+          ),
+        ),
+      ) == 1
+  }
+}
