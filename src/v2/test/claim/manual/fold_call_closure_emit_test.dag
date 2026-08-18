@@ -201,9 +201,9 @@ fn fold_call_tokens_equal(
 
 fn fold_call_emit_matches(arrow: Node, expected: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> Bool {
   match fold_call_emit_body_tokens(arrow: arrow) {
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: d } =>
+    Accepted { value: tokens, diagnostics: d } =>
       fold_call_tokens_equal(left: tokens, right: expected) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -224,13 +224,13 @@ test fn fold_call_swap_discriminates() -> Bool {
     expected: fold_call_expected_canonical_tokens()
   )
   && match fold_call_emit_body_tokens(arrow: fold_call_canonical_arrow()) {
-    v2.std.diagnostic.Accepted { value: canonical, diagnostics: _ } =>
+    Accepted { value: canonical, diagnostics: _ } =>
       match fold_call_emit_body_tokens(arrow: fold_call_swapped_arrow()) {
-        v2.std.diagnostic.Accepted { value: swapped, diagnostics: _ } =>
+        Accepted { value: swapped, diagnostics: _ } =>
           !fold_call_tokens_equal(left: canonical, right: swapped)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

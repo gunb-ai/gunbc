@@ -192,7 +192,7 @@ fn infer_outcome_node_projection(actual: v2.std.diagnostic.Outcome<v2.compiler.i
   match actual {
     Accepted { value: tree, diagnostics: ad } =>
       v2.std.diagnostic.Accepted { value: tree.root, diagnostics: ad }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -203,7 +203,7 @@ fn infer_add_receipt_run(
   v2.compiler.eval.TestClaimRun {
     cache: test_claim_cache_receipt(subject: subject),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
-      v2.std.diagnostic.Accepted { value: expected, diagnostics: _ } =>
+      Accepted { value: expected, diagnostics: _ } =>
         match actual {
           Accepted { value: tree, diagnostics: ad } =>
             if outcome_node_eq(
@@ -214,7 +214,7 @@ fn infer_add_receipt_run(
             } else {
               verdict_fail(actual: actual)
             }
-          v2.std.diagnostic.Rejected { diagnostics: _ } =>
+          Rejected { diagnostics: _ } =>
             if outcome_node_eq(
               a: infer_outcome_node_projection(actual: actual),
               b: expected
@@ -224,7 +224,7 @@ fn infer_add_receipt_run(
               verdict_fail(actual: actual)
             }
         }
-      v2.std.diagnostic.Rejected { diagnostics: _ } => verdict_fail(actual: actual)
+      Rejected { diagnostics: _ } => verdict_fail(actual: actual)
     }
   }
 }
@@ -236,13 +236,13 @@ fn infer_descent_witness_receipt_run(
   v2.compiler.eval.TestClaimRun {
     cache: test_claim_cache_receipt(subject: subject),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
-      v2.std.diagnostic.Accepted { value: expected, diagnostics: _ } =>
+      Accepted { value: expected, diagnostics: _ } =>
         if outcome_node_eq(a: actual, b: expected) {
           Pass
         } else {
           verdict_fail(actual: actual)
         }
-      v2.std.diagnostic.Rejected { diagnostics: _ } => verdict_fail(actual: actual)
+      Rejected { diagnostics: _ } => verdict_fail(actual: actual)
     }
   }
 }

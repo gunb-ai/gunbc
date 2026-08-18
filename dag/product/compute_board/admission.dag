@@ -291,7 +291,37 @@ fn refusal_set_count(s: BoardArticleRefusalSet) -> std.nat.Nat {
   1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
 }
 
-fn admit_board_article(a: product.compute_board.article.BoardPowerInterfaceArticle) -> BoardArticleAdmission {
+// Match on BoardArticleRefusal in the module that owns the coproduct — imported variant
+// patterns in witness modules do not reconcile at runtime (non-exhaustive on every arm).
+fn refusal_matches_name(r: BoardArticleRefusal, wanted: String) -> Bool {
+  match r {
+    DuplicateComponentIdentity { component: _ } => wanted == "DuplicateComponentIdentity"
+    DuplicateNetIdentity { net: _ } => wanted == "DuplicateNetIdentity"
+    NetMemberBelongsToAnotherDesign { net: _, net_design: _, member_design: _ } => wanted == "NetMemberBelongsToAnotherDesign"
+    DuplicateSignalName { signal: _ } => wanted == "DuplicateSignalName"
+    NetMemberNamesNoTerminal { net: _, component: _, terminal: _ } => wanted == "NetMemberNamesNoTerminal"
+    BondTerminalNamesNoTerminal { component: _, terminal: _ } => wanted == "BondTerminalNamesNoTerminal"
+    BondNamesUndeclaredNet { net: _ } => wanted == "BondNamesUndeclaredNet"
+    ReferenceNetNotDeclared { net: _ } => wanted == "ReferenceNetNotDeclared"
+    DrivenSignalUndeclared { signal: _ } => wanted == "DrivenSignalUndeclared"
+    DrivenSignalIsAnInput { signal: _ } => wanted == "DrivenSignalIsAnInput"
+    EquationReferencesUndeclaredSignal { driven: _ } => wanted == "EquationReferencesUndeclaredSignal"
+    OutputWithNoDriver { signal: _ } => wanted == "OutputWithNoDriver"
+    OutputWithMultipleDrivers { signal: _ } => wanted == "OutputWithMultipleDrivers"
+    PreconditionSignalUndeclared { signal: _ } => wanted == "PreconditionSignalUndeclared"
+    PreconditionSignalIsNotAnOutput { signal: _ } => wanted == "PreconditionSignalIsNotAnOutput"
+  }
+}
+
+fn refuses_with_exactly_named_cause(a: BoardPowerInterfaceArticle, wanted: String) -> Bool {
+  match admit_board_article(a: a) {
+    BoardArticleAdmitted { article: _ } => false
+    BoardArticleRefused { causes: s } =>
+      refusal_set_count(s: s) == 1 && refusal_matches_name(r: s.first, wanted: wanted)
+  }
+}
+
+fn admit_board_article(a: BoardPowerInterfaceArticle) -> BoardArticleAdmission {
   match fold(article_refusals(a: a), init: none, f: fn(acc, r) { push_refusal(acc: acc, r: r) }) {
     Absent => BoardArticleAdmitted { article: AdmittedBoardPowerInterfaceArticle { article: a } }
     Present { value: s } => BoardArticleRefused { causes: s }

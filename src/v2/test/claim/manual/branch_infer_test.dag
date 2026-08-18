@@ -109,37 +109,37 @@ fn branch_infer_branch_result_is_int(tree: v2.compiler.infer.InferredTree, body:
 
 test fn branch_infer_bool_cond_accepts_holds() -> Bool {
   match branch_infer_bool_if_else_body_node() {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       let tree = branch_infer_resolved_tree(root: body)
       match branch_infer_run(tree: tree) {
-        v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
+        Accepted { value: inferred, diagnostics: _ } =>
           branch_infer_cond_child_is_bool(tree: inferred, body: body)
             && branch_infer_branch_result_is_int(tree: inferred, body: body)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn branch_infer_arm_mismatch_red_holds() -> Bool {
   match branch_infer_arm_mismatch_body_node() {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       match branch_infer_run(tree: branch_infer_resolved_tree(root: body)) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn branch_infer_cond_not_bool_red_holds() -> Bool {
   match branch_infer_cond_not_bool_body_node() {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       match branch_infer_run(tree: branch_infer_resolved_tree(root: body)) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

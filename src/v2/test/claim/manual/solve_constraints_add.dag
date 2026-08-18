@@ -20,7 +20,7 @@ data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraint
       && (g.witness.structural.evidence == fixture_add_resolved_tree())
       && (g.witness.closedness.property == ^constraint_property_candidate_set_closedness)
       && (d == v2.std.diagnostic.None)
-  v2.std.diagnostic.Rejected { diagnostics: _ } => false
+  Rejected { diagnostics: _ } => false
 }
 fn solve_constraints_witness_fail_node() -> Node {
   v2.std.node.Node {

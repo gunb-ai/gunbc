@@ -1343,15 +1343,6 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "free_call.resolution_divergence_silent_pick_gate_in_process" },
-      form: FreeCall,
-      authored_spelling: "resolution_divergence_silent_pick_gate_in_process",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_builtin_inner",
-      dispatch_emit_site: EvalBuiltinInnerSite,
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "method_call.lookup" },
       form: MethodCall,
       authored_spelling: "lookup",

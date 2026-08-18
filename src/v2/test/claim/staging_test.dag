@@ -13,8 +13,8 @@ fn s_bool_to_int(b: Bool) -> v2.std.diagnostic.Outcome<Int> {
 
 fn acc_int(o: v2.std.diagnostic.Outcome<Int>, dflt: Int) -> Int {
   match o {
-    v2.std.diagnostic.Accepted { value: v, diagnostics: _ } => v
-    v2.std.diagnostic.Rejected { diagnostics: _ } => dflt
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => dflt
   }
 }
 

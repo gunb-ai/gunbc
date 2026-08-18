@@ -56,8 +56,8 @@ data cr_pre_graft_root: Node = cr_pre_graft_module_root(
 )
 
 data cr_grafted_root: Node = match module_header_containment_graft(root: cr_pre_graft_root) {
-  v2.std.diagnostic.Accepted { value: grafted, diagnostics: _ } => grafted
-  v2.std.diagnostic.Rejected { diagnostics: _ } => cr_pre_graft_root
+  Accepted { value: grafted, diagnostics: _ } => grafted
+  Rejected { diagnostics: _ } => cr_pre_graft_root
 }
 
 data cr_bare_conj_root: Node = v2.std.node.Node {
@@ -68,25 +68,25 @@ data cr_bare_conj_root: Node = v2.std.node.Node {
 
 fn cr_outcome_accepted_qn(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> Bool {
   match out {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn cr_qn_eq(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> Bool {
   match out {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
-    v2.std.diagnostic.Accepted { value: actual, diagnostics: _ } => actual == expected
+    Rejected { diagnostics: _ } => false
+    Accepted { value: actual, diagnostics: _ } => actual == expected
   }
 }
 
 fn cr_outcomes_agree(lhs: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, rhs: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> Bool {
   match lhs {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
-    v2.std.diagnostic.Accepted { value: lhs_qn, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => false
+    Accepted { value: lhs_qn, diagnostics: _ } =>
       match rhs {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
-        v2.std.diagnostic.Accepted { value: rhs_qn, diagnostics: _ } => lhs_qn == rhs_qn
+        Rejected { diagnostics: _ } => false
+        Accepted { value: rhs_qn, diagnostics: _ } => lhs_qn == rhs_qn
       }
   }
 }

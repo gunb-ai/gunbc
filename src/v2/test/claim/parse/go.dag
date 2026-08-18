@@ -13,8 +13,8 @@ fn go_parse_bool_atom(b: Bool) -> Node {
 
 fn go_parse_accepted(out: v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree>) -> Bool {
   match out {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -24,8 +24,8 @@ fn go_tokenize_and_parse() -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree
     file: ^go_parse_file,
     rules: go_lex()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
       parse(tokens: tokens, grammar: go_grammar())
   }
 }

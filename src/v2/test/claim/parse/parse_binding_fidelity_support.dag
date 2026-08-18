@@ -22,13 +22,13 @@ fn pbf_parse_tokens(tokens: v2.std.compilers.lexing.TokenStream) -> v2.std.diagn
 
 fn pbf_normalized_add_module() -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   match pbf_tokenize() {
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+    Accepted { value: tokens, diagnostics: _ } =>
       match pbf_parse_tokens(tokens: tokens) {
-        v2.std.diagnostic.Accepted { value: parsed, diagnostics: _ } =>
+        Accepted { value: parsed, diagnostics: _ } =>
           normalize(parse_tree: parsed)
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -36,24 +36,24 @@ fn pbf_normalized_add_arrow() -> Optional<Node> {
   match pbf_normalized_add_module() {
     Accepted { value: tree, diagnostics: _ } =>
       v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: tree.root)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
 fn pbf_resolved_add_module() -> v2.std.diagnostic.Outcome<Node> {
   let lm = dag_language_model()
   match pbf_normalized_add_module() {
-    v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } =>
+    Accepted { value: normalized, diagnostics: _ } =>
       v2.compiler.resolve.resolve(tree: normalized, lm: lm)
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn pbf_resolved_add_arrow() -> Optional<Node> {
   match pbf_resolved_add_module() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: tree)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
@@ -68,7 +68,7 @@ fn pbf_arrow_body_operand_lexeme(arrow: Node, index: Int) -> Optional<String> {
           }
         Absent => Absent
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
@@ -79,7 +79,7 @@ fn pbf_arrow_body_operand_id(arrow: Node, index: Int) -> Optional<v2.std.node.Sy
         Present { value: e } => node_atom_identity_optional(node: e.target)
         Absent => Absent
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
@@ -122,8 +122,8 @@ fn pbf_parse_does_not_collapse_to_token_ident() -> Bool {
 
 fn pbf_resolved_add_accepts() -> Bool {
   match pbf_resolved_add_module() {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 

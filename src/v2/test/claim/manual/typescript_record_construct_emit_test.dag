@@ -76,7 +76,7 @@ fn ts_record_construct_emit_with_naming(
 ) -> String {
   match ts_record_construct_emit_accepts(record_literal_names_type: record_literal_names_type) {
     Accepted { value: source, diagnostics: _ } => source.carried
-    v2.std.diagnostic.Rejected { diagnostics: _ } => "RECORD_CONSTRUCT_EMIT_REJECTED"
+    Rejected { diagnostics: _ } => "RECORD_CONSTRUCT_EMIT_REJECTED"
   }
 }
 

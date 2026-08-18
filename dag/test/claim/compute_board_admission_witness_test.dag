@@ -1,5 +1,55 @@
 module test.claim.compute_board_admission_witness
 
+  AnalogCircuitIntent,
+  CapacitorInstance,
+  ElectricalComponentInstance,
+  ResistorInstance,
+}
+  ComponentInstanceIdentity,
+  ElectricalDesignIdentity,
+  ElectricalNet,
+  NetIdentity,
+  TerminalIdentity,
+  component_identity_eq,
+  component_instance_identity,
+  component_local_label,
+  net_identity,
+  net_identity_eq,
+  net_local_label,
+  terminal_ref,
+}
+  Conjunction,
+  DigitalControlIntent,
+  DigitalEquation,
+  DigitalInput,
+  DigitalOutput,
+  DigitalSignal,
+  Negation,
+  SignalName,
+  SignalRef,
+}
+  BoardPowerInterfaceArticle,
+  EstablishedByBoardSignal,
+  FirmwareWriteProtection,
+  HostFirmwareStartPrecondition,
+  PlatformFirmwareContract,
+  PowerPermitAsserted,
+  ElectricalBond,
+  PowerReturnConnection,
+  board_power_interlock_bonds,
+  board_power_interlock_firmware_contract,
+  board_power_interlock_manufacturing,
+  board_power_interlock_physical,
+  BoardArticleIdentity,
+  power_interlock_article,
+}
+  BoardArticleAdmitted,
+  BoardArticleRefused,
+  admit_board_article,
+  article_refusals,
+  refusal_set_count,
+  refuses_with_exactly_named_cause,
+}
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
@@ -119,34 +169,13 @@ test fn w_a_coherent_fixture_is_admitted() -> Bool {
   is_admitted(a: coherent_fixture)
 }
 
-fn refusal_is(r: product.compute_board.admission.BoardArticleRefusal, wanted: String) -> Bool {
-  match r {
-    DuplicateComponentIdentity { component: _ } => wanted == "DuplicateComponentIdentity"
-    DuplicateNetIdentity { net: _ } => wanted == "DuplicateNetIdentity"
-    NetMemberBelongsToAnotherDesign { net: _, net_design: _, member_design: _ } => wanted == "NetMemberBelongsToAnotherDesign"
-    DuplicateSignalName { signal: _ } => wanted == "DuplicateSignalName"
-    NetMemberNamesNoTerminal { net: _, component: _, terminal: _ } => wanted == "NetMemberNamesNoTerminal"
-    BondTerminalNamesNoTerminal { component: _, terminal: _ } => wanted == "BondTerminalNamesNoTerminal"
-    BondNamesUndeclaredNet { net: _ } => wanted == "BondNamesUndeclaredNet"
-    ReferenceNetNotDeclared { net: _ } => wanted == "ReferenceNetNotDeclared"
-    DrivenSignalUndeclared { signal: _ } => wanted == "DrivenSignalUndeclared"
-    DrivenSignalIsAnInput { signal: _ } => wanted == "DrivenSignalIsAnInput"
-    EquationReferencesUndeclaredSignal { driven: _ } => wanted == "EquationReferencesUndeclaredSignal"
-    OutputWithNoDriver { signal: _ } => wanted == "OutputWithNoDriver"
-    OutputWithMultipleDrivers { signal: _ } => wanted == "OutputWithMultipleDrivers"
-    PreconditionSignalUndeclared { signal: _ } => wanted == "PreconditionSignalUndeclared"
-    PreconditionSignalIsNotAnOutput { signal: _ } => wanted == "PreconditionSignalIsNotAnOutput"
-  }
-}
-
 // Exactly one cause, and it is the named one. "Contains the cause" would pass on an admission
 // that reports every cause for every article.
-fn refuses_with_exactly(a: product.compute_board.article.BoardPowerInterfaceArticle, wanted: String) -> Bool {
-  match admit_board_article(a: a) {
-    BoardArticleAdmitted { article: _ } => false
-    BoardArticleRefused { causes: s } =>
-      refusal_set_count(s: s) == 1 && refusal_is(r: s.first, wanted: wanted)
-  }
+test fn w_two_components_sharing_an_identity_refuse() -> Bool {
+  refuses_with_exactly_named_cause(
+    a: fixture_article(analog: duplicate_component_analog, reference: b_net, control: coherent_control, bonds: []),
+    wanted: "DuplicateComponentIdentity"
+  )
 }
 
 data duplicate_component_analog: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
@@ -155,21 +184,14 @@ data duplicate_component_analog: product.compute_board.analog.AnalogCircuitInten
   nets: coherent_analog.nets,
 }
 
-test fn w_two_components_sharing_an_identity_refuse() -> Bool {
-  refuses_with_exactly(
-    a: fixture_article(analog: duplicate_component_analog, reference: b_net, control: coherent_control, bonds: []),
-    wanted: "DuplicateComponentIdentity"
-  )
-}
-
-data duplicate_net_analog: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
+data duplicate_net_analog: AnalogCircuitIntent = AnalogCircuitIntent {
   title: "admission fixture",
   components: coherent_analog.components,
   nets: concat(coherent_analog.nets, [product.electrical.connectivity.ElectricalNet { identity: a_net, members: [] }]),
 }
 
 test fn w_two_nets_sharing_an_identity_refuse() -> Bool {
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(analog: duplicate_net_analog, reference: b_net, control: coherent_control, bonds: []),
     wanted: "DuplicateNetIdentity"
   )
@@ -188,7 +210,7 @@ data dangling_member_analog: product.compute_board.analog.AnalogCircuitIntent = 
 }
 
 test fn w_a_net_member_naming_no_terminal_refuses() -> Bool {
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(analog: dangling_member_analog, reference: b_net, control: coherent_control, bonds: []),
     wanted: "NetMemberNamesNoTerminal"
   )
@@ -198,7 +220,7 @@ test fn w_a_net_member_naming_no_terminal_refuses() -> Bool {
 // ComponentInstanceIdentity values. What the brand buys is that a chassis feature cannot be
 // compared to one; what admission buys is that a typo in either is located.
 test fn w_the_terminal_number_is_checked_not_only_the_component() -> Bool {
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: product.compute_board.analog.AnalogCircuitIntent {
         title: "admission fixture",
@@ -220,7 +242,7 @@ test fn w_the_terminal_number_is_checked_not_only_the_component() -> Bool {
 }
 
 test fn w_a_reference_net_that_is_not_declared_refuses() -> Bool {
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
       reference: net_identity(design: fixture_design, local_identity: "not_a_net"),
@@ -232,7 +254,7 @@ test fn w_a_reference_net_that_is_not_declared_refuses() -> Bool {
 }
 
 test fn w_a_bond_on_a_nonexistent_terminal_refuses() -> Bool {
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
@@ -247,7 +269,7 @@ test fn w_a_bond_on_a_nonexistent_terminal_refuses() -> Bool {
 }
 
 test fn w_a_bond_on_an_undeclared_net_refuses() -> Bool {
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
@@ -262,7 +284,7 @@ test fn w_a_bond_on_an_undeclared_net_refuses() -> Bool {
 }
 
 test fn w_two_signals_sharing_a_name_refuse() -> Bool {
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
@@ -278,7 +300,7 @@ test fn w_two_signals_sharing_a_name_refuse() -> Bool {
 }
 
 test fn w_driving_an_undeclared_signal_refuses() -> Bool {
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
@@ -300,7 +322,7 @@ test fn w_driving_an_undeclared_signal_refuses() -> Bool {
 // opposite remedies — declare the signal, or stop driving it. One cause covering both would tell
 // the reader nothing about which.
 test fn w_driving_an_input_refuses_as_a_direction_conflict() -> Bool {
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
@@ -319,7 +341,7 @@ test fn w_driving_an_input_refuses_as_a_direction_conflict() -> Bool {
 }
 
 test fn w_an_equation_over_an_undeclared_signal_refuses() -> Bool {
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
@@ -341,7 +363,7 @@ test fn w_an_equation_over_an_undeclared_signal_refuses() -> Bool {
 }
 
 test fn w_an_output_nothing_drives_refuses() -> Bool {
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
@@ -357,7 +379,7 @@ test fn w_an_output_nothing_drives_refuses() -> Bool {
 }
 
 test fn w_an_output_two_equations_drive_refuses() -> Bool {
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
       reference: b_net,
@@ -424,8 +446,8 @@ fn fixture_with_firmware(f: product.compute_board.article.PlatformFirmwareContra
 }
 
 test fn w_a_precondition_naming_no_signal_refuses() -> Bool {
-  refuses_with_exactly(
-    a: fixture_with_firmware(f: firmware_contract_with(p: product.compute_board.article.HostFirmwareStartPrecondition {
+  refuses_with_exactly_named_cause(
+    a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
       kind: PowerPermitAsserted,
       establishment: product.compute_board.article.EstablishedByBoardSignal { signal: "no_such_wire" as product.compute_board.digital_control.SignalName },
     })),
@@ -437,8 +459,8 @@ test fn w_a_precondition_naming_no_signal_refuses() -> Bool {
 // declaration check passes, and the board would be claiming to establish a condition it only
 // observes. Direction is the whole content of the distinction.
 test fn w_a_precondition_established_by_an_input_refuses() -> Bool {
-  refuses_with_exactly(
-    a: fixture_with_firmware(f: firmware_contract_with(p: product.compute_board.article.HostFirmwareStartPrecondition {
+  refuses_with_exactly_named_cause(
+    a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
       kind: PowerPermitAsserted,
       establishment: product.compute_board.article.EstablishedByBoardSignal { signal: in_signal },
     })),
@@ -472,7 +494,7 @@ test fn w_a_net_member_from_another_board_refuses() -> Bool {
       members: [foreign],
     }] + coherent_analog.nets,
   }
-  refuses_with_exactly(
+  refuses_with_exactly_named_cause(
     a: fixture_article(analog: spliced, reference: b_net, control: coherent_control, bonds: []),
     wanted: "NetMemberBelongsToAnotherDesign"
   )

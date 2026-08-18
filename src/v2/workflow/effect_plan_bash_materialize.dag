@@ -166,12 +166,12 @@ fn effect_plan_bash_encode_step(
   step_index: Int
 ) -> EffectPlanBashEncodeResult {
   match step {
-    v2.std.effect_plan.Do { effect: bound } =>
+    Do { effect: bound } =>
       effect_plan_bash_encode_invocation(
         bound: bound,
         step_index: step_index
       )
-    v2.std.effect_plan.If { cond: _, then_: _, else_: _ } =>
+    If { cond: _, then_: _, else_: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,
@@ -179,7 +179,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedIf
         }
       )
-    v2.std.effect_plan.For { binder: _, over: _, body: _ } =>
+    For { binder: _, over: _, body: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,
@@ -187,7 +187,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedFor
         }
       )
-    v2.std.effect_plan.While { cond: _, body: _ } =>
+    While { cond: _, body: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,
@@ -195,7 +195,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedWhile
         }
       )
-    v2.std.effect_plan.Retry { body: _, escalations: _, on_exhausted: _ } =>
+    Retry { body: _, escalations: _, on_exhausted: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,
@@ -203,7 +203,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedRetry
         }
       )
-    v2.std.effect_plan.Let { name: _, value: _ } =>
+    Let { name: _, value: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,
@@ -211,7 +211,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedLet
         }
       )
-    v2.std.effect_plan.Call { callee: _, args: _ } =>
+    Call { callee: _, args: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,

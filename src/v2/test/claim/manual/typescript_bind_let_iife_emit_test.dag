@@ -58,7 +58,7 @@ fn ts_bind_let_emit_statement_sequenced() -> String {
     projection: ts_value_expression_projection()
   ) {
     Accepted { value: source, diagnostics: _ } => source.carried
-    v2.std.diagnostic.Rejected { diagnostics: _ } => "BIND_LET_EMIT_REJECTED"
+    Rejected { diagnostics: _ } => "BIND_LET_EMIT_REJECTED"
   }
 }
 
@@ -69,7 +69,7 @@ fn ts_bind_let_emit_value_producing() -> String {
     )
   ) {
     Accepted { value: source, diagnostics: _ } => source.carried
-    v2.std.diagnostic.Rejected { diagnostics: _ } => "BIND_LET_EMIT_REJECTED"
+    Rejected { diagnostics: _ } => "BIND_LET_EMIT_REJECTED"
   }
 }
 
@@ -95,8 +95,8 @@ test fn ts_loop_statement_sequenced_fails_closed_holds() -> Bool {
     projection: ts_value_expression_projection(),
     catalog: ts_operator_realizations_catalog_node()
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -106,8 +106,8 @@ test fn dag_loop_value_producing_emits_holds() -> Bool {
     projection: dag_value_expression_projection(),
     catalog: dag_operator_realizations_catalog_node()
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -124,8 +124,8 @@ test fn ts_closure_statement_sequenced_fails_closed_holds() -> Bool {
     projection: ts_value_expression_projection(),
     catalog: ts_operator_realizations_catalog_node()
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -135,7 +135,7 @@ test fn dag_closure_value_producing_emits_holds() -> Bool {
     projection: dag_value_expression_projection(),
     catalog: dag_operator_realizations_catalog_node()
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }

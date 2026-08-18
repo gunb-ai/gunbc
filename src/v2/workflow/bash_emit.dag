@@ -48,8 +48,8 @@ fn bash_emit_stmts(statements: List<Node>, set_e: Bool) -> v2.std.diagnostic.Out
 
 fn bash_emit_matches_golden(stmt: BashEmitStmt, golden: String) -> Bool {
   match bash_fold_serialize_node(stmt: stmt.node) {
-    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: folded, diagnostics: _ } => folded == golden
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -58,8 +58,8 @@ fn bash_emit_raw_line_matches_golden(text: String, golden: String) -> Bool {
     emitted: bash_word_pass_emitted,
     target: bash_word_pass_target_model(spelling: text)
   ) {
-    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: folded, diagnostics: _ } => folded == golden
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -69,8 +69,8 @@ fn bash_emit_program_matches_golden(
   golden: String
 ) -> Bool {
   match bash_emit_program(statements: statements, set_e: set_e) {
-    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: folded, diagnostics: _ } => folded == golden
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -119,8 +119,8 @@ fn bash_emit_wrong_target_oracle_holds(
   match wrong_target_witness {
     Holds { value: target } =>
       match bash_emit_from_target(emitted: emitted, target: target) {
-        v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded != golden
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Accepted { value: folded, diagnostics: _ } => folded != golden
+        Rejected { diagnostics: _ } => true
       }
     Violates { diagnostic: _ } => false
   }
@@ -128,7 +128,7 @@ fn bash_emit_wrong_target_oracle_holds(
 
 fn bash_emit_wrong_spelling_oracle_holds(emit_o: v2.std.diagnostic.Outcome<String>, golden: String) -> Bool {
   match emit_o {
-    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded != golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: folded, diagnostics: _ } => folded != golden
+    Rejected { diagnostics: _ } => true
   }
 }

@@ -39,7 +39,7 @@ fn translate_underived_value_specimen_facts() -> Optional<v2.compiler.infer.Infe
   match infer(tree: translate_underived_value_specimen) {
     Accepted { value: tree, diagnostics: _ } =>
       tree.facts.lookup(translate_underived_value_specimen)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
@@ -94,7 +94,7 @@ fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
 fn translate_bodyless_emission_root_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match infer(tree: python_emitted_add_fn_node()) {
     Accepted { value: tree, diagnostics: _ } => tree.facts.lookup(node)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
@@ -223,12 +223,12 @@ data translate_underived_grammar_match_target: v2.std.compilers.target_model.Tar
 
 fn translate_refuses_underived_root_for_target(root: Node, target: v2.std.compilers.target_model.TargetModel) -> Bool {
   match infer(tree: root) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
       match translate(tree: tree, target: target) {
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           translate_refused_canonical_grounding(d: d)
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => false
       }
   }
 }
@@ -239,9 +239,9 @@ fn translate_refuses_underived_root(root: Node) -> Bool {
 
 fn translate_refuses_underived_bodied_arrow() -> Bool {
   match table_fixture_add_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: _ } =>
+    Accepted { value: root, diagnostics: _ } =>
       translate_refuses_underived_root_for_target(root: root, target: go_target_model())
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -250,9 +250,9 @@ fn translate_refuses_mixed_derived_root_underived_child() -> Bool {
     tree: translate_mixed_derived_root_underived_child_tree,
     target: rust_target_model()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       translate_refused_canonical_grounding(d: d)
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -261,9 +261,9 @@ fn translate_refuses_absent_parent_underived_child() -> Bool {
     tree: translate_absent_parent_underived_child_tree,
     target: rust_target_model()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       translate_refused_canonical_grounding(d: d)
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -272,63 +272,63 @@ fn translate_refuses_bodyless_emission_root_with_poison_child() -> Bool {
     tree: translate_bodyless_emission_root_with_poison_child_tree,
     target: python_target_model()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       translate_refused_canonical_grounding(d: d)
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
 fn translate_refuses_bodied_arrow_shortcut_underived_descendant() -> Bool {
   match translate_bodied_arrow_shortcut_underived_descendant_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       match translate(tree: tree, target: go_target_model()) {
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           translate_refused_canonical_grounding(d: d)
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant() -> Bool {
   match translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       match translate(tree: tree, target: go_target_model()) {
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           translate_refused_canonical_grounding(d: d)
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn translate_accepts_synthetic_empty_facts_tree() -> Bool {
   match translate(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn cross_language_compile_refuses_canonical_underived_holds() -> Bool {
   match python_grammar_parse_fixture() {
-    v2.std.diagnostic.Accepted { value: parse_tree, diagnostics: _ } =>
+    Accepted { value: parse_tree, diagnostics: _ } =>
       match cross_language_compile(
         parse_tree: parse_tree,
         source_model: python_target_model(),
         target_model: ts_target_model()
       ) {
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           translate_refused_canonical_grounding(d: d)
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn translate_accepts_derived_rust_add_tree() -> Bool {
   match translate(tree: rust_add_inferred_tree, target: rust_target_model()) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -336,7 +336,7 @@ fn translate_derived_emit_byte_identical_to_before() -> Bool {
   match emit(tree: rust_add_inferred_tree, target: rust_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

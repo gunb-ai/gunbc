@@ -33,9 +33,9 @@ fn rust_grammar_structure_satisfied(lm: v2.std.language_model.LanguageModel) -> 
 
 fn rust_grammar_structure_outcome_satisfied(lm: v2.std.diagnostic.Outcome<v2.std.language_model.LanguageModel>) -> Bool {
   match lm {
-    v2.std.diagnostic.Accepted { value: model, diagnostics: _ } =>
+    Accepted { value: model, diagnostics: _ } =>
       rust_grammar_structure_satisfied(lm: model)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

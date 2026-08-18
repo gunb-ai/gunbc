@@ -64,8 +64,8 @@ fn admit_result_is_rejected(state: v2.compiler.name_resolve.AdmissionState) -> B
 
 test fn witness_malformed_root_is_rejected_holds() -> Bool {
   match roots_with_malformed_entry() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
-    v2.std.diagnostic.Accepted { value: roots, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
   admit_result_is_rejected(
     state: admit_import_entry(
       roots: roots,

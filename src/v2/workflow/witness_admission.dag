@@ -1,5 +1,69 @@
 module v2.workflow.witness_admission
 
+  witness_exclusion_substrings,
+  whole_tree_strict_resolve_exclusion_substrings,
+  whole_tree_resolve_exclusion_substrings,
+  bin_witness_wet_entries,
+  known_red_probe_roster,
+  witness_admission_offline_exclusion_substrings,
+  witness_admission_fixture_exclusion_substrings,
+  witness_exclusion_frontier,
+  WitnessExclusionRow,
+  witness_exclusion_row_is_discovery_selection,
+  witness_exclusion_row_is_no_consumer,
+  witness_exclusion_row_is_bin_witness_wet,
+  witness_exclusion_row_is_known_red,
+  witness_exclusion_row_is_falsifier_wet,
+  witness_exclusion_row_is_rehomed_bin_wet,
+  witness_exclusion_row_is_substrate_long_lane,
+  falsifier_rehomed_bin_wet_entries,
+  falsifier_substrate_long_lane_entries
+}
+  ExplicitWitnessAdmission,
+  explicit_witness_admissions,
+  explicit_witness_admission_covers,
+  explicit_witness_admissions_well_formed,
+  explicit_witness_admission_duplicate_count,
+  explicit_witness_admission_executing_witness_roster
+}
+  falsifier_self_host_wet_entries,
+  falsifier_native_cache_cold_roster,
+  falsifier_self_host_wet_cadence_is_active,
+  falsifier_self_host_wet_known_red_entries
+}
+  ScheduleWitnessEntry,
+  schedule_witness_entry_eq,
+  string_list_eq
+}
+  commit_gate_roster,
+  project_ci_floor_witness_entries,
+  project_falsifier_witness_entries
+}
+  FrozenPathDeferral,
+  frozen_path_deferrals,
+  frozen_path_deferral_covers_in
+}
+  WitnessConsumerCadence,
+  WitnessExecutionStanding,
+  FrozenBaselineStanding,
+  DiscoverySelection,
+  FalsifierSelfHostWet,
+  FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane,
+  BinWitnessWet,
+  QuarantineProbeExpectRed,
+  OfflineLocalRecipe,
+  FixtureExplicitRoster,
+  NoConsumer,
+  WitnessHasExecutingConsumer,
+  LegacyFrozenPathDeferral,
+  UnexecutedDeferredWitness,
+  UnclassifiedPathDeferral,
+  FrozenBaselineDebtAllowed,
+  FrozenBaselineDebtShrank,
+  FrozenBaselineDebtGrew,
+  FrozenBaselineDebtStale
+}
 
 fn schedule_row_matches(
   w: std.realization_schedule.ScheduleWitnessEntry,
@@ -385,8 +449,8 @@ fn witness_exclusion_explicit_roster_rows_consistent(
   )
 }
 
-fn witness_exclusion_bin_witness_wet_universe() -> List<std.realization_schedule.ScheduleWitnessEntry> {
-  concat(bin_witness_wet_entries, falsifier_silent_pick_gate_entries)
+fn witness_exclusion_bin_witness_wet_universe() -> List<ScheduleWitnessEntry> {
+  bin_witness_wet_entries
 }
 
 fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {

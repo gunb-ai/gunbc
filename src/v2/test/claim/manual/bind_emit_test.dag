@@ -16,23 +16,23 @@ fn bind_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
 
 fn bind_emit_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_bind_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
+    Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: bind_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn bind_emit_wrong_value_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_bind_wrong_value_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
+    Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: bind_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -59,25 +59,25 @@ test fn bind_emit_holds() -> Bool {
     target: dag_bind_target_model(),
     emitted: dag_fixture_emitted_bind_fn
   ) {
-    v2.std.diagnostic.Accepted { value: authority, diagnostics: ad } =>
+    Accepted { value: authority, diagnostics: ad } =>
       match bind_emit_from_producer(target: dag_bind_target_model()) {
-        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+        Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bind_emit_wrong_value_discriminates() -> Bool {
   match bind_emit_from_producer(target: dag_bind_target_model()) {
-    v2.std.diagnostic.Accepted { value: canonical, diagnostics: dc } =>
+    Accepted { value: canonical, diagnostics: dc } =>
       match bind_emit_wrong_value_from_producer(target: dag_bind_target_model()) {
-        v2.std.diagnostic.Accepted { value: wrong, diagnostics: dw } =>
+        Accepted { value: wrong, diagnostics: dw } =>
           (wrong != canonical) && (dc == v2.std.diagnostic.None) && (dw == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

@@ -27,8 +27,8 @@ fn omit_consumer_handles(
 
 fn outcome_accepted_p<M>(outcome: v2.std.diagnostic.Outcome<M>) -> Bool {
   match outcome {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -48,8 +48,8 @@ fn mock_totality_green_holds(
     handled: mock_totality_handled_by(published: published, consumer_handles: consumer_handles),
     eq: published_mock_case_eq
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -62,7 +62,7 @@ fn mock_totality_red_on_omission_holds(
     handled: mock_totality_handled_by(published: published, consumer_handles: consumer_handles),
     eq: published_mock_case_eq
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }

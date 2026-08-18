@@ -7,11 +7,11 @@ fn gha_expression_core_roundtrip_fidelity() -> v2.std.diagnostic.Outcome<extdeps
 
 fn gha_expression_core_advertises_lossless() -> Bool {
   match gha_expression_core_roundtrip_fidelity() {
-    v2.std.diagnostic.Accepted { value: fidelity, diagnostics: _ } =>
+    Accepted { value: fidelity, diagnostics: _ } =>
       match fidelity {
         Lossless => true
         Lossy => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

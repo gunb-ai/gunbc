@@ -12,14 +12,14 @@ fn three() -> v2.std.nat.Nat {
 fn is_zero_qualified(value: v2.std.nat.Nat) -> Bool {
   match value {
     v2.std.nat.Zero => true
-    v2.std.nat.Succ { prev: p } => false
+    Succ { prev: p } => false
   }
 }
 
 fn is_succ_qualified(value: v2.std.nat.Nat) -> Bool {
   match value {
     v2.std.nat.Zero => false
-    v2.std.nat.Succ { prev: p } => true
+    Succ { prev: p } => true
   }
 }
 

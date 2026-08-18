@@ -1,8 +1,40 @@
 module test.claim.decl_facts_reflection_witness_support
 
+  decl_facts_reflection_fixture_facts,
+}
+  projection_kind_lexeme_optional,
+  projection_named_child_optional,
+  record_constructor_parent_qualified_name_optional,
+  record_constructor_variant_name_optional,
+  record_field_projection_optional,
+  resolved_variant_name_optional,
+  resolved_variant_parent_qualified_name_optional,
+  value_projection_is_ambiguous,
+  ambiguous_candidate_projection_count,
+  projection_named_child_atom_lexeme,
+  value_projection_is_resolved_variant,
+  variant_declaration_name_optional,
+  DeclFactLookup,
+  decl_fact_lookup_by_pool_declaration_identity,
+  pool_declaration_identity_from_fact,
+  decl_fact_lookup_by_qualified_name,
+  decl_fact_lookup_is_ambiguous,
+  decl_fact_lookup_candidate_count,
+  decl_fact_lookup_is_unique,
+  decl_fact_optional_by_qualified_name,
+  data_initializer_is_nullary_projection,
+  data_initializer_is_record_projection,
+  data_initializer_is_plain_record_projection,
+  plain_record_parent_qualified_name_optional,
+}
 
-fn decl_facts_reflection_witness_support_facts() -> List<v2.std.decl_index.DeclFact> {
-  decl_facts(pool_roots: decl_facts_reflection_fixture_pool_roots)
+// Projection of the fixture module's single `data` authority, NOT a second
+// decl_facts call over the same roots. A `data` initializer is evaluated once
+// per interpreter context and cached; a `fn` body re-runs the whole-pool scan
+// at every call site, which this cluster's rows make once each. Same facts,
+// one scan for the module instead of one per row.
+fn decl_facts_reflection_witness_support_facts() -> List<DeclFact> {
+  decl_facts_reflection_fixture_facts
 }
 
 fn decl_facts_reflection_lookup(qn: String) -> v2.std.data_initializer_identity.DeclFactLookup {

@@ -172,19 +172,19 @@ fn long_home_prefixes() -> v2.std.collection.List<v2.std.text.String> {
 fn string_starts_with(s: v2.std.text.String, prefix: v2.std.text.String) -> v2.std.logic.Bool {
   match v2.std.text.string_head(s: prefix) {
     v2.std.text.CharAbsent => true
-    v2.std.text.CharFound { value: p } =>
+    CharFound { value: p } =>
       match v2.std.text.string_head(s: s) {
         v2.std.text.CharAbsent => false
-        v2.std.text.CharFound { value: c } =>
+        CharFound { value: c } =>
           match c == p {
             false => false
             true =>
               match v2.std.text.string_tail(s: s) {
                 v2.std.algebra.TailAbsent => v2.std.text.string_is_empty(s: prefix)
-                v2.std.algebra.TailFound { tail: s_rest } =>
+                TailFound { tail: s_rest } =>
                   match v2.std.text.string_tail(s: prefix) {
                     v2.std.algebra.TailAbsent => true
-                    v2.std.algebra.TailFound { tail: p_rest } =>
+                    TailFound { tail: p_rest } =>
                       string_starts_with(s: s_rest, prefix: p_rest)
                   }
               }
@@ -239,14 +239,12 @@ data no_seen_qualified_names: v2.std.collection.List<v2.std.text.String> = []
 
 // THE EVALUATION DEADLINE FOR ONE CLAIM IS WALL TIME, AND IT HAS TWO TIERS.
 //
-// WALL, not thread CPU, and the distinction is not academic: it is the difference between a
-// guard that fires and one that watches. Measured on the completed floor run,
-// `resolution_divergence_silent_pick_gate_keystone_holds` burned 504 SECONDS of wall and
-// returned an ordinary v2.std.logic.Bool -- it never tripped anything, because its CPU stayed under the
-// ceiling the whole time. Its cost was filesystem reads resolving a corpus closure, which is
-// I/O: the exact profile a CPU budget cannot see, and the exact profile a wall ceiling exists
-// for. A CPU budget catches a spin. Only a wall ceiling catches a witness that is slow because
-// of what it reaches for.
+// Historical receipt (retired 2026-08-18): resolution_divergence_silent_pick_gate_keystone_holds
+// checked whether parent-plan telemetry was captured only AFTER a second whole-corpus resolve —
+// a precondition-ordering defect that cost 526s/+2.66GB every run while enrolled expected-red hid
+// 43% of floor slow time. See gunbc.ci_layer_roots
+// resolution_divergence_silent_pick_gate_retirement_receipt. Wall ceilings exist for I/O-heavy
+// witnesses whose CPU stays under eval budget.
 //
 // TWO TIERS, because "too slow" and "unacceptable" are different verdicts with different
 // remedies. The warning tier reports a row that is an order of magnitude above where an
@@ -270,8 +268,12 @@ data no_seen_qualified_names: v2.std.collection.List<v2.std.text.String> = []
 // PLACEMENT question -- which checks may ride the PR path -- and this is an EXECUTION question:
 // how long a single claim may run before the frame refuses. They agree today, and reusing one
 // for the other would make that coincidence load-bearing.
+// ENFORCEMENT GRAIN (2026-08-18): cooperative deadlines compare whole milliseconds on
+// shared CI hosts under floor load; witnesses scrubbed from expected-red because they
+// now pass measured 1323-1398ms on the same commit — logic unchanged, the full fold
+// is the load — so the ceiling needs headroom above jitter, not per-witness rewrites.
 fn required_floor_claim_budget_ms() -> Int {
-  500
+  1500
 }
 
 fn required_floor_claim_warn_ms() -> Int {

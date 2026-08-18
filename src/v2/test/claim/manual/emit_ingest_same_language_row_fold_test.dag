@@ -65,27 +65,27 @@ fn emit_ingest_fold_row_emitted(row: Node) -> v2.std.diagnostic.Outcome<Node> {
 
 fn emit_ingest_fold_row_selector_bijectivity_holds(row: Node, rules: Node) -> Bool {
   match emit_ingest_fold_row_emitted(row: row) {
-    v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } =>
+    Accepted { value: emitted, diagnostics: _ } =>
       match grammar_relation_row_for_emitted(rules: rules, emitted: emitted) {
-        v2.std.diagnostic.Accepted { value: selected_row, diagnostics: _ } =>
+        Accepted { value: selected_row, diagnostics: _ } =>
           selected_row == row
             && match emit_ingest_fold_row_token_spine_classes(row: row) {
-              v2.std.diagnostic.Accepted { value: frontier, diagnostics: _ } =>
+              Accepted { value: frontier, diagnostics: _ } =>
                 match grammar_relation_row_forward_selection(frontier: frontier, rules: rules) {
-                  v2.std.diagnostic.Accepted { value: recovered, diagnostics: _ } =>
+                  Accepted { value: recovered, diagnostics: _ } =>
                     recovered == emitted
                       && match grammar_relation_row_for_emitted(rules: rules, emitted: recovered) {
-                        v2.std.diagnostic.Accepted { value: roundtrip_row, diagnostics: _ } =>
+                        Accepted { value: roundtrip_row, diagnostics: _ } =>
                           roundtrip_row == row
-                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                        Rejected { diagnostics: _ } => false
                       }
-                  v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                  Rejected { diagnostics: _ } => false
                 }
-              v2.std.diagnostic.Rejected { diagnostics: _ } => false
+              Rejected { diagnostics: _ } => false
             }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -132,8 +132,8 @@ fn emit_ingest_fold_perturbed_dag_row() -> Node {
     row: emit_ingest_fold_dag_add_row(),
     emitted: python_emitted_add_fn_node()
   ) {
-    v2.std.diagnostic.Accepted { value: perturbed, diagnostics: _ } => perturbed
-    v2.std.diagnostic.Rejected { diagnostics: _ } => emit_ingest_fold_dag_add_row()
+    Accepted { value: perturbed, diagnostics: _ } => perturbed
+    Rejected { diagnostics: _ } => emit_ingest_fold_dag_add_row()
   }
 }
 
@@ -142,8 +142,8 @@ fn emit_ingest_fold_perturbed_python_row() -> Node {
     row: emit_ingest_fold_python_add_row(),
     emitted: dag_fixture_emitted_add_fn
   ) {
-    v2.std.diagnostic.Accepted { value: perturbed, diagnostics: _ } => perturbed
-    v2.std.diagnostic.Rejected { diagnostics: _ } => emit_ingest_fold_python_add_row()
+    Accepted { value: perturbed, diagnostics: _ } => perturbed
+    Rejected { diagnostics: _ } => emit_ingest_fold_python_add_row()
   }
 }
 

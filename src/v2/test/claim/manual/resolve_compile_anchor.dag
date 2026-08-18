@@ -63,8 +63,8 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> v2.std.diagnostic.O
 },
     diagnostics: None
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    v2.std.diagnostic.Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: dag_language_model_void())
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: dag_language_model_void())
   }
 }
 
@@ -117,8 +117,8 @@ fn anchor_resolve_bind_binder_use() -> v2.std.diagnostic.Outcome<v2.compiler.res
 },
     diagnostics: None
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    v2.std.diagnostic.Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: dag_language_model_void())
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: dag_language_model_void())
   }
 }
 
@@ -260,8 +260,8 @@ fn resolve_import_target() -> v2.std.qualified_name.QualifiedName {
 
 fn resolve_with_admission_imported_binding_accepts() -> Bool {
   match resolve_roots_single_import() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
-    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
       roots: admitted,
@@ -281,8 +281,8 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
       active_roots: std.algebra.Empty,
       policy: ImportScoped
     ) {
-      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-      v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
     }
   }
 }
