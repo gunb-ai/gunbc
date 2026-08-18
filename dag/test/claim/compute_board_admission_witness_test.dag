@@ -55,7 +55,6 @@ import product.compute_board.admission {
   BoardArticleRefused,
   BoardArticleRefusalSet,
   BoardArticleRefusal,
-  NetMemberBelongsToAnotherDesign,
   DuplicateComponentIdentity,
   DuplicateNetIdentity,
   DuplicateSignalName,
