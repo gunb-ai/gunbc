@@ -664,9 +664,8 @@ pub fn lookup_variant_in_type(
                                                     source_indices.clone(),
                                                 );
                                                 let record_destructure =
-                                                    (((field_binding_count.clone() > 0)
-                                                        && (scrut_node.connective.clone()
-                                                            == Connective::Conj))
+                                                    ((scrut_node.connective.clone()
+                                                        == Connective::Conj)
                                                         && (qualified_last_segment(
                                                             scrut_name.clone(),
                                                         ) == variant_name.clone()));

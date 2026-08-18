@@ -230,6 +230,15 @@ fn variant_not_found_result(scrut: v1.std.core.Node, variant_name: String, modul
   )
 }
 
+// A pattern's KIND is not a function of how many bindings it carries. A
+// zero-field record -- `type MtJadeRev1_0 {}` -- destructures with none, and
+// requiring at least one sent it down the variant path to be looked up as a
+// variant of ITSELF: `variant 'MtJadeRev1_0' not found in type 'MtJadeRev1_0'`,
+// the same name on both sides, which cannot be a real variant miss. The two
+// surviving conjuncts in record_destructure are what actually decide it -- the
+// scrutinee is a product record, and the pattern head names that same record --
+// and both are identity facts rather than a count.
+
 fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, env: v1.compiler.infer_env.TypeEnv, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
@@ -276,8 +285,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
             && (variant_name == "Present" || variant_name == "Absent")
           let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
 
-          let record_destructure = field_binding_count > 0
-            && scrut_node.connective == v1.std.core.Conj
+          let record_destructure = scrut_node.connective == v1.std.core.Conj
             && qualified_last_segment(name: scrut_name) == variant_name
           let fallback = if record_destructure {
             node_lookup_resolved(node: scrut_node)
