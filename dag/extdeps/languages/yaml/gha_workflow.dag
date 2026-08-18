@@ -145,14 +145,14 @@ fn workflow_trigger_entry(trigger: extdeps.github.actions.WorkflowTrigger) -> ex
         yaml_mapping(entries: [kv(key: "cron", value: yaml_string(s: render_cron_schedule(s: c)))])
       ]))
     WorkflowCall { inputs: _ } =>
-      kv(key: "workflow_call", value: YamlNull)
+      kv(key: "workflow_call", value: extdeps.languages.yaml.types.YamlNull)
     WorkflowRunCompleted { workflows: ws } =>
       kv(key: "workflow_run", value: yaml_mapping(entries: [
         kv(key: "workflows", value: string_list_flow(items: ws)),
         kv(key: "types", value: string_list_flow(items: [workflow_run_activity_completed]))
       ]))
     MergeGroup =>
-      kv(key: "merge_group", value: YamlNull)
+      kv(key: "merge_group", value: extdeps.languages.yaml.types.YamlNull)
   }
 }
 

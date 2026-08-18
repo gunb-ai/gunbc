@@ -289,8 +289,8 @@ data structural_coverage_gap_anthropic_messages_200_residual: List<extdeps.cover
   {
     facts: [
       extdeps.coverage.Subject { path: "llm.Anthropic.Messages.output.content" },
-      Blocked { reason: "variant_aware_typed_rest_response_projection" },
-      PathRef { path: "content/0/text" },
+      extdeps.coverage.Blocked { reason: "variant_aware_typed_rest_response_projection" },
+      extdeps.coverage.PathRef { path: "content/0/text" },
       extdeps.coverage.RequiresArm { arm: "AnthropicMessages200ContentBlock.MessagesTextBlock" }
     ],
     trigger: "structural projection metadata carrier lands"

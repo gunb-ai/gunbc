@@ -30,6 +30,6 @@ fn generic_substitution_bind_once(
       } else {
         outcome_rejected(d: generic_substitution_bind_conflict_diagnostic())
       }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }

@@ -45,10 +45,10 @@ fn posture_is_keyless(p: gunbc.bmc_onboarding.BmcCredentialPosture) -> Bool {
 test fn bmc_credential_posture_hardens_to_keyless_steady_state() -> Bool {
   posture_tag(p: bmc_phase_credential_posture(phase: FactoryDefault)) == 0
     && posture_tag(p: bmc_phase_credential_posture(phase: CredentialsRotated)) == 1
-    && posture_tag(p: bmc_phase_credential_posture(phase: OsInstalled)) == 1
+    && posture_tag(p: bmc_phase_credential_posture(phase: gunbc.bmc_onboarding.OsInstalled)) == 1
     && posture_tag(p: bmc_phase_credential_posture(phase: FabricJoined)) == 2
     && !posture_is_keyless(p: bmc_phase_credential_posture(phase: FactoryDefault))
-    && !posture_is_keyless(p: bmc_phase_credential_posture(phase: OsInstalled))
+    && !posture_is_keyless(p: bmc_phase_credential_posture(phase: gunbc.bmc_onboarding.OsInstalled))
     && posture_is_keyless(p: bmc_phase_credential_posture(phase: FabricJoined))
 }
 

@@ -10,7 +10,7 @@ fn symbol_path_of_three() -> SymbolPath {
 }
 
 fn empty_symbol_path() -> SymbolPath {
-  Empty
+  std.algebra.Empty
 }
 
 fn symbol_path_len(path: SymbolPath) -> Int {

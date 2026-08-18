@@ -164,7 +164,7 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
         rhs_provenance: OperandProvenanceUnknown,
         operand_provenance: OperandProvenanceUnknown
       )
-      fn_genuinely_absent && vacuity_evidence_eq(a: classified, b: Unknown)
+      fn_genuinely_absent && vacuity_evidence_eq(a: classified, b: v2.lens.vacuity.Unknown)
   }
   let operand = vacuity_consumer_witness_synthetic_equals_operand()
   let dispatcher_reaches_proven_duplicate = vacuity_evidence_eq(

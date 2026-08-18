@@ -22,7 +22,7 @@ fn a_only() -> QnPath {
 }
 
 fn empty_path() -> QnPath {
-  Empty
+  std.algebra.Empty
 }
 
 test fn freemonoid_structural_eq_matches_qn_eq() -> Bool {

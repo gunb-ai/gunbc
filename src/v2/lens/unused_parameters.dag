@@ -53,7 +53,7 @@ fn use_classification_fact(tree: v2.compiler.infer.InferredTree, dependencies: L
 }
 
 fn use_classification_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<UseClassificationFact> {
-  Holds {
+  v2.std.witness.Holds {
     value: use_classification_fact(tree: tree, dependencies: dependencies)
   }
 }
@@ -115,7 +115,7 @@ fn unused_parameters_fact(tree: v2.compiler.infer.InferredTree, dependencies: Li
 }
 
 fn unused_parameters_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<UnusedParametersFact> {
-  Holds {
+  v2.std.witness.Holds {
     value: unused_parameters_fact(tree: tree, dependencies: dependencies)
   }
 }

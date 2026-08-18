@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn sample_list() -> FreeMonoid<Int> {
   std.algebra.Cons {
     head: 1,
-    tail: std.algebra.Cons { head: 2, tail: std.algebra.Cons { head: 3, tail: Empty } }
+    tail: std.algebra.Cons { head: 2, tail: std.algebra.Cons { head: 3, tail: std.algebra.Empty } }
   }
 }
 

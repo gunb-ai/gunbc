@@ -128,27 +128,27 @@ fn decision_for_os_install_actuation_verdict(
 ) -> UpsertDecision<OsInstallActuationAssertPlan> {
   match verdict {
     Converged => Noop
-    Absent => Apply { plan: AssertOsInstallActuationPending }
+    Absent => std.upsert_decision.Apply { plan: AssertOsInstallActuationPending }
     Drifted =>
       match refusal_reason_for_os_install_actuation_verdict(obs: obs, stall: stall) {
-        Present { value: r } => Refuse { reason: r }
+        Present { value: r } => std.upsert_decision.Refuse { reason: r }
         Absent =>
-          Refuse {
+          std.upsert_decision.Refuse {
             reason: "os-install actuation drifted without located refusal reason" as std.types.NonEmptyStr,
           }
       }
     UnknownRefused =>
       match obs {
-        LeaseTableUnreadable { reason: r } => Refuse { reason: r }
+        LeaseTableUnreadable { reason: r } => std.upsert_decision.Refuse { reason: r }
         LeaseTableObserved { table: _ } =>
-          Refuse {
+          std.upsert_decision.Refuse {
             reason: "dhcp lease table observation refused" as std.types.NonEmptyStr,
           }
       }
     Conflict =>
-      Refuse { reason: "os-install actuation observation conflict" as std.types.NonEmptyStr }
+      std.upsert_decision.Refuse { reason: "os-install actuation observation conflict" as std.types.NonEmptyStr }
     Inaccessible =>
-      Refuse { reason: "os-install actuation observation inaccessible" as std.types.NonEmptyStr }
+      std.upsert_decision.Refuse { reason: "os-install actuation observation inaccessible" as std.types.NonEmptyStr }
   }
 }
 

@@ -48,7 +48,7 @@ data standard_symbols: List<SymbolEntry> = [
 
   { id: StatusSuccess,    glyphs: glyphs_for_tiers(emoji: glyph(text: "✅"),   unicode: glyph(text: "✓"),    ascii: glyph(text: "OK")),   color: Success },
   { id: StatusFailure,    glyphs: glyphs_for_tiers(emoji: glyph(text: "❌"), unicode: glyph(text: "✗"),    ascii: glyph(text: "FAIL")), color: Error   },
-  { id: StatusWarning,    glyphs: glyphs_for_tiers(emoji: glyph(text: "⚠"), unicode: glyph(text: "⚠"),    ascii: glyph(text: "WARN")), color: Warning },
+  { id: std.symbols.StatusWarning,    glyphs: glyphs_for_tiers(emoji: glyph(text: "⚠"), unicode: glyph(text: "⚠"),    ascii: glyph(text: "WARN")), color: Warning },
   { id: StatusInfo,       glyphs: glyphs_for_tiers(emoji: glyph(text: "💡"), unicode: glyph(text: "ℹ"),    ascii: glyph(text: "INFO")), color: Info    },
 
   { id: StatusRefused,    glyphs: glyphs_for_tiers(emoji: glyph(text: "🚫"), unicode: glyph(text: "⛔"),  ascii: glyph(text: "REFUSED")), color: Error   },

@@ -25,9 +25,9 @@ fn decision_for_seeded_install_media_obs(
   obs: SeededInstallMediaObservation,
 ) -> UpsertDecision<SeededInstallMediaPlan> {
   match obs {
-    MediaAbsent => Apply { plan: ReplaceAtomically }
+    MediaAbsent => std.upsert_decision.Apply { plan: ReplaceAtomically }
     MediaConverged => Noop
-    MediaDrifted => Apply { plan: Remaster }
+    MediaDrifted => std.upsert_decision.Apply { plan: Remaster }
   }
 }
 

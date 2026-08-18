@@ -40,8 +40,8 @@ data generated_artifact_validation: v2.std.refinement.Validation<Artifact> = v2.
 fn make_generated_artifact(base: Artifact, at: v2.std.diagnostic.Locus) -> Outcome<GeneratedArtifact> {
   match v2.std.refinement.refine(base: base, by: generated_artifact_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
-      Accepted { value: GeneratedArtifact { refined: refined }, diagnostics: diagnostics }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+      v2.std.diagnostic.Accepted { value: GeneratedArtifact { refined: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 

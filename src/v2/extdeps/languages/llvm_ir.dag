@@ -466,12 +466,12 @@ fn feature_disposition(f: FidelityFeature) -> FidelityDisposition<FidelityFeatur
     LexicalTrivia => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: LexicalTrivia }
     TargetConfigToken => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: TargetConfigToken }
     AdvisoryMetadata => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: AdvisoryMetadata }
-    UnmodeledInlineAsm => FailClosed { feature: UnmodeledInlineAsm }
-    UnmodeledSemanticAttribute => FailClosed { feature: UnmodeledSemanticAttribute }
-    UnmodeledType => FailClosed { feature: UnmodeledType }
-    UnmodeledInstruction => FailClosed { feature: UnmodeledInstruction }
-    UnmodeledConstExpr => FailClosed { feature: UnmodeledConstExpr }
-    MalformedStructure => FailClosed { feature: MalformedStructure }
+    UnmodeledInlineAsm => v2.extdeps.languages.fidelity.FailClosed { feature: UnmodeledInlineAsm }
+    UnmodeledSemanticAttribute => v2.extdeps.languages.fidelity.FailClosed { feature: UnmodeledSemanticAttribute }
+    UnmodeledType => v2.extdeps.languages.fidelity.FailClosed { feature: UnmodeledType }
+    UnmodeledInstruction => v2.extdeps.languages.fidelity.FailClosed { feature: UnmodeledInstruction }
+    UnmodeledConstExpr => v2.extdeps.languages.fidelity.FailClosed { feature: UnmodeledConstExpr }
+    MalformedStructure => v2.extdeps.languages.fidelity.FailClosed { feature: MalformedStructure }
   }
 }
 

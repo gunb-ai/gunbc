@@ -11,7 +11,7 @@ type ProgramAssemblyFoldState
     }
 
 fn program_assembly_empty_roots() -> FreeMonoid<v2.compiler.normalized_tree.NormalizedTree> {
-  Empty
+  std.algebra.Empty
 }
 
 fn program_assembly_read_to_normalized_root_prepared(

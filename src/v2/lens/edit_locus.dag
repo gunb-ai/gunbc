@@ -167,7 +167,7 @@ fn resolve_edit_locus_from_loci(loci: std.algebra.FreeMonoid<Node>) -> Witness<N
     1 =>
       match loci {
         std.algebra.Cons { head: head, tail: _ } =>
-          Holds { value: head }
+          v2.std.witness.Holds { value: head }
         std.algebra.Empty =>
           v2.std.witness.Violates { diagnostic: edit_locus_no_match_diagnostic() }
       }
@@ -214,7 +214,7 @@ fn affected_set_reading_from_git_diff(
     bindings: bindings
   ) {
     Holds { value: locus } =>
-      Holds { value: affected_set_reading(graph: graph, edit_locus: locus) }
+      v2.std.witness.Holds { value: affected_set_reading(graph: graph, edit_locus: locus) }
     Violates { diagnostic: d } =>
       v2.std.witness.Violates { diagnostic: d }
   }
@@ -230,7 +230,7 @@ fn affected_set_reading_from_git_diff_provenance(
     provenance: provenance
   ) {
     Holds { value: locus } =>
-      Holds { value: affected_set_reading(graph: graph, edit_locus: locus) }
+      v2.std.witness.Holds { value: affected_set_reading(graph: graph, edit_locus: locus) }
     Violates { diagnostic: d } =>
       v2.std.witness.Violates { diagnostic: d }
   }

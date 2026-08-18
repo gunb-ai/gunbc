@@ -346,7 +346,7 @@ data si_multi_root_index: v2.std.symbol_index.SymbolIndex = symbol_index_fill_mo
   index: empty_symbol_index(),
   roots: std.algebra.Cons {
     head: si_module_root_node,
-    tail: std.algebra.Cons { head: si_orphan_module_root_node, tail: Empty }
+    tail: std.algebra.Cons { head: si_orphan_module_root_node, tail: std.algebra.Empty }
   }
 )
 

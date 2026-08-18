@@ -33,7 +33,7 @@ fn update_status(id: TaskId, status: TaskStatus) -> Task {
 }
 
 fn list_tasks() -> FreeMonoid<Task> {
-  Empty
+  std.algebra.Empty
 }
 
 data backend_host: v2.std.network.UriHost = v2.std.network.UriHost {

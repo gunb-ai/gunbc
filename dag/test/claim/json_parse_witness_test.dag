@@ -65,7 +65,7 @@ test fn a_quote_and_a_backslash_survive_the_round_trip() -> Bool {
 
 test fn a_literal_backslash_t_does_not_become_a_tab() -> Bool {
   let two_chars = concat("\\", "t")
-  let emitted = serialize_json(v: JsonString { value: two_chars })
+  let emitted = serialize_json(v: extdeps.languages.json.emit.JsonString { value: two_chars })
   parsed_string_of(text: emitted) == two_chars
     && parsed_string_of(text: emitted) != from_code_point(cp: 9)
 }
@@ -78,7 +78,7 @@ test fn a_control_character_with_no_short_escape_survives_the_round_trip() -> Bo
   let vertical_tab = from_code_point(cp: 11)
   parsed_string_of(text: "\"\\u000B\"") == vertical_tab
     && round_trips(text: "\"\\u000B\"")
-    && serialize_json(v: JsonString { value: vertical_tab }) == "\"\\u000B\""
+    && serialize_json(v: extdeps.languages.json.emit.JsonString { value: vertical_tab }) == "\"\\u000B\""
 }
 
 test fn every_control_character_an_emitter_escapes_comes_back_unchanged() -> Bool {
@@ -89,7 +89,7 @@ test fn every_control_character_an_emitter_escapes_comes_back_unchanged() -> Boo
     concat(from_code_point(cp: 11),
     concat(from_code_point(cp: 27), from_code_point(cp: 31))))),
   )
-  parsed_string_of(text: serialize_json(v: JsonString { value: sample })) == sample
+  parsed_string_of(text: serialize_json(v: extdeps.languages.json.emit.JsonString { value: sample })) == sample
 }
 
 test fn a_lowercase_hex_escape_decodes_the_same_as_uppercase() -> Bool {

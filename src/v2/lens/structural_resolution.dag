@@ -103,7 +103,7 @@ fn fact(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependen
 }
 
 fn witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<StructuralResolutionFact> {
-  Holds {
+  v2.std.witness.Holds {
     value: fact(tree: tree, dependencies: dependencies)
   }
 }

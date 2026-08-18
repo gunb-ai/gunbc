@@ -7,7 +7,7 @@ type SourceRootBinding {
 type SourceRootIndex = FreeMonoid<SourceRootBinding>
 
 fn source_root_index_empty() -> SourceRootIndex {
-  Empty
+  std.algebra.Empty
 }
 
 fn source_root_index_insert(

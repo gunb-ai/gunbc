@@ -46,8 +46,8 @@ fn parse_stamp_sequence_root() -> v2.std.grammar.GrammarRoot {
       head: v2.std.grammar.GrammarProduction {
         name: ^parse_stamp_start,
         expression: v2.std.grammar.Sequence {
-          left: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
-          right: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass }
+          left: v2.std.grammar.Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
+          right: v2.std.grammar.Terminal { token_class: ^parse_stamp_tok, stamp: StampClass }
         },
         emitted: grammar_atom(identity: ^parse_stamp_start)
       },

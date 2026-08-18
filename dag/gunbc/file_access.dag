@@ -47,10 +47,10 @@ fn classify_file_access(obs: FileAccessObservation) -> std.upsert_decision.Obser
 
 fn decision_for_file_access(obs: FileAccessObservation) -> UpsertDecision<FileAccessPlan> {
   match obs {
-    PathOutsideNamespace => Refuse { reason: "path outside file tree scope" as std.types.NonEmptyStr }
-    ReadOnlyWithinNamespace => Apply { plan: ChmodOwnerWriteWithinTempTree }
+    PathOutsideNamespace => std.upsert_decision.Refuse { reason: "path outside file tree scope" as std.types.NonEmptyStr }
+    ReadOnlyWithinNamespace => std.upsert_decision.Apply { plan: ChmodOwnerWriteWithinTempTree }
     WritableWithinNamespace => Noop
-    PathAbsent => Apply { plan: CreateParent }
+    PathAbsent => std.upsert_decision.Apply { plan: CreateParent }
   }
 }
 

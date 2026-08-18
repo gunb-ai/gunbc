@@ -10,7 +10,7 @@ data migration_owned_causes_note: String = "Cause ownership (sharp-bee-290 + nim
 
 fn quad_qn_node(seg: v2.std.node.Symbol) -> Node {
   fold_list_node(
-    xs: std.algebra.Cons { head: seg, tail: Empty },
+    xs: std.algebra.Cons { head: seg, tail: std.algebra.Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
@@ -81,7 +81,7 @@ fn quad_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_t
         export_sym: ^list_append,
         export_atom: ^dag_c3_surface_sugar_type
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   },
     diagnostics: None
@@ -98,7 +98,7 @@ fn quad_admission() -> v2.compiler.name_resolve.Admission {
         target: std.algebra.Cons { head: ^minialg, tail: std.algebra.Empty },
         visibility: ImportVisible
       },
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }
@@ -112,7 +112,7 @@ test fn quad_namespace_only_resolve_accepts_holds() -> Bool {
       roots: admitted,
       admission: quad_admission(),
       index: source_root_index_empty(),
-      active_roots: Empty,
+      active_roots: std.algebra.Empty,
       policy: NamespaceOnlyY
     ) {
       v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
@@ -130,7 +130,7 @@ test fn quad_import_scoped_admission_reds_ambiguous_export_holds() -> Bool {
       roots: admitted,
       admission: quad_admission(),
       index: source_root_index_empty(),
-      active_roots: Empty,
+      active_roots: std.algebra.Empty,
       policy: ImportScoped
     ) {
       v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false

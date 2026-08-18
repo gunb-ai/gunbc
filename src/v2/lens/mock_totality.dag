@@ -10,7 +10,7 @@ fn mock_unhandled_diagnostic() -> v2.std.diagnostic.Diagnostic {
 }
 
 fn mock_unhandled_rejection<M>() -> Outcome<M> {
-  Rejected { diagnostics: diagnostics_singleton(d: mock_unhandled_diagnostic()) }
+  v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: mock_unhandled_diagnostic()) }
 }
 
 fn mock_totality_missing<C>(
@@ -29,7 +29,7 @@ fn mock_totality_lens<C>(
   if is_empty(xs: mock_totality_missing(published: published, handled: handled, eq: eq)) {
     outcome_accepted(value: published)
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: mock_unhandled_diagnostic()) }
+    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: mock_unhandled_diagnostic()) }
   }
 }
 
