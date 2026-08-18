@@ -301,13 +301,6 @@ fn variant_arm_is_declared_in_coproduct(
     false
 }
 
-fn kernel_coproduct_parent(parent: &str) -> bool {
-    matches!(
-        qualified_last_segment(parent.to_string()).as_str(),
-        "Optional" | "Witness"
-    )
-}
-
 fn parent_enum_is(parent: Option<&String>, expected_last: &str) -> bool {
     parent.is_some_and(|p| qualified_last_segment(p.clone()) == expected_last)
 }
@@ -3846,7 +3839,12 @@ fn match_pattern(
                         if !coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone()) {
                             None
                         } else if let Some(parent) = parent_enum.as_ref() {
-                            if variant_arm_is_declared_in_coproduct(ctx, *variant_name, parent) {
+                            if coproduct_parent_spellings_match(
+                                ctx,
+                                resolve_sym(*type_name),
+                                parent,
+                            ) || variant_arm_is_declared_in_coproduct(ctx, *variant_name, parent)
+                            {
                                 Some(HashMap::new())
                             } else {
                                 None
@@ -3891,11 +3889,7 @@ fn match_pattern(
                         return Some(bindings);
                     }
                     if let Some(parent) = parent_enum.as_ref() {
-                        let kernel_arm = kernel_coproduct_parent(parent.as_str())
-                            && coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone());
-                        if !kernel_arm
-                            && !variant_arm_is_declared_in_coproduct(ctx, *variant_name, parent)
-                        {
+                        if !coproduct_parent_spellings_match(ctx, resolve_sym(*type_name), parent) {
                             return None;
                         }
                     }
