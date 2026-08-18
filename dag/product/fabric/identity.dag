@@ -16,14 +16,14 @@ import std.types { NonEmptyStr, String }
 // admit a supplier it did not anticipate. The role P plays differs per carrier
 // and is documented on each: requester on Demand, accounting and security
 // scope on Work, the account a try is authorized and charged under on Attempt,
-// supplier on Offer, grantee on Grant, attesting producer on Receipt. A Grant
+// supplier on Offer, grantee on ExecutionGrant, attesting producer on Receipt. An ExecutionGrant
 // is bilateral, so naming its grantee here does not erase the supplier role
 // its Offer reference carries.
 type DemandKey = NonEmptyStr where brand("DemandKey")
 
 type WorkKey = NonEmptyStr where brand("WorkKey")
 
-type AttemptKey = NonEmptyStr where brand("AttemptKey")
+type ExecutionAttemptKey = NonEmptyStr where brand("ExecutionAttemptKey")
 
 type OfferKey = NonEmptyStr where brand("OfferKey")
 

@@ -5,7 +5,7 @@ import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_co
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.currency { CurrencyCode, Usd }
 import product.compute_fabric { Shape, HardRequirements }
-import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, AttemptKey, OfferKey, GrantKey, ReceiptKey }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey, ReceiptKey }
 import product.fabric.work {
   Work, WorkContract, ExecutionRequirements, WorkStep, ResumabilityTier,
   ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects,
@@ -19,7 +19,7 @@ import product.fabric.supply {
   ObservedSupply, QuotedSupply,
 }
 import product.fabric.execution {
-  Attempt, AttemptLineage, InitialAttempt, InfrastructureRetry, LeaseIdentity,
+  Attempt, ExecutionAttemptLineage, InitialAttempt, InfrastructureRetry, LeaseIdentity,
   Receipt, ReceiptPayload, ExecutionReceipt, receipt_lease_generation,
 }
 
@@ -28,8 +28,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The acceptance test for the terminal contract: two synthetic SCM bindings must
 // project into the same core carriers without the core naming either of them.
 
-data fabric_contract_witness_note: String = "These fixtures stand in for a GitHub binding and a GitLab binding. Nothing in this file imports a provider module, and nothing in product.fabric.* names one - that absence IS the claim under test. The two bindings differ only in the provenance they carry on their Demand, and the discriminating assertion is that the Work identity they produce is IDENTICAL while the demands remain distinct. If a provider fact ever leaks into Work, this witness reds without anyone needing to notice the leak."
-
+// These fixtures stand in for a GitHub binding and a GitLab binding. Nothing
+// in this file imports a provider module, and nothing in product.fabric.*
+// names one - that absence IS the claim under test. The two bindings differ
+// only in the provenance they carry on their Demand, and the discriminating
+// assertion is that the Work identity they produce is IDENTICAL while the
+// demands remain distinct. If a provider fact ever leaks into Work, this
+// witness reds without anyone needing to notice the leak.
 data fixture_shape: Shape = Shape { hard: HardRequirements { threads: hardware_thread_count(8) } }
 
 data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
@@ -271,7 +276,7 @@ test fn resumability_is_declared_not_assumed() -> Bool {
     step_id: "build",
     resumability: ReceiptSatisfiable,
   })
-  let idempotent = resumability_tier_of(step: WorkStep {
+  let idempotent_tier = resumability_tier_of(step: WorkStep {
     step_id: "deploy",
     resumability: IdempotentUnderKey { idempotency_key: content_hash_of_value(value: "deploy-1") },
   })
@@ -280,7 +285,7 @@ test fn resumability_is_declared_not_assumed() -> Bool {
     resumability: OpaqueEffects { reason: "foreign workflow step declares no effects" },
   })
   satisfiable == "receipt-satisfiable"
-    && idempotent == "idempotent-under-key"
+    && idempotent_tier == "idempotent-under-key"
     && opaque == "opaque-effects"
-    && idempotent != opaque
+    && idempotent_tier != opaque
 }

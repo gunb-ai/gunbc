@@ -6,6 +6,7 @@ import std.currency { CurrencyCode }
 import product.compute_fabric { Shape }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { CapabilityManifestRef, TrustDomainRef }
 
 // An Offer is a supplier's statement of capacity it is willing to sell. Owned
 // capacity and rented capacity are ONE type: what differs is the evidence behind
@@ -59,10 +60,6 @@ type OfferEvidence
       receipt: ObservationReceiptRef,
     }
 
-type CapabilityManifestRef = NonEmptyStr where brand("CapabilityManifestRef")
-
-type TrustDomainRef = NonEmptyStr where brand("TrustDomainRef")
-
 type Offer<P> {
   id: FabricIdentity<P, OfferKey>
   executor: P
@@ -83,7 +80,7 @@ type Offer<P> {
 // disagreement is invisible until two grants have already been issued against
 // capacity that existed only in a stale field.
 // Selection is a named policy with one implementation. The interface is named so
-// a second policy is a second instantiation rather than an edit to Grant or to
+// a second policy is a second instantiation rather than an edit to ExecutionGrant or to
 // the clearing fold; if adding one later requires touching a core carrier, the
 // axis was never real.
 

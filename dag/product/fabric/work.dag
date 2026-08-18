@@ -88,10 +88,22 @@ type WorkContract {
 // contract, never inside it, so that revising a resource estimate cannot mint a
 // new semantic Work.
 
+// Capability and trust-domain references are declared HERE, on the
+// requirement side, and imported by supply rather than redeclared there.
+// Fungibility - selection's first and load-bearing step - compares a Work's
+// requirements against an Offer's capabilities, so the two sides of that
+// comparison are two readings of one fact. Typing them separately would make
+// the comparison need a coercion, and a coercion between two spellings of one
+// concept is where the divergence starts.
+
+type CapabilityManifestRef = NonEmptyStr where brand("CapabilityManifestRef")
+
+type TrustDomainRef = NonEmptyStr where brand("TrustDomainRef")
+
 type ExecutionRequirements {
   shape: Shape
-  capabilities: NonEmptyStr
-  trust_domain: NonEmptyStr
+  capabilities: CapabilityManifestRef
+  trust_domain: TrustDomainRef
 }
 
 type Work<P> {

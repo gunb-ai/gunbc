@@ -61,10 +61,24 @@ type BudgetAccountId = NonEmptyStr where brand("BudgetAccountId")
 // cheaper supplier who cannot. ActualSpend is the irreversible amount SETTLED
 // after execution and release. For the first policy the maximum liability may
 // equal the provider-charge portion of the selection cost; keeping the three
-// named means a later expected-cost model can diverge without touching Grant
+// named means a later expected-cost model can diverge without touching ExecutionGrant
 // or settlement. maximum_buy_order is the ceiling on a single grant's
 // liability - a refusal boundary, never a degradation: an ask above it refuses
 // rather than selecting something cheaper and unsuitable.
+// delay_valuation_per_second is a RATE - money divided by time - carried on a
+// money-amount type, so its dimension currently lives in the field name rather
+// than in the type. Selection is specified to add a provider charge to a valued
+// delay, which means multiplying this by a Second and expecting money back, and
+// nothing checks that today.
+//
+// dissolve-on: a currency-free money rate carrier at PerSecond in std.measure,
+// consumed here in place of MoneyAmountMicro. It is NOT a mechanical swap onto
+// the existing MoneyRate<P>, and the reason is worth stating so the next reader
+// does not try it: MoneyRate bundles a CurrencyCode, this record already
+// carries one for its two amounts, and binding a second one here would let a
+// rate disagree with the terms enclosing it. Which authority holds the
+// denomination - these terms or the referenced budget account - is settled by
+// the budget-account work, so the carrier lands with it rather than ahead of it.
 type BuyTerms {
   budget_account: BudgetAccountId
   currency: CurrencyCode
