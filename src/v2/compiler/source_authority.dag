@@ -25,7 +25,7 @@ type DagSourceReadWitness {
   source_root: v2.std.cross_tree.import_model.SourceRootRef
 }
 
-type SourceRootIngest = FreeMonoid<DagSourceReadWitness>
+type SourceRootIngest = std.algebra.FreeMonoid<DagSourceReadWitness>
 
 data source_root_coverage_note: String = "Capless closure transport (ingest-manifest-source-ref-carrier design stage 4): the manifest emitter no longer inlines Lossless source text. Every read is carried as a SourceRef row in host_source_root_closure_refs (path + source root + content hash). host_source_root_ingest stays Empty; consumers read through refs with hash verification at consumption time.
 
@@ -616,7 +616,7 @@ type ModuleStorageBinding {
   source_root: v2.std.cross_tree.import_model.SourceRootRef
 }
 
-type ModuleStorageIndex = FreeMonoid<ModuleStorageBinding>
+type ModuleStorageIndex = std.algebra.FreeMonoid<ModuleStorageBinding>
 
 type ModuleStorageFoldState
   = ModuleStorageFoldOk {

@@ -124,7 +124,7 @@ type ProcessResources {
   filesystem: v2.extdeps.file_system.Filesystem
 }
 
-type CapturedByteStream = FreeMonoid<std.bit.Byte>
+type CapturedByteStream = std.algebra.FreeMonoid<std.bit.Byte>
 
 type CapturedOutputPipes {
   stdout: CapturedByteStream
@@ -141,7 +141,7 @@ type SpawnedProcess {
   process: RunningProcess
 }
 
-type SpawnProcessResult = Outcome<SpawnedProcess>
+type SpawnProcessResult = v2.std.diagnostic.Outcome<SpawnedProcess>
 
 type WaitProcessRequest {
   resources: ProcessResources
@@ -153,7 +153,7 @@ type WaitedProcess {
   process: WaitedTerminatedProcess
 }
 
-type WaitProcessResult = Outcome<WaitedProcess>
+type WaitProcessResult = v2.std.diagnostic.Outcome<WaitedProcess>
 
 type CapturedProcessOutput {
   output: CapturedOutputPipes
@@ -165,7 +165,7 @@ type CaptureProcessRequest {
   source: CaptureSource
 }
 
-type CaptureProcessResult = Outcome<CapturedProcessOutput>
+type CaptureProcessResult = v2.std.diagnostic.Outcome<CapturedProcessOutput>
 
 type ProcessOperations {
   spawn: fn(SpawnProcessRequest) -> SpawnProcessResult

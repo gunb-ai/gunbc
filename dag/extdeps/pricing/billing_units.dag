@@ -19,10 +19,10 @@ type PerTransferredUnit
 
 type PerMillionRequests
 
-type MoneyPerStoredUnitMonth = MoneyRate<PerStoredUnitMonth>
+type MoneyPerStoredUnitMonth = std.measure.MoneyRate<PerStoredUnitMonth>
 
-type MoneyPerTransferredUnit = MoneyRate<PerTransferredUnit>
+type MoneyPerTransferredUnit = std.measure.MoneyRate<PerTransferredUnit>
 
-type MoneyPerMillionRequests = MoneyRate<PerMillionRequests>
+type MoneyPerMillionRequests = std.measure.MoneyRate<PerMillionRequests>
 
 data billing_unit_accessor_note: String = "No per-unit micros accessors are declared here: std.measure money_rate_micros<P> already reads any MoneyRate<P>, so a money_per_stored_unit_month_micros wrapper would be a hollow alias -- a second name for one fact (DESIGN section 3). Consumers call money_rate_micros directly."

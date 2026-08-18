@@ -877,7 +877,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   wrap_namespace_body_with_empty_lines: ClangFormatWrapNamespaceBodyWithEmptyLinesNever,
 }
 
-type ClangFormatConfigPatch = ConfigPatchRecord<ClangFormatConfig>
+type ClangFormatConfigPatch = v2.std.patch.ConfigPatchRecord<ClangFormatConfig>
 
 fn clang_format_layer(base: ClangFormatConfig, patch: ClangFormatConfigPatch) -> ClangFormatConfig {
   config_patch_layer(base: base, patch: patch)

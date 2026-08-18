@@ -4,7 +4,7 @@ type SourceRootBinding {
   root: v2.std.cross_tree.import_model.SourceRootRef
 }
 
-type SourceRootIndex = FreeMonoid<SourceRootBinding>
+type SourceRootIndex = std.algebra.FreeMonoid<SourceRootBinding>
 
 fn source_root_index_empty() -> SourceRootIndex {
   std.algebra.Empty

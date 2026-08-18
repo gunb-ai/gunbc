@@ -1,7 +1,7 @@
 module std.verification
 
 
-type NanosecondDuration = Measure<Time, Nano, std.nat.Nat>
+type NanosecondDuration = std.measure.Measure<Time, Nano, std.nat.Nat>
 
 fn nanosecond_duration(count: std.nat.Nat) -> NanosecondDuration {
   NanosecondDuration { count: count }

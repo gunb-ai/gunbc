@@ -13,7 +13,7 @@ type UInt32 = Compose<UInt, MachineWidth<32>>
 type UInt64 = Compose<UInt, MachineWidth<64>>
 type UInt128 = Compose<UInt, MachineWidth<128>>
 
-type Int = AbelianGroup<GroupCompletion<std.nat.Nat>>
+type Int = std.algebra.AbelianGroup<GroupCompletion<std.nat.Nat>>
 type UInt = std.nat.Nat
 
 type Signedness

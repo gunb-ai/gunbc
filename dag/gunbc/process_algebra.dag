@@ -117,7 +117,7 @@ type ProcessEvent {
   operation: ProcessOperation
 }
 
-type ProcessEventLog = FreeMonoid<ProcessEvent>
+type ProcessEventLog = std.algebra.FreeMonoid<ProcessEvent>
 
 type BucketDrainState
   = BucketNotDrained

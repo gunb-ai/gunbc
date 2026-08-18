@@ -3,7 +3,7 @@ module v2.test.claim.byte_cardinality_grounding
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-type Byte = Refined<List<Int>>
+type Byte = v2.std.refinement.Refined<List<Int>>
 
 fn byte_from_bits(bits: List<Int>, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Byte> {
   refine(

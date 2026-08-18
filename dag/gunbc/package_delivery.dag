@@ -236,11 +236,11 @@ fn admit_codex_package_lock_graph<ManagerIdentity, NodeKey, Selection, Metadata,
   package_lock_admit_graph(graph: raw_graph)
 }
 
-type CodexPackageLockGraph = PackageLockGraph<NpmPackageLockManager, NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata, NpmDependencyKind>
+type CodexPackageLockGraph = extdeps.package.PackageLockGraph<NpmPackageLockManager, NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata, NpmDependencyKind>
 
-type CodexPackageLockGraphAdmission = PackageLockGraphAdmission<NpmPackageLockManager, NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata, NpmDependencyKind>
+type CodexPackageLockGraphAdmission = extdeps.package.PackageLockGraphAdmission<NpmPackageLockManager, NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata, NpmDependencyKind>
 
-type CodexPackageLockNode = PackageLockNode<NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata>
+type CodexPackageLockNode = extdeps.package.PackageLockNode<NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata>
 
 type CodexPackageLockAdmission
   = CodexPackageLockAdmitted {

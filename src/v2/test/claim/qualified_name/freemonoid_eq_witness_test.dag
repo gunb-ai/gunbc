@@ -3,7 +3,7 @@ module v2.test.claim.qualified_name.freemonoid_eq_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-type QnPath = FreeMonoid<v2.std.node.Symbol>
+type QnPath = std.algebra.FreeMonoid<v2.std.node.Symbol>
 
 fn ab() -> QnPath {
   std.algebra.Cons { head: ^a, tail: std.algebra.Cons { head: ^b, tail: std.algebra.Empty } }

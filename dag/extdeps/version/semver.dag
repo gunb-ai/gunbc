@@ -8,9 +8,9 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-type SemVerIdentity = VersionIdentity
+type SemVerIdentity = extdeps.version.VersionIdentity
 
-type SemVerConstraint = VersionConstraint
+type SemVerConstraint = extdeps.version.VersionConstraint
 
 type SemVerIdentifier
   = SemVerNumericIdentifier { value: std.integer.NonNegativeInt }

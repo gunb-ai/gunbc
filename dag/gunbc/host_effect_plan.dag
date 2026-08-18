@@ -1,7 +1,7 @@
 module gunbc.host_effect_plan
 
 
-type HostEffectPlan = EffectPlan<gunbc.host_effect.HostEffect>
+type HostEffectPlan = v2.std.effect_plan.EffectPlan<gunbc.host_effect.HostEffect>
 
 type HostEffectPlanContext {
   target: gunbc.host_effect.NodeControlPlane

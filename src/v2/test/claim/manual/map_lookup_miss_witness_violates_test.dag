@@ -5,7 +5,7 @@ type LookupKey {
   id: Int
 }
 
-type LookupTable = Map<LookupKey, Int>
+type LookupTable = std.types.Map<LookupKey, Int>
 
 fn lookup_table(table: LookupTable, key: LookupKey) -> Optional<Int> {
   table.lookup(key)

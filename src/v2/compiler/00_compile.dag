@@ -13,7 +13,7 @@ type CompileOutput
   = TranslateResult { source: extdeps.communication.medium.Medium<String> }
   | EvalResult { value: extdeps.communication.medium.Medium<Node> }
 
-type CompileLensOutcome = Outcome<Witness<Node>>
+type CompileLensOutcome = v2.std.diagnostic.Outcome<Witness<Node>>
 
 type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
 

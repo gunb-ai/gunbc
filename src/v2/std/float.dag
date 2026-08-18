@@ -1,7 +1,7 @@
 module v2.std.float
 
-type Float32Interchange = Word32
-type Float64Interchange = Word64
+type Float32Interchange = std.bit.Word32
+type Float64Interchange = std.bit.Word64
 
 type FloatSpecial
   = QuietNan

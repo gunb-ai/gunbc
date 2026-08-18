@@ -1,7 +1,7 @@
 module v2.test.language_model.rust
 
 
-type RustLeafModelClaim = LeafModelClaim<Outcome<LanguageModel>, RustClaimSubject, RustClaimExpectation>
+type RustLeafModelClaim = v2.std.leaf_model_verification.LeafModelClaim<Outcome<LanguageModel>, RustClaimSubject, RustClaimExpectation>
 
 fn rust_leaf_rustc_invocation() -> v2.std.leaf_model_verification.TargetInvocation {
   v2.std.leaf_model_verification.TargetInvocation {
