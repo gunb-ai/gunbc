@@ -14,7 +14,7 @@ data cargo_build_run_service: String = "cargo.Build"
 data cargo_build_run_operation: String = "Run"
 data cargo_build_run_package: String = "v1-compiler"
 data cargo_build_run_bin: String = "gunbc"
-data cargo_build_run_args: List<String> = ["--", "compile", "--help"]
+data cargo_build_run_args: List<String> = ["compile", "--help"]
 
 fn argv_token_at(argv: List<String>, index: Int) -> String {
   argv.skip(n: index).first()
