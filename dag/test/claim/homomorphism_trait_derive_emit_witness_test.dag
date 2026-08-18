@@ -1,0 +1,33 @@
+module test.claim.homomorphism_trait_derive_emit_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data homomorphism_trait_derive_emit_witness_note: String = "Discriminating controls for trait_derive_emit item-own generic parameters used as type-application heads. Homomorphism<C, Source, Target> applies C to Source and Target; C is the declaring item's own type parameter, not a declared type in scope, so v1_type_expr_clone_undecided_head must recurse through C<Source> instead of refusing at C. Positive: emission succeeds without trait_derive_emit / compile_error! refusal. Negative: genuinely unknown heads still refuse with a located name."
+
+fn w_item_own_generic_param_applied_type_emits() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.homomorphism\n\ntype Homomorphism<C, Source, Target> {\n  source: C<Source>\n  target: C<Target>\n  map: fn(Source) -> Target\n}\n",
+    "src/generic_item_witness_homomorphism.rs",
+    ["struct Homomorphism<C, Source, Target>"],
+    ["trait_derive_emit: generic item", "compile_error!"]
+  )
+}
+
+fn w_unknown_type_head_still_refuses() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.unknown_head\n\ntype BadApply<X> {\n  field: NotInClosure<X>\n}\n",
+    "src/generic_item_witness_unknown_head.rs",
+    ["trait_derive_emit: generic item 'BadApply' has a field applying type 'NotInClosure'"],
+    []
+  )
+}
+
+test fn item_own_generic_param_applied_type_positive() -> Bool {
+  w_item_own_generic_param_applied_type_emits()
+}
+
+test fn unknown_type_head_refusal_negative_control() -> Bool {
+  w_unknown_type_head_still_refuses()
+}

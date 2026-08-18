@@ -23,6 +23,7 @@ import gunbc.gitignore_model {
   OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
   PythonLocalDevScriptFile, PythonAuditScriptAllowlisted,
   PythonProbeScriptAllowlisted,
+  FloorCutNameResolutionPartitionScriptAllowlisted,
   PythonBytecodeCacheDir, PythonCompiledBytecode,
   ClaimMapDir, ScratchProbeFile,
   GunbcPlanningDir, ScriptsFixturesDir
@@ -88,6 +89,7 @@ fn artifact_pattern(a: IgnoreArtifact) -> String {
     PythonLocalDevScriptFile => "*.py"
     PythonAuditScriptAllowlisted => "!docs/plans/witness-subject-execution-audit.py"
     PythonProbeScriptAllowlisted => "!docs/probes/e0369_b1_operator_classify.py"
+    FloorCutNameResolutionPartitionScriptAllowlisted => "!docs/probes/floor_cut_name_resolution_partition.py"
     PythonBytecodeCacheDir => "__pycache__/"
     PythonCompiledBytecode => "*.pyc"
     ClaimMapDir => ".claim-map/"

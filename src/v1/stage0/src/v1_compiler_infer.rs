@@ -1519,10 +1519,32 @@ pub fn record_lit_expected_coproduct(
                 Some(r) => r.clone(),
                 None => exp.clone(),
             };
-            if (resolved.connective.clone() == Connective::Disj) {
-                Some(resolved.clone())
+            let nominal = if node_is_element_collection(
+                resolved.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ) {
+                match resolved.children.clone().first().cloned() {
+                    Some(elem) => {
+                        let elem_ty = child_type_node(elem.clone());
+                        match lookup_type_for(scope.type_env.clone(), elem_ty.clone()) {
+                            Some(r) => Some(r.clone()),
+                            None => Some(elem_ty.clone()),
+                        }
+                    }
+                    None => None,
+                }
             } else {
-                None
+                Some(resolved.clone())
+            };
+            match nominal.clone() {
+                Some(n) => {
+                    if (n.connective.clone() == Connective::Disj) {
+                        Some(n.clone())
+                    } else {
+                        None
+                    }
+                }
+                None => None,
             }
         }
         None => None,
