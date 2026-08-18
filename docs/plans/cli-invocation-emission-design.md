@@ -713,17 +713,61 @@ General argument typechecking strengthens the boundary; it does not prove that p
    contain spaces, pipes, brackets, parentheses and quotes — outside that alphabet. The shell leg
    must own canonical shell-word serialization with injection controls, or refuse.
 4. Which of the 315 computed-head argv lines hide further wrappers.
-5. **The remote jq rows may already be broken — live, unverified.** The seventeen
-   `openbmc_password_ssh_transport` operations place the jq filter after the SSH destination as
-   though its local argv boundary survived remotely. It does not: the local `ssh` client joins its
-   command words with spaces into RFC 4254's single `command` string, and OpenSSH's server runs
-   that through the user's login shell, which re-parses it. Those filters contain spaces, pipes,
-   brackets, parentheses and double quotes — `[.zones[].pids[] | select(.name == "TEMP_SOC" …)] |
-   length` would reach the remote shell with `|` as a pipe operator and the quotes consumed.
-   **This is a transport-correctness risk, not a proven defect** — no executed control has been
-   run, and something upstream may be quoting. It must be settled by execution before Slice D, and
-   it is an argument for the design rather than a consequence of it: the current representation
-   cannot even express the question.
+5. **The remote jq rows do not preserve the jq program as one argument. Source-proven.**
+   Traced end to end, with the local half verified in this tree:
+
+   - `v1_interpreter.rs` `push_shell_argv_tokens` pushes each evaluated `String` **verbatim** — no
+     splitting, no quoting — and both exec branches call
+     `Command::new(&argv[0]).args(&argv[1..])`. So despite its name, `transport shell` at this
+     boundary is **direct process execution**: there is no local shell, no `shell_quote`, no
+     command-string renderer.
+   - `sshpass` parses its own options, copies the remaining argument pointers, and `execvp`s them
+     unchanged.
+   - OpenSSH's client consumes the `--` after the destination as its **own option terminator**
+     (not a remote quoting construct) and builds the remote command by appending each remaining
+     argv member separated by one literal space, with no escaping.
+   - OpenBMC's default SSH server is **Dropbear**, not OpenSSH — its `run_shell_command`
+     invokes the user's login shell with `-c`.
+
+   So `["jq", "-er", "[.zones[].pids[] | select(...)] | length", path]` arrives remotely as
+   `jq -er [.zones[].pids[] | select(...)] | length /path`, and the remote shell reads the
+   unquoted `|` as pipeline operators. The argument boundary is gone. The law the code needs is
+   `shell_parse(join(map(shell_quote, argv), " ")) == argv`; what it currently assumes is
+   `shell_parse(join(argv, " ")) == argv`, which holds only inside a portable-word alphabet these
+   filters are outside — the same alphabet `gunbc.typed_argv_exec` exists to bound. Dynamic values
+   such as `config_path` are unquoted too; the current path happens to be shell-safe, but
+   `NonEmptyStr` does not establish that.
+
+   **Split the judgments rather than calling the whole thing broken:**
+
+   ```
+   RemoteJqArgumentBoundaryPreservation   Violates — source-proven
+   DeployedSshClientIsStandardOpenSsh     Unverified
+   DeployedBmcServerUsesDropbearShellExec StronglySupported, not observed on this firmware
+   AffectedOperationReachability          Unverified
+   ObservedProductionManifestation        Unverified
+   ```
+
+   The saving conditions are enumerable and none is visible in the repository: a custom binary
+   named `ssh` that shell-quotes (most plausible, since `sshpass` resolves through `PATH`); filters
+   already carrying canonical outer quoting; a forced-command or structured receiver decoding an
+   encoded argv; or a row whose program happens to be entirely portable words.
+
+   **The executed control** uses the exact current prefix and direct argv execution — not a local
+   shell — with `jq -n`, so it needs no stdin or file and cannot mutate BMC state:
+
+   ```
+   portable positive   ["jq","-n","-r","7"]                 -> exit 0, stdout "7"
+   current form        ["jq","-n","-r","[1,2] | length"]     -> intended "2"
+   serialized form     ["jq","-n","-r","'[1,2] | length'"]   -> expected "2"
+   ```
+
+   Discriminating result: portable and serialized controls succeed while the current form does not
+   produce the same exit/stdout observation. Capture local client version, remote SSH banner and
+   remote login shell. **If the current form unexpectedly yields `2`, that is positive evidence for
+   an unmodeled saving layer**, and the next probe captures the actual command string seen
+   remotely.
+
 6. The SSH slice needs a discriminating program containing spaces, a pipe, quotes, brackets and a
    value containing a single quote, and must reuse the grammar-owned quoting the effect-plan Bash
    path already demonstrates rather than retaining `shell_quote`.
