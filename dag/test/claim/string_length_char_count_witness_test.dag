@@ -1,0 +1,44 @@
+module test.claim.string_length_char_count_witness
+
+// LIST-CARRIER-0: native_len has no Value::Str arm, so .length()/.count() on a
+// string currently routes through free_monoid_to_vec, which materializes
+// CHARACTERS (not bytes). This witness pins that character-count contract so
+// a future fast-path arm (reading an ASCII flag for O(1) byte-length) cannot
+// silently regress to byte length on multibyte input. A naive
+// `Value::Str(s) => Some(s.len())` (Rust byte length) arm would report 3 for
+// a single-codepoint multibyte string here, not 1 -- that is the exact wrong
+// answer this witness exists to catch. (`.size()` is not a registered String
+// method -- only `.length()` and `.count()` are -- so this witness covers
+// those two.)
+
+test fn ascii_string_length_is_char_count() -> Bool {
+  "hello".length() == 5
+}
+
+// "\u{ef}" (lowercase i with diaeresis) encodes as 2 bytes in UTF-8.
+// Byte length would be 2; character length must be 1.
+test fn multibyte_two_byte_codepoint_length_is_one() -> Bool {
+  "\u{ef}".length() == 1
+}
+
+// "\u{4e2d}" (CJK character) encodes as 3 bytes in UTF-8.
+// Byte length would be 3; character length must be 1.
+test fn multibyte_three_byte_codepoint_length_is_one() -> Bool {
+  "\u{4e2d}".length() == 1
+}
+
+// "\u{1f600}" (an emoji) encodes as 4 bytes in UTF-8.
+// Byte length would be 4; character length must be 1.
+test fn multibyte_four_byte_codepoint_length_is_one() -> Bool {
+  "\u{1f600}".length() == 1
+}
+
+// "na\u{ef}ve" is 5 characters but 6 UTF-8 bytes (the \u{ef} costs 2 bytes).
+// Byte length would be 6; character length must be 5.
+test fn mixed_ascii_and_multibyte_length_counts_chars_not_bytes() -> Bool {
+  "na\u{ef}ve".length() == 5
+}
+
+test fn multibyte_string_count_matches_length() -> Bool {
+  "\u{4e2d}\u{6587}".count() == 2
+}
