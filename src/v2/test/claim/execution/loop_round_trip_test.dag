@@ -167,7 +167,7 @@ test fn loop_ingest_via_coerce_matches_canonical() -> Bool {
     tree: loop_inferred_tree,
     target: loop_target_model
   ) {
-    v2.std.diagnostic.Accepted { value: result, diagnostics: d } =>
+    Accepted { value: result, diagnostics: d } =>
       (result.target == dag_fixture_emitted_loop_fn)
         && loop_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)

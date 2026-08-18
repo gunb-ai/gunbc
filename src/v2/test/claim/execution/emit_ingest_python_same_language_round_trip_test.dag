@@ -162,7 +162,7 @@ test fn python_same_language_source_emit_round_trip_holds() -> Bool {
         source_model: python_target_model(),
         target_model: python_target_model()
       ) {
-        v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
+        Accepted { value: source, diagnostics: _ } =>
           (source.carried == python_source_text)
             && python_same_language_discriminates_on_real_tree()
         v2.std.diagnostic.Rejected { diagnostics: _ } => false

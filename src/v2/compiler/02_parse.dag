@@ -1613,7 +1613,7 @@ fn grammar_validate_and_analyze(root: v2.std.grammar.GrammarRoot, at: v2.std.dia
 fn grammar_validate_for_parse(root: v2.std.grammar.GrammarRoot, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<v2.std.grammar.ValidatedGrammarRoot> {
   match grammar_validate_and_analyze(root: root, at: at) {
     v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: modeled, diagnostics: residue } =>
+    Accepted { value: modeled, diagnostics: residue } =>
       v2.std.diagnostic.Accepted { value: modeled.validated, diagnostics: residue }
   }
 }
@@ -2161,7 +2161,7 @@ fn parse_production_tree(
     validated: validated,
     production_name: production_name
   ) {
-    v2.std.diagnostic.Accepted { value: artifact, diagnostics: d } =>
+    Accepted { value: artifact, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: d }
     v2.std.diagnostic.Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
@@ -2251,7 +2251,7 @@ fn parse_module(tokens: v2.std.compilers.lexing.TokenStream, grammar: v2.std.gra
 
 fn parse(tokens: v2.std.compilers.lexing.TokenStream, grammar: v2.std.grammar.ParseGrammar) -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
   match parse_module(tokens: tokens, grammar: grammar) {
-    v2.std.diagnostic.Accepted { value: artifact, diagnostics: d } =>
+    Accepted { value: artifact, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: d }
     v2.std.diagnostic.Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }

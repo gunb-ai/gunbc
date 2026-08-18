@@ -125,7 +125,7 @@ fn rust_binop_producer_emit_accepts(operator_token: v2.std.node.Symbol, expected
     operator_token: operator_token,
     target: rust_target_model_staging()
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (d == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }

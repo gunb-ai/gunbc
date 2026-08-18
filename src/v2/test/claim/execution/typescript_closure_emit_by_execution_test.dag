@@ -118,7 +118,7 @@ fn ts_closure_emit_canonical_text() -> String {
     expr: ts_closure_canonical_expr(),
     catalog: ts_closure_infix_catalog()
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    Accepted { value: source, diagnostics: _ } => source.carried
     v2.std.diagnostic.Rejected { diagnostics: _ } => "TS_CLOSURE_EMIT_REJECTED"
   }
 }
@@ -128,7 +128,7 @@ fn ts_closure_emit_swapped_operands_text() -> String {
     expr: ts_closure_swapped_operands_expr(),
     catalog: ts_closure_infix_catalog()
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    Accepted { value: source, diagnostics: _ } => source.carried
     v2.std.diagnostic.Rejected { diagnostics: _ } => "TS_CLOSURE_EMIT_REJECTED"
   }
 }
@@ -138,7 +138,7 @@ fn ts_closure_emit_swapped_params_text() -> String {
     expr: ts_closure_swapped_params_expr(),
     catalog: ts_closure_infix_catalog()
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    Accepted { value: source, diagnostics: _ } => source.carried
     v2.std.diagnostic.Rejected { diagnostics: _ } => "TS_CLOSURE_EMIT_REJECTED"
   }
 }

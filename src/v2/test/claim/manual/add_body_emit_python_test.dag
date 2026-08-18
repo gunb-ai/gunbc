@@ -54,7 +54,7 @@ test fn python_add_emit_perturbed_spellings_discriminates() -> Bool {
       match python_add_emit_from_tree(
         target: python_add_emit_perturbed_target_model()
       ) {
-        v2.std.diagnostic.Accepted { value: perturbed, diagnostics: dp } =>
+        Accepted { value: perturbed, diagnostics: dp } =>
           (perturbed != canonical)
             && (perturbed.carried == python_add_emit_perturbed_source_text)
             && (dc == v2.std.diagnostic.None)

@@ -222,7 +222,7 @@ data typescript_add_emit_receipt: Outcome<Medium<String>> = anchor_typescript_ad
 
 test fn typescript_add_emit_add_fn_accepts_holds() -> Bool {
   match typescript_add_emit_receipt {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == ts_source_text) && (d == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }

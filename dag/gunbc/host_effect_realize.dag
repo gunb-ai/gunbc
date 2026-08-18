@@ -2147,7 +2147,7 @@ fn not_converged_directive(drive: gunbc.host_effect.Drive) -> ConvergeDirective 
 fn host_effect_drive_directive(r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>) -> ConvergeDirective {
   match r {
     std.realization_reconcile.Converged { evidence: _, applied: _ } => Settled
-    std.realization_reconcile.NotConverged { reason: why, applied: intent } =>
+    NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
         Present { value: Deny { refusal: _ } } => Refused { reason: why }
         Present { value: Permit } => not_converged_directive(drive: host_effect_drive(intent: intent))

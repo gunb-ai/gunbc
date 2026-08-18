@@ -475,7 +475,7 @@ fn grounded_receipt_has_observed_v0_knobs(r: FleetHostEffectiveReadGroundedRecei
     std.realization_reconcile.ReadAbsent { reason: _ } => false
   }
     && match r.runner_units_read {
-      std.realization_reconcile.ReadObserved { value: units } => units.units.length() > 0
+      ReadObserved { value: units } => units.units.length() > 0
       std.realization_reconcile.ReadAbsent { reason: _ } => false
     }
     && match r.runner_width_read {

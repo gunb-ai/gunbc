@@ -25,13 +25,13 @@ fn refinement_preservation_generated_nonempty_list_claim() -> v2.std.diagnostic.
 data claim_refinement_nonempty_list_base_preserved: Outcome<v2.std.verification.TestClaim> = refinement_preservation_generated_nonempty_list_claim()
 
 data witness_refinement_preserves_nonempty_list_base: Bool = match refinement_preservation_subject_nonempty_list_base() {
-  v2.std.diagnostic.Accepted { value: subject, diagnostics: None } => refined_base(r: subject.refined) == subject.original
+  Accepted { value: subject, diagnostics: None } => refined_base(r: subject.refined) == subject.original
   v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
 
 fn refinement_preservation_subject_base_value() -> v2.std.diagnostic.Outcome<Node> {
   match refinement_preservation_subject_nonempty_list_base() {
-    v2.std.diagnostic.Accepted { value: subject, diagnostics: None } =>
+    Accepted { value: subject, diagnostics: None } =>
       v2.std.diagnostic.Accepted {
         value: refinement_preservation_list_node(xs: subject.original),
         diagnostics: v2.std.diagnostic.None

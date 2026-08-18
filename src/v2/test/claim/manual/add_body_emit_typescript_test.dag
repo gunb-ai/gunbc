@@ -345,7 +345,7 @@ fn add_body_ts_emit_from_producer_swapped_tree(target: v2.std.compilers.target_m
 
 test fn add_body_ts_emit_add_fn_accepts_holds() -> Bool {
   match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == ts_source_text) && (d == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
@@ -353,7 +353,7 @@ test fn add_body_ts_emit_add_fn_accepts_holds() -> Bool {
 
 test fn add_body_ts_emit_operand_swap_discriminates() -> Bool {
   match add_body_ts_emit_from_producer_swapped_tree(target: ts_target_model()) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == add_body_ts_emit_operand_swap_source_text) &&
       (source.carried != ts_source_text) &&
       (d == v2.std.diagnostic.None)
@@ -363,7 +363,7 @@ test fn add_body_ts_emit_operand_swap_discriminates() -> Bool {
 
 test fn add_body_ts_emit_catalog_minus_discriminates() -> Bool {
   match add_body_ts_emit_from_producer_tree(target: add_body_ts_target_model_minus_catalog()) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == add_body_ts_emit_catalog_minus_source_text) &&
       (source.carried != ts_source_text) &&
       (d == v2.std.diagnostic.None)

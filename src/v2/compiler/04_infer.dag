@@ -667,7 +667,7 @@ fn infer_match_bool_arm_rows_accept(
         scrutinee_type: scrutinee_type
       ) {
         v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        v2.std.diagnostic.Accepted { value: second_row, diagnostics: sd } =>
+        Accepted { value: second_row, diagnostics: sd } =>
           let first_body = first_row.body_type
           let second_body = second_row.body_type
           match infer_bool_literal_exhaustiveness_merge(

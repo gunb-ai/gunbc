@@ -524,7 +524,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
   at: Node
 ) -> Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue> {
   match run_outcome {
-    v2.std.diagnostic.Accepted { value: host_receipt, diagnostics: _ } =>
+    Accepted { value: host_receipt, diagnostics: _ } =>
       match host_receipt.logical_run {
         v2.std.diagnostic.Accepted {
           value: HostLogicalRun { stdout: stdout },
@@ -539,7 +539,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
                 host_actual: host_actual,
                 expected: expected
               )
-            v2.std.diagnostic.Rejected { diagnostics: ds } =>
+            Rejected { diagnostics: ds } =>
               verdict_run_failed(
                 actual: v2.std.diagnostic.Rejected { diagnostics: ds },
                 diagnostic: ds.head

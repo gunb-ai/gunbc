@@ -14,7 +14,7 @@ fn anchor_solve_constraints_add() -> v2.std.diagnostic.Outcome<v2.std.constraint
 }
 
 data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraints_add() {
-  v2.std.diagnostic.Accepted { value: g, diagnostics: d } =>
+  Accepted { value: g, diagnostics: d } =>
     (g.node == fixture_add_resolved_tree())
       && (g.witness.structural.property == ^preservation_rule_constraint_satisfaction)
       && (g.witness.structural.evidence == fixture_add_resolved_tree())

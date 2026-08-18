@@ -61,7 +61,7 @@ fn loci_from_bindings_for_path(
 ) -> std.algebra.FreeMonoid<Node> {
   match bindings {
     std.algebra.Empty => acc
-    std.algebra.Cons { head: binding, tail: rest } =>
+    Cons { head: binding, tail: rest } =>
       let acc2 = if read.path_regex_matches(changed: changed, pattern: binding.pattern) {
         push_locus_if_absent(acc: acc, locus: binding.locus)
       } else {

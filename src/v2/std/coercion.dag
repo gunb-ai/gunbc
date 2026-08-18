@@ -142,7 +142,7 @@ fn coercion_identity_from_target_model(
                   policy: v2.std.find_witness.TargetDeclaredPriority { priority: priority }
                 }
               ) {
-                v2.std.diagnostic.Accepted { value: fw, diagnostics: fw_d } =>
+                Accepted { value: fw, diagnostics: fw_d } =>
                   v2.std.diagnostic.Accepted {
                     value: CoercionResult {
                       target: fw.candidate,
@@ -283,7 +283,7 @@ fn coercion_fold_exact_structural(
     },
     multiplicity_policy: v2.std.find_witness.TargetSelection { policy: policy }
   ) {
-    v2.std.diagnostic.Accepted { value: fw, diagnostics: fw_d } =>
+    Accepted { value: fw, diagnostics: fw_d } =>
       v2.std.diagnostic.Accepted {
         value: CoercionResult {
           target: fw.candidate,
@@ -328,7 +328,7 @@ fn coercion_fold_refinement_widening(
     predicate: predicate,
     multiplicity_policy: v2.std.find_witness.TargetSelection { policy: policy }
   ) {
-    v2.std.diagnostic.Accepted { value: fw, diagnostics: fw_d } =>
+    Accepted { value: fw, diagnostics: fw_d } =>
       v2.std.diagnostic.Accepted {
         value: CoercionResult {
           target: fw.candidate,

@@ -290,7 +290,7 @@ fn witness_transform_crosses_frames_exactly() -> Bool {
   match apply_z_quarter_turn_transform3(transform: room_to_building(), point: point3(frame: room(), x: 1000, y: 0, z: 500)) {
     std.affine_space.SpatialFrameRefused { refusal: _ } => false
     std.affine_space.SpatialArithmeticRefused { cause: _ } => false
-    std.affine_space.SpatialReady { value: moved } =>
+    SpatialReady { value: moved } =>
       signed_frame_component_count(c: moved.x) == 10000
         && signed_frame_component_count(c: moved.y) == 21000
         && signed_frame_component_count(c: moved.z) == 500
@@ -364,7 +364,7 @@ fn witness_same_frame_operations_still_answer() -> Bool {
   let b = point3(frame: room(), x: 11, y: 22, z: 33)
   match displacement_between3(from: a, to: b) {
     std.affine_space.SpatialFrameRefused { refusal: _ } => false
-    std.affine_space.SpatialReady { value: d } =>
+    SpatialReady { value: d } =>
       signed_frame_component_count(c: d.x) == 10
         && signed_frame_component_count(c: d.y) == 20
         && signed_frame_component_count(c: d.z) == 30
@@ -622,7 +622,7 @@ test fn w_metric_operations_refuse_a_frame_they_cannot_label() -> Bool {
     std.affine_space.SpatialArithmeticRefused { cause: _ } => false
   }
   let cross_answers_in_millimetres = match cross3(registry: mm_registry(), a: v, b: vector3(frame: room(), x: 0, y: 1000, z: 0)) {
-    std.affine_space.SpatialReady { value: av } => signed_square_millimeter_count(m: av.z) == 1000000
+    SpatialReady { value: av } => signed_square_millimeter_count(m: av.z) == 1000000
     std.affine_space.SpatialFrameRefused { refusal: _ } => false
     std.affine_space.SpatialArithmeticRefused { cause: _ } => false
   }

@@ -130,7 +130,7 @@ fn witness_roster_build_refuses_synthetic_duplicate_facts() -> Bool {
     decl_facts: compile_clean_shard_roster_mechanism_fixture_duplicate_facts
   ) {
     std.keyed_roster.KeyedRosterBuilt { rows: _ } => false
-    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       k == "dag/fixture/alpha.dag"
         && f.value.module == "fixture.alpha"
         && d.value.module == "fixture.alpha_reexport"

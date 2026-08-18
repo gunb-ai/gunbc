@@ -19,7 +19,7 @@ fn wave1_gate1_d_arrow_body_is_transform(o: v2.std.diagnostic.Outcome<Node>) -> 
   match o {
     v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
-        v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+        Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Transform } => true
             _ => false
@@ -34,7 +34,7 @@ fn wave1_gate1_d_arrow_body_is_branch(o: v2.std.diagnostic.Outcome<Node>) -> Boo
   match o {
     v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
-        v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+        Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Branch } => true
             _ => false
@@ -49,7 +49,7 @@ fn wave1_gate1_d_arrow_body_is_bind(o: v2.std.diagnostic.Outcome<Node>) -> Bool 
   match o {
     v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
-        v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+        Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Bind } => true
             _ => false
@@ -64,7 +64,7 @@ fn wave1_gate1_d_arrow_body_is_loop(o: v2.std.diagnostic.Outcome<Node>) -> Bool 
   match o {
     v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
-        v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+        Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Loop } => true
             _ => false
@@ -79,7 +79,7 @@ fn wave1_gate1_d_arrow_body_is_match(o: v2.std.diagnostic.Outcome<Node>) -> Bool
   match o {
     v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
-        v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+        Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Match } => true
             _ => false

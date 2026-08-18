@@ -57,7 +57,7 @@ fn ts_bind_let_emit_statement_sequenced() -> String {
   match ts_bind_let_emit_with_projection(
     projection: ts_value_expression_projection()
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    Accepted { value: source, diagnostics: _ } => source.carried
     v2.std.diagnostic.Rejected { diagnostics: _ } => "BIND_LET_EMIT_REJECTED"
   }
 }
@@ -68,7 +68,7 @@ fn ts_bind_let_emit_value_producing() -> String {
       block_evaluation_mode: ValueProducing
     )
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    Accepted { value: source, diagnostics: _ } => source.carried
     v2.std.diagnostic.Rejected { diagnostics: _ } => "BIND_LET_EMIT_REJECTED"
   }
 }

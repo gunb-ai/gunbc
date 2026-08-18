@@ -11,7 +11,7 @@ fn rust_produced_decl_text(fn_name: v2.std.node.Symbol) -> v2.std.diagnostic.Out
   match table_fixture_add_decl_node(fn_name: fn_name) {
     v2.std.diagnostic.Accepted { value: decl, diagnostics: _ } =>
       match emit_produced_decl(decl: decl, target: rust_target_model()) {
-        v2.std.diagnostic.Accepted { value: medium, diagnostics: _ } =>
+        Accepted { value: medium, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
         v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }

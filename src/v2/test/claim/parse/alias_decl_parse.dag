@@ -54,7 +54,7 @@ fn alias_decl_parse_and_binding_row_holds() -> Bool {
         Present { value: decl } =>
           match alias_binding_row_from_decl_node(decl: decl, module_root: tree) {
             v2.std.diagnostic.Rejected { diagnostics: _ } => false
-            v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
+            Accepted { value: row, diagnostics: _ } =>
               (row.binding == alias_decl_expected_row().binding)
                 && (row.target == alias_decl_expected_row().target)
           }

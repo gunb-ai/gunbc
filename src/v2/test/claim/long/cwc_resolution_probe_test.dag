@@ -91,7 +91,7 @@ fn cwc_norm_rejects(src: String) -> Bool {
 
 test fn cwc_non_coproduct_rhs_passes_through() -> Bool {
   match cwc_norm_of(src: cwc_src_type_scalar) {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: _ } => !cwc_tree_has_disj(n: root.root)
+    Accepted { value: root, diagnostics: _ } => !cwc_tree_has_disj(n: root.root)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
@@ -127,14 +127,14 @@ test fn cwc_cwc_module_resolve_accepts() -> Bool {
 
 test fn cwc_review_normalized_has_disj() -> Bool {
   match cwc_norm_of(src: cwc_src_type_review) {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: _ } => cwc_tree_has_disj(n: root.root)
+    Accepted { value: root, diagnostics: _ } => cwc_tree_has_disj(n: root.root)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn cwc_review_disj_has_four_arms() -> Bool {
   match cwc_norm_of(src: cwc_src_type_review) {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: _ } => cwc_disj_arm_count(n: root.root) == 4
+    Accepted { value: root, diagnostics: _ } => cwc_disj_arm_count(n: root.root) == 4
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

@@ -184,7 +184,7 @@ data python_add_emit_receipt: Outcome<Medium<String>> = anchor_python_add_emit_a
 
 test fn python_add_emit_add_fn_accepts_holds() -> Bool {
   match python_add_emit_receipt {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == python_source_text) && (d == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }

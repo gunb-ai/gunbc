@@ -135,7 +135,7 @@ fn idempotent_operation_generated_run(row: v2.std.diagnostic.Outcome<v2.std.veri
 
 fn idempotent_operation_run_non_pass(row: v2.std.diagnostic.Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   match row {
-    v2.std.diagnostic.Accepted { value: run, diagnostics: None } =>
+    Accepted { value: run, diagnostics: None } =>
       match run.verdict {
         Pass => false
         SemanticMismatch { actual: _, falsification: _ } => true

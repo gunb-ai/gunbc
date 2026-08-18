@@ -387,7 +387,7 @@ fn workflow_reconcile_fold_action(
   action: gunbc.membership_reconcile.MemberAction<WorkflowFactMember, WorkflowFactMemberAt>,
 ) -> WorkflowReconcileFold {
   match action {
-    gunbc.membership_reconcile.MemberAdded { at: _, to: member } =>
+    MemberAdded { at: _, to: member } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals,
@@ -397,7 +397,7 @@ fn workflow_reconcile_fold_action(
           acc.first_missing
         },
       }
-    gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: member } =>
+    MemberChanged { at: _, from: _, to: member } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals,
@@ -407,7 +407,7 @@ fn workflow_reconcile_fold_action(
           acc.first_missing
         },
       }
-    gunbc.membership_reconcile.MemberRemoved { at: _, from: member } =>
+    MemberRemoved { at: _, from: member } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals + 1,
@@ -417,7 +417,7 @@ fn workflow_reconcile_fold_action(
           acc.first_missing
         },
       }
-    gunbc.membership_reconcile.MemberRemovalRefused { from: member, cause: _ } =>
+    MemberRemovalRefused { from: member, cause: _ } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals + 1,

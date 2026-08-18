@@ -187,7 +187,7 @@ fn per_language_fact_bundle_spec_facts_for_subject(
     subject_carrier: subject_carrier,
     target: target
   ) {
-    v2.std.diagnostic.Accepted { value: state, diagnostics: d } => match state.saw_fact {
+    Accepted { value: state, diagnostics: d } => match state.saw_fact {
       true =>
         v2.std.diagnostic.Accepted { value: state.spec_facts, diagnostics: d }
       false =>

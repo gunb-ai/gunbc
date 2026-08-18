@@ -65,11 +65,11 @@ fn emit_fold_eval_nth_positional_target(node: v2.std.node.Node, wanted: Int) -> 
 
 fn emit_fold_eval_closure_operator_is_sub(closure: v2.std.node.Node) -> Bool {
   match find_arrow_body_child(root: closure) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       match body.kind {
         ComputationNode { behavior: Transform } =>
           match emit_fold_eval_nth_positional_target(node: body, wanted: 0) {
-            v2.std.diagnostic.Accepted { value: op, diagnostics: _ } =>
+            Accepted { value: op, diagnostics: _ } =>
               match op.kind {
                 TypeNode { connective: Atom { identity: id } } => id == ^dag_token_minus
                 _ => false

@@ -49,7 +49,7 @@ fn plan_has_change_for_address(
 ) -> std.types.Bool {
   any(plan.actions, a =>
     match a {
-      gunbc.membership_reconcile.MemberChanged { at: _, from: f, to: t } =>
+      MemberChanged { at: _, from: f, to: t } =>
         f.address == address
           && t.address == address
           && f.state_digest == from_digest
@@ -72,7 +72,7 @@ fn plan_has_refused_address(
 ) -> std.types.Bool {
   any(plan.actions, a =>
     match a {
-      gunbc.membership_reconcile.MemberRemovalRefused { from: m, cause: _ } => m.address == address
+      MemberRemovalRefused { from: m, cause: _ } => m.address == address
       _ => false
     }
   )
@@ -242,7 +242,7 @@ test fn w_spark_serving_change_projects_effect_replace() -> std.types.Bool {
       count(es) == 1
         && any(es, e =>
              match e {
-               gunbc.membership_reconcile.EffectReplace { from: f, to: t } =>
+               EffectReplace { from: f, to: t } =>
                  f.address == gunbc.spark_serving_membership.SparkServingRuntimeRootAddress
                    && f.state_digest == ("v1" as std.types.NonEmptyStr)
                    && t.state_digest == ("v2" as std.types.NonEmptyStr)

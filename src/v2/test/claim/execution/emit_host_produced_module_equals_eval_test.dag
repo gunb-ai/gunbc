@@ -29,7 +29,7 @@ fn produced_module_run(
 
 fn produced_module_source_matches(golden: String) -> Bool {
   match produced_add_module_source() {
-    v2.std.diagnostic.Accepted { value: medium, diagnostics: _ } => medium.carried == golden
+    Accepted { value: medium, diagnostics: _ } => medium.carried == golden
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

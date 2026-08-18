@@ -552,7 +552,7 @@ fn bootstrap_seed_capability_matches_footprint(
 
 fn bootstrap_convergence_ladder(plan: v2.std.diagnostic.Outcome<BootstrapPlan>) -> Witness<ConvergenceLadder> {
   match plan {
-    v2.std.diagnostic.Accepted { value: bp, diagnostics: _ } =>
+    Accepted { value: bp, diagnostics: _ } =>
       v2.std.witness.Holds { value: ConvergenceLadder { entry_seed: ^v1_pipeline, plan: bp, fixed_point: bp.fixpt } }
     v2.std.diagnostic.Rejected { diagnostics: _ } =>
       v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_plan_unavailable_for_ladder) }
@@ -725,7 +725,7 @@ data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap
 
 fn bootstrap_stage_output(plan: v2.std.diagnostic.Outcome<BootstrapPlan>, s: v2.std.node.Symbol) -> Bool {
   match plan {
-    v2.std.diagnostic.Accepted { value: bp, diagnostics: _ } =>
+    Accepted { value: bp, diagnostics: _ } =>
       (s == bp.seed.produces) || (s == bp.self0.produces) || (s == bp.self1.produces)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
@@ -817,6 +817,6 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
 data bootstrap_convergence_ladder_witness: Witness<ConvergenceLadder> = bootstrap_convergence_ladder(plan: bootstrap_plan)
 
 data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_plan {
-  v2.std.diagnostic.Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
+  Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
   v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
 }

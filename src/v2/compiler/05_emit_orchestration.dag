@@ -969,7 +969,7 @@ fn orch_emit_retry(
   medium: v2.std.orchestration_emit.OrchestrationEmitMedium
 ) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   match orch_retry_body_command(body: body) {
-    v2.std.diagnostic.Accepted { value: body_run, diagnostics: _ } =>
+    Accepted { value: body_run, diagnostics: _ } =>
       match v2.std.algebra.is_empty(body_run.env) {
         false =>
           outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_env_present))

@@ -39,7 +39,7 @@ fn ingest_parse() -> v2.std.diagnostic.Outcome<Node> {
         production_name: ^ingest_fixture_start
       ) {
         v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+        Accepted { value: artifact, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: v2.std.diagnostic.None }
       }
   }
@@ -159,7 +159,7 @@ test fn ingest_identity_coercion_needs_roster_membership_not_derived_grounding()
               )
             ) {
               v2.std.diagnostic.Rejected { diagnostics: _ } => false
-              v2.std.diagnostic.Accepted { value: coerced, diagnostics: _ } =>
+              Accepted { value: coerced, diagnostics: _ } =>
                 (coerced.quality == Identity) && (coerced.target == source)
             }
       }

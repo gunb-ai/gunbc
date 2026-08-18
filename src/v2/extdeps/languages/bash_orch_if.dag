@@ -965,7 +965,7 @@ fn bash_nearest_ancestor_locate_cond_command(spec: std.path_intent.NearestAncest
   match bash_path_predicate_target_model(
     predicate: nearest_ancestor_while_predicate(spec: spec)
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       match d {
         None => source.authority_source_text
         Some { diagnostics: _ } => ""
@@ -978,7 +978,7 @@ fn bash_nearest_ancestor_locate_body_command(spec: std.path_intent.NearestAncest
   match bash_dirname_ascent_target_model(
     ascent: nearest_ancestor_while_ascent(spec: spec)
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       match d {
         None => source.authority_source_text
         Some { diagnostics: _ } => ""

@@ -3112,7 +3112,7 @@ fn translate_coerced_shell_base(coerced: v2.std.node.Node, target: v2.std.compil
     target: target,
     source_carrier: coerced
   ) {
-    v2.std.diagnostic.Accepted { value: row, diagnostics: d } =>
+    Accepted { value: row, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: row.type_form.node,
         diagnostics: d
@@ -3432,7 +3432,7 @@ fn translate_projection_absent_fold_init_acc(
 
 fn translate_fold_acc_rebuilt(o: v2.std.diagnostic.Outcome<TranslateFoldAcc>) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match o {
-    v2.std.diagnostic.Accepted { value: acc, diagnostics: d } =>
+    Accepted { value: acc, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: acc.rebuilt, diagnostics: d }
     v2.std.diagnostic.Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
@@ -3448,7 +3448,7 @@ fn translate_projection_absent_coerce_from_grounding_or_evidence(
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match coerce_grounded_node(source: node, tree: tree, target: target) {
-    v2.std.diagnostic.Accepted { value: coerced, diagnostics: d } =>
+    Accepted { value: coerced, diagnostics: d } =>
       translate_coerced_with_atom_realization(
         source: node,
         coerced: coerced.target,
@@ -3457,7 +3457,7 @@ fn translate_projection_absent_coerce_from_grounding_or_evidence(
       )
     v2.std.diagnostic.Rejected { diagnostics: r } =>
       match canonical_grounding_for_node(tree: tree, node: node) {
-        v2.std.diagnostic.Accepted { value: grounding } =>
+        Accepted { value: grounding } =>
           if algebra_ref_is_grounded(algebra: grounding.witness.structural.evidence) {
             translate_coerced_with_atom_realization(
               source: node,
@@ -3486,7 +3486,7 @@ fn translate_projection_absent_fold_init(
         translate_projection_absent_bodied_arrow_fold_init(tree: tree, node: node)
       } else {
         match coerce_grounded_node(source: node, tree: tree, target: target) {
-          v2.std.diagnostic.Accepted { value: coerced, diagnostics: d } =>
+          Accepted { value: coerced, diagnostics: d } =>
             translate_coerced_with_atom_realization(
               source: node,
               coerced: coerced.target,
@@ -3504,7 +3504,7 @@ fn translate_projection_absent_fold_init(
       )
     TypeNode { connective: _ } =>
       match coerce_grounded_node(source: node, tree: tree, target: target) {
-        v2.std.diagnostic.Accepted { value: coerced, diagnostics: d } =>
+        Accepted { value: coerced, diagnostics: d } =>
           translate_coerced_with_atom_realization(
             source: node,
             coerced: coerced.target,
@@ -3861,7 +3861,7 @@ fn translate_fold_step(
     v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     v2.std.diagnostic.Accepted { value: parent_acc, diagnostics: ad } =>
       match child {
-        v2.std.diagnostic.Accepted { value: child_acc, diagnostics: cd } =>
+        Accepted { value: child_acc, diagnostics: cd } =>
           bind_outcome(
             o: translate_derived_parent_underived_child_gate(
               tree: tree,

@@ -82,7 +82,7 @@ test fn emit_on_demand_field_access_interpreter_roles_bounded_holds() -> Bool {
 
 test fn emit_on_demand_field_access_schedule_refuses_unreadable_budget_holds() -> Bool {
   match field_access_family_primary_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       match witness_family_realize_width(
         bound_bytes: byte_size(count: 25),
         budget: BudgetUnreadable,
@@ -118,7 +118,7 @@ fn field_access_family_cached_run_with_source(
     source: source,
     fixture_inputs: field_access_family_fixture_inputs()
   ) {
-    v2.std.diagnostic.Accepted { value: receipt, diagnostics: _ } =>
+    Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
         v2.std.diagnostic.Accepted {
           value: HostLogicalRun { stdout: stdout },

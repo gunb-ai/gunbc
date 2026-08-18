@@ -171,11 +171,11 @@ fn teardown_refusal_cause_label(cause: gunbc.membership_reconcile.TeardownRefusa
 
 fn timer_action_line(action: gunbc.membership_reconcile.MemberAction<TimerRetirementMember, TimerRetirementMemberAt>) -> String {
   match action {
-    gunbc.membership_reconcile.MemberAdded { at: _, to: m } => concat("ADD timer-unit ", m.unit_name as String)
-    gunbc.membership_reconcile.MemberChanged { at: _, from: f, to: t } =>
+    MemberAdded { at: _, to: m } => concat("ADD timer-unit ", m.unit_name as String)
+    MemberChanged { at: _, from: f, to: t } =>
       concat(concat("CHANGE timer-unit ", f.unit_name as String), concat(" -> ", t.unit_name as String))
-    gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => concat("REMOVE timer-unit ", m.unit_name as String)
-    gunbc.membership_reconcile.MemberRemovalRefused { from: m, cause: c } =>
+    MemberRemoved { at: _, from: m } => concat("REMOVE timer-unit ", m.unit_name as String)
+    MemberRemovalRefused { from: m, cause: c } =>
       concat(
         concat("REFUSED-REMOVAL timer-unit ", m.unit_name as String),
         concat(" cause=", teardown_refusal_cause_label(cause: c)),
@@ -186,11 +186,11 @@ fn timer_action_line(action: gunbc.membership_reconcile.MemberAction<TimerRetire
 
 fn cap_action_line(action: gunbc.membership_reconcile.MemberAction<gunbc.host_axis_caps.CapMember, gunbc.host_axis_caps.CapMemberAt>) -> String {
   match action {
-    gunbc.membership_reconcile.MemberAdded { at: _, to: m } => concat("ADD cap ", m.dropin_path as String)
-    gunbc.membership_reconcile.MemberChanged { at: _, from: f, to: t } =>
+    MemberAdded { at: _, to: m } => concat("ADD cap ", m.dropin_path as String)
+    MemberChanged { at: _, from: f, to: t } =>
       concat(concat("CHANGE cap ", f.dropin_path as String), concat(" -> content drift"))
-    gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => concat("REMOVE cap ", m.dropin_path as String)
-    gunbc.membership_reconcile.MemberRemovalRefused { from: m, cause: c } =>
+    MemberRemoved { at: _, from: m } => concat("REMOVE cap ", m.dropin_path as String)
+    MemberRemovalRefused { from: m, cause: c } =>
       concat(
         concat("REFUSED-REMOVAL cap ", m.dropin_path as String),
         concat(" cause=", teardown_refusal_cause_label(cause: c)),
@@ -493,7 +493,7 @@ fn cap_apply_line(action: gunbc.membership_reconcile.MemberAction<gunbc.host_axi
   match action {
     gunbc.membership_reconcile.MemberAdded { at: _, to: m } => gunbc.host_axis_caps.cap_upsert_script(m: m)
     gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: t } => gunbc.host_axis_caps.cap_upsert_script(m: t)
-    gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => concat("rm -f ", m.dropin_path as String)
+    MemberRemoved { at: _, from: m } => concat("rm -f ", m.dropin_path as String)
     gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => ""
     gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
   }
@@ -504,7 +504,7 @@ data fleet_converge_cap_apply_shell_note: String = "Cap MemberAdded/Changed/Remo
 fn timer_apply_lines(plan: gunbc.membership_reconcile.MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> std.types.List<String> {
   flat_map(plan.actions, a =>
     match a {
-      gunbc.membership_reconcile.MemberRemoved { at: _, from: m } =>
+      MemberRemoved { at: _, from: m } =>
         [timer_retirement_disable_line(unit_name: m.unit_name), timer_retirement_remove_line(unit_name: m.unit_name)]
       gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => []
       gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []

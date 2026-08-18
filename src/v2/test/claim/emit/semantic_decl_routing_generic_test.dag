@@ -44,7 +44,7 @@ fn semantic_pair_record() -> Node {
 
 fn semantic_generic_emit_text(name: v2.std.node.Symbol, params: List<v2.std.node.Symbol>, node: Node) -> v2.std.diagnostic.Outcome<String> {
   match emit_semantic_type_decl(name: name, params: params, node: node, target: rust_target_model()) {
-    v2.std.diagnostic.Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
+    Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
     v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }

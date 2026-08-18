@@ -134,7 +134,7 @@ fn mlf_family_member_run(
     fixture_inputs: match_fixture_inputs(),
     run_args: rust_family_member_run_args(member_id: member_id)
   ) {
-    v2.std.diagnostic.Accepted { value: receipt, diagnostics: _ } =>
+    Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
         v2.std.diagnostic.Accepted {
           value: HostLogicalRun { stdout: stdout },
@@ -160,7 +160,7 @@ fn mlf_family_member_run_refused(
     fixture_inputs: match_fixture_inputs(),
     run_args: rust_family_member_run_args(member_id: member_id)
   ) {
-    v2.std.diagnostic.Accepted { value: receipt, diagnostics: _ } =>
+    Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
         v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
         v2.std.diagnostic.Rejected { diagnostics: _ } => true
@@ -453,7 +453,7 @@ test fn emit_on_demand_match_loop_fold_interpreter_roles_bounded_holds() -> Bool
 
 test fn emit_on_demand_match_loop_fold_schedule_refuses_unreadable_budget_holds() -> Bool {
   match match_primary_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       match witness_family_realize_width(
         bound_bytes: byte_size(count: 25),
         budget: BudgetUnreadable,

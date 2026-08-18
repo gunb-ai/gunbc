@@ -1173,7 +1173,7 @@ fn source_ir_node_artifact_provenance_from_model(
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<v2.std.artifact.NodeArtifactProvenance> {
   match source_ir_artifact_provenance_from_model(source_read: source_read, lm: lm) {
-    v2.std.diagnostic.Accepted { value: prov, diagnostics: _ } =>
+    Accepted { value: prov, diagnostics: _ } =>
       outcome_accepted(
         value: v2.std.artifact.NodeArtifactProvenance {
           node: prov.node,

@@ -247,7 +247,7 @@ data rust_add_emit_receipt: Outcome<Medium<String>> = anchor_rust_add_emit_accep
 
 test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
   match rust_add_emit_receipt {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }

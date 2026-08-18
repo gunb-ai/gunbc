@@ -48,7 +48,7 @@ fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagno
 
 test fn emit_directive_gha_error_emits_error_annotation_holds() -> Bool {
   match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+    Accepted { value: source, diagnostics: dg } =>
       (source.carried == emit_directive_gha_error_expected) && (dg == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
@@ -56,7 +56,7 @@ test fn emit_directive_gha_error_emits_error_annotation_holds() -> Bool {
 
 test fn emit_directive_gha_warning_emits_warning_annotation_holds() -> Bool {
   match emit_directive_gha_emit(d: emit_directive_gha_warning_example) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+    Accepted { value: source, diagnostics: dg } =>
       (source.carried == emit_directive_gha_warning_expected) && (dg == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
@@ -66,7 +66,7 @@ test fn emit_directive_gha_severity_variant_holds() -> Bool {
   match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
     v2.std.diagnostic.Accepted { value: se, diagnostics: _ } =>
       match emit_directive_gha_emit(d: emit_directive_gha_warning_example) {
-        v2.std.diagnostic.Accepted { value: sw, diagnostics: _ } => se.carried != sw.carried
+        Accepted { value: sw, diagnostics: _ } => se.carried != sw.carried
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
@@ -77,7 +77,7 @@ test fn emit_directive_gha_message_flows_holds() -> Bool {
   match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
     v2.std.diagnostic.Accepted { value: s1, diagnostics: _ } =>
       match emit_directive_gha_emit(d: emit_directive_gha_other_example) {
-        v2.std.diagnostic.Accepted { value: s2, diagnostics: _ } =>
+        Accepted { value: s2, diagnostics: _ } =>
           (s2.carried == emit_directive_gha_other_expected) && (s1.carried != s2.carried)
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
@@ -89,7 +89,7 @@ test fn emit_directive_gha_distinct_from_bash_holds() -> Bool {
   match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
     v2.std.diagnostic.Accepted { value: g, diagnostics: _ } =>
       match emit_directive_bash_emit(d: emit_directive_gha_error_example) {
-        v2.std.diagnostic.Accepted { value: b, diagnostics: _ } => g.carried != b.carried
+        Accepted { value: b, diagnostics: _ } => g.carried != b.carried
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
     v2.std.diagnostic.Rejected { diagnostics: _ } => false

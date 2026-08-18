@@ -127,7 +127,7 @@ fn runner_slot_provision_plan(
     base_dir_script: extdeps.github.actions_runner.actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
     upsert_extract_scripts: flat_map(membership.actions, a =>
       match a {
-        gunbc.membership_reconcile.MemberAdded { at: _, to: m } =>
+        MemberAdded { at: _, to: m } =>
           [extdeps.github.actions_runner.actions_runner_slot_extract_script(
             artifact: artifact,
             slot_dir: m.slot_dir,

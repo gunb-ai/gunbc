@@ -226,7 +226,7 @@ data go_add_emit_receipt: Outcome<Medium<String>> = anchor_go_add_emit_accepts()
 
 test fn go_add_emit_add_fn_accepts_holds() -> Bool {
   match go_add_emit_receipt {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == go_source_text) && (d == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }

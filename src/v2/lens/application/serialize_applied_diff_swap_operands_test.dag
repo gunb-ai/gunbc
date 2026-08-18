@@ -114,7 +114,7 @@ fn serialize_loop_patch_carrier_holds() -> Bool {
       match serialize_loop_authority_before_source() {
         v2.std.diagnostic.Accepted { value: authority_before, diagnostics: _ } =>
           match serialize_loop_authority_after_source() {
-            v2.std.diagnostic.Accepted { value: authority_after, diagnostics: _ } =>
+            Accepted { value: authority_after, diagnostics: _ } =>
               patch.before == authority_before
                 && patch.after == authority_after
                 && patch.before != patch.after

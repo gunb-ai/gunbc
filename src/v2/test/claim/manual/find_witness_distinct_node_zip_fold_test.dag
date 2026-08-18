@@ -160,7 +160,7 @@ test data witness_find_witness_distinct_node_accepts: Bool = match find_witness(
   predicate: distinct_exact_predicate(),
   multiplicity_policy: UniqueOnly
 ) {
-  v2.std.diagnostic.Accepted { value: fw, diagnostics: _ } => fw.candidate == distinct_target_add_node()
+  Accepted { value: fw, diagnostics: _ } => fw.candidate == distinct_target_add_node()
   v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
 test data witness_verify_witness_distinct_node_accepts: Bool = match verify_witness(
@@ -194,7 +194,7 @@ test data witness_find_witness_nested_distinct_node_accepts: Bool = match find_w
   predicate: distinct_nested_predicate(),
   multiplicity_policy: UniqueOnly
 ) {
-  v2.std.diagnostic.Accepted { value: fw, diagnostics: _ } => fw.candidate == distinct_target_nested_node()
+  Accepted { value: fw, diagnostics: _ } => fw.candidate == distinct_target_nested_node()
   v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
 fn distinct_grounding() -> v2.std.constraints.CanonicalGrounding {
@@ -214,7 +214,7 @@ test data witness_coercion_fold_distinct_node_accepts: Bool = match coercion_fol
   candidates: distinct_coercion_candidates(),
   policy: v2.std.find_witness.TargetDeclaredPriority { priority: distinct_target_add_node() }
 ) {
-  v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
+  Accepted { value: r, diagnostics: _ } =>
     (r.target == distinct_target_add_node()) && (quality_is_exact(q: r.quality) || quality_is_identity(q: r.quality))
   v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }

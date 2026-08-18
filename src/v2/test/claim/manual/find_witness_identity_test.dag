@@ -107,7 +107,7 @@ test data witness_find_witness_identity_accepts: Bool = match find_witness(
   predicate: exact_identity_predicate(),
   multiplicity_policy: UniqueOnly
 ) {
-  v2.std.diagnostic.Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
+  Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
   v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
 test data witness_find_witness_non_identity_rejects: Bool = rejected_for_no_candidate(
@@ -124,7 +124,7 @@ test data witness_find_witness_constraint_rule_accepts: Bool = match find_witnes
   predicate: constraint_predicate(),
   multiplicity_policy: UniqueOnly
 ) {
-  v2.std.diagnostic.Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
+  Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
   v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
 test data witness_find_witness_other_rule_rejects: Bool = rejected_for_not_realized(
@@ -207,7 +207,7 @@ test data witness_coercion_fold_identity_accepts: Bool = match coercion_fold(
   candidates: coercion_identity_candidates(),
   policy: v2.std.find_witness.TargetDeclaredPriority { priority: identity_source_node() }
 ) {
-  v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
+  Accepted { value: r, diagnostics: _ } =>
     (r.target == identity_source_node()) && quality_is_identity(q: r.quality)
   v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }

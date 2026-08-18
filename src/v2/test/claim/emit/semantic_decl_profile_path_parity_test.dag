@@ -13,7 +13,7 @@ test fn bundle_node_profile_matches_target_emission_profile() -> Bool {
       match semantic_decl_profile_lex_rules(profile: direct) {
         v2.std.diagnostic.Accepted { value: direct_lex, diagnostics: _ } =>
           match semantic_decl_emission_from_target(target: rust_target_model()) {
-            v2.std.diagnostic.Accepted { value: emission, diagnostics: _ } =>
+            Accepted { value: emission, diagnostics: _ } =>
               match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
                 v2.std.diagnostic.Accepted { value: emission_lex, diagnostics: _ } =>
                   match lex_literal(rules: direct_lex, token_class: ^rust_token_kw_enum) {
@@ -36,7 +36,7 @@ test fn bundle_node_profile_matches_target_emission_profile() -> Bool {
 
 test fn target_emission_lex_matches_live_for_kw_enum() -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
-    v2.std.diagnostic.Accepted { value: emission, diagnostics: _ } =>
+    Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
         v2.std.diagnostic.Accepted { value: decoded_lex, diagnostics: _ } =>
           match lex_literal(rules: decoded_lex, token_class: ^rust_token_kw_enum) {

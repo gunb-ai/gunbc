@@ -443,7 +443,7 @@ fn admit_import_root_find(
   match found {
     v2.std.diagnostic.Rejected { diagnostics: d } =>
       AdmissionRejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: imported_root, diagnostics: _ } =>
+    Accepted { value: imported_root, diagnostics: _ } =>
       if well_formed(n: imported_root.root) {
         admit_named_exports(
           root: imported_root.root,
@@ -616,7 +616,7 @@ fn namespace_for_subject(
           v2.std.diagnostic.Rejected {
             diagnostics: rejected_with_pending(pending: validate_diag, rejected: r)
           }
-        v2.std.diagnostic.Accepted { value: subject_module_root, diagnostics: _ } =>
+        Accepted { value: subject_module_root, diagnostics: _ } =>
           if well_formed(n: subject_module_root.root) {
             let base = admission_namespace_base(lm: lm)
             let initial = namespace_admission_initial_state(
@@ -698,7 +698,7 @@ fn resolve_with_admission_policy(
     active_roots: active_roots,
     policy: policy
   ) {
-    v2.std.diagnostic.Accepted { value: admitted, diagnostics: namespace_diag } =>
+    Accepted { value: admitted, diagnostics: namespace_diag } =>
       match resolve_with_namespace_policy(
         tree: admitted.subject_root,
         namespace: admitted.namespace,

@@ -2541,7 +2541,7 @@ fn decode_optional_projection_bundle_symbol_field(
   field: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Symbol>> {
   match find_named_child(root: bundle, name: field) {
-    v2.std.diagnostic.Accepted { value: child, diagnostics: d } =>
+    Accepted { value: child, diagnostics: d } =>
       match child.kind {
         TypeNode { connective: Atom { identity: id } } =>
           v2.std.diagnostic.Accepted { value: optional_present(value: id), diagnostics: d }
@@ -8050,7 +8050,7 @@ fn target_atom_realization_catalog_lookup_step(
     row_node: row_node,
     host_target_model: host_target_model
   ) {
-    v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
+    Accepted { value: row, diagnostics: _ } =>
       if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
         match acc {
           v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row_node }
@@ -8528,7 +8528,7 @@ fn target_function_signature_realization_catalog_lookup_step(
     row_node: row_node,
     host_target_model: host_target_model
   ) {
-    v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
+    Accepted { value: row, diagnostics: _ } =>
       if content_hash(n: row.source_carrier) == content_hash(n: source_carrier)
         && target_function_boundary_site_eq(a: row.boundary_site, b: boundary_site) {
         match acc {
@@ -9003,7 +9003,7 @@ fn target_type_expr_fold_named_metadata_edges(node: v2.std.node.Node) -> TargetT
 
 fn target_type_expr_emitted_surface_identity(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   match find_named_child(root: node, name: ^target_type_expr_field_surface) {
-    v2.std.diagnostic.Accepted { value: child, diagnostics: d } =>
+    Accepted { value: child, diagnostics: d } =>
       match child.kind {
         TypeNode { connective: Atom { identity: id } } =>
           v2.std.diagnostic.Accepted { value: id, diagnostics: d }
@@ -9936,7 +9936,7 @@ fn target_derive_supplemental_generic_bound_contract_catalog_insert_wire(
 ) -> v2.std.diagnostic.Outcome<TargetDeriveSupplementalGenericBoundContractCatalog> {
   match acc {
     v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    v2.std.diagnostic.Accepted { value: catalog, diagnostics: _ } =>
+    Accepted { value: catalog, diagnostics: _ } =>
       let derive_key = target_grounding_derive_trait_key(
         derive_trait: row.derive_trait
       )
@@ -11564,7 +11564,7 @@ fn target_reference_layer_probe_from_emitted_type(
   tokens: TargetReferenceLayerTokens
 ) -> TargetReferenceLayerProbe {
   match target_type_expr_emitted_wire_decode(node: emitted, projection: projection) {
-    v2.std.diagnostic.Accepted { value: wire, diagnostics: _ } =>
+    Accepted { value: wire, diagnostics: _ } =>
       match wire.kind {
         TargetTypeExprInstantiation =>
           match list_at_optional(
@@ -11899,7 +11899,7 @@ fn type_expr_projection_row_witness_gate_with_rule(
         },
         multiplicity_policy: UniqueOnly
       ) {
-        v2.std.diagnostic.Accepted { value: fw, diagnostics: d } =>
+        Accepted { value: fw, diagnostics: d } =>
           outcome_accepted(fw.candidate)
         v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
@@ -12027,7 +12027,7 @@ fn target_value_expr_add_signature_matches_for_target(
 
 fn target_value_expr_arrow_has_transform_body(arrow: v2.std.node.Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       match body.kind {
         ComputationNode { behavior: Transform } => true
         _ => false
@@ -12038,7 +12038,7 @@ fn target_value_expr_arrow_has_transform_body(arrow: v2.std.node.Node) -> Bool {
 
 fn target_value_expr_arrow_has_branch_body(arrow: v2.std.node.Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       match body.kind {
         ComputationNode { behavior: Branch } =>
           length(xs: node_positional_child_targets(node: body)) == 3
@@ -13280,7 +13280,7 @@ fn target_project_arrow_body_to_value_expression(
   handle_transform: fn(v2.std.node.Node, v2.std.node.Node, TargetModel) -> v2.std.diagnostic.Outcome<TargetValueExpression>
 ) -> v2.std.diagnostic.Outcome<TargetValueExpression> {
   match find_arrow_body_child(root: arrow) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       match body.kind {
         ComputationNode { behavior: Transform } =>
           if target_value_expr_field_access_gate(node: body) {

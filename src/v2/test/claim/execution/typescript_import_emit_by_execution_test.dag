@@ -184,7 +184,7 @@ fn ts_emit_import_from_carrier(carrier: Node) -> v2.std.diagnostic.Outcome<Mediu
 
 fn ts_import_emit_text(carrier: Node) -> String {
   match ts_emit_import_from_carrier(carrier: carrier) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    Accepted { value: source, diagnostics: _ } => source.carried
     v2.std.diagnostic.Rejected { diagnostics: _ } => "TS_IMPORT_EMIT_REJECTED"
   }
 }

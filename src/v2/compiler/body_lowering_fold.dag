@@ -1317,7 +1317,7 @@ fn body_lower_fold_children(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome
         match body_lower_fold(node: e.target) {
           v2.std.diagnostic.Rejected { diagnostics: cr } =>
             v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
-          v2.std.diagnostic.Accepted { value: child, diagnostics: cd } =>
+          Accepted { value: child, diagnostics: cd } =>
             v2.std.diagnostic.Accepted {
               value: node_rebuild(
                 n: shell,

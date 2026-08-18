@@ -72,7 +72,7 @@ fn program_assembly_fold_step(
       ProgramAssemblyFoldFailed { diagnostics: d }
     ProgramAssemblyFoldOk { roots: acc, index: idx } =>
       match program_assembly_read_to_normalized_root_prepared(read: read, lm: lm, prepared: prepared, residue: residue) {
-        v2.std.diagnostic.Accepted { value: root, diagnostics: _ } =>
+        Accepted { value: root, diagnostics: _ } =>
           match qualified_name_from_module_node(root: root.root) {
             v2.std.diagnostic.Accepted { value: qn, diagnostics: _ } =>
               ProgramAssemblyFoldOk {

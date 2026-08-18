@@ -9,7 +9,7 @@ fn gha_fold_oracle_job(job: extdeps.github.actions.Job) -> String {
 
 fn gha_fold_serialize_emitted(target: v2.std.compilers.target_model.TargetModel, emitted: Node) -> v2.std.diagnostic.Outcome<String> {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       match d {
         None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: v2.std.diagnostic.None }
         Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -25,7 +25,7 @@ fn gha_fold_fold_matches_oracle(job: extdeps.github.actions.Job) -> Bool {
       match gha_fold_job_emitted_witness(job: job) {
         Holds { value: emitted } =>
           match target_serialize_source_from_model(target: target, emitted: emitted) {
-            v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+            Accepted { value: source, diagnostics: d } =>
               (source.carried == oracle) && (d == v2.std.diagnostic.None)
             v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }

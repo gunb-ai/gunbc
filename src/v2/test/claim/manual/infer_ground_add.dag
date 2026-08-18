@@ -190,7 +190,7 @@ fn infer_receipt_case_pin(case: InferReceiptCase) -> v2.std.node.Symbol {
 
 fn infer_outcome_node_projection(actual: v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree>) -> v2.std.diagnostic.Outcome<Node> {
   match actual {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: ad } =>
+    Accepted { value: tree, diagnostics: ad } =>
       v2.std.diagnostic.Accepted { value: tree.root, diagnostics: ad }
     v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
@@ -205,7 +205,7 @@ fn infer_add_receipt_run(
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       v2.std.diagnostic.Accepted { value: expected, diagnostics: _ } =>
         match actual {
-          v2.std.diagnostic.Accepted { value: tree, diagnostics: ad } =>
+          Accepted { value: tree, diagnostics: ad } =>
             if outcome_node_eq(
               a: v2.std.diagnostic.Accepted { value: tree.root, diagnostics: ad },
               b: expected

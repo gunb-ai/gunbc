@@ -227,7 +227,7 @@ test fn dag_source_atom_projects_to_canonical_bool_literal() -> Bool {
     id: ^dag_token_kw_true,
     source_bool_form: blp_dag_source_bool_form()
   ) {
-    v2.std.diagnostic.Accepted { value: expr, diagnostics: _ } =>
+    Accepted { value: expr, diagnostics: _ } =>
       target_value_expr_is_bool_literal_expression(
         expr: expr,
         source_bool_form: blp_dag_source_bool_form()

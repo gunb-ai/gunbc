@@ -267,7 +267,7 @@ fn apply_sugar(rule: SugarRule, n: v2.std.node.Node, folded: v2.std.node.Node) -
         Present { value: captured } =>
           match sugar_fold_coproduct_pipe_chain(captured: captured, shell: n) {
             v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-            v2.std.diagnostic.Accepted { value: result, diagnostics: d } =>
+            Accepted { value: result, diagnostics: d } =>
               match result.kind {
                 TypeNode { connective: Disj } =>
                   v2.std.diagnostic.Accepted { value: result, diagnostics: d }

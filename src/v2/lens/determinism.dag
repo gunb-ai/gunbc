@@ -114,7 +114,7 @@ data compile_gate_law: String = "INTERIM CONTAINMENT, mechanically preventive fo
 
 fn local_determinism_findings(n: Node) -> List<v2.std.diagnostic.Diagnostic> {
   match local_determinism_axis(n: n) {
-    std.determinism.NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
+    NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
     std.determinism.Deterministic => []
   }
 }

@@ -60,14 +60,14 @@ fn emit_effect_call_source(expr: v2.std.compilers.target_model.TargetValueExpres
 
 fn ts_effect_write_call_source() -> String {
   match emit_effect_call_source(expr: ts_effect_write_call_expr()) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    Accepted { value: source, diagnostics: _ } => source.carried
     v2.std.diagnostic.Rejected { diagnostics: _ } => "EFFECT_EMIT_REJECTED"
   }
 }
 
 fn ts_effect_read_call_source() -> String {
   match emit_effect_call_source(expr: ts_effect_read_call_expr()) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    Accepted { value: source, diagnostics: _ } => source.carried
     v2.std.diagnostic.Rejected { diagnostics: _ } => "EFFECT_EMIT_REJECTED"
   }
 }

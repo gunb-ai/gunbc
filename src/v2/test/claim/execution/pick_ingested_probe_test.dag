@@ -159,11 +159,11 @@ fn pick_probe_normalized_has_branch_holds() -> Bool {
   match tokenize(text: pick_ingested_source, file: ^pick_probe_file, rules: lm.lex) {
     v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
       match parse_module(tokens: tokens, grammar: lm.grammar) {
-        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+        Accepted { value: artifact, diagnostics: _ } =>
           match normalize(parse_tree: artifact.tree) {
-            v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } =>
+            Accepted { value: normalized, diagnostics: _ } =>
               match find_arrow_body_child(root: pick_probe_find_arrow(root: normalized.root)) {
-                v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+                Accepted { value: body, diagnostics: _ } =>
                   match body.kind {
                     ComputationNode { behavior: Branch } => true
                     _ => false

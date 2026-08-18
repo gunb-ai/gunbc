@@ -87,11 +87,11 @@ fn pick_ingested_find_arrow_in_module(root: v2.std.node.Node) -> Optional<v2.std
 
 fn pick_ingested_normalized_arrow_has_branch_body(source: String) -> Bool {
   match pick_ingested_normalized_module_from_source(source: source) {
-    v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } =>
+    Accepted { value: normalized, diagnostics: _ } =>
       match pick_ingested_find_arrow_in_module(root: normalized.root) {
         Present { value: arrow } =>
           match find_arrow_body_child(root: arrow) {
-            v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+            Accepted { value: body, diagnostics: _ } =>
               match body.kind {
                 ComputationNode { behavior: Branch } => true
                 _ => false
@@ -149,7 +149,7 @@ fn pick_ingested_normalized_branch_arms_magnitude_holds(
   else_mag: Int
 ) -> Bool {
   match pick_ingested_normalized_module_from_source(source: source) {
-    v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } =>
+    Accepted { value: normalized, diagnostics: _ } =>
       match pick_ingested_find_arrow_in_module(root: normalized.root) {
         Present { value: arrow } =>
           match find_arrow_body_child(root: arrow) {

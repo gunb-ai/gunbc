@@ -161,7 +161,7 @@ test fn bind_ingest_via_coerce_matches_canonical() -> Bool {
     tree: bind_inferred_tree,
     target: bind_target_model
   ) {
-    v2.std.diagnostic.Accepted { value: result, diagnostics: d } =>
+    Accepted { value: result, diagnostics: d } =>
       (result.target == dag_fixture_emitted_bind_fn)
         && bind_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)

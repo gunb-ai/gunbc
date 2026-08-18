@@ -22,7 +22,7 @@ test fn orch_run_bare_emits_command_holds() -> Bool {
     root: bash_word_pass_emitted,
     target: bash_word_pass_target_model(spelling: "cargo build -p v1-compiler --release --bins")
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+    Accepted { value: source, diagnostics: dg } =>
       (source.carried == "cargo build -p v1-compiler --release --bins") && (dg == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
@@ -37,7 +37,7 @@ test fn orch_run_env_prefix_derived_from_intent_holds() -> Bool {
       command: "cargo build -p v1-compiler --release --bins"
     )
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+    Accepted { value: source, diagnostics: dg } =>
       (source.carried == "CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --bins")
         && (dg == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
@@ -53,7 +53,7 @@ test fn orch_run_env_value_has_teeth_holds() -> Bool {
       command: "cargo build -p v1-compiler --release --bins"
     )
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
+    Accepted { value: source, diagnostics: _ } =>
       source.carried != "CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --bins"
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
@@ -67,7 +67,7 @@ test fn orch_run_env_unset_emits_env_u_holds() -> Bool {
       command: "cargo build -p v1-compiler --release --bins"
     )
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+    Accepted { value: source, diagnostics: dg } =>
       (source.carried == "env -u RUSTC_WRAPPER cargo build -p v1-compiler --release --bins")
         && (dg == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
@@ -78,7 +78,7 @@ test fn orch_bash_test_str_empty_row_holds() -> Bool {
   match bash_test_str_empty_target_model(operand: "\"$1\"") {
     v2.std.diagnostic.Accepted { value: target, diagnostics: _ } =>
       match orch_emit_bash(root: bash_test_str_empty_emitted, target: target) {
-        v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+        Accepted { value: source, diagnostics: dg } =>
           (source.carried == "[ -z \"$1\" ]") && (dg == v2.std.diagnostic.None)
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
@@ -90,7 +90,7 @@ test fn orch_bash_test_str_nonempty_row_holds() -> Bool {
   match bash_test_str_nonempty_target_model(operand: "\"$ctrl_pin\"") {
     v2.std.diagnostic.Accepted { value: target, diagnostics: _ } =>
       match orch_emit_bash(root: bash_test_str_nonempty_emitted, target: target) {
-        v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+        Accepted { value: source, diagnostics: dg } =>
           (source.carried == "[ -n \"$ctrl_pin\" ]") && (dg == v2.std.diagnostic.None)
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
@@ -105,7 +105,7 @@ test fn orch_bash_log_matches_grep_row_holds() -> Bool {
   ) {
     v2.std.diagnostic.Accepted { value: target, diagnostics: _ } =>
       match orch_emit_bash(root: bash_log_matches_grep_emitted, target: target) {
-        v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+        Accepted { value: source, diagnostics: dg } =>
           (source.carried == "grep -qiE 'EAGAIN|Resource temporarily unavailable' \"$BUILD_LOG\"")
             && (dg == v2.std.diagnostic.None)
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
@@ -118,7 +118,7 @@ test fn orch_bash_stmt_if_row_holds() -> Bool {
   match bash_stmt_if_target_model(cond: "[ -z \"$1\" ]", body: "verdict=absent") {
     v2.std.diagnostic.Accepted { value: target, diagnostics: _ } =>
       match orch_emit_bash(root: bash_stmt_if_emitted, target: target) {
-        v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+        Accepted { value: source, diagnostics: dg } =>
           (source.carried == "if [ -z \"$1\" ]; then verdict=absent; fi") && (dg == v2.std.diagnostic.None)
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
@@ -133,7 +133,7 @@ test fn orch_bash_stmt_if_block_row_holds() -> Bool {
   ) {
     v2.std.diagnostic.Accepted { value: target, diagnostics: _ } =>
       match orch_emit_bash(root: bash_stmt_if_block_emitted, target: target) {
-        v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+        Accepted { value: source, diagnostics: dg } =>
           (source.carried == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nfi") && (dg == v2.std.diagnostic.None)
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
@@ -149,7 +149,7 @@ test fn orch_bash_stmt_if_else_block_row_holds() -> Bool {
   ) {
     v2.std.diagnostic.Accepted { value: target, diagnostics: _ } =>
       match orch_emit_bash(root: bash_stmt_if_else_block_emitted, target: target) {
-        v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+        Accepted { value: source, diagnostics: dg } =>
           (source.carried == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nelse\nverdict=present\necho \"$verdict\"\nfi") && (dg == v2.std.diagnostic.None)
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
@@ -162,7 +162,7 @@ test fn orch_bash_stmt_andor_row_holds() -> Bool {
     root: bash_stmt_andor_emitted,
     target: bash_stmt_andor_target_model(left: "[ -z \"$1\" ]", op: "&&", right: "[ -n \"$2\" ]")
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+    Accepted { value: source, diagnostics: dg } =>
       (source.carried == "[ -z \"$1\" ] && [ -n \"$2\" ]") && (dg == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
@@ -176,7 +176,7 @@ test fn orch_bash_cmdsubst_assign_row_holds() -> Bool {
       body: "converge_read_gunbc_host_pin \"$checkout\""
     )
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
+    Accepted { value: source, diagnostics: dg } =>
       (source.carried == "dag_pin=\"$(converge_read_gunbc_host_pin \"$checkout\")\"")
         && (dg == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false

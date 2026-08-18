@@ -18,7 +18,7 @@ fn ingest(source_text: String, file: v2.std.node.Symbol) -> Optional<Node> {
     v2.std.diagnostic.Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
         v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
-        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+        Accepted { value: artifact, diagnostics: _ } =>
           match normalize(parse_tree: artifact.tree) {
             v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
             v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } => Present { value: tree }

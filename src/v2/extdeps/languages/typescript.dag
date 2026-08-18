@@ -853,7 +853,7 @@ fn ts_task_serialize_source_children() -> List<v2.std.node.Edge> {
 
 fn ts_grammar_relation_row_token_edges_witness(row: v2.std.node.Node) -> Witness<List<v2.std.node.Edge>> {
   match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
-    v2.std.diagnostic.Accepted { value: tokens_root, diagnostics: _ } =>
+    Accepted { value: tokens_root, diagnostics: _ } =>
       match tokens_root.kind {
         TypeNode { connective: Conj } => v2.std.witness.Holds { value: tokens_root.children }
         _ =>

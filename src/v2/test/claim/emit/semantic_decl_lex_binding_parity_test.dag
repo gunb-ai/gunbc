@@ -11,7 +11,7 @@ fn binding_spelling(m: Map<v2.std.node.Symbol, String>, binding: v2.std.node.Sym
 
 fn lex_pair_matches(token_class: v2.std.node.Symbol) -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
-    v2.std.diagnostic.Accepted { value: emission, diagnostics: _ } =>
+    Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
         v2.std.diagnostic.Accepted { value: decoded_lex, diagnostics: _ } =>
           match lex_literal(rules: decoded_lex, token_class: token_class) {
@@ -30,7 +30,7 @@ fn lex_pair_matches(token_class: v2.std.node.Symbol) -> Bool {
 
 fn binding_pair_matches(binding: v2.std.node.Symbol) -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
-    v2.std.diagnostic.Accepted { value: emission, diagnostics: _ } =>
+    Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_binding_spellings(profile: emission.enum_serialize_profile) {
         v2.std.diagnostic.Accepted { value: decoded_bindings, diagnostics: _ } =>
           match binding_spelling(m: decoded_bindings, binding: binding) {

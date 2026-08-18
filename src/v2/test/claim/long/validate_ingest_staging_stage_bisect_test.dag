@@ -153,7 +153,7 @@ fn bisect_parse_module_add_well_formed_after_normalize() -> Bool {
       match parse(tokens: token_stream, grammar: lm.grammar) {
         v2.std.diagnostic.Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
-            v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } => well_formed(n: normalized.root)
+            Accepted { value: normalized, diagnostics: _ } => well_formed(n: normalized.root)
             v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
         v2.std.diagnostic.Rejected { diagnostics: _ } => false

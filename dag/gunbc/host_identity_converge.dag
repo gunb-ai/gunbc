@@ -167,7 +167,7 @@ fn host_identity_unprivileged_refusal_has_no_marker(
   marker: String,
 ) -> Bool {
   match r {
-    std.realization_reconcile.NotConverged { reason: why, applied: intent } =>
+    NotConverged { reason: why, applied: intent } =>
       !string_contains(s: why, pattern: marker)
         && match intent.privilege_denial {
           Present { value: Deny { refusal: _ } } => true
@@ -181,7 +181,7 @@ fn host_identity_privilege_denial_reason(
   r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>,
 ) -> String {
   match r {
-    std.realization_reconcile.NotConverged { reason: why, applied: intent } =>
+    NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
         Present { value: d } => deploy_access_decision_reason(d: d)
         Absent => why

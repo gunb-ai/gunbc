@@ -23,7 +23,7 @@ fn normalize_fold_step(acc: v2.std.diagnostic.Outcome<v2.std.node.Node>, edge: v
           v2.std.diagnostic.Rejected {
             diagnostics: rejected_with_pending(pending: ad, rejected: cr)
           }
-        v2.std.diagnostic.Accepted { value: child_node, diagnostics: cd } =>
+        Accepted { value: child_node, diagnostics: cd } =>
           v2.std.diagnostic.Accepted {
             value: node_rebuild(
               n: shell,

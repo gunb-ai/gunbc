@@ -34,7 +34,7 @@ fn pbf_normalized_add_module() -> v2.std.diagnostic.Outcome<v2.compiler.normaliz
 
 fn pbf_normalized_add_arrow() -> Optional<Node> {
   match pbf_normalized_add_module() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: tree.root)
     v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
   }
@@ -59,7 +59,7 @@ fn pbf_resolved_add_arrow() -> Optional<Node> {
 
 fn pbf_arrow_body_operand_lexeme(arrow: Node, index: Int) -> Optional<String> {
   match find_arrow_body_child(root: arrow) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       match list_at_optional(xs: body.children, index: index) {
         Present { value: e } =>
           match node_atom_identity_optional(node: e.target) {
@@ -74,7 +74,7 @@ fn pbf_arrow_body_operand_lexeme(arrow: Node, index: Int) -> Optional<String> {
 
 fn pbf_arrow_body_operand_id(arrow: Node, index: Int) -> Optional<v2.std.node.Symbol> {
   match find_arrow_body_child(root: arrow) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       match list_at_optional(xs: body.children, index: index) {
         Present { value: e } => node_atom_identity_optional(node: e.target)
         Absent => Absent

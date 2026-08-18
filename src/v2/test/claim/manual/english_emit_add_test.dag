@@ -118,7 +118,7 @@ data english_emit_add_receipt: Outcome<Medium<String>> = anchor_english_emit_add
 
 test fn english_emit_add_prose_holds() -> Bool {
   match english_emit_add_receipt {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == english_add_fn_source_text) && (d == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }

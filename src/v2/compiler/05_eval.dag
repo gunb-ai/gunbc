@@ -1260,7 +1260,7 @@ fn eval_transform_has_callee_reference(node: v2.std.node.Node) -> Bool {
         wanted: 0,
         absent_reason: ^eval_rejected_callee_absent
       ) {
-        v2.std.diagnostic.Accepted { value: e0, diagnostics: _ } =>
+        Accepted { value: e0, diagnostics: _ } =>
           match e0.label {
             Positional => eval_node_is_callee_reference(node: e0.target)
             Named { name: _ } => false

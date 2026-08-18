@@ -174,7 +174,7 @@ fn ingested_arrow_has_match_body(source: String) -> Bool {
   match ingested_arrow_from_source(source: source) {
     v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
-        v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+        Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Match } => true
             _ => false

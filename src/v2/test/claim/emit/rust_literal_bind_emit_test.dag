@@ -38,7 +38,7 @@ fn rust_literal_bind_int_wrong_emit_from_producer(target: v2.std.compilers.targe
 
 test fn rust_literal_bind_int_emit_accepts() -> Bool {
   match rust_literal_bind_int_emit_from_producer(target: rust_bind_literal_target_model()) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_int_literal_source_text) && (d == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
@@ -48,7 +48,7 @@ test fn rust_literal_bind_int_wrong_value_discriminates() -> Bool {
   match rust_literal_bind_int_emit_from_producer(target: rust_bind_literal_target_model()) {
     v2.std.diagnostic.Accepted { value: canonical, diagnostics: dc } =>
       match rust_literal_bind_int_wrong_emit_from_producer(target: rust_bind_literal_target_model()) {
-        v2.std.diagnostic.Accepted { value: wrong, diagnostics: dw } =>
+        Accepted { value: wrong, diagnostics: dw } =>
           (wrong.carried == rust_bind_int_literal_wrong_source_text) &&
           (wrong.carried != canonical.carried) &&
           (dc == v2.std.diagnostic.None) &&
@@ -64,7 +64,7 @@ test fn rust_literal_bind_bool_emit_accepts() -> Bool {
     root: rust_bind_bool_literal_arrow_node(),
     target: rust_bind_literal_target_model()
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_bool_literal_source_text) && (d == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
@@ -80,7 +80,7 @@ test fn rust_literal_bind_bool_wrong_value_discriminates() -> Bool {
         root: rust_bind_bool_literal_wrong_arrow_node(),
         target: rust_bind_literal_target_model()
       ) {
-        v2.std.diagnostic.Accepted { value: wrong, diagnostics: dw } =>
+        Accepted { value: wrong, diagnostics: dw } =>
           (wrong.carried == rust_bind_bool_literal_wrong_source_text) &&
           (wrong.carried != canonical.carried) &&
           (dc == v2.std.diagnostic.None) &&
@@ -96,7 +96,7 @@ test fn rust_literal_bind_char_emit_accepts() -> Bool {
     root: rust_bind_char_literal_arrow_node(),
     target: rust_bind_literal_target_model()
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_char_literal_source_text) && (d == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
@@ -112,7 +112,7 @@ test fn rust_literal_bind_char_wrong_value_discriminates() -> Bool {
         root: rust_bind_char_literal_wrong_arrow_node(),
         target: rust_bind_literal_target_model()
       ) {
-        v2.std.diagnostic.Accepted { value: wrong, diagnostics: dw } =>
+        Accepted { value: wrong, diagnostics: dw } =>
           (wrong.carried == rust_bind_char_literal_wrong_source_text) &&
           (wrong.carried != canonical.carried) &&
           (dc == v2.std.diagnostic.None) &&

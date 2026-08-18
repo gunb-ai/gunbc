@@ -485,7 +485,7 @@ fn testgen_emit_algebra_law_claim(
     }
   } else {
     match algebra_law_manual_claim_case(anchor: anchor) {
-      v2.std.diagnostic.Accepted { value: law_case, diagnostics: None } =>
+      Accepted { value: law_case, diagnostics: None } =>
         v2.std.diagnostic.Accepted {
           value: v2.std.verification.EqualsClaim {
             label: label,

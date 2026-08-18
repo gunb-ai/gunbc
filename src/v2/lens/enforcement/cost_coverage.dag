@@ -247,7 +247,7 @@ fn cost_coverage_ingest_source_text(
       match parse_module(tokens: ts, grammar: lm.grammar) {
         v2.std.diagnostic.Rejected { diagnostics: d } =>
           v2.std.diagnostic.Rejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+        Accepted { value: artifact, diagnostics: _ } =>
           normalize(parse_tree: artifact.tree)
       }
   }
@@ -280,7 +280,7 @@ fn cost_coverage_file_receipt(rel_path: String) -> CostCoverageFileReceipt {
         stage: "ingest",
         reason: d.head.reason
       )
-    v2.std.diagnostic.Accepted { value: module_root, diagnostics: _ } =>
+    Accepted { value: module_root, diagnostics: _ } =>
       cost_coverage_file_receipt_from_module(rel_path: rel_path, module_root: module_root.root)
   }
 }

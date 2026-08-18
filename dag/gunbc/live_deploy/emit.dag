@@ -101,7 +101,7 @@ fn ensure_apt_package_step(pkg: std.types.NonEmptyStr, privileged: std.types.Boo
 
 fn emit_pipeline_or_poison(p: v2.std.orchestration.Pipeline, refused: String) -> String {
   match v2.compiler.emit_orchestration.orch_emit_pipeline(p: p, medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       match d {
         v2.std.diagnostic.None => source.carried
         Some { diagnostics: _ } => refused

@@ -137,7 +137,7 @@ test fn dag_add_ingest_via_coerce_matches_canonical() -> Bool {
     tree: dag_add_inferred_tree,
     target: dag_add_target_model
   ) {
-    v2.std.diagnostic.Accepted { value: result, diagnostics: d } =>
+    Accepted { value: result, diagnostics: d } =>
       (result.target == dag_fixture_emitted_add_fn)
         && dag_add_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)

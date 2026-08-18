@@ -55,7 +55,7 @@ fn emit_variant_construct_eval_variant_tag_id(node: v2.std.node.Node) -> v2.std.
     TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
     TypeNode { connective: Conj } =>
       match find_named_child(root: node, name: ^dag_binding_type_variant_holds) {
-        v2.std.diagnostic.Accepted { value: tag_node, diagnostics: _ } =>
+        Accepted { value: tag_node, diagnostics: _ } =>
           match tag_node.kind {
             TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
             _ =>

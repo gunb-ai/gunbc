@@ -37,7 +37,7 @@ fn translate_underived_value_node() -> Node {
 
 fn translate_underived_value_specimen_facts() -> Optional<v2.compiler.infer.InferredFacts> {
   match infer(tree: translate_underived_value_specimen) {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       tree.facts.lookup(translate_underived_value_specimen)
     v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
   }
@@ -93,7 +93,7 @@ fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
 
 fn translate_bodyless_emission_root_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match infer(tree: python_emitted_add_fn_node()) {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } => tree.facts.lookup(node)
+    Accepted { value: tree, diagnostics: _ } => tree.facts.lookup(node)
     v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
   }
 }
@@ -334,7 +334,7 @@ fn translate_accepts_derived_rust_add_tree() -> Bool {
 
 fn translate_derived_emit_byte_identical_to_before() -> Bool {
   match emit(tree: rust_add_inferred_tree, target: rust_target_model()) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+    Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }

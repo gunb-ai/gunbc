@@ -590,7 +590,7 @@ fn selected_logic_execution_holds(
   ) {
     v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
       match observe_selected_bundle_native(workspace: workspace, source: source) {
-        v2.std.diagnostic.Accepted { value: observation, diagnostics: _ } =>
+        Accepted { value: observation, diagnostics: _ } =>
           match selected_logic_stdout(receipt: observation.cold) {
             Present { value: cold_stdout } =>
               match selected_logic_stdout(receipt: observation.warm) {
@@ -673,7 +673,7 @@ fn selected_logic_discriminating_red_evidence() -> List<std.selected_witness_bun
   ) {
     v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
       match observe_selected_bundle_native(workspace: workspace, source: source) {
-        v2.std.diagnostic.Accepted { value: observation, diagnostics: _ } =>
+        Accepted { value: observation, diagnostics: _ } =>
           match selected_logic_stdout(receipt: observation.cold) {
             Present { value: cold_stdout } =>
               match selected_logic_stdout(receipt: observation.warm) {
