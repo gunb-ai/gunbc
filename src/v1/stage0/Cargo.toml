@@ -58,6 +58,11 @@ name = "regen_stage0"
 path = "src/bin/regen_stage0.rs"
 # cache-bust-v2-binary-20260526
 
+# Non-mutating stage0 regen CI receipt: first-generation sync + fixed-point proof.
+[[bin]]
+name = "stage0_regen_receipt"
+path = "src/bin/stage0_regen_receipt.rs"
+
 [[bin]]
 name = "cssl_assemble"
 path = "src/bin/cssl_assemble.rs"

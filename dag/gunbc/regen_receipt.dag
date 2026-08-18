@@ -1,0 +1,34 @@
+module gunbc.regen_receipt
+
+import std.types { String, Int, List, Bool }
+
+data regen_receipt_note: String = "THE TYPED RECEIPT FOR A NON-MUTATING STAGE0 REGEN VERIFY RUN. regen_stage0 also writes a JSON bootstrap timing file on disk; that artifact is a host-side convenience, not this authority. The host binary stage0_regen_receipt materializes this carrier at runtime: it performs main_wet (in CI, as a separate preceding step), first-generation emit-fresh against the committed seed, rebuilds regen_stage0 from the candidate crate, re-emits to prove fixed-point stability, and writes every field below. first_generation_equal and fixed_point_equal are DISTINCT questions and must never collapse."
+
+type RegenReceipt {
+  commit_sha: String
+  authority_digest: String
+  committed_generated_digest: String
+  candidate_generated_digest: String
+  first_generation_equal: Bool
+  fixed_point_equal: Bool
+  changed_paths: List<String>
+  candidate_artifact: String
+}
+
+data stage0_regen_candidate_dir_rel: String = "target/stage0-regen-candidate"
+
+data stage0_regen_receipt_rel: String = "target/stage0-regen-receipt.json"
+
+data stage0_regen_candidate_artifact_name: String = "stage0-regen-candidate"
+
+data stage0_regen_receipt_artifact_name: String = "stage0-regen-receipt"
+
+data stage0_regen_witness_bin_name: String = "stage0_regen_receipt"
+
+data stage0_regen_main_wet_entry: String = "dag/tools/generated_artifact_gate.dag"
+
+data stage0_regen_main_wet_function: String = "main_wet"
+
+fn stage0_regen_receipt_is_green(receipt: RegenReceipt) -> Bool {
+  receipt.first_generation_equal && receipt.fixed_point_equal
+}

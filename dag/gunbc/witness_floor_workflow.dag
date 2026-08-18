@@ -11,12 +11,23 @@ import extdeps.github.actions {
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
   RunnerSpec,
-  checkout_action, setup_rust_action
+  checkout_action, setup_rust_action,
+  upload_artifact_action
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.regen_receipt {
+  stage0_regen_candidate_artifact_name,
+  stage0_regen_candidate_dir_rel,
+  stage0_regen_main_wet_entry,
+  stage0_regen_main_wet_function,
+  stage0_regen_receipt_artifact_name,
+  stage0_regen_receipt_rel,
+  stage0_regen_witness_bin_name,
+}
+import v2.workflow.ci_regen_rustfmt_path_emit { ci_regen_ensure_rustfmt_path_script }
 import std.types { List, String, Int }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
@@ -28,11 +39,10 @@ import std.types { List, String, Int }
 // batches, workers and a coordinator. None of it is re-derived here, because none of it follows
 // from the obligation this workflow discharges.
 //
-// The obligation is exactly one sentence: every test witness in the repository executes, on
-// every push and pull request, and the run is red if any of them is. From that, one job:
-// check out the tree, install the toolchain, build the one binary that folds the witnesses, run
-// it once. There is no second job, so there is nothing to sequence, nothing to hand an artifact
-// to, and no `needs` edge to get wrong.
+// The obligation is exactly one sentence for the witness fold: every test witness in the
+// repository executes, on every push and pull request, and the run is red if any of them is.
+// A second parallel job restores non-mutating stage0 regen verification; the two jobs share
+// triggers and concurrency but no `needs` edge.
 //
 // WHAT IS DELIBERATELY ABSENT, so that a later reader does not restore it as an oversight:
 // heal, the generated-artifact drift gates, the seven effect gates, the fmt gate,
@@ -41,39 +51,16 @@ import std.types { List, String, Int }
 // operator agreement. Their absence here is the declared state of the ladder, not a gap in this
 // module.
 //
-// REGEN IS ABSENT FOR A DIFFERENT REASON AND DOES NOT RETURN (operator ruling, 2026-08-15,
-// landed on integration/v1-cut at eebdeca813 -- 71 files, 62,261 lines deleted). This list named
-// regen as an unmet obligation awaiting its turn; that is no longer true, because its SUBJECT is
-// deleted. `regen_stage0` went with the whole v1 .dag compiler authority and its 142-entry
-// emit-plan roster. The emitted Rust under src/v1/stage0/src is retained and frozen -- every .rs
-// is committed, so a clone still builds with rustc alone -- and what died is the loop that kept
-// those files in sync with a .dag authority that no longer exists. Deleting regen in the same
-// commit was load-bearing rather than tidy: left standing, it would have computed an empty emit
-// set against the deleted authority and deleted the 142 frozen files, so the regrowth trap
-// pointed at the seed itself. A regen job, a regen verify gate, a self-host staleness gate and a
-// regen affected-set skip witness are therefore all off this queue permanently; each had exactly
-// one subject. The consequence for this fold is that no second required CI path competes with it
-// for the floor budget.
-//
-// THAT RETIREMENT IS ORDER-DEPENDENT, and the paragraph above states it in a settled present
-// tense it has not earned (corrected 2026-08-15, cross-branch review). `regen_stage0` and its
-// roster are deleted on integration/v1-cut and ALIVE on main. So "its subject is deleted" is true
-// on that branch and not yet true of the repository, and the retirement above discharges only if
-// v1-cut reaches main. If this cut lands FIRST, main carries a live regen authority with no
-// required job invoking it -- which is a real gap someone must own, not the settled absence the
-// paragraph describes -- and if v1-cut never lands, the item returns to the queue as an ordinary
-// unmet obligation rather than a retired one. This is the same branch-dependent-population defect
-// already declared on the src/v1 coverage gap row, and it is recorded here because a reader
-// checking main and a reader checking the cut branch would otherwise disagree about whether this
-// obligation exists at all. Whichever cut merges second owns the reconciliation.
-//
-// THE DRIFT GATES DO NOT RIDE ON THIS. Measured on the v1-cut branch: heal_generated_artifacts
-// PASSES while regen is RED. So "the regen fixed point and the generated-artifact drift gates"
-// is two obligations with two subjects, and only the regen half is order-dependent. The drift
-// gates stay on the queue above unconditionally, and a future reader must not retire them by
-// association when the regen half retires.
+// REGEN RETURNS AS A PARALLEL NON-MUTATING JOB (floor-cut re-add queue item 3, 2026-08-17).
+// `regen_stage0` is alive on main; the floor cut left no required job invoking it. This workflow
+// restores verification as a second job beside the witness fold: same workflow trigger and
+// concurrency group, no `needs` edge between the two jobs, and a verify-only invocation that
+// never writes the committed seed. The typed receipt authority is gunbc.regen_receipt RegenReceipt;
+// heal, merge-admission stamping, and the old regen-floor skip witness stay off this emission.
 
 data witness_floor_workflow_job_id: String = "witnesses"
+
+data stage0_regen_workflow_job_id: String = "stage0_regen"
 
 data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.ref }}"
 
@@ -198,6 +185,157 @@ fn witness_floor_run_step() -> Step {
 // RESTORATION TRIGGER: the first run that completes this fold. Its wall time is the real
 // measurement, and this constant is replaced by one derived from it -- at which point this
 // note dissolves with the provisional bound it explains.
+data stage0_regen_job_timeout_minutes: Int = 30
+
+data stage0_regen_verify_step_timeout_minutes: Int = 15
+
+fn stage0_regen_build_script() -> String {
+  concat(
+    "cargo build --release -p v1-compiler --bin gunbc --bin regen_stage0 --bin ",
+    concat(stage0_regen_witness_bin_name, "\n")
+  )
+}
+
+fn stage0_regen_build_step() -> Step {
+  RunStep {
+    name: Present { value: "Build regen tools" },
+    id: none,
+    run: stage0_regen_build_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn stage0_regen_main_wet_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      "\"$ROOT/target/release/gunbc\" run --source-root \"$ROOT/dag\" --source-root \"$ROOT/src/v2\" --entry \"$ROOT/",
+      concat(
+        concat(stage0_regen_main_wet_entry, "\" --function "),
+        concat(stage0_regen_main_wet_function, "\n")
+      )
+    )
+  )
+}
+
+fn stage0_regen_main_wet_step() -> Step {
+  RunStep {
+    name: Present { value: "Regenerate derived projections (main_wet)" },
+    id: none,
+    run: stage0_regen_main_wet_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn stage0_regen_receipt_run_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(ci_regen_ensure_rustfmt_path_script(), "\n"),
+    concat(
+      "\"$ROOT/target/release/",
+      concat(
+        stage0_regen_witness_bin_name,
+        concat(
+          "\" --candidate-dir \"",
+          concat(
+            stage0_regen_candidate_dir_rel,
+            concat("\" --receipt \"", concat(stage0_regen_receipt_rel, "\"\n"))
+          )
+        )
+      )
+    )
+  )
+}
+
+fn stage0_regen_receipt_step() -> Step {
+  RunStep {
+    name: Present { value: "Stage0 regen receipt (non-mutating)" },
+    id: none,
+    run: stage0_regen_receipt_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: stage0_regen_verify_step_timeout_minutes }
+  }
+}
+
+fn stage0_regen_upload_candidate_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload stage0 regen candidate artifact" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: stage0_regen_candidate_artifact_name)),
+        kv(key: "path", value: yaml_string(s: stage0_regen_candidate_dir_rel)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+        kv(key: "retention-days", value: yaml_int(n: 3))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn stage0_regen_upload_receipt_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload stage0 regen receipt" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: stage0_regen_receipt_artifact_name)),
+        kv(key: "path", value: yaml_string(s: stage0_regen_receipt_rel)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+        kv(key: "retention-days", value: yaml_int(n: 3))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn stage0_regen_job() -> Job {
+  Job {
+    id: stage0_regen_workflow_job_id,
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    steps: [
+      witness_floor_checkout_step(),
+      witness_floor_toolchain_step(),
+      stage0_regen_build_step(),
+      stage0_regen_main_wet_step(),
+      stage0_regen_receipt_step(),
+      stage0_regen_upload_candidate_step(),
+      stage0_regen_upload_receipt_step()
+    ],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: stage0_regen_job_timeout_minutes,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
 fn witness_floor_job() -> Job {
   Job {
     id: witness_floor_workflow_job_id,
@@ -249,7 +387,7 @@ data witness_floor_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [witness_floor_job()]
+  jobs: [witness_floor_job(), stage0_regen_job()]
 }
 
 fn expected_witness_floor_yml() -> String {

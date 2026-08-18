@@ -31,3 +31,57 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/claim_executor" --required-floor --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
+  stage0_regen:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      - name: Build regen tools
+        run: |
+          cargo build --release -p v1-compiler --bin gunbc --bin regen_stage0 --bin stage0_regen_receipt
+      - name: Regenerate derived projections (main_wet)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry "$ROOT/dag/tools/generated_artifact_gate.dag" --function main_wet
+      - name: Stage0 regen receipt (non-mutating)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          # 🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH ensure for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); control flow is If/Predicate/Exit/Let via orch bash-emit; leaf test -x / command -v / export PATH / dirname strings remain until FileExists + session-EnvExport (PR2b) or the regen job shares isolate+pin by construction; DISSOLVES WHEN rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)
+          # Prepend a locatable rustfmt dir onto PATH before regen_stage0's standalone rustfmt spawn (hosts that expose a cargo shim without CARGO_HOME/bin — receipt CI #7290 srv3-03). Probe order: CARGO_HOME/bin, /opt/cargo/bin, HOME/.cargo/bin, rustup which; refuse if still absent.
+          if [ -n "$CARGO_HOME" ] && [ -x "$CARGO_HOME/bin/rustfmt" ]; then export PATH="$CARGO_HOME/bin:$PATH"; fi
+          if ! command -v rustfmt >/dev/null 2>&1 && [ -x /opt/cargo/bin/rustfmt ]; then export PATH="/opt/cargo/bin:$PATH"; fi
+          if ! command -v rustfmt >/dev/null 2>&1 && [ -x "$HOME/.cargo/bin/rustfmt" ]; then export PATH="$HOME/.cargo/bin:$PATH"; fi
+          if ! command -v rustfmt >/dev/null 2>&1; then
+          RF=$(/opt/cargo/bin/rustup which rustfmt) 2>/dev/null || true
+          if [ -n "$RF" ] && [ -x "$RF" ]; then
+          RF_DIR="$(dirname "$RF")"
+          export PATH="$RF_DIR:$PATH"
+          fi
+          fi
+          if ! command -v rustfmt >/dev/null 2>&1; then
+          echo "::error::rustfmt not on PATH for regen_stage0 standalone spawn (hosts with a cargo shim and no CARGO_HOME/bin — receipt CI #7290 srv3-03)"
+          exit 1
+          fi
+          "$ROOT/target/release/stage0_regen_receipt" --candidate-dir "target/stage0-regen-candidate" --receipt "target/stage0-regen-receipt.json"
+        timeout-minutes: 15
+      - name: Upload stage0 regen candidate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage0-regen-candidate
+          path: target/stage0-regen-candidate
+          if-no-files-found: error
+          retention-days: 3
+        if: always()
+      - name: Upload stage0 regen receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage0-regen-receipt
+          path: target/stage0-regen-receipt.json
+          if-no-files-found: error
+          retention-days: 3
+        if: always()

@@ -1,0 +1,82 @@
+module test.claim.regen_receipt_witness
+
+import std.types { Bool, String }
+import gunbc.regen_receipt {
+  RegenReceipt,
+  stage0_regen_candidate_artifact_name,
+  stage0_regen_candidate_dir_rel,
+  stage0_regen_main_wet_entry,
+  stage0_regen_main_wet_function,
+  stage0_regen_receipt_artifact_name,
+  stage0_regen_receipt_is_green,
+  stage0_regen_receipt_rel,
+  stage0_regen_witness_bin_name,
+}
+import gunbc.witness_floor_workflow {
+  expected_witness_floor_yml,
+  stage0_regen_workflow_job_id,
+  witness_floor_workflow_job_id,
+}
+
+data regen_receipt_witness_note: String = "THE RECEIPT AND THE WORKFLOW EMIT ARE WITNESSED TOGETHER because either alone is insufficient: a typed receipt with no executing consumer is specification-without-execution, and a shell job with no typed verdict is the old Bool collapse this lane replaces. The workflow half asserts parallel placement, main_wet before receipt emission, artifact upload, and a verify-only host binary; the receipt half asserts the eight-field carrier and the two distinct equality booleans."
+
+test fn regen_receipt_green_requires_both_equalities() -> Bool {
+  regen_receipt_is_green(
+    receipt: RegenReceipt {
+      commit_sha: "abc",
+      authority_digest: "fnv1a64:0",
+      committed_generated_digest: "fnv1a64:1",
+      candidate_generated_digest: "fnv1a64:1",
+      first_generation_equal: true,
+      fixed_point_equal: true,
+      changed_paths: [],
+      candidate_artifact: stage0_regen_candidate_dir_rel,
+    }
+  )
+    && !regen_receipt_is_green(
+      receipt: RegenReceipt {
+        commit_sha: "abc",
+        authority_digest: "fnv1a64:0",
+        committed_generated_digest: "fnv1a64:1",
+        candidate_generated_digest: "fnv1a64:2",
+        first_generation_equal: true,
+        fixed_point_equal: false,
+        changed_paths: [],
+        candidate_artifact: stage0_regen_candidate_dir_rel,
+      }
+    )
+    && !regen_receipt_is_green(
+      receipt: RegenReceipt {
+        commit_sha: "abc",
+        authority_digest: "fnv1a64:0",
+        committed_generated_digest: "fnv1a64:1",
+        candidate_generated_digest: "fnv1a64:2",
+        first_generation_equal: false,
+        fixed_point_equal: true,
+        changed_paths: ["v1_compiler_emit.rs"],
+        candidate_artifact: stage0_regen_candidate_dir_rel,
+      }
+    )
+}
+
+test fn witness_floor_yml_declares_parallel_stage0_regen_job() -> Bool {
+  let yml = expected_witness_floor_yml()
+  string_contains(s: yml, pattern: concat("  ", concat(stage0_regen_workflow_job_id, ":")))
+    && string_contains(s: yml, pattern: concat("  ", concat(witness_floor_workflow_job_id, ":")))
+    && !string_contains(s: yml, pattern: "needs: [build]")
+    && !string_contains(s: yml, pattern: "needs: [witnesses]")
+}
+
+test fn witness_floor_yml_stage0_regen_runs_receipt_not_heal() -> Bool {
+  let yml = expected_witness_floor_yml()
+  string_contains(s: yml, pattern: stage0_regen_witness_bin_name)
+    && string_contains(s: yml, pattern: stage0_regen_main_wet_function)
+    && string_contains(s: yml, pattern: stage0_regen_main_wet_entry)
+    && string_contains(s: yml, pattern: stage0_regen_candidate_artifact_name)
+    && string_contains(s: yml, pattern: stage0_regen_receipt_artifact_name)
+    && string_contains(s: yml, pattern: stage0_regen_receipt_rel)
+    && string_contains(s: yml, pattern: stage0_regen_candidate_dir_rel)
+    && !string_contains(s: yml, pattern: "heal_generated_artifacts")
+    && !string_contains(s: yml, pattern: "git push")
+    && !string_contains(s: yml, pattern: "chore: regenerate drifted artifacts")
+}
