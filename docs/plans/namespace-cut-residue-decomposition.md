@@ -583,3 +583,45 @@ work. Having the right rule written down did not prevent applying the wrong one 
 failing signal. What actually settled it was diffing the two diagnostic SETS, which names
 what resolved and what appeared; no aggregate, by class or total, could have distinguished
 unmasking from corruption.
+
+## Round 1, and why the chosen corruption signal was also wrong (2026-08-18)
+
+Round 1 applied 1,792 span-located qualifications to the 2,372 baseline. Result: 6,470,
+reproducing the earlier bulk figure exactly. Set diff: **1,604 resolved, 5,702 newly visible**.
+`no field` went 371 -> 2,686, which was the declared stop-and-revert criterion.
+
+**The criterion was wrong, and the source says why.** A representative new row is
+`no field 'children' on type 'Node'` (419 occurrences). `Node` plainly has `children`, so this
+reads as a wrong binding. It is not. At `src/v1/compile.dag` the failing site is:
+
+    fn node_refs(node: Node, key_to_id: Map<String, String>) -> List<ErrorNode> {
+      ... node.children |> flat_map(...)
+
+The parameter type is **bare `Node`**, untouched by the pass. Under the corrected policy
+`v1.std.core` is not an ancestor of `v1.compiler.compile` -- their segment LCP is `v1` alone --
+so bare `Node` is correctly REFUSED, the parameter type is unresolved, and every field access
+on it reports `no field`. The owner map is not implicated: it chose `v1.std.core` for `Node`,
+which is right.
+
+So `no field` rising is the SAME root cause -- unqualified cross-module references -- surfacing
+under a different diagnostic class once compilation reaches those sites. It is not corruption,
+and reverting on it would have discarded 1,604 genuine resolutions.
+
+### The real gap in the pass
+
+The qualifier parses only `unresolved type` rows. A site whose failure is reported as
+`no field on type X`, `method cannot be resolved`, or `undefined variable` is invisible to it
+and never qualified, even though the repair is identical. That is why one round leaves 6,470
+rather than converging: it repairs one diagnostic class and leaves the others to surface.
+
+Extending the parse to those classes is not mechanical in the same way -- a `no field` span
+points at the FIELD, not at the type reference that needs qualifying -- so the type-position
+span must be recovered from the declaration rather than from the diagnostic.
+
+### Method correction, twice over
+
+Two aggregate signals have now been used as oracles and both were wrong: total count
+(condemned two correct passes) and `no field` movement (would have condemned a third). Both
+conflate causes. The only signal that has survived contact with the evidence is reading the
+SOURCE at a representative failing site and asking what the compiler actually refused there.
+An aggregate can rank work; it cannot classify it.
