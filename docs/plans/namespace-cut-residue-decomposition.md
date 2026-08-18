@@ -441,3 +441,20 @@ execution -- coverage by illusion, which DESIGN section 6 names directly.
 seed regains an executing test home. Whichever lands first, these six assertions are enrolled
 against `global_bare_module_on_chain` at that moment. Until then the predicate is landed and
 UNWITNESSED, and this row is the receipt for that gap.
+
+## match-pattern closure control retained (2026-08-18)
+
+`source_closure.rs` `pattern_only_reference_pulls_declaring_module` is the discriminating RED
+for the match-pattern walk: a module named solely inside a match arm must be pulled, and an
+unrelated module must stay out. Both arms are load-bearing; the negative control is what makes
+it discriminating. Production already walks `node.match_pattern`; this is the control that was
+missing.
+
+**These assertions have no executing home on this branch, and that is stated rather than
+papered over.** The floor's source roots are `dag` + `src/v2`; the v1 Rust suite was deleted by
+gunbc#8146; CI does not run `cargo test`. A `#[test]` here is retained evidence, not coverage.
+
+**Restoration trigger:** the first of -- (a) `src/v1` enters a witness-executing source-root set,
+(b) this control is re-expressed as a floor witness the current roots reach, or (c) the v1 seed
+regains an executing test home. Until then the match-pattern walk is landed and UNWITNESSED,
+and this row is the receipt for that gap.

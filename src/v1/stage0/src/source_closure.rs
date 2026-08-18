@@ -509,3 +509,97 @@ fn closure_inner(
     out.push(entry_source);
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn fixture_root(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("gunbc-source-closure-{tag}-{}", std::process::id()))
+    }
+
+    fn write(root: &std::path::Path, rel: &str, content: &str) {
+        let path = root.join(rel);
+        fs::create_dir_all(path.parent().unwrap()).expect("mkdir fixture");
+        fs::write(&path, content).expect("write fixture");
+    }
+
+    /// RETAINED EVIDENCE, NO EXECUTING CONSUMER. CI does not run `cargo test`
+    /// (operator ruling 2026-07-11) and gunbc#8146 deleted the v1 Rust suite.
+    /// This `#[test]` is not coverage. Restoration trigger: the first of
+    /// (a) `src/v1` enters a witness-executing source-root set, (b) this
+    /// control is re-expressed as a floor witness the current roots reach, or
+    /// (c) the v1 seed regains an executing test home. Until then the
+    /// match-pattern walk in `collect_references` is landed and UNWITNESSED;
+    /// this fn is the receipt.
+    ///
+    /// A module referenced ONLY from a match-arm pattern must enter the
+    /// closure. Discriminating: the entry names
+    /// `test.pattern_only_dep.PatternOnlyArm` solely inside `match`, never as
+    /// a type, call, or record literal. Negative control: `test.unrelated` is
+    /// never named and must stay out.
+    #[test]
+    fn pattern_only_reference_pulls_declaring_module() {
+        let root = fixture_root("pattern-only");
+        let _ = fs::remove_dir_all(&root);
+        write(
+            &root,
+            "dep.dag",
+            "module test.pattern_only_dep\n\
+             type PatternOnlyMark = | PatternOnlyArm\n",
+        );
+        write(
+            &root,
+            "unrelated.dag",
+            "module test.unrelated\n\
+             type UnrelatedMark = | UnrelatedArm\n",
+        );
+        write(
+            &root,
+            "entry.dag",
+            "module test.pattern_only_entry\n\
+             fn classify(x: Int) -> Int {\n\
+               match x {\n\
+                 test.pattern_only_dep.PatternOnlyArm => 1\n\
+                 _ => 0\n\
+               }\n\
+             }\n",
+        );
+
+        let (index, unparsed) = build_declaration_index(&[root.clone()], &root);
+        assert!(unparsed.is_empty(), "fixture must parse: {unparsed:?}");
+        assert!(
+            index.source_for_module("test.pattern_only_dep").is_some(),
+            "dep module must be in the declaration index"
+        );
+
+        let entry_path = "entry.dag";
+        let entry_content = fs::read_to_string(root.join(entry_path)).expect("read entry");
+        let tree = parse_file(entry_path, &entry_content).expect("entry parses");
+        let names = referenced_names(&tree);
+        assert!(
+            names.iter().any(|n| n.contains("PatternOnlyArm")
+                || n == "test.pattern_only_dep"
+                || n.starts_with("test.pattern_only_dep.")),
+            "pattern-only constructor must appear in referenced_names; got {names:?}"
+        );
+
+        let sources = closure_for_entry(entry_path, &entry_content, &index);
+        let paths: BTreeSet<String> = sources.iter().map(|s| s.path.clone()).collect();
+        let _ = fs::remove_dir_all(&root);
+
+        assert!(
+            paths
+                .iter()
+                .any(|p| p.ends_with("dep.dag") || p == "dep.dag"),
+            "pattern-only reference must pull test.pattern_only_dep: {paths:?}"
+        );
+        assert!(
+            !paths.iter().any(|p| p.ends_with("unrelated.dag")),
+            "unrelated module must stay out: {paths:?}"
+        );
+    }
+}
