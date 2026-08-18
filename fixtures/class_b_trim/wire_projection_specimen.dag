@@ -1,0 +1,37 @@
+module test.claim.class_b_trim_wire_projection_specimen
+
+import std.types { String, Bool }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// The discriminating specimen for the service-op wire-projection class registered on
+// extdeps.shell.exec service_op_string_wire_projection_method_fork_note and
+// gunbc.plans.model_realization_fork.
+//
+// WHY THIS FILE EXISTS. That class was registered with monoid_specimen.dag named as its pinning
+// witness, and monoid_specimen cannot see it: its subject is a HAND-DECLARED FreeMonoid<String>
+// parameter, while the class's subject is a String field MINTED BY A WIRE PROJECTION. No fixture in
+// this directory declared a `T from "wire_key"` field at all, so the class's dissolve-on condition
+// had no discriminating evidence and would have read the same whether the class was live or dead.
+//
+// THE SUBJECT. Filesystem.Read declares `content: String from "content"` — the extdeps contract
+// names String. The class claims the wire projection mints a FaithfulFreeMonoid/Coproduct carrier
+// instead, so a ReceiverSelf algebra template (trim) does not attach and the METHOD form refuses
+// with `method trim not found on Coproduct(FreeMonoid)`, even though a free call coerces fine.
+//
+// THE DISCRIMINATOR IS THE PAIR, NOT EITHER ARM. wire_field_method_form is the subject;
+// wire_field_free_call is the control that holds the pool and the value constant and varies only
+// the call form. If BOTH refuse, the pool or the import is wrong and the specimen proves nothing
+// about the class — that is the reading this pairing exists to prevent.
+
+data class_b_trim_wire_projection_specimen_note: String = "Class B trim wire-projection specimen: the method form on a service-op String wire field (Filesystem.Read content: String from \"content\") against the free-call control on the same value. Discriminates whether the wire projection mints the type node the extdeps output declaration names. Pairs with monoid_specimen.dag, which pins the neighbouring and still-correct fact that trim does not attach to a collection monoid receiver."
+
+fn wire_field_method_form(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  read.content.trim()
+}
+
+fn wire_field_free_call(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  trim(read.content)
+}

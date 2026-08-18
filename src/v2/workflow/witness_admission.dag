@@ -17,9 +17,9 @@ import gunbc.ci_layer_roots {
   witness_exclusion_row_is_falsifier_wet,
   witness_exclusion_row_is_rehomed_bin_wet,
   witness_exclusion_row_is_substrate_long_lane,
-  falsifier_silent_pick_gate_entries,
   falsifier_rehomed_bin_wet_entries,
-  falsifier_substrate_long_lane_entries
+  falsifier_substrate_long_lane_entries,
+  falsifier_substrate_long_lane_batch_schedule_entries
 }
 import gunbc.explicit_witness_admission {
   ExplicitWitnessAdmission,
@@ -27,7 +27,8 @@ import gunbc.explicit_witness_admission {
   explicit_witness_admission_covers,
   explicit_witness_admissions_well_formed,
   explicit_witness_admission_duplicate_count,
-  explicit_witness_admission_executing_witness_roster
+  explicit_witness_admission_executing_witness_roster,
+  explicit_witness_admission_substrate_long_lane_roster
 }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
@@ -146,6 +147,12 @@ fn consumer_for_explicit_rosters(entry: String, function: String) -> WitnessCons
     function: function
   ) {
     FalsifierRehomedBinWet
+  } else if schedule_contains_entry(
+    xs: explicit_witness_admission_substrate_long_lane_roster(),
+    entry: entry,
+    function: function
+  ) {
+    FalsifierSubstrateLongLane
   } else if schedule_contains_entry(
     xs: falsifier_substrate_long_lane_entries(),
     entry: entry,
@@ -382,7 +389,7 @@ fn witness_admission_explicit_consumer_manifest() -> List<String> {
         concat(
           concat(
             falsifier_rehomed_bin_wet_entries(),
-            falsifier_substrate_long_lane_entries()
+            falsifier_substrate_long_lane_batch_schedule_entries()
           ),
           explicit_witness_admission_executing_witness_roster()
         )
@@ -463,7 +470,7 @@ fn witness_exclusion_explicit_roster_rows_consistent(
 }
 
 fn witness_exclusion_bin_witness_wet_universe() -> List<ScheduleWitnessEntry> {
-  concat(bin_witness_wet_entries, falsifier_silent_pick_gate_entries)
+  bin_witness_wet_entries
 }
 
 fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
@@ -471,7 +478,7 @@ fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
     rows: witness_exclusion_frontier,
     bin_entries: witness_exclusion_bin_witness_wet_universe(),
     rehomed_entries: falsifier_rehomed_bin_wet_entries(),
-    substrate_long_entries: falsifier_substrate_long_lane_entries()
+    substrate_long_entries: falsifier_substrate_long_lane_batch_schedule_entries()
   )
 }
 

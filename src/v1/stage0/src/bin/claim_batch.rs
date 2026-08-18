@@ -320,21 +320,38 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             println!("FAIL {} (runtime error: {})", function, message);
             *any_failed = true;
         }
-        // Named as a kill, not a duration: the row stopped AT the budget, so elapsed is a
-        // ceiling. The clock is named because a cpu-budget kill and a wall-budget kill have
-        // different remedies.
+        // The clock is named because a cpu-budget kill and a wall-budget kill have different
+        // remedies — and `completion` is named because whether the number BOUNDS the cost or
+        // MEASURES it differs by arm. This line used to say "killed ... elapsed is a ceiling"
+        // unconditionally, which is true of an interrupted row and false of one that ran to
+        // completion, passed, and was reclassified on cost. Same fabrication as the executor's
+        // renderer carried; fixed in the same motion so the two transports cannot disagree
+        // about one outcome.
         ClaimOutcome::TimedOut {
             elapsed_ms,
             budget_ms,
             kind,
+            completion,
         } => {
             println!(
-                "FAIL {} (killed at its {} budget: {}ms elapsed > {}ms budget; elapsed is a \
-                 ceiling, not a completed duration)",
+                "FAIL {} ({})",
                 function,
-                kind.label(),
-                elapsed_ms,
-                budget_ms
+                match completion {
+                    v1_compiler::cli_run::BudgetCompletion::Interrupted => format!(
+                        "killed at its {} budget: at least {}ms elapsed against a {}ms budget \
+                         (interrupted, so elapsed bounds the cost and does not measure it)",
+                        kind.label(),
+                        elapsed_ms,
+                        budget_ms
+                    ),
+                    v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => format!(
+                        "completed over its {} budget: exactly {}ms elapsed against a {}ms \
+                         budget (ran to completion and passed, then was reclassified on cost)",
+                        kind.label(),
+                        elapsed_ms,
+                        budget_ms
+                    ),
+                }
             );
             *any_failed = true;
         }

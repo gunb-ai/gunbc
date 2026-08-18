@@ -1,0 +1,60 @@
+module test.claim.string_length_char_count_witness
+
+// CONTRACT: `.length()` and `.count()` on a String report the CHARACTER
+// (codepoint) count, never the UTF-8 BYTE count. The discriminating risk is a
+// fast-path arm that reads a byte length: a naive `Value::Str(s) => Some(s.len())`
+// (Rust byte length) would answer 3 for the single-codepoint CJK string below,
+// not 1. Any future O(1) fast path -- an ASCII-flag read included -- must keep
+// answering the character count on multibyte input, and these cases go red if
+// it does not.
+//
+// WHY `.size()` IS NOT COVERED HERE, measured rather than assumed. `size` is a
+// registered-but-UNREACHABLE spelling: the interpreter admits it at runtime
+// (`method_call.length { "length" | "count" | "size" }` in `v1_interpreter.rs`)
+// and `gunbc.v1_interpreter_primitive_surface` declares it as a third authored
+// spelling, but the typechecker's method-existence authority
+// (`v1_compiler_infer_method.rs` `builtin_function_registry`) seeds `count` and
+// inserts `length` and never inserts `size`. So `"x".size()` refuses at compile
+// time -- `method 'size' not found on receiver type 'Primitive(String)'` -- and
+// no `.dag` source can reach the runtime arm through it. Adding a `.size()` case
+// here does not extend coverage; it reds the build, which is how this was found
+// (CI on this PR, not by reading the surface).
+//
+// That fork is a real defect and is NOT this witness's to fix: three names for
+// one concept is nicknaming (DESIGN §2/§3), so the likely correct repair is to
+// DELETE `size` from the interpreter arm and the primitive surface rather than
+// to widen the typechecker to admit it. Either direction changes a load-bearing
+// file and needs its own change. Until one lands, this witness covers exactly
+// the two spellings that are reachable.
+
+test fn ascii_string_length_is_char_count() -> Bool {
+  "hello".length() == 5
+}
+
+// "\u{ef}" (lowercase i with diaeresis) encodes as 2 bytes in UTF-8.
+// Byte length would be 2; character length must be 1.
+test fn multibyte_two_byte_codepoint_length_is_one() -> Bool {
+  "\u{ef}".length() == 1
+}
+
+// "\u{4e2d}" (CJK character) encodes as 3 bytes in UTF-8.
+// Byte length would be 3; character length must be 1.
+test fn multibyte_three_byte_codepoint_length_is_one() -> Bool {
+  "\u{4e2d}".length() == 1
+}
+
+// "\u{1f600}" (an emoji) encodes as 4 bytes in UTF-8.
+// Byte length would be 4; character length must be 1.
+test fn multibyte_four_byte_codepoint_length_is_one() -> Bool {
+  "\u{1f600}".length() == 1
+}
+
+// "na\u{ef}ve" is 5 characters but 6 UTF-8 bytes (the \u{ef} costs 2 bytes).
+// Byte length would be 6; character length must be 5.
+test fn mixed_ascii_and_multibyte_length_counts_chars_not_bytes() -> Bool {
+  "na\u{ef}ve".length() == 5
+}
+
+test fn multibyte_string_count_matches_length() -> Bool {
+  "\u{4e2d}\u{6587}".count() == 2
+}
