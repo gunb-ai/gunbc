@@ -53,6 +53,8 @@ import product.compute_board.admission {
   BoardArticleAdmitted,
   BoardArticleRefused,
   admit_board_article,
+  article_refusals,
+  refusal_set_count,
   refuses_with_exactly_named_cause,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
