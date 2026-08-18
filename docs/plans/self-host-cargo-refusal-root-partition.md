@@ -2418,3 +2418,37 @@ the 191. That is why the bucket-wide ambiguity does not survive filtering.
 
 Per-site TSV (July bank): `docs/probes/e0369_b1_classification_2026-08-17/sites_classified_july_bank.tsv`
 Repro script (M=11): `docs/probes/run_e0369_b1_classification.sh`
+
+## 19. E0308 root partition — mechanism grain (`sharp-owl-720`, 2026-08-18)
+
+**Dispatched question:** E0308 is the dominant emitted-Rust error class (~40–47% of coded errors
+on floor modules, ~86–94 distinct sites per floor entry) and had **no partition at E0308-only
+grain** — §11 sized all codes together. **Answer:** E0308 is **not one root**; it is **13
+mechanism roots** at **408 distinct sites** (M=11, deduplicated), with **1555** diagnostic
+blocks summed (**3.81×** inflation within E0308 alone).
+
+| root | E0308 sites | % of E0308 | §11 owner |
+|---|---:|---:|---|
+| T7 — `Hash` / `Fnv1a64Structural` ↔ `String` | 99 | 24.3% | vivid-wren / checkpoint table |
+| R1 — bare↔`Rc` wrap | 91 | 22.3% | bold-lark-722 |
+| RESIDUE — unclassified pairs | 59 | 14.5% | misc (largest: Root D alias) |
+| T2 — text carrier | 38 | 9.3% | unowned |
+| T3 — collection vs `im` | 32 | 7.8% | unowned |
+| B3 — `Nat` vs integer | 18 | 4.4% | eager-deer-389 |
+| B2 — `Bool` vs `bool` | 17 | 4.2% | eager-deer-389 |
+| RESIDUE-witness | 15 | 3.7% | tail, not July 18–23% bucket |
+| R5 — duplicate type authority | 15 | 3.7% | unowned |
+| C — Optional→`()` | 11 | 2.7% | gentle-dove-833 |
+| B1-repr — algebra carrier | 6 | 1.5% | §18 repr-shaped |
+| RESIDUE-diagnostics | 4 | 1.0% | July Root 1 dead |
+| T4 — record as tuple | 3 | 0.7% | unowned |
+
+**July E0308 bucket shares falsified again at this grain:** DIAGNOSTICS fork **4 sites (1.0%)**;
+`Witness<_>` string absent — remaining witness-shaped pairs are **15 sites** with concrete
+mismatches like `Witness<ExitOk>` vs `Witness<Rc<Outcome<…>>>`.
+
+Full receipt:
+[`docs/probes/e0308_root_partition_2026-08-18.md`](../probes/e0308_root_partition_2026-08-18.md).
+Per-site TSV:
+[`docs/probes/e0308_partition_2026-08-18/sites_classified.tsv`](../probes/e0308_partition_2026-08-18/sites_classified.tsv).
+Measurement route and entry set are in the receipt's Method table.
