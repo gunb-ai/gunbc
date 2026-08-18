@@ -217,11 +217,11 @@ fn stage0_regen_main_wet_script() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
     concat(
-      "\"$ROOT/target/release/gunbc\" run --source-root \"$ROOT/dag\" --source-root \"$ROOT/src/v2\" --entry \"$ROOT/",
       concat(
-        concat(stage0_regen_main_wet_entry, "\" --function "),
-        concat(stage0_regen_main_wet_function, "\n")
-      )
+        concat("\"$ROOT/target/release/gunbc\" run", witness_floor_source_root_flags()),
+        concat(" --entry \"$ROOT/", concat(stage0_regen_main_wet_entry, "\""))
+      ),
+      concat(concat(" --function ", stage0_regen_main_wet_function), "\n")
     )
   )
 }
