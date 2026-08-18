@@ -132,7 +132,7 @@ fn host_network_observation(host: HostIdentity) -> InterfaceObservation? {
 
 fn host_network_verdict(host: HostIdentity) -> ObservationVerdict {
   match host_network_observation(host: host) {
-    std.upsert_decision.Absent => UnknownRefused
+    Absent => UnknownRefused
     Present { value: o } =>
       readback_evidence_verdict(
         p: ip_link_carrier_read_probe,

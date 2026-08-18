@@ -22,7 +22,7 @@ data host_phase_no_producer_is_unknown_not_converged_note: String = "THE fail-cl
 fn host_phase_verdict_from(observation: ObservationVerdict?) -> ObservationVerdict {
   match observation {
     Present { value: v } => v
-    std.upsert_decision.Absent => UnknownRefused
+    Absent => UnknownRefused
   }
 }
 
@@ -31,7 +31,7 @@ fn host_phase_verdict_absorbing_fallback_widen_sketch(
 ) -> ObservationVerdict {
   match observation {
     Present { value: v } => v
-    std.upsert_decision.Absent => Converged
+    Absent => Converged
   }
 }
 
@@ -41,7 +41,7 @@ fn host_phase_verdict_gate_accepts(
 ) -> Bool {
   match observation {
     Present { value: _ } => true
-    std.upsert_decision.Absent =>
+    Absent =>
       match verdict {
         Converged => false
         std.upsert_decision.Absent => true
@@ -67,7 +67,7 @@ fn host_phase_cell_is_modeled(c: HostPhaseCellStatus) -> Bool {
 fn host_phase_cell_has_live_producer(c: HostPhaseCellStatus) -> Bool {
   match c.observation {
     Present { value: _ } => true
-    std.upsert_decision.Absent => false
+    Absent => false
   }
 }
 
