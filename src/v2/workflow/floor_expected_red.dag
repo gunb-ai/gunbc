@@ -68,6 +68,16 @@ import v2.std.text { String }
 // mechanism in the tree, from the defect that dropped 197 identities on 2026-08-18 and went
 // unnoticed for an hour. An empty roster now refuses; a shrinking one still does not.
 //
+// NOT A PRECEDENT, and this sentence exists because the next reader will see a contradiction
+// that is not there. `required_floor` states that relocating a file does not discharge a budget
+// refusal, and that remains true and unweakened: an AUTHOR moving their own over-budget witness
+// to a long home deletes the coverage while retaining the source, which is the gunbc#7762
+// specimen the 2026-08-04 admission ruling exists for. What happened here is a different act --
+// an operator-ruled, bounded, declared rung-drop with a named population and a restoration
+// trigger, which DESIGN 4b permits explicitly. The distinction is declaration and reversibility,
+// never the directory. So this quarantine is not grounds to revert that comment or that refusal,
+// and a relocation offered WITHOUT these five declared fields is still the unsanctioned move.
+//
 // RESTORATION TRIGGER: the cost lane. Measured by three sessions independently on 2026-08-18,
 // the cost is the EVALUATION CONTEXT, not the witnesses -- a row taking 71s on the floor runs
 // in 70-85ms in isolation, a 12s row in 31ms, and dag_arrow_lambda rebuilds a 6,230-line
