@@ -1,15 +1,15 @@
 module v2.std.timeseries_signal
 
 
-type Voltage = std.measure.Measure<ElectricPotential, Micro, Int>
-type Current = std.measure.Measure<ElectricCurrent, Micro, Int>
-type ResistanceMicro = std.measure.Measure<Resistance, Micro, Int>
-type CapacitanceMicro = std.measure.Measure<Capacitance, Micro, Int>
-type InductanceMicro = std.measure.Measure<Inductance, Micro, Int>
-type ChargeMicro = std.measure.Measure<ElectricCharge, Micro, Int>
-type FluxMicro = std.measure.Measure<MagneticFlux, Micro, Int>
+type Voltage = std.measure.Measure<std.measure.ElectricPotential, std.measure.Micro, Int>
+type Current = std.measure.Measure<std.measure.ElectricCurrent, std.measure.Micro, Int>
+type ResistanceMicro = std.measure.Measure<std.measure.Resistance, std.measure.Micro, Int>
+type CapacitanceMicro = std.measure.Measure<std.measure.Capacitance, std.measure.Micro, Int>
+type InductanceMicro = std.measure.Measure<std.measure.Inductance, std.measure.Micro, Int>
+type ChargeMicro = std.measure.Measure<std.measure.ElectricCharge, std.measure.Micro, Int>
+type FluxMicro = std.measure.Measure<std.measure.MagneticFlux, std.measure.Micro, Int>
 
-type DurationMicro = std.measure.Measure<Time, Micro, Int>
+type DurationMicro = std.measure.Measure<std.measure.Time, std.measure.Micro, Int>
 
 fn voltage(n: Int) -> Voltage {
   Voltage { count: n }

@@ -192,7 +192,7 @@ type CorpusEntryIngestResult = v2.std.diagnostic.Outcome<v2.std.node.Node>
 
 type CorpusEntryIngestor = fn(CorpusEntry) -> CorpusEntryIngestResult
 
-type CorpusLensReadResult<C> = v2.std.diagnostic.Outcome<extdeps.languages.c.subject.C>
+type CorpusLensReadResult<C> = v2.std.diagnostic.Outcome<C>
 
 type CorpusLensReader<C> {
   lens: v2.std.node.Symbol
@@ -205,7 +205,7 @@ type CorpusLensObservation<C> {
   output: C
 }
 
-type CorpusLensDriveResult<C> = v2.std.diagnostic.Outcome<List<CorpusLensObservation<extdeps.languages.c.subject.C>>>
+type CorpusLensDriveResult<C> = v2.std.diagnostic.Outcome<List<CorpusLensObservation<C>>>
 
 type CorpusLensDriver<C> = fn(
   CorpusEnumerationRequest,
