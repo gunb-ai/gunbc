@@ -254,7 +254,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/execution/add_arrow_eval_by_execution_test.dag",
+    entry: "src/v2/test/claim/execution/long/add_arrow_eval_by_execution_test.dag",
     functions: [
       "add_arrow_eval_tokenize_holds", "add_arrow_eval_parse_holds",
       "add_arrow_eval_normalize_holds", "add_arrow_eval_resolve_holds",
@@ -270,7 +270,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
+    entry: "src/v2/test/claim/execution/long/bind_eval_by_execution_test.dag",
     functions: [
       "bind_source_pipeline_admits_holds", "bind_source_driven_executes_holds",
       "bind_direct_runtime_holds", "bind_value_perturbation_red_holds",
@@ -328,7 +328,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral { entry: "src/v2/test/claim/execution/effect_io_eval_by_execution_test.dag", functions: ["effect_io_eval_roundtrip_holds", "effect_io_eval_unbound_fail_closed_holds"] },
   FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag", functions: ["emit_host_add_wrong_oracle_refuses_holds"] },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
     functions: [
       "ingested_classical_not_eval_subgraph_canonical_octet_zero_holds",
       "ingested_classical_not_staging_swapped_emit_refuses_underived_holds",
@@ -370,7 +370,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/execution/emit_host_produced_module_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/long/emit_host_produced_module_equals_eval_test.dag",
     functions: [
       "produced_module_two_distinct_fns_assemble",
       "emit_host_produced_module_add_equals_eval_holds",
@@ -457,7 +457,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/execution/loop_eval_by_execution_test.dag",
+    entry: "src/v2/test/claim/execution/long/loop_eval_by_execution_test.dag",
     functions: [
       "loop_source_pipeline_admits_holds", "loop_source_driven_executes_holds",
       "loop_source_driven_wrong_value_red_holds", "loop_direct_runtime_holds",
@@ -517,7 +517,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/execution/pick_ingested_probe_test.dag",
+    entry: "src/v2/test/claim/execution/long/pick_ingested_probe_test.dag",
     functions: [
       "pick_probe_pipeline_resolves_holds", "pick_probe_normalized_branch_holds",
       "pick_probe_normalized_arrow_branch_holds", "pick_probe_swapped_arms_structural_red_holds",
@@ -528,7 +528,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/execution/pick_ingested_structural_lowering_test.dag",
+    entry: "src/v2/test/claim/execution/long/pick_ingested_structural_lowering_test.dag",
     functions: [
       "pick_ingested_normalized_swapped_arms_structural_red_holds",
       "pick_ingested_pick_true_executes_holds", "pick_ingested_pick_false_executes_holds",
@@ -616,7 +616,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag",
+    entry: "src/v2/test/claim/identity_captured_navigation/long/roster_gate_test.dag",
     functions: [
       "roster_dag_language_model_zero_suspects_within_ratchet",
       "roster_body_lowering_fold_zero_suspects_within_ratchet",
@@ -1057,7 +1057,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "crate_layout_witnesses"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/manual/grounding_lens_whole_tree_test.dag", functions: ["grounding_lens_whole_tree_witnesses"] },
+  FrozenPathDeferral { entry: "src/v2/test/manual/long/grounding_lens_whole_tree_test.dag", functions: ["grounding_lens_whole_tree_witnesses"] },
   FrozenPathDeferral {
     entry: "src/v2/test/manual/ownership_movable_test.dag",
     functions: [

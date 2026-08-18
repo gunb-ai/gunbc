@@ -1,0 +1,81 @@
+module test.claim.long.realization_sweep_test
+
+
+data sweep_test_note: String = "CI2-0 Commit B sweep laws (roster authority per operator verdict msg_6305b900): identities come from the canonical enrolled floor population, not a source-text scan — the mechanism witnesses here drive sweep_rows_with_identities with a PLANTED identity roster over a planted two-module closure (fixture-controlled: the same author writes the input and the expected population), and the join law is the independent both-directions identity join sweep_rows_join_canonical, duplicate-free. The canonical derivation itself (entry_canonical_identities = the floor_discovery_producer walk filtered to the entry) is witnessed against THIS file's own enrolled roster — a fixture-controlled identity join, not a tree-copied count. The witness-absent arm is the RED: an entry not present in its own closure ingest is a located refusal row, never an empty (silently uncovered) roster."
+
+data sweep_entry_path: String = "src/v2/test/fixture/ks_entry.dag"
+
+data sweep_entry_source: String = "module ks_entry\n\nimport ks_dep { helper }\n\ntest fn t_cross_module() -> Bool { helper(x: 1) == 2 }\n\ntest fn t_local() -> Bool { local_add(x: 1, y: 1) == 2 }\n\nfn local_add(x: Int, y: Int) -> Int { x + y }\n"
+
+fn ks_read(text: String, id: v2.std.node.Symbol, path: String) -> v2.compiler.source_authority.DagSourceReadWitness {
+  v2.compiler.source_authority.DagSourceReadWitness {
+    source: extdeps.communication.medium.Medium { carried: text, fidelity: Lossless },
+    artifact: v2.std.artifact.Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: ^ks_unit,
+    source_root: v2.std.cross_tree.import_model.V2Tree
+  }
+}
+
+fn ks_ingest() -> v2.compiler.source_authority.SourceRootIngest {
+  std.algebra.Cons {
+    head: ks_read(text: "module ks_dep\n\nfn helper(x: Int) -> Int { x + 1 }\n", id: ^ks_dep_art, path: "src/v2/test/fixture/ks_dep.dag"),
+    tail: std.algebra.Cons {
+      head: ks_read(text: sweep_entry_source, id: ^ks_entry_art, path: sweep_entry_path),
+      tail: std.algebra.Empty
+    }
+  }
+}
+
+fn ks_admission() -> v2.compiler.name_resolve.Admission {
+  v2.compiler.name_resolve.Admission {
+    subject: v2.compiler.name_resolve.ResolutionSubject { name: std.algebra.Cons { head: ^ks_entry, tail: std.algebra.Empty } },
+    imports: std.algebra.Cons {
+      head: v2.compiler.name_resolve.Import { target: std.algebra.Cons { head: ^ks_dep, tail: std.algebra.Empty }, visibility: ImportVisible },
+      tail: std.algebra.Empty
+    }
+  }
+}
+
+fn ks_identities() -> List<String> {
+  ["t_cross_module", "t_local"]
+}
+
+test fn witness_sweep_rows_join_planted_roster_exactly_once() -> Bool {
+  let rows = sweep_rows_with_identities(ingest: ks_ingest(), admission: ks_admission(), entry: sweep_entry_path, identities: ks_identities())
+  sweep_rows_join_canonical(rows: rows, entry: sweep_entry_path, identities: ks_identities())
+    && fold_list(xs: rows, empty: true, cons: fn(acc, r) {
+      acc && (r.phase_label != "") && (r.function != "")
+    })
+}
+
+test fn witness_sweep_entry_witness_absent_is_located_refusal_RED() -> Bool {
+  let rows = sweep_rows_with_identities(ingest: ks_ingest(), admission: ks_admission(), entry: "src/v2/test/fixture/no_such_entry.dag", identities: ks_identities())
+  length(xs: rows) == 1
+    && fold_list(xs: rows, empty: true, cons: fn(acc, r) {
+      acc && (r.cause == "realization_sweep_entry_witness_absent") && (r.phase_label == "read")
+    })
+}
+
+test fn witness_sweep_receipt_and_histogram_render_every_row() -> Bool {
+  let rows = sweep_rows_with_identities(ingest: ks_ingest(), admission: ks_admission(), entry: sweep_entry_path, identities: ks_identities())
+  let tsv = sweep_receipt_tsv(rows: rows)
+  let hist = sweep_histogram_tsv(rows: rows)
+  (tsv != "") && (hist != "")
+    && fold_list(xs: rows, empty: true, cons: fn(acc, r) {
+      acc && string_contains(s: tsv, pattern: r.function)
+    })
+}
+
+test fn witness_canonical_identities_join_own_enrolled_roster() -> Bool {
+  let ids = entry_canonical_identities(entry: "dag/test/claim/long/realization_sweep_test.dag")
+  let authored = [
+    "witness_sweep_rows_join_planted_roster_exactly_once",
+    "witness_sweep_entry_witness_absent_is_located_refusal_RED",
+    "witness_sweep_receipt_and_histogram_render_every_row",
+    "witness_canonical_identities_join_own_enrolled_roster"
+  ]
+  length(xs: ids) == length(xs: authored)
+    && fold_list(xs: authored, empty: true, cons: fn(acc, a) {
+      acc && fold_list(xs: ids, empty: false, cons: fn(found, i) { found || (i == a) })
+    })
+}

@@ -1,0 +1,137 @@
+module test.claim.long.extdeps_scope_placement_gate_loudness_witness
+
+
+data loudness_witness_note: String = "Floor loudness for tools.extdeps_scope_placement_gate (gunbc#7644): lands the seed-runner loudness path + extdeps_scope_placement_gate production companion only; six other production _passes gates remain mute (counted frontier in tools.floor_effect_gate_witness floor_gate_failure_receipt_note). Per-arm fixtures exercise gate REASON GENERATION with synthetic observations (supporting evidence). Executed RED: red_seed_runner_failure_detail_projects_located_receipt calls production seed_runner_bool_false_failure_detail against seed_runner_loudness_probe_passes, an always-false _passes probe declared IN THIS ENTRY beside its _failure_receipt companion. THE PROBE PAIR MOVED HERE (2026-08-18) AND THAT MOVE IS THE POINT: claim_executor evaluates the derived companion in the WITNESS entry's context, so the pair has to be reachable from here — and reaching it by importing tools.floor_effect_gate_witness dragged that entry's whole gate closure (ci_gates, the compile-clean, generated-artifact and regen-verify gates) into a witness that asserts none of them. Measured import closure: 718 modules / 10.1 MB of source before, 62 modules / 0.49 MB after; the witness was the floor's second most expensive row at 78.6s. Nothing about the claim changed — the same production fn is called against the same located receipt text, and the probe pair is deleted from tools.floor_effect_gate_witness rather than duplicated. It is a func (not test fn), so floor discovery, which selects TestMarkedDecl only, does not enroll it. MUTATION CONTROL RE-EXECUTED AGAINST THE MOVED PAIR (2026-08-18, remote sandbox at 3abc17b54c9): renaming seed_runner_loudness_probe_failure_receipt so the companion derivation misses it makes this row FAIL (rc=1) while all seven rows of this entry pass at head (rc=0) — so the claim still discriminates on the production path after the move, and does not merely assert its own literal. Mutation control executed 2026-08-05 at b0a17f608a, when the probe pair still lived on tools.floor_effect_gate_witness: disposable detached worktree, removed _passes handling from production failure_receipt_companion (holds-only), rebuilt claim_batch, re-ran witness — FAIL red_seed_runner_failure_detail_projects_located_receipt (eval_self 0ms, resolved; not resolution); detail collapsed to bare returned Bool(false) without THIS CHANGE or dag/extdeps/browser/opera.dag. Current head PASS; head detail includes returned Bool(false) | extdeps scope placement gate: THIS CHANGE ... dag/extdeps/browser/opera.dag. Guarantee rung: observed validation on the production seed_runner path; no construction wall claimed for seed/.dag mirror parity (DESIGN section 7 seed retention)."
+
+fn read_manifest_rows() -> List<String> {
+  parse_frontier_manifest(
+    content: filesystem_read(path: legacy_extdeps_scope_frontier_manifest_path).content
+  )
+}
+
+fn exit_reason_of(e: std.process.ProcessExit) -> String {
+  scope_placement_failure_reason(exit: e)
+}
+
+fn exit_is_failure(e: std.process.ProcessExit) -> Bool {
+  match e { ExitSuccess => false  _ => true }
+}
+
+fn reason_names_all(exit: std.process.ProcessExit, markers: List<String>) -> Bool {
+  let reason = exit_reason_of(e: exit)
+  reason != "" && all(markers, m => string_contains(s: reason, pattern: m))
+}
+
+func seed_runner_loudness_probe_passes() -> Bool {
+  false
+}
+
+func seed_runner_loudness_probe_failure_receipt() -> String {
+  scope_placement_failure_reason(
+    exit: scope_placement_membership_verdict(
+      observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+    )
+  )
+}
+
+test fn red_floor_entry_companion_names_declared_failure_receipt_fn() -> Bool {
+  match failure_receipt_companion(function: "extdeps_scope_placement_gate_passes") {
+    Present { value: companion } => companion == "extdeps_scope_placement_gate_failure_receipt"
+    Absent => false
+  }
+}
+
+test fn red_seed_runner_failure_detail_projects_located_receipt() -> Bool {
+  let detail = seed_runner_bool_false_failure_detail(
+    witness: "seed_runner_loudness_probe_passes"
+  )
+  detail != "returned Bool(false)"
+    && string_contains(s: detail, pattern: "returned Bool(false) | ")
+    && string_contains(s: detail, pattern: "THIS CHANGE")
+    && string_contains(s: detail, pattern: "dag/extdeps/browser/opera.dag")
+}
+
+test fn red_membership_fixture_names_change_and_path() -> Bool {
+  reason_names_all(
+    exit: scope_placement_membership_verdict(
+      observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+    ),
+    markers: ["THIS CHANGE", "dag/extdeps/browser/opera.dag"]
+  )
+}
+
+test fn red_freeze_fixture_names_manifest_smuggling() -> Bool {
+  let probe = read_manifest_rows().first()
+  reason_names_all(
+    exit: scope_placement_freeze_verdict(
+      observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: [probe] }
+    ),
+    markers: ["frozen-manifest", "legacy_manifest_freeze_sha"]
+  )
+}
+
+fn synthetic_manifest_add_diff() -> String {
+  let manifest = legacy_extdeps_scope_frontier_manifest_path
+  join([
+    concat("diff --git a/", manifest, " b/", manifest),
+    "index 1111111..2222222 100644",
+    concat("--- a/", manifest),
+    concat("+++ b/", manifest),
+    "@@ -0,0 +1 @@",
+    "+dag/extdeps/vendor/reverted_module.dag",
+    "diff --git a/dag/gunbc/other.dag b/dag/gunbc/other.dag",
+    "--- a/dag/gunbc/other.dag",
+    "+++ b/dag/gunbc/other.dag",
+    "@@ -1 +1 @@",
+    "+data unrelated: String"
+  ], "\n")
+}
+
+test fn red_manifest_lines_added_fixture_names_row() -> Bool {
+  let observation = manifest_line_observation(diff_text: synthetic_manifest_add_diff())
+  match observation {
+    ManifestLinesAdded { rows: rows } =>
+      (rows |> count) == 1
+        && contains(
+             xs: rows,
+             item: "dag/extdeps/vendor/reverted_module.dag",
+             eq: fn(a, b) { a == b }
+           )
+        && reason_names_all(
+             exit: manifest_remove_only_exit(observation: observation),
+             markers: ["ADDS row(s)", "dag/extdeps/vendor/reverted_module.dag"]
+           )
+    _ => false
+  }
+}
+
+test fn red_manifest_diff_unreadable_fixture_refuses() -> Bool {
+  let manifest = legacy_extdeps_scope_frontier_manifest_path
+  let truncated = join([
+    concat("diff --git a/", manifest, " b/", manifest),
+    "index 1111111..2222222 100644",
+    concat("--- a/", manifest)
+  ], "\n")
+  let observation = manifest_line_observation(diff_text: truncated)
+  match observation {
+    ManifestDiffUnreadable =>
+      reason_names_all(
+        exit: manifest_remove_only_exit(observation: observation),
+        markers: ["remove-only", "unreadable"]
+      )
+    _ => false
+  }
+}
+
+test fn red_failure_reason_never_empty_on_refusal() -> Bool {
+  exit_is_failure(
+    e: scope_placement_membership_verdict(
+      observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+    )
+  )
+    && exit_reason_of(
+         e: scope_placement_membership_verdict(
+           observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+         )
+       ) != ""
+}

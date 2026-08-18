@@ -1,0 +1,318 @@
+module test.claim.long.where_refinement_enforcement_witness
+
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data where_refinement_enforcement_witness_note: String = "PR #7438 where-refinement witnesses via compile_dag_rust_emit_check, which uses the same compile-clean HARD authority as CI (compile_clean_diagnostic_is_hard — review 45010). CONSTRUCTION WALL (hard TypeMismatch, compile-clean red): decidable predicates at LITERAL sites — gt_zero/range/non_empty on int/string literals including unary-negated int literals (review 45131), record fields, direct returns, data inits, call args, as-casts (review 45036); inherited predicates compose through refined-alias chains (review 45121 — NonEmptyStr where brand). DEFERRAL (WhereRefinementUnenforced advisory, compile-clean green): non-literal values at refined positions and deferred predicates (brand, Pattern) — wall after grounding (decidable, evidence carrier missing); counted via compile_clean_diagnostic_histogram, not silently widened. dissolve-on: feature:refinement-evidence-at-non-literal-positions. Centralized via with_expected_where_refinement_diags (review 44949). Seed-retained host seam (review 45103): src/v1/stage0/src/cli_run.rs compile_dag_rust_emit_check + compile_clean_diagnostic_is_advisory + histogram key — wires the existing builtin consumer to compile_clean_diagnostic_is_hard / WhereRefinementUnenforced counting; no new policy. Witness scaffold dissolves when the v1 compile-clean witness layer can assert diagnostic shape without the seed host bin (docs/plans/witness-realization-plan.md P0 lane). Predicate-kind strings: dissolve-on feature:where-refinement-predicate-coproduct."
+
+fn w_positive_int_direct_return_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_direct_return_red\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn bad() -> PositiveInt { 0 }\n",
+    "src/whereref_direct_return_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_negated_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_neg_literal_red\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn bad() -> PositiveInt { -1 }\n",
+    "src/whereref_neg_literal_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_record_field_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_record_red\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\ntype Box { n: PositiveInt }\ndata b: Box = Box { n: 0 }\n",
+    "src/whereref_record_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_record_field_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_record_green\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\ntype Box { n: PositiveInt }\ndata b: Box = Box { n: 1 }\n",
+    "src/whereref_record_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_non_empty_string_record_field_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_nonempty_red\nimport std.types { NonEmptyStr }\ntype Box { s: NonEmptyStr }\ndata b: Box = Box { s: \"\" }\n",
+    "src/whereref_nonempty_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_non_empty_string_record_field_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_nonempty_green\nimport std.types { NonEmptyStr }\ntype Box { s: NonEmptyStr }\ndata b: Box = Box { s: \"x\" }\n",
+    "src/whereref_nonempty_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_non_literal_var_compile_clean_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_var_advisory\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\ntype Box { n: PositiveInt }\nfn f() -> Box {\nlet n: Nat = 0\nBox { n: n }\n}\n",
+    "src/whereref_var_advisory.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_direct_var_return_compile_clean_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_var_return_advisory\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn bad(n: Nat) -> PositiveInt { n }\n",
+    "src/whereref_var_return_advisory.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_data_init_non_literal_compile_clean_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_data_init_advisory\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn nat_src() -> Nat { 0 }\ndata d: PositiveInt = nat_src()\n",
+    "src/whereref_data_init_advisory.rs",
+    [],
+    []
+  )
+}
+
+fn w_range_predicate_non_literal_compile_clean_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_range_advisory\nimport std.types { Int }\ntype Port = Int where range(min: 1, max: 46)\ntype WidePort = Int where range(min: 48, max: 255)\nfn f(w: WidePort) -> Int {\nlet p: Port = w\n0\n}\n",
+    "src/whereref_range_advisory.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_cast_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_cast_red\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn bad() -> PositiveInt { 0 as PositiveInt }\n",
+    "src/whereref_cast_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_cast_literal_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_cast_green\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn ok() -> PositiveInt { 1 as PositiveInt }\n",
+    "src/whereref_cast_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_cast_literal_discard_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_cast_discard_red\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn f() -> Unit { 0 as PositiveInt }\n",
+    "src/whereref_cast_discard_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_non_empty_string_cast_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_nonempty_cast_red\nimport std.types { NonEmptyStr }\nfn bad() -> NonEmptyStr { \"\" as NonEmptyStr }\n",
+    "src/whereref_nonempty_cast_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_lower_hex_64_cast_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_lower_hex_64_cast_red\nimport std.content_hash { Sha256DigestHex }\nfn bad() -> Sha256DigestHex { \"E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855\" as Sha256DigestHex }\n",
+    "src/whereref_lower_hex_64_cast_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_lower_hex_64_cast_literal_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_lower_hex_64_cast_green\nimport std.content_hash { Sha256DigestHex }\nfn ok() -> Sha256DigestHex { \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\" as Sha256DigestHex }\n",
+    "src/whereref_lower_hex_64_cast_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_lower_hex_40_cast_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_lower_hex_40_cast_red\nimport std.content_hash { Sha1DigestHex }\nfn bad() -> Sha1DigestHex { \"4B825DC642CB6EB9A060E54BF8D69288FBEE4904\" as Sha1DigestHex }\n",
+    "src/whereref_lower_hex_40_cast_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_lower_hex_40_cast_literal_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_lower_hex_40_cast_green\nimport std.content_hash { Sha1DigestHex }\nfn ok() -> Sha1DigestHex { \"4b825dc642cb6eb9a060e54bf8d69288fbee4904\" as Sha1DigestHex }\n",
+    "src/whereref_lower_hex_40_cast_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_lower_hex_16_cast_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_lower_hex_16_cast_red\nimport std.content_hash { Fnv1a64StructuralDigestHex }\nfn bad() -> Fnv1a64StructuralDigestHex { \"0123456789abcde\" as Fnv1a64StructuralDigestHex }\n",
+    "src/whereref_lower_hex_16_cast_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_lower_hex_16_cast_literal_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_lower_hex_16_cast_green\nimport std.content_hash { Fnv1a64StructuralDigestHex }\nfn ok() -> Fnv1a64StructuralDigestHex { \"0123456789abcdef\" as Fnv1a64StructuralDigestHex }\n",
+    "src/whereref_lower_hex_16_cast_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_oci_other_digest_algorithm_cast_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_oci_other_algo_red\nimport extdeps.container.oci.digest { OciOtherDigestAlgorithm }\nfn bad() -> OciOtherDigestAlgorithm { \"sha256\" as OciOtherDigestAlgorithm }\n",
+    "src/whereref_oci_other_algo_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_oci_other_digest_algorithm_cast_literal_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_oci_other_algo_green\nimport extdeps.container.oci.digest { OciOtherDigestAlgorithm }\nfn ok() -> OciOtherDigestAlgorithm { \"sha384\" as OciOtherDigestAlgorithm }\n",
+    "src/whereref_oci_other_algo_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_declaration_ref_empty_bind_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_declref_red\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\ndata r: DeclarationRef = DeclarationRef { module_path: \"\", decl_name: \"\", field: WholeDeclaration }\n",
+    "src/whereref_declref_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_branded_nonempty_alias_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_branded_nonempty_red\nimport std.types { NonEmptyStr }\ntype BrandedId = NonEmptyStr where brand(\"BrandedId\")\ndata id: BrandedId = \"\"\n",
+    "src/whereref_branded_nonempty_red.rs",
+    [],
+    []
+  )
+}
+
+test fn where_refinement_direct_return_literal_refuses() -> Bool {
+  !w_positive_int_direct_return_red()
+}
+
+test fn where_refinement_negated_int_literal_refuses() -> Bool {
+  !w_positive_int_negated_literal_red()
+}
+
+test fn where_refinement_record_field_literal_refuses() -> Bool {
+  !w_positive_int_record_field_red()
+}
+
+test fn where_refinement_record_field_literal_accepts() -> Bool {
+  w_positive_int_record_field_green()
+}
+
+test fn where_refinement_non_empty_string_literal_refuses() -> Bool {
+  !w_non_empty_string_record_field_red()
+}
+
+test fn where_refinement_non_empty_string_literal_accepts() -> Bool {
+  w_non_empty_string_record_field_green()
+}
+
+test fn where_refinement_non_literal_int_var_compile_clean() -> Bool {
+  w_positive_int_non_literal_var_compile_clean_green()
+}
+
+test fn where_refinement_direct_return_var_compile_clean() -> Bool {
+  w_positive_int_direct_var_return_compile_clean_green()
+}
+
+test fn where_refinement_data_init_non_literal_compile_clean() -> Bool {
+  w_positive_int_data_init_non_literal_compile_clean_green()
+}
+
+test fn where_refinement_range_non_literal_compile_clean() -> Bool {
+  w_range_predicate_non_literal_compile_clean_green()
+}
+
+test fn where_refinement_cast_literal_positive_int_refuses() -> Bool {
+  !w_positive_int_cast_literal_red()
+}
+
+test fn where_refinement_cast_literal_positive_int_accepts() -> Bool {
+  w_positive_int_cast_literal_green()
+}
+
+test fn where_refinement_cast_literal_discard_refuses() -> Bool {
+  !w_positive_int_cast_literal_discard_red()
+}
+
+test fn where_refinement_cast_literal_non_empty_string_refuses() -> Bool {
+  !w_non_empty_string_cast_literal_red()
+}
+
+test fn where_refinement_cast_literal_lower_hex_64_refuses() -> Bool {
+  !w_lower_hex_64_cast_literal_red()
+}
+
+test fn where_refinement_cast_literal_lower_hex_64_accepts() -> Bool {
+  w_lower_hex_64_cast_literal_green()
+}
+
+test fn where_refinement_cast_literal_lower_hex_40_refuses() -> Bool {
+  !w_lower_hex_40_cast_literal_red()
+}
+
+test fn where_refinement_cast_literal_lower_hex_40_accepts() -> Bool {
+  w_lower_hex_40_cast_literal_green()
+}
+
+test fn where_refinement_cast_literal_lower_hex_16_refuses() -> Bool {
+  !w_lower_hex_16_cast_literal_red()
+}
+
+test fn where_refinement_cast_literal_lower_hex_16_accepts() -> Bool {
+  w_lower_hex_16_cast_literal_green()
+}
+
+test fn where_refinement_cast_literal_oci_other_digest_algorithm_refuses() -> Bool {
+  !w_oci_other_digest_algorithm_cast_literal_red()
+}
+
+test fn where_refinement_cast_literal_oci_other_digest_algorithm_accepts() -> Bool {
+  w_oci_other_digest_algorithm_cast_literal_green()
+}
+
+test fn where_refinement_declaration_ref_empty_bind_refuses() -> Bool {
+  !w_declaration_ref_empty_bind_red()
+}
+
+test fn where_refinement_branded_nonempty_alias_literal_refuses() -> Bool {
+  !w_branded_nonempty_alias_literal_red()
+}

@@ -1,0 +1,72 @@
+module test.claim.long.dissolution_census_witness_test
+
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+test fn census_counters_exhaustively_partition_the_rows() -> Bool {
+  let r = dissolution_census_report()
+  (r.unbound_count + r.pending_count + r.fired_still_present_count) == length(xs: census_closure_frontier_rows())
+}
+
+test fn bound_and_unbound_partition_the_same_rows() -> Bool {
+  let r = dissolution_census_report()
+  let bound = frontier_rows_bound_count(rows: census_closure_frontier_rows())
+  bound == (r.pending_count + r.fired_still_present_count)
+    && (bound + r.unbound_count) == dissolution_census_total()
+}
+
+test fn census_holds_on_the_live_roster() -> Bool {
+  dissolution_census_holds()
+    && frontier_rows_well_formed(rows: census_closure_frontier_rows())
+}
+
+test fn nothing_is_fired_and_still_present_today() -> Bool {
+  dissolution_census_report().fired_still_present_count == 0
+}
+
+test fn supplying_a_bound_rows_declaration_reds_the_gate() -> Bool {
+  let mac = decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")
+  let before = dissolution_census_report()
+  let after = dissolution_census_report_against(present_decls: [mac])
+  before.fired_still_present_count == 0
+    && after.fired_still_present_count == 1
+    && after.pending_count == before.pending_count - 1
+    && after.unbound_count == before.unbound_count
+    && !frontier_expiry_clean(report: after)
+}
+
+test fn unbound_rows_stay_unbound_under_any_present_decls() -> Bool {
+  let probes = [
+    decl_ref(module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint"),
+    decl_ref(module_path: "test.claim.long.dissolution_census_witness_test", decl_name: "unbound_rows_stay_unbound_under_any_present_decls"),
+  ]
+  let base = dissolution_census_report()
+  let probed = dissolution_census_report_against(present_decls: probes)
+  probed.unbound_count == base.unbound_count
+}
+
+fn w_unbound_dissolution_empty_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module dissolution_empty_literal_red\nimport std.dissolution { DissolutionCondition, unbound_dissolution }\ndata bad: DissolutionCondition = unbound_dissolution(description: \"\")\n",
+    "src/dissolution_empty_literal_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_unbound_dissolution_nonempty_literal_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module dissolution_nonempty_literal_green\nimport std.dissolution { DissolutionCondition, unbound_dissolution }\ndata ok: DissolutionCondition = unbound_dissolution(description: \"a real condition\")\n",
+    "src/dissolution_nonempty_literal_green.rs",
+    [],
+    []
+  )
+}
+
+test fn unbound_dissolution_empty_literal_refuses() -> Bool {
+  !w_unbound_dissolution_empty_literal_red()
+}
+
+test fn unbound_dissolution_nonempty_literal_accepts() -> Bool {
+  w_unbound_dissolution_nonempty_literal_green()
+}

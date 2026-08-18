@@ -1,0 +1,8 @@
+module v2.test.long.grounding_lens_whole_tree
+
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+test fn grounding_lens_whole_tree_witnesses() -> Bool {
+  whole_tree_extract_smoke()
+}

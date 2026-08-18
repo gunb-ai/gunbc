@@ -1186,127 +1186,127 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolution: unbound_dissolution(description: "same as witness_planted_minimal_module_emits row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/realization_sweep_test.dag",
+    entry: "dag/test/claim/long/realization_sweep_test.dag",
     function: "witness_canonical_identities_join_own_enrolled_roster",
     reason: "~150s-class dir walk (floor_discovery_producer over dag/test/claim, the census-walk cost class): the canonical-roster derivation witnessed against this file's own enrolled roster — fixture-controlled identity join, corpus-breadth walk",
     dissolution: unbound_dissolution(description: "witness realization lands the walk natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/realization_sweep_test.dag",
+    entry: "dag/test/claim/long/realization_sweep_test.dag",
     function: "witness_sweep_rows_join_planted_roster_exactly_once",
     reason: "~16s measured eval (valiant-boar-65, 2026-08-09): one real canonical two-module closure assembly (tokenize->parse->normalize->resolve) through attempt_closure_rows — the CI2-0 sweep mechanism keystone; the cheap identity-scan and witness-absent RED siblings stay per-PR",
     dissolution: unbound_dissolution(description: "witness realization lands the assembly natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/realization_sweep_test.dag",
+    entry: "dag/test/claim/long/realization_sweep_test.dag",
     function: "witness_sweep_receipt_and_histogram_render_every_row",
     reason: "same Class C assembly wall as sibling witness_sweep_rows_join_planted_roster_exactly_once (~17.5s measured)",
     dissolution: unbound_dissolution(description: "same as sibling row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_single_param_lambda_parses",
     reason: "~16s measured eval (valiant-boar-65, 2026-08-10): interpreted production dag_lex_rules + dag_grammar lex+parse per control — the CI2-0 arrow-lambda grammar-admission proof matrix (parse-only, v1-fidelity), same wall as the leading-pipe sibling matrix",
     dissolution: unbound_dissolution(description: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_multi_param_lambda_parses",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~16s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_lambda_in_pipeline_parses",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~16s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_authored_algebra_shape_parses",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~16s measured; the VERBATIM dag/std/algebra.dag line-370 source — lambda in pipeline in lambda)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_lambda_block_body_parses",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_match_arm_fat_arrow_unchanged",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_named_arg_unchanged",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_paren_arithmetic_unchanged",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_sum_decl_unchanged",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_missing_body_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_missing_param_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_single_paren_param_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured; v1-fidelity refusal — (x) is a parenthesized expr in v1, never a lambda)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_zero_param_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured; v1-fidelity refusal — () is the empty record literal in v1, never a lambda)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
+    entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_pre_repair_grammar_restores_the_RED",
     reason: "four parses under the identity-swapped pre-extension grammar — the rule-removed RED (~68s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/namespace_graft_body_dissolution_witness_test.dag",
+    entry: "dag/test/claim/long/namespace_graft_body_dissolution_witness_test.dag",
     function: "witness_type_fn_module_dissolution_refuses_RED",
     reason: "~16s measured eval (valiant-boar-65, 2026-08-10): interpreted production lex+parse+normalize per control — the graft empty-observation-narrow guard matrix (operator ruling msg_d18a55de: the collector reporting a declaration-carrying module as declaration-free now REFUSES)",
     dissolution: unbound_dissolution(description: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/namespace_graft_body_dissolution_witness_test.dag",
+    entry: "dag/test/claim/long/namespace_graft_body_dissolution_witness_test.dag",
     function: "witness_type_only_module_dissolution_refuses_RED",
     reason: "same interpreted lex/parse/normalize wall as sibling witness_type_fn_module_dissolution_refuses_RED (~16s measured)",
     dissolution: unbound_dissolution(description: "same as witness_type_fn_module_dissolution_refuses_RED row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/namespace_graft_body_dissolution_witness_test.dag",
+    entry: "dag/test/claim/long/namespace_graft_body_dissolution_witness_test.dag",
     function: "witness_lowered_body_module_still_grafts",
     reason: "two full lex/parse/normalize passes over the lowered-body control (~35s measured; acceptance plus the non-vacuous declaration-presence read)",
     dissolution: unbound_dissolution(description: "same as witness_type_fn_module_dissolution_refuses_RED row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/namespace_graft_body_dissolution_witness_test.dag",
+    entry: "dag/test/claim/long/namespace_graft_body_dissolution_witness_test.dag",
     function: "witness_header_only_module_still_accepts",
     reason: "same interpreted lex/parse/normalize wall as sibling witness_type_fn_module_dissolution_refuses_RED (~18s measured)",
     dissolution: unbound_dissolution(description: "same as witness_type_fn_module_dissolution_refuses_RED row")
@@ -1564,13 +1564,13 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolution: unbound_dissolution(description: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/rust_test_fixtures_import_closure_witness_test.dag",
+    entry: "dag/test/claim/long/rust_test_fixtures_import_closure_witness_test.dag",
     function: "declared_import_closure_lists_rust_import",
     reason: "Class B row 1 (#7835), cold-control pattern (c): falsifier long-lane backstop for selection misses; per-PR merge-blocking consumer is run_class_b_import_closure_gate on source_root_ingest_gate (same shape as compile-clean/regen cold controls). One observe_declared_import_closure_symbol_binding over class_b_declared_import_pool_roots. CI run 30986525413 measured 0.0ms when scheduled after row 2 (warm shared index); cold single-observe cost is substrate-long.",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/rust_test_fixtures_import_closure_witness_test.dag",
+    entry: "dag/test/claim/long/rust_test_fixtures_import_closure_witness_test.dag",
     function: "ambient_pool_provider_preserves_listed_import",
     reason: "Class B row 2 (#7835), cold-control pattern (c): falsifier long-lane backstop for selection misses; per-PR merge-blocking consumer is run_class_b_import_closure_gate on source_root_ingest_gate. Two cold observe_declared_import_closure_symbol_binding calls (baseline + perturbed) over class_b_declared_import_pool_roots. CI run 30986525413 measured 48868.8ms (>5s fast-lane budget; ceiling — row 2 is the cold observe, row 1 was warm). Shrinking pool from witness_layer_roots (~3044 modules) to declared-import footprint (~696) is a stronger control, not a budget remedy.",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
@@ -1582,7 +1582,7 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolution: unbound_dissolution(description: "replaced by a cheaper structural receipt proving the same live-corpus relation, or live containment observation becomes unnecessary")
   },
   SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/body_lowering/atom_body_discriminator_witness_test.dag",
+    entry: "src/v2/test/claim/body_lowering/long/atom_body_discriminator_witness_test.dag",
     function: "atom_body_discriminator_single_pass_receipt_holds",
     reason: "~18661ms thread-CPU measured locally (2026-08-14; wall=18704ms) — 3.7× over the 5s fast-lane budget. The 5001ms figure is only where a --eval-budget-ms 5000 probe aborted (EvalBudgetExceeded), not completed witness cost. One tokenize→parse→normalize over the four-declaration atom-body discriminator module, then declaration/parameter_count/ArrowBodyForm production rows plus both RED mirror directions on the same normalized tree. The cost is the production frontend crossing — not a second pass and not a synthetic node_synthetic fixture.",
     dissolution: unbound_dissolution(description: "witness realization lands the frontend natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")

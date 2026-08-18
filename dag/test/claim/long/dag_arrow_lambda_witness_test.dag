@@ -1,0 +1,171 @@
+module test.claim.long.dag_arrow_lambda_witness_test
+
+
+data arrow_lambda_witness_note: String = "CI2-0 grammar-extension proof obligation (operator repair sequencing msg_7152180b item a; premise corrected by direct probe 2026-08-10): the v2 grammar already admits |> — the measured corpus-wide parse wall in dag/std/algebra.dag, a dependency the v2 compiler itself imports, is the ARROW LAMBDA, v1-only surface syntax. This witness admits it parse-only, mirroring the v1 frontend's exact admission (single bare ident, or parenthesized >=2 idents; () and (x) are NOT lambdas in v1 and stay refused). The rule-removed RED rebuilds the grammar with the EXPR production's expression swapped back to the pre-repair shape, selected by DECLARED production identity with the replacement count asserted, so the discrimination is single-variable at the production grain. Non-interference rows pin the neighbors that share tokens with the new arm: match-arm fat arrows, named args, parenthesized arithmetic, and the recently-landed leading-pipe sum admission."
+
+fn parse_accepts_with(source: String, grammar: v2.std.grammar.ParseGrammar) -> Bool {
+  match lex_walk_artifact(source: source, file: ^lambda_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: grammar) {
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn parse_accepts(source: String) -> Bool {
+  parse_accepts_with(source: source, grammar: dag_grammar())
+}
+
+data single_param_lambda_source: String = "module zz_lambda_probe\n\nfn f(xs: List<Int>) -> Bool {\n  any(xs, p => p == 1)\n}\n"
+
+data multi_param_lambda_source: String = "module zz_lambda_probe\n\nfn f() -> Int {\n  combine((a, b) => a + b)\n}\n"
+
+data lambda_in_pipeline_source: String = "module zz_lambda_probe\n\nfn f(xs: List<Int>) -> Bool {\n  xs |> any(p => p == 1)\n}\n"
+
+data authored_algebra_shape_source: String = "module zz_lambda_probe\n\nfn algebra_method_template_name(name: String) -> Bool {\n  all_algebra_profiles()\n    |> any(profile => algebra_templates_for_profile(profile: profile) |> any(t => t.name == name))\n}\n"
+
+data lambda_block_body_source: String = "module zz_lambda_probe\n\nfn f(xs: List<Int>) -> Bool {\n  any(xs, p => {\n    let q = p == 1\n    q\n  })\n}\n"
+
+data match_arm_unchanged_source: String = "module zz_lambda_probe\n\nfn f(x: Bool) -> Int {\n  match x {\n    true => 1,\n    false => 2\n  }\n}\n"
+
+data named_arg_unchanged_source: String = "module zz_lambda_probe\n\nfn f(x: Int) -> Int {\n  g(v: x)\n}\n"
+
+data paren_arithmetic_unchanged_source: String = "module zz_lambda_probe\n\nfn f(x: Int) -> Int {\n  (x + 1) * 2\n}\n"
+
+data sum_decl_unchanged_source: String = "module zz_lambda_probe\n\ntype AlgX = AlphaX | BetaX\n"
+
+data missing_body_source: String = "module zz_lambda_probe\n\nfn f() -> Int {\n  g(p => )\n}\n"
+
+data missing_param_source: String = "module zz_lambda_probe\n\nfn f() -> Int {\n  g(=> x)\n}\n"
+
+data single_paren_param_source: String = "module zz_lambda_probe\n\nfn f() -> Int {\n  g((p) => p)\n}\n"
+
+data zero_param_source: String = "module zz_lambda_probe\n\nfn f() -> Int {\n  g(() => 1)\n}\n"
+
+fn pre_repair_expr_expr() -> v2.std.grammar.GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_nonterminal(production: ^dag_production_match_expr),
+    right: dag_grammar_choice(
+      left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
+      right: dag_grammar_choice(
+        left: dag_grammar_nonterminal(production: ^dag_production_loop_expr),
+        right: dag_grammar_choice(
+          left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
+          right: dag_grammar_choice(
+            left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
+            right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
+          )
+        )
+      )
+    )
+  )
+}
+
+fn no_productions() -> List<v2.std.grammar.GrammarProduction> {
+  []
+}
+
+fn swap_expr_production(productions: List<v2.std.grammar.GrammarProduction>) -> List<v2.std.grammar.GrammarProduction> {
+  fold_list(xs: productions, empty: no_productions(), cons: fn(acc, prod) {
+    match prod.name == ^dag_production_expr {
+      true => concat(acc, [v2.std.grammar.GrammarProduction {
+        name: prod.name,
+        expression: pre_repair_expr_expr(),
+        emitted: prod.emitted
+      }])
+      false => concat(acc, [prod])
+    }
+  })
+}
+
+fn swapped_count(productions: List<v2.std.grammar.GrammarProduction>) -> Int {
+  fold_list(xs: productions, empty: 0, cons: fn(acc, prod) {
+    match prod.name == ^dag_production_expr {
+      true => acc + 1
+      false => acc
+    }
+  })
+}
+
+fn pre_repair_grammar() -> v2.std.grammar.ParseGrammar {
+  match dag_grammar() {
+    ModeledGrammar { root: r } =>
+      v2.std.grammar.ModeledGrammar {
+        root: v2.std.grammar.GrammarRoot {
+          start: r.start,
+          productions: swap_expr_production(productions: r.productions),
+          sync_tokens: r.sync_tokens
+        }
+      }
+    VoidGrammar => VoidGrammar
+  }
+}
+
+fn pre_repair_swap_targeted_exactly_one() -> Bool {
+  match dag_grammar() {
+    ModeledGrammar { root: r } => swapped_count(productions: r.productions) == 1
+    VoidGrammar => false
+  }
+}
+
+test fn witness_single_param_lambda_parses() -> Bool {
+  parse_accepts(source: single_param_lambda_source)
+}
+
+test fn witness_multi_param_lambda_parses() -> Bool {
+  parse_accepts(source: multi_param_lambda_source)
+}
+
+test fn witness_lambda_in_pipeline_parses() -> Bool {
+  parse_accepts(source: lambda_in_pipeline_source)
+}
+
+test fn witness_authored_algebra_shape_parses() -> Bool {
+  parse_accepts(source: authored_algebra_shape_source)
+}
+
+test fn witness_lambda_block_body_parses() -> Bool {
+  parse_accepts(source: lambda_block_body_source)
+}
+
+test fn witness_match_arm_fat_arrow_unchanged() -> Bool {
+  parse_accepts(source: match_arm_unchanged_source)
+}
+
+test fn witness_named_arg_unchanged() -> Bool {
+  parse_accepts(source: named_arg_unchanged_source)
+}
+
+test fn witness_paren_arithmetic_unchanged() -> Bool {
+  parse_accepts(source: paren_arithmetic_unchanged_source)
+}
+
+test fn witness_sum_decl_unchanged() -> Bool {
+  parse_accepts(source: sum_decl_unchanged_source)
+}
+
+test fn witness_missing_body_refuses_RED() -> Bool {
+  parse_accepts(source: missing_body_source) == false
+}
+
+test fn witness_missing_param_refuses_RED() -> Bool {
+  parse_accepts(source: missing_param_source) == false
+}
+
+test fn witness_single_paren_param_refuses_RED() -> Bool {
+  parse_accepts(source: single_paren_param_source) == false
+}
+
+test fn witness_zero_param_refuses_RED() -> Bool {
+  parse_accepts(source: zero_param_source) == false
+}
+
+test fn witness_pre_repair_grammar_restores_the_RED() -> Bool {
+  pre_repair_swap_targeted_exactly_one()
+    && (parse_accepts_with(source: single_param_lambda_source, grammar: pre_repair_grammar()) == false)
+    && (parse_accepts_with(source: authored_algebra_shape_source, grammar: pre_repair_grammar()) == false)
+    && parse_accepts_with(source: match_arm_unchanged_source, grammar: pre_repair_grammar())
+    && parse_accepts_with(source: sum_decl_unchanged_source, grammar: pre_repair_grammar())
+}
