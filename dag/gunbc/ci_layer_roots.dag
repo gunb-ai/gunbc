@@ -1597,7 +1597,7 @@ fn falsifier_substrate_long_lane_entries() -> List<std.realization_schedule.Sche
 
 data falsifier_substrate_long_lane_batch_schedule_note: String = "Batch 6 execution roster: legacy falsifier_substrate_long_lane_rows plus explicit_witness_admission_substrate_long_lane_roster, identity-joined (witness_long_eval_budget_union_in). Declared-long-budget admission rows execute here without joining falsifier_substrate_long_lane_rows — falsifier_substrate_long_lane_entries stays the legacy roster only so declared_long_budget_reaches_the_ceiling_roster_without_the_batch_roster can refuse dual enrollment."
 
-fn falsifier_substrate_long_lane_batch_schedule_entries() -> List<ScheduleWitnessEntry> {
+fn falsifier_substrate_long_lane_batch_schedule_entries() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   witness_long_eval_budget_union_in(
     batch: falsifier_substrate_long_lane_entries(),
     declared: explicit_witness_admission_substrate_long_lane_roster()

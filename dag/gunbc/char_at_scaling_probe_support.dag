@@ -28,9 +28,9 @@ module gunbc.char_at_scaling_probe_support
 // and `std.disposition` `Scaffold` carries a construction mechanism and a binding
 // "and nothing else" -- WHAT it dissolves to. WHEN it dissolves is the
 // `DissolutionCondition`'s fact, and neither row can state the other's.
-data char_at_scaling_probe_disposition: Disposition = Scaffold {
+data char_at_scaling_probe_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.char_at_scaling_probe_support",
     decl_name: "char_at_probe",
     field: WholeDeclaration
@@ -44,8 +44,8 @@ data char_at_scaling_probe_disposition: Disposition = Scaffold {
 // which this probe's disposition no longer cites or depends on. The SCAFFOLD
 // spelling is correct again now that the disposition is Scaffold; the rename to
 // IDENTITY_MARKER was downstream of the Terminal reading and is reverted with it.
-data char_at_scaling_probe_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "delete `src/v1/stage0/src/bin/char_at_scaling_probe.rs` (grep receipt: `CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER`) when char_at's O(1) property is floor-enrolled with a modeled witness, or when a fresh run of this probe's own printed TSV (mean_call_us per string_len/position, per its CHECKABLE RECEIPT doc comment) shows mean_call_us growing with string_len across the CHAR_AT_PROBE_LENGTHS range instead of staying flat" as NonEmptyStr
+data char_at_scaling_probe_dissolution: std.dissolution.DissolutionCondition = unbound_dissolution(
+  description: "delete `src/v1/stage0/src/bin/char_at_scaling_probe.rs` (grep receipt: `CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER`) when char_at's O(1) property is floor-enrolled with a modeled witness, or when a fresh run of this probe's own printed TSV (mean_call_us per string_len/position, per its CHECKABLE RECEIPT doc comment) shows mean_call_us growing with string_len across the CHAR_AT_PROBE_LENGTHS range instead of staying flat" as std.types.NonEmptyStr
 )
 
 fn char_at_probe(s: String, pos: Int) -> String {

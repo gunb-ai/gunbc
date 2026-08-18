@@ -123,7 +123,7 @@ test fn w_a_coherent_fixture_is_admitted() -> Bool {
 
 // Exactly one cause, and it is the named one. "Contains the cause" would pass on an admission
 // that reports every cause for every article.
-data duplicate_component_analog: AnalogCircuitIntent = AnalogCircuitIntent {
+data duplicate_component_analog: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
   title: "admission fixture",
   components: [r_one, c_one, r_one_again],
   nets: coherent_analog.nets,
@@ -136,7 +136,7 @@ test fn w_two_components_sharing_an_identity_refuse() -> Bool {
   )
 }
 
-data duplicate_net_analog: AnalogCircuitIntent = AnalogCircuitIntent {
+data duplicate_net_analog: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
   title: "admission fixture",
   components: coherent_analog.components,
   nets: concat(coherent_analog.nets, [product.electrical.connectivity.ElectricalNet { identity: a_net, members: [] }]),
