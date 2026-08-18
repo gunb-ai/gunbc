@@ -1,10 +1,16 @@
 module extdeps.tailscale.serve
 
 import std.types { NonEmptyStr, Port, String, List, Bool }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global, KeyedResourceRelation, StateRelation }
+import std.key_relation {
+  KeyRelation,
+  KeyedResourceRelation,
+  StateRelation,
+  key_relation_scoped_key,
+  key_relation_scoped_key_eq,
+}
 import std.algebra { Less, Equal, Greater }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label }
+import product.network_topology { NetworkEndpoint }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -165,6 +171,62 @@ fn tailscale_serve_endpoint_key(endpoint: TailscaleServeEndpoint) -> NonEmptyStr
   join(tailscale_serve_endpoint_flags(endpoint: endpoint), " ") as NonEmptyStr
 }
 
+// PER-DEVICE SERVE CONFIGURATION (tailscale.com/kb/1242): route identity is unique within one tailnet device's `serve` surface, not universe-wide. `node` is grounded on product.network_topology NetworkEndpoint with role TailscaleEndpoint — the fleet tailnet device rows in gunbc.fleet_intent_network (srv1_tailscale_endpoint, srv2_tailscale_endpoint, …), not a minted parallel identity. `service` names the upstream Serve CLI surface on that device.
+type TailscaleServeService
+  = | ServeCli
+
+type TailscaleServeScope {
+  node: NetworkEndpoint
+  service: TailscaleServeService
+}
+
+type TailscaleServeRouteSubject {
+  scope: TailscaleServeScope
+  endpoint: TailscaleServeEndpoint
+}
+
+fn tailscale_serve_service() -> TailscaleServeService {
+  ServeCli
+}
+
+fn tailscale_serve_scope(node: NetworkEndpoint) -> TailscaleServeScope {
+  TailscaleServeScope { node: node, service: tailscale_serve_service() }
+}
+
+fn tailscale_serve_route_subject(
+  scope: TailscaleServeScope,
+  endpoint: TailscaleServeEndpoint,
+) -> TailscaleServeRouteSubject {
+  TailscaleServeRouteSubject { scope: scope, endpoint: endpoint }
+}
+
+// Scope identity keys on NetworkEndpoint.label only: fleet tailnet device rows are singleton authorities per label (gunbc.fleet_intent_network). If endpoint rows at the same label can diverge on host/address/role/locality, widen equality here before call sites depend on label alone.
+fn tailscale_network_endpoint_label_eq(a: NetworkEndpoint, b: NetworkEndpoint) -> Bool {
+  a.label == b.label
+}
+
+fn tailscale_serve_scope_eq(a: TailscaleServeScope, b: TailscaleServeScope) -> Bool {
+  tailscale_network_endpoint_label_eq(a: a.node, b: b.node)
+    && match a.service {
+      ServeCli =>
+        match b.service {
+          ServeCli => true
+        }
+    }
+}
+
+fn tailscale_serve_route_scope_of(subject: TailscaleServeRouteSubject) -> TailscaleServeScope {
+  subject.scope
+}
+
+fn tailscale_serve_route_key_of(subject: TailscaleServeRouteSubject) -> TailscaleServeRouteKey {
+  tailscale_serve_route_key(endpoint: subject.endpoint)
+}
+
+fn tailscale_serve_route_member_path(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+  tailscale_serve_route_key_label(key: tailscale_serve_route_key(endpoint: endpoint))
+}
+
 // THE UPSTREAM KEY IS LISTENER x MOUNT, NOT BACKEND AND NOT A RENDERED ARGV STRING. tailscale_serve_route_key projects the two discriminants the `off` form requires; backend changes are re-points of the same route, which is why it is excluded from the key. tailscale_serve_route_key_label is a display locator for membership carriers that still spell a NonEmptyStr path — it is NOT the identity and must not be confused with tailscale_serve_endpoint_flags.
 type TailscaleServeRouteKey {
   https_port: Port
@@ -223,18 +285,26 @@ fn tailscale_endpoint_value_eq(a: TailscaleServeEndpoint, b: TailscaleServeEndpo
   )
 }
 
-// GLOBALKEYSCOPE ON THIS RELATION IS AN HONEST INTERIM RUNG, NOT THE TERMINAL ANSWER. GlobalKeyScope asserts route keys are unique universe-wide, but tailscale serve configuration is per-device — node A and node B may each hold the same listener x mount route as distinct subjects. GlobalKeyScope collapses them into one ScopedKey: the same failure class as distinct deployments sharing one artifact path (distinct subjects merged into one identity), arrived from declaring a scope wider than the resource rather than writing a fake value. The phantom relation brand distinguishes relations from each other, not instances within this relation. Terminal answer is TailscaleServeScope { node, service } with node grounded on the fleet tailnet device carrier already in the model (not minted here). The current fleet vertical is single-node so the wrong population is not yet observable and twin witnesses cannot catch it.
-data tailscale_serve_scope_global_key_dissolve_on: DissolutionCondition = unbound_dissolution(description: "ground TailscaleServeScope { node, service } and re-home tailscale_serve_route_key_relation off GlobalKeyScope; acceptance = one route identity read by BOTH membership reconcile and twin-safety witnesses (successor node://adhoc-907f1da5-c20)")
-
-data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeRouteKeyRelation, TailscaleServeEndpoint, GlobalKeyScope, TailscaleServeRouteKey> = key_relation_global(
-  key_of: tailscale_serve_route_key,
+// KEYING-0 follow-on (node://adhoc-907f1da5-c20): tailscale_serve_route_key_relation scopes route keys by TailscaleServeScope { node, service } instead of GlobalKeyScope. Two nodes may each own the same listener×mount route as distinct scoped keys; collapsing them was the DeploymentArtifactStep poison class reached from the scope axis. Witness: test.claim.tailscale_serve_route_key_witness w_per_device_scope_preserves_distinct_nodes_same_route and its GlobalKeyScope RED control.
+data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey> = KeyRelation {
+  scope_of: tailscale_serve_route_scope_of,
+  key_of: tailscale_serve_route_key_of,
+  scope_eq: tailscale_serve_scope_eq,
   key_eq: tailscale_serve_route_key_eq,
-)
+}
 
-data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRouteKeyRelation, TailscaleServeEndpoint, GlobalKeyScope, TailscaleServeRouteKey, NonEmptyStr> = KeyedResourceRelation {
+fn tailscale_serve_route_endpoint_state_of(subject: TailscaleServeRouteSubject) -> NonEmptyStr {
+  tailscale_endpoint_state_of(endpoint: subject.endpoint)
+}
+
+fn tailscale_serve_route_subject_value_eq(a: TailscaleServeRouteSubject, b: TailscaleServeRouteSubject) -> Bool {
+  tailscale_endpoint_value_eq(a: a.endpoint, b: b.endpoint)
+}
+
+data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey, NonEmptyStr> = KeyedResourceRelation {
   key: tailscale_serve_route_key_relation,
   state: StateRelation {
-    state_of: tailscale_endpoint_state_of,
+    state_of: tailscale_serve_route_endpoint_state_of,
     state_eq: tailscale_endpoint_state_eq,
   },
 }
