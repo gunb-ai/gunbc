@@ -27,7 +27,24 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_write_seal,
 }
 import gunbc.file_access { FileTreeScope }
-import gunbc.spark_serving_install_paths { spark_serving_user_unit_path, spark_serving_user_unit_dir }
+import gunbc.spark_serving_install_paths {
+  spark_serving_user_unit_path,
+  spark_serving_user_unit_dir,
+  spark_serving_runtimes_parent,
+  spark_serving_required_runtime_root,
+  spark_serving_required_runtime_staging_root,
+  spark_serving_required_runtime_staged_archive_path,
+  spark_serving_required_runtime_staged_executable_path,
+  spark_serving_required_runtime_checksum_manifest_path,
+  spark_serving_required_runtime_receipt_path,
+}
+import extdeps.ollama.binary_release {
+  ollama_required_release,
+  ollama_binary_release_download_locator,
+}
+import extdeps.archive.format { Gzip, Zstd }
+import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
+import std.types { FilePath }
 import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 import gunbc.spark_serving_unit_render { spark_serving_desired_user_unit_text }
 
@@ -168,6 +185,187 @@ fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommand
   }
 }
 
+// INSTALLING THE OWNED RUNTIME CLOSURE -- nine steps, each named, each frozen.
+//
+// THE DIGEST IS VERIFIED BY A MANIFEST PLUS `--check`, NOT BY READING STDOUT. `sha256sum <path>`
+// exits zero whenever the file is merely READABLE and puts its answer on stdout, so freezing it as a
+// step would install a check that passes on any downloaded bytes at all. `sha256sum --check --status`
+// is the opposite: it is silent, and its EXIT STATUS is the comparison result. So the expected digest
+// travels as file bytes -- a checksum manifest written by the same typed file-write path the unit
+// file uses -- and the verifying argv names only the manifest.
+//
+// What that buys is that the frozen artifact hash covers the expected digest, the archive path the
+// digest is claimed of, the manifest bytes, the manifest's destination, and the exact verifying argv.
+// An apply cannot substitute a different expectation, because the expectation is in the bundle.
+//
+// THE STAGING TREE IS REMOVED FIRST. This effect re-runs on every converge until the runtime member
+// reports converged, so a previous interrupted attempt's partial tree would otherwise be extracted
+// over -- and `tar` merging into a half-populated directory produces a tree that is neither attempt.
+// The removal is confined to a path derived from the materialization identity under our own runtimes
+// parent; it is not a general delete.
+//
+// NOTHING HERE ESTABLISHES THAT THE RUNTIME IS CORRECT. Every step exiting zero means the invoked
+// program reported completion. `tar` exiting zero is not proof the entrypoint is present, and `mv`
+// exiting zero is not proof the published tree has the intended contents -- which is why the runtime
+// observer reads the published root independently afterwards and the plan must come back empty. The
+// `test -x` step is here to stop the sequence BEFORE publishing a tree that is visibly wrong, not to
+// serve as that proof.
+//
+// THE RECEIPT IS WRITTEN LAST, inside the published root. Its presence is therefore evidence that
+// every prior step completed, and it cannot outlive a failed publish.
+fn spark_serving_install_owned_runtime_closure_steps() -> SparkServingInstallRemoteCommandsVerdict {
+  let staging = spark_serving_required_runtime_staging_root() as String
+  let archive = spark_serving_required_runtime_staged_archive_path() as String
+  let manifest = spark_serving_required_runtime_checksum_manifest_path() as String
+  let staged_exe = spark_serving_required_runtime_staged_executable_path() as String
+  let final_root = spark_serving_required_runtime_root() as String
+  match spark_serving_runtime_checksum_manifest_write() {
+    SparkServingInstallRemoteCommandsRefused { reason: why } =>
+      SparkServingInstallRemoteCommandsRefused { reason: why }
+    SparkServingInstallRemoteCommandsPresent { steps: manifest_steps } =>
+      match spark_serving_runtime_receipt_write() {
+        SparkServingInstallRemoteCommandsRefused { reason: why } =>
+          SparkServingInstallRemoteCommandsRefused { reason: why }
+        SparkServingInstallRemoteCommandsPresent { steps: receipt_steps } =>
+          spark_serving_concat_step_verdicts(verdicts: [
+            spark_serving_admit_portable_remote_argv(
+              identity: "ensure-runtimes-parent" as NonEmptyStr,
+              raws: ["mkdir", "-p", spark_serving_runtimes_parent() as String],
+            ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "reset-attempt-staging" as NonEmptyStr,
+              raws: ["rm", "-rf", staging],
+            ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "create-attempt-staging" as NonEmptyStr,
+              raws: ["mkdir", "-p", staging],
+            ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "download-archive" as NonEmptyStr,
+              raws: [
+                "curl", "-fsSL", "-o", archive,
+                ollama_binary_release_download_locator(binary_release: ollama_required_release) as String,
+              ],
+            ),
+            SparkServingInstallRemoteCommandsPresent { steps: manifest_steps },
+            spark_serving_admit_portable_remote_argv(
+              identity: "admit-archive-digest" as NonEmptyStr,
+              raws: ["sha256sum", "--check", "--status", manifest],
+            ),
+            spark_serving_runtime_extract_argv(archive: archive, staging: staging),
+            spark_serving_admit_portable_remote_argv(
+              identity: "require-staged-entrypoint" as NonEmptyStr,
+              raws: ["test", "-x", staged_exe],
+            ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "publish-runtime-root" as NonEmptyStr,
+              raws: ["mv", "-T", staging, final_root],
+            ),
+            SparkServingInstallRemoteCommandsPresent { steps: receipt_steps },
+          ])
+      }
+  }
+}
+
+// THE EXTRACTION FLAG COMES FROM THE CITED CODEC, not from the filename. A distribution suffix is a
+// naming convention -- `.tgz` and `.tar.gz` are one codec spelled two ways -- so selecting the
+// decompressor by suffix would be reading a nickname where the release row already carries the fact.
+fn spark_serving_runtime_extract_argv(
+  archive: String,
+  staging: String,
+) -> SparkServingInstallRemoteCommandsVerdict {
+  match ollama_required_release.archive_format.codec {
+    Zstd =>
+      spark_serving_admit_portable_remote_argv(
+        identity: "extract-archive" as NonEmptyStr,
+        raws: ["tar", "--zstd", "-xf", archive, "-C", staging],
+      )
+    Gzip =>
+      spark_serving_admit_portable_remote_argv(
+        identity: "extract-archive" as NonEmptyStr,
+        raws: ["tar", "-xzf", archive, "-C", staging],
+      )
+  }
+}
+
+// The manifest is `<hex><two spaces><path>`, the format `sha256sum --check` parses. Two spaces means
+// binary mode; one space and a star means the same thing to GNU coreutils, and picking one and
+// stating it here is cheaper than discovering the difference on a host.
+fn spark_serving_runtime_checksum_manifest_content() -> String {
+  join([
+    ollama_required_release.digest.hex as String,
+    "  ",
+    spark_serving_required_runtime_staged_archive_path() as String,
+  ], "")
+}
+
+fn spark_serving_runtime_checksum_manifest_write() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_typed_file_step(
+    identity: "write-checksum-manifest" as NonEmptyStr,
+    path: spark_serving_required_runtime_checksum_manifest_path(),
+    content: spark_serving_runtime_checksum_manifest_content(),
+  )
+}
+
+// The receipt records WHICH materialization this root is, so a later observer can tell a correctly
+// published tree from one that merely occupies the right path name.
+fn spark_serving_runtime_receipt_write() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_typed_file_step(
+    identity: "write-materialization-receipt" as NonEmptyStr,
+    path: spark_serving_required_runtime_receipt_path(),
+    content: ollama_runtime_materialization_identity_for_required_release().digest as String,
+  )
+}
+
+// One admission path for every frozen file write, so containment and far-side portability are checked
+// the same way for a checksum manifest, a receipt and a unit file.
+fn spark_serving_admit_typed_file_step(
+  identity: NonEmptyStr,
+  path: FilePath,
+  content: String,
+) -> SparkServingInstallRemoteCommandsVerdict {
+  match typed_remote_file_write_seal(
+    path: path,
+    content: content,
+    allowed_scope: FileTreeScope { root_path: spark_serving_executor_home as NonEmptyStr },
+  ) {
+    TypedRemoteFileWriteAdmissionRefused { cause: why } =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: join([
+          "spark_serving_converge_realize: ", identity as String, " refused — ", why as String,
+        ], ""),
+      }
+    TypedRemoteFileWriteAdmitted { write: w } =>
+      SparkServingInstallRemoteCommandsPresent {
+        steps: [
+          spark_serving_step(
+            identity: identity,
+            operation: RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite },
+          ),
+        ],
+      }
+  }
+}
+
+// ONE REFUSAL REFUSES THE WHOLE SEQUENCE. A partially admitted install is not a shorter install: it
+// is an install that would run its prefix and report the effect applied.
+fn spark_serving_concat_step_verdicts(
+  verdicts: List<SparkServingInstallRemoteCommandsVerdict>,
+) -> SparkServingInstallRemoteCommandsVerdict {
+  fold(verdicts, init: SparkServingInstallRemoteCommandsPresent { steps: [] }, f: fn(acc, v) {
+    match acc {
+      SparkServingInstallRemoteCommandsRefused { reason: _ } => acc
+      SparkServingInstallRemoteCommandsPresent { steps: prior } =>
+        match v {
+          SparkServingInstallRemoteCommandsRefused { reason: why } =>
+            SparkServingInstallRemoteCommandsRefused { reason: why }
+          SparkServingInstallRemoteCommandsPresent { steps: next } =>
+            SparkServingInstallRemoteCommandsPresent { steps: concat(prior, next) }
+        }
+    }
+  })
+}
+
 fn realize_spark_serving_install_effect_command(
   effect: ServingInstallEffect,
   executor_login: NonEmptyStr,
@@ -194,10 +392,7 @@ fn realize_spark_serving_install_effect_command(
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: InstallRuntimePackage is not implemented in the Spark serving slice",
       }
-    InstallOwnedRuntimeClosure =>
-      SparkServingInstallRemoteCommandsRefused {
-        reason: "spark_serving_converge_realize: InstallOwnedRuntimeClosure is not implemented in the Spark serving slice",
-      }
+    InstallOwnedRuntimeClosure => spark_serving_install_owned_runtime_closure_steps()
     PullModelArtifact =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: PullModelArtifact is not implemented in the Spark serving slice",

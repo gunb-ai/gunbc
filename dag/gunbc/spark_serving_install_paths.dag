@@ -10,7 +10,7 @@ import std.content_hash {
 import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
-import extdeps.ollama.binary_release { ollama_required_release }
+import extdeps.ollama.binary_release { ollama_required_release, ollama_binary_release_asset_name }
 
 data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home is gunbc.spark_serving_runtime_receipt; unit basename is gunbc.spark_serving_unit_identity spark_serving_unit_name. Unit desired state is SparkServingUserUnitSpec (typed fields, not systemd INI syntax); gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent carries path+spec for generic remote file delivery (#8298 consumer on integration branch)."
 
@@ -80,6 +80,53 @@ fn spark_serving_required_runtime_root() -> FilePath {
   spark_serving_runtime_root_for_identity(
     identity: ollama_runtime_materialization_identity_for_required_release(),
   )
+}
+
+// THE STAGING ROOT AND THE RECEIPT, both derived from the same materialization identity the final
+// root is. Staging is a SIBLING of the published root rather than a subdirectory of it: publication
+// is `mv` of the staged tree onto the final name, and `mv` is atomic only within one directory, so a
+// staging path anywhere else would make the publish a copy that can be interrupted half-done.
+//
+// The name is derived rather than random because the plan is FROZEN: a per-attempt random path could
+// not be hashed into the artifact, so apply would be choosing a path the plan never saw. Deriving it
+// makes the staged location as reviewable as the published one, and the sequence takes ownership of
+// it by removing it first rather than by making it unguessable.
+fn spark_serving_required_runtime_staging_root() -> FilePath {
+  concat(
+    spark_serving_runtimes_parent() as String,
+    concat("/.staging-", ollama_runtime_materialization_identity_for_required_release().digest as String),
+  ) as FilePath
+}
+
+fn spark_serving_required_runtime_staged_archive_path() -> FilePath {
+  concat(
+    spark_serving_required_runtime_staging_root() as String,
+    concat("/", ollama_binary_release_asset_name(binary_release: ollama_required_release) as String),
+  ) as FilePath
+}
+
+fn spark_serving_required_runtime_checksum_manifest_path() -> FilePath {
+  concat(
+    spark_serving_required_runtime_staging_root() as String,
+    "/archive.sha256",
+  ) as FilePath
+}
+
+// The receipt is written LAST and lives INSIDE the published root, so its presence is evidence that
+// every prior step completed. A receipt beside the root could outlive a failed publish and report a
+// tree that is not there.
+fn spark_serving_required_runtime_receipt_path() -> FilePath {
+  concat(
+    spark_serving_required_runtime_root() as String,
+    "/.gunbc-materialization-receipt",
+  ) as FilePath
+}
+
+fn spark_serving_required_runtime_staged_executable_path() -> FilePath {
+  concat(
+    spark_serving_required_runtime_staging_root() as String,
+    concat("/", ollama_required_release.executable_relative_path as String),
+  ) as FilePath
 }
 
 fn spark_serving_required_runtime_executable_path() -> FilePath {

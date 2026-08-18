@@ -1,0 +1,124 @@
+module test.claim.spark_serving_runtime_install_witness
+
+import std.types { String, List, Bool, NonEmptyStr }
+import gunbc.spark_serving_realization { InstallOwnedRuntimeClosure, PullModelArtifact }
+import gunbc.spark_serving_converge_realize {
+  SparkServingInstallRemoteCommandsPresent,
+  SparkServingInstallRemoteCommandsRefused,
+  realize_spark_serving_install_effect_command,
+  spark_serving_default_executor_login,
+}
+import gunbc.remote_operation { RemoteArgv, RemoteFileBytes, remote_operation_argv }
+import extdeps.ollama.binary_release { ollama_required_release }
+
+// THE INSTALL SEQUENCE, ASSERTED AS A SEQUENCE. Every claim below would pass on a realizer that
+// emitted the right COMMANDS in the wrong ORDER, so the ordering claims are stated separately and
+// against exact positions -- publishing before the digest is admitted is the failure this effect
+// exists to prevent, and it is invisible to a set comparison.
+
+fn install_steps() -> List<NonEmptyStr> {
+  match realize_spark_serving_install_effect_command(
+    effect: InstallOwnedRuntimeClosure,
+    executor_login: spark_serving_default_executor_login(),
+  ) {
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => []
+    SparkServingInstallRemoteCommandsPresent { steps: sts } => map(sts, st => st.identity)
+  }
+}
+
+fn step_argv(identity: String) -> List<String> {
+  match realize_spark_serving_install_effect_command(
+    effect: InstallOwnedRuntimeClosure,
+    executor_login: spark_serving_default_executor_login(),
+  ) {
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => []
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      fold(sts, init: [], f: fn(acc, st) {
+        if (st.identity as String) == identity {
+          match remote_operation_argv(operation: st.operation) {
+            Present { value: words } => words
+            Absent => acc
+          }
+        } else { acc }
+      })
+  }
+}
+
+fn index_of(identity: String) -> Int {
+  fold(install_steps(), init: 0 - 1, f: fn(acc, id) { acc }) +
+    fold(
+      install_steps(),
+      init: 0,
+      f: fn(acc, id) { if (id as String) == identity { acc } else { acc + 1 } },
+    )
+}
+
+// THE EFFECT REALIZES AT ALL. It refused entirely until this change, so the plan could never select
+// it however well the rest of the vertical worked.
+test fn install_owned_runtime_closure_realizes() -> Bool {
+  length(install_steps()) == 10
+}
+
+// The named steps, in order. Asserted positionally because order is the load-bearing property.
+test fn install_steps_are_named_in_execution_order() -> Bool {
+  join(map(install_steps(), id => id as String), ",")
+    == "ensure-runtimes-parent,reset-attempt-staging,create-attempt-staging,download-archive,write-checksum-manifest,admit-archive-digest,extract-archive,require-staged-entrypoint,publish-runtime-root,write-materialization-receipt"
+}
+
+// THE DISCRIMINATING CLAIM. `sha256sum <archive>` exits zero on any readable file and puts its answer
+// on stdout, so a realizer that froze THAT would pass every other claim in this file while verifying
+// nothing. The verifying argv must carry --check and --status, and must NOT name the archive.
+test fn the_digest_step_compares_rather_than_computes() -> Bool {
+  let argv = step_argv(identity: "admit-archive-digest")
+  length(argv) == 4
+    && argv[0] == "sha256sum"
+    && argv[1] == "--check"
+    && argv[2] == "--status"
+    && string_contains(argv[3], "archive.sha256")
+    && !any(argv, w => string_contains(w, ".tar."))
+}
+
+// And the expectation is FILE BYTES, not an argv word: the manifest step carries no argv at all.
+test fn the_expected_digest_travels_as_frozen_bytes() -> Bool {
+  length(step_argv(identity: "write-checksum-manifest")) == 0
+}
+
+// The download names the cited locator, so the bytes fetched are the bytes the release row admits.
+test fn the_download_names_the_cited_release_locator() -> Bool {
+  let argv = step_argv(identity: "download-archive")
+  any(argv, w => string_contains(w, ollama_required_release.version as String))
+    && any(argv, w => w == "-fsSL")
+}
+
+// PUBLISH HAPPENS AFTER ADMISSION. A sequence that published first would still contain every command
+// this file names.
+test fn publication_follows_digest_admission_and_entrypoint_check() -> Bool {
+  index_of(identity: "admit-archive-digest") < index_of(identity: "publish-runtime-root")
+    && index_of(identity: "require-staged-entrypoint") < index_of(identity: "publish-runtime-root")
+    && index_of(identity: "download-archive") < index_of(identity: "admit-archive-digest")
+}
+
+// The receipt is last, so its presence on a host is evidence the whole sequence completed.
+test fn the_materialization_receipt_is_written_last() -> Bool {
+  index_of(identity: "write-materialization-receipt") == length(install_steps()) - 1
+}
+
+// THE STAGING TREE IS RESET BEFORE IT IS USED. Without this a previous interrupted attempt's partial
+// tree is extracted over, producing a tree that is neither attempt.
+test fn staging_is_reset_before_it_is_created() -> Bool {
+  index_of(identity: "reset-attempt-staging") < index_of(identity: "create-attempt-staging")
+    && index_of(identity: "create-attempt-staging") < index_of(identity: "download-archive")
+}
+
+// THE RED CONTROL FOR THE REST OF THE VERTICAL. PullModelArtifact is still unimplemented, and this
+// asserts it -- so when it lands, this witness fails and must be updated rather than silently
+// continuing to describe a frontier that moved.
+test fn pull_model_artifact_is_still_unrealized() -> Bool {
+  match realize_spark_serving_install_effect_command(
+    effect: PullModelArtifact,
+    executor_login: spark_serving_default_executor_login(),
+  ) {
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => true
+    SparkServingInstallRemoteCommandsPresent { steps: _ } => false
+  }
+}

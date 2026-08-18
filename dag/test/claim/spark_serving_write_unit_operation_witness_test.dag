@@ -65,9 +65,9 @@ fn realize(effects: List<ServingInstallEffect>) -> SparkServingInstallRemoteComm
 // bytes ride stdin, so no argv-shaped verdict could ever express it. It now realizes.
 test fn write_user_unit_file_realizes_instead_of_refusing() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operation_count(operations: ops) == 2
-        && remote_operation_file_write_count(operations: ops) == 1
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operation_count(operations: map(sts, st => st.operation)) == 2
+        && remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 1
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
@@ -79,8 +79,8 @@ test fn write_user_unit_file_realizes_instead_of_refusing() -> Bool {
 // correct sequence from one containing the same two operations.
 test fn the_unit_write_is_preceded_by_a_non_privileged_mkdir() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      match ops.first() {
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      match map(sts, st => st.operation).first() {
         Absent => false
         Present { value: first } =>
           match first {
@@ -98,8 +98,8 @@ test fn the_unit_write_is_preceded_by_a_non_privileged_mkdir() -> Bool {
 // here would silently require a sudoers grant that does not exist.
 test fn the_unit_directory_mkdir_is_not_privileged() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      match ops.first() {
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      match map(sts, st => st.operation).first() {
         Absent => false
         Present { value: first } =>
           match first {
@@ -115,9 +115,9 @@ test fn the_unit_directory_mkdir_is_not_privileged() -> Bool {
 // routed onto a command line, which is exactly what the typed-write module exists to prevent.
 test fn the_unit_write_carries_no_argv_projection() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      length(remote_operations_argv_only(operations: ops)) == 1
-        && remote_operation_file_write_count(operations: ops) == 1
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      length(remote_operations_argv_only(operations: map(sts, st => st.operation))) == 1
+        && remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 1
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
@@ -127,8 +127,8 @@ test fn the_unit_write_carries_no_argv_projection() -> Bool {
 // something.
 test fn the_unit_write_carries_the_rendered_bytes_at_the_modeled_path() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      match ops[1] {
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      match map(sts, st => st.operation)[1] {
         Absent => false
         Present { value: op } =>
           match op {
@@ -150,13 +150,13 @@ test fn the_unit_write_carries_the_rendered_bytes_at_the_modeled_path() -> Bool 
 // a genuine subset and not the whole population.
 test fn a_mixed_sequence_keeps_both_kinds_and_their_order() -> Bool {
   match realize(effects: [WriteUserUnitFile, EnableLingerForOwnAccount]) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operation_count(operations: ops) == 3
-        && remote_operation_file_write_count(operations: ops) == 1
-        && length(remote_operations_argv_only(operations: ops)) == 2
-        && kind_at(ops: ops, i: 0) == "argv"
-        && kind_at(ops: ops, i: 1) == "file"
-        && kind_at(ops: ops, i: 2) == "argv"
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operation_count(operations: map(sts, st => st.operation)) == 3
+        && remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 1
+        && length(remote_operations_argv_only(operations: map(sts, st => st.operation))) == 2
+        && kind_at(ops: map(sts, st => st.operation), i: 0) == "argv"
+        && kind_at(ops: map(sts, st => st.operation), i: 1) == "file"
+        && kind_at(ops: map(sts, st => st.operation), i: 2) == "argv"
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
@@ -169,7 +169,7 @@ test fn a_mixed_sequence_keeps_both_kinds_and_their_order() -> Bool {
 test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
   match realize(effects: [WriteUserUnitFile, PullModelArtifact]) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => true
-    SparkServingInstallRemoteCommandsPresent { operations: _ } => false
+    SparkServingInstallRemoteCommandsPresent { steps: _ } => false
   }
 }
 
@@ -177,9 +177,9 @@ test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
 // a file write, so this pins the other direction.
 test fn an_argv_effect_is_still_an_argv_operation() -> Bool {
   match realize(effects: [EnableLingerForOwnAccount]) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operation_file_write_count(operations: ops) == 0
-        && length(remote_operations_argv_only(operations: ops)) == 1
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 0
+        && length(remote_operations_argv_only(operations: map(sts, st => st.operation))) == 1
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
@@ -223,9 +223,9 @@ test fn two_writes_differing_only_in_content_have_different_wires() -> Bool {
 test fn the_wire_discriminates_where_the_label_does_not() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      string_contains(remote_operations_wire(operations: ops), "content=")
-        && string_contains(remote_operations_wire(operations: ops), "mode=600")
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      string_contains(remote_operations_wire(operations: map(sts, st => st.operation)), "content=")
+        && string_contains(remote_operations_wire(operations: map(sts, st => st.operation)), "mode=600")
   }
 }
 
