@@ -80,10 +80,11 @@ impl ExpectedRedRosterJoinReport {
         let Some(row) = self.row_mut(identity) else {
             return;
         };
+        let old = row.disposition.clone();
         let (disposition, detail) = classify_verdict(verdict);
-        row.disposition = disposition;
+        row.disposition = disposition.clone();
         row.detail = detail;
-        self.recompute_counts();
+        self.adjust_counts(&old, &disposition);
     }
 
     pub fn finalize_not_observed(&mut self) {
@@ -100,25 +101,55 @@ impl ExpectedRedRosterJoinReport {
                     "enrolled on roster but no matching claim executed in this run".to_string();
             }
         }
-        self.recompute_counts();
     }
 
     fn row_mut(&mut self, identity: &str) -> Option<&mut ExpectedRedRosterJoinRow> {
         self.rows.iter_mut().find(|row| row.identity == identity)
     }
 
-    fn recompute_counts(&mut self) {
-        self.still_red = 0;
-        self.now_passes = 0;
-        self.not_evaluated = 0;
-        for row in &self.rows {
-            match row.disposition {
-                ExpectedRedJoinDisposition::StillRed => self.still_red += 1,
-                ExpectedRedJoinDisposition::NowPasses => self.now_passes += 1,
-                ExpectedRedJoinDisposition::NotEvaluated { .. } => self.not_evaluated += 1,
-            }
+    fn adjust_counts(
+        &mut self,
+        old: &ExpectedRedJoinDisposition,
+        new: &ExpectedRedJoinDisposition,
+    ) {
+        Self::decrement_bucket(
+            &mut self.still_red,
+            &mut self.now_passes,
+            &mut self.not_evaluated,
+            old,
+        );
+        Self::increment_bucket(
+            &mut self.still_red,
+            &mut self.now_passes,
+            &mut self.not_evaluated,
+            new,
+        );
+    }
+
+    fn increment_bucket(
+        still_red: &mut usize,
+        now_passes: &mut usize,
+        not_evaluated: &mut usize,
+        disposition: &ExpectedRedJoinDisposition,
+    ) {
+        match disposition {
+            ExpectedRedJoinDisposition::StillRed => *still_red += 1,
+            ExpectedRedJoinDisposition::NowPasses => *now_passes += 1,
+            ExpectedRedJoinDisposition::NotEvaluated { .. } => *not_evaluated += 1,
         }
-        self.roster_len = self.rows.len();
+    }
+
+    fn decrement_bucket(
+        still_red: &mut usize,
+        now_passes: &mut usize,
+        not_evaluated: &mut usize,
+        disposition: &ExpectedRedJoinDisposition,
+    ) {
+        match disposition {
+            ExpectedRedJoinDisposition::StillRed => *still_red -= 1,
+            ExpectedRedJoinDisposition::NowPasses => *now_passes -= 1,
+            ExpectedRedJoinDisposition::NotEvaluated { .. } => *not_evaluated -= 1,
+        }
     }
 }
 
