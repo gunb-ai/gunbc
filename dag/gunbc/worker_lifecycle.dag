@@ -160,10 +160,10 @@ fn worker_observation_without_provider_probe_for_process(
     provider_instance: ProviderEvidenceUnobserved {
       reason: "tmux name presence does not identify the provider process tree" as std.types.NonEmptyStr,
     },
-    provider_readiness: ProviderReadinessUnobserved {
+    provider_readiness: extdeps.llm.cli_lifecycle.ProviderReadinessUnobserved {
       reason: "tmux presence does not observe provider authentication or model access" as std.types.NonEmptyStr,
     },
-    tool_readiness: ToolExecutionReadinessUnobserved {
+    tool_readiness: extdeps.llm.cli_lifecycle.ToolExecutionReadinessUnobserved {
       reason: "tmux presence does not execute a sandbox shell probe" as std.types.NonEmptyStr,
     },
     phase: WorkerPhaseUnobserved {

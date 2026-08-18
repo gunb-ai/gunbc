@@ -77,7 +77,7 @@ data renderer_is_a_projection_note: String = "THE RENDERER IS CLAIMED SEPARATELY
 
 test fn the_renderer_names_the_operation_and_not_the_argv_spelling() -> Bool {
   let rendered = render_remote_branch_read_failure(
-    cause: RefAdvertisementRefused {
+    cause: gunbc.roadmap_publish.RefAdvertisementRefused {
       remote: origin(),
       exit_code: 2,
       stderr: "connection refused",
@@ -92,7 +92,7 @@ test fn the_renderer_names_the_operation_and_not_the_argv_spelling() -> Bool {
 
 test fn the_renderer_names_every_degenerate_ref_it_was_given() -> Bool {
   let rendered = render_remote_branch_read_failure(
-    cause: AdvertisedRefProjectsEmptyBranch {
+    cause: gunbc.roadmap_publish.AdvertisedRefProjectsEmptyBranch {
       remote: origin(),
       ref_names: ["refs/heads/", "refs/heads/"],
     },

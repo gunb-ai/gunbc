@@ -315,5 +315,5 @@ fn fallback_arm_census_lens_path_has_no_answers_on_open() -> Bool {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

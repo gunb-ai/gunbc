@@ -21,7 +21,7 @@ fn parse_segment_tokens(seg: String) -> PathSegmentTokensResult {
     if seg |> contains("}") {
       MalformedPathSegment { segment: seg, reason: "stray closing brace" }
     } else {
-      ParsedSegmentTokens { tokens: [LiteralToken { text: seg }] }
+      ParsedSegmentTokens { tokens: [std.http_path.LiteralToken { text: seg }] }
     }
   } else {
     let before_and_rest = seg |> split(delimiter: "{")
@@ -50,13 +50,13 @@ fn parse_segment_tokens(seg: String) -> PathSegmentTokensResult {
       Absent => return MalformedPathSegment { segment: seg, reason: "internal: missing suffix after closing-brace split" }
     }
     let prefix_tokens = if prefix != "" {
-      [LiteralToken { text: prefix }]
+      [std.http_path.LiteralToken { text: prefix }]
     } else { [] }
     let param_tokens = if param_name != "" {
-      [ParamToken { name: param_name }]
+      [std.http_path.ParamToken { name: param_name }]
     } else { [] }
     let suffix_tokens = if suffix != "" {
-      [LiteralToken { text: suffix }]
+      [std.http_path.LiteralToken { text: suffix }]
     } else { [] }
     if param_name == "" || suffix |> contains("{") || suffix |> contains("}") {
       MalformedPathSegment { segment: seg, reason: "invalid parameter segment structure" }

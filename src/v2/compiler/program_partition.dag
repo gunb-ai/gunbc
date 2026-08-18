@@ -266,7 +266,7 @@ fn partition_root_not_in_ambient_diagnostic(segment_root: Node) -> v2.std.diagno
   v2.std.diagnostic.Diagnostic {
     reason: ^partition_root_not_in_ambient,
     at: node_locus(node: segment_root),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -274,7 +274,7 @@ fn partition_facts_miss_diagnostic(key: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^partition_facts_miss,
     at: node_locus(node: key),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -282,7 +282,7 @@ fn partition_boundary_free_ref_diagnostic(node: Node) -> v2.std.diagnostic.Diagn
   v2.std.diagnostic.Diagnostic {
     reason: ^partition_boundary_free_ref,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -290,7 +290,7 @@ fn partition_empty_segment_diagnostic(root: Node) -> v2.std.diagnostic.Diagnosti
   v2.std.diagnostic.Diagnostic {
     reason: ^partition_empty_segment,
     at: node_locus(node: root),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -576,7 +576,7 @@ fn program_segment_from_section_unavailable() -> Outcome<v2.std.program_segment.
     d: v2.std.diagnostic.Diagnostic {
       reason: ^partition_section_adapter_unavailable,
       at: port_locus(port: ^program_segment_from_section_port),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     }
   )
 }

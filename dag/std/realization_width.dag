@@ -13,7 +13,7 @@ fn nano_time(count: std.nat.Nat) -> Measure<Time, Nano, std.nat.Nat> {
   time_measure(count: count)
 }
 
-fn nano_predicted_zero() -> CostAccount<Nano> {
+fn nano_predicted_zero() -> CostAccount<std.measure.Nano> {
   cost_account_predicted_zero()
 }
 
@@ -177,7 +177,7 @@ fn witness_budget_ignoring_fold_fails(
   ) != shard_count
 }
 
-fn shard_balance_slot_for_cost(cost: CostAccount<Nano>, baseline: CostAccount<Nano>) -> Int {
+fn shard_balance_slot_for_cost(cost: CostAccount<std.measure.Nano>, baseline: CostAccount<std.measure.Nano>) -> Int {
   match cost.basis {
     Measured => cost_account_time_count(account: cost)
     Predicted => cost_account_time_count(account: baseline)

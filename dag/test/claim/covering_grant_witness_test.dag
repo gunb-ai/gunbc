@@ -17,7 +17,7 @@ fn cg_envelope() -> std.effect_grant.Envelope {
       std.effect_grant.Grant {
         verb: Write,
         root: filesystem_position(path: ["scratch"]),
-        binding: Replay { fixture_store: "fx" },
+        binding: std.effect_grant.Replay { fixture_store: "fx" },
         lifecycle: LifecycleByConvention
       },
     ]

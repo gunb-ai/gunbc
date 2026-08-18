@@ -51,19 +51,19 @@ fn retained_legacy_rust_test_modules() -> List<RetainedLegacyRustTestModule> {
 data retained_namespace_unique_on_chain_policy: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
   source_file: "namespace_unique_on_chain_policy_test.rs",
   purpose: "Toggles the host thread-local NameResolutionPolicy gate between ImportScoped and NamespaceOnlyY, then compiles homonym fixtures and asserts the strict policy refuses with AmbiguousReference where the default resolves. A substrate program has no handle to flip the seed interpreter's resolution policy, so the discriminating comparison cannot be authored in .dag at all." as std.types.NonEmptyStr,
-  dissolution: UnboundDissolution { description: "The namespace-only resolution lane makes NamespaceOnlyY the sole policy, at which point the two-policy comparison has no second arm and this row is deleted." as std.types.NonEmptyStr },
+  dissolution: std.dissolution.UnboundDissolution { description: "The namespace-only resolution lane makes NamespaceOnlyY the sole policy, at which point the two-policy comparison has no second arm and this row is deleted." as std.types.NonEmptyStr },
 }
 
 data retained_materialization_provider_resolved_graph_consumer: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
   source_file: "materialization_provider_resolved_graph_consumer_test.rs",
   purpose: "Calls the seed cli_run helper serve_resolved_graph_stored_disk_probe_for_test, inspects the provider context BUILD COUNTER, and asserts the faithful-probe refusal path never boots the provider context. The counter is seed runtime state with no substrate-observable surface — a .dag witness could observe the refusal but not that the context was never built, which is the whole claim." as std.types.NonEmptyStr,
-  dissolution: UnboundDissolution { description: "The materialization provider exposes a typed build-count receipt the substrate can read, at which point the counter assertion migrates to a floor witness." as std.types.NonEmptyStr },
+  dissolution: std.dissolution.UnboundDissolution { description: "The materialization provider exposes a typed build-count receipt the substrate can read, at which point the counter assertion migrates to a floor witness." as std.types.NonEmptyStr },
 }
 
 data retained_decl_facts_dimensionless_projection: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
   source_file: "decl_facts_dimensionless_projection_test.rs",
   purpose: "Asserts initializer-projection marshalling is invariant under SOURCE-FILE ORDER by reversing the SourceFile vector before compile. The witness-layer decl_facts path uses one resolved graph, so reversing the input vector is a host-Rust seam; reaching it from .dag would require minting a second compile entry whose only purpose is to permute its own inputs." as std.types.NonEmptyStr,
-  dissolution: UnboundDissolution { description: "A compile entry accepts a declared source-order permutation as a parameter, at which point order invariance becomes an ordinary two-run floor witness." as std.types.NonEmptyStr },
+  dissolution: std.dissolution.UnboundDissolution { description: "A compile entry accepts a declared source-order permutation as a parameter, at which point order invariance becomes an ordinary two-run floor witness." as std.types.NonEmptyStr },
 }
 
 // RE-OBSERVED 2026-08-11, and the reason is REWRITTEN rather than inherited.
@@ -81,7 +81,7 @@ data retained_decl_facts_dimensionless_projection: RetainedLegacyRustTestModule 
 data retained_none_undetermined_carrier_refuse: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
   source_file: "none_undetermined_carrier_refuse_test.rs",
   purpose: "Discriminating RED for the Phase C Value::Null-split emitter fail-open: calls emit_none_keyword_for_resolved_type on the seed emitter surface across three arms — an undetermined carrier refuses, CardOptional emits None, and a non-optional resolved carrier refuses. No floor witness pins the refusing arms today." as std.types.NonEmptyStr,
-  dissolution: UnboundDissolution { description: "A floor witness pins all three arms through compile_dag_diagnostic_census, identifying the EXPECTED diagnostic for each refusing arm plus the accepted CardOptional emission as positive control. A generic compile_dag_rust_emit_check false is explicitly insufficient: it cannot separate the expected refusal from a malformed fixture or an unrelated earlier failure." as std.types.NonEmptyStr },
+  dissolution: std.dissolution.UnboundDissolution { description: "A floor witness pins all three arms through compile_dag_diagnostic_census, identifying the EXPECTED diagnostic for each refusing arm plus the accepted CardOptional emission as positive control. A generic compile_dag_rust_emit_check false is explicitly insufficient: it cannot separate the expected refusal from a malformed fixture or an unrelated earlier failure." as std.types.NonEmptyStr },
 }
 
 // RE-OBSERVED 2026-08-11, reason REWRITTEN. The prior row claimed the corpus
@@ -92,19 +92,19 @@ data retained_none_undetermined_carrier_refuse: RetainedLegacyRustTestModule = R
 data retained_field_of_fractions_single_declaration: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
   source_file: "field_of_fractions_single_declaration_test.rs",
   purpose: "Guards the §7.2 FieldOfFractions de-fork: a corpus-wide scan must find exactly one top-level `type FieldOfFractions`, at dag/std/algebra.dag. A second declaration anywhere is a §3 fork that desynchronizes from the single authority. No floor witness performs this census today." as std.types.NonEmptyStr,
-  dissolution: UnboundDissolution { description: "A floor witness derives the complete declaration population from an exact corpus subject and asserts exactly one FieldOfFractions declaration, refusing unreadable or missing members rather than counting them absent, with a planted duplicate specimen as its RED. Prefer a declaration-identity population over a text scan." as std.types.NonEmptyStr },
+  dissolution: std.dissolution.UnboundDissolution { description: "A floor witness derives the complete declaration population from an exact corpus subject and asserts exactly one FieldOfFractions declaration, refusing unreadable or missing members rather than counting them absent, with a planted duplicate specimen as its RED. Prefer a declaration-identity population over a text scan." as std.types.NonEmptyStr },
 }
 
 data retained_field_of_fractions_construction: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
   source_file: "field_of_fractions_construction_test.rs",
   purpose: "Guards the eval_record_lit construction-side NON-collapse for FieldOfFractions { num, denom }: a plain-record construction with native Int fields must stay a boxed Record carrying both fields untouched. The assertion pattern-matches the host interpreter's internal Value enum, and that representation-strategy distinction has no observable surface from within the substrate — both representations compute the same values." as std.types.NonEmptyStr,
-  dissolution: UnboundDissolution { description: "The interpreter exposes a typed representation receipt distinguishing boxed record from collapsed scalar, at which point the representation claim becomes substrate-observable." as std.types.NonEmptyStr },
+  dissolution: std.dissolution.UnboundDissolution { description: "The interpreter exposes a typed representation receipt distinguishing boxed record from collapsed scalar, at which point the representation claim becomes substrate-observable." as std.types.NonEmptyStr },
 }
 
 data retained_whole_tree_wiring_enum: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
   source_file: "whole_tree_wiring_enum_test.rs",
   purpose: "Green-by-execution anchor for the gunbc#5364 whole-tree wiring-liveness enumeration widening: cli_run::whole_tree_resolved_ctx resolves every .dag module under the given source roots in one pass, so decl-facts enumeration sees fn-arrow decls across the WHOLE tree rather than one per-entry closure. The claim is about the seed's whole-tree resolve entry, which the substrate reaches only per-entry." as std.types.NonEmptyStr,
-  dissolution: UnboundDissolution { description: "The substrate gains a whole-tree resolve entry whose enumeration the floor can observe directly, at which point the anchor migrates." as std.types.NonEmptyStr },
+  dissolution: std.dissolution.UnboundDissolution { description: "The substrate gains a whole-tree resolve entry whose enumeration the floor can observe directly, at which point the anchor migrates." as std.types.NonEmptyStr },
 }
 
 // RESTORE ATTEMPTED AND WITHDRAWN 2026-08-11 (review 51132), BY MEASUREMENT.
@@ -145,5 +145,5 @@ data retained_whole_tree_wiring_enum: RetainedLegacyRustTestModule = RetainedLeg
 data retained_helpers: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
   source_file: "helpers.rs",
   purpose: "Shared fixture/harness surface for the retained kernel (workspace root, module-index construction, ephemeral generated source roots), carrying three self-tests: co-root last-wins on duplicate module names, ephemeral generated source-root resolution, and duplicate-name scanning without panic. Every retained module assembles its fixtures through it." as std.types.NonEmptyStr,
-  dissolution: UnboundDissolution { description: "The retained kernel empties as its modules migrate, at which point the harness has no consumer and is deleted with the last row." as std.types.NonEmptyStr },
+  dissolution: std.dissolution.UnboundDissolution { description: "The retained kernel empties as its modules migrate, at which point the harness has no consumer and is deleted with the last row." as std.types.NonEmptyStr },
 }

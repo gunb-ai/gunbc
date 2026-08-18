@@ -8,7 +8,7 @@ fn host_identity_ssh_access(host: gunbc.fleet_intent.ComputeHost, ssh_host: std.
   gunbc.ci_deploy_access.DeployAccess {
     principal: principal,
     host: host,
-    transport: SshShell { ssh_host: ssh_host },
+    transport: gunbc.host_effect.SshShell { ssh_host: ssh_host },
     privileged_commands: grounded_principal_privileged_commands(p: principal),
   }
 }

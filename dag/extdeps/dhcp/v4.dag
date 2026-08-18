@@ -75,7 +75,7 @@ fn dhcp_mac_pinned_reservation_not_contradictory(
 
 fn parse_dhcp_client_hostname_option12(raw: String) -> Result<DhcpClientHostNameOption12, DomainNameParseError> {
   match parse_host_name(raw: raw) {
-    Ok { value: host } => Ok { value: host }
-    Err { value: e } => Err { value: e }
+    Ok { value: host } => std.error_primitives.Ok { value: host }
+    Err { value: e } => std.error_primitives.Err { value: e }
   }
 }

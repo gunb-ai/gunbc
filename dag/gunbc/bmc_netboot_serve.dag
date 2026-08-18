@@ -40,11 +40,11 @@ fn bmc_netboot_seed_datasource(plan: BmcNetbootServePlan) -> String {
 
 fn bmc_netboot_kernel_cmdline(plan: BmcNetbootServePlan) -> List<extdeps.firmware.kernel_cmdline.KernelCmdlineArg> {
   [
-    KernelKeyValue { key: "ip", value: "dhcp" },
-    KernelKeyValue { key: "url", value: uri_wire(uri: plan.bulk_iso_url) },
-    KernelFlag { name: "autoinstall" },
-    KernelKeyValue { key: "ds", value: bmc_netboot_seed_datasource(plan: plan) },
-    KernelFlag { name: "---" },
+    extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "ip", value: "dhcp" },
+    extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "url", value: uri_wire(uri: plan.bulk_iso_url) },
+    extdeps.firmware.kernel_cmdline.KernelFlag { name: "autoinstall" },
+    extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "ds", value: bmc_netboot_seed_datasource(plan: plan) },
+    extdeps.firmware.kernel_cmdline.KernelFlag { name: "---" },
   ]
 }
 
@@ -80,7 +80,7 @@ fn bmc_netboot_nocloud_user_data(plan: BmcNetbootServePlan) -> String {
 }
 
 fn bmc_transport(plan: BmcNetbootServePlan) -> extdeps.exec.command.CommandTransport {
-  SshExec { ssh_target: join(["root@", plan.bmc_host as String], "") as std.types.NonEmptyStr }
+  extdeps.exec.command.SshExec { ssh_target: join(["root@", plan.bmc_host as String], "") as std.types.NonEmptyStr }
 }
 
 fn bmc_netboot_serve_command_local(plan: BmcNetbootServePlan) -> extdeps.exec.command.ArgvCommand {
@@ -119,7 +119,7 @@ data bmc_netboot_provision_scaffold: std.disposition.Disposition = Scaffold {
 data bmc_netboot_provision_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bmc_netboot_provision — the staging manifest (bmc_netboot_staging_manifest) IS the driver: provision folds its BmcStagedFile rows through bmc_netboot_stage_file (LocalArtifact scp / InlineText write+scp / FetchFromUri typed refusal), so the file list has one authority and the former hand-unrolled sequence is deleted. Remaining debt is the transport: shell.Exec.Run rendering of scp_command (extdeps.exec.command, the single ssh/scp posture authority — no forked argv) on the pre-runtime BMC bootstrap window. DISSOLVES WHEN host_effect_apply binds the manifest fold as a typed staging effect and dag/gunbc/bmc_netboot_serve.dag retires its shell/scp glue")
 
 func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, argv: List<String>) -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let cmd = command_over_transport(command: extdeps.exec.command.ArgvCommand { argv: argv }, transport: bmc_transport(plan: plan))
   let run = shell.Exec.Run(
@@ -140,7 +140,7 @@ fn bmc_staged_file_basename(remote_path: std.types.NonEmptyStr) -> String {
 }
 
 func bmc_netboot_put_path(plan: BmcNetbootServePlan, local: std.types.NonEmptyStr, remote_path: std.types.NonEmptyStr) -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let remote_target = join([bmc_ssh_target(plan: plan) as String, ":", remote_path as String], "") as std.types.NonEmptyStr
   let cmd = scp_command(local_path: local, remote_target: remote_target)
@@ -154,7 +154,7 @@ func bmc_netboot_put_path(plan: BmcNetbootServePlan, local: std.types.NonEmptySt
 }
 
 func bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   match file.content {
     LocalArtifact { path: p } => bmc_netboot_put_path(plan: plan, local: p, remote_path: file.remote_path)
@@ -166,7 +166,7 @@ func bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> s
 }
 
 func bmc_netboot_stage_inline(plan: BmcNetbootServePlan, remote_path: std.types.NonEmptyStr, content: String) -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let local = join(["/tmp/gunbc-bmc-", bmc_staged_file_basename(remote_path: remote_path)], "") as std.types.NonEmptyStr
   let w = Filesystem.Write(path: local as String, content: content)
@@ -178,7 +178,7 @@ func bmc_netboot_stage_inline(plan: BmcNetbootServePlan, remote_path: std.types.
 
 
 func bmc_netboot_provision(plan: BmcNetbootServePlan) -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let mk = bmc_netboot_run_bmc(plan: plan, argv: ["mkdir", "-p", join([plan.netboot_dir as String, "/nocloud"], "")])
   let staged = fold(
@@ -197,7 +197,7 @@ func bmc_netboot_provision(plan: BmcNetbootServePlan) -> std.process.ProcessExit
 }
 
 func srv4_bmc_netboot_provision() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   bmc_netboot_provision(plan: srv4_bmc_netboot_serve_plan)
 }

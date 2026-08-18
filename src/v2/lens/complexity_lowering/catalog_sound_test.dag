@@ -22,7 +22,7 @@ fn bogus_widening_lowering() -> v2.lens.complexity_lowering.ComplexityLowering {
   v2.lens.complexity_lowering.ComplexityLowering {
     name: ^bogus_widening,
     before: ClassLinear,
-    after: ClassPolynomial { degree: polynomial_degree_two() }
+    after: v2.lens.cost.ClassPolynomial { degree: polynomial_degree_two() }
   }
 }
 test fn widening_lowering_is_rejected() -> Bool {

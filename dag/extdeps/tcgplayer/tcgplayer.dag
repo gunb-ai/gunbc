@@ -28,9 +28,9 @@ type TcgplayerTokenResponse {
 data structural_coverage_gap_token_response_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "TcgplayerTokenResponse" },
-      JsonPending { field: ".issued" },
-      JsonPending { field: ".expires" }
+      extdeps.coverage.Subject { path: "TcgplayerTokenResponse" },
+      extdeps.coverage.JsonPending { field: ".issued" },
+      extdeps.coverage.JsonPending { field: ".expires" }
     ],
     trigger: "token cache consumer needs the upstream dotted timestamp fields"
   }

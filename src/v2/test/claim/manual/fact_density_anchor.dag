@@ -1,12 +1,12 @@
 module v2.test.manual.fact_density_anchor
 
 data fact_density_anchor_hollow_alias: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^fact_density_anchor_int32_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fact_density_anchor_int32_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 data fact_density_anchor_fact_bundle: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^fact_density_anchor_width_field },
@@ -21,7 +21,7 @@ data fact_density_anchor_fact_bundle: Node = v2.std.node.Node {
 }
 
 data fact_density_anchor_kernel_ambient_bool: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_bool } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fact_density_kernel_ambient_bool } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }

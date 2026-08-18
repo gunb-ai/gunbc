@@ -22,11 +22,11 @@ fn parse_tree_to_target_model_bridge_scaffold() -> Witness<ParseTreeToTargetMode
       }
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^parse_tree_to_target_model_bridge_not_realized,
         at: port_locus(port: ^cross_language_bridge_port),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }

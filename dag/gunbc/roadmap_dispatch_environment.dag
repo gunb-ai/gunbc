@@ -27,7 +27,7 @@ type DispatchEnvironmentAdmission
 data dispatch_environment_admission_note: String = "Dispatch admission is requirements -> Ensure -> grounded receipts -> actuation. The work item's typed validation operations derive semantic capabilities; HostDashboardInstance resolves those to exact executable paths and identity probes; one generic Ensure decision is evaluated independently per capability; only independently grounded Noop receipts admit worktree/session effects. Generic Ensure never installs a named package. An EnsureMayApply realization still needs a capability-specific typed plan and adapter; this module supplies no ambient package manager fallback, so no-plan refuses. ExecutionContractUnspecified is an explicit migration refusal. Provider authentication remains a separate provider preflight after environment admission because cached OAuth and upstream quota are provider protocol facts, not executable identity."
 
 fn no_capability_plan(reason: String) -> EnsurePlan<String> {
-  EnsurePlanUnavailable { reason: reason }
+  gunbc.ensure.EnsurePlanUnavailable { reason: reason }
 }
 
 fn capability_ensure_decision(
@@ -152,7 +152,7 @@ fn capability_ensure_observe(
   if !executable.executable {
     capability_ensure_receipt(
       realization: realization,
-      observation: EnsureAbsent {
+      observation: gunbc.ensure.EnsureAbsent {
         reason: join([
           "required executable is absent or not executable: ",
           realization.executable as String,
@@ -174,7 +174,7 @@ fn capability_ensure_observe(
     ], "")
     capability_ensure_receipt(
       realization: realization,
-      observation: EnsureObserved { evidence: evidence },
+      observation: gunbc.ensure.EnsureObserved { evidence: evidence },
       identity_matches: result.success
         && string_contains(
           s: join([result.stdout, "\n", result.stderr], ""),

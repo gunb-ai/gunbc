@@ -17,9 +17,9 @@ fn oracle_ref() -> gunbc.roadmap_validation_oracle.ValidationOracleRef {
 }
 
 fn oracle_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
-  ExecutionContract {
+  gunbc.roadmap_execution_contract.ExecutionContract {
     validations: [
-      GunbcClaimValidation {
+      gunbc.roadmap_execution_contract.GunbcClaimValidation {
         entry: oracle_entry_path,
         function: oracle_function_name,
       },
@@ -286,8 +286,8 @@ test fn oracle_importing_only_subject_modules_still_verifies() -> Bool {
 }
 
 test fn unpinned_dependency_detail_names_the_uncovered_modules() -> Bool {
-  let detail = validation_verdict_detail(verdict: ValidationRefused {
-    cause: ValidationOracleUnpinnedDependency {
+  let detail = validation_verdict_detail(verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
+    cause: gunbc.roadmap_validation_oracle.ValidationOracleUnpinnedDependency {
       entry: oracle_entry_path as String,
       imports: ["test.claim.scm_compatibility_git_witness"],
     },
@@ -299,8 +299,8 @@ test fn unpinned_dependency_detail_names_the_uncovered_modules() -> Bool {
 // A declared validation whose oracle this module cannot observe must refuse rather than run unpinned. Running it would produce a green meaning `the agent's own edits passed a test whose content nothing recorded`, which is the same fail-open the moved-oracle arm closes, reached by a different route.
 test fn cargo_test_validation_refuses_as_unpinnable() -> Bool {
   match validation_oracle_gate(
-    contract: ExecutionContract {
-      validations: [CargoTestValidation { filter: "roadmap_" as std.types.NonEmptyStr }],
+    contract: gunbc.roadmap_execution_contract.ExecutionContract {
+      validations: [gunbc.roadmap_execution_contract.CargoTestValidation { filter: "roadmap_" as std.types.NonEmptyStr }],
       extra_capabilities: [],
     },
     observations: [],
@@ -363,14 +363,14 @@ test fn attempt_without_a_recorded_pin_refuses() -> Bool {
 data refusal_is_not_a_red_note: String = "The refusal/red separation carried through to the persisted verdict, because the receipt is what a human and the Verify lamp both read. A refused verdict and a failed verdict must not serialize to the same word, or the distinction the arms establish is lost at the seam where it matters."
 
 test fn refused_and_failed_verdicts_are_distinct_on_the_wire() -> Bool {
-  let refused = ValidationRefused {
-    cause: ValidationOracleMissing {
+  let refused = gunbc.roadmap_validation_oracle.ValidationRefused {
+    cause: gunbc.roadmap_validation_oracle.ValidationOracleMissing {
       entry: oracle_entry_path as String,
       function: oracle_function_name as String,
       detail: "deleted",
     },
   }
-  let failed = ValidationFailed {
+  let failed = gunbc.roadmap_validation_oracle.ValidationFailed {
     command: "gunbc run --claim-run",
     exit_code: 1,
     detail: "",
@@ -386,8 +386,8 @@ data receipt_positional_identity_note: String = "The same defect the environment
 
 test fn refusal_quoting_passed_does_not_decode_as_passed() -> Bool {
   let forgery = validation_receipt_json(
-    verdict: ValidationRefused {
-      cause: ValidationOracleMissing {
+    verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
+      cause: gunbc.roadmap_validation_oracle.ValidationOracleMissing {
         entry: oracle_entry_path as String,
         function: oracle_function_name as String,
         detail: "the previous receipt said \"verdict\": \"passed\" before the oracle was deleted",
@@ -396,7 +396,7 @@ test fn refusal_quoting_passed_does_not_decode_as_passed() -> Bool {
     observations: observe_witness(source_readable: false, source: ""),
   )
   let genuine = validation_receipt_json(
-    verdict: ValidationPassed {
+    verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
       command: "gunbc run --claim-run",
       oracle_identity: pinned_identity(),
     },
@@ -419,7 +419,7 @@ test fn refusal_quoting_passed_does_not_decode_as_passed() -> Bool {
 data truncated_receipt_note: String = "Self-review catch, mirroring the control the admission receipt already carries: a prefix match alone was never the claim. A receipt truncated mid-write — the ordinary outcome of a belt killed while writing it — carries the passed prefix verbatim and is still not a passed receipt, because the document does not parse. Without the parse guard this fixture decodes as passed, which is a fabricated green produced by an interrupted write rather than by any validation."
 
 test fn truncated_receipt_with_passed_prefix_is_not_passed() -> Bool {
-  let genuine = receipt_for(verdict: ValidationPassed {
+  let genuine = receipt_for(verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
     command: "gunbc run --claim-run",
     oracle_identity: pinned_identity(),
   })
@@ -540,16 +540,16 @@ fn verdict_round_trips(verdict: gunbc.roadmap_validation_oracle.ValidationVerdic
 
 test fn every_verdict_the_emitter_writes_is_one_the_reader_accepts() -> Bool {
   verdict_round_trips(verdict: ValidationNotRun)
-    && verdict_round_trips(verdict: ValidationPassed {
+    && verdict_round_trips(verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
       command: "gunbc run --claim-run",
       oracle_identity: pinned_identity(),
     })
-    && verdict_round_trips(verdict: ValidationFailed {
+    && verdict_round_trips(verdict: gunbc.roadmap_validation_oracle.ValidationFailed {
       command: "gunbc run --claim-run",
       exit_code: 1,
       detail: "a witness went red",
     })
-    && verdict_round_trips(verdict: ValidationRefused {
+    && verdict_round_trips(verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
       cause: ValidationContractUnspecified,
     })
 }
@@ -565,8 +565,8 @@ test fn foreign_receipt_document_is_undecodable() -> Bool {
 
 // The refusal has to be readable by the human who receives it, so the detail names both identities and says why the run was not attempted. A refusal whose text does not distinguish it from a red would push a human toward debugging the subject.
 test fn moved_oracle_detail_locates_both_identities() -> Bool {
-  let detail = validation_verdict_detail(verdict: ValidationRefused {
-    cause: ValidationOracleMoved {
+  let detail = validation_verdict_detail(verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
+    cause: gunbc.roadmap_validation_oracle.ValidationOracleMoved {
       expected: pinned_identity(),
       observed: identity_of_source(
         source: witness_source_weakened_by_the_agent(),
@@ -588,7 +588,7 @@ test fn cross_family_pin_refusal_is_distinct_from_oracle_moved() -> Bool {
     },
   )
   let cause = validation_oracle_pin_refusal_cause(
-    cause: CrossFamilyIdentityIncomparable {
+    cause: extdeps.pin.CrossFamilyIdentityIncomparable {
       expected: expected,
       observed: observed,
     },
@@ -599,7 +599,7 @@ test fn cross_family_pin_refusal_is_distinct_from_oracle_moved() -> Bool {
         && (o == observed)
         && (validation_refusal_cause_key(cause: cause) == "oracle-cross-family-incomparable")
         && string_contains(
-          s: validation_verdict_detail(verdict: ValidationRefused { cause: cause }),
+          s: validation_verdict_detail(verdict: gunbc.roadmap_validation_oracle.ValidationRefused { cause: cause }),
           pattern: "different hash families",
         )
     ValidationOracleMoved { expected: _, observed: _ } => false
@@ -635,21 +635,21 @@ fn verify_lamp_evidence(receipt: String) -> gunbc.roadmap_workflow_progress.Work
     provider_events_readable: true,
     provider_events: "{\"type\":\"turn.completed\",\"usage\":\{\}\}\n",
     provider_events_error: "",
-    process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
     validation_summary: "gunbc run --claim-run",
-    verification_subject: VerificationSubjectObserved {
+    verification_subject: gunbc.roadmap_verification_receipt.VerificationSubjectObserved {
       subject: verify_fixture_subject(),
     },
-    verification_selection: SelectionObserved {
+    verification_selection: gunbc.roadmap_verification_receipt.SelectionObserved {
       head: verify_fixture_head,
       window_identity: git_diff_window_absent_identity(),
     },
     verification_source: if receipt == "" {
       VerificationReceiptAbsent
     } else {
-      VerificationReceiptPresent { text: receipt }
+      gunbc.roadmap_verification_receipt.VerificationReceiptPresent { text: receipt }
     },
-    publication_subject: PublicationSubjectObserved {
+    publication_subject: gunbc.roadmap_publish.PublicationSubjectObserved {
       subject: gunbc.roadmap_publish.RoadmapPublicationSubject {
         node_id: "pub-fixture-node",
         attempt_key: "feedfacefeedface",
@@ -689,7 +689,7 @@ fn receipt_for(verdict: gunbc.roadmap_validation_oracle.ValidationVerdict) -> St
       oracle_identity: pinned_identity(),
       executions: [
         gunbc.roadmap_verification_receipt.ValidationExecution {
-          validation: GunbcClaimValidation {
+          validation: gunbc.roadmap_execution_contract.GunbcClaimValidation {
             entry: "dag/test/claim/roadmap_validation_oracle_witness_test.dag" as std.types.FilePath,
             function: "verify_lamp_stays_pending_without_a_receipt" as std.types.NonEmptyStr,
           },
@@ -732,7 +732,7 @@ test fn verify_lamp_stays_pending_without_a_receipt() -> Bool {
 }
 
 test fn verify_lamp_completes_only_on_a_passed_receipt() -> Bool {
-  verify_lamp_state(receipt: receipt_for(verdict: ValidationPassed {
+  verify_lamp_state(receipt: receipt_for(verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
     command: "gunbc run --claim-run",
     oracle_identity: pinned_identity(),
   })) == "complete"
@@ -740,8 +740,8 @@ test fn verify_lamp_completes_only_on_a_passed_receipt() -> Bool {
 
 test fn verify_lamp_shows_a_refusal_as_refused_not_failed() -> Bool {
   let refused = verify_lamp_state(receipt: receipt_for(
-    verdict: ValidationRefused {
-      cause: ValidationOracleMoved {
+    verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
+      cause: gunbc.roadmap_validation_oracle.ValidationOracleMoved {
         expected: pinned_identity(),
         observed: identity_of_source(
           source: witness_source_weakened_by_the_agent(),
@@ -750,7 +750,7 @@ test fn verify_lamp_shows_a_refusal_as_refused_not_failed() -> Bool {
     },
   ))
   let failed = verify_lamp_state(receipt: receipt_for(
-    verdict: ValidationFailed {
+    verdict: gunbc.roadmap_validation_oracle.ValidationFailed {
       command: "gunbc run --claim-run",
       exit_code: 1,
       detail: "claim returned false",
@@ -767,8 +767,8 @@ test fn verify_lamp_shows_cross_family_refusal_as_refused_not_moved() -> Bool {
     },
   )
   verify_lamp_state(receipt: receipt_for(
-    verdict: ValidationRefused {
-      cause: ValidationOracleCrossFamilyIdentityIncomparable {
+    verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
+      cause: gunbc.roadmap_validation_oracle.ValidationOracleCrossFamilyIdentityIncomparable {
         expected: expected,
         observed: observed,
       },
@@ -780,7 +780,7 @@ data not_run_receipt_note: String = "review 45271. The receipt-presence seam use
 
 test fn not_run_receipt_is_distinct_from_every_recorded_verdict() -> Bool {
   let not_run = receipt_for(verdict: ValidationNotRun)
-  let passed = receipt_for(verdict: ValidationPassed {
+  let passed = receipt_for(verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
     command: "gunbc run --claim-run",
     oracle_identity: pinned_identity(),
   })

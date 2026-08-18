@@ -82,7 +82,7 @@ test fn rust_production_closure_body_is_not_ignored() -> Bool {
 fn rpcl_serialize_fixed(token_class: v2.std.node.Symbol) -> Outcome<String> {
   match serialize_concrete_syntax_tokens_to_source_string(
     target: rust_target_model(),
-    tokens: [FixedToken { token_class: token_class }]
+    tokens: [v2.std.compilers.target_model.FixedToken { token_class: token_class }]
   ) {
     Accepted { value: text, diagnostics: _ } =>
       Accepted { value: render_target_text(t: text), diagnostics: None }

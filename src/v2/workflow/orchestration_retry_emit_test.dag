@@ -55,14 +55,14 @@ test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {
 
 fn orch_retry_perturbed_level2() -> v2.std.orchestration.EscalationLevel {
   v2.std.orchestration.EscalationLevel {
-    detect: LogMatches { source: "RETRY_LOG", pattern: infra_retry_grep_alternation() },
+    detect: v2.std.orchestration.LogMatches { source: "RETRY_LOG", pattern: infra_retry_grep_alternation() },
     warning: v2.std.diagnostic.EmitDirective {
       severity: SeverityWarning,
       message: "cargo/sccache still failing; retry without RUSTC_WRAPPER"
     },
     env: [
-      EnvUnset { name: "RUSTC_WRAPPER" },
-      EnvSet { name: "CARGO_BUILD_JOBS", value: "2" }
+      v2.std.orchestration.EnvUnset { name: "RUSTC_WRAPPER" },
+      v2.std.orchestration.EnvSet { name: "CARGO_BUILD_JOBS", value: "2" }
     ]
   }
 }
@@ -151,12 +151,12 @@ data orch_retry_1level_exhausted_command: String = "exit 9"
 
 fn orch_retry_1level_escalation() -> v2.std.orchestration.EscalationLevel {
   v2.std.orchestration.EscalationLevel {
-    detect: LogMatches { source: "BUILD_LOG", pattern: "PAT1" },
+    detect: v2.std.orchestration.LogMatches { source: "BUILD_LOG", pattern: "PAT1" },
     warning: v2.std.diagnostic.EmitDirective {
       severity: SeverityWarning,
       message: "w1"
     },
-    env: [EnvSet { name: "E1", value: "1" }]
+    env: [v2.std.orchestration.EnvSet { name: "E1", value: "1" }]
   }
 }
 
@@ -218,12 +218,12 @@ fn orch_retry_1level_perturbed_intent() -> v2.std.orchestration.PipelineStep {
         body: b,
         escalations: [
           v2.std.orchestration.EscalationLevel {
-            detect: LogMatches { source: "BUILD_LOG", pattern: "PAT1" },
+            detect: v2.std.orchestration.LogMatches { source: "BUILD_LOG", pattern: "PAT1" },
             warning: v2.std.diagnostic.EmitDirective {
               severity: SeverityWarning,
               message: "w1"
             },
-            env: [EnvSet { name: "E1", value: "2" }]
+            env: [v2.std.orchestration.EnvSet { name: "E1", value: "2" }]
           }
         ],
         on_exhausted: x
@@ -311,23 +311,23 @@ test fn orch_retry_1level_row_direct_emit_accepted_holds() -> Bool {
 
 fn orch_retry_level2_escalation() -> v2.std.orchestration.EscalationLevel {
   v2.std.orchestration.EscalationLevel {
-    detect: LogMatches { source: "RETRY_LOG", pattern: "PAT2" },
+    detect: v2.std.orchestration.LogMatches { source: "RETRY_LOG", pattern: "PAT2" },
     warning: v2.std.diagnostic.EmitDirective {
       severity: SeverityWarning,
       message: "w2"
     },
-    env: [EnvSet { name: "E2", value: "1" }]
+    env: [v2.std.orchestration.EnvSet { name: "E2", value: "1" }]
   }
 }
 
 fn orch_retry_level3_escalation() -> v2.std.orchestration.EscalationLevel {
   v2.std.orchestration.EscalationLevel {
-    detect: LogMatches { source: "RETRY_LOG", pattern: "PAT3" },
+    detect: v2.std.orchestration.LogMatches { source: "RETRY_LOG", pattern: "PAT3" },
     warning: v2.std.diagnostic.EmitDirective {
       severity: SeverityWarning,
       message: "w3"
     },
-    env: [EnvSet { name: "E3", value: "1" }]
+    env: [v2.std.orchestration.EnvSet { name: "E3", value: "1" }]
   }
 }
 
@@ -379,7 +379,7 @@ test fn orch_retry_3level_refused_holds() -> Bool {
 
 fn orch_retry_probe_escalation(source: String) -> v2.std.orchestration.EscalationLevel {
   v2.std.orchestration.EscalationLevel {
-    detect: LogMatches { source: source, pattern: "PAT" },
+    detect: v2.std.orchestration.LogMatches { source: source, pattern: "PAT" },
     warning: v2.std.diagnostic.EmitDirective {
       severity: SeverityWarning,
       message: "probe"
@@ -479,7 +479,7 @@ test fn orch_retry_body_capture_present_refused_holds() -> Bool {
         command: "true",
         env: [],
         redirect: Absent,
-        capture: Present { value: TeeTo { log: "BUILD_LOG" } }
+        capture: Present { value: v2.std.orchestration.TeeTo { log: "BUILD_LOG" } }
       },
       source: "BUILD_LOG"
     ),
@@ -515,7 +515,7 @@ test fn orch_retry_body_env_present_refused_holds() -> Bool {
     s: orch_retry_probe_single_do(
       r: v2.std.orchestration.Run {
         command: "true",
-        env: [EnvSet { name: "BODY_ENV", value: "1" }],
+        env: [v2.std.orchestration.EnvSet { name: "BODY_ENV", value: "1" }],
         redirect: Absent,
         capture: Absent
       },

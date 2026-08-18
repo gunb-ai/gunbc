@@ -20,7 +20,7 @@ test fn witness_coincide_negative() -> Bool {
 
 fn type_atom(sym: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -35,7 +35,7 @@ fn field_edge(field: v2.std.node.Symbol, type_sym: v2.std.node.Symbol) -> v2.std
 
 fn record_type(fields: List<v2.std.node.Edge>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: fields,
     occurrence_id: SyntheticOccurrence
   }

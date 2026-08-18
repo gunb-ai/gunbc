@@ -12,9 +12,9 @@ type Plan {
   retirement: PlanRetirement,
 }
 
-fn plan_h1(text: String) -> std.markdown.MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
-fn plan_h2(text: String) -> std.markdown.MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
-fn plan_p(text: String) -> std.markdown.MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
+fn plan_h1(text: String) -> std.markdown.MarkdownBlock { std.markdown.HeadingBlock { level: H1, inlines: [std.markdown.TextInline { text: text }] } }
+fn plan_h2(text: String) -> std.markdown.MarkdownBlock { std.markdown.HeadingBlock { level: H2, inlines: [std.markdown.TextInline { text: text }] } }
+fn plan_p(text: String) -> std.markdown.MarkdownBlock { std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: text }] } }
 
 fn plan_retirement_blocks(p: Plan) -> List<std.markdown.MarkdownBlock> {
   match p.retirement {

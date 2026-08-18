@@ -20,7 +20,7 @@ fn wb_unsafe_href_is_rejected() -> Bool {
 
 fn wb_unsafe_href_rejected_before_serve() -> Bool {
   match serve_gunbhub_page_source(
-    source: ReactPage { node: gunbhub_hostile_page() }
+    source: gunbc.gunbhub_serve.ReactPage { node: gunbhub_hostile_page() }
   ) {
     RenderRejectedBeforeServe { reason: _ } => true
     Served { response: _ } => false
@@ -49,7 +49,7 @@ func main() -> std.process.ProcessExit {
   {
     ExitSuccess
   } else {
-    ExitFailure {
+    std.process.ExitFailure {
       code: exit_code_general_error,
       reason: "gunbhub serve program assertion failed",
     }

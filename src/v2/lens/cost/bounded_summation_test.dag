@@ -4,7 +4,7 @@ module v2.test.lens_cost.bounded_summation
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data bounded_summation_bound_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^bounded_summation_bound_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bounded_summation_bound_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -17,7 +17,7 @@ fn bounded_unit_summation_expr() -> v2.lens.cost.expr.CostExpr {
   cost_loop_expr(
     binder: bounded_summation_binder,
     iterations: size_of(variable: bounded_summation_binder),
-    body: CostConst { value: Succ { prev: Zero } }
+    body: v2.lens.cost.expr.CostConst { value: v2.std.nat.Succ { prev: Zero } }
   )
 }
 
@@ -44,7 +44,7 @@ test fn zero_body_loop_projects_to_zero_red_control() -> Bool {
     expr: cost_loop_expr(
       binder: bounded_summation_binder,
       iterations: size_of(variable: bounded_summation_binder),
-      body: CostConst { value: Zero }
+      body: v2.lens.cost.expr.CostConst { value: Zero }
     )
   ) {
     ConstantCost { value: Zero } => true
@@ -60,7 +60,7 @@ test fn existing_cost_lens_kernel_unchanged() -> Bool {
   }
 }
 
-data claim_bounded_summation: v2.std.verification.TestClaim = EqualsClaim {
+data claim_bounded_summation: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_cost/bounded_summation: CostSum with grounded binder is representable and projects to linear SymbolicCost",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: bounded_summation_bound_leaf,
@@ -68,7 +68,7 @@ data claim_bounded_summation: v2.std.verification.TestClaim = EqualsClaim {
     bounded_summation_bound_leaf
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: ^bounded_summation_claim_failed } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bounded_summation_claim_failed } },
       children: [],
       occurrence_id: SyntheticOccurrence
     }

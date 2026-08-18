@@ -6,7 +6,7 @@ data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-con
 data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect HeldLease generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire (empty wire on non-Spark hosts); on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh + spark wire match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0."
 
 func observe_host_short_wet() -> String
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   trim(
     s: run_shell_command_capture(
@@ -17,14 +17,14 @@ func observe_host_short_wet() -> String
 }
 
 func observe_generation_store_wet() -> Int?
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let read = Filesystem.Read(path: fleet_converge_generation_store_path)
   fleet_converge_generation_from_store_content(store_present: read.success, content: read.content)
 }
 
 func observe_timer_members_wet() -> List<gunbc.fleet_converge_plan.TimerRetirementMember>
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let legacy = timer_retirement_observed_legacy_srv1()
   filter(legacy, m =>
@@ -36,7 +36,7 @@ func observe_timer_members_wet() -> List<gunbc.fleet_converge_plan.TimerRetireme
 }
 
 func observe_cap_members_wet() -> List<gunbc.host_axis_caps.CapMember>
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   flat_map(caps_managed_dropin_paths, path => {
     let read = Filesystem.Read(path: path as String)
@@ -49,7 +49,7 @@ func observe_cap_members_wet() -> List<gunbc.host_axis_caps.CapMember>
 }
 
 func fleet_converge_plan_wet() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let host_short = observe_host_short_wet()
   let host = host_short as std.types.NonEmptyStr
@@ -144,7 +144,7 @@ func fleet_converge_plan_wet() -> std.process.ProcessExit
 }
 
 func fleet_converge_apply_wet() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let read_plan = Filesystem.Read(path: fleet_converge_plan_body_path)
   let read_base = Filesystem.Read(path: fleet_converge_plan_baseline_hex_path)

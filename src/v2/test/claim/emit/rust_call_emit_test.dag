@@ -9,7 +9,7 @@ data rust_call_fold_swapped_source_text: String = "fn add(x: i32, y: i32) -> i32
 
 fn rust_call_type_atom(id: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: []
   )
 }
@@ -24,7 +24,7 @@ fn rust_call_positional(target: Node) -> v2.std.node.Edge {
 
 fn rust_call_add_domain_conj() -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_call_named_edge(
         name: ^dag_binding_param_x,
@@ -40,11 +40,11 @@ fn rust_call_add_domain_conj() -> Node {
 
 fn rust_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       rust_call_positional(
         target: node_synthetic(
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             rust_call_named_edge(
               name: ^rust_call_closure_acc,
@@ -61,7 +61,7 @@ fn rust_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.s
       rust_call_named_edge(
         name: ^arrow_body_edge,
         target: node_synthetic(
-          kind: ComputationNode { behavior: Transform },
+          kind: v2.std.node.ComputationNode { behavior: Transform },
           children: [
             rust_call_positional(target: rust_call_type_atom(id: ^dag_token_plus)),
             rust_call_positional(target: rust_call_type_atom(id: left_operand)),
@@ -75,7 +75,7 @@ fn rust_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.s
 
 fn rust_call_fold_body(closure: Node) -> Node {
   node_synthetic(
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
       rust_call_positional(target: rust_call_type_atom(id: ^rust_call_callee_fold)),
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_param_x)),
@@ -87,7 +87,7 @@ fn rust_call_fold_body(closure: Node) -> Node {
 
 fn rust_call_fold_arrow(closure: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       rust_call_positional(target: rust_call_add_domain_conj()),
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
@@ -120,7 +120,7 @@ fn rust_call_fold_swapped_arrow() -> Node {
 
 fn rust_call_helper_body() -> Node {
   node_synthetic(
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
       rust_call_positional(target: rust_call_type_atom(id: ^rust_call_callee_helper)),
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_param_x)),
@@ -131,7 +131,7 @@ fn rust_call_helper_body() -> Node {
 
 fn rust_call_helper_arrow() -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       rust_call_positional(target: rust_call_add_domain_conj()),
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
@@ -147,13 +147,13 @@ fn rust_call_helper_arrow() -> Node {
 data rust_call_helper_body_fixture: Node = rust_call_helper_body()
 
 data rust_call_eval_arg_literal: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data rust_call_helper_eval_subgraph: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: Transform },
   children: [
     v2.std.node.Edge { label: Positional, target: rust_call_eval_arg_literal },
     v2.std.node.Edge { label: Positional, target: rust_call_eval_arg_literal }

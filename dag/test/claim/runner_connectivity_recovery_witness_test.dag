@@ -30,7 +30,7 @@ fn fixture_labels() -> List<String> {
 }
 
 fn remote_offline_evidence() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
-  RemoteRegistrationObserved {
+  gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
     registration: RunnerRemoteOffline,
     registration_id: "",
     grade: ObservedEvidence,
@@ -38,8 +38,8 @@ fn remote_offline_evidence() -> gunbc.runner_broker_progress_watchdog.RemoteRegi
 }
 
 fn remote_online_evidence(labels: List<String>) -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
-  RemoteRegistrationObserved {
-    registration: RunnerRemoteOnline {
+  gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
+    registration: gunbc.runner_broker_progress_watchdog.RunnerRemoteOnline {
       runner_name: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
       labels: labels,
     },
@@ -49,22 +49,22 @@ fn remote_online_evidence(labels: List<String>) -> gunbc.runner_broker_progress_
 }
 
 fn remote_busy_evidence() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
-  RemoteRegistrationObserved {
-    registration: RunnerRemoteBusy { detail: "job assigned" as std.types.NonEmptyStr },
+  gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
+    registration: gunbc.runner_broker_progress_watchdog.RunnerRemoteBusy { detail: "job assigned" as std.types.NonEmptyStr },
     registration_id: "",
     grade: ObservedEvidence,
   }
 }
 
 fn wedged_broker_progress() -> gunbc.runner_broker_progress_watchdog.BrokerProgressObservation {
-  BrokerProgressSilent {
+  gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
     silence_seconds: runner_broker_progress_silence_bound_seconds,
     grade: ObservedEvidence,
   }
 }
 
 fn wedged_worker_observation() -> gunbc.runner_broker_progress_watchdog.RunnerWorkerObservation {
-  RunnerWorkerAbsent { grade: ObservedEvidence }
+  gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence }
 }
 
 fn wedged_snapshot(act_at: std.types.Timestamp) -> gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
@@ -422,7 +422,7 @@ test fn offline_with_recent_broker_progress_refuses_replace() -> Bool {
       observed_at: act,
       control_plane_error_burst: false,
     },
-    broker: BrokerProgressObserved {
+    broker: gunbc.runner_broker_progress_watchdog.BrokerProgressObserved {
       last_event: AcquireAttempt,
       last_at: act,
       grade: ObservedEvidence,

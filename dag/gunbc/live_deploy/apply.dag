@@ -68,7 +68,7 @@ fn live_deploy_blue_green_cutover_with_selection(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match selection {
     BlueGreenSlotSelectionRefused { reason } =>
-      NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
+      std.realization_reconcile.NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
     BlueGreenSlotsSelected { active, idle } => {
       let converged_slot = live_deploy_apply_via_transport(
         spec: deployment_slot_spec(spec: idle),
@@ -102,8 +102,8 @@ fn live_deploy_blue_green_cutover_with_selection(
 
 fn live_deploy_preflight_intent(access: gunbc.ci_deploy_access.DeployAccess) -> gunbc.host_effect.HostEffectIntent {
   gunbc.host_effect.HostEffectIntent {
-    target: HostOs { node: access.host },
-    effect: DeployAccessPreflight {},
+    target: gunbc.host_effect.HostOs { node: access.host },
+    effect: gunbc.host_effect.DeployAccessPreflight {},
     evidence: host_effect_identity_evidence,
     transport: access.transport,
     privilege_denial: none,
@@ -116,7 +116,7 @@ fn live_deploy_mutation_denied(
   transport: gunbc.host_effect.HostEffectTransport,
   gate: std.access.AccessDecision
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  NotConverged {
+  std.realization_reconcile.NotConverged {
     reason: deploy_access_decision_reason(d: gate),
     applied: gunbc.host_effect.HostEffectIntent {
       target: target,
@@ -136,7 +136,7 @@ fn live_deploy_fold(
   fixture_actor: gunbc.ci_deploy_access.DeployAccessActor?,
   fixture_host: gunbc.ci_deploy_target_host.DeployTargetHostObservation?
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let target = HostOs { node: spec.target.host }
+  let target = gunbc.host_effect.HostOs { node: spec.target.host }
   let gate = deploy_mutation_gate(
     access: access,
     fixture_actor: fixture_actor,
@@ -170,7 +170,7 @@ fn live_deploy_ensure_dependency(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
-    effect: LiveDeployEnsureDependency { dep: dep },
+    effect: gunbc.host_effect.LiveDeployEnsureDependency { dep: dep },
     transport: transport,
     access: access,
     fixture_actor: Absent,
@@ -186,7 +186,7 @@ fn live_deploy_apply_mutation_via_transport(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
-    effect: LiveDeployApply { spec: spec, candidate: candidate },
+    effect: gunbc.host_effect.LiveDeployApply { spec: spec, candidate: candidate },
     transport: transport,
     access: access,
     fixture_actor: Absent,
@@ -226,9 +226,9 @@ fn live_deploy_apply_readiness_gate_with_readiness(
         NotConverged { reason: why, applied: _ } =>
           match mutation {
             Converged { evidence: _, applied: intent } =>
-              NotConverged { reason: why, applied: intent }
+              std.realization_reconcile.NotConverged { reason: why, applied: intent }
             NotConverged { reason: _, applied: intent } =>
-              NotConverged { reason: why, applied: intent }
+              std.realization_reconcile.NotConverged { reason: why, applied: intent }
           }
         Converged { evidence: _, applied: _ } => mutation
       }
@@ -243,7 +243,7 @@ fn live_deploy_apply_digest_readback_via_transport(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
-    effect: LiveDeployDigestReadback { port: deployment_plan_listen_port(spec: spec) },
+    effect: gunbc.host_effect.LiveDeployDigestReadback { port: deployment_plan_listen_port(spec: spec) },
     transport: transport,
     access: access,
     fixture_actor: Absent,
@@ -285,9 +285,9 @@ fn live_deploy_apply_via_transport(
         NotConverged { reason: why, applied: _ } =>
           match gated {
             Converged { evidence: _, applied: intent } =>
-              NotConverged { reason: why, applied: intent }
+              std.realization_reconcile.NotConverged { reason: why, applied: intent }
             NotConverged { reason: _, applied: intent } =>
-              NotConverged { reason: why, applied: intent }
+              std.realization_reconcile.NotConverged { reason: why, applied: intent }
           }
         Converged { evidence: _, applied: _ } => gated
       }
@@ -302,7 +302,7 @@ fn live_deploy_retract_via_transport(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
-    effect: LiveDeployRetract { spec: spec },
+    effect: gunbc.host_effect.LiveDeployRetract { spec: spec },
     transport: transport,
     access: access,
     fixture_actor: Absent,
@@ -314,7 +314,7 @@ fn live_deploy_access_preflight_for(access: gunbc.ci_deploy_access.DeployAccess)
   let proof = deploy_target_proof_from_access(access: access)
   let intent = live_deploy_preflight_intent(access: access)
   if !deploy_target_ssh_proof_structurally_valid(proof: proof) {
-    NotConverged {
+    std.realization_reconcile.NotConverged {
       reason: "live_deploy: deploy target-host proof structurally invalid; fail-closed",
       applied: intent,
     }
@@ -327,7 +327,7 @@ fn live_deploy_access_preflight_for(access: gunbc.ci_deploy_access.DeployAccess)
     match gate {
       Permit =>
         Converged {
-          evidence: ShellEffectApplied {
+          evidence: gunbc.host_effect.ShellEffectApplied {
             exit_code: 0,
             stdout: deploy_access_preflight_pass_message(access: access),
             stderr: "",
@@ -335,7 +335,7 @@ fn live_deploy_access_preflight_for(access: gunbc.ci_deploy_access.DeployAccess)
           applied: intent,
         }
       Deny { refusal: _ } =>
-        NotConverged {
+        std.realization_reconcile.NotConverged {
           reason: deploy_access_decision_reason(d: gate),
           applied: gunbc.host_effect.HostEffectIntent {
             target: intent.target,
@@ -359,7 +359,7 @@ fn live_deploy_apply_srv1_with_access(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match tailscale_serve_status_read(transport: access.transport) {
     TailscaleServeStatusReadRefused { reason } =>
-      NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
+      std.realization_reconcile.NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
     TailscaleServeStatusObserved { json } =>
       live_deploy_blue_green_cutover_with_selection(
         selection: srv1_blue_green_slot_selection(status_json: json),

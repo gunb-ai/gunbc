@@ -3,10 +3,10 @@ module v2.test.manual.typescript_grammar_claim
 
 fn typescript_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^typescript_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^typescript_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^typescript_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^typescript_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
@@ -48,7 +48,7 @@ fn typescript_grammar_parse_fixture() -> Outcome<v2.std.grammar.ParseTree> {
   }
 }
 
-data claim_typescript_grammar_validates: v2.std.verification.TestClaim = EqualsClaim {
+data claim_typescript_grammar_validates: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "ts_fn_add_grammar_root passes grammar_validate_for_parse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: typescript_claim_bool_atom(b: typescript_grammar_validates_fixture()),
@@ -56,7 +56,7 @@ data claim_typescript_grammar_validates: v2.std.verification.TestClaim = EqualsC
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_typescript_grammar_parses_tokens: v2.std.verification.TestClaim = EqualsClaim {
+data claim_typescript_grammar_parses_tokens: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "typescript production parse_production accepts lexer output for typed-add source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: typescript_claim_bool_atom(b: typescript_grammar_parse_accepted()),

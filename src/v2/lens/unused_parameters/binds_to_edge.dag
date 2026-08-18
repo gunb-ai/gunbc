@@ -3,7 +3,7 @@ module v2.test.lens_unused_parameters.binds_to_edge
 data unused_parameters_child: Node = claim_atom_node(s: ^unused_parameters_child_symbol)
 
 data unused_parameters_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^unused_parameters_root_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^unused_parameters_root_symbol } },
   children: [
     v2.std.node.Edge { label: Named { name: ^unused_parameters_edge_symbol }, target: unused_parameters_child }
   ],

@@ -5,7 +5,7 @@ fn optional_absent_unwrap_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^optional_absent_unwrap,
     at: port_locus(port: ^optional_present_witness_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -64,7 +64,7 @@ fn list_nth<T>(xs: List<T>, wanted: Int, absent: v2.std.diagnostic.Diagnostic) -
     xs: xs,
     empty: IndexedLookup {
       index: 0,
-      value: Violates { diagnostic: absent }
+      value: v2.std.witness.Violates { diagnostic: absent }
     },
     cons: fn(acc, item) {
       IndexedLookup {

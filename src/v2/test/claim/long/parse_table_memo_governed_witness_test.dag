@@ -8,7 +8,7 @@ fn governed_witness_probe_key() -> v2.compiler.parse.ParsePositionKey {
 }
 
 fn governed_witness_dummy_entry() -> v2.compiler.parse.ParseMemoEntry {
-  ParseMemoRejected { diagnostics: [] }
+  v2.compiler.parse.ParseMemoRejected { diagnostics: [] }
 }
 
 fn parse_table_recompute_fixture() -> v2.compiler.parse.ParseTable {

@@ -5,18 +5,18 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 // The exhaustiveness arms added to lex_match_thunk_claims prove only that a new variant was handled; they never CONSTRUCT an AnnotationRule, so they establish nothing about whether the third channel works. These do: every claim below routes real source through the real walk and asserts where the lexeme landed. Pre-regen by design — the whole point is evidence before a long regen cycle, so nothing here needs a rebuilt stage0.
 fn annotation_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: LiteralPattern { text: "//" },
-    right: RepeatPattern { element: CharClassPattern { class: LineCommentTextChar } }
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.LiteralPattern { text: "//" },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: LineCommentTextChar } }
   }
 }
 
 fn test_rules() -> v2.std.compilers.lexing.LexRuleSet {
   v2.std.compilers.lexing.LexRuleSet {
     rules: [
-      AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
-      TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
-      TokenRule { token_class: ^ident, pattern: OneOrMorePattern { element: CharClassPattern { class: IdentContinueChar } } }
+      v2.std.compilers.lexing.AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
+      v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } } },
+      v2.std.compilers.lexing.TokenRule { token_class: ^ident, pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } } }
     ]
   }
 }
@@ -51,7 +51,7 @@ fn annotations_of(source: String) -> List<v2.std.compilers.lexing.UnboundSourceA
 }
 
 test fn annotation_rule_routes_to_the_annotation_arm() -> Bool {
-  match lex_try_rule(rule: AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() }, source: "// hi") {
+  match lex_try_rule(rule: v2.std.compilers.lexing.AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() }, source: "// hi") {
     LexRuleAnnotation { class: c, lexeme: _, remaining: _ } => c == ^line_comment
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
     LexRuleTrivia { lexeme: _, remaining: _ } => false
@@ -93,7 +93,7 @@ test fn zero_width_annotation_rule_refuses_rather_than_looping() -> Bool {
   match lex_walk_artifact(
     source: "a",
     file: ^probe,
-    rules: v2.std.compilers.lexing.LexRuleSet { rules: [ AnnotationRule { annotation_class: ^empty_ann, pattern: EmptyPattern } ] }
+    rules: v2.std.compilers.lexing.LexRuleSet { rules: [ v2.std.compilers.lexing.AnnotationRule { annotation_class: ^empty_ann, pattern: EmptyPattern } ] }
   ) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => true
     v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
@@ -123,8 +123,8 @@ After `):\n    ` the annotation begins a fresh line carrying only indentation, s
 fn line_spanning_rules(token_text: String) -> v2.std.compilers.lexing.LexRuleSet {
   v2.std.compilers.lexing.LexRuleSet {
     rules: [
-      AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
-      TokenRule { token_class: ^spanning, pattern: LiteralPattern { text: token_text } }
+      v2.std.compilers.lexing.AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
+      v2.std.compilers.lexing.TokenRule { token_class: ^spanning, pattern: v2.std.compilers.lexing.LiteralPattern { text: token_text } }
     ]
   }
 }

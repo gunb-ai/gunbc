@@ -3,7 +3,7 @@ module test.claim.ci_oom_reclassify_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn bare_137_outcome() -> gunbc.ci_failure_class.FloorOutcome {
-  classify_floor_exit(e: ExitFailure { code: 137, reason: "Process completed with exit code 137." })
+  classify_floor_exit(e: std.process.ExitFailure { code: 137, reason: "Process completed with exit code 137." })
 }
 
 fn outcome_is_infra(o: gunbc.ci_failure_class.FloorOutcome) -> Bool {
@@ -39,7 +39,7 @@ fn no_oom() -> gunbc.ci_oom_reclassify.OomKillObservation {
 }
 
 fn clustered_simultaneous() -> gunbc.ci_oom_reclassify.ClusteringEvidence {
-  Clustered { signal: SimultaneousMultiJobDeath { job_count: 3 } }
+  gunbc.ci_oom_reclassify.Clustered { signal: gunbc.ci_oom_reclassify.SimultaneousMultiJobDeath { job_count: 3 } }
 }
 
 test fn witness_clustered_oom_promotes_137_to_infra_nonblocking() -> Bool {
@@ -88,9 +88,9 @@ test fn witness_boot_id_oracle_discriminates() -> Bool {
 
 test fn witness_reclassify_never_demotes_or_touches_non_137() -> Bool {
   let no_failure = reclassify_floor_outcome(o: NoFailure, oom: confirmed_cgroup_oom(), clustering: clustered_simultaneous())
-  let already_infra = FloorFailed { class: gunbc.ci_failure_class.Infra { signature: ClusteredOutOfMemoryKill } }
+  let already_infra = gunbc.ci_failure_class.FloorFailed { class: gunbc.ci_failure_class.Infra { signature: ClusteredOutOfMemoryKill } }
   let still_infra = reclassify_floor_outcome(o: already_infra, oom: no_oom(), clustering: NotClustered)
-  let real_compile_error = FloorFailed { class: Structural { reason: "error[E0599]: no method named frobnicate" } }
+  let real_compile_error = gunbc.ci_failure_class.FloorFailed { class: gunbc.ci_failure_class.Structural { reason: "error[E0599]: no method named frobnicate" } }
   let unchanged = reclassify_floor_outcome(o: real_compile_error, oom: no_oom(), clustering: clustered_simultaneous())
   (match no_failure { NoFailure => true  FloorFailed { class: _ } => false })
     && outcome_is_infra(o: still_infra)

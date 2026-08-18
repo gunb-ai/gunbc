@@ -71,7 +71,7 @@ fn bash_membership_outcome_tag_from_execution(
     let root_len = string_length(s: root)
     if string_length(s: abs) >= root_len
       && substring(s: abs, start: 0, end: root_len) == root {
-      OutcomeTagObserved {
+      extdeps.linux.proc_self_cgroup.OutcomeTagObserved {
         relative_path: substring(
           s: abs,
           start: root_len,

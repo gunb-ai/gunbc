@@ -4,12 +4,12 @@ module gunbc.roadmap_instrument_tuner
 data instrument_tuner_note: String = "THE OPERABLE V1-DELETION TUNER at /sandbox/instrument/tuner — the declared follow-on to the static study. The study at /sandbox/instrument renders one server-side camera state with no client program; this page loads the modeled client asset from gunbc.roadmap_component so the camera persists in localStorage, finish-line selection follows the production roadmap's parity rule, wheel and arrow keys admit one detent per admitted threshold (distant depth labels decompose into adjacent steps), and the depth/mode controls actually drive the pre-rendered reading rows. The world is still V0's live derived program view; only the camera is local instrument state."
 
 fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
-  ClassSelector { name: name }
+  extdeps.languages.css.selectors.ClassSelector { name: name }
 }
 
 fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: instrument_depth_btn_class),
       decls: [
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
@@ -22,13 +22,13 @@ fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: Cursor, value: "pointer"),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: join([instrument_depth_btn_class, ".is-active"], "")),
       decls: [
         decl(prop: Border, value: join(["1px solid ", role_var(r: FocusRole)], "")),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: instrument_mode_btn_class),
       decls: [
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
@@ -41,13 +41,13 @@ fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: Cursor, value: "pointer"),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: join([instrument_mode_btn_class, ".is-active"], "")),
       decls: [
         decl(prop: Border, value: join(["1px solid ", role_var(r: FocusRole)], "")),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: instrument_subject_class),
       decls: [
         decl(prop: Display, value: "flex"),
@@ -56,7 +56,7 @@ fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: Cursor, value: "pointer"),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: join([instrument_subject_class, ".instrument-subject-selected"], "")),
       decls: [
         decl(prop: Border, value: join(["1px solid ", role_var(r: FocusRole)], "")),

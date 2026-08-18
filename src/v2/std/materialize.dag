@@ -99,5 +99,5 @@ fn materialize_share_grade_permits_share() -> Bool {
 }
 
 fn materialize_ungrounded_identity(detail: String) -> std.computation_identity.ComputationIdentity {
-  IdentityUnknown { cause: MissingConcept { detail: detail } }
+  IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: detail } }
 }

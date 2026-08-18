@@ -7,7 +7,7 @@ data live_tree_disposition_note: String = "ReadsLiveTree by G1 carrier-closure h
 
 data synthetic_intent: v2.lens.enforcement.standing_intent.StandingIntent = {
   id: "synthetic.parallelism.repo-wide",
-  property: LensFamily { lens: Parallelism },
+  property: v2.lens.enforcement.standing_intent.LensFamily { lens: Parallelism },
   displaced_cost: "synthetic fixture cost",
   mechanism_class: "synthetic mechanism",
   recurring: true,
@@ -52,9 +52,9 @@ data synthetic_receipt_good: v2.lens.enforcement.contract.EnrollmentDiscoveryRec
 data synthetic_receipt_narrow: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt = {
   contract_id: Parallelism,
   discovered_subject_names: v2.lens.enforcement.vocab.SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
-  scope_satisfaction: ScopeNarrowed {
+  scope_satisfaction: v2.lens.enforcement.vocab.ScopeNarrowed {
     missing: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1"] },
-    reason: ExternalRuntimeOnly { reason: "synthetic off-substrate gap" }
+    reason: v2.lens.enforcement.vocab.ExternalRuntimeOnly { reason: "synthetic off-substrate gap" }
   },
   consumer_enrolled: EnrolledInFloorRoster,
   consumer_entry_identity: NoReceiptRef,
@@ -84,7 +84,7 @@ data synthetic_receipt_witness_only: v2.lens.enforcement.contract.EnrollmentDisc
 
 data synthetic_intent_with_subject: v2.lens.enforcement.standing_intent.StandingIntent = {
   id: "synthetic.parallelism.with-subject",
-  property: LensFamily { lens: Parallelism },
+  property: v2.lens.enforcement.standing_intent.LensFamily { lens: Parallelism },
   displaced_cost: "synthetic fixture cost",
   mechanism_class: "synthetic mechanism",
   recurring: true,
@@ -100,7 +100,7 @@ data synthetic_intent_with_subject: v2.lens.enforcement.standing_intent.Standing
 
 data synthetic_intent_missing_subject: v2.lens.enforcement.standing_intent.StandingIntent = {
   id: "synthetic.parallelism.missing-subject",
-  property: LensFamily { lens: Parallelism },
+  property: v2.lens.enforcement.standing_intent.LensFamily { lens: Parallelism },
   displaced_cost: "synthetic fixture cost",
   mechanism_class: "synthetic mechanism",
   recurring: true,
@@ -116,7 +116,7 @@ data synthetic_intent_missing_subject: v2.lens.enforcement.standing_intent.Stand
 
 data synthetic_intent_permuted_subject: v2.lens.enforcement.standing_intent.StandingIntent = {
   id: "synthetic.parallelism.permuted-subject",
-  property: LensFamily { lens: Parallelism },
+  property: v2.lens.enforcement.standing_intent.LensFamily { lens: Parallelism },
   displaced_cost: "synthetic fixture cost",
   mechanism_class: "synthetic mechanism",
   recurring: true,
@@ -192,7 +192,7 @@ test fn consumer_requirement_discriminates() -> Bool {
     && consumer_satisfies(actual: EnrolledInFloorRoster, required: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster })
     && consumer_satisfies(actual: MergeAdmission, required: AnyLiveConsumer)
     && !consumer_satisfies(actual: WitnessOnly, required: AnyLiveConsumer)
-    && consumer_satisfies(actual: MergeAdmission, required: OneOf { acceptable: [EnrolledInFloorRoster, MergeAdmission] })
+    && consumer_satisfies(actual: MergeAdmission, required: v2.lens.enforcement.vocab.OneOf { acceptable: [EnrolledInFloorRoster, MergeAdmission] })
 }
 
 test fn enforcement_mode_order_discriminates() -> Bool {

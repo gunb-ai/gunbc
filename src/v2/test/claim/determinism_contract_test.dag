@@ -39,7 +39,7 @@ test fn determinism_compose_det_det_is_deterministic() -> Bool {
 test fn determinism_compose_nondet_left_propagates() -> Bool {
   !det_is_deterministic(
     c: determinism_compose(
-      outer: NonDeterministic { source: example_root() },
+      outer: std.determinism.NonDeterministic { source: example_root() },
       inner: Deterministic
     )
   )
@@ -49,7 +49,7 @@ test fn determinism_compose_nondet_right_propagates() -> Bool {
   !det_is_deterministic(
     c: determinism_compose(
       outer: Deterministic,
-      inner: NonDeterministic { source: example_root() }
+      inner: std.determinism.NonDeterministic { source: example_root() }
     )
   )
 }

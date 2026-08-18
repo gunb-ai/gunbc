@@ -213,7 +213,7 @@ fn memory_role_count(d: product.altra_motherboard.minimal_design.AltraMinimalMot
 
 fn requires_slot(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, c: product.altra_motherboard.minimal_design.DdrChannelIdentity, p: DimmSlotPosition) -> Bool {
   fold(required_roles(d: d), init: false, f: fn(acc, r) {
-    acc || roles_equal(a: r, b: MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: c, position: p } })
+    acc || roles_equal(a: r, b: product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: c, position: p } })
   })
 }
 
@@ -247,9 +247,9 @@ test fn w_the_required_roles_are_the_named_slots_not_a_generated_range() -> Bool
 // position would report a two-DIMM channel as filled by its first slot alone, and the second
 // connector would vanish from the population join without any refusal naming it.
 test fn w_memory_slots_are_distinguished_on_both_coordinates() -> Bool {
-  let c0p0 = MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel0, position: FirstDimmOnChannel } }
-  let c0p1 = MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel0, position: SecondDimmOnChannel } }
-  let c1p0 = MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel1, position: FirstDimmOnChannel } }
+  let c0p0 = product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel0, position: FirstDimmOnChannel } }
+  let c0p1 = product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel0, position: SecondDimmOnChannel } }
+  let c1p0 = product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel1, position: FirstDimmOnChannel } }
   !roles_equal(a: c0p0, b: c1p0)
     && !roles_equal(a: c0p0, b: c0p1)
     && roles_equal(a: c0p1, b: c0p1)
@@ -289,7 +289,7 @@ test fn w_a_component_filling_no_required_role_refuses() -> Bool {
       count_tagged(
         cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: plan_with_only(cs: [product.altra_motherboard.placement.PlannedComponent {
           identity: "dimm_slot_spurious",
-          role: MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel5, position: SecondDimmOnChannel } },
+          role: product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel5, position: SecondDimmOnChannel } },
           envelope: board_control_envelope,
           origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
         }], template: p)),
@@ -363,7 +363,7 @@ test fn w_a_present_but_unjustified_part_is_not_counted_as_unchecked() -> Bool {
         d_ref: altra_1p_minimum_ref(),
         plan: plan_with_only(cs: concat(p.components, [product.altra_motherboard.placement.PlannedComponent {
           identity: "spurious_extra",
-          role: MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel2, position: SecondDimmOnChannel } },
+          role: product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel2, position: SecondDimmOnChannel } },
           envelope: board_control_envelope,
           origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
         }]), template: p)

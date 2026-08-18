@@ -369,7 +369,7 @@ fn runner_schedule_plan_from_dependencies<V>(
       }
     ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } =>
       RunnerScheduleBlocked {
-        evidence: RunnerExecutorBlocked { evidence: ExecutorEmptyFrontier {} }
+        evidence: RunnerExecutorBlocked { evidence: v2.workflow.executor.ExecutorEmptyFrontier {} }
       }
     ExecutorRunBlocked { evidence: evidence, batches: _, scheduled: _, remaining: _ } =>
       RunnerScheduleBlocked {

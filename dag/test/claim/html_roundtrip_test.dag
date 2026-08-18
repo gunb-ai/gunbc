@@ -11,12 +11,12 @@ fn roundtrip_core_node() -> std.markup.Fragment {
       extdeps.browser.Element {
         tag: "p",
         attributes: [],
-        children: [FragmentText { content: "hello & world" }],
+        children: [std.markup.FragmentText { content: "hello & world" }],
       },
       extdeps.browser.Element {
         tag: "a",
         attributes: [attr(name: "href", value: "https://example.com" )],
-        children: [FragmentText { content: "link" }],
+        children: [std.markup.FragmentText { content: "link" }],
       },
     ],
   }
@@ -44,7 +44,7 @@ fn perturbed_node() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "a",
     attributes: [attr(name: "href", value: "/about" )],
-    children: [FragmentText { content: "plain text" }],
+    children: [std.markup.FragmentText { content: "plain text" }],
   }
 }
 
@@ -60,7 +60,7 @@ fn attr_node() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "a",
     attributes: [attr(name: "href", value: "https://example.com" )],
-    children: [FragmentText { content: "click" }],
+    children: [std.markup.FragmentText { content: "click" }],
   }
 }
 
@@ -85,7 +85,7 @@ test fn witness_frontier_unsafe_href_rejected() -> Bool {
   let serialized = serialize_html_source(node: extdeps.browser.Element {
     tag: "a",
     attributes: [attr(name: "href", value: "javascript:alert(1)" )],
-    children: [FragmentText { content: "x" }],
+    children: [std.markup.FragmentText { content: "x" }],
   })
   match ingest_html_source(src: serialized) {
     IngestRejected { reason: _ } => true
@@ -98,8 +98,8 @@ fn adjacent_text_node() -> std.markup.Fragment {
     tag: "span",
     attributes: [],
     children: [
-      FragmentText { content: "a" },
-      FragmentText { content: "b" },
+      std.markup.FragmentText { content: "a" },
+      std.markup.FragmentText { content: "b" },
     ],
   }
 }

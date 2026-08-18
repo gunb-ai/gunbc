@@ -57,7 +57,7 @@ fn rust_binop_add_only_catalog() -> Node {
   target_operator_realizations_catalog_node(rows: [
     target_operator_realization_node(
       operation: canonical_operation_op_add(),
-      shape: InfixToken { token: ^rust_token_plus }
+      shape: v2.std.compilers.target_model.InfixToken { token: ^rust_token_plus }
     )
   ])
 }
@@ -66,7 +66,7 @@ fn rust_binop_sub_mistoken_catalog() -> Node {
   target_operator_realizations_catalog_node(rows: [
     target_operator_realization_node(
       operation: canonical_operation_op_sub(),
-      shape: InfixToken { token: ^rust_token_plus }
+      shape: v2.std.compilers.target_model.InfixToken { token: ^rust_token_plus }
     )
   ])
 }

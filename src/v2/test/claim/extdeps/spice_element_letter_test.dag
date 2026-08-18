@@ -6,9 +6,9 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn one_resistor(name: String) -> v2.extdeps.formats.spice.SpiceNetlist {
   v2.extdeps.formats.spice.SpiceNetlist {
     title: "",
-    body: Cons {
-      head: DeckComponent {
-        component: Resistor {
+    body: std.algebra.Cons {
+      head: v2.extdeps.formats.spice.DeckComponent {
+        component: v2.extdeps.formats.spice.Resistor {
           name: name,
           n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "hot" } },
           n_minus: Ground,
@@ -23,9 +23,9 @@ fn one_resistor(name: String) -> v2.extdeps.formats.spice.SpiceNetlist {
 fn one_capacitor(name: String) -> v2.extdeps.formats.spice.SpiceNetlist {
   v2.extdeps.formats.spice.SpiceNetlist {
     title: "",
-    body: Cons {
-      head: DeckComponent {
-        component: Capacitor {
+    body: std.algebra.Cons {
+      head: v2.extdeps.formats.spice.DeckComponent {
+        component: v2.extdeps.formats.spice.Capacitor {
           name: name,
           n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "hot" } },
           n_minus: Ground,
@@ -75,9 +75,9 @@ test fn w_the_empty_name_is_not_an_identifier() -> Bool {
 test fn w_a_source_and_a_resistor_do_not_collide() -> Bool {
   let src = v2.extdeps.formats.spice.SpiceNetlist {
     title: "",
-    body: Cons {
-      head: DeckComponent {
-        component: VoltageSource {
+    body: std.algebra.Cons {
+      head: v2.extdeps.formats.spice.DeckComponent {
+        component: v2.extdeps.formats.spice.VoltageSource {
           name: "x",
           n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "hot" } },
           n_minus: Ground,

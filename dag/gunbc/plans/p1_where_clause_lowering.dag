@@ -43,6 +43,6 @@ data p1_where_clause_lowering_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "p1-where-clause-lowering",
   title: "Plan — P1: `where`-clause surface (lowering the parsed predicate to a refinement)",
   body: p1_where_clause_lowering_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when `type X = … where Length<8>` (and a record field `… where Length<8>`) lowers to an enforced refinement and a violating construction is a typed `Rejected` green-by-execution — at which point MVP-1's hand-written `refine` call becomes the *desugaring* of the surface `where`, and `bit.dag`'s \"type-alias where is skipped\" comment dissolves.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when `type X = … where Length<8>` (and a record field `… where Length<8>`) lowers to an enforced refinement and a violating construction is a typed `Rejected` green-by-execution — at which point MVP-1's hand-written `refine` call becomes the *desugaring* of the surface `where`, and `bit.dag`'s \"type-alias where is skipped\" comment dissolves.")
   }
 }

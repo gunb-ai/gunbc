@@ -28,9 +28,9 @@ data default_github_auth_source: GitHubAuthSource = {
 data structural_coverage_gap_github_token_metadata_verification: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "GitHubAuthToken" },
-      DeclaredMetadata { field: "scopes" },
-      DeclaredMetadata { field: "expires_at" }
+      extdeps.coverage.Subject { path: "GitHubAuthToken" },
+      extdeps.coverage.DeclaredMetadata { field: "scopes" },
+      extdeps.coverage.DeclaredMetadata { field: "expires_at" }
     ],
     trigger: "GitHub token introspection or installation-token issuance surface"
   }

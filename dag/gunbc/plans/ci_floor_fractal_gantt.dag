@@ -19,22 +19,22 @@ fn ci_floor_fractal_gantt_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "2. Baseline measurement — CI run on main (2026-06-24, run 28136318404)"),
     p(text: "Measured on the #5757 merged-to-main baseline (both #5747 and #5757 included). Host: self-hosted arm64 runner, `spawn_width=3`, `CARGO_BUILD_JOBS=1`."),
     h3(text: "Top-level fractal Gantt (wall-clock, sequential phases)"),
-    CodeBlock { code: "Phase                           Wall        % of total\n─────────────────────────────────────────────────────\ncargo build -p v1-compiler       ~96s        10.4%\nclaim_executor (total)           ~819s       89.2%\n  Batch 1  [compile gate, 1 node]  ~52s       5.7%  (6.3% of executor)\n  Batch 2  [gate witnesses, 5 nodes in 2 groups, parallel]\n                                  ~538s      58.5%  (65.7% of executor)\n  Batch 3  [discovery corpus, 1 node]  ~229s  24.9%  (28.0% of executor)\n─────────────────────────────────────────────────────\nTotal CI wall (build + executor)  ~915s (~15m15s)\n" },
+    std.markdown.CodeBlock { code: "Phase                           Wall        % of total\n─────────────────────────────────────────────────────\ncargo build -p v1-compiler       ~96s        10.4%\nclaim_executor (total)           ~819s       89.2%\n  Batch 1  [compile gate, 1 node]  ~52s       5.7%  (6.3% of executor)\n  Batch 2  [gate witnesses, 5 nodes in 2 groups, parallel]\n                                  ~538s      58.5%  (65.7% of executor)\n  Batch 3  [discovery corpus, 1 node]  ~229s  24.9%  (28.0% of executor)\n─────────────────────────────────────────────────────\nTotal CI wall (build + executor)  ~915s (~15m15s)\n" },
     h3(text: "Batch 1 drill-down (52s)"),
     p(text: "One SingleClaim in `dag/tools/floor_effect_gate_witness.dag` → `dag_compile_clean_gate_passes`. This gate invokes the .dag compile pass (not cargo). Breakdown not visible without `GUNBC_FLOOR_GANTT=1` on a live run; per-claim timing is now captured in the new ClaimResult fields. Estimated: resolve ~30-40s (heavy closure, ~106 modules), eval ~12-20s (the compile pass itself)."),
     h3(text: "Batch 2 drill-down (538s = 9 min — the dominant hot spot)"),
     p(text: "Five gate witnesses in two resolve groups, run in PARALLEL (two OS threads, one per group). Batch wall = max(Group A, Group B). Group B (source_root_ingest_gate.dag) is fast; Group A (floor_effect_gate_witness.dag) dominates."),
-    CodeBlock { code: "Group A  floor_effect_gate_witness.dag                [parallel thread]\n  resolve: ~30-40s   (same closure as Batch 1; likely cached after Batch 1)\n  rust_monolith_gate_passes:      ~530s  ← DOMINANT (runs cargo clippy + fmt)\n  emit_host_gate_passes:           runs after rust_monolith (sequential within group)\n  layering_imports_gate_passes:    runs after emit_host\n  extdeps_external_authority_gate_passes:  runs after layering\n  generated_artifact_drift_gate_passes:    last\n\nGroup B  source_root_ingest_gate.dag                   [parallel thread]\n  resolve: ~10-20s\n  source_root_ingest_gate_passes: ~2-5s  (fast; Group B finishes well before A)\n" },
+    std.markdown.CodeBlock { code: "Group A  floor_effect_gate_witness.dag                [parallel thread]\n  resolve: ~30-40s   (same closure as Batch 1; likely cached after Batch 1)\n  rust_monolith_gate_passes:      ~530s  ← DOMINANT (runs cargo clippy + fmt)\n  emit_host_gate_passes:           runs after rust_monolith (sequential within group)\n  layering_imports_gate_passes:    runs after emit_host\n  extdeps_external_authority_gate_passes:  runs after layering\n  generated_artifact_drift_gate_passes:    last\n\nGroup B  source_root_ingest_gate.dag                   [parallel thread]\n  resolve: ~10-20s\n  source_root_ingest_gate_passes: ~2-5s  (fast; Group B finishes well before A)\n" },
     p(text: "**Hot spot: `rust_monolith_gate_passes` (cargo clippy + cargo fmt + cargo build) ≈ 9 min.** This is a host-effect gate that invokes the Rust toolchain. It is not an interpreter hot spot — it is an external process sequenced serially within Group A. The four remaining gates in Group A run sequentially AFTER rust_monolith, so the group wall = rust_monolith + emit_host + layering + extdeps + drift ≈ rust_monolith dominates."),
     h3(text: "Batch 3 drill-down (229s = 3m49s — the discovery corpus)"),
     p(text: "One DiscoveryBatch node, `spawn_width=3`. The `[measurement]` line from the run:"),
-    CodeBlock { code: "discovery corpus: 1011 witness(es) (0 skipped), resolve 447734.489ms, evalu 682285.422ms\n" },
-    CodeBlock { code: "Batch 3 wall: ~229s\n  Discovery corpus (1011 witnesses, width=3)\n    resolve (serial sum across unique entry files): 447,734ms\n      avg per unique entry file: ~443ms  (1011 witnesses / N files; resolve shared per file)\n    eval    (serial sum across all witnesses):      682,285ms\n      avg per witness:            ~675ms\n    parallelism factor (serial / wall):             ~5.0×   (447734+682285)ms / (229×1000)ms\n" },
+    std.markdown.CodeBlock { code: "discovery corpus: 1011 witness(es) (0 skipped), resolve 447734.489ms, evalu 682285.422ms\n" },
+    std.markdown.CodeBlock { code: "Batch 3 wall: ~229s\n  Discovery corpus (1011 witnesses, width=3)\n    resolve (serial sum across unique entry files): 447,734ms\n      avg per unique entry file: ~443ms  (1011 witnesses / N files; resolve shared per file)\n    eval    (serial sum across all witnesses):      682,285ms\n      avg per witness:            ~675ms\n    parallelism factor (serial / wall):             ~5.0×   (447734+682285)ms / (229×1000)ms\n" },
     p(text: "**Hot spot analysis — eval dominates the discovery corpus wall time.** With `width=3` the workers consume (resolve + eval) serially. The effective work per worker is `(447734 + 682285) / 3 ≈ 376ms × 1000 = 376s`... but the measured wall is 229s. The gap (376s → 229s) indicates that resolve work IS shared across witnesses in the same entry file (each unique file resolves once), making actual resolve wall-time proportional to unique-entry-count × resolve-cost rather than total-witness-count × resolve-cost."),
     p(text: "The serial sums are dominated by **eval** (682s vs 447s resolve). Per-witness eval at 675ms is high relative to the 3–9ms cited for trivial Bool witnesses in prior profiling. The 1011-witness corpus includes heavier witnesses (emit gates, language-model witnesses) that pull up the average."),
     hr(),
     h2(text: "3. Top 3 hot spots post-#5757 baseline"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Rank"), cell(text: "Hot spot"), cell(text: "Wall impact"), cell(text: "Nature"), cell(text: "Next lever")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -63,7 +63,7 @@ fn ci_floor_fractal_gantt_body() -> List<std.markdown.MarkdownBlock> {
     },
     hr(),
     h2(text: "4. Addressability analysis — quick-win vs architectural"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Hot spot"), cell(text: "Addressable time"), cell(text: "Quick win or architectural?")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -99,6 +99,6 @@ data ci_floor_fractal_gantt_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "ci-floor-fractal-gantt",
   title: "CI floor fractal Gantt — profiling receipt on #5757 baseline",
   body: ci_floor_fractal_gantt_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the realization_measurement_loop Phase-0 `.dag`-native Gantt carrier lands and supersedes this prose receipt — i.e., when `CostAccount.time = Measured` is live and the Gantt tree is derived from the carrier rather than captured in a plan doc.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the realization_measurement_loop Phase-0 `.dag`-native Gantt carrier lands and supersedes this prose receipt — i.e., when `CostAccount.time = Measured` is live and the Gantt tree is derived from the carrier rather than captured in a plan doc.")
   }
 }

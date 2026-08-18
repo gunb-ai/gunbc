@@ -25,7 +25,7 @@ data click_to_customer_scenario: gunbc.econ.acquisition.AcquisitionScenario = gu
 }
 
 test fn w_two_step_funnel_composes_exact_fraction_and_cost() -> Bool {
-  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: click_to_customer_scenario }) {
+  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared { scenario: click_to_customer_scenario }) {
     AcquisitionForecastDerived { forecast: f } =>
       (f.composed_rate.num == 1)
         && (f.composed_rate.denom == 40)
@@ -46,7 +46,7 @@ data indivisible_scenario: gunbc.econ.acquisition.AcquisitionScenario = gunbc.ec
 }
 
 test fn w_exact_fraction_is_authority_and_floor_is_lossy() -> Bool {
-  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: indivisible_scenario }) {
+  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared { scenario: indivisible_scenario }) {
     AcquisitionForecastDerived { forecast: f } =>
       (f.composed_rate.num == 3)
         && (f.composed_rate.denom == 7)
@@ -65,7 +65,7 @@ test fn w_red_unknown_scenario_refuses() -> Bool {
 }
 
 test fn w_red_zero_entry_unit_cost_refuses() -> Bool {
-  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
+  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
     scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: std.measure.MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
@@ -78,7 +78,7 @@ test fn w_red_zero_entry_unit_cost_refuses() -> Bool {
 }
 
 test fn w_red_empty_funnel_refuses() -> Bool {
-  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
+  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
     scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
@@ -91,7 +91,7 @@ test fn w_red_empty_funnel_refuses() -> Bool {
 }
 
 test fn w_red_zero_numerator_refuses_naming_the_stage() -> Bool {
-  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
+  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
     scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
@@ -108,7 +108,7 @@ test fn w_red_zero_numerator_refuses_naming_the_stage() -> Bool {
 }
 
 test fn w_red_zero_cohort_refuses_naming_the_stage() -> Bool {
-  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
+  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
     scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
@@ -124,7 +124,7 @@ test fn w_red_zero_cohort_refuses_naming_the_stage() -> Bool {
 }
 
 test fn w_red_rate_above_unity_refuses_naming_the_stage() -> Bool {
-  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
+  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
     scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
@@ -154,7 +154,7 @@ test fn w_red_floor_projection_refuses_hand_built_zero_converted_forecast() -> B
 }
 
 test fn w_red_first_invalid_stage_wins() -> Bool {
-  match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
+  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
     scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,

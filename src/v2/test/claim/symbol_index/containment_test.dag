@@ -7,7 +7,7 @@ fn si_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> Node {
     xs: segments,
     item_node: fn(sym) {
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: sym } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
@@ -20,7 +20,7 @@ fn si_module_root(
   exports: List<v2.std.node.Edge>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: concat(
       [
         dag_named_edge(
@@ -42,7 +42,7 @@ fn si_type_with_variants(type_sym: v2.std.node.Symbol, variants: List<v2.std.nod
   v2.std.node.Edge {
     label: Named { name: type_sym },
     target: v2.std.node.Node {
-      kind: TypeNode {
+      kind: v2.std.node.TypeNode {
         connective: Disj
       },
       children: fold(variants, init: [], f: fn(acc, variant_sym) {
@@ -50,7 +50,7 @@ fn si_type_with_variants(type_sym: v2.std.node.Symbol, variants: List<v2.std.nod
           v2.std.node.Edge {
             label: Named { name: variant_sym },
             target: v2.std.node.Node {
-              kind: TypeNode { connective: Atom { identity: variant_sym } },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: variant_sym } },
               children: [],
               occurrence_id: SyntheticOccurrence
             }
@@ -274,13 +274,13 @@ data si_shadow_module_qn: FreeMonoid<v2.std.node.Symbol> = qualified_name_from_d
 )
 
 data si_shadow_outer_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^ShadowDup } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ShadowDup } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data si_shadow_inner_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^ShadowDup } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ShadowDup } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -334,7 +334,7 @@ data si_orphan_module_root_node: Node = si_module_root(
     v2.std.node.Edge {
       label: Named { name: ^OrphanPilotOnly },
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: ^OrphanPilotOnly } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^OrphanPilotOnly } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
@@ -344,9 +344,9 @@ data si_orphan_module_root_node: Node = si_module_root(
 
 data si_multi_root_index: v2.std.symbol_index.SymbolIndex = symbol_index_fill_module_roots(
   index: empty_symbol_index(),
-  roots: Cons {
+  roots: std.algebra.Cons {
     head: si_module_root_node,
-    tail: Cons { head: si_orphan_module_root_node, tail: Empty }
+    tail: std.algebra.Cons { head: si_orphan_module_root_node, tail: Empty }
   }
 )
 
@@ -362,12 +362,12 @@ test fn symbol_index_global_unique_lookup_resolves_globally_unique_holds() -> Bo
 
 test fn symbol_index_global_unique_lookup_ambiguous_leaf_holds() -> Bool {
   let yes_a = v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^Yes } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^Yes } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
   let yes_b = v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^Yes } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^Yes } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -407,7 +407,7 @@ test fn symbol_index_fill_marks_duplicate_leaf_ambiguous_holds() -> Bool {
 
 test fn symbol_index_track_global_bare_idempotent_on_same_node_holds() -> Bool {
   let bound = v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^OrphanPilotOnly } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^OrphanPilotOnly } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -425,14 +425,14 @@ data si_alias_module_qn: FreeMonoid<v2.std.node.Symbol> = qualified_name_from_do
 )
 
 data si_alias_target_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^AliasTargetType } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^AliasTargetType } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 fn si_alias_decl_node(binding: v2.std.node.Symbol, target_qn: v2.std.qualified_name.QualifiedName) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_alias_decl,
@@ -441,7 +441,7 @@ fn si_alias_decl_node(binding: v2.std.node.Symbol, target_qn: v2.std.qualified_n
       dag_named_edge(
         name: ^dag_surface_alias_decl_binding,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: binding } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -457,12 +457,12 @@ fn si_alias_decl_node(binding: v2.std.node.Symbol, target_qn: v2.std.qualified_n
 
 fn si_alias_decl_wrapped(binding: v2.std.node.Symbol, target_qn: v2.std.qualified_name.QualifiedName) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^grammar_production_identity_node_projection,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^dag_surface_alias_decl } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_surface_alias_decl } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }

@@ -242,7 +242,7 @@ fn lex_empty_node() -> Node {
 
 fn lex_void_lex_rules_evidence_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^lex_void_lex_rules_evidence } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lex_void_lex_rules_evidence } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }

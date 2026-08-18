@@ -1,7 +1,7 @@
 module v2.test.manual.multi_target_emit_verification_gate
 
 
-data claim_emit_verification_gate_obligation_modeled: v2.std.verification.TestClaim = CompilesClaim {
+data claim_emit_verification_gate_obligation_modeled: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "multi-target emit verification gate obligation is modeled (v3 harness is authority until T-38)"
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent)
   input: stub_empty_conj

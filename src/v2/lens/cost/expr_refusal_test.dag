@@ -4,7 +4,7 @@ module v2.test.lens_cost.expr_refusal
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data expr_refusal_log_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^expr_refusal_log_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^expr_refusal_log_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -20,7 +20,7 @@ data expr_refusal_effect_operation: std.decl_ref.DeclarationRef = std.decl_ref.D
 }
 
 fn log_base_two() -> v2.std.nat.Nat {
-  Succ { prev: Succ { prev: Zero } }
+  v2.std.nat.Succ { prev: v2.std.nat.Succ { prev: Zero } }
 }
 
 test fn invalid_log_base_zero_refuses() -> Bool {
@@ -38,7 +38,7 @@ test fn invalid_log_base_zero_refuses() -> Bool {
 test fn invalid_log_base_one_refuses() -> Bool {
   match normalize_cost_expr_to_symbolic(
     expr: cost_log_expr(
-      base: Succ { prev: Zero },
+      base: v2.std.nat.Succ { prev: Zero },
       argument: size_of(variable: expr_refusal_log_variable)
     )
   ) {
@@ -61,7 +61,7 @@ test fn valid_log_base_two_projects_log_cost() -> Bool {
 
 test fn cost_effect_projects_unmodeled_effect_refusal() -> Bool {
   match normalize_cost_expr_to_symbolic(
-    expr: CostEffect { operation: expr_refusal_effect_operation }
+    expr: v2.lens.cost.expr.CostEffect { operation: expr_refusal_effect_operation }
   ) {
     UnknownCost { diagnostic: d } => d.reason == ^cost_expr_refusal_unmodeled_effect
     LinearCost { variable: _ } => false

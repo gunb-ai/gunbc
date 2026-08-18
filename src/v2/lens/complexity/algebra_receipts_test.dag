@@ -16,13 +16,13 @@ type ComplexityDominanceClaim {
 }
 
 data algebra_receipts_x: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^algebra_receipts_x_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^algebra_receipts_x_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data algebra_receipts_y: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^algebra_receipts_y_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^algebra_receipts_y_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -37,17 +37,17 @@ data polynomial_degree_four_receipt: v2.lens.cost.PolynomialDegree = v2.lens.cos
 
 data algebra_receipts_diagnostic: v2.std.diagnostic.Diagnostic = v2.std.diagnostic.Diagnostic {
   reason: ^algebra_receipts_reason,
-  at: Textual { file: ^algebra_receipts_file, extent: WholeFile },
-  correction: Unavailable { reason: AmbiguousIntent }
+  at: v2.std.diagnostic.Textual { file: ^algebra_receipts_file, extent: WholeFile },
+  correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
 }
 
 data polynomial_product_degree_claim: ComplexityProjectionClaim = ComplexityProjectionClaim {
-  input_cost: ProductCost {
-    lhs: PolynomialCost {
+  input_cost: v2.lens.cost.ProductCost {
+    lhs: v2.lens.cost.PolynomialCost {
       variable: v2.lens.cost.SizeVariable { source: algebra_receipts_x },
       degree: polynomial_degree_two_receipt
     },
-    rhs: PolynomialCost {
+    rhs: v2.lens.cost.PolynomialCost {
       variable: v2.lens.cost.SizeVariable { source: algebra_receipts_y },
       degree: polynomial_degree_two_receipt
     }

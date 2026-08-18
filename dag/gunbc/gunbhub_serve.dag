@@ -31,7 +31,7 @@ fn gunbhub_header() -> std.markup.Fragment {
       extdeps.browser.Element {
         tag: "h1",
         attributes: [],
-        children: [ FragmentText { content: "gunbc" } ],
+        children: [ std.markup.FragmentText { content: "gunbc" } ],
       },
       extdeps.browser.Element {
         tag: "nav",
@@ -40,7 +40,7 @@ fn gunbhub_header() -> std.markup.Fragment {
           extdeps.browser.Element {
             tag: "a",
             attributes: [ attr(name: "href", value: "/" ) ],
-            children: [ FragmentText { content: "Browse" } ],
+            children: [ std.markup.FragmentText { content: "Browse" } ],
           },
         ],
       },
@@ -56,7 +56,7 @@ fn gunbhub_browse_entry(name: String, path: String) -> std.markup.Fragment {
       extdeps.browser.Element {
         tag: "a",
         attributes: [ attr(name: "href", value: path ) ],
-        children: [ FragmentText { content: name } ],
+        children: [ std.markup.FragmentText { content: name } ],
       },
     ],
   }
@@ -74,7 +74,7 @@ fn gunbhub_browse_page() -> std.markup.Fragment {
           extdeps.browser.Element {
             tag: "title",
             attributes: [],
-            children: [ FragmentText { content: "gunbc" } ],
+            children: [ std.markup.FragmentText { content: "gunbc" } ],
           },
         ],
       },
@@ -108,7 +108,7 @@ fn gunbhub_hostile_page() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "a",
     attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
-    children: [ FragmentText { content: "x" } ],
+    children: [ std.markup.FragmentText { content: "x" } ],
   }
 }
 
@@ -124,7 +124,7 @@ fn gunbhub_readme_page() -> std.markup.Fragment {
           extdeps.browser.Element {
             tag: "title",
             attributes: [],
-            children: [ FragmentText { content: "gunbc — README" } ],
+            children: [ std.markup.FragmentText { content: "gunbc — README" } ],
           },
         ],
       },
@@ -145,7 +145,7 @@ fn gunbhub_readme_page() -> std.markup.Fragment {
                     tag: "p",
                     attributes: [],
                     children: [
-                      FragmentText { content: "DAG-modeled compiler and language project. Rust is bootstrap seed.",
+                      std.markup.FragmentText { content: "DAG-modeled compiler and language project. Rust is bootstrap seed.",
                       },
                     ],
                   },
@@ -183,7 +183,7 @@ fn gunbhub_browse_path_template() -> std.http_path.PathTemplate {
 }
 
 fn gunbhub_repo_path_template() -> std.http_path.PathTemplate {
-  std.http_path.PathTemplate { tokens: [ParamToken { name: "repo-path" }] }
+  std.http_path.PathTemplate { tokens: [std.http_path.ParamToken { name: "repo-path" }] }
 }
 
 fn normalize_request_path(path: String) -> String {

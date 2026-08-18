@@ -22,9 +22,9 @@ fn mk_receipt(content: std.content_hash.ContentHash) -> CachedArtifactReceipt<st
     },
     backend_key: std.cache_interface.BackendCacheKey {
       store: witness_store_id,
-      key: CasContentDigest { digest: subject_digest_a },
+      key: std.cache_interface.CasContentDigest { digest: subject_digest_a },
     },
-    producer: InternalExecution {
+    producer: std.cache_interface.InternalExecution {
       receipt: std.cache_interface.ExecutionReceiptRef { receipt_digest: receipt_digest_v },
     },
     content_digest: content,
@@ -47,14 +47,14 @@ test fn witness_miss_recomputes() -> Bool {
 }
 
 test fn witness_refused_hit_never_reused() -> Bool {
-  match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
+  match realize_route(lookup: std.cache_interface.RejectedHit { reason: ContentDigestMismatch }) {
     Recompute { reason: _ } => true
     Reuse { receipt: _ } => false
   }
 }
 
 test fn witness_refused_hit_surfaces_reason() -> Bool {
-  match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
+  match realize_route(lookup: std.cache_interface.RejectedHit { reason: ContentDigestMismatch }) {
     Recompute { reason: HitRefused { reason: ContentDigestMismatch } } => true
     _ => false
   }
@@ -103,7 +103,7 @@ test fn execution_receipt_digest_hollow_string_literal_brand_is_not_minted_recor
 test fn witness_write_over_rejected_hit_composes_reason() -> Bool {
   let fresh = mk_receipt(content: content_v1)
   match classify_write(
-    existing: RejectedHit { reason: ContentDigestMismatch },
+    existing: std.cache_interface.RejectedHit { reason: ContentDigestMismatch },
     offered_content: content_v1,
     fresh_receipt: fresh,
   ) {

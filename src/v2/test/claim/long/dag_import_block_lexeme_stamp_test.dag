@@ -49,7 +49,7 @@ fn dag_lex_stamp_block_idents() -> Outcome<List<v2.std.node.Symbol>> {
           outcome_rejected(v2.std.diagnostic.Diagnostic {
             reason: ^dag_import_block_lexeme_stamp_no_import,
             at: port_locus(port: ^dag_import_block_lexeme_stamp_probe),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           })
         Present { value: import_node } =>
           parse_import_block_idents(import_decl_node: import_node, root: import_node)

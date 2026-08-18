@@ -40,7 +40,7 @@ data observed_failures: List<gunbc.memory_part_selection.PlatformTrainingFailure
 data decoded_failure: gunbc.memory_part_selection.PlatformTrainingFailure = gunbc.memory_part_selection.PlatformTrainingFailure {
   board: AsrockRackAltrad8ud1l2t,
   step: LrdimmDataBufferMrep,
-  standing: DecodedFromPlatformSyndrome { register: "B5" },
+  standing: gunbc.memory_part_selection.DecodedFromPlatformSyndrome { register: "B5" },
   observed_population: ["A1"],
   observed_at: 1786590000000,
 }

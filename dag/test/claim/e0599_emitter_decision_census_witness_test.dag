@@ -78,7 +78,7 @@ test fn e0599_b0_red_empty_receiver_refuses() -> Bool {
 }
 
 test fn e0599_b0_red_unresolved_row_lookup_is_absent() -> Bool {
-  match e0599_row_for_operation(operation: LoweringUnidentified { method: "clone", receiver_expr: "" }) {
+  match e0599_row_for_operation(operation: tools.e0599_emitter_decision_census.LoweringUnidentified { method: "clone", receiver_expr: "" }) {
     Present { value: _ } => false
     Absent => true
   }

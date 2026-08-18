@@ -407,7 +407,7 @@ type OperatingPointRow {
 }
 
 fn evaluate_operating_point(cap: std.measure.ByteSize, n: Int) -> OperatingPointRow {
-  let slice = match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: cap, session_concurrency: n } }, oomd: gunbc_fleet_oomd_evidence) {
+  let slice = match resolve_session_slice(mode: gunbc.ci_floor_measurement.Regime1WorstCase { point: gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: cap, session_concurrency: n } }, oomd: gunbc_fleet_oomd_evidence) {
     SessionSliceResolved { bytes: b, per_session_cap: _, concurrency: _ } => b
     SessionSliceUnresolved { reason: _ } => byte_size(0)
   }
@@ -421,11 +421,11 @@ fn evaluate_operating_point(cap: std.measure.ByteSize, n: Int) -> OperatingPoint
 }
 
 data gunbc_ci_session_operating_curve_candidates: List<gunbc.ci_floor_measurement.SessionOperatingPoint> = [
-  SessionOperatingPointSet { per_session_cap: byte_size(2211908157), session_concurrency: 16 },
-  SessionOperatingPointSet { per_session_cap: byte_size(4294967296), session_concurrency: 16 },
-  SessionOperatingPointSet { per_session_cap: byte_size(8879844884), session_concurrency: 6 },
-  SessionOperatingPointSet { per_session_cap: byte_size(10737418240), session_concurrency: 6 },
-  SessionOperatingPointSet { per_session_cap: byte_size(8879844884), session_concurrency: 4 },
+  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: byte_size(2211908157), session_concurrency: 16 },
+  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: byte_size(4294967296), session_concurrency: 16 },
+  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: byte_size(8879844884), session_concurrency: 6 },
+  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: byte_size(10737418240), session_concurrency: 6 },
+  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: byte_size(8879844884), session_concurrency: 4 },
 ]
 
 fn operating_curve() -> List<OperatingPointRow> {

@@ -5,12 +5,12 @@ module v2.lens.affected_set_examples
 data affected_set_example_hash: v2.std.node.Hash = affected_set_example_hash
 
 data affected_set_example_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 data affected_set_claim_failure_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^affected_set_claim_failure_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^affected_set_claim_failure_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -25,14 +25,14 @@ data affected_set_example_edit: v2.std.node.Edit = v2.std.node.Edit {
 data affected_set_example_invalid_edit_diagnostic: v2.std.diagnostic.Diagnostic = v2.std.diagnostic.Diagnostic {
   reason: ^affected_set_example_reason,
   at: node_locus(node: affected_set_example_node),
-  correction: Unavailable { reason: ExternalContractUnknown }
+  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
 }
 
-data expected_affected_set_boundary_prune: v2.lens.affected_set.ReExecFrontier = ChangedSubgraphFrontier {
+data expected_affected_set_boundary_prune: v2.lens.affected_set.ReExecFrontier = v2.lens.affected_set.ChangedSubgraphFrontier {
   boundary_exclusions: [
     v2.lens.affected_set.BoundaryExclusion {
       edit: affected_set_example_edit,
-      proof: UnchangedPureBoundary {
+      proof: v2.lens.affected_set.UnchangedPureBoundary {
         content_hash: affected_set_example_hash
       }
     }
@@ -40,7 +40,7 @@ data expected_affected_set_boundary_prune: v2.lens.affected_set.ReExecFrontier =
   decisions: empty_map()
 }
 
-data expected_affected_set_dimension_seed: v2.lens.affected_set.ReExecFrontier = ChangedSubgraphFrontier {
+data expected_affected_set_dimension_seed: v2.lens.affected_set.ReExecFrontier = v2.lens.affected_set.ChangedSubgraphFrontier {
   boundary_exclusions: [],
   decisions: map_insert(
     empty_map(),
@@ -49,18 +49,18 @@ data expected_affected_set_dimension_seed: v2.lens.affected_set.ReExecFrontier =
   )
 }
 
-data expected_affected_set_excluded_proofs: v2.lens.affected_set.ReExecFrontier = ChangedSubgraphFrontier {
+data expected_affected_set_excluded_proofs: v2.lens.affected_set.ReExecFrontier = v2.lens.affected_set.ChangedSubgraphFrontier {
   boundary_exclusions: [],
   decisions: map_insert(
     empty_map(),
     v2.lens.affected_set.ExclusionKey { at: affected_set_example_node, dimension: ^affected_set_example_dimension },
-    Excluded {
-      first: DimensionNotRead {
+    v2.lens.affected_set.Excluded {
+      first: v2.lens.affected_set.DimensionNotRead {
         usage_site: affected_set_example_node,
         changed_dimension: ^affected_set_example_dimension
       },
       rest: [
-        DimensionNotRead {
+        v2.lens.affected_set.DimensionNotRead {
           usage_site: affected_set_example_node,
           changed_dimension: ^affected_set_example_dimension
         }
@@ -70,17 +70,17 @@ data expected_affected_set_excluded_proofs: v2.lens.affected_set.ReExecFrontier 
 }
 
 data expected_affected_set_unknown_fail_closed: v2.lens.affected_set.ReExecFrontier = FailClosed {
-  reason: ReasonSymbol { reason: ^affected_set_example_reason }
+  reason: v2.lens.affected_set.ReasonSymbol { reason: ^affected_set_example_reason }
 }
 
 data expected_affected_set_rejected_edit_fail_closed: v2.lens.affected_set.ReExecFrontier = FailClosed {
-  reason: ReasonDiagnostics {
+  reason: v2.lens.affected_set.ReasonDiagnostics {
     diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
   }
 }
 
 data expected_affected_set_whole_dag_absorbs_later_unknown: v2.lens.affected_set.ReExecFrontier = FailClosed {
-  reason: ReasonDiagnostics {
+  reason: v2.lens.affected_set.ReasonDiagnostics {
     diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
   }
 }
@@ -90,14 +90,14 @@ fn affected_set_example_boundary_hash_receipt(dag: v2.lens.affected_set.Dag, pat
 }
 
 fn affected_set_example_changed_dimension_receipt(dag: v2.lens.affected_set.Dag, edit: v2.std.node.Edit) -> v2.lens.affected_set.ChangedDimensionReceipt {
-  ChangedDimensions {
+  v2.lens.affected_set.ChangedDimensions {
     first: ^affected_set_example_dimension,
     rest: []
   }
 }
 
 fn affected_set_example_transitive_frontier(dag: v2.lens.affected_set.Dag, edit_dimension: v2.lens.affected_set.EditDimension) -> v2.lens.affected_set.FrontierReceipt {
-  FrontierProduced { dependencies: [] }
+  v2.lens.affected_set.FrontierProduced { dependencies: [] }
 }
 
 fn affected_set_example_propagation_receipt(
@@ -138,5 +138,5 @@ data affected_set_example_two_edit_diff: v2.std.node.Diff = v2.std.node.Diff {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }

@@ -77,31 +77,31 @@ fn cost_expr_refusal_diagnostic(cause: CostExprRefusalCause) -> v2.std.diagnosti
       v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_unbounded_iteration,
         at: loc,
-        correction: Unavailable { reason: AmbiguousIntent }
+        correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
       }
     UngroundedLogArgument { argument: _, at: loc } =>
       v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_ungrounded_log_argument,
         at: loc,
-        correction: Unavailable { reason: AmbiguousIntent }
+        correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
       }
     InvalidLogBase { base: _, at: loc } =>
       v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_invalid_log_base,
         at: loc,
-        correction: Unavailable { reason: AmbiguousIntent }
+        correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
       }
     UnmodeledEffect { operation: _, at: loc } =>
       v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_unmodeled_effect,
         at: loc,
-        correction: Unavailable { reason: AmbiguousIntent }
+        correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
       }
     UnresolvedSize { variable: _, at: loc } =>
       v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_unresolved_size,
         at: loc,
-        correction: Unavailable { reason: AmbiguousIntent }
+        correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
       }
   }
 }
@@ -159,7 +159,7 @@ fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
         b: normalize_cost_expr_to_symbolic(expr: bd)
       )
     CostLog { base: b, argument: a } =>
-      if nat_lte(a: b, b: Succ { prev: Zero }) {
+      if nat_lte(a: b, b: v2.std.nat.Succ { prev: Zero }) {
         normalize_cost_expr_to_symbolic(
           expr: CostRefused {
             cause: InvalidLogBase {

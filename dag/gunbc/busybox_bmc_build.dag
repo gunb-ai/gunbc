@@ -48,7 +48,7 @@ fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<extdeps.exec.comm
 }
 
 func busybox_bmc_build_run() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   run_shell_commands(commands: busybox_build_commands(plan: bmc_busybox_build_plan), transport: LocalExec)
 }

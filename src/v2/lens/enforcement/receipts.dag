@@ -57,7 +57,7 @@ fn subject_qn_of(fact: v2.std.decl_index.DeclFact) -> v2.std.qualified_name.Qual
 fn discovered_subject_names(facts: List<v2.std.decl_index.DeclFact>) -> v2.lens.enforcement.vocab.SubjectRoster {
   let discovered_entries = fold(facts, init: Empty, f: fn(acc, fact) {
     if decl_facts_is_fn_like(kind: fact.kind) {
-      Cons { head: subject_qn_of(fact: fact), tail: acc }
+      std.algebra.Cons { head: subject_qn_of(fact: fact), tail: acc }
     } else {
       acc
     }
@@ -85,7 +85,7 @@ fn roots_with_body_unavailable(scope: v2.lens.enforcement.vocab.ScopeRoster, fac
   v2.lens.enforcement.vocab.ScopeRoster {
     roots: fold(scope.roots, init: Empty, f: fn(acc, root) {
       if root_has_body_unavailable_subject(root: root, facts: facts) {
-        Cons { head: root, tail: acc }
+        std.algebra.Cons { head: root, tail: acc }
       } else {
         acc
       }
@@ -103,9 +103,9 @@ fn scope_satisfaction_for(
   if !scope_roster_covers(claimed: claimed_scope, desired: desired_scope) {
     ScopeMissing
   } else if body_unavailable_count_of(facts: facts) > 0 {
-    ScopeNarrowed {
+    v2.lens.enforcement.vocab.ScopeNarrowed {
       missing: roots_with_body_unavailable(scope: desired_scope, facts: facts),
-      reason: TypeReflectionUnavailable { blocker: fn_body_reflection_blocker }
+      reason: v2.lens.enforcement.vocab.TypeReflectionUnavailable { blocker: fn_body_reflection_blocker }
     }
   } else {
     ScopeCovers
@@ -142,33 +142,33 @@ fn consumer_entry_identity_for(binding: v2.lens.enforcement.vocab.ConsumerWitnes
     NoConsumerWitness => NoReceiptRef
     BoundConsumerWitness { witness } =>
       match enrolled {
-        EnrolledInFloorRoster => HasReceiptRef { ref: concat(witness.entry, "::", witness.function) }
-        PrePushHook => HasReceiptRef { ref: concat(witness.entry, "::", witness.function) }
+        EnrolledInFloorRoster => v2.lens.enforcement.vocab.HasReceiptRef { ref: concat(witness.entry, "::", witness.function) }
+        PrePushHook => v2.lens.enforcement.vocab.HasReceiptRef { ref: concat(witness.entry, "::", witness.function) }
         _ => NoReceiptRef
       }
   }
 }
 
 data enforcement_red_probe_body_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^enforcement_red_probe_body } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^enforcement_red_probe_body } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data enforcement_red_probe_measure_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^enforcement_red_probe_measure } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^enforcement_red_probe_measure } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data enforcement_red_probe_extra_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^enforcement_red_probe_extra } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^enforcement_red_probe_extra } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data cost_red_control_probe: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Loop },
+  kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [
     v2.std.node.Edge { label: Positional, target: enforcement_red_probe_body_leaf },
     v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: enforcement_red_probe_measure_leaf },
@@ -178,7 +178,7 @@ data cost_red_control_probe: Node = v2.std.node.Node {
 }
 
 data cost_well_formed_probe: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^enforcement_well_formed_probe } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^enforcement_well_formed_probe } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }

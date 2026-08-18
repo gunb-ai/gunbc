@@ -2,7 +2,7 @@ module v2.test.lens_application.application_subterm_at_empty_path
 
 
 data application_subterm_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^application_subterm_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^application_subterm_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -19,14 +19,14 @@ fn application_subterm_at_empty_path_claim_rhs() -> Node {
     application_subterm_root
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_application_subterm_at_empty_path: v2.std.verification.TestClaim = EqualsClaim {
+data claim_application_subterm_at_empty_path: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_application/application_subterm_at_empty_path: empty Path resolves to root",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: application_subterm_root,

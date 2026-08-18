@@ -71,7 +71,7 @@ test fn witness_mercurial_missing_advance_refuses_required_capability() -> Bool 
       ) {
         CompatibilityCapabilitySatisfied =>
           match compatibility_check_advance_requirement(
-            requirement: CompatibilityModeledAdvanceRequired {
+            requirement: gunbc.scm_compatibility_shape.CompatibilityModeledAdvanceRequired {
               guarantee: CompatibilityExactCompareAndAdvance,
             },
             observed: capability,
@@ -111,7 +111,7 @@ test fn witness_mercurial_unavailable_readback_refuses_binding() -> Bool {
     projection: mercurial_r0_fixture_projection(),
     target: "default",
     read_back: extdeps.mercurial.MercurialReadBackObservation {
-      projection: MercurialInaccessibleProjection {
+      projection: extdeps.mercurial.MercurialInaccessibleProjection {
         reason: "fixture unavailable",
       },
       observed_by: "mercurial-r1-independent-fixture",

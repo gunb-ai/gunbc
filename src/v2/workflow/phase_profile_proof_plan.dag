@@ -5,7 +5,7 @@ data phase_profile_gate_entry: String = "dag/tools/floor_effect_gate_witness.dag
 
 fn phase_profile_proof_batches() -> List<List<std.realization_schedule.Runnable>> {
   [[
-    RunnableSingleClaim {
+    std.realization_schedule.RunnableSingleClaim {
       entry: phase_profile_gate_entry,
       function: "extdeps_external_authority_gate_passes",
       profile: runnable_resource_profile_negligible()

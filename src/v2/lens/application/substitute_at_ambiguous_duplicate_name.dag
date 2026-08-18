@@ -2,25 +2,25 @@ module v2.test.lens_application.substitute_at_ambiguous_duplicate_name
 
 
 data substitute_ambiguous_leaf_a: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^substitute_ambiguous_leaf_a_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^substitute_ambiguous_leaf_a_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data substitute_ambiguous_leaf_b: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^substitute_ambiguous_leaf_b_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^substitute_ambiguous_leaf_b_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data substitute_ambiguous_replacement: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^substitute_ambiguous_replacement_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^substitute_ambiguous_replacement_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data substitute_ambiguous_duplicate_name_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^substitute_ambiguous_dup_step },
@@ -50,14 +50,14 @@ fn substitute_at_ambiguous_duplicate_name_claim_rhs() -> Node {
     substitute_ambiguous_duplicate_name_root
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
     }
   }
 }
 
-data claim_substitute_at_ambiguous_duplicate_name: v2.std.verification.TestClaim = EqualsClaim {
+data claim_substitute_at_ambiguous_duplicate_name: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_application/substitute_at_ambiguous_duplicate_name: duplicate named edge rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: substitute_ambiguous_duplicate_name_root,

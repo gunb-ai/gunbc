@@ -29,7 +29,7 @@ test fn host_cli_dependency_failure_receipt_present_on_absent() -> Bool {
     hint: "apt install npm",
   )
   match host_cli_dependency_failure_receipt(
-    observation: HostCliDependencyAbsent {
+    observation: gunbc.host_cli_dependency.HostCliDependencyAbsent {
       tool: "npm" as std.types.NonEmptyStr,
       hint: "apt install npm",
     },

@@ -4,12 +4,12 @@ module v2.test.manual.body_lowering_variants
 fn body_lowering_variant_bool_node(pass: Bool) -> Node {
   if pass {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_variant_pass } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_variant_pass } },
       children: []
     )
   } else {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_variant_fail } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_variant_fail } },
       children: []
     )
   }
@@ -38,7 +38,7 @@ fn body_lowering_variant_bind_matches() -> Bool {
   ) == dag_bind_let_body_node()
 }
 
-data claim_body_lowering_variant_branch_matches: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_variant_branch_matches: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-variants: lower_branch reconstructs the pick table body (Branch, byte-identical)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_variant_bool_node(pass: body_lowering_variant_branch_matches()),
@@ -46,7 +46,7 @@ data claim_body_lowering_variant_branch_matches: v2.std.verification.TestClaim =
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_variant_loop_matches: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_variant_loop_matches: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-variants: lower_loop reconstructs the loop table body (Loop, byte-identical)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_variant_bool_node(pass: body_lowering_variant_loop_matches()),
@@ -54,7 +54,7 @@ data claim_body_lowering_variant_loop_matches: v2.std.verification.TestClaim = E
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_variant_bind_matches: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_variant_bind_matches: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-variants: lower_bind reconstructs the bind table body (Bind, byte-identical)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_variant_bool_node(pass: body_lowering_variant_bind_matches()),

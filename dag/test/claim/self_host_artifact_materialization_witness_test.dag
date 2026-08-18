@@ -14,9 +14,9 @@ data observed_digest_note: String = "valid_hex is the REAL sha512 of the ASCII s
 
 fn good_observation() -> extdeps.tools.sha512sum.Sha512FileObservation {
   match std.content_hash.sha512_hex_digest(hex: valid_hex) {
-    Present { value: d } => Sha512FileObserved { digest: d }
+    Present { value: d } => extdeps.tools.sha512sum.Sha512FileObserved { digest: d }
     Absent =>
-      Sha512FileObservationRefused { cause: "fixture hex failed the refinement" as std.types.NonEmptyStr }
+      extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: "fixture hex failed the refinement" as std.types.NonEmptyStr }
   }
 }
 
@@ -101,7 +101,7 @@ test fn an_observed_digest_materializes_and_keeps_the_named_path() -> Bool {
 test fn a_refused_digest_does_not_materialize() -> Bool {
   let outcome = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
     path: path_of(build_success: true, stdout: artifact_stream),
-    observation: Sha512FileObservationRefused {
+    observation: extdeps.tools.sha512sum.Sha512FileObservationRefused {
       cause: "sha512sum DigestFile failed" as std.types.NonEmptyStr
     }
   )

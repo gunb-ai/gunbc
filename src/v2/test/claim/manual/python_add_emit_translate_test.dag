@@ -7,7 +7,7 @@ data python_add_forbidden_authority_source_text: String = "authority_source_text
 data python_add_int_inhabitant: Node = python_int_inhabitant_node()
 
 data python_add_emitted_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Arrow },
+  kind: v2.std.node.TypeNode { connective: Arrow },
   children: [
     v2.std.node.Edge { label: Positional, target: python_add_int_inhabitant },
     v2.std.node.Edge { label: Positional, target: python_add_int_inhabitant },
@@ -31,7 +31,7 @@ data python_add_poisoned_authority_target_model: v2.std.compilers.target_model.T
 }
 
 data python_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -133,11 +133,11 @@ fn python_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.
       )
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^python_add_grounding_miss,
         at: node_locus(node: node),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
@@ -176,7 +176,7 @@ fn anchor_python_add_emit_accepts() -> Outcome<Medium<String>> {
 fn anchor_python_add_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
   compile_inferred(
     inferred: python_add_inferred_tree,
-    mode: TranslateTo { target: python_add_poisoned_authority_target_model }
+    mode: v2.compiler.compile.TranslateTo { target: python_add_poisoned_authority_target_model }
   )
 }
 

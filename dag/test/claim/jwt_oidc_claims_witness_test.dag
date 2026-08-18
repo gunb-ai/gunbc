@@ -74,12 +74,12 @@ test fn string_or_uri_round_trips_to_its_wire_form() -> Bool {
 
 // THE SINGLE FORM AND THE ARRAY FORM ARE DIFFERENT VALUES, which is what normalizing aud to a list destroyed. RFC 7519 section 4.1.3 permits both, and a verifier re-serializing a token must emit the form it received or the signature stops covering the bytes.\n\nThe discrimination is structural: both audiences below project to the same one-element value list, so a claim written only against jwt_audience_values cannot tell them apart — and that is exactly the collapse the previous model performed at ingest. Matching the constructor distinguishes them, so the encoding survives.
 fn single_audience() -> extdeps.auth.jwt.JwtAudience {
-  JwtAudienceSingle { value: JwtBareString { value: "client-a" as std.types.NonEmptyStr } }
+  extdeps.auth.jwt.JwtAudienceSingle { value: extdeps.auth.jwt.JwtBareString { value: "client-a" as std.types.NonEmptyStr } }
 }
 
 fn multiple_audience() -> extdeps.auth.jwt.JwtAudience {
-  JwtAudienceMultiple {
-    values: [JwtBareString { value: "client-a" as std.types.NonEmptyStr }],
+  extdeps.auth.jwt.JwtAudienceMultiple {
+    values: [extdeps.auth.jwt.JwtBareString { value: "client-a" as std.types.NonEmptyStr }],
   }
 }
 
@@ -101,8 +101,8 @@ data numeric_date_note: String = "A FRACTIONAL NumericDate REFUSES INSTEAD OF RO
 
 test fn whole_second_lifetime_is_exact() -> Bool {
   match numeric_date_lifetime(
-    issued: NumericDateWholeSeconds { seconds: 1000000 },
-    expires: NumericDateWholeSeconds { seconds: 1003600 },
+    issued: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1000000 },
+    expires: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1003600 },
   ) {
     LifetimeNotWholeSeconds { reason: _ } => false
     LifetimeExpiryPrecedesIssuance { issued_at: _, expires_at: _ } => false
@@ -113,8 +113,8 @@ test fn whole_second_lifetime_is_exact() -> Bool {
 
 test fn fractional_date_refuses_rather_than_rounding() -> Bool {
   match numeric_date_lifetime(
-    issued: NumericDateWholeSeconds { seconds: 1000000 },
-    expires: NumericDateFractionalSeconds {
+    issued: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1000000 },
+    expires: extdeps.auth.jwt.NumericDateFractionalSeconds {
       whole_seconds: 1003600,
       fractional_digits: "5" as std.types.NonEmptyStr,
     },
@@ -127,8 +127,8 @@ test fn fractional_date_refuses_rather_than_rounding() -> Bool {
 
 test fn expiry_before_issuance_refuses_rather_than_clamping() -> Bool {
   match numeric_date_lifetime(
-    issued: NumericDateWholeSeconds { seconds: 1003600 },
-    expires: NumericDateWholeSeconds { seconds: 1000000 },
+    issued: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1003600 },
+    expires: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1000000 },
   ) {
     LifetimeWholeSeconds { seconds: _ } => false
     LifetimeNotWholeSeconds { reason: _ } => false
@@ -188,16 +188,16 @@ test fn malformed_colon_amr_refuses() -> Bool {
 // OIDC REQUIRES FIVE CLAIMS AND THE FIRST CUT REQUIRED ELEVEN. This constructs the minimal conforming ID Token: the five section-2 required claims present, and auth_time, nonce, acr, amr, azp, sid and every standard claim absent. None of those seven is universally required by any specification, and under the previous shape this value was unrepresentable.\n\nThe projection claim checks the direction that is safe — an ID Token's required core reads cleanly as RFC 7519 registered claims — while the reverse embedding, which is what the earlier model did, is what made the base type unable to describe a plain JWT.
 fn minimal_id_token() -> extdeps.auth.oidc.OidcIdTokenClaims {
   extdeps.auth.oidc.OidcIdTokenClaims {
-    issuer: JwtUriString {
+    issuer: extdeps.auth.jwt.JwtUriString {
       value: "https://auth.openai.com" as std.types.NonEmptyStr,
       scheme: "https" as std.types.NonEmptyStr,
     },
-    subject: JwtBareString { value: "subject-identifier" as std.types.NonEmptyStr },
-    audience: JwtAudienceSingle {
-      value: JwtBareString { value: "client-a" as std.types.NonEmptyStr },
+    subject: extdeps.auth.jwt.JwtBareString { value: "subject-identifier" as std.types.NonEmptyStr },
+    audience: extdeps.auth.jwt.JwtAudienceSingle {
+      value: extdeps.auth.jwt.JwtBareString { value: "client-a" as std.types.NonEmptyStr },
     },
-    expires_at: NumericDateWholeSeconds { seconds: 1003600 },
-    issued_at: NumericDateWholeSeconds { seconds: 1000000 },
+    expires_at: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1003600 },
+    issued_at: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1000000 },
     auth_time: none,
     nonce: none,
     acr: none,

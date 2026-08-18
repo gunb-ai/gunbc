@@ -21,7 +21,7 @@ data rtx5090_sm_shared_bytes: std.nat.Nat = 102400
 data rtx5090_sm_register_bytes: std.nat.Nat = 262144
 
 fn shape_from_rtx5090_catalog() -> std.machine_shape.MachineShape {
-  match gpu_shape_from_catalog(input: FromGpuModelCatalog {
+  match gpu_shape_from_catalog(input: extdeps.gpu.machine_shape.FromGpuModelCatalog {
     domain: rtx5090_domain,
     register_level: rtx5090_register_level,
     shared_level: rtx5090_shared_level,
@@ -55,7 +55,7 @@ test fn minimal_grant_is_single_domain() -> Bool {
 }
 
 fn shape_from_m5_catalog() -> std.machine_shape.MachineShape {
-  match gpu_shape_from_catalog(input: FromGpuModelCatalog {
+  match gpu_shape_from_catalog(input: extdeps.gpu.machine_shape.FromGpuModelCatalog {
     domain: m5_domain,
     register_level: m5_register_level,
     shared_level: m5_shared_level,
@@ -91,7 +91,7 @@ test fn red_dangling_domain_refuses() -> Bool {
   let bad = std.machine_shape.MachineShape {
     domains: good.domains
     edges: [
-      LinkEdge {
+      std.machine_shape.LinkEdge {
         from: rtx5090_domain
         to: dangling_domain
         link: pcie_interconnect_link(link: rtx5090_pcie_link)
@@ -110,7 +110,7 @@ test fn red_dangling_level_refuses() -> Bool {
   let bad = std.machine_shape.MachineShape {
     domains: shape_from_rtx5090_catalog().domains
     edges: [
-      SharedLevelEdge {
+      std.machine_shape.SharedLevelEdge {
         owner: rtx5090_domain
         sharer: rtx5090_domain
         level: bad_level

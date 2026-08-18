@@ -6,7 +6,7 @@ fn m5_fixture_store_consolidation_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "Node: `node://adhoc-3efc6449-ec5` · MODEL-FIRST SPIKE (escalate before load-bearing). Anchor: DESIGN.md §2 (one concept, every scale — Realization pattern), §3 (single authority, interface↔transport split), §5 (fail-closed). `ROADMAP.md` §2 *Minimal work — caching by realization*."),
     h2(text: "1. The fork"),
     p(text: "Two seeds each hand-roll a fixture store that answers the *same* question — \"given an operation and its inputs, return the recorded response, fail-closed if absent/stale\":"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [
         cell(text: "axis"),
         cell(text: "v1 `RecordedFixture` (`src/v1/stage0/src/recorded_fixture.rs`)"),
@@ -62,7 +62,7 @@ fn m5_fixture_store_consolidation_body() -> List<std.markdown.MarkdownBlock> {
     ]),
     p(text: "So the fixture store is a *missing pair of `CacheInterfaceFacts` rows + a shared lookup fold*, not new vocabulary. This spike lands the rows; §5 escalates the fold."),
     h3(text: "Fail-closed reason mapping (the §5 win)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [
         cell(text: "v1 `FixtureError`"),
         cell(text: "kernel surface"),
@@ -142,6 +142,6 @@ data m5_fixture_store_consolidation_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "m5-fixture-store-consolidation",
   title: "M5 — Fixture-store consolidation onto one Realization kernel",
   body: m5_fixture_store_consolidation_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the v1 and v2 fixture stores both dispatch through `std.cache_interface` (the §5 fold rewired, `FixtureError` collapsed onto `CacheRejectReason` with the `FreshnessExpired` / write-outcome / transport-faithfulness gaps closed) and the in-process row has converged to `ContentAddressedByValue` + `content_verified_on_read` — at which point \"one fixture concept, two handlers\" is a witnessed property (the convergence assertion green by execution) and this tracker is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the v1 and v2 fixture stores both dispatch through `std.cache_interface` (the §5 fold rewired, `FixtureError` collapsed onto `CacheRejectReason` with the `FreshnessExpired` / write-outcome / transport-faithfulness gaps closed) and the in-process row has converged to `ContentAddressedByValue` + `content_verified_on_read` — at which point \"one fixture concept, two handlers\" is a witnessed property (the convergence assertion green by execution) and this tracker is redundant.")
   }
 }

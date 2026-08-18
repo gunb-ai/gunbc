@@ -104,10 +104,10 @@ func recognize_binder_photo(
     api_key: "",
     model: model,
     messages: [
-      UserMessage {
+      extdeps.llm.anthropic.UserMessage {
         content: [
-          AnthropicImageBlock { source: Base64Image { media_type: ImageJpeg, data: photo.content } },
-          UserTextBlock { text: recognition_instruction }
+          extdeps.llm.anthropic.AnthropicImageBlock { source: extdeps.llm.anthropic.Base64Image { media_type: ImageJpeg, data: photo.content } },
+          extdeps.llm.anthropic.UserTextBlock { text: recognition_instruction }
         ]
       }
     ],

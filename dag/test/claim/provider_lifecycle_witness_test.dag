@@ -10,18 +10,18 @@ test fn claude_lifecycle_consumes_cli_authority() -> Bool {
 fn fixture_instance() -> extdeps.llm.cli_lifecycle.ProviderInstance {
   extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: ClaudeCliProvider,
-    host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
     executable: "claude" as std.types.NonEmptyStr,
-    observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-    state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-    credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-    service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
   }
 }
 
 test fn recorded_credentials_do_not_imply_refreshable_authentication() -> Bool {
   let recorded = provider_readiness_label(readiness: ProviderCredentialsRecordedUnverified)
-  let failed = provider_readiness_label(readiness: ProviderRefreshFailed {
+  let failed = provider_readiness_label(readiness: extdeps.llm.cli_lifecycle.ProviderRefreshFailed {
     reason: "invalid_refresh_token" as std.types.NonEmptyStr,
   })
   recorded == "credentials recorded, unverified"
@@ -32,18 +32,18 @@ test fn recorded_credentials_do_not_imply_refreshable_authentication() -> Bool {
 test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
   let observation = gunbc.worker_lifecycle.WorkerObservation {
     configured_provider: fixture_instance(),
-    process: WorkerProcessExited {
+    process: gunbc.worker_lifecycle.WorkerProcessExited {
       exit_code: 0,
       last_command: "env",
     },
-    provider_instance: ProviderEvidenceUnobserved {
+    provider_instance: gunbc.worker_lifecycle.ProviderEvidenceUnobserved {
       reason: "fixture process tree unobserved" as std.types.NonEmptyStr,
     },
     provider_readiness: ProviderAuthenticated,
-    tool_readiness: SandboxProbeFailed {
+    tool_readiness: extdeps.llm.cli_lifecycle.SandboxProbeFailed {
       reason: "bwrap loopback RTM_NEWADDR refused" as std.types.NonEmptyStr,
     },
-    phase: WorkerPhaseUnobserved {
+    phase: gunbc.worker_lifecycle.WorkerPhaseUnobserved {
       reason: "no progress transcript" as std.types.NonEmptyStr,
     },
   }
@@ -56,14 +56,14 @@ test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
 test fn session_presence_cannot_promote_setup_to_execution() -> Bool {
   let observation = gunbc.worker_lifecycle.WorkerObservation {
     configured_provider: fixture_instance(),
-    process: WorkerProcessUnobserved {
+    process: gunbc.worker_lifecycle.WorkerProcessUnobserved {
       reason: "session-only fixture" as std.types.NonEmptyStr,
     },
-    provider_instance: ProviderEvidenceUnobserved {
+    provider_instance: gunbc.worker_lifecycle.ProviderEvidenceUnobserved {
       reason: "fixture process tree unobserved" as std.types.NonEmptyStr,
     },
     provider_readiness: ProviderSetupRequired,
-    tool_readiness: ToolExecutionReadinessUnobserved {
+    tool_readiness: extdeps.llm.cli_lifecycle.ToolExecutionReadinessUnobserved {
       reason: "provider has not reached tool execution" as std.types.NonEmptyStr,
     },
     phase: WorkerWaitingForHumanSetup,
@@ -76,14 +76,14 @@ test fn session_presence_cannot_promote_setup_to_execution() -> Bool {
 }
 
 test fn terminal_evidence_accepts_only_terminal_outcomes() -> Bool {
-  let completed_phase = WorkerTerminal { outcome: WorkerTerminalCompleted }
-  let failed_outcome = WorkerTerminalFailed {
+  let completed_phase = gunbc.worker_lifecycle.WorkerTerminal { outcome: WorkerTerminalCompleted }
+  let failed_outcome = gunbc.worker_lifecycle.WorkerTerminalFailed {
     reason: "provider exited nonzero" as std.types.NonEmptyStr,
   }
   worker_phase_label(phase: completed_phase) == "completed"
     && worker_terminal_outcome_label(outcome: failed_outcome) == "failed"
     && terminal_outcome_evidence_label(
-      evidence: TerminalOutcomeObserved { outcome: failed_outcome }) == "observed"
+      evidence: gunbc.worker_lifecycle.TerminalOutcomeObserved { outcome: failed_outcome }) == "observed"
 }
 
 test fn provider_lifecycle_keystone_holds() -> Bool {

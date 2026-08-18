@@ -39,7 +39,7 @@ fn initial_lifecycle_state() -> LifecycleState {
   let tip0 = match git_sha1_object_id(hex: "0000000000000000000000000000000000000001") {
     Present { value: oid } => oid
     Absent =>
-      GitSha1ObjectId {
+      extdeps.git.object_store.GitSha1ObjectId {
         digest: std.content_hash.Sha1Digest {
           hex: "0000000000000000000000000000000000000001" as std.content_hash.Sha1DigestHex,
         },

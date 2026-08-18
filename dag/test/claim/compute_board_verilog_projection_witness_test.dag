@@ -47,9 +47,9 @@ data active_low_fault_intent: product.compute_board.digital_control.DigitalContr
   equations: [
     product.compute_board.digital_control.DigitalEquation {
       driven: power_permit_signal,
-      expression: Conjunction {
-        left: SignalRef { signal: conditioned_good_signal },
-        right: SignalRef { signal: fault_signal },
+      expression: product.compute_board.digital_control.Conjunction {
+        left: product.compute_board.digital_control.SignalRef { signal: conditioned_good_signal },
+        right: product.compute_board.digital_control.SignalRef { signal: fault_signal },
       },
     },
   ]

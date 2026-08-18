@@ -36,61 +36,61 @@ fn schedule_lens_violation_diagnostic(kind: ScheduleLensViolation) -> v2.std.dia
       textual_whole_file_diagnostic(
         reason: ^schedule_lens_empty_schedule,
         module_file: module_file,
-        correction: Unavailable { reason: CorrectionNotModeled }
+        correction: v2.std.diagnostic.Unavailable { reason: CorrectionNotModeled }
       )
     CheapGatesMissingFromFirstBatch =>
       textual_whole_file_diagnostic(
         reason: ^schedule_lens_cheap_gates_missing_from_first_batch,
         module_file: module_file,
-        correction: Unavailable { reason: CorrectionNotModeled }
+        correction: v2.std.diagnostic.Unavailable { reason: CorrectionNotModeled }
       )
     CompileGateInFirstBatch { expected: expected } =>
       textual_whole_file_diagnostic(
         reason: schedule_lens_compile_gate_in_first_batch_reason(expected: expected),
         module_file: module_file,
-        correction: Unavailable { reason: CorrectionNotModeled }
+        correction: v2.std.diagnostic.Unavailable { reason: CorrectionNotModeled }
       )
     CompileGateNotSecond { expected: expected } =>
       textual_whole_file_diagnostic(
         reason: schedule_lens_compile_gate_not_second_reason(expected: expected),
         module_file: module_file,
-        correction: Unavailable { reason: CorrectionNotModeled }
+        correction: v2.std.diagnostic.Unavailable { reason: CorrectionNotModeled }
       )
     CorpusBeforeCompile =>
       textual_whole_file_diagnostic(
         reason: ^schedule_lens_corpus_before_compile,
         module_file: module_file,
-        correction: Unavailable { reason: CorrectionNotModeled }
+        correction: v2.std.diagnostic.Unavailable { reason: CorrectionNotModeled }
       )
     SingleBatchOnly =>
       textual_whole_file_diagnostic(
         reason: ^schedule_lens_single_batch_only,
         module_file: module_file,
-        correction: Unavailable { reason: CorrectionNotModeled }
+        correction: v2.std.diagnostic.Unavailable { reason: CorrectionNotModeled }
       )
     OrdinaryProjectionMismatch =>
       textual_whole_file_diagnostic(
         reason: ^schedule_lens_ordinary_projection_mismatch,
         module_file: module_file,
-        correction: Unavailable { reason: CorrectionNotModeled }
+        correction: v2.std.diagnostic.Unavailable { reason: CorrectionNotModeled }
       )
     OnSuccessRunnableRefused =>
       textual_whole_file_diagnostic(
         reason: ^schedule_lens_on_success_runnable_refused,
         module_file: module_file,
-        correction: Unavailable { reason: CorrectionNotModeled }
+        correction: v2.std.diagnostic.Unavailable { reason: CorrectionNotModeled }
       )
     OnSuccessStageMismatch =>
       textual_whole_file_diagnostic(
         reason: ^schedule_lens_on_success_stage_mismatch,
         module_file: module_file,
-        correction: Unavailable { reason: CorrectionNotModeled }
+        correction: v2.std.diagnostic.Unavailable { reason: CorrectionNotModeled }
       )
     OnSuccessDuplicateRunnable =>
       textual_whole_file_diagnostic(
         reason: ^schedule_lens_on_success_duplicate_runnable,
         module_file: module_file,
-        correction: Unavailable { reason: CorrectionNotModeled }
+        correction: v2.std.diagnostic.Unavailable { reason: CorrectionNotModeled }
       )
   }
 }
@@ -101,39 +101,39 @@ fn schedule_lens_verdict_for_ci_floor_ordinary(
   cheap_gate_labels: List<String>
 ) -> v2.std.lens_verdict.LensVerdict {
   if plan.schedule.count() == 0 {
-    Violation {
+    v2.std.lens_verdict.Violation {
       diagnostic: schedule_lens_violation_diagnostic(kind: EmptySchedule)
     }
   } else if plan.schedule.count() < 3 {
-    Violation {
+    v2.std.lens_verdict.Violation {
       diagnostic: schedule_lens_violation_diagnostic(kind: SingleBatchOnly)
     }
   } else {
     let batch0 = plan.schedule.first()
     if schedule_batch_contains_label(batch: batch0, target: compile_gate_fn) {
-      Violation {
+      v2.std.lens_verdict.Violation {
         diagnostic: schedule_lens_violation_diagnostic(
           kind: CompileGateInFirstBatch { expected: compile_gate_fn }
         )
       }
     } else if schedule_batch_contains_label(batch: batch0, target: "__discovery_corpus__") {
-      Violation {
+      v2.std.lens_verdict.Violation {
         diagnostic: schedule_lens_violation_diagnostic(kind: CorpusBeforeCompile)
       }
     } else if !schedule_lens_batch_has_any_cheap_gate(batch: batch0, cheap_gate_labels: cheap_gate_labels) {
-      Violation {
+      v2.std.lens_verdict.Violation {
         diagnostic: schedule_lens_violation_diagnostic(kind: CheapGatesMissingFromFirstBatch)
       }
     } else {
       let batch1 = plan.schedule.skip(n: 1).first()
       if (batch1.count() != 1) || !schedule_batch_contains_label(batch: batch1, target: compile_gate_fn) {
-        Violation {
+        v2.std.lens_verdict.Violation {
           diagnostic: schedule_lens_violation_diagnostic(
             kind: CompileGateNotSecond { expected: compile_gate_fn }
           )
         }
       } else if schedule_batch_contains_label(batch: batch1, target: "__discovery_corpus__") {
-        Violation {
+        v2.std.lens_verdict.Violation {
           diagnostic: schedule_lens_violation_diagnostic(kind: CorpusBeforeCompile)
         }
       } else {
@@ -141,7 +141,7 @@ fn schedule_lens_verdict_for_ci_floor_ordinary(
           found || (batch.count() >= 2)
         })
         if !has_parallel_rest {
-          Violation {
+          v2.std.lens_verdict.Violation {
             diagnostic: schedule_lens_violation_diagnostic(kind: SingleBatchOnly)
           }
         } else {
@@ -241,7 +241,7 @@ fn walk_plan_schedule_lens_verdict_for_ci_floor<F>(
   cheap_gate_labels: List<String>
 ) -> v2.std.lens_verdict.LensVerdict {
   if !schedule_eq(left: plan.batches, right: ordinary_plan.schedule) {
-    Violation {
+    v2.std.lens_verdict.Violation {
       diagnostic: schedule_lens_violation_diagnostic(kind: OrdinaryProjectionMismatch)
     }
   } else {
@@ -250,24 +250,24 @@ fn walk_plan_schedule_lens_verdict_for_ci_floor<F>(
       compile_gate_fn: compile_gate_fn,
       cheap_gate_labels: cheap_gate_labels
     ) {
-      Violation { diagnostic: diagnostic } => Violation { diagnostic: diagnostic }
-      NotApplicable { diagnostic: diagnostic } => NotApplicable { diagnostic: diagnostic }
-      Unrealized { diagnostic: diagnostic } => Unrealized { diagnostic: diagnostic }
+      Violation { diagnostic: diagnostic } => v2.std.lens_verdict.Violation { diagnostic: diagnostic }
+      NotApplicable { diagnostic: diagnostic } => v2.std.lens_verdict.NotApplicable { diagnostic: diagnostic }
+      Unrealized { diagnostic: diagnostic } => v2.std.lens_verdict.Unrealized { diagnostic: diagnostic }
       Holds =>
         if !on_success_stages_are_admitted(stages: plan.on_success_stages) {
-          Violation {
+          v2.std.lens_verdict.Violation {
             diagnostic: schedule_lens_violation_diagnostic(kind: OnSuccessRunnableRefused)
           }
         } else if on_success_stages_have_duplicate(stages: plan.on_success_stages)
           || on_success_stages_have_duplicate(stages: expected_on_success_stages) {
-          Violation {
+          v2.std.lens_verdict.Violation {
             diagnostic: schedule_lens_violation_diagnostic(kind: OnSuccessDuplicateRunnable)
           }
         } else if !on_success_stages_eq(
           actual: plan.on_success_stages,
           expected: expected_on_success_stages
         ) {
-          Violation {
+          v2.std.lens_verdict.Violation {
             diagnostic: schedule_lens_violation_diagnostic(kind: OnSuccessStageMismatch)
           }
         } else {
@@ -278,5 +278,5 @@ fn walk_plan_schedule_lens_verdict_for_ci_floor<F>(
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

@@ -6,7 +6,7 @@ data type_reference_containment_binding_authority_note: String = "N2 slice 1 (qu
 
 data type_reference_containment_binding_slice1_scope_note: String = "Slice 1 scope: substrate authority + executing fixture witnesses for TypeOccurrence through the structural kernel. IN: hand-built OccurrenceTransport fixtures proving cross-module bare containment bind, module-sibling visibility, unbound when not exposed, and category inadmissibility. OUT OF SLICE: v1 production lookup_type_by_name changeover (slice 2+), qualified namespace-segment projection (std.types.ContentHash terminal path), N1a measure-arm removal, resolution_divergence_census type-site generalization — each carries its own dissolution trigger and must not be smuggled in here."
 
-data type_reference_containment_binding_scaffold: std.disposition.Disposition = SingleAuthority {
+data type_reference_containment_binding_scaffold: std.disposition.Disposition = std.disposition.SingleAuthority {
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.occurrence_binding_candidates" as std.types.NonEmptyStr,
     decl_name: "resolve_type_reference_containment_binding" as std.types.NonEmptyStr,

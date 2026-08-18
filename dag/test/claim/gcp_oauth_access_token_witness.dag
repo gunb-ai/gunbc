@@ -18,7 +18,7 @@ fn witness_gcloud_cli_routes_to_gcloud_leaf() -> Bool {
 
 fn witness_adc_refresh_absent_routes_to_adc_leaf() -> Bool {
   secret_eq(
-    a: gcp_oauth_access_token(strategy: AdcRefresh { adc_path: Absent }).token,
+    a: gcp_oauth_access_token(strategy: extdeps.cloud.gcp.gcp.AdcRefresh { adc_path: Absent }).token,
     b: gcp_oauth_access_token_via_adc_refresh().token
   )
 }
@@ -26,7 +26,7 @@ fn witness_adc_refresh_absent_routes_to_adc_leaf() -> Bool {
 fn witness_adc_refresh_present_routes_to_adc_leaf() -> Bool {
   secret_eq(
     a: gcp_oauth_access_token(
-      strategy: AdcRefresh { adc_path: Present { value: witness_adc_path } }
+      strategy: extdeps.cloud.gcp.gcp.AdcRefresh { adc_path: Present { value: witness_adc_path } }
     ).token,
     b: gcp_oauth_access_token_via_adc_refresh(adc_path: witness_adc_path).token
   )
@@ -34,7 +34,7 @@ fn witness_adc_refresh_present_routes_to_adc_leaf() -> Bool {
 
 fn witness_adc_refresh_null_optional_routes_to_adc_leaf() -> Bool {
   secret_eq(
-    a: gcp_oauth_access_token(strategy: AdcRefresh { adc_path: null_adc_path }).token,
+    a: gcp_oauth_access_token(strategy: extdeps.cloud.gcp.gcp.AdcRefresh { adc_path: null_adc_path }).token,
     b: gcp_oauth_access_token_via_adc_refresh().token
   )
 }
@@ -65,7 +65,7 @@ fn witness_swapped_gcloud_hits_adc_leaf() -> Bool {
 fn witness_swapped_adc_hits_gcloud_leaf() -> Bool {
   secret_eq(
     a: gcp_oauth_access_token_dispatch_swapped(
-      strategy: AdcRefresh { adc_path: Absent }
+      strategy: extdeps.cloud.gcp.gcp.AdcRefresh { adc_path: Absent }
     ).token,
     b: gcp_oauth_access_token_via_gcloud().token
   )

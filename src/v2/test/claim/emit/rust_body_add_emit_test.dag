@@ -61,7 +61,7 @@ fn rust_body_add_emit_from_swapped_tree(target: v2.std.compilers.target_model.Ta
 fn rust_body_add_minus_operator_row() -> Node {
   target_operator_realization_node(
     operation: canonical_operation_op_add(),
-    shape: InfixToken { token: ^rust_token_minus }
+    shape: v2.std.compilers.target_model.InfixToken { token: ^rust_token_minus }
   )
 }
 

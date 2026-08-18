@@ -694,9 +694,9 @@ fn claude_authentication_standing_from_managed_credential(
     ClaudeCredentialUsable => AuthenticationAuthenticated
     ClaudeCredentialExpiringSoon { detail: _ } => AuthenticationAuthenticated
     ClaudeCredentialRejected { reason } =>
-      AuthenticationRefreshFailed { reason: reason as String }
+      gunbc.provider_standing.AuthenticationRefreshFailed { reason: reason as String }
     ClaudeCredentialObservationRefused { reason } =>
-      AuthenticationStandingUnobserved { reason: reason }
+      gunbc.provider_standing.AuthenticationStandingUnobserved { reason: reason }
   }
 }
 
@@ -704,16 +704,16 @@ fn claude_enrollment_standing_bundle_before_probe() -> gunbc.provider_standing.P
   gunbc.provider_standing.ProviderStandingBundle {
     installation: InstallationReady,
     authentication: AuthenticationCredentialsAbsent,
-    entitlement: EntitlementObservationUnobserved {
+    entitlement: gunbc.provider_standing.EntitlementObservationUnobserved {
       reason: "paired probe not yet executed under managed binding" as std.types.NonEmptyStr,
     },
     limits: [
-      LimitObservationUnobserved {
+      gunbc.provider_standing.LimitObservationUnobserved {
         reason: "paired probe not yet executed under managed binding" as std.types.NonEmptyStr,
       },
     ],
     turn: TurnNotStarted,
-    tool_environment: ToolEnvironmentStandingUnobserved {
+    tool_environment: gunbc.provider_standing.ToolEnvironmentStandingUnobserved {
       reason: "paired probe not yet executed under managed binding" as std.types.NonEmptyStr,
     },
   }
@@ -729,8 +729,8 @@ fn claude_enrollment_limit_subject(
   credential_label: std.types.NonEmptyStr,
   native_key: std.types.NonEmptyStr,
 ) -> gunbc.provider_standing.ProviderLimitSubject {
-  ProviderNativeLimitBucket {
-    credential: LimitCredentialLabel { label: credential_label },
+  gunbc.provider_standing.ProviderNativeLimitBucket {
+    credential: gunbc.provider_standing.LimitCredentialLabel { label: credential_label },
     native_key: native_key,
   }
 }
@@ -739,7 +739,7 @@ fn claude_enrollment_limit_observed_available(
   credential_label: std.types.NonEmptyStr,
   native_key: std.types.NonEmptyStr,
 ) -> gunbc.provider_standing.ProviderLimitObservation {
-  LimitObservedAvailable {
+  gunbc.provider_standing.LimitObservedAvailable {
     subject: claude_enrollment_limit_subject(
       credential_label: credential_label,
       native_key: native_key,
@@ -756,13 +756,13 @@ fn claude_enrollment_standing_bundle_from_paired_probe_verdict(
   let authentication = if auth_succeeded {
     AuthenticationAuthenticated
   } else {
-    AuthenticationRefreshFailed { reason: auth_failure_reason as String }
+    gunbc.provider_standing.AuthenticationRefreshFailed { reason: auth_failure_reason as String }
   }
   let limits_observed = list_length(items: observed_native_limit_keys) > 0
   let entitlement = if limits_observed {
     EntitlementObservedAvailable
   } else {
-    EntitlementObservationUnobserved {
+    gunbc.provider_standing.EntitlementObservationUnobserved {
       reason: "entitlement surface not reached or not observed by paired probe" as std.types.NonEmptyStr,
     }
   }
@@ -775,7 +775,7 @@ fn claude_enrollment_standing_bundle_from_paired_probe_verdict(
     )
   } else {
     [
-      LimitObservationUnobserved {
+      gunbc.provider_standing.LimitObservationUnobserved {
         reason: "limit surface not reached or not observed by paired probe" as std.types.NonEmptyStr,
       },
     ]
@@ -783,7 +783,7 @@ fn claude_enrollment_standing_bundle_from_paired_probe_verdict(
   let turn = if auth_succeeded {
     TurnNotStarted
   } else {
-    TurnFailed { reason: auth_failure_reason }
+    gunbc.provider_standing.TurnFailed { reason: auth_failure_reason }
   }
   gunbc.provider_standing.ProviderStandingBundle {
     installation: InstallationReady,
@@ -803,20 +803,20 @@ fn claude_enrollment_provider_standing_from_bundle(
     fact_id: session.standing_fact_id,
     provider: extdeps.llm.cli_lifecycle.ProviderInstance {
       kind: ClaudeCliProvider,
-      host: ProviderInstanceFieldObserved {
+      host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldObserved {
         value: session.placement.account_label,
       },
       executable: session.placement.claude_runtime.executable,
-      observed_version: ProviderInstanceFieldObserved {
+      observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldObserved {
         value: session.placement.claude_runtime.version_pin,
       },
-      state_directory: ProviderInstanceFieldObserved {
+      state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldObserved {
         value: session.placement.enrollment_root as String as std.types.NonEmptyStr,
       },
-      credential_storage_method: ProviderInstanceFieldObserved {
+      credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldObserved {
         value: "managed-setup-token-secret-version" as std.types.NonEmptyStr,
       },
-      service_identity: ProviderInstanceFieldObserved {
+      service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldObserved {
         value: session.placement.account_label,
       },
     },

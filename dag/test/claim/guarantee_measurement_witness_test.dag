@@ -8,7 +8,7 @@ fn synth_path(id: String) -> gunbc.guarantee_measurement.GuaranteePath {
     id: id as gunbc.guarantee_measurement.GuaranteePathId,
     subject_grain: SyntheticProgram,
     acceptance_boundary: CompileAccept,
-    realization_target: EmittedTarget { language: "rust" as gunbc.guarantee_measurement.GuaranteeTargetName },
+    realization_target: gunbc.guarantee_measurement.EmittedTarget { language: "rust" as gunbc.guarantee_measurement.GuaranteeTargetName },
   }
 }
 
@@ -35,10 +35,10 @@ fn synth_receipt(path_id: String) -> gunbc.guarantee_measurement.GuaranteeMeasur
     class: "call-shape" as gunbc.guarantee_measurement.GuaranteeClassId,
     path: path_id as gunbc.guarantee_measurement.GuaranteePathId,
     probe: "call-shape-mislabel-red" as gunbc.guarantee_measurement.GuaranteeProbeId,
-    subject_revision: GitRevision { commit: "0000000000000000000000000000000000000000" as std.types.CommitSha },
-    harness_revision: GitRevision { commit: "1111111111111111111111111111111111111111" as std.types.CommitSha },
+    subject_revision: gunbc.guarantee_measurement.GitRevision { commit: "0000000000000000000000000000000000000000" as std.types.CommitSha },
+    harness_revision: gunbc.guarantee_measurement.GitRevision { commit: "1111111111111111111111111111111111111111" as std.types.CommitSha },
     probe_set_digest: probe_set_digest(probe_ids: ["call-shape-mislabel-red" as gunbc.guarantee_measurement.GuaranteeProbeId]),
-    observed: RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr, count: 1 },
+    observed: gunbc.guarantee_measurement.RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr, count: 1 },
   }
 }
 
@@ -128,20 +128,20 @@ fn obs_count_view(o: gunbc.guarantee_measurement.ProbeObservation) -> Int {
 }
 
 test fn fold_discriminates_every_arm_and_carries_payloads() -> Bool {
-  obs_count_view(o: RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr, count: 7 }) == 7
+  obs_count_view(o: gunbc.guarantee_measurement.RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr, count: 7 }) == 7
     && obs_count_view(o: AcceptedClean) == 90
-    && obs_count_view(o: AcceptedCounted { diagnostic_class: "MethodExistenceUndecided" as std.types.NonEmptyStr, count: 3 }) == 3
-    && obs_count_view(o: ExecutionDiverged { description: "emit accepted what the interpreter refused" as std.types.NonEmptyStr }) == 91
-    && obs_count_view(o: ProbeNotRunnable { cause: "harness build failed" as std.types.NonEmptyStr }) == 92
+    && obs_count_view(o: gunbc.guarantee_measurement.AcceptedCounted { diagnostic_class: "MethodExistenceUndecided" as std.types.NonEmptyStr, count: 3 }) == 3
+    && obs_count_view(o: gunbc.guarantee_measurement.ExecutionDiverged { description: "emit accepted what the interpreter refused" as std.types.NonEmptyStr }) == 91
+    && obs_count_view(o: gunbc.guarantee_measurement.ProbeNotRunnable { cause: "harness build failed" as std.types.NonEmptyStr }) == 92
 }
 
 test fn not_runnable_is_ignorance_never_a_verdict() -> Bool {
   let verdicts = [
-    RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr, count: 1 },
+    gunbc.guarantee_measurement.RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr, count: 1 },
     AcceptedClean,
-    AcceptedCounted { diagnostic_class: "MethodExistenceUndecided" as std.types.NonEmptyStr, count: 3 },
-    ExecutionDiverged { description: "emit reordered what the interpreter refused" as std.types.NonEmptyStr },
+    gunbc.guarantee_measurement.AcceptedCounted { diagnostic_class: "MethodExistenceUndecided" as std.types.NonEmptyStr, count: 3 },
+    gunbc.guarantee_measurement.ExecutionDiverged { description: "emit reordered what the interpreter refused" as std.types.NonEmptyStr },
   ]
-  let ignorance = ProbeNotRunnable { cause: "harness build failed" as std.types.NonEmptyStr }
+  let ignorance = gunbc.guarantee_measurement.ProbeNotRunnable { cause: "harness build failed" as std.types.NonEmptyStr }
   all(verdicts, v => observed_is_verdict(o: v)) && !observed_is_verdict(o: ignorance)
 }

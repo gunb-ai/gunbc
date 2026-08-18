@@ -24,33 +24,33 @@ data rust_pick_source_text: String = "fn one_or_two() -> i32 { if true { 1 } els
 
 fn rust_pick_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace },
-    FixedToken { token_class: ^rust_token_kw_if },
-    FixedToken { token_class: ^dag_token_kw_true },
-    FixedToken { token_class: ^rust_token_lbrace },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_one },
-    FixedToken { token_class: ^rust_token_unwired_else },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_two },
-    FixedToken { token_class: ^rust_token_rbrace },
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_if },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_true },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_else },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
 fn rust_pick_signature_with_open() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace }
   ]
 }
 
@@ -60,7 +60,7 @@ fn rust_pick_signature_with_open() -> List<v2.std.compilers.target_model.Concret
 // function's. This shrinking IS the dissolution the delimiting change buys.
 fn rust_pick_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -79,12 +79,12 @@ fn rust_pick_grammar_sequence() -> v2.std.grammar.GrammarExpr {
     cons: fn(state, token) {
       match state {
         RustGramBuild1StateInit =>
-          RustGramBuild1StateReady {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
-          RustGramBuild1StateReady {
-            expr: Sequence {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -134,7 +134,7 @@ fn rust_pick_bodied_relation_row_node() -> Node {
 
 fn rust_pick_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^rust_relation_rule_fn_pick,
@@ -161,7 +161,7 @@ fn rust_pick_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
 fn rust_pick_serialize_source_node() -> Node {
   let _authority = rust_pick_source_text
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: rust_pick_serialize_source_prefix_edges(),
       right: [
@@ -204,7 +204,7 @@ fn rust_pick_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn rust_pick_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: rust_pick_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: rust_pick_lex_rules() }
 }
 
 fn rust_pick_target_model_core_edges() -> List<v2.std.node.Edge> {
@@ -264,7 +264,7 @@ fn rust_pick_target_model_core_edges() -> List<v2.std.node.Edge> {
 
 fn rust_pick_target_model_bundle_core() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: rust_pick_target_model_core_edges(),
     occurrence_id: SyntheticOccurrence
   }
@@ -286,45 +286,45 @@ data rust_match_source_text: String = "fn one_or_two() -> i32 { match (true) { t
 
 fn rust_match_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace },
-    FixedToken { token_class: ^rust_token_unwired_match },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^dag_token_kw_true },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_lbrace },
-    FixedToken { token_class: ^dag_token_kw_true },
-    FixedToken { token_class: ^rust_token_unwired_fat_arrow },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_one },
-    FixedToken { token_class: ^rust_token_comma },
-    FixedToken { token_class: ^dag_token_kw_false },
-    FixedToken { token_class: ^rust_token_unwired_fat_arrow },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_two },
-    FixedToken { token_class: ^rust_token_rbrace },
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_match },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_true },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_true },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_fat_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_comma },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_false },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_fat_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
 fn rust_match_signature_with_open() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace }
   ]
 }
 
 fn rust_match_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -343,12 +343,12 @@ fn rust_match_grammar_sequence() -> v2.std.grammar.GrammarExpr {
     cons: fn(state, token) {
       match state {
         RustGramBuild1StateInit =>
-          RustGramBuild1StateReady {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
-          RustGramBuild1StateReady {
-            expr: Sequence {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -398,7 +398,7 @@ fn rust_match_bodied_relation_row_node() -> Node {
 
 fn rust_match_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^rust_relation_rule_fn_match,
@@ -425,7 +425,7 @@ fn rust_match_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
 fn rust_match_serialize_source_node() -> Node {
   let _authority = rust_match_source_text
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: rust_match_serialize_source_prefix_edges(),
       right: [
@@ -468,7 +468,7 @@ fn rust_match_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn rust_match_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: rust_match_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: rust_match_lex_rules() }
 }
 
 fn rust_call_closure_additional_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
@@ -488,7 +488,7 @@ fn rust_call_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn rust_call_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: rust_call_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: rust_call_lex_rules() }
 }
 
 fn rust_call_binding_spellings() -> Map<v2.std.node.Symbol, String> {
@@ -509,33 +509,33 @@ fn rust_call_host_transport_descriptor() -> v2.std.host_transport.HostTransportD
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix { suffix: rust_call_emit_host_helper_suffix }
+        content: v2.std.host_transport.EmittedWithSuffix { suffix: rust_call_emit_host_helper_suffix }
       }
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "cargo" },
-      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+      args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn rust_call_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_call_host_transport_descriptor(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
@@ -612,7 +612,7 @@ fn rust_match_target_model_core_edges() -> List<v2.std.node.Edge> {
 
 fn rust_match_target_model_bundle_core() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: rust_match_target_model_core_edges(),
     occurrence_id: SyntheticOccurrence
   }
@@ -626,33 +626,33 @@ fn rust_match_host_transport_descriptor() -> v2.std.host_transport.HostTransport
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix { suffix: rust_match_emit_host_main_suffix }
+        content: v2.std.host_transport.EmittedWithSuffix { suffix: rust_match_emit_host_main_suffix }
       }
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "cargo" },
-      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+      args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn rust_match_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_match_host_transport_descriptor(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
@@ -678,38 +678,38 @@ data rust_loop_wrong_value_source_text: String = "fn one() -> i32 { loop { break
 
 fn rust_loop_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace },
-    FixedToken { token_class: ^rust_token_unwired_loop },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_one },
-    FixedToken { token_class: ^rust_token_semicolon },
-    FixedToken { token_class: ^rust_token_rbrace },
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_loop },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_semicolon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
 fn rust_loop_signature_with_open() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace }
   ]
 }
 
 fn rust_loop_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_semicolon },
-    FixedToken { token_class: ^rust_token_rbrace },
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_semicolon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -728,12 +728,12 @@ fn rust_loop_grammar_sequence() -> v2.std.grammar.GrammarExpr {
     cons: fn(state, token) {
       match state {
         RustGramBuild1StateInit =>
-          RustGramBuild1StateReady {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
-          RustGramBuild1StateReady {
-            expr: Sequence {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -783,7 +783,7 @@ fn rust_loop_bodied_relation_row_node() -> Node {
 
 fn rust_loop_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^rust_relation_rule_fn_loop,
@@ -810,7 +810,7 @@ fn rust_loop_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
 fn rust_loop_serialize_source_node() -> Node {
   let _authority = rust_loop_source_text
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: rust_loop_serialize_source_prefix_edges(),
       right: [
@@ -850,7 +850,7 @@ fn rust_loop_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn rust_loop_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: rust_loop_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: rust_loop_lex_rules() }
 }
 
 fn rust_loop_target_model_core_edges() -> List<v2.std.node.Edge> {
@@ -910,7 +910,7 @@ fn rust_loop_target_model_core_edges() -> List<v2.std.node.Edge> {
 
 fn rust_loop_target_model_bundle_core() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: rust_loop_target_model_core_edges(),
     occurrence_id: SyntheticOccurrence
   }
@@ -924,33 +924,33 @@ fn rust_loop_host_transport_descriptor() -> v2.std.host_transport.HostTransportD
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix { suffix: rust_loop_emit_host_main_suffix }
+        content: v2.std.host_transport.EmittedWithSuffix { suffix: rust_loop_emit_host_main_suffix }
       }
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "cargo" },
-      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+      args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn rust_loop_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_loop_host_transport_descriptor(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
@@ -978,33 +978,33 @@ fn rust_classical_not_ingested_host_transport_descriptor() -> v2.std.host_transp
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix { suffix: rust_classical_not_ingested_emit_host_main_suffix }
+        content: v2.std.host_transport.EmittedWithSuffix { suffix: rust_classical_not_ingested_emit_host_main_suffix }
       }
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "cargo" },
-      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+      args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn rust_classical_not_ingested_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_classical_not_ingested_host_transport_descriptor(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
@@ -1014,22 +1014,22 @@ fn rust_classical_not_ingested_runtime_row() -> v2.std.host_transport.TargetEmit
 
 fn rust_classical_not_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
 fn rust_classical_not_signature_with_open() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_classical_not },
-    FixedToken { token_class: ^rust_token_lparen },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_x },
-    FixedToken { token_class: ^rust_token_colon },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_classical_not },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace }
   ]
 }
 
@@ -1050,7 +1050,7 @@ fn rust_classical_not_bodied_relation_row_node() -> Node {
 
 fn rust_classical_not_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^rust_relation_rule_fn_classical_not,
@@ -1066,7 +1066,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
     operator_catalog: rust_operator_realizations_catalog_node()
   )
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: fold(
       core,
       init: Empty,
@@ -1117,41 +1117,41 @@ data rust_field_access_wrong_field_source_text: String = "fn get(r: (i32,)) -> i
 
 fn rust_field_access_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_get },
-    FixedToken { token_class: ^rust_token_lparen },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_r },
-    FixedToken { token_class: ^rust_token_colon },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_rec },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_r },
-    FixedToken { token_class: ^rust_token_dot },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_v },
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_get },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_r },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_rec },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_r },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_dot },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_v },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
 fn rust_field_access_signature_with_open() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_get },
-    FixedToken { token_class: ^rust_token_lparen },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_r },
-    FixedToken { token_class: ^rust_token_colon },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_rec },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_get },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_r },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_rec },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace }
   ]
 }
 
 fn rust_field_access_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -1170,12 +1170,12 @@ fn rust_field_access_grammar_sequence() -> v2.std.grammar.GrammarExpr {
     cons: fn(state, token) {
       match state {
         RustGramBuild1StateInit =>
-          RustGramBuild1StateReady {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
-          RustGramBuild1StateReady {
-            expr: Sequence {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -1225,7 +1225,7 @@ fn rust_field_access_bodied_relation_row_node() -> Node {
 
 fn rust_field_access_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^rust_relation_rule_fn_field_access,
@@ -1252,7 +1252,7 @@ fn rust_field_access_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
 fn rust_field_access_serialize_source_node() -> Node {
   let _authority = rust_field_access_source_text
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: rust_field_access_serialize_source_prefix_edges(),
       right: [
@@ -1334,7 +1334,7 @@ fn rust_field_access_target_model_core_edges() -> List<v2.std.node.Edge> {
 
 fn rust_field_access_target_model_bundle_core() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: rust_field_access_target_model_core_edges(),
     occurrence_id: SyntheticOccurrence
   }
@@ -1348,33 +1348,33 @@ fn rust_field_access_host_transport_descriptor() -> v2.std.host_transport.HostTr
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix { suffix: rust_field_access_emit_host_main_suffix }
+        content: v2.std.host_transport.EmittedWithSuffix { suffix: rust_field_access_emit_host_main_suffix }
       }
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "cargo" },
-      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+      args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn rust_field_access_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_field_access_host_transport_descriptor(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
@@ -1398,55 +1398,55 @@ data rust_variant_construct_source_text: String = "fn one_or_two() -> i32 { matc
 
 fn rust_variant_construct_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace },
-    FixedToken { token_class: ^rust_token_unwired_match },
-    FixedToken { token_class: ^rust_token_lparen },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_variant_holds },
-    FixedToken { token_class: ^rust_token_lbrace },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_field_variant_value },
-    FixedToken { token_class: ^rust_token_colon },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_lit_nine },
-    FixedToken { token_class: ^rust_token_rbrace },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_lbrace },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_variant_holds },
-    FixedToken { token_class: ^rust_token_lbrace },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_field_variant_value },
-    FixedToken { token_class: ^rust_token_colon },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_v },
-    FixedToken { token_class: ^rust_token_rbrace },
-    FixedToken { token_class: ^rust_token_unwired_fat_arrow },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_v },
-    FixedToken { token_class: ^rust_token_comma },
-    FixedToken { token_class: ^dag_binding_type_variant_true },
-    FixedToken { token_class: ^rust_token_unwired_fat_arrow },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_two },
-    FixedToken { token_class: ^rust_token_rbrace },
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_match },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_variant_holds },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_field_variant_value },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_lit_nine },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_variant_holds },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_field_variant_value },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_v },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_fat_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_v },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_comma },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_binding_type_variant_true },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_fat_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
 fn rust_variant_construct_signature_with_open() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace }
   ]
 }
 
 fn rust_variant_construct_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -1465,12 +1465,12 @@ fn rust_variant_construct_grammar_sequence() -> v2.std.grammar.GrammarExpr {
     cons: fn(state, token) {
       match state {
         RustGramBuild1StateInit =>
-          RustGramBuild1StateReady {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
-          RustGramBuild1StateReady {
-            expr: Sequence {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -1520,7 +1520,7 @@ fn rust_variant_construct_bodied_relation_row_node() -> Node {
 
 fn rust_variant_construct_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^rust_relation_rule_fn_variant_construct,
@@ -1547,7 +1547,7 @@ fn rust_variant_construct_serialize_source_prefix_edges() -> List<v2.std.node.Ed
 fn rust_variant_construct_serialize_source_node() -> Node {
   let _authority = rust_variant_construct_source_text
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: rust_variant_construct_serialize_source_prefix_edges(),
       right: [
@@ -1592,7 +1592,7 @@ fn rust_variant_construct_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn rust_variant_construct_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: rust_variant_construct_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: rust_variant_construct_lex_rules() }
 }
 
 fn rust_variant_construct_target_model_core_edges() -> List<v2.std.node.Edge> {
@@ -1652,7 +1652,7 @@ fn rust_variant_construct_target_model_core_edges() -> List<v2.std.node.Edge> {
 
 fn rust_variant_construct_target_model_bundle_core() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: rust_variant_construct_target_model_core_edges(),
     occurrence_id: SyntheticOccurrence
   }
@@ -1666,33 +1666,33 @@ fn rust_variant_construct_host_transport_descriptor() -> v2.std.host_transport.H
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix { suffix: rust_variant_construct_emit_host_main_suffix }
+        content: v2.std.host_transport.EmittedWithSuffix { suffix: rust_variant_construct_emit_host_main_suffix }
       }
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "cargo" },
-      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+      args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn rust_variant_construct_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_variant_construct_host_transport_descriptor(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
@@ -1718,40 +1718,40 @@ data rust_logic_complement_swapped_arms_source_text: String = "fn complement(a: 
 
 fn rust_logic_complement_signature_with_open() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_complement },
-    FixedToken { token_class: ^rust_token_lparen },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_a },
-    FixedToken { token_class: ^rust_token_colon },
-    FixedToken { token_class: ^rust_token_ty_bool },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_bool },
-    FixedToken { token_class: ^rust_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_complement },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_a },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_bool },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_bool },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace }
   ]
 }
 
 fn rust_logic_complement_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
 fn rust_logic_complement_body_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_unwired_match },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^dag_binding_param_a },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_lbrace },
-    FixedToken { token_class: ^dag_complement_lit_true },
-    FixedToken { token_class: ^rust_token_unwired_fat_arrow },
-    FixedToken { token_class: ^dag_complement_lit_false },
-    FixedToken { token_class: ^rust_token_comma },
-    FixedToken { token_class: ^dag_complement_lit_false },
-    FixedToken { token_class: ^rust_token_unwired_fat_arrow },
-    FixedToken { token_class: ^dag_complement_lit_true },
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_match },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_binding_param_a },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_complement_lit_true },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_fat_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_complement_lit_false },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_comma },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_complement_lit_false },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_fat_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_complement_lit_true },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -1780,12 +1780,12 @@ fn rust_logic_complement_grammar_sequence() -> v2.std.grammar.GrammarExpr {
     cons: fn(state, token) {
       match state {
         RustGramBuild1StateInit =>
-          RustGramBuild1StateReady {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
-          RustGramBuild1StateReady {
-            expr: Sequence {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -1828,7 +1828,7 @@ fn rust_logic_complement_bodied_relation_row_node() -> Node {
 
 fn rust_logic_complement_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^rust_relation_rule_fn_logic_complement,
@@ -1855,7 +1855,7 @@ fn rust_logic_complement_serialize_source_prefix_edges() -> List<v2.std.node.Edg
 fn rust_logic_complement_serialize_source_node() -> Node {
   let _authority = rust_logic_complement_source_text
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: rust_logic_complement_serialize_source_prefix_edges(),
       right: [
@@ -1898,7 +1898,7 @@ fn rust_logic_complement_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn rust_logic_complement_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: rust_logic_complement_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: rust_logic_complement_lex_rules() }
 }
 
 fn rust_logic_complement_target_model_core_edges() -> List<v2.std.node.Edge> {
@@ -1958,7 +1958,7 @@ fn rust_logic_complement_target_model_core_edges() -> List<v2.std.node.Edge> {
 
 fn rust_logic_complement_target_model_bundle_core() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: rust_logic_complement_target_model_core_edges(),
     occurrence_id: SyntheticOccurrence
   }
@@ -1972,33 +1972,33 @@ fn rust_logic_complement_host_transport_descriptor() -> v2.std.host_transport.Ho
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix { suffix: rust_logic_complement_emit_host_main_suffix }
+        content: v2.std.host_transport.EmittedWithSuffix { suffix: rust_logic_complement_emit_host_main_suffix }
       }
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "cargo" },
-      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+      args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn rust_logic_complement_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_logic_complement_host_transport_descriptor(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
@@ -2020,7 +2020,7 @@ fn rust_logic_complement_target_model_staging() -> v2.std.compilers.target_model
 
 fn rust_bool_fn_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -2041,12 +2041,12 @@ fn rust_bool_fn_grammar_sequence(tokens: List<v2.std.compilers.target_model.Conc
     cons: fn(state, token) {
       match state {
         RustGramBuild1StateInit =>
-          RustGramBuild1StateReady {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
-          RustGramBuild1StateReady {
-            expr: Sequence {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -2092,7 +2092,7 @@ fn rust_bool_fn_translation_rules_node(
   signature_with_open: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: relation_sym,
@@ -2113,7 +2113,7 @@ fn rust_bool_fn_serialize_source_node(
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^serialize_source_field_source_text,
@@ -2148,7 +2148,7 @@ fn rust_bool_fn_additional_lex_rules() -> List<v2.std.compilers.lexing.LexRule> 
 }
 
 fn rust_bool_fn_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules {
+  v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: list_append(
         left: rust_fn_add_lex_rules().rules,
@@ -2232,35 +2232,35 @@ fn rust_bool_fn_host_runtime_row_with_width(
   main_suffix: String,
   codec_width: Int
 ) -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: v2.std.host_transport.HostTransportDescriptor {
         identity: host_identity_sym,
         workspace: [
           v2.std.host_transport.WorkspaceFile {
             path: "Cargo.toml",
-            content: FixedText { text: rust_emit_host_cargo_manifest }
+            content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
           },
           v2.std.host_transport.WorkspaceFile {
             path: "rust-toolchain.toml",
-            content: FixedText { text: rust_emit_host_toolchain_pin }
+            content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
           },
           v2.std.host_transport.WorkspaceFile {
             path: "src/main.rs",
-            content: EmittedWithSuffix { suffix: main_suffix }
+            content: v2.std.host_transport.EmittedWithSuffix { suffix: main_suffix }
           }
         ],
         build: [
           v2.std.host_transport.ProcessInvocation {
-            program: HostToolProgram { executable: "cargo" },
-            args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+            program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+            args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
           }
         ],
         run: v2.std.host_transport.ProcessInvocation {
-          program: HostToolProgram { executable: "cargo" },
-          args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+          program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+          args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
         },
-        runtime_value_codec: FixedWidthBytes { width: codec_width }
+        runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: codec_width }
       },
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
     }
@@ -2289,7 +2289,7 @@ fn rust_bool_fn_target_model(
   v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: rust_bool_fn_target_model_core_edges(
         translation_rules: rust_bool_fn_translation_rules_node(
           relation_sym: relation_sym,
@@ -2318,38 +2318,38 @@ fn rust_bool_fn_target_model(
 
 fn rust_bool_binop_signature_with_open(fn_binding: v2.std.node.Symbol) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: fn_binding },
-    FixedToken { token_class: ^rust_token_lparen },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_a },
-    FixedToken { token_class: ^rust_token_colon },
-    FixedToken { token_class: ^rust_token_ty_bool },
-    FixedToken { token_class: ^rust_token_comma },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_b },
-    FixedToken { token_class: ^rust_token_colon },
-    FixedToken { token_class: ^rust_token_ty_bool },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_bool },
-    FixedToken { token_class: ^rust_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: fn_binding },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_a },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_bool },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_comma },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_b },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_bool },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_bool },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace }
   ]
 }
 
 fn rust_bool_binop_body_tokens(true_body: v2.std.node.Symbol, false_body: v2.std.node.Symbol) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_unwired_match },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^dag_binding_param_a },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_lbrace },
-    FixedToken { token_class: ^dag_complement_lit_true },
-    FixedToken { token_class: ^rust_token_unwired_fat_arrow },
-    FixedToken { token_class: true_body },
-    FixedToken { token_class: ^rust_token_comma },
-    FixedToken { token_class: ^dag_complement_lit_false },
-    FixedToken { token_class: ^rust_token_unwired_fat_arrow },
-    FixedToken { token_class: false_body },
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_match },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_binding_param_a },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_complement_lit_true },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_fat_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: true_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_comma },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_complement_lit_false },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_unwired_fat_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: false_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -2616,15 +2616,15 @@ fn rust_match_loop_fold_family_host_transport_descriptor() -> v2.std.host_transp
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix {
+        content: v2.std.host_transport.EmittedWithSuffix {
           suffix: rust_family_main_suffix(
             prelude: rust_match_loop_fold_family_prelude,
             members: rust_match_loop_fold_family_dispatch_members()
@@ -2634,20 +2634,20 @@ fn rust_match_loop_fold_family_host_transport_descriptor() -> v2.std.host_transp
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "cargo" },
-      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+      args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn rust_match_loop_fold_family_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_match_loop_fold_family_host_transport_descriptor(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
@@ -2674,38 +2674,38 @@ data rust_rec_wrong_value_source_text: String = "fn mk() -> Rec { Rec { v: 8 } }
 
 fn rust_rec_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_mk },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_rec },
-    FixedToken { token_class: ^rust_token_lbrace },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_rec },
-    FixedToken { token_class: ^rust_token_lbrace },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_v },
-    FixedToken { token_class: ^rust_token_colon },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_lit_nine },
-    FixedToken { token_class: ^rust_token_rbrace },
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_mk },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_rec },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_rec },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_v },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_lit_nine },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
 fn rust_rec_signature_with_open() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_mk },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_rec },
-    FixedToken { token_class: ^rust_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_mk },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_rec },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace }
   ]
 }
 
 fn rust_rec_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -2724,12 +2724,12 @@ fn rust_rec_grammar_sequence() -> v2.std.grammar.GrammarExpr {
     cons: fn(state, token) {
       match state {
         RustGramBuild1StateInit =>
-          RustGramBuild1StateReady {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
-          RustGramBuild1StateReady {
-            expr: Sequence {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -2779,7 +2779,7 @@ fn rust_rec_bodied_relation_row_node() -> Node {
 
 fn rust_rec_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^rust_relation_rule_fn_rec,
@@ -2806,7 +2806,7 @@ fn rust_rec_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
 fn rust_rec_serialize_source_node() -> Node {
   let _authority = rust_rec_source_text
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: rust_rec_serialize_source_prefix_edges(),
       right: [
@@ -2894,7 +2894,7 @@ fn rust_rec_target_model_core_edges() -> List<v2.std.node.Edge> {
 
 fn rust_rec_target_model_bundle_core() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: rust_rec_target_model_core_edges(),
     occurrence_id: SyntheticOccurrence
   }
@@ -2930,40 +2930,40 @@ data rust_rec_nine_wrong_value_source_text: String = "fn nine() -> i32 { Rec { v
 
 fn rust_rec_nine_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_fn_nine },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_rec },
-    FixedToken { token_class: ^rust_token_lbrace },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_v },
-    FixedToken { token_class: ^rust_token_colon },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_lit_nine },
-    FixedToken { token_class: ^rust_token_rbrace },
-    FixedToken { token_class: ^rust_token_dot },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_v },
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_fn_nine },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_rec },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_v },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_lit_nine },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_dot },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_v },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
 fn rust_rec_nine_signature_with_open() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_fn_nine },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_fn_nine },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace }
   ]
 }
 
 fn rust_rec_nine_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -2982,12 +2982,12 @@ fn rust_rec_nine_grammar_sequence() -> v2.std.grammar.GrammarExpr {
     cons: fn(state, token) {
       match state {
         RustGramBuild1StateInit =>
-          RustGramBuild1StateReady {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
-          RustGramBuild1StateReady {
-            expr: Sequence {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -3037,7 +3037,7 @@ fn rust_rec_nine_bodied_relation_row_node() -> Node {
 
 fn rust_rec_nine_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^rust_relation_rule_fn_rec_nine,
@@ -3064,7 +3064,7 @@ fn rust_rec_nine_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
 fn rust_rec_nine_serialize_source_node() -> Node {
   let _authority = rust_rec_nine_source_text
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: rust_rec_nine_serialize_source_prefix_edges(),
       right: [
@@ -3152,7 +3152,7 @@ fn rust_rec_nine_target_model_core_edges() -> List<v2.std.node.Edge> {
 
 fn rust_rec_nine_target_model_bundle_core() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: rust_rec_nine_target_model_core_edges(),
     occurrence_id: SyntheticOccurrence
   }
@@ -3166,33 +3166,33 @@ fn rust_rec_nine_host_transport_descriptor() -> v2.std.host_transport.HostTransp
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix { suffix: rust_rec_nine_emit_host_suffix }
+        content: v2.std.host_transport.EmittedWithSuffix { suffix: rust_rec_nine_emit_host_suffix }
       }
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "cargo" },
-      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+      args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn rust_rec_nine_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_rec_nine_host_transport_descriptor(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
@@ -3230,64 +3230,64 @@ data rust_fold_call_swapped_source_text: String = "fn fold_demo(xs: i32, z: i32)
 
 fn rust_fold_call_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_fold_demo },
-    FixedToken { token_class: ^rust_token_lparen },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_xs },
-    FixedToken { token_class: ^rust_token_colon },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_comma },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_z },
-    FixedToken { token_class: ^rust_token_colon },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_callee },
-    FixedToken { token_class: ^rust_token_lparen },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_xs },
-    FixedToken { token_class: ^rust_token_comma },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_z },
-    FixedToken { token_class: ^rust_token_comma },
-    FixedToken { token_class: ^rust_token_closure_pipe },
-    FixedToken { token_class: ^rust_token_closure_nop },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_acc },
-    FixedToken { token_class: ^rust_token_comma },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_h },
-    FixedToken { token_class: ^rust_token_closure_pipe },
-    FixedToken { token_class: ^rust_token_lbrace },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_acc },
-    FixedToken { token_class: ^rust_token_plus },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_h },
-    FixedToken { token_class: ^rust_token_rbrace },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_fold_demo },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_xs },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_comma },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_z },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_callee },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_xs },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_comma },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_z },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_comma },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_closure_pipe },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_closure_nop },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_acc },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_comma },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_h },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_closure_pipe },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_acc },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_plus },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_h },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
 fn rust_fold_call_signature_with_open() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_fold_demo },
-    FixedToken { token_class: ^rust_token_lparen },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_xs },
-    FixedToken { token_class: ^rust_token_colon },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_comma },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_z },
-    FixedToken { token_class: ^rust_token_colon },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    FixedToken { token_class: ^rust_token_ty_i32 },
-    FixedToken { token_class: ^rust_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_fold_demo },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_xs },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_comma },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_fold_z },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_colon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_ty_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace }
   ]
 }
 
 fn rust_fold_call_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -3306,12 +3306,12 @@ fn rust_fold_call_grammar_sequence() -> v2.std.grammar.GrammarExpr {
     cons: fn(state, token) {
       match state {
         RustGramBuild1StateInit =>
-          RustGramBuild1StateReady {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
             expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
           }
         RustGramBuild1StateReady { expr: acc } =>
-          RustGramBuild1StateReady {
-            expr: Sequence {
+          v2.extdeps.languages.rust.RustGramBuild1StateReady {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -3361,7 +3361,7 @@ fn rust_fold_call_bodied_relation_row_node() -> Node {
 
 fn rust_fold_call_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^rust_relation_rule_fn_fold_call,
@@ -3388,7 +3388,7 @@ fn rust_fold_call_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
 fn rust_fold_call_serialize_source_node() -> Node {
   let _authority = rust_fold_call_source_text
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: rust_fold_call_serialize_source_prefix_edges(),
       right: [
@@ -3473,7 +3473,7 @@ fn rust_fold_call_target_model_core_edges() -> List<v2.std.node.Edge> {
 
 fn rust_fold_call_target_model_bundle_core() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: rust_fold_call_target_model_core_edges(),
     occurrence_id: SyntheticOccurrence
   }
@@ -3487,33 +3487,33 @@ fn rust_fold_call_host_transport_descriptor() -> v2.std.host_transport.HostTrans
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix { suffix: rust_fold_call_emit_host_suffix }
+        content: v2.std.host_transport.EmittedWithSuffix { suffix: rust_fold_call_emit_host_suffix }
       }
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "cargo" },
-      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+      args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn rust_fold_call_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: rust_fold_call_host_transport_descriptor(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
@@ -3535,7 +3535,7 @@ fn rust_fold_call_target_model_staging() -> v2.std.compilers.target_model.Target
 
 fn rust_target_model_bundle_core_with_operators(operator_catalog: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: rust_target_model_core_edges_with_operators(operator_catalog: operator_catalog),
     occurrence_id: SyntheticOccurrence
 }
@@ -3586,7 +3586,7 @@ fn rust_literal_emit_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn rust_literal_emit_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: rust_literal_emit_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: rust_literal_emit_lex_rules() }
 }
 
 data rust_bind_int_literal_source_text: String = "fn one() -> i32 { let x = 1; x }"
@@ -3605,7 +3605,7 @@ data rust_literal_emit_string_refusal_note: String = "rope-string ValueStringLit
 
 fn rust_type_atom_node(identity: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -3613,7 +3613,7 @@ fn rust_type_atom_node(identity: v2.std.node.Symbol) -> Node {
 
 fn rust_nullary_arrow_domain_conj_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -3625,7 +3625,7 @@ fn rust_bind_let_body_node(
   body_binding: v2.std.node.Symbol
 ) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Bind },
+    kind: v2.std.node.ComputationNode { behavior: Bind },
     children: [
       v2.std.node.Edge { label: Positional, target: rust_type_atom_node(identity: key_binding) },
       v2.std.node.Edge { label: Positional, target: rust_type_atom_node(identity: value_lit) },
@@ -3640,7 +3640,7 @@ fn rust_arrow_with_body_node(
   body: Node
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: rust_nullary_arrow_domain_conj_node() },
       v2.std.node.Edge {
@@ -3703,19 +3703,19 @@ fn rust_bind_char_literal_wrong_arrow_node() -> Node {
 
 fn rust_bind_literal_signature_with_open() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_int },
-    FixedToken { token_class: ^rust_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace }
   ]
 }
 
 fn rust_bind_literal_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -3729,20 +3729,20 @@ fn rust_bind_literal_bodied_scaffold() -> v2.std.compilers.target_model.TargetBo
 
 fn rust_bind_literal_golden_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_kw_fn },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one },
-    FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^rust_token_rparen },
-    FixedToken { token_class: ^rust_token_arrow },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_int },
-    FixedToken { token_class: ^rust_token_lbrace },
-    FixedToken { token_class: ^rust_token_kw_let },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_bind_x },
-    FixedToken { token_class: ^rust_token_equal },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_one },
-    FixedToken { token_class: ^rust_token_semicolon },
-    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_bind_x },
-    FixedToken { token_class: ^rust_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_let },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_bind_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_equal },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_semicolon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_bind_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
@@ -3763,7 +3763,7 @@ fn rust_bind_literal_bodied_relation_row_node() -> Node {
 
 fn rust_bind_literal_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^rust_relation_rule_fn_bind_literal,
@@ -3779,7 +3779,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
     operator_catalog: rust_operator_realizations_catalog_node()
   )
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: fold(
       core,
       init: Empty,
@@ -3819,7 +3819,7 @@ fn rust_bind_literal_target_model() -> v2.std.compilers.target_model.TargetModel
 
 fn rust_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: fold_list(
       xs: tokens,
       empty: Empty,
@@ -3874,13 +3874,13 @@ fn rust_lhs_exact_relation_row_witness(
         productions: productions,
         emitted: emitted
       )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn rust_empty_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -3895,7 +3895,7 @@ fn rust_relation_translation_rules_node(
   match rust_lhs_exact_relation_row_witness(lhs: lhs, tokens: tokens, emitted: emitted) {
     Holds { value: row } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           rust_named_edge(name: rule_name, target: row)
         ],
@@ -3924,7 +3924,7 @@ fn rust_serialize_source_node(
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: rust_serialize_source_prefix_edges(
         source_text_binding: source_text_binding,
@@ -3946,7 +3946,7 @@ fn rust_serialize_source_node(
 
 fn rust_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(name: ^target_model_edge_translation_rules, target: rules),
       rust_named_edge(name: ^target_model_edge_serialize_source, target: serialize_source)
@@ -3965,9 +3965,9 @@ fn rust_string_literal_spelling(spelling: String) -> String {
 
 fn rust_emit_directive_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_macro_eprintln_open },
-    BoundToken { token_class: ^rust_token_str_lit, binding: ^emit_directive_message },
-    FixedToken { token_class: ^rust_token_rparen }
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_macro_eprintln_open },
+    v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_str_lit, binding: ^emit_directive_message },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen }
   ]
 }
 
@@ -3980,7 +3980,7 @@ fn rust_emit_directive_source_text(d: v2.std.diagnostic.EmitDirective) -> String
 }
 
 fn rust_emit_directive_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules {
+  v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
         rust_lex_rule(token_class: ^rust_token_macro_eprintln_open, text: "eprintln!("),
@@ -4062,7 +4062,7 @@ fn rust_type_alias_decl_structural_formal_productions() -> List<v2.std.grammar.F
 
 fn rust_type_alias_decl_productions_only_translation_rules() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^grammar_relation_rules_formal_productions,
@@ -4088,14 +4088,14 @@ fn rust_type_alias_decl_structural_lex_rules() -> v2.std.compilers.lexing.LexRul
 }
 
 fn rust_type_alias_decl_structural_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: rust_type_alias_decl_structural_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: rust_type_alias_decl_structural_lex_rules() }
 }
 
 fn rust_type_alias_decl_structural_target_model() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         rust_named_edge(
           name: ^target_model_edge_translation_rules,
@@ -4133,19 +4133,19 @@ fn rust_filesystem_read_family_host_transport_descriptor(fixture_content: String
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: rust_filesystem_read_family_fixture_path,
-        content: FixedText { text: fixture_content }
+        content: v2.std.host_transport.FixedText { text: fixture_content }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix {
+        content: v2.std.host_transport.EmittedWithSuffix {
           suffix: rust_family_main_suffix(
             prelude: rust_filesystem_read_family_prelude,
             members: rust_filesystem_read_family_dispatch_members()
@@ -4155,15 +4155,15 @@ fn rust_filesystem_read_family_host_transport_descriptor(fixture_content: String
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "cargo" },
-      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+      args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
@@ -4241,15 +4241,15 @@ fn rust_shell_exec_run_family_host_transport_descriptor() -> v2.std.host_transpo
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "rust-toolchain.toml",
-        content: FixedText { text: rust_emit_host_toolchain_pin }
+        content: v2.std.host_transport.FixedText { text: rust_emit_host_toolchain_pin }
       },
       v2.std.host_transport.WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix {
+        content: v2.std.host_transport.EmittedWithSuffix {
           suffix: rust_family_main_suffix(
             prelude: rust_shell_exec_run_family_prelude(),
             members: rust_shell_exec_run_family_dispatch_members()
@@ -4259,15 +4259,15 @@ fn rust_shell_exec_run_family_host_transport_descriptor() -> v2.std.host_transpo
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "build" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "cargo" },
-      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+      args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 

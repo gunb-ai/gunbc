@@ -2,7 +2,7 @@ module v2.test.computation_shapes.loop_linear_bound
 
 
 fn loop_linear_bound_leaf(s: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
@@ -11,7 +11,7 @@ data loop_linear_bound_body_leaf: Node = loop_linear_bound_leaf(s: ^loop_linear_
 data loop_linear_bound_measure_leaf: Node = loop_linear_bound_leaf(s: ^loop_linear_bound_measure_sym)
 
 data loop_linear_bound_body: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: Transform },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_linear_bound_body_leaf }
   ],
@@ -19,7 +19,7 @@ data loop_linear_bound_body: Node = v2.std.node.Node {
 }
 
 data loop_linear_bound_subject: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Loop },
+  kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_linear_bound_body },
     v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
@@ -41,7 +41,7 @@ fn loop_linear_bound_bool_node(ok: Bool) -> Node {
 
 data witness_loop_linear_bound_well_formed: Bool = well_formed(n: loop_linear_bound_subject)
 
-data claim_loop_linear_bound_well_formed: v2.std.verification.TestClaim = CompilesClaim {
+data claim_loop_linear_bound_well_formed: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "computation_shapes/loop_linear_bound: Loop with loop_bound_edge is well-formed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: loop_linear_bound_bool_node(ok: witness_loop_linear_bound_well_formed),
@@ -49,7 +49,7 @@ data claim_loop_linear_bound_well_formed: v2.std.verification.TestClaim = Compil
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_loop_linear_bound_equals_refl: v2.std.verification.TestClaim = EqualsClaim {
+data claim_loop_linear_bound_equals_refl: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "computation_shapes/loop_linear_bound: Equals reflexivity on Loop bound subject",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: loop_linear_bound_subject,
@@ -58,7 +58,7 @@ data claim_loop_linear_bound_equals_refl: v2.std.verification.TestClaim = Equals
 }
 
 data loop_linear_bound_subject_rebuilt: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Loop },
+  kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_linear_bound_body },
     v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
@@ -67,7 +67,7 @@ data loop_linear_bound_subject_rebuilt: Node = v2.std.node.Node {
 }
 
 data loop_linear_bound_subject_unbounded: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Loop },
+  kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_linear_bound_body }
   ],
@@ -76,7 +76,7 @@ data loop_linear_bound_subject_unbounded: Node = v2.std.node.Node {
 
 data witness_loop_linear_bound_content_hash_stable: Bool = (content_hash(n: loop_linear_bound_subject) == content_hash(n: loop_linear_bound_subject_rebuilt)) && (content_hash(n: loop_linear_bound_subject) != content_hash(n: loop_linear_bound_subject_unbounded))
 
-data claim_loop_linear_bound_content_hash_stable: v2.std.verification.TestClaim = CompilesClaim {
+data claim_loop_linear_bound_content_hash_stable: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "computation_shapes/loop_linear_bound: content_hash is stable on Loop bound subject",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: loop_linear_bound_bool_node(ok: witness_loop_linear_bound_content_hash_stable),

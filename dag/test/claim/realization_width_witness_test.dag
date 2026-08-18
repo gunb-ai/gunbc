@@ -3,7 +3,7 @@ module test.claim.realization_width_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn synthetic_plan_total() -> CostAccount<Nano> {
+fn synthetic_plan_total() -> CostAccount<std.measure.Nano> {
   cost_account_predicted_zero()
 }
 
@@ -18,14 +18,14 @@ fn witness_threads_4() -> std.measure.HardwareThreadCount {
   hardware_thread_count(4)
 }
 
-fn synthetic_plan() -> RealizationPlan<Nano> {
+fn synthetic_plan() -> RealizationPlan<std.measure.Nano> {
   std.realization_schedule.RealizationPlan {
     target: "width-witness-target"
     objective: std.realization_schedule.RealizationObjective { goals: [] }
     schedule: [
-      [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
+      [std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
       [
-        RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
+        std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
       ]
     ]
     total: synthetic_plan_total()

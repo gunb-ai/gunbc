@@ -13,7 +13,7 @@ fn wiring_liveness_preflight_body() -> List<std.markdown.MarkdownBlock> {
 
     h2(text: "1. The principle — wiring is causal dependence, and it is the cache oracle read backwards"),
     p(text: "A declared input is *wired* iff it **influences the observable output it is declared to feed.** The detector is perturbation-response — the same signal the caching kernel already uses as its purity oracle (DESIGN §6: *byte-identical cached-vs-cold is the purity oracle*). The two are duals on one kernel:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "reading"), cell(text: "claim"), cell(text: "violation")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -64,6 +64,6 @@ data wiring_liveness_preflight_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "wiring-liveness-preflight",
   title: "Plan — wiring-liveness: the input→output dependence oracle + the execution preflight",
   body: wiring_liveness_preflight_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when: (a) the wiring-liveness oracle is a single carrier shared with the cache-purity oracle (one perturbation kernel, two readings — not two representations); (b) the static-reach lens covers every `.dag`-modeled input→output relation; and (c) the preflight runs over the affected frontier ahead of interpreter execution, fail-closed on a dead wire — at which point \"a declared input wired into nothing\" is unwritable for modeled realizations and caught-before-firing for the opaque residue, and this tracker is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when: (a) the wiring-liveness oracle is a single carrier shared with the cache-purity oracle (one perturbation kernel, two readings — not two representations); (b) the static-reach lens covers every `.dag`-modeled input→output relation; and (c) the preflight runs over the affected frontier ahead of interpreter execution, fail-closed on a dead wire — at which point \"a declared input wired into nothing\" is unwritable for modeled realizations and caught-before-firing for the opaque residue, and this tracker is redundant.")
   }
 }

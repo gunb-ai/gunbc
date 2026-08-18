@@ -21,7 +21,7 @@ test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
   match runner_capacity_plan(
     srv3_width: 7,
     srv4_width: 7,
-    roster: RosterReadUnavailable { reason: "503" }
+    roster: gunbc.fleet_runner_connectivity.RosterReadUnavailable { reason: "503" }
   ) {
     PlanRefused { reason: _ } => true
     PlanReady { hosts: _ } => false

@@ -1089,7 +1089,7 @@ fn landing_user_refusal(
   refusal: LandingRefusal,
 ) -> LandingUserBoundary {
   LandingTerminal {
-    outcome: NativeScmTerminalCouldNotLand {
+    outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalCouldNotLand {
       refusal: landing_native_refusal(refusal: refusal),
     },
   }
@@ -1099,7 +1099,7 @@ fn landing_user_question(
   question: LandingNormativeQuestion,
 ) -> LandingUserBoundary {
   LandingTerminal {
-    outcome: NativeScmTerminalChoiceRequired {
+    outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalChoiceRequired {
       question: question.question as String,
       continuation: landing_question_continuation(question: question),
     },
@@ -1183,7 +1183,7 @@ fn landing_transition_user_boundary(
         LandingCommitAssembled { committed } => {
           let preview = committed.read_back.observation.transition.admitted.admission.semantic.unique.preview
           LandingTerminal {
-            outcome: NativeScmTerminalLanded {
+            outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalLanded {
               result_preview: preview as String,
             },
           }

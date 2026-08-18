@@ -53,7 +53,7 @@ fn semantic_decl_emission_bundle_malformed_diagnostic(bundle: Node) -> v2.std.di
   v2.std.diagnostic.Diagnostic {
     reason: ^semantic_decl_emission_bundle_malformed,
     at: node_locus(node: bundle),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -117,14 +117,14 @@ fn semantic_decl_string_from_bundle_node(bundle: Node) -> Outcome<String> {
 }
 
 fn semantic_decl_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: CharClassPattern { class: IdentStartChar },
-    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
   }
 }
 
 fn semantic_decl_whitespace_trivia_pattern() -> v2.std.compilers.lexing.LexPattern {
-  OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
+  v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } }
 }
 
 fn semantic_decl_lex_literal_row(token_class: v2.std.node.Symbol, text: String) -> Node {
@@ -208,9 +208,9 @@ fn decode_semantic_decl_lex_rule_row(row: Node) -> Outcome<v2.std.compilers.lexi
                   o: semantic_decl_string_from_bundle_node(bundle: text_node),
                   f: fn(text) {
                     outcome_accepted(
-                      value: TokenRule {
+                      value: v2.std.compilers.lexing.TokenRule {
                         token_class: token_class,
-                        pattern: LiteralPattern { text: text }
+                        pattern: v2.std.compilers.lexing.LiteralPattern { text: text }
                       }
                     )
                   }
@@ -227,7 +227,7 @@ fn decode_semantic_decl_lex_rule_row(row: Node) -> Outcome<v2.std.compilers.lexi
           ),
           f: fn(token_class) {
             outcome_accepted(
-              value: TokenRule {
+              value: v2.std.compilers.lexing.TokenRule {
                 token_class: token_class,
                 pattern: semantic_decl_ident_lex_pattern()
               }
@@ -236,7 +236,7 @@ fn decode_semantic_decl_lex_rule_row(row: Node) -> Outcome<v2.std.compilers.lexi
         )
       } else if pattern_kind == ^semantic_decl_lex_pattern_whitespace_trivia {
         outcome_accepted(
-          value: TriviaRule { pattern: semantic_decl_whitespace_trivia_pattern() }
+          value: v2.std.compilers.lexing.TriviaRule { pattern: semantic_decl_whitespace_trivia_pattern() }
         )
       } else {
         outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: row)
@@ -294,7 +294,7 @@ fn semantic_decl_lex_rules_from_rows(rows: List<Node>) -> Outcome<v2.std.compile
     ),
     f: fn(rules) {
       outcome_accepted(
-        value: ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: rules } }
+        value: v2.std.compilers.lexing.ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: rules } }
       )
     }
   )
@@ -411,7 +411,7 @@ fn semantic_decl_binding_spelling_not_found_diagnostic(binding: v2.std.node.Symb
   v2.std.diagnostic.Diagnostic {
     reason: ^semantic_decl_binding_spelling_not_found,
     at: port_locus(port: binding),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -1239,7 +1239,7 @@ fn target_semantic_decl_surface_pos(target: Node) -> v2.std.node.Edge {
 
 fn target_semantic_decl_surface_conj(children: List<v2.std.node.Edge>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: children,
     occurrence_id: SyntheticOccurrence
   }
@@ -1247,7 +1247,7 @@ fn target_semantic_decl_surface_conj(children: List<v2.std.node.Edge>) -> Node {
 
 fn target_semantic_decl_surface_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -1349,7 +1349,7 @@ fn target_semantic_decl_field_surface_from_edge(
             outcome_rejected(d: v2.std.diagnostic.Diagnostic {
                   reason: ^target_semantic_decl_field_type_primitive_unsupported,
                   at: node_locus(node: edge.target),
-                  correction: Unavailable { reason: ExternalContractUnknown }
+                  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                 })
           } else {
             outcome_accepted(
@@ -1365,14 +1365,14 @@ fn target_semantic_decl_field_surface_from_edge(
           outcome_rejected(d: v2.std.diagnostic.Diagnostic {
                 reason: ^target_semantic_decl_field_type_not_atom,
                 at: node_locus(node: edge.target),
-                correction: Unavailable { reason: ExternalContractUnknown }
+                correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
               })
       }
     Positional =>
       outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^target_semantic_decl_field_not_named,
             at: node_locus(node: edge.target),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           })
   }
 }
@@ -1695,7 +1695,7 @@ fn semantic_decl_coproduct_shape_key_unsupported_connective_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: ^semantic_decl_coproduct_shape_key_unsupported_connective,
     at: node_locus(node: coproduct),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -1750,7 +1750,7 @@ fn semantic_decl_coproduct_decoration_shape_unmatched_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: ^semantic_decl_coproduct_decoration_shape_unmatched,
     at: node_locus(node: coproduct),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -1862,7 +1862,7 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
       outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^target_semantic_decl_variant_not_named,
             at: node_locus(node: edge.target),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           })
   }
 }
@@ -1918,7 +1918,7 @@ fn target_semantic_decl_variant_surface_from_edge(
       outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^target_semantic_decl_variant_not_named,
             at: node_locus(node: edge.target),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           })
   }
 }
@@ -2015,7 +2015,7 @@ fn target_semantic_enum_surface_from_coproduct(
                   outcome_rejected(d: v2.std.diagnostic.Diagnostic {
                         reason: ^target_semantic_decl_tagged_union_generic_unsupported,
                         at: node_locus(node: coproduct),
-                        correction: Unavailable { reason: ExternalContractUnknown }
+                        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                       })
                 }
               } else if is_empty(xs: params) {
@@ -2046,7 +2046,7 @@ fn target_semantic_enum_surface_from_coproduct(
       outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^target_semantic_decl_enum_source_not_coproduct,
             at: node_locus(node: coproduct),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           })
   }
 }
@@ -2079,7 +2079,7 @@ fn target_semantic_struct_surface_from_record(
               outcome_rejected(d: v2.std.diagnostic.Diagnostic {
                     reason: ^target_semantic_decl_struct_generic_unsupported,
                     at: node_locus(node: record),
-                    correction: Unavailable { reason: ExternalContractUnknown }
+                    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                   })
             } else {
               outcome_accepted(
@@ -2098,7 +2098,7 @@ fn target_semantic_struct_surface_from_record(
       outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^target_semantic_decl_struct_source_not_record,
             at: node_locus(node: record),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           })
   }
 }

@@ -30,7 +30,7 @@ fn cross_target_python_to_rust_i32_coercion_fold() -> Outcome<v2.std.coercion.Co
       coercion_fold(
         source: python_unbounded_int_grounding(),
         candidates: candidates,
-        policy: TargetDeclaredPriority { priority: rust_inhabitant_i32_node() }
+        policy: v2.std.find_witness.TargetDeclaredPriority { priority: rust_inhabitant_i32_node() }
       )
     }
   )
@@ -47,7 +47,7 @@ fn coercion_outcome_node_projection(actual: Outcome<v2.std.coercion.CoercionResu
 data cross_target_upstream_find_witness_rejection: v2.std.diagnostic.Diagnostic = v2.std.diagnostic.Diagnostic {
   reason: ^find_witness_reason_no_candidate,
   at: node_locus(node: python_int_inhabitant_node()),
-  correction: Unavailable { reason: ExternalContractUnknown }
+  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
 }
 
 data cross_target_coercion_expected_rejection: v2.std.diagnostic.NonEmptyDiagnostics = v2.std.diagnostic.NonEmptyDiagnostics {
@@ -58,7 +58,7 @@ data cross_target_coercion_expected_rejection: v2.std.diagnostic.NonEmptyDiagnos
   tail: [cross_target_upstream_find_witness_rejection]
 }
 
-data claim_cross_target_python_to_rust_i32_rejects: v2.std.verification.TestClaim = DiagnosticClaim {
+data claim_cross_target_python_to_rust_i32_rejects: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "manual/int_cross_target: python unbounded int -> rust declared inhabitants rejects (no exact witness)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_int_inhabitant_node(),
@@ -81,7 +81,7 @@ test data witness_cross_target_python_to_rust_i32_rejects: Bool = match run_test
 }
 
 
-data claim_int_cross_target_coercion_module_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_int_cross_target_coercion_module_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/int_cross_target: cross-target coercion safety anchors compile",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_int_inhabitant_node(),
@@ -164,7 +164,7 @@ data cross_target_narrowing_expected_rejection: v2.std.diagnostic.NonEmptyDiagno
   tail: [cross_target_upstream_find_witness_rejection]
 }
 
-data claim_cross_target_python_to_rust_i32_would_lose_information: v2.std.verification.TestClaim = DiagnosticClaim {
+data claim_cross_target_python_to_rust_i32_would_lose_information: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "manual/int_cross_target: python int -> rust i32 refinement reverse rejects WouldLoseInformation",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_int_inhabitant_node(),

@@ -17,11 +17,11 @@ data c_semantic_answer_golden: String = concat(
 )
 
 fn cdr_empty_conj() -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
 fn cdr_atom_type(name: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
 fn cdr_field_edge(name: v2.std.node.Symbol, type_name: v2.std.node.Symbol) -> v2.std.node.Edge {
@@ -36,7 +36,7 @@ fn cdr_variant_edge_payload(name: v2.std.node.Symbol, fields: List<v2.std.node.E
   v2.std.node.Edge {
     label: Named { name: name },
     target: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: fields,
       occurrence_id: SyntheticOccurrence
     }
@@ -59,7 +59,7 @@ fn cdr_matches(name: v2.std.node.Symbol, node: Node, golden: String) -> Bool {
 
 fn cdr_point_record() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cdr_field_edge(name: ^x, type_name: ^Int),
       cdr_field_edge(name: ^y, type_name: ^Int)
@@ -70,7 +70,7 @@ fn cdr_point_record() -> Node {
 
 fn cdr_bool_coproduct() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: Disj },
     children: [ cdr_variant_edge(name: ^True), cdr_variant_edge(name: ^False) ],
     occurrence_id: SyntheticOccurrence
   }
@@ -78,7 +78,7 @@ fn cdr_bool_coproduct() -> Node {
 
 fn cdr_answer_coproduct() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: Disj },
     children: [
       cdr_variant_edge_payload(name: ^Yes, fields: [ cdr_field_edge(name: ^n, type_name: ^Int) ]),
       cdr_variant_edge_payload(name: ^No, fields: [ cdr_field_edge(name: ^code, type_name: ^Int) ])
@@ -103,7 +103,7 @@ test fn c_semantic_answer_coproduct_routes_to_tagged_union_emit() -> Bool {
 
 fn cdr_bool_field_record() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [ cdr_field_edge(name: ^flag, type_name: ^Bool) ],
     occurrence_id: SyntheticOccurrence
   }
@@ -127,7 +127,7 @@ test fn c_semantic_int_field_still_emits() -> Bool {
 
 fn cdr_arrow_type() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [ v2.std.node.Edge { label: Positional, target: cdr_atom_type(name: ^Int) } ],
     occurrence_id: SyntheticOccurrence
   }

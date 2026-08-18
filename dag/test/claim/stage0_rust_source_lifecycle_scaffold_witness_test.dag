@@ -107,7 +107,7 @@ test fn scaffold_authority_refs_populated_holds() -> Bool {
 
 test fn scaffold_observed_ratchet_red_control_newly_unclassified_reds() -> Bool {
   match rust_source_manifest_state_verdict(
-    observation: RustManifestObserved {
+    observation: gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: "deadbeef",
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: [
@@ -147,7 +147,7 @@ test fn scaffold_observed_derives_unclassified_from_path_evidence_red_control() 
 
 test fn scaffold_observed_refuses_missing_host_evidence_fields() -> Bool {
   match rust_source_manifest_state_verdict(
-    observation: RustManifestObserved {
+    observation: gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: "",
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "beef000000000000" },
       tracked_rust_repo_paths: [],
@@ -169,7 +169,7 @@ test fn scaffold_observed_honest_minimal_observation_ok() -> Bool {
 
 test fn scaffold_observed_cargo_path_untracked_reds() -> Bool {
   match rust_source_manifest_state_verdict(
-    observation: RustManifestObserved {
+    observation: gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: "deadbeef",
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: ["src/v1/stage0/src/cli_run.rs"],
@@ -184,7 +184,7 @@ test fn scaffold_observed_cargo_path_untracked_reds() -> Bool {
 
 test fn scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition() -> Bool {
   match rust_source_manifest_state_verdict(
-    observation: RustManifestObserved {
+    observation: gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: "deadbeef",
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: ["src/v1/stage0/src/synthetic_cargo_bin.rs"],
@@ -200,7 +200,7 @@ test fn scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition() -> 
 }
 
 test fn scaffold_observed_git_refusal_surfaces_typed_cause() -> Bool {
-  match rust_source_manifest_state_verdict(observation: GitObservationRefused { detail: "git unavailable" }) {
+  match rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.GitObservationRefused { detail: "git unavailable" }) {
     ManifestStateScaffoldRefused { cause: HostGitObservationRefused { detail: detail } } => detail == "git unavailable"
     _ => false
   }
@@ -208,7 +208,7 @@ test fn scaffold_observed_git_refusal_surfaces_typed_cause() -> Bool {
 
 test fn scaffold_observed_manifest_read_refusal_surfaces_typed_cause() -> Bool {
   match rust_source_manifest_state_verdict(
-    observation: RustManifestReadRefused { detail: "manifest unreadable" }
+    observation: gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: "manifest unreadable" }
   ) {
     ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } } => detail == "manifest unreadable"
     _ => false
@@ -217,7 +217,7 @@ test fn scaffold_observed_manifest_read_refusal_surfaces_typed_cause() -> Bool {
 
 test fn scaffold_observed_manifest_parse_refusal_surfaces_typed_cause() -> Bool {
   match rust_source_manifest_state_verdict(
-    observation: RustManifestParseRefused { detail: "manifest malformed" }
+    observation: gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: "manifest malformed" }
   ) {
     ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: detail } } => detail == "manifest malformed"
     _ => false

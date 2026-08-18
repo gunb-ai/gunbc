@@ -11,7 +11,7 @@ fn section_proposed_actuator() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "1. Approved actuator shape (follow-on PR — READY but HELD)"),
     p(text: "Merge admission is merge-time policy, orthogonal to per-commit floor gates. The actuator consumes a MergeAdmissionReceipt and live merge-target facts; it does NOT add a new gunbc.ci_gate variant."),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Layer"), cell(text: "Home"), cell(text: "Role")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -67,6 +67,6 @@ data merge_admission_gate_shape_proposal_plan: gunbc.plan.Plan = gunbc.plan.Plan
   slug: "merge-admission-gate-shape-proposal",
   title: "[SIGNED OFF] Merge-admission gate shape — predicate landed, actuator follow-on HELD",
   body: merge_admission_gate_shape_proposal_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when KeyedReceipt actuator is witnessed in force or superseded by an enrolled enforcement plan.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when KeyedReceipt actuator is witnessed in force or superseded by an enrolled enforcement plan.")
   }
 }

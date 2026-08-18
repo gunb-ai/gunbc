@@ -2,7 +2,7 @@ module v2.test.lens_coverage.discriminant_predicate_defect_key
 
 
 data discriminant_predicate_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^discriminant_predicate_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^discriminant_predicate_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -20,14 +20,14 @@ fn discriminant_predicate_defect_key_claim_rhs() -> Node {
     discriminant_predicate_node
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_discriminant_predicate_defect_key: v2.std.verification.TestClaim = EqualsClaim {
+data claim_discriminant_predicate_defect_key: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_coverage/discriminant_predicate_defect_key: DiscriminantPredicate acceptance key",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: discriminant_predicate_node,

@@ -114,7 +114,7 @@ test fn witness_deferral_freeze_grown_baseline_withdraws_the_toleration() -> Boo
       function: "already_frozen_holds",
       frozen: probe_frozen_roster()
     ),
-    baseline: FrozenBaselineDebtGrew { added_count: 1 }
+    baseline: std.witness_admission.FrozenBaselineDebtGrew { added_count: 1 }
   )
 }
 

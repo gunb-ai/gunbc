@@ -20,7 +20,7 @@ type DeclFactQualifiedNameResolution
 fn decl_facts_matching_qualified_name(qn: String, facts: List<v2.std.decl_index.DeclFact>) -> List<v2.std.decl_index.DeclFact> {
   list_reverse(xs: fold(facts, init: Empty, f: fn(acc, fact) {
     if fact.qualified_name == qn {
-      Cons { head: fact, tail: acc }
+      std.algebra.Cons { head: fact, tail: acc }
     } else {
       acc
     }
@@ -66,7 +66,7 @@ fn skeleton_marshal_atom_lexeme_optional(node: Node) -> SkeletonMarshalAtomLexem
 
 fn node_skeleton_edge_targets(node: Node) -> List<Node> {
   list_reverse(xs: fold(node.children, init: Empty, f: fn(acc, e) {
-    Cons { head: e.target, tail: acc }
+    std.algebra.Cons { head: e.target, tail: acc }
   }))
 }
 
@@ -78,13 +78,13 @@ fn node_skeleton_marshal_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLex
       fold_list_right(
         xs: node_skeleton_marshal_atom_lexemes(node: child),
         empty: acc,
-        snoc: fn(inner_acc, lex) { Cons { head: lex, tail: inner_acc } }
+        snoc: fn(inner_acc, lex) { std.algebra.Cons { head: lex, tail: inner_acc } }
       )
     }
   )
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } =>
-      Cons { head: symbol_lexeme(sym: sym), tail: child_lexemes }
+      std.algebra.Cons { head: symbol_lexeme(sym: sym), tail: child_lexemes }
     _ => child_lexemes
   }
 }

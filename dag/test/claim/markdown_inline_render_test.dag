@@ -11,12 +11,12 @@ fn parse_and_render(text: String) -> List<std.markup.Fragment> {
 
 test fn witness_bold_renders_to_strong_node() -> Bool {
   parse_and_render(text: "**bold text**") ==
-    [ extdeps.browser.Element { tag: "strong", attributes: [], children: [ FragmentText { content: "bold text" } ] } ]
+    [ extdeps.browser.Element { tag: "strong", attributes: [], children: [ std.markup.FragmentText { content: "bold text" } ] } ]
 }
 
 test fn witness_code_renders_to_code_node() -> Bool {
   parse_and_render(text: "`inline code`") ==
-    [ extdeps.browser.Element { tag: "code", attributes: [], children: [ FragmentText { content: "inline code" } ] } ]
+    [ extdeps.browser.Element { tag: "code", attributes: [], children: [ std.markup.FragmentText { content: "inline code" } ] } ]
 }
 
 test fn witness_link_renders_to_anchor_node() -> Bool {
@@ -24,27 +24,27 @@ test fn witness_link_renders_to_anchor_node() -> Bool {
     [ extdeps.browser.Element {
         tag: "a",
         attributes: [ attr(name: "href", value: "/docs/plan.md" ) ],
-        children: [ FragmentText { content: "label" } ],
+        children: [ std.markup.FragmentText { content: "label" } ],
       }
     ]
 }
 
 test fn witness_em_renders_to_em_node() -> Bool {
   parse_and_render(text: "*emphasis*") ==
-    [ extdeps.browser.Element { tag: "em", attributes: [], children: [ FragmentText { content: "emphasis" } ] } ]
+    [ extdeps.browser.Element { tag: "em", attributes: [], children: [ std.markup.FragmentText { content: "emphasis" } ] } ]
 }
 
 test fn witness_mixed_inline_renders_to_nodes() -> Bool {
   parse_and_render(text: "**bold** and `code`") ==
     [
-      extdeps.browser.Element { tag: "strong", attributes: [], children: [ FragmentText { content: "bold" } ] },
-      FragmentText { content: " and " },
-      extdeps.browser.Element { tag: "code", attributes: [], children: [ FragmentText { content: "code" } ] },
+      extdeps.browser.Element { tag: "strong", attributes: [], children: [ std.markup.FragmentText { content: "bold" } ] },
+      std.markup.FragmentText { content: " and " },
+      extdeps.browser.Element { tag: "code", attributes: [], children: [ std.markup.FragmentText { content: "code" } ] },
     ]
 }
 
 test fn witness_plain_text_stays_text_node() -> Bool {
-  parse_and_render(text: "plain text no markup") == [ FragmentText { content: "plain text no markup" } ]
+  parse_and_render(text: "plain text no markup") == [ std.markup.FragmentText { content: "plain text no markup" } ]
 }
 
 test fn witness_markup_bold_differs_from_plain() -> Bool {
@@ -52,7 +52,7 @@ test fn witness_markup_bold_differs_from_plain() -> Bool {
 }
 
 test fn witness_image_inline_renders_to_img_node() -> Bool {
-  markdown_inline_to_fragments(inline: ImageInline { alt: "description", url: "/img.png" }) ==
+  markdown_inline_to_fragments(inline: std.markdown.ImageInline { alt: "description", url: "/img.png" }) ==
     [ extdeps.browser.Element {
         tag: "img",
         attributes: [

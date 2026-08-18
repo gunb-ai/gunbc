@@ -10,7 +10,7 @@ type BudgetClaim {
 
 type BudgetNode {
   name: String
-  appropriation: Appropriation<Memory, One>
+  appropriation: Appropriation<std.measure.Memory, std.measure.One>
   claims: List<BudgetClaim>
   children: List<BudgetNode>
 }

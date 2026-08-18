@@ -18,7 +18,7 @@ fn witness_import_a_changed() -> std.interface_summary.InterfaceHash {
 }
 
 fn witness_typecheck_request() -> std.materialization_provider.ArtifactRequest {
-  TypecheckModuleRequest {
+  std.materialization_provider.TypecheckModuleRequest {
     source_digest: content_hash_atom(value: "module-source-1"),
     direct_import_interfaces: [witness_import_a()],
     compiler: witness_compiler()
@@ -26,7 +26,7 @@ fn witness_typecheck_request() -> std.materialization_provider.ArtifactRequest {
 }
 
 fn witness_typecheck_request_changed_input() -> std.materialization_provider.ArtifactRequest {
-  TypecheckModuleRequest {
+  std.materialization_provider.TypecheckModuleRequest {
     source_digest: content_hash_atom(value: "module-source-1"),
     direct_import_interfaces: [witness_import_a_changed()],
     compiler: witness_compiler()
@@ -34,7 +34,7 @@ fn witness_typecheck_request_changed_input() -> std.materialization_provider.Art
 }
 
 fn witness_closure_request() -> std.materialization_provider.ArtifactRequest {
-  ResolveClosureRequest {
+  std.materialization_provider.ResolveClosureRequest {
     closure_digest: content_hash_atom(value: "closure-1"),
     compiler: witness_compiler()
   }
@@ -61,7 +61,7 @@ fn witness_union_part() -> std.materialization_provider.ArtifactPart {
 }
 
 fn witness_complete_closure_artifact() -> std.materialization_provider.MaterializedArtifact {
-  ResolvedGraphArtifact {
+  std.materialization_provider.ResolvedGraphArtifact {
     request_key: request_key(req: witness_closure_request()),
     resolved_graph: witness_graph_part(),
     source_indices: witness_indices_part(),
@@ -70,7 +70,7 @@ fn witness_complete_closure_artifact() -> std.materialization_provider.Materiali
 }
 
 fn witness_v1_shape_closure_artifact() -> std.materialization_provider.MaterializedArtifact {
-  LegacyIncompleteArtifact {
+  std.materialization_provider.LegacyIncompleteArtifact {
     kind: resolved_graph_artifact_kind,
     request_key: request_key(req: witness_closure_request()),
     carried_outputs: [
@@ -81,7 +81,7 @@ fn witness_v1_shape_closure_artifact() -> std.materialization_provider.Materiali
 }
 
 fn witness_kind_forged_closure_artifact() -> std.materialization_provider.MaterializedArtifact {
-  ParsedArtifact {
+  std.materialization_provider.ParsedArtifact {
     request_key: request_key(req: witness_closure_request()),
     parse_tree: witness_graph_part(),
     parse_diagnostics: witness_indices_part()
@@ -97,14 +97,14 @@ fn witness_v1_shape_digest() -> std.content_hash.ContentHash {
 }
 
 fn witness_good_probe() -> std.materialization_provider.ProviderProbe {
-  ProbeFound {
+  std.materialization_provider.ProbeFound {
     artifact: witness_complete_closure_artifact(),
     observed_digest: witness_closure_digest()
   }
 }
 
 fn witness_stale_typed_artifact() -> std.materialization_provider.MaterializedArtifact {
-  TypedModuleArtifact {
+  std.materialization_provider.TypedModuleArtifact {
     request_key: request_key(req: witness_typecheck_request()),
     typed_module_interface: witness_part(payload: "typed-payload-1", bytes: 6),
     typecheck_diagnostics: witness_part(payload: "typed-diagnostics-1", bytes: 4)
@@ -120,7 +120,7 @@ fn witness_empty_store(budget_count: Int) -> std.artifact_store.ArtifactStore {
 }
 
 test fn request_kinds_ground_on_cache_identity_rows() -> Bool {
-  let parse_req = ParseModuleRequest {
+  let parse_req = std.materialization_provider.ParseModuleRequest {
     source_digest: content_hash_atom(value: "module-source-1"),
     compiler: witness_compiler()
   }
@@ -138,11 +138,11 @@ test fn declared_input_identity_is_in_the_key() -> Bool {
 }
 
 test fn request_kind_is_in_the_key() -> Bool {
-  let parse_req = ParseModuleRequest {
+  let parse_req = std.materialization_provider.ParseModuleRequest {
     source_digest: content_hash_atom(value: "shared-subject"),
     compiler: witness_compiler()
   }
-  let closure_req = ResolveClosureRequest {
+  let closure_req = std.materialization_provider.ResolveClosureRequest {
     closure_digest: content_hash_atom(value: "shared-subject"),
     compiler: witness_compiler()
   }
@@ -166,7 +166,7 @@ test fn absent_probe_is_a_miss() -> Bool {
 test fn red_kind_mismatch_refuses_even_on_matching_key_and_content() -> Bool {
   let forged = provider_serve(
     req: witness_closure_request(),
-    probe: ProbeFound {
+    probe: std.materialization_provider.ProbeFound {
       artifact: witness_kind_forged_closure_artifact(),
       observed_digest: witness_closure_digest()
     }
@@ -177,7 +177,7 @@ test fn red_kind_mismatch_refuses_even_on_matching_key_and_content() -> Bool {
 test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bool {
   let stale = provider_serve(
     req: witness_typecheck_request_changed_input(),
-    probe: ProbeFound {
+    probe: std.materialization_provider.ProbeFound {
       artifact: witness_stale_typed_artifact(),
       observed_digest: witness_stale_typed_digest()
     }
@@ -188,7 +188,7 @@ test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bo
 test fn red_wrong_content_refuses_never_hits() -> Bool {
   let poisoned = provider_serve(
     req: witness_closure_request(),
-    probe: ProbeFound {
+    probe: std.materialization_provider.ProbeFound {
       artifact: witness_complete_closure_artifact(),
       observed_digest: content_hash_atom(value: "closure-payload-corrupt")
     }
@@ -244,7 +244,7 @@ test fn red_sha256_at_fnv1a64_seam_refuses_without_alias() -> Bool {
 test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bool {
   let refused = provider_serve(
     req: witness_closure_request(),
-    probe: ProbeFound {
+    probe: std.materialization_provider.ProbeFound {
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
     }
@@ -272,11 +272,11 @@ test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
   let store0 = witness_empty_store(budget_count: 150)
   let first_artifact = witness_complete_closure_artifact()
   let first_key = request_key(req: witness_closure_request())
-  let second_request = ResolveClosureRequest {
+  let second_request = std.materialization_provider.ResolveClosureRequest {
     closure_digest: content_hash_atom(value: "closure-2"),
     compiler: witness_compiler()
   }
-  let second_artifact = ResolvedGraphArtifact {
+  let second_artifact = std.materialization_provider.ResolvedGraphArtifact {
     request_key: request_key(req: second_request),
     resolved_graph: witness_part(payload: "closure-graph-2", bytes: 60),
     source_indices: witness_part(payload: "closure-indices-2", bytes: 25),
@@ -372,7 +372,7 @@ data forged_roster_witness_note: String = "The attack codex review 44278 named, 
 test fn red_forged_output_roster_refuses_as_wrong_content_on_serve() -> Bool {
   let forged = provider_serve(
     req: witness_closure_request(),
-    probe: ProbeFound {
+    probe: std.materialization_provider.ProbeFound {
       artifact: witness_complete_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
     }
@@ -398,7 +398,7 @@ test fn carried_roster_is_the_content_digest_preimage() -> Bool {
 data size_authentication_witness_note: String = "codex review 44300, and it is a distinct attack from the one below: keep every part DIGEST identical and understate only the BYTE COUNTS. Under the earlier preimage — (id, digest) per part — the derived content digest was unchanged, so the read-back still matched, BindingOk was returned, and the understated size was trusted by the budget check and handed to store_put. The earlier witness did not reach this: it varied the parts themselves, so it exercised a different path. These vary bytes ALONE, holding every digest fixed, which is the discriminating input the previous test set lacked. With bytes inside the preimage the understated artifact is refused wrong-content; the honest one at the same budget is admitted, so the pair discriminates rather than going blanket red."
 
 fn witness_size_understated_closure_artifact() -> std.materialization_provider.MaterializedArtifact {
-  ResolvedGraphArtifact {
+  std.materialization_provider.ResolvedGraphArtifact {
     request_key: request_key(req: witness_closure_request()),
     resolved_graph: std.materialization_provider.ArtifactPart { digest: content_hash_atom(value: "closure-graph-1"), bytes: byte_size(count: 6) },
     source_indices: std.materialization_provider.ArtifactPart { digest: content_hash_atom(value: "closure-indices-1"), bytes: byte_size(count: 2) },
@@ -536,7 +536,7 @@ test fn served_hit_carries_a_derived_structural_grade() -> Bool {
 test fn red_identity_cannot_be_asserted_only_derived() -> Bool {
   let mismatched = provider_serve(
     req: witness_closure_request(),
-    probe: ProbeFound {
+    probe: std.materialization_provider.ProbeFound {
       artifact: witness_kind_forged_closure_artifact(),
       observed_digest: witness_closure_digest()
     }
@@ -548,7 +548,7 @@ test fn red_identity_cannot_be_asserted_only_derived() -> Bool {
 test fn incomplete_artifact_derives_unknown_identity() -> Bool {
   let refused = provider_serve(
     req: witness_closure_request(),
-    probe: ProbeFound {
+    probe: std.materialization_provider.ProbeFound {
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
     }

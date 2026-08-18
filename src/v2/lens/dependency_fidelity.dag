@@ -39,5 +39,5 @@ fn input_reachability_verdict(fact: v2.lens.unused_parameters.UnusedParametersFa
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }

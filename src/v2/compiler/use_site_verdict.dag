@@ -22,7 +22,7 @@ data use_site_verdict_clone_shared_tag: v2.std.node.Symbol = ^use_site_verdict_c
 data use_site_verdict_unclassified_tag: v2.std.node.Symbol = ^use_site_verdict_unclassified
 
 fn use_site_verdict_atom(tag: v2.std.node.Symbol) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: tag } }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: tag } }, children: [])
 }
 
 fn use_site_verdict_to_node(verdict: UseSiteVerdict) -> Node {
@@ -30,7 +30,7 @@ fn use_site_verdict_to_node(verdict: UseSiteVerdict) -> Node {
     MoveWhole => use_site_verdict_atom(tag: use_site_verdict_move_whole_tag)
     MoveField { field: f } =>
       node_synthetic(
-        kind: TypeNode { connective: Atom { identity: use_site_verdict_move_field_tag } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: use_site_verdict_move_field_tag } },
         children: [
           v2.std.node.Edge { label: Named { name: use_site_verdict_field_edge }, target: use_site_verdict_atom(tag: f) }
         ]

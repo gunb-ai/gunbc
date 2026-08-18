@@ -377,7 +377,7 @@ fn cache_reach_candidate_recompute() -> CacheReachCandidate {
 fn cache_reach_candidate_probe(
   id: std.cache_identity.CacheInterfaceId,
   catalog: List<CacheInterfaceFacts>,
-  recompute: CostAccount<Nano>,
+  recompute: CostAccount<std.measure.Nano>,
 ) -> CacheReachCandidate {
   let facts = cache_facts_for_id(id: id, catalog: catalog)
   let fetch = read_latency_cost(facts: facts)
@@ -416,7 +416,7 @@ fn cache_reach_dominates(a: CacheReachCandidate, b: CacheReachCandidate) -> std.
 fn cache_layer_cost_justified(
   id: std.cache_identity.CacheInterfaceId,
   catalog: List<CacheInterfaceFacts>,
-  recompute: CostAccount<Nano>,
+  recompute: CostAccount<std.measure.Nano>,
 ) -> Bool {
   nanosecond_duration_count(d: recompute.time) >= nanosecond_duration_count(d: read_latency_cost(facts: cache_facts_for_id(id: id, catalog: catalog)))
 }
@@ -424,7 +424,7 @@ fn cache_layer_cost_justified(
 fn cache_layer_beats_recompute_path(
   id: std.cache_identity.CacheInterfaceId,
   catalog: List<CacheInterfaceFacts>,
-  recompute: CostAccount<Nano>,
+  recompute: CostAccount<std.measure.Nano>,
 ) -> Bool {
   let probe = cache_reach_candidate_probe(id: id, catalog: catalog, recompute: recompute)
   match cache_reach_dominates(
@@ -457,7 +457,7 @@ fn cache_layer_plan_contains_id(plan: CacheLayerPlan, id: std.cache_identity.Cac
 
 fn plan_cache_layers(
   deployment: CacheDeploymentBackends,
-  recompute: CostAccount<Nano>,
+  recompute: CostAccount<std.measure.Nano>,
   catalog: List<CacheInterfaceFacts>,
   default_order: List<std.cache_identity.CacheInterfaceId>,
 ) -> CacheLayerPlan {

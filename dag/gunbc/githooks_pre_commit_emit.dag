@@ -47,7 +47,7 @@ fn emit_pre_commit_run_fmt() -> String {
       "if [[ \"$fmt_rc\" != \"0\" ]]; then\n",
       emit_pre_commit_fmt_recipe_echo(
         outcome_recipe: local_tidy_fmt_outcome_recipe(
-          outcome: FmtToolUnavailable {
+          outcome: gunbc.local_tidy_spec.FmtToolUnavailable {
             program: "cargo",
             cause: "exit status $fmt_rc"
           },

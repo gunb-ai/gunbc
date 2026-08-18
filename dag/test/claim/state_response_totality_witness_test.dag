@@ -23,10 +23,10 @@ data cross_wired_family: gunbc.design.state_response.StateFamily = gunbc.design.
   var_prefix: "band-",
   members: [
     gunbc.design.state_response.StateFamilyMember { binding: RestBinding, key: "invite" },
-    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-requested" }, key: "in-progress" },
-    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-ok" }, key: "fail" },
-    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-refused" }, key: "fail" },
-    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-loud" }, key: "loud" },
+    gunbc.design.state_response.StateFamilyMember { binding: gunbc.design.state_response.StateClassBinding { class_name: "dispatch-requested" }, key: "in-progress" },
+    gunbc.design.state_response.StateFamilyMember { binding: gunbc.design.state_response.StateClassBinding { class_name: "dispatch-ok" }, key: "fail" },
+    gunbc.design.state_response.StateFamilyMember { binding: gunbc.design.state_response.StateClassBinding { class_name: "dispatch-refused" }, key: "fail" },
+    gunbc.design.state_response.StateFamilyMember { binding: gunbc.design.state_response.StateClassBinding { class_name: "dispatch-loud" }, key: "loud" },
   ],
 }
 
@@ -60,9 +60,9 @@ data dropped_member_family: gunbc.design.state_response.StateFamily = gunbc.desi
   var_prefix: "band-",
   members: [
     gunbc.design.state_response.StateFamilyMember { binding: RestBinding, key: "invite" },
-    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-requested" }, key: "in-progress" },
-    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-ok" }, key: "ok" },
-    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-refused" }, key: "fail" },
+    gunbc.design.state_response.StateFamilyMember { binding: gunbc.design.state_response.StateClassBinding { class_name: "dispatch-requested" }, key: "in-progress" },
+    gunbc.design.state_response.StateFamilyMember { binding: gunbc.design.state_response.StateClassBinding { class_name: "dispatch-ok" }, key: "ok" },
+    gunbc.design.state_response.StateFamilyMember { binding: gunbc.design.state_response.StateClassBinding { class_name: "dispatch-refused" }, key: "fail" },
   ],
 }
 

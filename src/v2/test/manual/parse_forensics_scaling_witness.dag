@@ -31,11 +31,11 @@ fn forensics_scaling_stats_for_path(path: String) -> v2.compiler.parse.ParseMemo
 
 fn forensics_scaling_report(path: String) -> List<Int> {
   let stats = forensics_scaling_stats_for_path(path: path)
-  Cons {
+  std.algebra.Cons {
     head: stats.hits,
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: stats.misses,
-      tail: Cons { head: stats.lookup_calls, tail: std.algebra.Empty }
+      tail: std.algebra.Cons { head: stats.lookup_calls, tail: std.algebra.Empty }
     }
   }
 }

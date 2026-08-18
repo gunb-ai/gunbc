@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn live_heal_push_authority() -> gunbc.auth.github_credential.GitHubCredentialAuthority {
   match push_binding_authority(resolution: live_heal_push_binding_resolution) {
     Present { value: a } => a
-    Absent => ActionsJobCredential { grant: fork_origin_grant() }
+    Absent => gunbc.auth.github_credential.ActionsJobCredential { grant: fork_origin_grant() }
   }
 }
 
@@ -72,15 +72,15 @@ fn is_axis_not_modeled(r: extdeps.github.actions_token.ActionsGrantResolution) -
 }
 
 data same_repo_policy: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyUnobserved
-data fork_policy_denies: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyObserved {
+data fork_policy_denies: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = extdeps.github.actions_token.ActionsRepositoryPolicyObserved {
   visibility: PrivateRepository,
   send_write_tokens_to_fork_pull_requests: false
 }
-data fork_policy_allows: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyObserved {
+data fork_policy_allows: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = extdeps.github.actions_token.ActionsRepositoryPolicyObserved {
   visibility: PrivateRepository,
   send_write_tokens_to_fork_pull_requests: true
 }
-data public_fork_policy_allows: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyObserved {
+data public_fork_policy_allows: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = extdeps.github.actions_token.ActionsRepositoryPolicyObserved {
   visibility: PublicRepository,
   send_write_tokens_to_fork_pull_requests: true
 }
@@ -207,20 +207,20 @@ test fn witness_cited_access_levels_are_not_uniformly_read_write() -> Bool {
     && actions_access_set_admits(set: axis_allowed_actions_access(axis: ContentsAxis), access: AppAccessRead)
 }
 
-data workflow_effect: extdeps.github.effect.GitHubEffect = AdvanceRepositoryBranch {
+data workflow_effect: extdeps.github.effect.GitHubEffect = extdeps.github.effect.AdvanceRepositoryBranch {
   repository: gunbc_repository,
   branch: extdeps.github.effect.GitBranchRef { name: "refs/heads/attempt" },
   changed_paths: [extdeps.github.effect.RepositoryPath { value: ".github/workflows/ci.yml" }]
 }
 
-data ordinary_effect: extdeps.github.effect.GitHubEffect = AdvanceRepositoryBranch {
+data ordinary_effect: extdeps.github.effect.GitHubEffect = extdeps.github.effect.AdvanceRepositoryBranch {
   repository: gunbc_repository,
   branch: extdeps.github.effect.GitBranchRef { name: "refs/heads/attempt" },
   changed_paths: [extdeps.github.effect.RepositoryPath { value: ".gitignore" }]
 }
 
 test fn witness_fork_pull_request_cannot_advance_any_branch() -> Bool {
-  let fork_credential = ActionsJobCredential { grant: fork_origin_grant() }
+  let fork_credential = gunbc.auth.github_credential.ActionsJobCredential { grant: fork_origin_grant() }
   !credential_authorizes(
     authority: fork_credential,
     control_plane: live_heal_control_plane,
@@ -237,7 +237,7 @@ test fn witness_fork_pull_request_cannot_advance_any_branch() -> Bool {
 }
 
 fn checkout_variant(rows: List<extdeps.languages.yaml.types.YamlKeyValue>) -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Checkout" },
     id: none,
     uses: checkout_action,
@@ -306,7 +306,7 @@ test fn witness_heal_condition_and_origin_share_one_binding() -> Bool {
 }
 
 test fn witness_only_a_real_checkout_action_binds_the_push_credential() -> Bool {
-  let run_step = RunStep {
+  let run_step = extdeps.github.actions.RunStep {
     name: Present { value: "not a checkout" },
     id: none,
     run: "echo hi",
@@ -317,7 +317,7 @@ test fn witness_only_a_real_checkout_action_binds_the_push_credential() -> Bool 
     continue_on_error: none,
     timeout_minutes: none
   }
-  let other_action = UsesStep {
+  let other_action = extdeps.github.actions.UsesStep {
     name: Present { value: "upload" },
     id: none,
     uses: upload_artifact_action,

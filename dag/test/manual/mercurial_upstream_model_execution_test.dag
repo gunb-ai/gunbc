@@ -94,7 +94,7 @@ fn mercurial_live_projection_decodes(
               let fl = files.skip(n: 1).first()
               let fbin = files.skip(n: 2).first()
               let f2 = files.skip(n: 3).first()
-              let projection = MercurialCompleteProjection {
+              let projection = extdeps.mercurial.MercurialCompleteProjection {
                 contents: extdeps.mercurial.MercurialRepositoryProjectionContents {
                   requirements: extdeps.mercurial.MercurialRepositoryRequirements {
                     tokens: mercurial_requirement_tokens(
@@ -118,8 +118,8 @@ fn mercurial_live_projection_decodes(
                     },
                     extdeps.mercurial.MercurialFileRevision {
                       node: fbin,
-                      parents: MercurialOneParent { parent: f0 },
-                      copy: MercurialCopiedFrom {
+                      parents: extdeps.mercurial.MercurialOneParent { parent: f0 },
+                      copy: extdeps.mercurial.MercurialCopiedFrom {
                         path: live_path_source,
                         file_revision: f0,
                       },
@@ -127,7 +127,7 @@ fn mercurial_live_projection_decodes(
                     },
                     extdeps.mercurial.MercurialFileRevision {
                       node: f2,
-                      parents: MercurialOneParent { parent: f0 },
+                      parents: extdeps.mercurial.MercurialOneParent { parent: f0 },
                       copy: MercurialNotCopied,
                       content: octets_bytes(
                         o: [109, 97, 105, 110, 115, 105, 100, 101],
@@ -200,7 +200,7 @@ fn mercurial_live_projection_decodes(
                     extdeps.mercurial.MercurialChangeset {
                       node: c1,
                       manifest: m1,
-                      parents: MercurialOneParent { parent: c0 },
+                      parents: extdeps.mercurial.MercurialOneParent { parent: c0 },
                       branch: "default",
                       branch_closure: MercurialBranchRemainsOpen,
                       user: "author@example.invalid",
@@ -210,7 +210,7 @@ fn mercurial_live_projection_decodes(
                     extdeps.mercurial.MercurialChangeset {
                       node: c2,
                       manifest: m2,
-                      parents: MercurialOneParent { parent: c0 },
+                      parents: extdeps.mercurial.MercurialOneParent { parent: c0 },
                       branch: "default",
                       branch_closure: MercurialBranchRemainsOpen,
                       user: "author@example.invalid",

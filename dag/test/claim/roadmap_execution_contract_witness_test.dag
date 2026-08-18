@@ -35,10 +35,10 @@ test fn dag_claim_derives_only_the_claim_runner() -> Bool {
 
 test fn cargo_test_derives_cargo_and_rustc_once() -> Bool {
   let capabilities = execution_contract_required_capabilities(
-    contract: ExecutionContract {
+    contract: gunbc.roadmap_execution_contract.ExecutionContract {
       validations: [
-        CargoTestValidation { filter: "one" as std.types.NonEmptyStr },
-        CargoTestValidation { filter: "two" as std.types.NonEmptyStr },
+        gunbc.roadmap_execution_contract.CargoTestValidation { filter: "one" as std.types.NonEmptyStr },
+        gunbc.roadmap_execution_contract.CargoTestValidation { filter: "two" as std.types.NonEmptyStr },
       ],
       extra_capabilities: [CargoCapability],
     },
@@ -56,7 +56,7 @@ test fn cargo_test_derives_cargo_and_rustc_once() -> Bool {
 
 test fn cargo_fmt_derives_cargo_and_rustfmt_not_rustc() -> Bool {
   let caps = execution_contract_required_capabilities(
-    contract: ExecutionContract {
+    contract: gunbc.roadmap_execution_contract.ExecutionContract {
       validations: [CargoFmtValidation],
       extra_capabilities: [],
     },
@@ -92,7 +92,7 @@ test fn dispatch_platform_capabilities_join_at_admission_only() -> Bool {
 
 test fn claim_validation_projects_exact_typed_argv() -> Bool {
   match validation_operation_command(
-    validation: GunbcClaimValidation {
+    validation: gunbc.roadmap_execution_contract.GunbcClaimValidation {
       entry: "dag/test/claim/example_test.dag" as std.types.FilePath,
       function: "example_holds" as std.types.NonEmptyStr,
     },

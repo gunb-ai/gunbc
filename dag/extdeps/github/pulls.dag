@@ -326,13 +326,13 @@ type PullReview {
 data structural_coverage_gap_github_pull_review_response_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "PullReview" },
-      JsonPending { field: "node_id" },
-      JsonPending { field: "user" },
-      JsonPending { field: "pull_request_url" },
-      JsonPending { field: "_links" },
-      JsonPending { field: "submitted_at" },
-      JsonPending { field: "author_association" }
+      extdeps.coverage.Subject { path: "PullReview" },
+      extdeps.coverage.JsonPending { field: "node_id" },
+      extdeps.coverage.JsonPending { field: "user" },
+      extdeps.coverage.JsonPending { field: "pull_request_url" },
+      extdeps.coverage.JsonPending { field: "_links" },
+      extdeps.coverage.JsonPending { field: "submitted_at" },
+      extdeps.coverage.JsonPending { field: "author_association" }
     ],
     trigger: "GitHub PullReview consumer needs full review response fidelity"
   }

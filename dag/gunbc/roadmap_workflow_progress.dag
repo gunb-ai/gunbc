@@ -54,12 +54,12 @@ fn receipt_records_admission(receipt: String) -> Bool {
 fn admission_receipt_refusal(receipt: String) -> gunbc.roadmap_provider_events.ProviderExecutionState {
   match dispatch_environment_receipt_decode(receipt: receipt) {
     ReceiptDecoded { status: _ } =>
-      ProviderEventsRefused {
+      gunbc.roadmap_provider_events.ProviderEventsRefused {
         activity: "environment admission refused",
         detail: "admission receipt records a refused environment admission; its own reason field carries the cause",
       }
     ReceiptUndecodable { reason } =>
-      ProviderEventsRefused {
+      gunbc.roadmap_provider_events.ProviderEventsRefused {
         activity: "admission receipt undecodable",
         detail: reason,
       }
@@ -79,7 +79,7 @@ fn provider_execution_reconcile_process(
           if exit_code == 0 {
             provider
           } else {
-            ProviderEventsRefused {
+            gunbc.roadmap_provider_events.ProviderEventsRefused {
               activity: activity,
               detail: join([
                 "Codex emitted turn.completed but the retained pane exited ",
@@ -89,19 +89,19 @@ fn provider_execution_reconcile_process(
             }
           }
         WorkerProcessRunning { command: _ } =>
-          ProviderRunning {
+          gunbc.roadmap_provider_events.ProviderRunning {
             activity: join([
               activity,
               "; awaiting process exit",
             ], ""),
           }
         WorkerProcessAbsent =>
-          ProviderEventsRefused {
+          gunbc.roadmap_provider_events.ProviderEventsRefused {
             activity: activity,
             detail: "Codex emitted turn.completed but no process exit was observed; the pane is absent, so the compatible exit the Agent obligation requires cannot be established",
           }
         WorkerProcessUnobserved { reason } =>
-          ProviderEventsRefused {
+          gunbc.roadmap_provider_events.ProviderEventsRefused {
             activity: activity,
             detail: join([
               "Codex emitted turn.completed but process evidence is unobserved (",
@@ -115,17 +115,17 @@ fn provider_execution_reconcile_process(
         WorkerProcessRunning { command: _ } =>
           match provider {
             ProviderNotStarted =>
-              ProviderStarting { activity: "waiting for first provider event" }
+              gunbc.roadmap_provider_events.ProviderStarting { activity: "waiting for first provider event" }
             _ => provider
           }
         WorkerProcessExited { exit_code, last_command: _ } =>
           if exit_code == 0 {
-            ProviderEventsRefused {
+            gunbc.roadmap_provider_events.ProviderEventsRefused {
               activity: "provider process exited",
               detail: "provider process exited 0 without turn.completed, turn.failed, or error",
             }
           } else {
-            ProviderFailed {
+            gunbc.roadmap_provider_events.ProviderFailed {
               activity: "provider process exited",
               detail: join([
                 "provider process exited ",
@@ -135,12 +135,12 @@ fn provider_execution_reconcile_process(
             }
           }
         WorkerProcessAbsent =>
-          ProviderEventsRefused {
+          gunbc.roadmap_provider_events.ProviderEventsRefused {
             activity: "provider process absent",
             detail: "no retained provider pane and no terminal provider event",
           }
         WorkerProcessUnobserved { reason } =>
-          ProviderEventsRefused {
+          gunbc.roadmap_provider_events.ProviderEventsRefused {
             activity: "process observation refused",
             detail: reason as String,
           }
@@ -152,24 +152,24 @@ fn workflow_provider_from_evidence(
   evidence: WorkflowAttemptEvidence,
 ) -> gunbc.roadmap_provider_events.ProviderExecutionState {
   if !evidence.modeled_state_present {
-    ProviderEventsRefused {
+    gunbc.roadmap_provider_events.ProviderEventsRefused {
       activity: legacy_attempt_supersedable_label,
       detail: legacy_attempt_supersedable_detail,
     }
   } else if !evidence.admission_receipt_readable {
-    ProviderEventsRefused {
+    gunbc.roadmap_provider_events.ProviderEventsRefused {
       activity: "attempt state refused",
       detail: "current attempt pointer exists but its admission receipt is unreadable",
     }
   } else if !receipt_records_admission(receipt: evidence.admission_receipt) {
     admission_receipt_refusal(receipt: evidence.admission_receipt)
   } else if evidence.spawn_failure_present {
-    ProviderFailed {
+    gunbc.roadmap_provider_events.ProviderFailed {
       activity: "dispatch staging failed",
       detail: evidence.spawn_failure,
     }
   } else if !evidence.provider_events_readable {
-    ProviderEventsRefused {
+    gunbc.roadmap_provider_events.ProviderEventsRefused {
       activity: "event capture refused",
       detail: join([
         "initialized provider event stream is unreadable: ",
@@ -655,7 +655,7 @@ fn workflow_desired_fact_forest(
 ) -> List<gunbc.workflow_reconcile.WorkflowFactTree> {
   map(
     roadmap_attempt_workflow_segment_kinds,
-    kind => WorkflowFactLeaf {
+    kind => gunbc.workflow_reconcile.WorkflowFactLeaf {
       fact: workflow_desired_fact(
         workflow_id: workflow_id,
         kind: kind,
@@ -673,7 +673,7 @@ fn workflow_observed_fact_forest(
     segment => match segment.state {
       WorkflowSegmentPending => []
       _ => [
-        WorkflowFactLeaf {
+        gunbc.workflow_reconcile.WorkflowFactLeaf {
           fact: workflow_observed_fact(
             workflow_id: workflow_id,
             segment: segment,

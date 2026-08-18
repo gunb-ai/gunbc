@@ -3,9 +3,9 @@ module v2.test.name_resolve.malformed_imported_root
 
 fn malformed_qn_node() -> Node {
   fold_list_node(
-    xs: Cons { head: ^malformed_seg, tail: Empty },
+    xs: std.algebra.Cons { head: ^malformed_seg, tail: Empty },
     item_node: fn(sym) {
-      v2.std.node.Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
+      v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
     }
@@ -14,7 +14,7 @@ fn malformed_qn_node() -> Node {
 
 fn malformed_root_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -27,7 +27,7 @@ fn malformed_root_node() -> Node {
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^malformed_child_sym } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^malformed_child_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }
@@ -38,12 +38,12 @@ fn malformed_root_node() -> Node {
 }
 
 fn malformed_entry_name() -> v2.std.qualified_name.QualifiedName {
-  Cons { head: ^malformed_seg, tail: Empty }
+  std.algebra.Cons { head: ^malformed_seg, tail: Empty }
 }
 
 fn roots_with_malformed_entry() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   bind_outcome(o: admit_normalized_tree(root: malformed_root_node(), diagnostics: None), f: fn(a) {
-    outcome_accepted(value: Cons { head: a, tail: Empty })
+    outcome_accepted(value: std.algebra.Cons { head: a, tail: Empty })
   })
 }
 
@@ -52,7 +52,7 @@ fn import_edge_for_malformed() -> v2.compiler.name_resolve.Import {
 }
 
 fn initial_admission_state() -> AdmissionState {
-  AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
+  v2.compiler.name_resolve.AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
 }
 
 fn admit_result_is_rejected(state: AdmissionState) -> Bool {

@@ -28,7 +28,7 @@ test fn behavioral_discriminator_is_stable_purpose_arm() -> Bool {
 }
 
 test fn boundary_crossing_carries_modeled_boundary_and_chosen_input() -> Bool {
-  let purpose = BoundaryCrossing {
+  let purpose = std.witness_purpose.BoundaryCrossing {
     modeled_boundary: fixture_population_ref(),
     chosen_input: fixture_subject_hash(),
   }
@@ -44,7 +44,7 @@ test fn boundary_crossing_carries_modeled_boundary_and_chosen_input() -> Bool {
 }
 
 test fn population_totality_carries_population_ref() -> Bool {
-  let purpose = PopulationTotality { population: fixture_population_ref() }
+  let purpose = std.witness_purpose.PopulationTotality { population: fixture_population_ref() }
   match purpose {
     PopulationTotality { population: population } =>
       population == fixture_population_ref()
@@ -56,7 +56,7 @@ test fn population_totality_carries_population_ref() -> Bool {
 }
 
 test fn external_fidelity_carries_effect_ref() -> Bool {
-  let purpose = ExternalFidelity { effect: fixture_population_ref() }
+  let purpose = std.witness_purpose.ExternalFidelity { effect: fixture_population_ref() }
   match purpose {
     ExternalFidelity { effect: effect } => effect == fixture_population_ref()
     BehavioralDiscriminator => false
@@ -67,8 +67,8 @@ test fn external_fidelity_carries_effect_ref() -> Bool {
 }
 
 test fn resource_contract_wall_bound_is_millisecond() -> Bool {
-  let purpose = ResourceContract {
-    bound: EvalWallTimeBound { bound: millisecond(count: 500) },
+  let purpose = std.witness_purpose.ResourceContract {
+    bound: std.witness_purpose.EvalWallTimeBound { bound: millisecond(count: 500) },
   }
   match purpose {
     ResourceContract { bound: bound } =>
@@ -85,8 +85,8 @@ test fn resource_contract_wall_bound_is_millisecond() -> Bool {
 }
 
 test fn resource_contract_peak_memory_bound_is_byte_size() -> Bool {
-  let purpose = ResourceContract {
-    bound: PeakMemoryBound { bound: byte_size(count: 1073741824) },
+  let purpose = std.witness_purpose.ResourceContract {
+    bound: std.witness_purpose.PeakMemoryBound { bound: byte_size(count: 1073741824) },
   }
   match purpose {
     ResourceContract { bound: bound } =>
@@ -113,14 +113,14 @@ test fn terminating_one_shot_unavailable_records_deadline_substrate_absent() -> 
 test fn witness_purpose_has_five_stable_arms_only() -> Bool {
   let purposes = [
     BehavioralDiscriminator,
-    BoundaryCrossing {
+    std.witness_purpose.BoundaryCrossing {
       modeled_boundary: fixture_population_ref(),
       chosen_input: fixture_subject_hash(),
     },
-    PopulationTotality { population: fixture_population_ref() },
-    ExternalFidelity { effect: fixture_population_ref() },
-    ResourceContract {
-      bound: EvalThreadCpuBound { bound: millisecond(count: 1) },
+    std.witness_purpose.PopulationTotality { population: fixture_population_ref() },
+    std.witness_purpose.ExternalFidelity { effect: fixture_population_ref() },
+    std.witness_purpose.ResourceContract {
+      bound: std.witness_purpose.EvalThreadCpuBound { bound: millisecond(count: 1) },
     },
   ]
   length(xs: purposes) == 5

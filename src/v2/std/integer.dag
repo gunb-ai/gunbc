@@ -80,7 +80,7 @@ fn integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: Node)
   v2.std.diagnostic.Diagnostic {
     reason: ^integer_standard_integer_type_decode_invalid,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -88,7 +88,7 @@ fn integer_signed_i32_le_decode_invalid_diagnostic() -> v2.std.diagnostic.Diagno
   v2.std.diagnostic.Diagnostic {
     reason: ^integer_standard_integer_type_decode_invalid,
     at: port_locus(port: ^integer_signed_i32_le_decode_invalid),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -163,7 +163,7 @@ fn decimal_digits_double(digits: FreeMonoid<DecimalDigit>) -> DecimalDigitsStep 
         DecimalDigitsStep { digits: doubled_tail, carry: tail_carry } =>
           match decimal_digit_double(d: head, carry_in: tail_carry) {
             DecimalDigitStep { digit, carry } =>
-              DecimalDigitsStep { digits: Cons { head: digit, tail: doubled_tail }, carry: carry }
+              DecimalDigitsStep { digits: std.algebra.Cons { head: digit, tail: doubled_tail }, carry: carry }
           }
       }
   }
@@ -177,7 +177,7 @@ fn decimal_digits_sub_one(digits: FreeMonoid<DecimalDigit>) -> DecimalDigitsStep
         DecimalDigitsStep { digits: sub_tail, carry: tail_borrow } =>
           match decimal_digit_sub_borrow(d: head, borrow_in: tail_borrow) {
             DecimalDigitStep { digit, carry } =>
-              DecimalDigitsStep { digits: Cons { head: digit, tail: sub_tail }, carry: carry }
+              DecimalDigitsStep { digits: std.algebra.Cons { head: digit, tail: sub_tail }, carry: carry }
           }
       }
   }
@@ -220,7 +220,7 @@ fn decimal_nonzero_double(m: DecimalNonZeroMagnitude) -> DecimalNonZeroMagnitude
         NonZeroDoubleStays { lead } =>
           DecimalNonZeroMagnitude { lead: lead, tail: doubled_tail }
         NonZeroDoubleOverflows { pushed } =>
-          DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Cons { head: pushed, tail: doubled_tail } }
+          DecimalNonZeroMagnitude { lead: NonZeroD1, tail: std.algebra.Cons { head: pushed, tail: doubled_tail } }
       }
   }
 }
@@ -235,7 +235,7 @@ fn decimal_nonzero_sub_one(m: DecimalNonZeroMagnitude) -> DecimalMagnitude {
   match decimal_digits_sub_one(digits: m.tail) {
     DecimalDigitsStep { digits: sub_tail, carry: tail_borrow } =>
       decimal_digits_to_magnitude(
-        digits: Cons {
+        digits: std.algebra.Cons {
           head: nonzero_decimal_digit_minus_borrow(lead: m.lead, borrow_in: tail_borrow),
           tail: sub_tail
         }
@@ -691,7 +691,7 @@ fn uint_platform_interval_spec() -> IntegerIntervalSpec {
 
 fn integer_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -755,7 +755,7 @@ fn integer_decimal_nonzero_node(magnitude: DecimalNonZeroMagnitude) -> Node {
   match magnitude {
     DecimalNonZeroMagnitude { lead, tail } =>
       fold_list_node(
-        xs: Cons { head: integer_nonzero_decimal_digit_widen(digit: lead), tail: tail },
+        xs: std.algebra.Cons { head: integer_nonzero_decimal_digit_widen(digit: lead), tail: tail },
         item_node: fn(digit) { integer_decimal_digit_node(digit: digit) }
       )
   }
@@ -765,7 +765,7 @@ fn integer_decimal_magnitude_node(magnitude: DecimalMagnitude) -> Node {
   match magnitude {
     DecimalZero =>
       fold_list_node(
-        xs: Cons { head: D0, tail: Empty },
+        xs: std.algebra.Cons { head: D0, tail: Empty },
         item_node: fn(digit) { integer_decimal_digit_node(digit: digit) }
       )
     DecimalNonZero { magnitude } => integer_decimal_nonzero_node(magnitude: magnitude)
@@ -775,7 +775,7 @@ fn integer_decimal_magnitude_node(magnitude: DecimalMagnitude) -> Node {
 fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
   match bound {
     IntegerConcreteZero => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         integer_named_edge(
           name: ^integer_bound_field_kind,
@@ -785,7 +785,7 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
       occurrence_id: SyntheticOccurrence
 }
     IntegerConcreteBound { sign, magnitude } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         integer_named_edge(
           name: ^integer_bound_field_kind,
@@ -803,7 +803,7 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
       occurrence_id: SyntheticOccurrence
 }
     IntegerPointerWidthBound { signedness, endpoint } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         integer_named_edge(
           name: ^integer_bound_field_kind,
@@ -825,7 +825,7 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
 
 fn integer_interval_spec_node(spec: IntegerIntervalSpec) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       integer_named_edge(
         name: ^integer_interval_field_inclusive_min,
@@ -917,9 +917,9 @@ fn int_ge(a: Int, b: Int) -> Bool {
 
 fn int_div_result(a: Int, b: Int) -> Result<Int, DivError> {
   if int_is_zero(a: b) {
-    Err { value: DivideByZero }
+    std.error_primitives.Err { value: DivideByZero }
   } else {
-    Ok { value: a / b }
+    std.error_primitives.Ok { value: a / b }
   }
 }
 
@@ -949,7 +949,7 @@ fn integer_divide_by_zero_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.diag
   v2.std.diagnostic.Diagnostic {
     reason: ^integer_div_by_zero,
     at: at,
-    correction: Unavailable { reason: AmbiguousIntent }
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
@@ -957,7 +957,7 @@ fn integer_modulo_by_zero_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.diag
   v2.std.diagnostic.Diagnostic {
     reason: ^integer_modulo_by_zero,
     at: at,
-    correction: Unavailable { reason: AmbiguousIntent }
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 fn int_div(a: Int, b: Int, at: v2.std.diagnostic.Locus) -> Outcome<Int> {
@@ -1011,9 +1011,9 @@ fn integer_decimal_digits_snoc(
   digit: DecimalDigit
 ) -> FreeMonoid<DecimalDigit> {
   match xs {
-    Empty => Cons { head: digit, tail: Empty }
+    Empty => std.algebra.Cons { head: digit, tail: Empty }
     Cons { head, tail } =>
-      Cons { head: head, tail: integer_decimal_digits_snoc(xs: tail, digit: digit) }
+      std.algebra.Cons { head: head, tail: integer_decimal_digits_snoc(xs: tail, digit: digit) }
   }
 }
 
@@ -1213,7 +1213,7 @@ fn integer_fold_list_node_digits_optional(node: Node) -> Optional<FreeMonoid<Dec
               Accepted { value: tail_node, diagnostics: _ } =>
                 match integer_fold_list_node_digits_optional(node: tail_node) {
                   Present { value: tail_digits } =>
-                    optional_present(value: Cons { head: digit, tail: tail_digits })
+                    optional_present(value: std.algebra.Cons { head: digit, tail: tail_digits })
                   Absent => optional_absent()
                 }
               Rejected { diagnostics: _ } => optional_absent()

@@ -17,7 +17,7 @@ data pick2_ingested_swapped_source: String = "module m\n\nfn pick() -> Int { if 
 
 fn pick_eval_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     occurrence_id: SyntheticOccurrence,
     children: []
   }
@@ -31,7 +31,7 @@ fn pick_eval_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^pick_eval_runtime_rejected,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -222,7 +222,7 @@ fn pick_ingested_arrow_from_source(source: String) -> Outcome<Node> {
 
 fn pick_eval_pick_call(callee: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: callee }
@@ -232,7 +232,7 @@ fn pick_eval_pick_call(callee: Node) -> Node {
 
 fn pick_eval_tree_root(call: Node, expected: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Named { name: ^pick_eval_actual }, target: call },
@@ -264,7 +264,7 @@ fn pick_eval_inferred_run_tree(call: Node, expected: Node) -> Outcome<v2.compile
 }
 
 fn pick_eval_claim(input: Node, expected: Node) -> v2.std.verification.TestClaim {
-  CompilesClaim {
+  v2.std.verification.CompilesClaim {
     label: "execution/pick-ingested: if_expr→Branch structural lowering + eval-equals on default v2_evaluator",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: input,

@@ -14,7 +14,7 @@ fn validate_grammar_fixture_well_formed() -> v2.std.grammar.FormalGrammar {
   v2.std.grammar.FormalGrammar {
     nonterminals: Set { member: fn(n) { n == start } },
     terminals: Set { member: fn(t) { t == terminal } },
-    productions: Cons {
+    productions: std.algebra.Cons {
       head: grammar_formal_production(
         lhs: ^validate_grammar_fixture_start,
         rhs: [grammar_formal_terminal(identity: ^validate_grammar_fixture_terminal_a)]
@@ -32,7 +32,7 @@ fn validate_grammar_fixture_start_not_in_nonterminals() -> v2.std.grammar.Formal
   v2.std.grammar.FormalGrammar {
     nonterminals: Set { member: fn(n) { n == other_nt } },
     terminals: Set { member: fn(t) { t == terminal } },
-    productions: Cons {
+    productions: std.algebra.Cons {
       head: grammar_formal_production(
         lhs: ^validate_grammar_fixture_other_nt,
         rhs: [grammar_formal_terminal(identity: ^validate_grammar_fixture_terminal_a)]
@@ -49,7 +49,7 @@ fn validate_grammar_fixture_lhs_not_in_nonterminals() -> v2.std.grammar.FormalGr
   v2.std.grammar.FormalGrammar {
     nonterminals: Set { member: fn(n) { n == start } },
     terminals: Set { member: fn(t) { t == terminal } },
-    productions: Cons {
+    productions: std.algebra.Cons {
       head: grammar_formal_production(
         lhs: ^validate_grammar_fixture_bad_lhs,
         rhs: [grammar_formal_terminal(identity: ^validate_grammar_fixture_terminal_a)]
@@ -66,7 +66,7 @@ fn validate_grammar_fixture_rhs_symbol_not_in_alphabet() -> v2.std.grammar.Forma
   v2.std.grammar.FormalGrammar {
     nonterminals: Set { member: fn(n) { n == start } },
     terminals: Set { member: fn(t) { t == terminal } },
-    productions: Cons {
+    productions: std.algebra.Cons {
       head: grammar_formal_production(
         lhs: ^validate_grammar_fixture_start,
         rhs: [grammar_formal_terminal(identity: ^validate_grammar_fixture_orphan_terminal)]

@@ -130,7 +130,7 @@ test fn w_a_pattern_from_the_wrong_package_is_refused_on_every_axis() -> Bool {
 data undercounted_land_pattern: extdeps.land_pattern.types.VendorRecommendedLandPattern = extdeps.land_pattern.types.VendorRecommendedLandPattern {
   package_designator: "RSB0040A",
   drawing: tps53688rsbr.land_pattern.drawing,
-  geometry: QuadRowLandGeometry {
+  geometry: extdeps.land_pattern.types.QuadRowLandGeometry {
     lands_per_side: 9,
     pitch: micrometer(count: 400),
     side_span_centre_to_centre: micrometer(count: 4800),
@@ -175,7 +175,7 @@ test fn w_the_dimm_socket_family_owes_a_hole_pattern_it_cannot_express_as_lands(
 
 // THE POSITIVE CONTROL FOR THE SURFACE-MOUNT DISCRIMINATION. Without it, the M.2 arm below could be
 // reading a standing that is never established and the claim would still be green.
-data established_standing: extdeps.land_pattern.types.SurfaceMountPatternStanding = SurfaceMountPatternEstablished {
+data established_standing: extdeps.land_pattern.types.SurfaceMountPatternStanding = extdeps.land_pattern.types.SurfaceMountPatternEstablished {
   pattern: cdce913_pw0014a_land_pattern,
 }
 

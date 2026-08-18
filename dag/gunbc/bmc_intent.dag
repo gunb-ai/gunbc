@@ -88,11 +88,11 @@ type BmcControlPlaneIntent {
   fan_policy: BmcFanPolicyIntent
 }
 
-data fleet_bmc_fan_graceful_restart_boundary: std.state_durability.StateDurabilityBoundary = ControlPlaneRestartBoundary {
+data fleet_bmc_fan_graceful_restart_boundary: std.state_durability.StateDurabilityBoundary = std.state_durability.ControlPlaneRestartBoundary {
   mode: LifecycleGracefulRestart,
 }
 
-data fleet_bmc_fan_durability_intent: std.state_durability.StateDurabilityIntent = DurableAcross {
+data fleet_bmc_fan_durability_intent: std.state_durability.StateDurabilityIntent = std.state_durability.DurableAcross {
   boundaries: state_durability_boundary_requirements(
     first: fleet_bmc_fan_graceful_restart_boundary,
     additional: [],

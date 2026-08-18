@@ -97,7 +97,7 @@ fn roadmap_serve_route_row(spec: RoadmapServeRouteSpec) -> RoadmapServeRouteRow 
     MalformedPathTemplate { raw: r, segment: s, reason: why } =>
       RouteRowRefused { raw: r, segment: s, reason: why }
     ParsedPathTemplate { template: tpl } =>
-      RouteRow { route: DynamicRoute { method: spec.method, path_pattern: tpl, handler: spec.handler } }
+      RouteRow { route: extdeps.http.server.DynamicRoute { method: spec.method, path_pattern: tpl, handler: spec.handler } }
   }
 }
 

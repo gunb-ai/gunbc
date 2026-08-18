@@ -12,14 +12,14 @@ fn pdp_marker_token_class() -> v2.std.node.Symbol {
 fn pdp_render(decl: Node) -> Outcome<v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold> {
   outcome_accepted(
     v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold {
-      prefix: [FixedToken { token_class: pdp_marker_token_class() }],
+      prefix: [v2.std.compilers.target_model.FixedToken { token_class: pdp_marker_token_class() }],
       suffix: []
     }
   )
 }
 
 fn pdp_wired_support() -> v2.std.compilers.target_model.ProducedDeclSupport {
-  ProducedDeclWired {
+  v2.std.compilers.target_model.ProducedDeclWired {
     render: pdp_render,
     scaffold_relation_rule_name: ^pdp_relation_rule,
     scaffold_base_row: target_model_type_atom_node(identity: ^pdp_base_row)

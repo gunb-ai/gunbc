@@ -225,10 +225,10 @@ fn module_subject_of(source: String) -> List<v2.std.node.Symbol> {
 }
 
 fn subject_admission(segments: List<v2.std.node.Symbol>) -> v2.compiler.name_resolve.Admission {
-  let reversed = fold_list(xs: segments, empty: Empty, cons: fn(acc, seg) { Cons { head: seg, tail: acc } })
+  let reversed = fold_list(xs: segments, empty: Empty, cons: fn(acc, seg) { std.algebra.Cons { head: seg, tail: acc } })
   v2.compiler.name_resolve.Admission {
     subject: v2.compiler.name_resolve.ResolutionSubject {
-      name: fold_list(xs: reversed, empty: Empty, cons: fn(acc, seg) { Cons { head: seg, tail: acc } })
+      name: fold_list(xs: reversed, empty: Empty, cons: fn(acc, seg) { std.algebra.Cons { head: seg, tail: acc } })
     },
     imports: Empty
   }
@@ -236,7 +236,7 @@ fn subject_admission(segments: List<v2.std.node.Symbol>) -> v2.compiler.name_res
 
 fn member_parse_rows(ingest: v2.compiler.source_authority.SourceRootIngest) -> List<RealizationSweepRow> {
   fold_list(xs: ingest, empty: no_sweep_rows(), cons: fn(acc, r) {
-    let singleton = Cons { head: r, tail: Empty }
+    let singleton = std.algebra.Cons { head: r, tail: Empty }
     let rows = fold_list(
       xs: attempt_closure_rows(
         ingest: singleton,

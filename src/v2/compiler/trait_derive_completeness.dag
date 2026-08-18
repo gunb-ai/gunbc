@@ -9,7 +9,7 @@ type TraitDeriveCompletenessGate
 
 fn trait_derive_int_kernel_type_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^int_kernel_type_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^int_kernel_type_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -17,7 +17,7 @@ fn trait_derive_int_kernel_type_node() -> Node {
 
 fn trait_derive_unit_kernel_type_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^unit_kernel_type_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^unit_kernel_type_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -78,33 +78,33 @@ fn repr_grounding_derive_traits_for_collection_witness(
 ) -> List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
   match witness {
     TargetCollectionWitnessOrd { type_param: _ } =>
-      Cons {
+      std.algebra.Cons {
         head: ReprDeriveOrd,
-        tail: Cons {
+        tail: std.algebra.Cons {
           head: ReprDerivePartialOrd,
-          tail: Cons {
+          tail: std.algebra.Cons {
             head: ReprDeriveEq,
-            tail: Cons {
+            tail: std.algebra.Cons {
               head: ReprDerivePartialEq,
-              tail: Cons { head: ReprDeriveClone, tail: Empty }
+              tail: std.algebra.Cons { head: ReprDeriveClone, tail: Empty }
             }
           }
         }
       }
     TargetCollectionWitnessHash { type_param: _ } =>
-      Cons {
+      std.algebra.Cons {
         head: ReprDeriveEq,
-        tail: Cons {
+        tail: std.algebra.Cons {
           head: ReprDerivePartialEq,
-          tail: Cons { head: ReprDeriveClone, tail: Empty }
+          tail: std.algebra.Cons { head: ReprDeriveClone, tail: Empty }
         }
       }
     TargetCollectionWitnessEq { type_param: _ } =>
-      Cons {
+      std.algebra.Cons {
         head: ReprDeriveEq,
-        tail: Cons {
+        tail: std.algebra.Cons {
           head: ReprDerivePartialEq,
-          tail: Cons { head: ReprDeriveClone, tail: Empty }
+          tail: std.algebra.Cons { head: ReprDeriveClone, tail: Empty }
         }
       }
   }

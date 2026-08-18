@@ -90,7 +90,7 @@ test fn witness_converge_cli_verify_output_projects_receipt() -> Bool {
     Present { value: receipt } =>
       let cli_receipt = converge_cli_receipt_from_memory_cap_verify(
         host: "srv3",
-        result: RunnerMemoryCapVerifyObserved { receipt: receipt },
+        result: gunbc.host_runner_memory_cap_verify.RunnerMemoryCapVerifyObserved { receipt: receipt },
       )
       converge_cli_receipt_line(r: cli_receipt) == "converge-receipt host=srv3 applied=3 drifted=0 verdict=converged"
     Absent => false

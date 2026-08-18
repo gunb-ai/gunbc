@@ -14,11 +14,11 @@ data fixture_subject: FixtureReadbackSubject = FixtureReadbackSubject {
   path: "/etc/fixture-policy",
 }
 
-data fixture_boundary: std.state_durability.StateDurabilityBoundary = ControlPlaneRestartBoundary {
+data fixture_boundary: std.state_durability.StateDurabilityBoundary = std.state_durability.ControlPlaneRestartBoundary {
   mode: LifecycleGracefulRestart,
 }
 
-data fixture_wrong_boundary: std.state_durability.StateDurabilityBoundary = SoftwareReplacementBoundary {
+data fixture_wrong_boundary: std.state_durability.StateDurabilityBoundary = std.state_durability.SoftwareReplacementBoundary {
   scope: ControlPlaneFirmwareReplacement,
 }
 
@@ -31,7 +31,7 @@ data fixture_digest_b: extdeps.crypto.hash.Digest = sha256_digest(
 )
 
 fn fixture_definition_linkage(reason: std.types.NonEmptyStr) -> std.state_durability.StateDefinitionLinkage {
-  CallerAssertedDefinitionLinkage {
+  std.state_durability.CallerAssertedDefinitionLinkage {
     reason: reason,
     dissolution: symbol_index_subtree_digest_dissolution,
   }
@@ -117,7 +117,7 @@ fn fixture_activation(
   admission: StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
   receipt_id: std.types.NonEmptyStr,
 ) -> StateActivationEvidence<FixtureTarget, FixtureReadbackSubject> {
-  ActivationVerified {
+  std.state_durability.ActivationVerified {
     receipt: std.state_durability.StateActivationReceipt {
       perturbation_receipt_id: receipt_id,
       target: admission.target,
@@ -180,7 +180,7 @@ fn fixture_evidence(
         count: positive_measure_count(predecessor: 19),
       ),
     },
-    outcome: StatePreserved {
+    outcome: std.state_durability.StatePreserved {
       before: fixture_before_readback(
         receipt_id: readback_receipt_id,
         digest: before,
@@ -212,7 +212,7 @@ fn durable_verdict(
   evidence: List<StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject>>,
 ) -> StateDurabilityVerdict<FixtureTarget, FixtureReadbackSubject> {
   state_durability_verdict(
-    intent: DurableAcross {
+    intent: std.state_durability.DurableAcross {
       boundaries: state_durability_boundary_requirements(
         first: fixture_boundary,
         additional: [],
@@ -243,7 +243,7 @@ test fn direct_duplicate_boundary_literal_reaches_typed_counted_refusal() -> Boo
     additional_unique: [fixture_boundary, fixture_boundary],
   }
   match state_durability_verdict(
-    intent: DurableAcross { boundaries: duplicated },
+    intent: std.state_durability.DurableAcross { boundaries: duplicated },
     admission: current_admission(),
     capability: Present { value: current_capability() },
     evidence: [matching_evidence()],
@@ -327,7 +327,7 @@ test fn caller_asserted_definitions_cannot_buy_durable_qualification() -> Bool {
 
 test fn realization_identity_change_invalidates_old_receipt() -> Bool {
   match state_durability_verdict(
-    intent: DurableAcross {
+    intent: std.state_durability.DurableAcross {
       boundaries: state_durability_boundary_requirements(
         first: fixture_boundary,
         additional: [],
@@ -356,7 +356,7 @@ test fn realization_identity_change_invalidates_old_receipt() -> Bool {
 
 test fn capability_definition_change_invalidates_old_receipt() -> Bool {
   match state_durability_verdict(
-    intent: DurableAcross {
+    intent: std.state_durability.DurableAcross {
       boundaries: state_durability_boundary_requirements(
         first: fixture_boundary,
         additional: [],

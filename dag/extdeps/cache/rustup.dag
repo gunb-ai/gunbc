@@ -17,7 +17,7 @@ data rustup_toolchain_store_facts: extdeps.cache.types.CacheInterfaceCatalogFact
   transport_encoding: CatalogOpaqueStringEncoding
   key_derivation: {
 
-    key_inputs: NativeInternal { cited_inputs: [ToolchainSpec] }
+    key_inputs: extdeps.cache.types.NativeInternal { cited_inputs: [ToolchainSpec] }
     overwritable: false
     prefix_fallback_allowed: false
     content_verified_on_read: true
@@ -41,7 +41,7 @@ data rustup_toolchain_store_facts: extdeps.cache.types.CacheInterfaceCatalogFact
   evidence: [
     {
       field: "key_derivation"
-      evidence: VendorCitation {
+      evidence: std.cache_interface.VendorCitation {
         source: "rustup toolchain installation layout"
         url: "https://rust-lang.github.io/rustup/overrides.html"
       }

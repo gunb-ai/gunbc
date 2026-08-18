@@ -9,7 +9,7 @@ type LensComplexityClaim {
 }
 
 data ts_task_complexity_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: ts_task_type_alias_emitted() }
   ],
@@ -18,14 +18,14 @@ data ts_task_complexity_input: Node = v2.std.node.Node {
 
 data ts_task_complexity_claim: LensComplexityClaim = LensComplexityClaim {
   input: ts_task_complexity_input,
-  expected_cost: LinearCost { variable: v2.lens.cost.SizeVariable { source: ts_task_complexity_input } },
+  expected_cost: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: ts_task_complexity_input } },
   expected_complexity: linear_complexity(
     size_var: v2.lens.cost.SizeVariable { source: ts_task_complexity_input }
   ),
   falsification: v2.std.diagnostic.Diagnostic {
     reason: ^ts_task_complexity_reason,
-    at: Textual { file: ^ts_task_complexity_file, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^ts_task_complexity_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 

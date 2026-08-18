@@ -16,7 +16,7 @@ fn text_char_eq(a: std.types.Char, b: std.types.Char) -> Bool {
 }
 
 fn text_single(c: std.types.Char) -> String {
-  Cons { head: c, tail: Empty }
+  std.algebra.Cons { head: c, tail: Empty }
 }
 
 test fn text_string_freemonoid_carrier_holds() -> Bool {

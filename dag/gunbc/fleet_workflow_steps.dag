@@ -19,7 +19,7 @@ module gunbc.fleet_workflow_steps
 // does not have.
 
 fn ci_checkout_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Checkout" },
     id: none,
     uses: checkout_action,
@@ -38,7 +38,7 @@ fn ci_prelude_steps_with_checkout(checkout: extdeps.github.actions.Step, exact_h
     checkout,
   ] |> concat(exact_head_preflight) |> concat([
     ci_isolate_toolchain_step(),
-    UsesStep {
+    extdeps.github.actions.UsesStep {
       name: Present { value: "Setup Rust" },
       id: none,
       uses: setup_rust_action,
@@ -57,7 +57,7 @@ fn ci_prelude_steps_with_checkout(checkout: extdeps.github.actions.Step, exact_h
       timeout_minutes: none
     },
     ci_native_cache_root_step(),
-    RunStep {
+    extdeps.github.actions.RunStep {
       name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
       id: none,
       run: ci_pin_rustup_default_script(),
@@ -68,7 +68,7 @@ fn ci_prelude_steps_with_checkout(checkout: extdeps.github.actions.Step, exact_h
       continue_on_error: none,
       timeout_minutes: none
     },
-    UsesStep {
+    extdeps.github.actions.UsesStep {
       name: Present { value: "Cache Cargo" },
       id: none,
       uses: cache_action,
@@ -92,7 +92,7 @@ fn ci_prelude_steps() -> List<extdeps.github.actions.Step> {
 }
 
 fn ci_isolate_toolchain_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Isolate toolchain dirs" },
     id: none,
     run: ci_isolate_toolchain_script(build_jobs_count: ci_cargo_build_jobs_count()),
@@ -106,7 +106,7 @@ fn ci_isolate_toolchain_step() -> extdeps.github.actions.Step {
 }
 
 fn ci_native_cache_root_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: ci_native_cache_derive_step_name },
     id: none,
     run: ci_native_cache_root_script(),
@@ -154,7 +154,7 @@ fn ci_cargo_build_jobs_count() -> Int {
 // condition ever consumes either id, restore the constant first and derive both sides from it.
 // (Class and history: tidy-pike-117, 2026-08-15; consumer census verified at this head.)
 fn ci_release_build_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Build release bins (claim_executor + gunbc)" },
     id: Present { value: "release_build" },
     run: ci_release_build_script(),
@@ -168,7 +168,7 @@ fn ci_release_build_step() -> extdeps.github.actions.Step {
 }
 
 fn ci_release_bins_pack_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Pack release bins for cross-job handoff (tar keeps exec bits)" },
     id: none,
     run: ci_release_bins_pack_script(),
@@ -182,7 +182,7 @@ fn ci_release_bins_pack_step() -> extdeps.github.actions.Step {
 }
 
 fn ci_release_bins_upload_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Upload release-bins artifact" },
     id: none,
     uses: upload_artifact_action,
@@ -203,7 +203,7 @@ fn ci_release_bins_upload_step() -> extdeps.github.actions.Step {
 }
 
 fn ci_release_bins_download_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Download release-bins artifact" },
     id: none,
     uses: download_artifact_action,
@@ -218,7 +218,7 @@ fn ci_release_bins_download_step() -> extdeps.github.actions.Step {
 }
 
 fn ci_release_bins_unpack_verify_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)" },
     id: Present { value: "release_bins" },
     run: ci_release_bins_unpack_verify_script(),
@@ -232,7 +232,7 @@ fn ci_release_bins_unpack_verify_step() -> extdeps.github.actions.Step {
 }
 
 fn ci_fleet_wif_auth_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)" },
     id: Present { value: "wif_auth" },
     uses: google_auth_action,
@@ -252,7 +252,7 @@ fn ci_fleet_wif_auth_step() -> extdeps.github.actions.Step {
 }
 
 fn ci_fleet_key_agent_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)" },
     id: none,
     run: gunbc_ci_fleet_key_agent_script(),
@@ -268,7 +268,7 @@ fn ci_fleet_key_agent_step() -> extdeps.github.actions.Step {
 }
 
 fn ci_fleet_key_agent_cleanup_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Kill the in-run ssh-agent (key never outlives the job)" },
     id: none,
     run: gunbc_ci_fleet_key_agent_cleanup_script(),
@@ -284,7 +284,7 @@ fn ci_fleet_key_agent_cleanup_step() -> extdeps.github.actions.Step {
 data ci_native_cache_derive_step_name: String = "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
 
 fn ci_native_cache_root_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: ci_native_cache_derive_step_name },
     id: none,
     run: ci_native_cache_root_script(),
@@ -304,7 +304,7 @@ fn ci_prelude_steps_with_checkout(checkout: extdeps.github.actions.Step, exact_h
     checkout,
   ] |> concat(exact_head_preflight) |> concat([
     ci_isolate_toolchain_step(),
-    UsesStep {
+    extdeps.github.actions.UsesStep {
       name: Present { value: "Setup Rust" },
       id: none,
       uses: setup_rust_action,
@@ -323,7 +323,7 @@ fn ci_prelude_steps_with_checkout(checkout: extdeps.github.actions.Step, exact_h
       timeout_minutes: none
     },
     ci_native_cache_root_step(),
-    RunStep {
+    extdeps.github.actions.RunStep {
       name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
       id: none,
       run: ci_pin_rustup_default_script(),
@@ -334,7 +334,7 @@ fn ci_prelude_steps_with_checkout(checkout: extdeps.github.actions.Step, exact_h
       continue_on_error: none,
       timeout_minutes: none
     },
-    UsesStep {
+    extdeps.github.actions.UsesStep {
       name: Present { value: "Cache Cargo" },
       id: none,
       uses: cache_action,
@@ -356,7 +356,7 @@ fn ci_prelude_steps_with_checkout(checkout: extdeps.github.actions.Step, exact_h
 data ci_release_bins_artifact_name: String = "release-bins"
 
 fn ci_release_bins_pack_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Pack release bins for cross-job handoff (tar keeps exec bits)" },
     id: none,
     run: ci_release_bins_pack_script(),

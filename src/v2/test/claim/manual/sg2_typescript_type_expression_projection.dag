@@ -10,7 +10,7 @@ data ts_sg2_expected_disj_text: String = "X | Y"
 
 fn ts_sg2_pass_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^ts_sg2_pass_sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ts_sg2_pass_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -18,7 +18,7 @@ fn ts_sg2_pass_node() -> Node {
 
 fn ts_sg2_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^ts_sg2_fail_sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ts_sg2_fail_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -221,7 +221,7 @@ fn ts_sg2_instantiation_delimiters_bidirectional() -> Bool {
     row.instantiation_form.close == ^ts_token_gt
 }
 
-data claim_ts_sg2_projection_structural: v2.std.verification.TestClaim = EqualsClaim {
+data claim_ts_sg2_projection_structural: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/sg2-ts: Instantiation projects to golden FooBar<X,Y> emitted node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_sg2_project_instantiation_emitted(),
@@ -229,7 +229,7 @@ data claim_ts_sg2_projection_structural: v2.std.verification.TestClaim = EqualsC
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_serialize_falsification: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_serialize_falsification: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: serialized generic apply is FooBar<X, Y>",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_serialize_matches_expected()),
@@ -237,7 +237,7 @@ data claim_ts_sg2_serialize_falsification: v2.std.verification.TestClaim = Compi
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_arrow_projection_structural: v2.std.verification.TestClaim = EqualsClaim {
+data claim_ts_sg2_arrow_projection_structural: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/sg2-ts: Arrow projects to golden fat-arrow emitted node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_sg2_project_arrow_emitted(),
@@ -245,7 +245,7 @@ data claim_ts_sg2_arrow_projection_structural: v2.std.verification.TestClaim = E
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_conj_projection_structural: v2.std.verification.TestClaim = EqualsClaim {
+data claim_ts_sg2_conj_projection_structural: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/sg2-ts: Conj record projects to golden structural record emitted node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_sg2_project_conj_emitted(),
@@ -253,7 +253,7 @@ data claim_ts_sg2_conj_projection_structural: v2.std.verification.TestClaim = Eq
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_disj_projection_structural: v2.std.verification.TestClaim = EqualsClaim {
+data claim_ts_sg2_disj_projection_structural: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/sg2-ts: Disj union projects to golden sum emitted node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_sg2_project_disj_emitted(),
@@ -261,7 +261,7 @@ data claim_ts_sg2_disj_projection_structural: v2.std.verification.TestClaim = Eq
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_arrow_serialize: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_arrow_serialize: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: serialized arrow is (X) => Y",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_arrow_serialize_matches_expected()),
@@ -269,7 +269,7 @@ data claim_ts_sg2_arrow_serialize: v2.std.verification.TestClaim = CompilesClaim
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_arrow_labeled_serialize: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_arrow_labeled_serialize: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: serialized labeled arrow is (X: X) => Y",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_arrow_labeled_serialize_matches_expected()),
@@ -277,7 +277,7 @@ data claim_ts_sg2_arrow_labeled_serialize: v2.std.verification.TestClaim = Compi
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_arrow_positional_wire_shape: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_arrow_positional_wire_shape: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: positional golden arrow wire classifies as PositionalWire",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_arrow_positional_wire_shape()),
@@ -285,7 +285,7 @@ data claim_ts_sg2_arrow_positional_wire_shape: v2.std.verification.TestClaim = C
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_arrow_labeled_wire_shape: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_arrow_labeled_wire_shape: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: labeled golden arrow wire classifies as LabeledWire",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_arrow_labeled_wire_shape()),
@@ -293,7 +293,7 @@ data claim_ts_sg2_arrow_labeled_wire_shape: v2.std.verification.TestClaim = Comp
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_arrow_mixed_wire_shape_rejects: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_arrow_mixed_wire_shape_rejects: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: mixed positional+labeled arrow wire-shape rejects fail-closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_arrow_mixed_wire_rejects()),
@@ -301,7 +301,7 @@ data claim_ts_sg2_arrow_mixed_wire_shape_rejects: v2.std.verification.TestClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_arrow_mixed_wire_decode_rejects: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_arrow_mixed_wire_decode_rejects: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: mixed positional+labeled arrow wire decode rejects fail-closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_arrow_mixed_wire_decode_rejects()),
@@ -309,7 +309,7 @@ data claim_ts_sg2_arrow_mixed_wire_decode_rejects: v2.std.verification.TestClaim
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_arrow_mixed_wire_labeled_accessors_reject: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_arrow_mixed_wire_labeled_accessors_reject: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: mixed positional+labeled arrow labeled accessors reject fail-closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_arrow_mixed_wire_labeled_accessors_reject()),
@@ -317,7 +317,7 @@ data claim_ts_sg2_arrow_mixed_wire_labeled_accessors_reject: v2.std.verification
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_conj_serialize: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_conj_serialize: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: serialized conj record is { X, Y } (structural; field labels gated)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_conj_serialize_matches_expected()),
@@ -325,7 +325,7 @@ data claim_ts_sg2_conj_serialize: v2.std.verification.TestClaim = CompilesClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_disj_serialize: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_disj_serialize: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: serialized disj union is X | Y",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_disj_serialize_matches_expected()),
@@ -333,7 +333,7 @@ data claim_ts_sg2_disj_serialize: v2.std.verification.TestClaim = CompilesClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_binary_fn_projection: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_binary_fn_projection: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: substrate binary-fn Arrow projects n-ary inputs + output",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_binary_fn_projection_accepts()),
@@ -341,7 +341,7 @@ data claim_ts_sg2_binary_fn_projection: v2.std.verification.TestClaim = Compiles
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_arrow_malformed_rejects: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_arrow_malformed_rejects: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: Arrow with fewer than two positional children rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_arrow_malformed_projection_rejects()),
@@ -349,7 +349,7 @@ data claim_ts_sg2_arrow_malformed_rejects: v2.std.verification.TestClaim = Compi
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_bidirectional_delimiters: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_bidirectional_delimiters: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: instantiation_form delimiters are bidirectional lex token classes",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_instantiation_delimiters_bidirectional()),
@@ -357,7 +357,7 @@ data claim_ts_sg2_bidirectional_delimiters: v2.std.verification.TestClaim = Comp
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_ts_sg2_wire_decode_instantiation: v2.std.verification.TestClaim = CompilesClaim {
+data claim_ts_sg2_wire_decode_instantiation: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2-ts: wire decode accepts golden instantiation emitted node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_sg2_claim_input(ok: ts_sg2_wire_decode_accepts(emitted: ts_sg2_foobar_xy_emitted())),

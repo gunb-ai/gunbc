@@ -20,7 +20,7 @@ fn synthetic_routed_row(
 }
 
 fn probe_green(family: String, id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
-  WindowObserved {
+  v2.compiler.self_host.parity_window.WindowObserved {
     receipt: v2.compiler.self_host.parity_window.ParityWindowReceipt {
       family: family,
       cadence_window_id: id,
@@ -32,7 +32,7 @@ fn probe_green(family: String, id: String, seq: Int) -> v2.compiler.self_host.pa
 }
 
 fn probe_red(family: String, id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
-  WindowObserved {
+  v2.compiler.self_host.parity_window.WindowObserved {
     receipt: v2.compiler.self_host.parity_window.ParityWindowReceipt {
       family: family,
       cadence_window_id: id,
@@ -166,7 +166,7 @@ test fn witness_post_flip_red_window_latches_revert() -> Bool {
   let with_red = concat(
     meet_join_local_observations(),
     [
-      WindowObserved {
+      v2.compiler.self_host.parity_window.WindowObserved {
         receipt: v2.compiler.self_host.parity_window.ParityWindowReceipt {
           family: "meet_join",
           cadence_window_id: "main-29963619401",
@@ -180,7 +180,7 @@ test fn witness_post_flip_red_window_latches_revert() -> Bool {
   let with_red_then_green = concat(
     with_red,
     [
-      WindowObserved {
+      v2.compiler.self_host.parity_window.WindowObserved {
         receipt: v2.compiler.self_host.parity_window.ParityWindowReceipt {
           family: "meet_join",
           cadence_window_id: "later-green",

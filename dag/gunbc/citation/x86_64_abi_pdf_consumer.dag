@@ -46,7 +46,7 @@ fn x86_64_abi_pdf_retrieval_observation_from_hex(hex: String) -> X86_64AbiPdfRet
   match x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: hex) {
     X86_64AbiPdfValidatedDigestConstructed(digest) =>
       X86_64AbiPdfRetrievalObserved(
-        RepresentationRetrieved {
+        std.citation.RepresentationRetrieved {
           request: std.citation.CitationRetrievalRequest {
             locator: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri,
           },
@@ -187,7 +187,7 @@ fn x86_64_abi_syscall_evidence_link_construction() -> X86_64AbiEvidenceLinkConst
           probe_independence: gunbc.readback_independence.ReadBackProbe {
             label: "independent-byte-extraction-receipt" as std.types.NonEmptyStr,
             subject: "x86-64-abi-pdf-raw-response-body" as std.types.NonEmptyStr,
-            effect_on_subject: ProbeMayEstablish {
+            effect_on_subject: gunbc.readback_independence.ProbeMayEstablish {
               mechanism: "wet retrieval hashes bytes independently of authored pin",
             },
           },
@@ -240,21 +240,21 @@ fn x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
   match pdf_open_nameddest_wire_from_scalar_code_points(name: name, code_points: code_points) {
     PdfProfileParameterWireRefused { parameter: p, cause: cause } =>
       X86_64AbiPdfNavigableUriRefused {
-        cause: PdfOpenParameterPercentEncodeRefusedFromSafe { parameter: p, cause: cause },
+        cause: gunbc.citation.pdf_safe_profile.PdfOpenParameterPercentEncodeRefusedFromSafe { parameter: p, cause: cause },
       }
     PdfProfileParameterWired { wire: wire } =>
       match navigable_uri_projection_from_sequence_wire(
         base: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri,
-        sequence_wire: PdfOpenParameterSequenceWired { wire: wire },
+        sequence_wire: extdeps.standards.rfc_8118.PdfOpenParameterSequenceWired { wire: wire },
       ) {
         NavigableUriProjected { uri: u } => X86_64AbiPdfNavigableUriProjected { uri: u }
         NavigableUriRefused { cause: BaseLocatorAlreadyCarriesFragment { locator: l } } =>
           X86_64AbiPdfNavigableUriRefused {
-            cause: BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l },
+            cause: gunbc.citation.pdf_safe_profile.BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l },
           }
         NavigableUriRefused { cause: PdfOpenParameterPercentEncodeRefused { parameter: p, cause: c } } =>
           X86_64AbiPdfNavigableUriRefused {
-            cause: PdfOpenParameterPercentEncodeRefusedFromSafe { parameter: p, cause: c },
+            cause: gunbc.citation.pdf_safe_profile.PdfOpenParameterPercentEncodeRefusedFromSafe { parameter: p, cause: c },
           }
       }
   }

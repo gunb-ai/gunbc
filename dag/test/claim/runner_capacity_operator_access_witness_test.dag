@@ -64,7 +64,7 @@ test fn witness_srv3_privilege_not_inferred_from_srv1() -> Bool {
 
 test fn witness_add_slots_execution_target_is_in_band_local_shell() -> Bool {
   match runner_capacity_execution_target_for_action(
-    action: RunnerCapacityAddSlots { host: operator_host_srv3 },
+    action: gunbc.runner_capacity_operator_access.RunnerCapacityAddSlots { host: operator_host_srv3 },
   ) {
     RunnerCapacityExecuteInBand { host_label: l, transport: t } =>
       (l as String) == "srv3" && t == LocalShell
@@ -74,7 +74,7 @@ test fn witness_add_slots_execution_target_is_in_band_local_shell() -> Bool {
 
 test fn witness_recover_host_execution_target_is_hosted_ssh() -> Bool {
   match runner_capacity_execution_target_for_action(
-    action: RunnerCapacityRecoverHost { host: operator_host_srv3 },
+    action: gunbc.runner_capacity_operator_access.RunnerCapacityRecoverHost { host: operator_host_srv3 },
   ) {
     RunnerCapacityExecuteHostedRemote { host: h, transport: t, reason: r } =>
       (h as String) == (operator_host_srv3 as String)

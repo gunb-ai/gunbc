@@ -11,7 +11,7 @@ fn audit_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_J19302B1RYEQZVMM6TG9" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: audit_id,
-    line: AuthoredLine { done: true, content: "**fail-open audit**" },
+    line: gunbc.roadmap_status.AuthoredLine { done: true, content: "**fail-open audit**" },
     carriers: [gunbc.roadmap_model.Pointer { label: "plan", path: "docs/plans/fail-closed-lockdown.md" }],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
@@ -24,7 +24,7 @@ fn status_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_AJ7G9SDD8FFX86WHFYQB" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: status_id,
-    line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
+    line: gunbc.roadmap_status.DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
@@ -36,7 +36,7 @@ fn child_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_ABYCNZ3BDSY98CHYC51T" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_id,
-    line: AuthoredLine { done: false, content: "**host-fed status bridge**" },
+    line: gunbc.roadmap_status.AuthoredLine { done: false, content: "**host-fed status bridge**" },
     carriers: [],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
@@ -64,8 +64,8 @@ fn expansion_section() -> gunbc.roadmap_document.RoadmapSection {
 
 fn preamble() -> List<std.markdown.MarkdownBlock> {
   [
-    HeadingBlock { level: H1, inlines: [TextInline { text: "ROADMAP" }] },
-    ParagraphBlock { inlines: [TextInline { text: "Generated from .dag authority — do not hand-edit." }] },
+    std.markdown.HeadingBlock { level: H1, inlines: [std.markdown.TextInline { text: "ROADMAP" }] },
+    std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: "Generated from .dag authority — do not hand-edit." }] },
   ]
 }
 

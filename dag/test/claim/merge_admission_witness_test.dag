@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data roster_surface_only_variant: List<gunbc.commit_workflow.CommitCheckEnrollment> = concat(
   [gunbc.commit_workflow.CommitCheckEnrollment {
-    check: CommitSpecGate { gate: EmitHostGate },
+    check: gunbc.commit_workflow.CommitSpecGate { gate: EmitHostGate },
     surfaces: [GitPrePushHook]
   }],
   commit_gate_roster.skip(n: 1)

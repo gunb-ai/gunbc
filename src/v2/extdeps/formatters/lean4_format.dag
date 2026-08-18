@@ -9,7 +9,7 @@ fn lean4_format_authoritative_locus() -> v2.std.diagnostic.Locus {
 }
 
 fn lean4_nat_succ(n: v2.std.nat.Nat) -> v2.std.nat.Nat {
-  Succ { prev: n }
+  v2.std.nat.Succ { prev: n }
 }
 
 fn lean4_nat_add_ten(n: v2.std.nat.Nat) -> v2.std.nat.Nat {
@@ -70,7 +70,7 @@ fn lean4_nat_peano_from_non_negative_int(value: Int) -> v2.std.nat.Nat {
   if value == 0 {
     Zero
   } else {
-    Succ { prev: lean4_nat_peano_from_non_negative_int(value: value - 1) }
+    v2.std.nat.Succ { prev: lean4_nat_peano_from_non_negative_int(value: value - 1) }
   }
 }
 
@@ -81,7 +81,7 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: v2.std.diagnostic.Locu
         d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_out_of_range,
           at: at,
-          correction: Unavailable { reason: UserInputBoundary }
+          correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
         }
       )
     }
@@ -91,7 +91,7 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: v2.std.diagnostic.Locu
         d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_exceeds_ceiling,
           at: at,
-          correction: Unavailable { reason: UserInputBoundary }
+          correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
         }
       )
     }
@@ -110,7 +110,7 @@ fn make_lean4_nat_value(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<Lean
         d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_out_of_range,
           at: at,
-          correction: Unavailable { reason: UserInputBoundary }
+          correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
         }
       )
     }
@@ -120,7 +120,7 @@ fn make_lean4_nat_value(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<Lean
         d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_exceeds_ceiling,
           at: at,
-          correction: Unavailable { reason: UserInputBoundary }
+          correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
         }
       )
     }

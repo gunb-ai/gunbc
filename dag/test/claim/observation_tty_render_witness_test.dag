@@ -16,11 +16,11 @@ fn pipe_cap() -> std.render.RenderCapability {
 fn tty_entry_subject() -> std.observation.ObservationSubject {
   std.observation.ObservationSubject {
     segments: [
-      RunSegment { id: "30044816605" as std.types.NonEmptyStr },
-      BatchSegment { index: 3, label: "witness discovery" as std.types.NonEmptyStr },
-      EntrySegment { source_path: "dag/test/claim/effect_reach_test.dag" as std.types.NonEmptyStr },
-      ModuleSegment { module_path: "v2.compiler.normalized_tree" as std.types.NonEmptyStr },
-      PhaseSegment { name: "typecheck" as std.types.NonEmptyStr }
+      std.observation.RunSegment { id: "30044816605" as std.types.NonEmptyStr },
+      std.observation.BatchSegment { index: 3, label: "witness discovery" as std.types.NonEmptyStr },
+      std.observation.EntrySegment { source_path: "dag/test/claim/effect_reach_test.dag" as std.types.NonEmptyStr },
+      std.observation.ModuleSegment { module_path: "v2.compiler.normalized_tree" as std.types.NonEmptyStr },
+      std.observation.PhaseSegment { name: "typecheck" as std.types.NonEmptyStr }
     ]
   }
 }
@@ -57,11 +57,11 @@ test fn w_non_addressable_terminal_always_appends() -> Bool {
 test fn w_refusal_never_repaints_away() -> Bool {
   let refusal = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr } },
+    transition: std.observation.Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr } },
     durations: observation_durations_wall(elapsed: nanosecond(count: 2472000000000)),
-    rss: MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: refusal, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
+  match tty_event_emission_under(event: refusal, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
     TtyEmissionProjected { emission: e } => e.line.attention == Anomaly && e.cursor == Append
     TtyEmissionRefused { cause: _ } => false
   }
@@ -70,11 +70,11 @@ test fn w_refusal_never_repaints_away() -> Bool {
 test fn w_same_event_drives_both_surfaces() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
-    rss: MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
+  match tty_event_emission_under(event: event, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
     TtyEmissionProjected { emission: e } =>
       string_contains(s: tty_render_emission(emission: e, tier: Emoji), pattern: "in 230ms")
     TtyEmissionRefused { cause: _ } => false
@@ -85,11 +85,11 @@ test fn w_unavailable_basis_refuses_with_exact_cause() -> Bool {
   let cause = "no signed basis for this subject" as std.types.NonEmptyStr
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
-    rss: MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: event, basis: MeasuredUnavailable { cause: cause }, cap: tty_cap()) {
+  match tty_event_emission_under(event: event, basis: std.observation.MeasuredUnavailable { cause: cause }, cap: tty_cap()) {
     TtyEmissionProjected { emission: _ } => false
     TtyEmissionRefused { cause: c } => c == cause
   }
@@ -98,11 +98,11 @@ test fn w_unavailable_basis_refuses_with_exact_cause() -> Bool {
 test fn w_clean_final_appends_even_when_ambient() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: Concluded { outcome: Final { shown_failures: 0 } },
+    transition: std.observation.Concluded { outcome: std.observation.Final { shown_failures: 0 } },
     durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
-    rss: MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
+  match tty_event_emission_under(event: event, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
     TtyEmissionProjected { emission: e } => e.line.attention == Ambient && e.cursor == Append
     TtyEmissionRefused { cause: _ } => false
   }
@@ -113,9 +113,9 @@ test fn w_routine_begin_overwrites_on_addressable_tty() -> Bool {
     subject: tty_entry_subject(),
     transition: Begin,
     durations: observation_durations_wall_unavailable(cause: "not started" as std.types.NonEmptyStr),
-    rss: MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: event, basis: MeasuredUnavailable { cause: "basis absent" as std.types.NonEmptyStr }, cap: tty_cap()) {
+  match tty_event_emission_under(event: event, basis: std.observation.MeasuredUnavailable { cause: "basis absent" as std.types.NonEmptyStr }, cap: tty_cap()) {
     TtyEmissionProjected { emission: e } => e.line.attention == Ambient && e.cursor == Overwrite
     TtyEmissionRefused { cause: _ } => false
   }
@@ -124,12 +124,12 @@ test fn w_routine_begin_overwrites_on_addressable_tty() -> Bool {
 test fn w_tty_strict_facade_equals_measured_value_projection() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
-    rss: MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
   let strict = tty_event_emission(event: event, basis: tty_basis(), cap: tty_cap())
-  match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
+  match tty_event_emission_under(event: event, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
     TtyEmissionProjected { emission: projected } => strict == projected
     TtyEmissionRefused { cause: _ } => false
   }
@@ -140,9 +140,9 @@ test fn w_nonaddressable_routine_composes_to_plain_append_wire() -> Bool {
     subject: tty_entry_subject(),
     transition: Begin,
     durations: observation_durations_wall_unavailable(cause: "not started" as std.types.NonEmptyStr),
-    rss: MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: pipe_cap()) {
+  match tty_event_emission_under(event: event, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: pipe_cap()) {
     TtyEmissionRefused { cause: _ } => false
     TtyEmissionProjected { emission: e } =>
       let rendered = tty_render_emission(emission: e, tier: Ascii)
@@ -166,11 +166,11 @@ test fn w_nonaddressable_routine_composes_to_plain_append_wire() -> Bool {
 test fn w_addressable_refusal_persists_via_exact_closed_append_wire() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: Concluded { outcome: Refused { diagnostic: "policy" as std.types.NonEmptyStr } },
+    transition: std.observation.Concluded { outcome: Refused { diagnostic: "policy" as std.types.NonEmptyStr } },
     durations: observation_durations_wall_unavailable(cause: "clock absent" as std.types.NonEmptyStr),
-    rss: MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: event, basis: MeasuredUnavailable { cause: "basis absent" as std.types.NonEmptyStr }, cap: tty_cap()) {
+  match tty_event_emission_under(event: event, basis: std.observation.MeasuredUnavailable { cause: "basis absent" as std.types.NonEmptyStr }, cap: tty_cap()) {
     TtyEmissionRefused { cause: _ } => false
     TtyEmissionProjected { emission: e } =>
       let rendered = tty_render_emission(emission: e, tier: Emoji)
@@ -203,7 +203,7 @@ test fn w_blocked_line_carries_holder_and_bounded_remaining() -> Bool {
   let bounded = tty_blocked_line(blocked: std.observation.BlockedOn {
     resource: MemoryBudget,
     holders: [tty_entry_subject()],
-    remaining: RemainingBounded { by: millisecond(count: 80000) }
+    remaining: std.observation.RemainingBounded { by: millisecond(count: 80000) }
   })
   string_contains(s: bounded.text, pattern: "1 holder(s)") &&
   string_contains(s: bounded.text, pattern: "80 seconds remaining") &&
@@ -214,7 +214,7 @@ test fn w_blocked_line_names_why_remaining_is_unknown() -> Bool {
   let unknown = tty_blocked_line(blocked: std.observation.BlockedOn {
     resource: MemoryBudget,
     holders: [tty_entry_subject()],
-    remaining: RemainingUnknown { cause: "governor exposes no reclaim bound" as std.types.NonEmptyStr }
+    remaining: std.observation.RemainingUnknown { cause: "governor exposes no reclaim bound" as std.types.NonEmptyStr }
   })
   string_contains(s: unknown.text, pattern: "no estimate (governor exposes no reclaim bound)") &&
   !string_contains(s: unknown.text, pattern: "remaining")

@@ -15,7 +15,7 @@ test fn corpus_init_round_trips() -> Bool {
 }
 
 test fn bool_witness_init_round_trips() -> Bool {
-  let init: v2.compiler.discovery_enumeration.OwnedDataDeclInitializer = OwnedBoolWitnessClaimInit {
+  let init: v2.compiler.discovery_enumeration.OwnedDataDeclInitializer = v2.compiler.discovery_enumeration.OwnedBoolWitnessClaimInit {
     witness_entry: "entry.dag",
     witness_function: "witness_fn"
   }
@@ -27,7 +27,7 @@ test fn bool_witness_init_round_trips() -> Bool {
 }
 
 test fn other_init_round_trips() -> Bool {
-  let init: v2.compiler.discovery_enumeration.OwnedDataDeclInitializer = OwnedOtherInit {
+  let init: v2.compiler.discovery_enumeration.OwnedDataDeclInitializer = v2.compiler.discovery_enumeration.OwnedOtherInit {
     resolved: v2.compiler.discovery_enumeration.ResolvedDeclRef { module: "v2.example", name: ^sym }
   }
   match init {

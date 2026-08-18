@@ -3,9 +3,9 @@ module v2.test.claim.algebra.freemonoid_first_skip_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_list() -> FreeMonoid<Int> {
-  Cons {
+  std.algebra.Cons {
     head: 1,
-    tail: Cons { head: 2, tail: Cons { head: 3, tail: Empty } }
+    tail: std.algebra.Cons { head: 2, tail: std.algebra.Cons { head: 3, tail: Empty } }
   }
 }
 

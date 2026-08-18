@@ -61,8 +61,8 @@ fn fixture_file_revisions() -> List<extdeps.mercurial.MercurialFileRevision> {
     },
     extdeps.mercurial.MercurialFileRevision {
       node: hg_file_executable,
-      parents: MercurialOneParent { parent: hg_file_regular },
-      copy: MercurialCopiedFrom {
+      parents: extdeps.mercurial.MercurialOneParent { parent: hg_file_regular },
+      copy: extdeps.mercurial.MercurialCopiedFrom {
         path: hg_path_regular,
         file_revision: hg_file_regular,
       },
@@ -115,7 +115,7 @@ fn fixture_changesets() -> List<extdeps.mercurial.MercurialChangeset> {
     extdeps.mercurial.MercurialChangeset {
       node: hg_c1,
       manifest: hg_manifest,
-      parents: MercurialOneParent { parent: hg_c0 },
+      parents: extdeps.mercurial.MercurialOneParent { parent: hg_c0 },
       branch: "default",
       branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
@@ -125,7 +125,7 @@ fn fixture_changesets() -> List<extdeps.mercurial.MercurialChangeset> {
     extdeps.mercurial.MercurialChangeset {
       node: hg_c2,
       manifest: hg_manifest,
-      parents: MercurialOneParent { parent: hg_c0 },
+      parents: extdeps.mercurial.MercurialOneParent { parent: hg_c0 },
       branch: "default",
       branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
@@ -204,7 +204,7 @@ fn fixture_projection_contents_with_local_revisions(
         revision: "portable-upstream-revision",
       },
     ],
-    evolution: MercurialEvolutionMarkers {
+    evolution: extdeps.mercurial.MercurialEvolutionMarkers {
       markers: [
         extdeps.mercurial.MercurialObsolescenceMarker {
           predecessor: hg_c1,
@@ -219,7 +219,7 @@ fn fixture_projection_contents_with_local_revisions(
 fn fixture_projection_with_local_revisions(
   local_revisions: List<extdeps.mercurial.MercurialLocalRevisionEntry>,
 ) -> extdeps.mercurial.MercurialRepositoryProjection {
-  MercurialPartialProjection {
+  extdeps.mercurial.MercurialPartialProjection {
     contents: fixture_projection_contents_with_local_revisions(
       local_revisions: local_revisions,
     ),
@@ -523,7 +523,7 @@ test fn witness_mercurial_execution_receipt_binds_native_distinctions() -> Bool 
 }
 
 test fn witness_mercurial_present_identity_cannot_be_declared_missing() -> Bool {
-  let invalid = MercurialPartialProjection {
+  let invalid = extdeps.mercurial.MercurialPartialProjection {
     contents: fixture_projection_contents(),
     missing_changesets: [hg_c0],
     missing_manifests: [],
@@ -538,7 +538,7 @@ test fn witness_mercurial_present_identity_cannot_be_declared_missing() -> Bool 
 }
 
 test fn witness_mercurial_inaccessible_projection_cannot_carry_repository_facts() -> Bool {
-  let inaccessible = MercurialInaccessibleProjection {
+  let inaccessible = extdeps.mercurial.MercurialInaccessibleProjection {
     reason: "repository permission denied",
   }
   let mapped = mercurial_projection_map_contents(
@@ -568,7 +568,7 @@ test fn witness_mercurial_inaccessible_projection_cannot_carry_repository_facts(
 }
 
 test fn witness_mercurial_empty_inaccessible_projection_stays_unavailable() -> Bool {
-  let inaccessible = MercurialInaccessibleProjection {
+  let inaccessible = extdeps.mercurial.MercurialInaccessibleProjection {
     reason: "repository permission denied",
   }
   match mercurial_decode_projection(projection: inaccessible) {
@@ -684,8 +684,8 @@ test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
   let projection_contents = fixture_projection_contents()
   let broken = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
-    parents: MercurialOneParent { parent: hg_file_regular },
-    copy: MercurialCopiedFrom {
+    parents: extdeps.mercurial.MercurialOneParent { parent: hg_file_regular },
+    copy: extdeps.mercurial.MercurialCopiedFrom {
       path: hg_path_regular,
       file_revision: hg_file_undeclared,
     },
@@ -719,8 +719,8 @@ test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabrica
   let projection_contents = fixture_projection_contents()
   let partial = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
-    parents: MercurialOneParent { parent: hg_file_regular },
-    copy: MercurialCopiedFrom {
+    parents: extdeps.mercurial.MercurialOneParent { parent: hg_file_regular },
+    copy: extdeps.mercurial.MercurialCopiedFrom {
       path: hg_path_regular,
       file_revision: hg_file_missing,
     },
@@ -956,7 +956,7 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
   let broken = extdeps.mercurial.MercurialChangeset {
     node: hg_c2,
     manifest: hg_manifest,
-    parents: MercurialOneParent { parent: hg_missing_c },
+    parents: extdeps.mercurial.MercurialOneParent { parent: hg_missing_c },
     branch: "default",
     branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",
@@ -982,7 +982,7 @@ test fn witness_mercurial_duplicate_changeset_parent_refuses() -> Bool {
   let duplicate_parent = extdeps.mercurial.MercurialChangeset {
     node: hg_c2,
     manifest: hg_manifest,
-    parents: MercurialTwoParents { first: hg_c0, second: hg_c0 },
+    parents: extdeps.mercurial.MercurialTwoParents { first: hg_c0, second: hg_c0 },
     branch: "default",
     branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",
@@ -1009,7 +1009,7 @@ test fn witness_mercurial_changeset_self_parent_refuses_as_cycle() -> Bool {
   let self_parent = extdeps.mercurial.MercurialChangeset {
     node: hg_c2,
     manifest: hg_manifest,
-    parents: MercurialOneParent { parent: hg_c2 },
+    parents: extdeps.mercurial.MercurialOneParent { parent: hg_c2 },
     branch: "default",
     branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",
@@ -1035,7 +1035,7 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
   let cycle_left = extdeps.mercurial.MercurialChangeset {
     node: hg_c1,
     manifest: hg_manifest,
-    parents: MercurialOneParent { parent: hg_c2 },
+    parents: extdeps.mercurial.MercurialOneParent { parent: hg_c2 },
     branch: "default",
     branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",
@@ -1045,7 +1045,7 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
   let cycle_right = extdeps.mercurial.MercurialChangeset {
     node: hg_c2,
     manifest: hg_manifest,
-    parents: MercurialOneParent { parent: hg_c1 },
+    parents: extdeps.mercurial.MercurialOneParent { parent: hg_c1 },
     branch: "default",
     branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",
@@ -1080,14 +1080,14 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
 test fn witness_mercurial_file_revision_cycle_refuses() -> Bool {
   let cycle_regular = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_regular,
-    parents: MercurialOneParent { parent: hg_file_executable },
+    parents: extdeps.mercurial.MercurialOneParent { parent: hg_file_executable },
     copy: MercurialNotCopied,
     content: octets_bytes(o: [109, 97, 105, 110]),
   }
   let cycle_executable = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
-    parents: MercurialOneParent { parent: hg_file_regular },
-    copy: MercurialCopiedFrom {
+    parents: extdeps.mercurial.MercurialOneParent { parent: hg_file_regular },
+    copy: extdeps.mercurial.MercurialCopiedFrom {
       path: hg_path_regular,
       file_revision: hg_file_regular,
     },
@@ -1118,11 +1118,11 @@ test fn witness_mercurial_file_revision_cycle_refuses() -> Bool {
 test fn witness_mercurial_duplicate_file_revision_parent_refuses() -> Bool {
   let duplicate_parent = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
-    parents: MercurialTwoParents {
+    parents: extdeps.mercurial.MercurialTwoParents {
       first: hg_file_regular,
       second: hg_file_regular,
     },
-    copy: MercurialCopiedFrom {
+    copy: extdeps.mercurial.MercurialCopiedFrom {
       path: hg_path_regular,
       file_revision: hg_file_regular,
     },
@@ -1153,7 +1153,7 @@ test fn witness_mercurial_duplicate_file_revision_parent_refuses() -> Bool {
 
 test fn witness_mercurial_observed_non_head_refuses() -> Bool {
   let invalid = projection_with_heads(
-    projection: MercurialCompleteProjection {
+    projection: extdeps.mercurial.MercurialCompleteProjection {
       contents: fixture_projection_contents(),
     },
     heads: [extdeps.mercurial.MercurialHead { changeset: hg_c0 }],
@@ -1183,7 +1183,7 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
     extdeps.mercurial.MercurialChangeset {
       node: hg_c1,
       manifest: hg_manifest,
-      parents: MercurialOneParent { parent: hg_c0 },
+      parents: extdeps.mercurial.MercurialOneParent { parent: hg_c0 },
       branch: "feature",
       branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
@@ -1193,7 +1193,7 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
     extdeps.mercurial.MercurialChangeset {
       node: hg_c2,
       manifest: hg_manifest,
-      parents: MercurialOneParent { parent: hg_c1 },
+      parents: extdeps.mercurial.MercurialOneParent { parent: hg_c1 },
       branch: "default",
       branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
@@ -1202,7 +1202,7 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
     },
   ]
   let with_changesets = projection_with_changesets(
-    projection: MercurialCompleteProjection {
+    projection: extdeps.mercurial.MercurialCompleteProjection {
       contents: fixture_projection_contents(),
     },
     changesets: changesets,
@@ -1238,7 +1238,7 @@ fn fixture_projection_with_closed_right_head() -> extdeps.mercurial.MercurialRep
     }
   )
   projection_with_changesets(
-    projection: MercurialCompleteProjection {
+    projection: extdeps.mercurial.MercurialCompleteProjection {
       contents: fixture_projection_contents(),
     },
     changesets: closed,
@@ -1285,7 +1285,7 @@ test fn witness_mercurial_partial_capture_does_not_invent_exact_head_set() -> Bo
       missing_changesets: _,
       missing_manifests,
       missing_file_revisions,
-    } => MercurialPartialProjection {
+    } => extdeps.mercurial.MercurialPartialProjection {
       contents: contents,
       missing_changesets: [hg_missing_c],
       missing_manifests: missing_manifests,
@@ -1304,7 +1304,7 @@ test fn witness_mercurial_two_parent_merge_decodes_with_derived_head() -> Bool {
   let merge = extdeps.mercurial.MercurialChangeset {
     node: hg_c2,
     manifest: hg_manifest,
-    parents: MercurialTwoParents { first: hg_c0, second: hg_c1 },
+    parents: extdeps.mercurial.MercurialTwoParents { first: hg_c0, second: hg_c1 },
     branch: "default",
     branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",

@@ -26,7 +26,7 @@ test fn witness_many_results_classify_ambiguous() -> Bool {
 
 test fn witness_cheap_exact_match_is_ready_to_list() -> Bool {
   match assess_intake(
-    card_match: ExactMatch { product_id: 12345 },
+    card_match: gunbc.tools.card_intake.ExactMatch { product_id: 12345 },
     market_price: Present { value: 12.5 },
     high_value_threshold: 50.0
   ) {
@@ -37,7 +37,7 @@ test fn witness_cheap_exact_match_is_ready_to_list() -> Bool {
 
 test fn witness_high_value_card_is_flagged() -> Bool {
   match assess_intake(
-    card_match: ExactMatch { product_id: 12345 },
+    card_match: gunbc.tools.card_intake.ExactMatch { product_id: 12345 },
     market_price: Present { value: 120.0 },
     high_value_threshold: 50.0
   ) {
@@ -48,7 +48,7 @@ test fn witness_high_value_card_is_flagged() -> Bool {
 
 test fn witness_threshold_price_is_flagged() -> Bool {
   match assess_intake(
-    card_match: ExactMatch { product_id: 12345 },
+    card_match: gunbc.tools.card_intake.ExactMatch { product_id: 12345 },
     market_price: Present { value: 50.0 },
     high_value_threshold: 50.0
   ) {
@@ -59,7 +59,7 @@ test fn witness_threshold_price_is_flagged() -> Bool {
 
 test fn witness_unpriced_card_is_flagged() -> Bool {
   match assess_intake(
-    card_match: ExactMatch { product_id: 12345 },
+    card_match: gunbc.tools.card_intake.ExactMatch { product_id: 12345 },
     market_price: none,
     high_value_threshold: 50.0
   ) {
@@ -81,7 +81,7 @@ test fn witness_unmatched_card_is_flagged() -> Bool {
 
 test fn witness_ambiguous_high_value_collects_both_reasons() -> Bool {
   match assess_intake(
-    card_match: AmbiguousMatch { candidate_count: 4 },
+    card_match: gunbc.tools.card_intake.AmbiguousMatch { candidate_count: 4 },
     market_price: Present { value: 200.0 },
     high_value_threshold: 50.0
   ) {
@@ -100,7 +100,7 @@ test fn witness_ready_to_list_disposition() -> Bool {
 }
 
 test fn witness_needs_review_disposition() -> Bool {
-  let d = NeedsReview { reasons: [] |> list_push(HighValue) }
+  let d = gunbc.tools.card_intake.NeedsReview { reasons: [] |> list_push(HighValue) }
   match d {
     NeedsReview { reasons: rs } => count(rs) == 1 && any(rs, r => r == HighValue)
     ReadyToList => false

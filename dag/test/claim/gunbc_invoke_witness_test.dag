@@ -49,7 +49,7 @@ test fn gunbc_invoke_deploy_pre_migration_golden_red_on_wrong_entry_holds() -> B
 test fn gunbc_invoke_source_root_flags_authority_holds() -> Bool {
   witness_layer_source_flags(roots: witness_layer_roots) ==
     source_roots_shell_flags(roots: witness_layer_roots, style: SourceRootBare)
-    && source_roots_shell_flags(roots: witness_layer_roots, style: SourceRootRooted { root_var: "$ROOT" }) ==
+    && source_roots_shell_flags(roots: witness_layer_roots, style: gunbc.cli_invoke.SourceRootRooted { root_var: "$ROOT" }) ==
       concat(" --source-root \"$ROOT/dag\"", " --source-root \"$ROOT/src/v2\"")
 }
 

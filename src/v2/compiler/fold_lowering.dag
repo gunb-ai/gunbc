@@ -5,7 +5,7 @@ data fold_lowering_note: String = "The un-forked forward lowering for fold — t
 
 fn fold_iteration_measure_atom() -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Atom { identity: ^dag_surface_fold_iteration_measure } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_surface_fold_iteration_measure } },
     children: []
   )
 }
@@ -70,7 +70,7 @@ fn fold_lowering_not_a_fold_call_diagnostic(n: Node) -> v2.std.diagnostic.Diagno
   v2.std.diagnostic.Diagnostic {
     reason: ^fold_lowering_not_a_fold_call,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -78,20 +78,20 @@ fn fold_lowering_shape_invalid_diagnostic(n: Node) -> v2.std.diagnostic.Diagnost
   v2.std.diagnostic.Diagnostic {
     reason: ^fold_lowering_shape_invalid,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 fn fold_carrier_binder_atom(binder: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Atom { identity: binder } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binder } },
     children: []
   )
 }
 
 fn fold_call_seam_loop(body: Node, carrier: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: body },
       v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: fold_iteration_measure_atom() },

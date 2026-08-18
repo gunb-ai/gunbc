@@ -91,7 +91,7 @@ fn loop_bound_undeclared_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_undeclared,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -99,7 +99,7 @@ fn loop_bound_ambiguous_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_ambiguous,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -107,7 +107,7 @@ fn loop_bound_malformed_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_malformed,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -115,7 +115,7 @@ fn loop_bound_not_loop_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_not_loop,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -124,20 +124,20 @@ fn loop_measure_node(n: Node) -> Witness<Node> {
     ComputationNode { behavior: Loop } => {
       let bound_count = name_occurrences(name: ^loop_bound_edge, children: n.children)
       if bound_count == 0 {
-        Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
+        v2.std.witness.Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
       } else if bound_count > 1 {
-        Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
+        v2.std.witness.Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
       } else if !loop_behavior_edges_conform(children: n.children) {
-        Violates { diagnostic: loop_bound_malformed_diagnostic(n: n) }
+        v2.std.witness.Violates { diagnostic: loop_bound_malformed_diagnostic(n: n) }
       } else {
         match loop_bound_measure_target(children: n.children) {
           Found { target: measure } => Holds { value: measure }
-          Ambiguous => Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
-          Absent => Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
+          Ambiguous => v2.std.witness.Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
+          Absent => v2.std.witness.Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
         }
       }
     }
-    _ => Violates { diagnostic: loop_bound_not_loop_diagnostic(n: n) }
+    _ => v2.std.witness.Violates { diagnostic: loop_bound_not_loop_diagnostic(n: n) }
   }
 }
 
@@ -161,7 +161,7 @@ fn multiplicity_termination_witness(n: Node, m: Multiplicity) -> Witness<Termina
   match m {
     Bounded => Holds { value: structural_node_size_termination_proof() }
     RequiresTerminationProof =>
-      Violates { diagnostic: cardinality_descent_not_proven_diagnostic(n: n) }
+      v2.std.witness.Violates { diagnostic: cardinality_descent_not_proven_diagnostic(n: n) }
     ProvenTermination { proof } => Holds { value: proof }
   }
 }
@@ -273,7 +273,7 @@ fn measure_dimension_rows(registry: List<MeasureDescentFact>, measure: Node) -> 
         Conj =>
           fold(measure.children, init: Empty, f: fn(acc, e) {
             fold(measure_dimension_rows(registry: registry, measure: e.target), init: acc, f: fn(acc2, row) {
-              Cons { head: row, tail: acc2 }
+              std.algebra.Cons { head: row, tail: acc2 }
             })
           })
         Disj => measure_dimension_unknown_rows()
@@ -325,7 +325,7 @@ fn non_strict_dimensions_after_first(rows: List<MeasureDimensionEvidence>) -> Li
     } else {
       LexicographicSplit {
         strict_taken: acc.strict_taken,
-        non_increasing: Cons { head: row.dimension, tail: acc.non_increasing }
+        non_increasing: std.algebra.Cons { head: row.dimension, tail: acc.non_increasing }
       }
     }
   })
@@ -389,7 +389,7 @@ fn cardinality_descent_not_proven_diagnostic(n: Node) -> v2.std.diagnostic.Diagn
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_descent_not_proven,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -435,6 +435,6 @@ fn loop_bound_witness_for_node(n: Node) -> Witness<LoopBound> {
           termination: termination_proof_witness_for_node(n: n)
         }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }

@@ -2,13 +2,13 @@ module v2.test.lens_fact_density.fact_bundle_compile_lens_passes
 
 
 data fact_bundle_cl_child: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^fact_bundle_cl_child_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fact_bundle_cl_child_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data fact_bundle_cl_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^fact_bundle_cl_field_name },
@@ -47,14 +47,14 @@ fn fact_bundle_compile_lens_passes_rhs() -> Node {
     fact_bundle_cl_authority
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_fact_bundle_compile_lens_passes: v2.std.verification.TestClaim = EqualsClaim {
+data claim_fact_bundle_compile_lens_passes: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_fact_density/fact_bundle_compile_lens_passes: NamedFieldFacts root admitted by fact_density_lens",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: fact_bundle_cl_authority,

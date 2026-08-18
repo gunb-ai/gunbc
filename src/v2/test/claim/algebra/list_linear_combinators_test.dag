@@ -4,7 +4,7 @@ module v2.test.claim.algebra.list_linear_combinators
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample() -> FreeMonoid<Int> {
-  Cons { head: 1, tail: Cons { head: 2, tail: Cons { head: 3, tail: Empty } } }
+  std.algebra.Cons { head: 1, tail: std.algebra.Cons { head: 2, tail: std.algebra.Cons { head: 3, tail: Empty } } }
 }
 
 fn list_eq(xs: FreeMonoid<Int>, ys: FreeMonoid<Int>) -> Bool {
@@ -55,7 +55,7 @@ test fn flat_map_concatenates_groups_in_order() -> Bool {
 test fn flat_map_drops_empty_groups() -> Bool {
   list_eq(
     xs: list_flat_map(xs: sample(), f: fn(x) {
-      if x == 2 { Empty } else { Cons { head: x, tail: std.algebra.Empty } }
+      if x == 2 { Empty } else { std.algebra.Cons { head: x, tail: std.algebra.Empty } }
     }),
     ys: [1, 3]
   )

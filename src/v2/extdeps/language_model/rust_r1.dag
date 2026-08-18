@@ -2,16 +2,16 @@ module v2.test.language_model.rust_r1
 
 fn rust_r1_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^rust_r1_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^rust_r1_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^rust_r1_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^rust_r1_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_rust_r1_fixture_pair_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_rust_r1_fixture_pair_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/rust_r1: fixture pair references rust_surface_spelling_i32 fact anchors",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: rust_r1_claim_bool_atom(b: true),
@@ -27,8 +27,8 @@ data claim_rust_r1_fixture_pair_wired: v2.std.verification.TestClaim = EqualsCla
 fn rust_r1_pending_verification_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^rust_r1_pending_verification_reason,
-    at: Textual { file: ^rust_r1_pending_verification_reason, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: ^rust_r1_pending_verification_reason, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -42,7 +42,7 @@ data rust_r1_verification_run_receipt_default: v2.std.leaf_model_verification.Le
   )
 }
 
-data claim_rust_r1_verification_receipt_shape: v2.std.verification.TestClaim = EqualsClaim {
+data claim_rust_r1_verification_receipt_shape: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/rust_r1: verification receipt carriers happy + falsification verdict slots",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: rust_r1_claim_bool_atom(
@@ -57,7 +57,7 @@ fn rust_r1_fixture_pair_carries_rust_dag_fact_anchors() -> Bool {
     && rust_r1_fixture().coercion_spelling_fact == ^rust_coercion_field_i32_spelling
 }
 
-data claim_rust_r1_surface_spelling_fact_ids_stable: v2.std.verification.TestClaim = EqualsClaim {
+data claim_rust_r1_surface_spelling_fact_ids_stable: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/rust_r1: fixture pair carries rust.dag i32 surface-spelling fact anchors",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: rust_r1_claim_bool_atom(b: rust_r1_fixture_pair_carries_rust_dag_fact_anchors()),
@@ -65,6 +65,6 @@ data claim_rust_r1_surface_spelling_fact_ids_stable: v2.std.verification.TestCla
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data rust_r1_modeled_falsification_expectation: v2.std.leaf_model_verification.TargetCompileVerdict = TargetCompileRejected {
+data rust_r1_modeled_falsification_expectation: v2.std.leaf_model_verification.TargetCompileVerdict = v2.std.leaf_model_verification.TargetCompileRejected {
   diagnostic_code: ^target_diagnostic_e0308_type_mismatch
 }

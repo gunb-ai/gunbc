@@ -4,7 +4,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn branch_infer_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -24,7 +24,7 @@ fn branch_infer_if_body_from_arms(
   else_arm: Node
 ) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Branch },
+    kind: v2.std.node.ComputationNode { behavior: Branch },
     children: [
       v2.std.node.Edge { label: Positional, target: condition },
       v2.std.node.Edge { label: Positional, target: then_arm },

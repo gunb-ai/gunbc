@@ -9,18 +9,18 @@ fn observe_generated_artifact(a: gunbc.generated_artifact.GeneratedArtifact) -> 
   let path = artifact_path(a: a)
   let committed = Filesystem.Read(path: path)
   if !committed.success {
-    GeneratedArtifactObservationRefused { artifact: a, path: path, cause: concat("committed read failed: ", committed.error) }
+    gunbc.generated_artifact_assessment.GeneratedArtifactObservationRefused { artifact: a, path: path, cause: concat("committed read failed: ", committed.error) }
   } else {
     match artifact_generate(a: a) {
       ArtifactGenerationRefused { reason } =>
-        GeneratedArtifactObservationRefused { artifact: a, path: path, cause: concat("generation refused: ", reason) }
+        gunbc.generated_artifact_assessment.GeneratedArtifactObservationRefused { artifact: a, path: path, cause: concat("generation refused: ", reason) }
       ArtifactGenerated { content } =>
-        GeneratedArtifactObserved {
+        gunbc.generated_artifact_assessment.GeneratedArtifactObserved {
           artifact: a,
           path: path,
           generated_content: content,
           committed_content: committed.content,
-          extra_validation: artifact_extra_valid(a: a, generated: ArtifactGenerated { content: content })
+          extra_validation: artifact_extra_valid(a: a, generated: gunbc.generated_artifact_emit.ArtifactGenerated { content: content })
         }
     }
   }

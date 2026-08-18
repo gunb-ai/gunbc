@@ -22,9 +22,9 @@ fn claim_realization() -> gunbc.roadmap_execution_contract.CapabilityRealization
 }
 
 fn admitted_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
-  ExecutionContract {
+  gunbc.roadmap_execution_contract.ExecutionContract {
     validations: [
-      GunbcClaimValidation {
+      gunbc.roadmap_execution_contract.GunbcClaimValidation {
         entry: "dag/test/claim/example_test.dag" as std.types.FilePath,
         function: "example_holds" as std.types.NonEmptyStr,
       },
@@ -39,7 +39,7 @@ fn grounded_receipt(
 ) -> gunbc.roadmap_dispatch_environment.CapabilityEnsureReceipt {
   capability_ensure_receipt(
     realization: realization,
-    observation: EnsureObserved { evidence: evidence },
+    observation: gunbc.ensure.EnsureObserved { evidence: evidence },
     identity_matches: true,
   )
 }
@@ -110,7 +110,7 @@ test fn missing_capability_realization_refuses() -> Bool {
 test fn observe_only_absence_never_fabricates_apply() -> Bool {
   let receipt = capability_ensure_receipt(
     realization: claim_realization(),
-    observation: EnsureAbsent { reason: "gunbc missing" },
+    observation: gunbc.ensure.EnsureAbsent { reason: "gunbc missing" },
     identity_matches: false,
   )
   !receipt.grounded
@@ -128,7 +128,7 @@ test fn may_apply_without_a_typed_plan_still_refuses() -> Bool {
   }
   let receipt = capability_ensure_receipt(
     realization: realization,
-    observation: EnsureAbsent { reason: "cargo missing" },
+    observation: gunbc.ensure.EnsureAbsent { reason: "cargo missing" },
     identity_matches: false,
   )
   !receipt.grounded
@@ -163,7 +163,7 @@ data empty_validation_contract_refusal_note: String = "review 44043 predicate di
 
 test fn empty_validation_contract_refuses_with_its_own_reason() -> Bool {
   match dispatch_environment_admission_decision(
-    contract: ExecutionContract { validations: [], extra_capabilities: [] },
+    contract: gunbc.roadmap_execution_contract.ExecutionContract { validations: [], extra_capabilities: [] },
     receipts: [],
     validation_summary: "",
   ) {

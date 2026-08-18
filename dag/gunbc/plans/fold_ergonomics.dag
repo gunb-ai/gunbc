@@ -40,6 +40,6 @@ data fold_ergonomics_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "fold-ergonomics",
   title: "Plan — fold ergonomics: make the fold the path of least resistance",
   body: fold_ergonomics_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the fold is reachable by default — generic inference no longer forces typed-param workarounds (Root B closed), the realization side grounds into the model with no per-site `_ => false` bridges (Root A closed), and the inert-abstraction lens gates new residue on the floor. At that point the absent residue + the green lens *are* the authority and this charter is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the fold is reachable by default — generic inference no longer forces typed-param workarounds (Root B closed), the realization side grounds into the model with no per-site `_ => false` bridges (Root A closed), and the inert-abstraction lens gates new residue on the floor. At that point the absent residue + the green lens *are* the authority and this charter is redundant.")
   }
 }

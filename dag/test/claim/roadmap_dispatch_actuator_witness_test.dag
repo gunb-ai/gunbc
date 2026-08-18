@@ -9,9 +9,9 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap_m
   gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: roadmap_dispatch_actuator_nid(s: id),
-    line: DerivableLine { prs: prs, title: title, description: "" },
+    line: gunbc.roadmap_status.DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
-    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    sizing: gunbc.roadmap_model.Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
@@ -53,7 +53,7 @@ test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
   let high = resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
-    node_sizing: Sized {
+    node_sizing: gunbc.roadmap_model.Sized {
       intricacy: IntricacyHigh,
       volume: VolumeMedium,
       repo: "gunbc",
@@ -63,7 +63,7 @@ test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
   let low = resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
-    node_sizing: Sized {
+    node_sizing: gunbc.roadmap_model.Sized {
       intricacy: IntricacyLow,
       volume: VolumeMedium,
       repo: "gunbc",
@@ -145,12 +145,12 @@ test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() ->
                 bundle: provider_standing_bundle_from_codex_dashboard_probes(
                   observation: gunbc.provider_standing_probe_bridge.CodexProviderDashboardProbeObservation {
                     state_root: CodexStateRootPresent,
-                    runtime: ProviderDashboardExecProbeReported {
+                    runtime: gunbc.provider_standing_probe_bridge.ProviderDashboardExecProbeReported {
                       succeeded: true,
                       stdout: "codex-cli 0.145.0",
                       stderr: "",
                     },
-                    auth: ProviderDashboardExecProbeReported {
+                    auth: gunbc.provider_standing_probe_bridge.ProviderDashboardExecProbeReported {
                       succeeded: true,
                       stdout: "",
                       stderr: "Logged in using ChatGPT",
@@ -244,7 +244,7 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
     node: node,
     session_uuid: "uuid-unused-by-codex",
     attempt_key: "feedfacefeedface",
-    request: SelectCodex {
+    request: gunbc.dispatch_selection.SelectCodex {
       profile: ProfileAutomatic,
       account: codex_roadmap_account_selection(),
       model: dispatch_codex_default_model,
@@ -320,7 +320,7 @@ test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool 
     ),
     session_uuid: "00000000-0000-4000-8000-000000000001",
     attempt_key: "feedfacefeedface",
-    request: SelectCodex {
+    request: gunbc.dispatch_selection.SelectCodex {
       profile: ProfileAutomatic,
       account: codex_roadmap_account_selection(),
       model: dispatch_codex_default_model,
@@ -558,7 +558,7 @@ test fn witness_name_only_observation_not_converged() -> Bool {
   )
   match classify_tmux_session(
     scope: scope,
-    obs: SessionNameObserved {
+    obs: gunbc.roadmap_dispatch_actuator.SessionNameObserved {
       session_name: "gunbc-dispatch-name-only" as std.types.NonEmptyStr,
       windows: 1,
     },
@@ -576,7 +576,7 @@ test fn witness_foreign_process_fingerprint_is_conflict() -> Bool {
   )
   match classify_dispatch_lease_upsert(
     scope: scope,
-    obs: SessionObserved {
+    obs: gunbc.roadmap_dispatch_actuator.SessionObserved {
       session_name: "gunbc-dispatch-foreign-proc" as std.types.NonEmptyStr,
       windows: 1,
       process_fingerprint: "foreign-shell" as std.types.NonEmptyStr,

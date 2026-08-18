@@ -438,7 +438,7 @@ test fn w_red_perturbed_operating_income_breaks_cross_foot() -> Bool {
     operating_expenses_total: gitlab_fy2026_operating_expenses,
     operating_income: extdeps.sec.facts.FiledSignedMonetaryFact {
       element: gitlab_fy2026_operating_income_loss.element,
-      amount: FiledSigned { value: signed_usd_negative(magnitude_count: 70481001) },
+      amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 70481001) },
       citation: gitlab_fy2026_operating_income_loss.citation,
     }
   )

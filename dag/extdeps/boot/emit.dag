@@ -88,7 +88,7 @@ fn emit_pixel_writer_payload() -> extdeps.boot.freestanding_payload.Freestanding
   let code = pixel_writer_code_bytes
   let bytes = emit_freestanding_elf64(code)
   let entry = freestanding_load_vaddr
-  EmittedPayload {
+  extdeps.boot.freestanding_payload.EmittedPayload {
     digest: freestanding_payload_digest(bytes, entry),
     entry: std.exec_format.EntryPoint { virtual_address: entry },
   }

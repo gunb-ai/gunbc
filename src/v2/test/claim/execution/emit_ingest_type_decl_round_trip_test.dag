@@ -23,7 +23,7 @@ fn type_decl_interned_symbol(spelling: String) -> v2.std.node.Symbol {
 
 fn type_decl_qualified_name_emitted(name: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: dag_inhabitant_atom(id: name) }
     ],
@@ -33,7 +33,7 @@ fn type_decl_qualified_name_emitted(name: v2.std.node.Symbol) -> Node {
 
 fn type_decl_type_expr_emitted(type_name: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -46,7 +46,7 @@ fn type_decl_type_expr_emitted(type_name: v2.std.node.Symbol) -> Node {
 
 fn type_decl_field_list_suffix_empty() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -59,7 +59,7 @@ fn type_decl_two_field_list_emitted(
   t2: v2.std.node.Symbol
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: dag_inhabitant_atom(id: f1) },
       v2.std.node.Edge { label: Positional, target: type_decl_type_expr_emitted(type_name: t1) },
@@ -73,7 +73,7 @@ fn type_decl_two_field_list_emitted(
 
 fn type_decl_field_block_emitted(fields: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: fields }
     ],
@@ -83,7 +83,7 @@ fn type_decl_field_block_emitted(fields: Node) -> Node {
 
 fn type_decl_record_emitted(name: v2.std.node.Symbol, fields: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: dag_inhabitant_atom(id: name) },
       v2.std.node.Edge { label: Positional, target: type_decl_field_block_emitted(fields: fields) }
@@ -175,9 +175,9 @@ fn type_decl_emit_source_text_with_rules(emitted: Node, rules: Node) -> Outcome<
 
 fn type_decl_lexer_token_to_concrete(token: v2.std.compilers.lexing.Token) -> v2.std.compilers.target_model.ConcreteSyntaxToken {
   if token.class == ^dag_token_ident {
-    BoundToken { token_class: ^dag_token_ident, binding: token.lexeme }
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: token.lexeme }
   } else {
-    FixedToken { token_class: token.class }
+    v2.std.compilers.target_model.FixedToken { token_class: token.class }
   }
 }
 
@@ -350,7 +350,7 @@ fn type_decl_row_with_foreign_emitted_fixture(canonical_row: Node, foreign: Node
         f: fn(tokens) {
           outcome_accepted(
             value: v2.std.node.Node {
-              kind: TypeNode { connective: Conj },
+              kind: v2.std.node.TypeNode { connective: Conj },
               children: [
                 v2.std.node.Edge {
                   label: Named { name: ^grammar_relation_field_production },
@@ -376,7 +376,7 @@ fn type_decl_row_with_foreign_emitted_fixture(canonical_row: Node, foreign: Node
 
 fn type_decl_translation_rules_with_row(row: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^grammar_relation_rules_formal_productions },

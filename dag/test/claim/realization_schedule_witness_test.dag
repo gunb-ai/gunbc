@@ -11,13 +11,13 @@ data gate_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 fn synthetic_correct_schedule() -> List<List<std.realization_schedule.Runnable>> {
   [
     [
-      RunnableSingleClaim { entry: gate_entry, function: "cheap_claim_pool_gate_passes", profile: runnable_resource_profile_negligible() },
-      RunnableSingleClaim { entry: gate_entry, function: "extdeps_external_authority_gate_passes", profile: runnable_resource_profile_negligible() },
-      RunnableSingleClaim { entry: gate_entry, function: "generated_artifact_drift_gate_passes", profile: runnable_resource_profile_negligible() }
+      std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: "cheap_claim_pool_gate_passes", profile: runnable_resource_profile_negligible() },
+      std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: "extdeps_external_authority_gate_passes", profile: runnable_resource_profile_negligible() },
+      std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: "generated_artifact_drift_gate_passes", profile: runnable_resource_profile_negligible() }
     ],
-    [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
+    [std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
     [
-      RunnableDiscoveryBatch {
+      std.realization_schedule.RunnableDiscoveryBatch {
         source_roots: ["dag"]
         scan_dirs: []
         explicit_entries: []
@@ -25,7 +25,7 @@ fn synthetic_correct_schedule() -> List<List<std.realization_schedule.Runnable>>
         exclude_substrings: []
         discovery_scope_dirs: []
       },
-      RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
+      std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
     ]
   ]
 }

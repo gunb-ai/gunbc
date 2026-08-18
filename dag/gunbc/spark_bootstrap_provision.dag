@@ -372,15 +372,15 @@ fn spark_grant_refusal_location(grant: SparkCloudGrant, cell: AccessGrantCell) -
 fn spark_cloud_grant_decision(grant: SparkCloudGrant, cell: AccessGrantCell) -> std.access.AccessDecision {
   if !principal_role_admits_operation(principal: grant.principal, op: cell.operation) {
     Deny { refusal: std.access.AccessRefusal {
-      cause: AccessSubjectNotRecognized { subject: "operation outside this principal's role ceiling; the split forbids it regardless of any binding" },
+      cause: std.access.AccessSubjectNotRecognized { subject: "operation outside this principal's role ceiling; the split forbids it regardless of any binding" },
       location: spark_grant_refusal_location(grant: grant, cell: cell) } }
   } else if !spark_grant_admits_operation(grant: grant, op: cell.operation) {
     Deny { refusal: std.access.AccessRefusal {
-      cause: AccessActionNotGranted { action: "operation outside the granted population" },
+      cause: std.access.AccessActionNotGranted { action: "operation outside the granted population" },
       location: spark_grant_refusal_location(grant: grant, cell: cell) } }
   } else if !spark_scope_admits(scope: grant.scope, resource: cell.resource) {
     Deny { refusal: std.access.AccessRefusal {
-      cause: AccessObjectNotGranted { object: "resource outside the granted scope" },
+      cause: std.access.AccessObjectNotGranted { object: "resource outside the granted scope" },
       location: spark_grant_refusal_location(grant: grant, cell: cell) } }
   } else {
     Permit
@@ -395,13 +395,13 @@ fn spark_principal_decision(standing: FleetCloudPrincipalAllocationStanding) -> 
     CloudPrincipalAllocated { principal: _, member: _, readback: _ } => Permit
     CloudPrincipalReported { principal: _, reported_member: _, source: _ } =>
       Deny { refusal: std.access.AccessRefusal {
-        cause: AccessEvidenceAbsent { evidence: "principal allocation is externally reported and not read back by this run" },
+        cause: std.access.AccessEvidenceAbsent { evidence: "principal allocation is externally reported and not read back by this run" },
         location: std.access.AccessRefusalLocation {
           profile: "spark_cloud_principal", subject: "FleetCloudConvergence",
           action: "actuate", object: "spark-cloud-population" } } }
     CloudPrincipalUnallocated { principal: _ } =>
       Deny { refusal: std.access.AccessRefusal {
-        cause: AccessSubjectNotRecognized { subject: "no allocated cloud principal" },
+        cause: std.access.AccessSubjectNotRecognized { subject: "no allocated cloud principal" },
         location: std.access.AccessRefusalLocation {
           profile: "spark_cloud_principal", subject: "FleetCloudConvergence",
           action: "actuate", object: "spark-cloud-population" } } }
@@ -863,7 +863,7 @@ fn spark_plan_demand(
 fn spark_demand_decision(demand: ExternalAccessDemand) -> std.access.AccessDecision {
   if !principal_role_admits_operation_ref(principal: demand.executor, op: demand.invocation) {
     Deny { refusal: std.access.AccessRefusal {
-      cause: AccessSubjectNotRecognized { subject: "operation outside this principal's role ceiling; no binding can admit it" },
+      cause: std.access.AccessSubjectNotRecognized { subject: "operation outside this principal's role ceiling; no binding can admit it" },
       location: std.access.AccessRefusalLocation {
         profile: "spark_access_demand",
         subject: spark_principal_label(principal: demand.executor),

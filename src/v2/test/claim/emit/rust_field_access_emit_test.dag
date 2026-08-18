@@ -7,7 +7,7 @@ data rust_field_access_emit_root: Node = dag_field_access_arrow_with_body_fixtur
 
 fn rust_field_access_emit_wrong_field_body() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
       v2.std.node.Edge {
         label: Positional,

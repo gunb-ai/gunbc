@@ -52,11 +52,11 @@ fn pmp_memo_stats_path(path: String) -> v2.compiler.parse.ParseMemoStats {
 
 fn pmp_memo_stats_report_path(path: String) -> List<Int> {
   let stats = pmp_memo_stats_path(path: path)
-  Cons {
+  std.algebra.Cons {
     head: stats.hits,
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: stats.misses,
-      tail: Cons { head: stats.lookup_calls, tail: std.algebra.Empty }
+      tail: std.algebra.Cons { head: stats.lookup_calls, tail: std.algebra.Empty }
     }
   }
 }

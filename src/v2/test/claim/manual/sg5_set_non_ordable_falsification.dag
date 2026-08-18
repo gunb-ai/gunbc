@@ -3,7 +3,7 @@ module v2.test.manual.sg5_set_non_ordable_falsification
 
 fn sg5_pass_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^sg5_pass_sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sg5_pass_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -11,7 +11,7 @@ fn sg5_pass_node() -> Node {
 
 fn sg5_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^sg5_fail_sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sg5_fail_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -36,7 +36,7 @@ fn sg5_set_non_ordable_projection_rejects() -> Bool {
   }
 }
 
-data claim_sg5_set_non_ordable_fail_closed: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg5_set_non_ordable_fail_closed: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg5: Set<NonOrdable> projection rejects (TargetCollectionRealization fallback, not BTreeSet)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg5_claim_input(ok: sg5_set_non_ordable_projection_rejects()),

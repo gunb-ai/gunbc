@@ -10,5 +10,5 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data mergeable_state_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: "MergeableState",
-  encoding: StringVariant { naming: ScreamingSnakeCase }
+  encoding: std.serialization.StringVariant { naming: ScreamingSnakeCase }
 }

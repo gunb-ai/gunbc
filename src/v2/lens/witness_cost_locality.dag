@@ -80,7 +80,7 @@ fn couples_on_data_breadth(verdict: WitnessCostLocality) -> Bool {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
 fn couples_on_layer_depth(verdict: WitnessCostLocality) -> Bool {

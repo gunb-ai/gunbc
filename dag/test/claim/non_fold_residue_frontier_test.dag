@@ -36,7 +36,7 @@ fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionConditi
 test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool {
   let verdict = frontier_row_well_formed(
     row: std.roster_frontier.FrontierRow {
-      subject: PathSubject { path: "synthetic.dag::f" },
+      subject: std.roster_frontier.PathSubject { path: "synthetic.dag::f" },
       reason: "a reason without a trigger is not a frontier row",
       dissolution: synthetic_empty_condition(text: "")
     }
@@ -48,12 +48,12 @@ test fn non_fold_residue_frontier_red_control_duplicate_path_reds() -> Bool {
   match frontier_rows_keyed_roster_build(
     rows: [
       std.roster_frontier.FrontierRow {
-        subject: PathSubject { path: "synthetic/a.dag::f" },
+        subject: std.roster_frontier.PathSubject { path: "synthetic/a.dag::f" },
         reason: "r1",
         dissolution: unbound_dissolution(description: "d1"),
       },
       std.roster_frontier.FrontierRow {
-        subject: PathSubject { path: "synthetic/a.dag::f" },
+        subject: std.roster_frontier.PathSubject { path: "synthetic/a.dag::f" },
         reason: "r2",
         dissolution: unbound_dissolution(description: "d2"),
       },

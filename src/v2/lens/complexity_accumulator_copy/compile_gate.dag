@@ -9,13 +9,13 @@ fn finding_diagnostic(f: Finding) -> v2.std.diagnostic.Diagnostic {
       v2.std.diagnostic.Diagnostic {
         reason: ^accumulator_copy_poly2_suspect,
         at: node_locus(node: n),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     Unclassifiable { at: n, cause: c } =>
       v2.std.diagnostic.Diagnostic {
         reason: c,
         at: node_locus(node: n),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
   }
 }
@@ -32,13 +32,13 @@ fn gate_ledger(findings: List<Finding>) -> GateLedger {
     f: fn(acc, finding) {
       if finding_is_suspect(f: finding) {
         GateLedger {
-          suspects: Cons { head: finding_diagnostic(f: finding), tail: acc.suspects },
+          suspects: std.algebra.Cons { head: finding_diagnostic(f: finding), tail: acc.suspects },
           refusals: acc.refusals
         }
       } else {
         GateLedger {
           suspects: acc.suspects,
-          refusals: Cons { head: finding_diagnostic(f: finding), tail: acc.refusals }
+          refusals: std.algebra.Cons { head: finding_diagnostic(f: finding), tail: acc.refusals }
         }
       }
     }
@@ -57,7 +57,7 @@ fn accumulator_copy_compile_gate(node: Node) -> Outcome<Witness<Node>> {
         diagnostics: v2.std.diagnostic.NonEmptyDiagnostics {
           head: first,
           tail: fold(ledger.refusals, init: rest, f: fn(acc, d) {
-            Cons { head: d, tail: acc }
+            std.algebra.Cons { head: d, tail: acc }
           })
         }
       }
@@ -66,7 +66,7 @@ fn accumulator_copy_compile_gate(node: Node) -> Outcome<Witness<Node>> {
         Cons { head: first, tail: rest } =>
           outcome_with_diagnostics(
             value: Holds { value: node },
-            diagnostics: Some {
+            diagnostics: v2.std.diagnostic.Some {
               diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
             }
           )
@@ -76,5 +76,5 @@ fn accumulator_copy_compile_gate(node: Node) -> Outcome<Witness<Node>> {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

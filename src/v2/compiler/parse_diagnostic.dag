@@ -24,7 +24,7 @@ fn parse_overlap_residue_stage_diagnostic_at(
     diagnostic: v2.std.diagnostic.Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
       at: at,
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     },
     evidence: GrammarChoiceAmbiguityEvidence { row: row }
   }

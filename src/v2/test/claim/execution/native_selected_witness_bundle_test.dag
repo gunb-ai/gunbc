@@ -27,7 +27,7 @@ fn selected_logic_native_member(
   function_name: std.types.NonEmptyStr,
   tree: v2.compiler.infer.InferredTree
 ) -> std.selected_witness_bundle.SelectedWitnessMember {
-  NativeSelected {
+  std.selected_witness_bundle.NativeSelected {
     witness: selected_logic_identity(function_name: function_name, tree: tree),
     realization: std.selected_witness_bundle.NativeRealizationIdentity {
       family: "logic",
@@ -43,7 +43,7 @@ fn selected_logic_plan_for(
 ) -> std.selected_witness_bundle.SelectedWitnessPlan {
   std.selected_witness_bundle.SelectedWitnessPlan {
     compiler_identity: selected_logic_compiler_identity(),
-    shard_policy: OneSelectedBundle {
+    shard_policy: std.selected_witness_bundle.OneSelectedBundle {
       reason: "Three sub-millisecond members share one Rust runtime; sharding would add process and artifact overhead without a capability boundary."
     },
     members: [
@@ -1084,7 +1084,7 @@ test fn native_selected_witness_bundle_unavailable_is_counted_holds() -> Bool {
   let unavailable = std.selected_witness_bundle.SelectedWitnessPlan {
     compiler_identity: primary.compiler_identity
     shard_policy: primary.shard_policy
-    members: concat(primary.members, [InterpreterFrontier {
+    members: concat(primary.members, [std.selected_witness_bundle.InterpreterFrontier {
       witness: std.selected_witness_bundle.SelectedWitnessIdentity {
         entry: "src/v2/test/claim/execution/unrealized_selected_witness.dag"
         function: "unrealized_selected_witness"

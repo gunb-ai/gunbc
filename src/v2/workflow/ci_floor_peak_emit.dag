@@ -125,7 +125,7 @@ fn ci_floor_peak_do(command: String) -> v2.std.orchestration.PipelineStep {
 }
 
 fn ci_floor_peak_exit_zero(command: String) -> v2.std.orchestration.Predicate {
-  ExitZero { run: ci_floor_peak_run(command: command) }
+  v2.std.orchestration.ExitZero { run: ci_floor_peak_run(command: command) }
 }
 
 fn ci_floor_peak_emit_pipeline(p: v2.std.orchestration.Pipeline) -> String {
@@ -143,7 +143,7 @@ data ci_floor_peak_path_leaf_residue_note: String = "🟡 dissolve-on: v2.std.or
 
 fn ci_floor_peak_cgroup_locate_while() -> v2.std.orchestration.PipelineStep {
   While {
-    cond: ExitZero {
+    cond: v2.std.orchestration.ExitZero {
       run: ci_floor_peak_run(command: ci_floor_peak_while_cond_command())
     },
     body: v2.std.orchestration.Pipeline {

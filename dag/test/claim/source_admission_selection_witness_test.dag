@@ -70,7 +70,7 @@ fn mint_from_files(
   let rows = project_active_source_rows(files: files)
   mint_annotation_corpus_admitted(
     tree: tree,
-    mechanism: MechanismIdentityComputed { computed: mechanism },
+    mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism },
     manifest: admit_active_source_manifest(
       rows: rows,
       expected_keys: map(rows, r => r.module_path)
@@ -194,7 +194,7 @@ test fn source_admission_cannot_mint_receipt_when_admitted_set_is_not_identity_j
     let admitted = [identity_of(file: file_beta()), identity_of(file: file_beta())]
     match mint_annotation_corpus_admitted(
       tree: trees.base,
-      mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+      mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
       manifest: admit_active_source_manifest(
         rows: observed,
         expected_keys: ["mod.beta", "mod.gamma"]
@@ -249,7 +249,7 @@ test fn source_admission_partial_walk_refuses_not_observed_with_fewer_rows() -> 
             base_tree: trees.base,
             head_tree: trees.head,
             base_receipt: Present { value: receipt },
-            head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+            head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
             head_manifest: admit_active_source_manifest(
               rows: [identity_of(file: file_beta())],
               expected_keys: ["mod.beta", "mod.gamma"]
@@ -276,7 +276,7 @@ test fn source_admission_not_merge_tree_refuses() -> Bool {
             base_tree: trees.base,
             head_tree: trees.head,
             base_receipt: Present { value: receipt },
-            head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+            head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
             head_manifest: observed_from_files(files: [file_beta()]),
           ),
           wanted: NotMergeTree,
@@ -292,7 +292,7 @@ test fn source_admission_missing_base_receipt_refuses_not_incremental_empty() ->
       base_tree: trees.base,
       head_tree: trees.head,
       base_receipt: none,
-      head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+      head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
       head_manifest: observed_from_files(files: [file_beta()]),
     )
     refusal_is(sel: sel, wanted: BaseReceiptAbsent)
@@ -335,7 +335,7 @@ test fn source_admission_identical_manifest_is_unchanged_noop_not_empty_incremen
         let sel = select_with_receipt(
           trees: trees,
           receipt: receipt,
-          head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+          head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
           head_files: [file_beta(), file_gamma()],
         )
         source_admission_is_unchanged_noop(sel: sel)
@@ -357,7 +357,7 @@ test fn source_admission_content_change_selects_only_the_changed_head_row() -> B
         let sel = select_with_receipt(
           trees: trees,
           receipt: receipt,
-          head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+          head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
           head_files: [file_beta_changed(), file_gamma()],
         )
         source_admission_is_incremental(sel: sel)
@@ -378,7 +378,7 @@ test fn source_admission_removal_only_is_unchanged_noop() -> Bool {
         let sel = select_with_receipt(
           trees: trees,
           receipt: receipt,
-          head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+          head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
           head_files: [file_beta()],
         )
         source_admission_is_unchanged_noop(sel: sel)
@@ -398,7 +398,7 @@ test fn source_admission_known_mechanism_digest_change_is_entire_head_not_refuse
         let sel = select_with_receipt(
           trees: trees,
           receipt: receipt,
-          head_mechanism: MechanismIdentityComputed { computed: mechanism_b() },
+          head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_b() },
           head_files: [file_beta()],
         )
         source_admission_is_entire_head(sel: sel)
@@ -420,7 +420,7 @@ test fn source_admission_seed_to_self_emitted_is_entire_head_even_with_same_dige
           sel: select_with_receipt(
             trees: trees,
             receipt: receipt,
-            head_mechanism: MechanismIdentityComputed { computed: mechanism_self_emitted() },
+            head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_self_emitted() },
             head_files: [file_beta()],
           )
         )
@@ -447,7 +447,7 @@ test fn source_admission_deleting_higher_precedence_exposes_lower_as_incremental
         let sel = select_with_receipt(
           trees: trees,
           receipt: receipt,
-          head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+          head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
           head_files: [file_low()],
         )
         source_admission_is_incremental(sel: sel)
@@ -476,7 +476,7 @@ test fn source_admission_deleting_shadowed_loser_is_active_map_noop() -> Bool {
           sel: select_with_receipt(
             trees: trees,
             receipt: receipt,
-            head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+            head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
             head_files: [file_high()],
           )
         )
@@ -499,7 +499,7 @@ test fn source_admission_receipt_tree_mismatch_refuses() -> Bool {
             base_tree: trees.base,
             head_tree: trees.head,
             base_receipt: Present { value: receipt },
-            head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+            head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
             head_manifest: observed_from_files(files: [file_beta()]),
           ),
           wanted: BaseReceiptTreeMismatch,

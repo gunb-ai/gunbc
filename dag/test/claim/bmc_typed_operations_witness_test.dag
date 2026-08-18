@@ -109,13 +109,13 @@ test fn tach_at_controller_threshold_is_healthy() -> Bool {
 
 test fn tach_health_sensor_accessor_covers_every_arm() -> Bool {
   openbmc_tach_health_sensor(
-    health: OpenBmcTachThresholdUnstated {
+    health: extdeps.bmc.openbmc_fan_control.OpenBmcTachThresholdUnstated {
       sensor: "FAN1",
       reason: "threshold absent",
     },
   ) == "FAN1"
     && openbmc_tach_health_sensor(
-      health: OpenBmcTachBelowThreshold {
+      health: extdeps.bmc.openbmc_fan_control.OpenBmcTachBelowThreshold {
         sensor: "FAN2",
         reading_rpm: rpm(899),
         minimum_rpm: rpm(900),
@@ -123,7 +123,7 @@ test fn tach_health_sensor_accessor_covers_every_arm() -> Bool {
       },
     ) == "FAN2"
     && openbmc_tach_health_sensor(
-      health: OpenBmcTachAtOrAboveThreshold {
+      health: extdeps.bmc.openbmc_fan_control.OpenBmcTachAtOrAboveThreshold {
         sensor: "FAN3",
         reading_rpm: rpm(900),
         minimum_rpm: rpm(900),

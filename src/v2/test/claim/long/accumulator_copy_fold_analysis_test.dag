@@ -169,7 +169,7 @@ test fn computed_let_mentioning_carrier_refuses_at_unregistered_use() -> Bool {
 }
 
 fn edge_list_prepend(item: v2.std.node.Edge, xs: List<v2.std.node.Edge>) -> List<v2.std.node.Edge> {
-  Cons { head: item, tail: xs }
+  std.algebra.Cons { head: item, tail: xs }
 }
 
 fn no_edges() -> List<v2.std.node.Edge> {
@@ -177,7 +177,7 @@ fn no_edges() -> List<v2.std.node.Edge> {
 }
 
 fn opaque_head_node() -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
 fn edge_target_is_mystery(e: v2.std.node.Edge) -> Bool {

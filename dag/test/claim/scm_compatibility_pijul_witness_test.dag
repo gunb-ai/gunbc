@@ -70,7 +70,7 @@ test fn witness_pijul_missing_advance_refuses_required_capability() -> Bool {
       ) {
         CompatibilityCapabilitySatisfied =>
           match compatibility_check_advance_requirement(
-            requirement: CompatibilityModeledAdvanceRequired {
+            requirement: gunbc.scm_compatibility_shape.CompatibilityModeledAdvanceRequired {
               guarantee: CompatibilityExactCompareAndAdvance,
             },
             observed: capability,
@@ -145,7 +145,7 @@ test fn witness_pijul_unavailable_readback_refuses_binding() -> Bool {
     target: "main",
     read_back: extdeps.pijul.PijulReadBackObservation {
       pijul_version: pijul_upstream_version,
-      projection: PijulInaccessibleProjection {
+      projection: extdeps.pijul.PijulInaccessibleProjection {
         reason: "fixture unavailable",
       },
     },

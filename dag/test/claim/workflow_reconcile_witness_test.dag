@@ -22,7 +22,7 @@ fn workflow_leaf_fixture(
   revision: String,
   state: gunbc.workflow_reconcile.WorkflowFactState,
 ) -> gunbc.workflow_reconcile.WorkflowFactTree {
-  WorkflowFactLeaf {
+  gunbc.workflow_reconcile.WorkflowFactLeaf {
     fact: workflow_fact_fixture(
       obligation_id: obligation_id,
       revision: revision,
@@ -37,7 +37,7 @@ fn workflow_decomposed_fixture(
   state: gunbc.workflow_reconcile.WorkflowFactState,
   children: List<gunbc.workflow_reconcile.WorkflowFactTree>,
 ) -> gunbc.workflow_reconcile.WorkflowFactTree {
-  WorkflowFactDecomposed {
+  gunbc.workflow_reconcile.WorkflowFactDecomposed {
     fact: workflow_fact_fixture(
       obligation_id: obligation_id,
       revision: revision,

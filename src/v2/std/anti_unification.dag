@@ -4,7 +4,7 @@ module v2.std.anti_unification
 data anti_unification_hole_symbol: v2.std.node.Symbol = ^HOLE
 
 fn hole_kind() -> v2.std.node.NodeKind {
-  TypeNode { connective: Atom { identity: anti_unification_hole_symbol } }
+  v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: anti_unification_hole_symbol } }
 }
 fn hole_node() -> Node {
   node_synthetic(kind: hole_kind(), children: [])

@@ -12,8 +12,8 @@ data cron_schedule: extdeps.cron.schedule_model.CronSchedule = extdeps.cron.sche
   day_of_week: Wildcard
 }
 data review_messages: List<extdeps.llm.anthropic.AnthropicChatMessage> = [
-  UserMessage {
-    content: [UserTextBlock { text: "Review the PR described in the system prompt." }]
+  extdeps.llm.anthropic.UserMessage {
+    content: [extdeps.llm.anthropic.UserTextBlock { text: "Review the PR described in the system prompt." }]
   }
 ]
 

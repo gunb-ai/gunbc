@@ -63,8 +63,8 @@ fn distinct_bridge_family_module_count() -> Int {
 }
 
 fn bridge_family_sites_are_split_per_family_red_control() -> Bool {
-  let node_key = dispatch_emit_site_key(site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.node") })
-  let lexing_key = dispatch_emit_site_key(site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.compilers.lexing") })
+  let node_key = dispatch_emit_site_key(site: gunbc.v1_interpreter_primitive_surface.EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.node") })
+  let lexing_key = dispatch_emit_site_key(site: gunbc.v1_interpreter_primitive_surface.EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.compilers.lexing") })
   distinct_bridge_family_module_count() > 1
     && distinct_bridge_family_site_count() == distinct_bridge_family_module_count()
     && node_key != lexing_key

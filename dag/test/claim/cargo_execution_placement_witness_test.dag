@@ -17,8 +17,8 @@ data placement_probe_subject: std.decl_ref.DeclarationRef = std.decl_ref.Declara
 
 fn w_local_runner_admits_its_observed_path() -> Bool {
   match decide_cargo_placement(
-    requirement: RequiresLocalWorkspace { required_by: placement_probe_subject },
-    placement: LocalRunner { cargo_path: "/observed/cargo" }
+    requirement: gunbc.cargo_execution_placement.RequiresLocalWorkspace { required_by: placement_probe_subject },
+    placement: gunbc.cargo_execution_placement.LocalRunner { cargo_path: "/observed/cargo" }
   ) {
     PlacementAdmitted { cargo_path: p } => p == "/observed/cargo"
     PlacementRefused { cause: _ } => false
@@ -29,8 +29,8 @@ fn w_local_runner_admits_its_observed_path() -> Bool {
 // BEFORE execution. Regressing decide_cargo_placement to admit the remote arm reds this.
 fn w_remote_builder_refuses_a_local_workspace_subject() -> Bool {
   match decide_cargo_placement(
-    requirement: RequiresLocalWorkspace { required_by: placement_probe_subject },
-    placement: RemoteBuilder { service: "buildbuddy" }
+    requirement: gunbc.cargo_execution_placement.RequiresLocalWorkspace { required_by: placement_probe_subject },
+    placement: gunbc.cargo_execution_placement.RemoteBuilder { service: "buildbuddy" }
   ) {
     PlacementAdmitted { cargo_path: _ } => false
     PlacementRefused { cause: c } => match c {
@@ -48,7 +48,7 @@ fn w_remote_builder_refuses_a_local_workspace_subject() -> Bool {
 fn w_relocatable_subject_refuses_for_an_unbound_realization_not_locality() -> Bool {
   match decide_cargo_placement(
     requirement: RelocatableSubject,
-    placement: RemoteBuilder { service: "buildbuddy" }
+    placement: gunbc.cargo_execution_placement.RemoteBuilder { service: "buildbuddy" }
   ) {
     PlacementAdmitted { cargo_path: _ } => false
     PlacementRefused { cause: c } => match c {
@@ -61,12 +61,12 @@ fn w_relocatable_subject_refuses_for_an_unbound_realization_not_locality() -> Bo
 
 fn w_the_two_remote_refusals_read_differently() -> Bool {
   let local_subject = decide_cargo_placement(
-    requirement: RequiresLocalWorkspace { required_by: placement_probe_subject },
-    placement: RemoteBuilder { service: "buildbuddy" }
+    requirement: gunbc.cargo_execution_placement.RequiresLocalWorkspace { required_by: placement_probe_subject },
+    placement: gunbc.cargo_execution_placement.RemoteBuilder { service: "buildbuddy" }
   )
   let relocatable = decide_cargo_placement(
     requirement: RelocatableSubject,
-    placement: RemoteBuilder { service: "buildbuddy" }
+    placement: gunbc.cargo_execution_placement.RemoteBuilder { service: "buildbuddy" }
   )
   placement_decision_text(d: local_subject) != placement_decision_text(d: relocatable)
 }
@@ -85,9 +85,9 @@ fn w_absent_executable_refuses_rather_than_guessing() -> Bool {
 // Refusal and failure both answer false, so a Bool cannot tell them apart — which is the
 // defect this carrier exists to remove. The diagnostic must keep them distinguishable.
 fn w_refusal_and_failure_are_distinguishable_though_both_false() -> Bool {
-  let failed = CargoInvocationFailed { exit_code: 101, cause: "compilation failed" }
-  let refused = CargoInvocationNotAttempted {
-    refusal: CargoExecutableUnobserved { observation: "which cargo: not found" }
+  let failed = gunbc.cargo_execution_placement.CargoInvocationFailed { exit_code: 101, cause: "compilation failed" }
+  let refused = gunbc.cargo_execution_placement.CargoInvocationNotAttempted {
+    refusal: gunbc.cargo_execution_placement.CargoExecutableUnobserved { observation: "which cargo: not found" }
   }
   !cargo_outcome_holds(o: failed)
     && !cargo_outcome_holds(o: refused)

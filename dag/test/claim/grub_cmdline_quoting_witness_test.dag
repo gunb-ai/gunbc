@@ -6,9 +6,9 @@ test fn grub_quotes_semicolon_cmdline_args_only() -> Bool {
     title: "gunbc autoinstall",
     linux_image: "/casper/vmlinuz",
     linux_cmdline: [
-      KernelKeyValue { key: "ip", value: "dhcp" },
-      KernelKeyValue { key: "ds", value: "nocloud;s=/cdrom/nocloud/srv4/" },
-      KernelFlag { name: "autoinstall" },
+      extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "ip", value: "dhcp" },
+      extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "ds", value: "nocloud;s=/cdrom/nocloud/srv4/" },
+      extdeps.firmware.kernel_cmdline.KernelFlag { name: "autoinstall" },
     ],
     initrd_image: "/casper/initrd",
   }

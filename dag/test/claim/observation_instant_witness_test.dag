@@ -7,7 +7,7 @@ fn at(domain: std.measure.ClockDomain, basis: std.measure.ClockBasis, ns: std.na
   std.measure.ObservationInstant { domain: domain, basis: basis, since_origin: nanosecond(count: ns) }
 }
 
-fn worker(id: std.types.NonEmptyStr) -> std.measure.ClockDomain { ProcessMonotonic { process: id } }
+fn worker(id: std.types.NonEmptyStr) -> std.measure.ClockDomain { std.measure.ProcessMonotonic { process: id } }
 
 fn is_incomparable(o: std.measure.InstantOrder) -> Bool {
   match o { InstantIncomparable { left: _, right: _ } => true, _ => false }
@@ -46,7 +46,7 @@ test fn w_RED_cpu_and_wall_marks_refuse_to_order_even_within_one_producer() -> B
 // A shared origin is what makes cross-producer ordering legitimate; the domain carries WHY, so
 // admitting it is a modeled fact rather than a reader's assumption.
 test fn w_producers_sharing_a_declared_origin_do_order() -> Bool {
-  let d = SharedMonotonic { origin: "attempt-start" }
+  let d = std.measure.SharedMonotonic { origin: "attempt-start" }
   match compare_instants(
     a: at(domain: d, basis: WallClock, ns: 900),
     b: at(domain: d, basis: WallClock, ns: 100)
@@ -54,7 +54,7 @@ test fn w_producers_sharing_a_declared_origin_do_order() -> Bool {
 }
 
 test fn w_RED_a_shared_origin_and_a_process_origin_are_not_the_same_domain() -> Bool {
-  !clock_domain_eq(a: SharedMonotonic { origin: "attempt-start" }, b: worker(id: "attempt-start"))
+  !clock_domain_eq(a: std.measure.SharedMonotonic { origin: "attempt-start" }, b: worker(id: "attempt-start"))
 }
 
 test fn w_equal_offsets_in_one_domain_are_the_same_instant() -> Bool {

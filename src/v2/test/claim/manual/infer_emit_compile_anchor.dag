@@ -3,7 +3,7 @@ module v2.test.manual.infer_emit_compile_anchor
 
 
 data anchor_stub_empty_conj: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -22,11 +22,11 @@ data anchor_stub_source: Medium<String> = extdeps.communication.medium.Medium { 
 data anchor_stub_inferred_facts: v2.compiler.infer.InferredFacts = claim_inferred_facts_from_nodes(
   resolved: anchor_stub_empty_conj,
   algebra: anchor_stub_empty_conj,
-  descent: Violates {
+  descent: v2.std.witness.Violates {
     diagnostic: v2.std.diagnostic.Diagnostic {
       reason: ^anchor_stub_descent_not_derived,
       at: node_locus(node: anchor_stub_empty_conj),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     }
   }
 )
@@ -60,7 +60,7 @@ fn anchor_emit_accepts() -> Outcome<Medium<String>> {
 fn anchor_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
   compile_inferred(
     inferred: rust_add_inferred_tree,
-    mode: TranslateTo { target: rust_add_target_model }
+    mode: v2.compiler.compile.TranslateTo { target: rust_add_target_model }
   )
 }
 

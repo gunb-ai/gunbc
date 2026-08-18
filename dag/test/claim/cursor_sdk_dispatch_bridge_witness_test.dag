@@ -12,7 +12,7 @@ data witness_key: std.types.NonEmptyStr = "synthetic-not-a-real-key" as std.type
 
 test fn dispatch_secret_ref_admits_sdk_local_binding() -> Bool {
   match cursor_sdk_local_credential_from_dispatch(
-    credential: CursorApiKeySecretRef { secret_ref: witness_secret_ref },
+    credential: gunbc.dispatch_selection.CursorApiKeySecretRef { secret_ref: witness_secret_ref },
   ) {
     CursorSdkLocalCredentialAdmitted { credential: _, materialization: _ } => true
     CursorSdkLocalCredentialRefused { reason: _ } => false
@@ -29,7 +29,7 @@ test fn dispatch_local_login_ref_refuses() -> Bool {
 
 test fn dispatch_secret_ref_materializes_via_secret_ref_arm() -> Bool {
   match cursor_sdk_local_credential_from_dispatch(
-    credential: CursorApiKeySecretRef { secret_ref: witness_secret_ref },
+    credential: gunbc.dispatch_selection.CursorApiKeySecretRef { secret_ref: witness_secret_ref },
   ) {
     CursorSdkLocalCredentialAdmitted { credential: _, materialization } =>
       cursor_sdk_materialization_uses_secret_ref(materialization: materialization)
@@ -46,7 +46,7 @@ test fn environment_materialization_consumes_cli_env_var() -> Bool {
 
 test fn dispatch_binding_refuses_latest_secret_version() -> Bool {
   match cursor_sdk_local_credential_from_dispatch(
-    credential: CursorApiKeySecretRef {
+    credential: gunbc.dispatch_selection.CursorApiKeySecretRef {
       secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef {
         project: "gunbc-dashboard" as extdeps.cloud.gcp.gcp.GcpProjectId,
         secret: "cursor-api-key" as std.types.NonEmptyStr,
@@ -63,7 +63,7 @@ test fn dispatch_binding_refuses_latest_secret_version() -> Bool {
 
 test fn dispatch_binding_projection_keeps_argv_clean() -> Bool {
   match cursor_sdk_local_credential_from_dispatch(
-    credential: CursorApiKeySecretRef { secret_ref: witness_secret_ref },
+    credential: gunbc.dispatch_selection.CursorApiKeySecretRef { secret_ref: witness_secret_ref },
   ) {
     CursorSdkLocalCredentialAdmitted { credential: _, materialization } =>
       cursor_sdk_projection_argv_excludes_token(

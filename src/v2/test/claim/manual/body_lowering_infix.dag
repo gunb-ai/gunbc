@@ -4,25 +4,25 @@ module v2.test.manual.body_lowering_infix
 fn body_lowering_bool_node(pass: Bool) -> Node {
   if pass {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_pass } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_pass } },
       children: []
     )
   } else {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_fail } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_fail } },
       children: []
     )
   }
 }
 
 fn body_lowering_atom_x() -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: ^body_lowering_x } }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_x } }, children: [])
 }
 fn body_lowering_atom_plus() -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_plus } }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_plus } }, children: [])
 }
 fn body_lowering_atom_y() -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: ^body_lowering_y } }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_y } }, children: [])
 }
 
 fn body_lowering_infix_atoms() -> List<Node> {
@@ -82,7 +82,7 @@ fn body_lowering_rejects_non_binary() -> Bool {
   }
 }
 
-data claim_body_lowering_emit_is_call: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_emit_is_call: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering: binary-infix body lowers to a carrier-recognized Transform call",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_bool_node(pass: body_lowering_emit_is_call()),
@@ -90,7 +90,7 @@ data claim_body_lowering_emit_is_call: v2.std.verification.TestClaim = EqualsCla
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_emit_callee_is_operator: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_emit_callee_is_operator: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering: emitted callee child[0] is the infix operator (call_callee_target)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_bool_node(pass: body_lowering_emit_callee_is_operator()),
@@ -98,7 +98,7 @@ data claim_body_lowering_emit_callee_is_operator: v2.std.verification.TestClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_emit_args_are_operands: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_emit_args_are_operands: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering: emitted args are the operands [x, y] in surface order (call_argument_targets)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_bool_node(pass: body_lowering_emit_args_are_operands()),
@@ -106,7 +106,7 @@ data claim_body_lowering_emit_args_are_operands: v2.std.verification.TestClaim =
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_rejects_non_binary: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_rejects_non_binary: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering: a non-binary body atom sequence is the unsupported-form reject",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_bool_node(pass: body_lowering_rejects_non_binary()),

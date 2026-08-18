@@ -15,7 +15,7 @@ fn source_root_index_insert(
   module: v2.std.qualified_name.QualifiedName,
   root: v2.std.cross_tree.import_model.SourceRootRef
 ) -> SourceRootIndex {
-  Cons { head: SourceRootBinding { module: module, root: root }, tail: index }
+  std.algebra.Cons { head: SourceRootBinding { module: module, root: root }, tail: index }
 }
 
 type SourceRootLookup
@@ -126,7 +126,7 @@ fn source_root_set_insert(
   if source_root_set_contains(roots: roots, r: r) {
     roots
   } else {
-    Cons { head: r, tail: roots }
+    std.algebra.Cons { head: r, tail: roots }
   }
 }
 

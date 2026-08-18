@@ -22,7 +22,7 @@ fn infer_grounding_not_derived_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_grounding_not_derived,
     at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -55,7 +55,7 @@ fn inferred_facts_grounding_witness(facts: InferredFacts) -> Witness<v2.std.cons
   match facts.grounding {
     DerivedGrounding { grounding: g } => Holds { value: g }
     GroundingNotDerived { node: n } =>
-      Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+      v2.std.witness.Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
   }
 }
 
@@ -63,7 +63,7 @@ fn inferred_facts_resolved_type(facts: InferredFacts) -> Witness<Node> {
   match facts.grounding {
     DerivedGrounding { grounding: g } => Holds { value: g.witness.structural.evidence }
     GroundingNotDerived { node: n } =>
-      Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+      v2.std.witness.Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
   }
 }
 
@@ -72,7 +72,7 @@ fn inferred_facts_algebra_ref(facts: InferredFacts) -> Witness<AlgebraRef> {
     DerivedGrounding { grounding: g } =>
       Holds { value: algebra_ref_from_grounding(grounding: g) }
     GroundingNotDerived { node: n } =>
-      Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+      v2.std.witness.Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
   }
 }
 
@@ -80,7 +80,7 @@ fn inferred_facts_canonical_witness(facts: InferredFacts) -> Witness<v2.std.cons
   match facts.grounding {
     DerivedGrounding { grounding: g } => Holds { value: g.witness }
     GroundingNotDerived { node: n } =>
-      Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+      v2.std.witness.Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
   }
 }
 
@@ -126,14 +126,14 @@ fn infer_facts_lookup_miss_diagnostic(key: Node) -> v2.std.diagnostic.Diagnostic
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_facts_lookup_miss,
     at: node_locus(node: key),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_canonical_grounding_incoherent,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -141,7 +141,7 @@ fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> v2.std.diagnostic.Diag
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_algebra_ref_ungrounded,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -149,7 +149,7 @@ fn infer_branch_shape_invalid_diagnostic(node: Node) -> v2.std.diagnostic.Diagno
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_branch_shape_invalid,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -157,7 +157,7 @@ fn infer_branch_cond_not_bool_diagnostic(node: Node) -> v2.std.diagnostic.Diagno
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_branch_cond_not_bool,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -165,7 +165,7 @@ fn infer_branch_arm_type_mismatch_diagnostic(node: Node) -> v2.std.diagnostic.Di
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_branch_arm_type_mismatch,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -173,7 +173,7 @@ fn infer_loop_shape_invalid_diagnostic(node: Node) -> v2.std.diagnostic.Diagnost
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_loop_shape_invalid,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -181,7 +181,7 @@ fn infer_loop_iteration_type_mismatch_diagnostic(node: Node) -> v2.std.diagnosti
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_loop_iteration_type_mismatch,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -189,7 +189,7 @@ fn infer_match_shape_invalid_diagnostic(node: Node) -> v2.std.diagnostic.Diagnos
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_match_shape_invalid,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -197,7 +197,7 @@ fn infer_match_scrutinee_not_bool_diagnostic(node: Node) -> v2.std.diagnostic.Di
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_match_scrutinee_not_bool,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -205,7 +205,7 @@ fn infer_match_pattern_not_bool_literal_diagnostic(node: Node) -> v2.std.diagnos
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_match_pattern_not_bool_literal,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -213,7 +213,7 @@ fn infer_match_arm_type_mismatch_diagnostic(node: Node) -> v2.std.diagnostic.Dia
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_match_arm_type_mismatch,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -221,7 +221,7 @@ fn infer_match_non_exhaustive_diagnostic(node: Node) -> v2.std.diagnostic.Diagno
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_match_non_exhaustive,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -229,7 +229,7 @@ fn infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: Node) -> v2.
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_match_int_scrutinee_bool_literal_scaffold,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -248,7 +248,7 @@ fn infer_descent_not_derived_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.d
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_descent_not_derived,
     at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -256,7 +256,7 @@ fn infer_descent_witness_for_node(n: Node) -> Witness<v2.std.cardinality.Termina
   match termination_proof_witness_for_node(n: n) {
     Holds { value: proof } => Holds { value: proof }
     Violates { diagnostic: upstream } =>
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: infer_descent_not_derived_diagnostic(at: upstream.at)
       }
   }
@@ -314,7 +314,7 @@ fn inferred_facts_not_derived(
       grounding: GroundingNotDerived { node: node },
       descent: descent
     },
-    diagnostics: Some {
+    diagnostics: v2.std.diagnostic.Some {
       diagnostics: diagnostics_singleton(
         d: infer_grounding_not_derived_diagnostic(at: node_locus(node: node))
       )
@@ -467,7 +467,7 @@ fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<In
 
 fn infer_branch_int_binding_type_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -615,7 +615,7 @@ fn infer_match_bool_consumer_diagnostics_with_int_scrutinee_scaffold(
   if infer_branch_type_is_int(type_node: scrutinee_type) {
     diagnostics_merge(
       outer: cd,
-      inner: Some {
+      inner: v2.std.diagnostic.Some {
         diagnostics: diagnostics_singleton(
           d: infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: consumer)
         )
@@ -1085,7 +1085,7 @@ fn infer_gather_fold_acc_failed(
     node: node,
     entries: empty_inferred_facts_entry_list(),
     failed: true,
-    pending: Some { diagnostics: pending },
+    pending: v2.std.diagnostic.Some { diagnostics: pending },
     await_branch_row: await_branch_row,
     await_match_row: await_match_row,
     await_loop_row: await_loop_row,
@@ -1135,7 +1135,7 @@ fn infer_gather_acc_to_outcome(acc: InferGatherFoldAcc) -> Outcome<List<Inferred
 
 fn infer_gather_fold_failure_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^infer_gather_fold_failure } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^infer_gather_fold_failure } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }

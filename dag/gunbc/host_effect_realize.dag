@@ -295,9 +295,9 @@ fn srv3_shell_reconcile(
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let grounding = if observed.success {
-      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr } }
+      std.realization_reconcile.Grounds { evidence: gunbc.host_effect.ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr } }
     } else {
-      DoesNotGround {
+      std.realization_reconcile.DoesNotGround {
         reason: shell_exec_failure_reason_headered(
           observed: observed,
           header: "host_effect_apply: srv3 shell exec returned a nonzero exit code; fail-closed",
@@ -306,7 +306,7 @@ fn srv3_shell_reconcile(
     }
   reconcile_grounded(
     apply_effect: intent,
-    show_read: ReadObserved { value: observed },
+    show_read: std.realization_reconcile.ReadObserved { value: observed },
     grounding: grounding
   )
 }
@@ -376,7 +376,7 @@ fn realize_boot_once_read_back_sleep_on_host(
     FleetSsh { target: _, context: _ } =>
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: Srv3BootOnceReadBackSleep cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
       }
@@ -438,7 +438,7 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
     FleetSsh { target: _, context: _ } =>
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: Srv3SeededInstallMediaToolchainEnsure cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
       }
@@ -491,7 +491,7 @@ fn realize_bmcweb_session_login_on_host(
     FleetSsh { target: _, context: _ } =>
       realize_bmcweb_session_login_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: Srv3BmcwebSessionLogin cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
       }
@@ -556,17 +556,17 @@ fn realize_bmcweb_token_extract_on_host(
     LocalShell =>
       realize_bmcweb_token_extract_body(intent: intent)
     SshShell { ssh_host: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
         applied: intent,
       }
     FleetSsh { target: _, context: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
         applied: intent,
       }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
       }
@@ -581,9 +581,9 @@ fn toolchain_ensure_reconcile(
   effect_label: String,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let grounding = if observed.success {
-      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr } }
+      std.realization_reconcile.Grounds { evidence: gunbc.host_effect.ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr } }
     } else {
-      DoesNotGround {
+      std.realization_reconcile.DoesNotGround {
         reason: shell_exec_failure_reason_headered(
           observed: observed,
           header: join(
@@ -599,7 +599,7 @@ fn toolchain_ensure_reconcile(
     }
   reconcile_grounded(
     apply_effect: intent,
-    show_read: ReadObserved { value: observed },
+    show_read: std.realization_reconcile.ReadObserved { value: observed },
     grounding: grounding
   )
 }
@@ -632,7 +632,7 @@ fn provision_codex_runtime_reconcile(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match provision_codex_runtime_target_host(effect_intent: intent) {
     Absent =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: ProvisionCodexRuntime reconcile requires HostOs target with a fleet host identity; fail-closed.",
         applied: intent,
       }
@@ -650,7 +650,7 @@ fn provision_codex_runtime_reconcile(
             effect_label: "ProvisionCodexRuntime",
           )
         ProvisionRefused { cause: _, reason: reason } =>
-          NotConverged { reason: reason as String, applied: intent }
+          std.realization_reconcile.NotConverged { reason: reason as String, applied: intent }
       }
   }
 }
@@ -668,14 +668,14 @@ fn realize_provision_codex_runtime_body(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match provision_codex_runtime_target_host(effect_intent: effect_intent) {
     Absent =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: ProvisionCodexRuntime requires HostOs target with a fleet host identity; fail-closed.",
         applied: effect_intent,
       }
     Present { value: host } =>
       match codex_bundled_executable_for_host(host: host) {
         Absent =>
-          NotConverged {
+          std.realization_reconcile.NotConverged {
             reason: join(
               [
                 "host_effect_apply: ProvisionCodexRuntime refused — no bundled executable placement for host ",
@@ -689,7 +689,7 @@ fn realize_provision_codex_runtime_body(
         Present { value: executable } =>
           match provider_runtime_placement_for_host(host: host) {
             Absent =>
-              NotConverged {
+              std.realization_reconcile.NotConverged {
                 reason: join(
                   [
                     "host_effect_apply: ProvisionCodexRuntime refused — no provider runtime placement for host ",
@@ -741,13 +741,13 @@ fn realize_provision_codex_runtime(
             effect_intent: effect_intent,
           )
         EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-          NotConverged {
+          std.realization_reconcile.NotConverged {
             reason: "host_effect_apply: ProvisionCodexRuntime cannot use EmitArtifactThenThinRun transport; typed mismatch.",
             applied: effect_intent,
           }
       }
     _ =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: realize_provision_codex_runtime requires ProvisionCodexRuntime effect",
         applied: effect_intent,
       }
@@ -1064,7 +1064,7 @@ fn realize_os_install_actuator_toolchain_ensure(
         effect_intent: effect_intent,
       )
     FleetSsh { target: t, context: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: join([
           "host_effect_apply: OsInstallActuatorToolchainEnsure refuses the FleetSsh transport at entry for endpoint=",
           t.endpoint as String,
@@ -1077,7 +1077,7 @@ fn realize_os_install_actuator_toolchain_ensure(
         applied: effect_intent,
       }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: OsInstallActuatorToolchainEnsure cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: effect_intent,
       }
@@ -1103,14 +1103,14 @@ fn realize_provision_build_cache_body(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match provision_build_cache_host_arch(effect_intent: effect_intent) {
     Absent =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: ProvisionBuildCache cannot derive a target architecture from the effect target (no primary CPU on the ComputeHost, or the target is not HostOs); fail-closed, no default arch.",
         applied: effect_intent,
       }
     Present { value: arch } =>
       match sccache_release_arch_token(arch: arch) {
         Absent =>
-          NotConverged {
+          std.realization_reconcile.NotConverged {
             reason: join(
               [
                 "host_effect_apply: ProvisionBuildCache refused — the cited sccache release ",
@@ -1126,7 +1126,7 @@ fn realize_provision_build_cache_body(
         Present { value: token } =>
           match sccache_release_digest(rel: sccache_release_0_15_0, arch: arch) {
             Absent =>
-              NotConverged {
+              std.realization_reconcile.NotConverged {
                 reason: join(
                   [
                     "host_effect_apply: ProvisionBuildCache refused — no pinned sha256 in the cited release row for architecture ",
@@ -1159,7 +1159,7 @@ fn realize_provision_build_cache(
     ProvisionBuildCache { catalog_id: id } =>
       match provision_build_cache_catalog_gate_verdict(catalog_id: id) {
         ProvisionBuildCacheCatalogRefused { reason: reason } =>
-          NotConverged { reason: reason as String, applied: effect_intent }
+          std.realization_reconcile.NotConverged { reason: reason as String, applied: effect_intent }
         ProvisionBuildCacheCatalogRealizable =>
           match effect_intent.transport {
             LocalShell =>
@@ -1178,14 +1178,14 @@ fn realize_provision_build_cache(
                 effect_intent: effect_intent,
               )
             EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-              NotConverged {
+              std.realization_reconcile.NotConverged {
                 reason: "host_effect_apply: ProvisionBuildCache cannot use EmitArtifactThenThinRun transport; typed mismatch.",
                 applied: effect_intent,
               }
           }
       }
     _ =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: realize_provision_build_cache requires ProvisionBuildCache effect",
         applied: effect_intent,
       }
@@ -1194,8 +1194,8 @@ fn realize_provision_build_cache(
 
 fn provision_build_cache_witness_intent() -> gunbc.host_effect.HostEffectIntent {
   gunbc.host_effect.HostEffectIntent {
-    target: HostOs { node: srv1_host },
-    effect: ProvisionBuildCache { catalog_id: sccache_local_id },
+    target: gunbc.host_effect.HostOs { node: srv1_host },
+    effect: gunbc.host_effect.ProvisionBuildCache { catalog_id: sccache_local_id },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
     privilege_denial: none,
@@ -1217,8 +1217,8 @@ fn provision_build_cache_arch_unknown_host_fixture() -> gunbc.fleet_intent.Compu
 
 fn provision_build_cache_arch_unknown_intent_fixture() -> gunbc.host_effect.HostEffectIntent {
   gunbc.host_effect.HostEffectIntent {
-    target: HostOs { node: provision_build_cache_arch_unknown_host_fixture() },
-    effect: ProvisionBuildCache { catalog_id: sccache_local_id },
+    target: gunbc.host_effect.HostOs { node: provision_build_cache_arch_unknown_host_fixture() },
+    effect: gunbc.host_effect.ProvisionBuildCache { catalog_id: sccache_local_id },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
     privilege_denial: none,
@@ -1290,20 +1290,20 @@ fn run_shell_transport(script: gunbc.retained_shell_script.RetainedShellScript, 
 fn realize_converge_in_process(host_converge: gunbc.host_converge.HostConverge, intent: gunbc.host_effect.HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match interpret_host_converge(host_converge: host_converge) {
     ConvergeHostRefused { reason: why } =>
-      NotConverged { reason: why, applied: intent }
+      std.realization_reconcile.NotConverged { reason: why, applied: intent }
     ConvergeHostInterpreted { knob_count: n, stdout: out } =>
       if n == 0 {
-        NotConverged { reason: converge_host_no_knobs_reason, applied: intent }
+        std.realization_reconcile.NotConverged { reason: converge_host_no_knobs_reason, applied: intent }
       } else {
         let observed = run_shell_transport(script: retained_srvn(body: out, reason: "host converge in-process apply (interpreted knob script)"), transport: LocalShell)
         if observed.success {
           reconcile_grounded(
             apply_effect: intent,
-            show_read: ReadObserved { value: observed.stdout },
-            grounding: Grounds { evidence: ConvergePlanApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
+            show_read: std.realization_reconcile.ReadObserved { value: observed.stdout },
+            grounding: std.realization_reconcile.Grounds { evidence: gunbc.host_effect.ConvergePlanApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
           )
         } else {
-          NotConverged {
+          std.realization_reconcile.NotConverged {
             reason: concat("host_effect: converge apply failed (nonzero exit); stderr: ", observed.stderr),
             applied: intent,
           }
@@ -1317,7 +1317,7 @@ fn realize_converge_on_host(host_converge: gunbc.host_converge.HostConverge, tra
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       match gunbc_apply_mode_for_host(host: host_converge.identity) {
         FreshStandup =>
-          NotConverged {
+          std.realization_reconcile.NotConverged {
             reason: "host_effect_apply: EmitArtifactThenThinRun fresh-standup bootstrap+thin-run is fail-closed Unimplemented until bootstrap_fragment_script_carrier_scaffold and thin_invocation_argv_carrier_scaffold dissolve via bash-emit (#5828 / shell-emission slice 1+2).",
             applied: intent,
           }
@@ -1327,12 +1327,12 @@ fn realize_converge_on_host(host_converge: gunbc.host_converge.HostConverge, tra
     LocalShell =>
       realize_converge_in_process(host_converge: host_converge, intent: intent)
     SshShell { ssh_host: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
         applied: intent,
       }
     FleetSsh { target: _, context: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
         applied: intent,
       }
@@ -1344,9 +1344,9 @@ fn realize_install_media_fetch_in_process(intent: gunbc.host_effect.HostEffectIn
     InstallMediaFetchAlreadyPresent { path: p } =>
       reconcile_grounded(
         apply_effect: intent,
-        show_read: ReadObserved { value: p as String },
-        grounding: Grounds {
-          evidence: ConvergePlanApplied {
+        show_read: std.realization_reconcile.ReadObserved { value: p as String },
+        grounding: std.realization_reconcile.Grounds {
+          evidence: gunbc.host_effect.ConvergePlanApplied {
             exit_code: 0,
             stdout: concat("install-media-fetch: already present at ", p as String),
           }
@@ -1355,16 +1355,16 @@ fn realize_install_media_fetch_in_process(intent: gunbc.host_effect.HostEffectIn
     InstallMediaFetchFetched { path: p, mirror_url: u } =>
       reconcile_grounded(
         apply_effect: intent,
-        show_read: ReadObserved { value: p as String },
-        grounding: Grounds {
-          evidence: ConvergePlanApplied {
+        show_read: std.realization_reconcile.ReadObserved { value: p as String },
+        grounding: std.realization_reconcile.Grounds {
+          evidence: gunbc.host_effect.ConvergePlanApplied {
             exit_code: 0,
             stdout: concat(concat("install-media-fetch: fetched from ", u as String), concat(" to ", p as String)),
           }
         }
       )
     InstallMediaFetchRefused { reason: why } =>
-      NotConverged { reason: concat("install-media-fetch: ", why as String), applied: intent }
+      std.realization_reconcile.NotConverged { reason: concat("install-media-fetch: ", why as String), applied: intent }
   }
 }
 
@@ -1373,9 +1373,9 @@ fn realize_install_media_remaster_in_process(intent: gunbc.host_effect.HostEffec
     InstallMediaRemasterAlreadyPresent { path: p } =>
       reconcile_grounded(
         apply_effect: intent,
-        show_read: ReadObserved { value: p as String },
-        grounding: Grounds {
-          evidence: ConvergePlanApplied {
+        show_read: std.realization_reconcile.ReadObserved { value: p as String },
+        grounding: std.realization_reconcile.Grounds {
+          evidence: gunbc.host_effect.ConvergePlanApplied {
             exit_code: 0,
             stdout: concat("install-media-remaster: already present at ", p as String),
           }
@@ -1384,16 +1384,16 @@ fn realize_install_media_remaster_in_process(intent: gunbc.host_effect.HostEffec
     InstallMediaRemasterRemastered { path: p } =>
       reconcile_grounded(
         apply_effect: intent,
-        show_read: ReadObserved { value: p as String },
-        grounding: Grounds {
-          evidence: ConvergePlanApplied {
+        show_read: std.realization_reconcile.ReadObserved { value: p as String },
+        grounding: std.realization_reconcile.Grounds {
+          evidence: gunbc.host_effect.ConvergePlanApplied {
             exit_code: 0,
             stdout: concat("install-media-remaster: remastered at ", p as String),
           }
         }
       )
     InstallMediaRemasterRefused { reason: why } =>
-      NotConverged { reason: concat("install-media-remaster: ", why as String), applied: intent }
+      std.realization_reconcile.NotConverged { reason: concat("install-media-remaster: ", why as String), applied: intent }
   }
 }
 
@@ -1405,17 +1405,17 @@ fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: gunbc.host_
         TypedReconcileRemaster => realize_install_media_remaster_in_process(intent: intent)
       }
     SshShell { ssh_host: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
         applied: intent,
       }
     FleetSsh { target: _, context: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
         applied: intent,
       }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; EmitArtifactThenThinRun is a fail-closed Unimplemented stub for this cell until the typed reconcile is realized over that transport.",
         applied: intent,
       }
@@ -1427,13 +1427,13 @@ fn reconcile_shell_exec_observed(
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let grounding = if observed.success {
-      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr } }
+      std.realization_reconcile.Grounds { evidence: gunbc.host_effect.ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr } }
     } else {
-      DoesNotGround { reason: shell_exec_failure_reason(observed: observed) }
+      std.realization_reconcile.DoesNotGround { reason: shell_exec_failure_reason(observed: observed) }
     }
   reconcile_grounded(
     apply_effect: intent,
-    show_read: ReadObserved { value: observed },
+    show_read: std.realization_reconcile.ReadObserved { value: observed },
     grounding: grounding
   )
 }
@@ -1454,7 +1454,7 @@ fn reconcile_ssh_argv_exec_outcome(
         intent: intent,
       )
     TypedArgvExecRefused { reason: why } =>
-      NotConverged { reason: why, applied: intent }
+      std.realization_reconcile.NotConverged { reason: why, applied: intent }
   }
 }
 
@@ -1466,7 +1466,7 @@ fn run_typed_argv_transport(
 ) -> gunbc.typed_argv_exec.TypedArgvExecOutcome {
   match transport {
     LocalShell =>
-      TypedArgvExecRefused {
+      gunbc.typed_argv_exec.TypedArgvExecRefused {
         reason: "run_typed_argv_transport: LocalShell has no remote target — use SshShell or FleetSsh when executor and subject host differ",
       }
     SshShell { ssh_host: h } =>
@@ -1474,7 +1474,7 @@ fn run_typed_argv_transport(
     FleetSsh { target: t, context: c } =>
       typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      TypedArgvExecRefused {
+      gunbc.typed_argv_exec.TypedArgvExecRefused {
         reason: "run_typed_argv_transport: EmitArtifactThenThinRun is not a typed argv transport",
       }
   }
@@ -1510,7 +1510,7 @@ fn realize_effective_principal_read_on_host(
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: ReadEffectivePosixPrincipal cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
       }
@@ -1547,7 +1547,7 @@ fn realize_sudo_nopasswd_execute_probe_on_host(
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: SudoNopasswdExecuteProbe cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
       }
@@ -1596,7 +1596,7 @@ fn reconcile_sudo_nopasswd_grant_list_outcome(
         intent: intent,
       )
     TypedArgvExecRefused { reason: why } =>
-      NotConverged { reason: why, applied: intent }
+      std.realization_reconcile.NotConverged { reason: why, applied: intent }
   }
 }
 
@@ -1633,7 +1633,7 @@ fn realize_sudo_nopasswd_grant_list_probe_on_host(
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: SudoNopasswdGrantListProbe cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
       }
@@ -1669,12 +1669,12 @@ fn realize_set_hostname_cas_on_host(
         intent: intent,
       )
     HostnameSetCasReadRefused { reason: why } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: concat("host_effect: SetHostnameCas hostname read refused; fail-closed: ", why),
         applied: intent,
       }
     HostnameSetCasBaseMismatch { observed: o, base: b } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: concat(
           concat("host_effect: SetHostnameCas CAS refused — observed ", o),
           concat(" != base ", b as String),
@@ -1682,7 +1682,7 @@ fn realize_set_hostname_cas_on_host(
         applied: intent,
       }
     HostnameSetCasApplyFailed { stderr: e } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: concat("host_effect: SetHostnameCas hostnamectl set-hostname failed: ", e),
         applied: intent,
       }
@@ -1720,7 +1720,7 @@ fn realize_codex_supervised_worker_turn_on_host(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let cmd_id_read = Filesystem.Read(path: intent.client_command_id_path)
   if cmd_id_read.success == false || cmd_id_read.content == "" {
-    NotConverged {
+    std.realization_reconcile.NotConverged {
       reason: "CodexSupervisedWorkerTurn: client_command_id unreadable at persisted path before session apply",
       applied: intent_record,
     }
@@ -1746,7 +1746,7 @@ fn realize_codex_supervised_worker_turn_on_host(
           intent: intent_record,
         )
       CodexSupervisedSessionApplyRefused { reason: why } =>
-        NotConverged { reason: why, applied: intent_record }
+        std.realization_reconcile.NotConverged { reason: why, applied: intent_record }
     }
   }
 }
@@ -1762,7 +1762,7 @@ fn realize_nbd_proxy_session_on_host(
     NbdProxyServeApplyConverged { stdout: out } =>
       reconcile_grounded(
         apply_effect: intent_record,
-        show_read: ReadObserved {
+        show_read: std.realization_reconcile.ReadObserved {
           value: ShellExecObserved {
             exit_code: 0,
             success: true,
@@ -1770,12 +1770,12 @@ fn realize_nbd_proxy_session_on_host(
             stderr: "",
           },
         },
-        grounding: Grounds {
-          evidence: ShellEffectApplied { exit_code: 0, stdout: out, stderr: "" },
+        grounding: std.realization_reconcile.Grounds {
+          evidence: gunbc.host_effect.ShellEffectApplied { exit_code: 0, stdout: out, stderr: "" },
         },
       )
     NbdProxyServeApplyRefused { reason: why } =>
-      NotConverged { reason: why, applied: intent_record }
+      std.realization_reconcile.NotConverged { reason: why, applied: intent_record }
   }
 }
 
@@ -1809,13 +1809,13 @@ fn realize_live_deploy_apply_on_host(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let locus_refusal = live_deploy_apply_candidate_locus_refusal(transport: transport)
   if locus_refusal != "" {
-    NotConverged { reason: locus_refusal, applied: intent }
+    std.realization_reconcile.NotConverged { reason: locus_refusal, applied: intent }
   } else {
     realize_shell_on_host(
       script: retained_srvn(
         body: live_deploy_apply_script_for(
           spec: spec,
-          revision: RevisionBoundAtEmission { revision: candidate.revision },
+          revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: candidate.revision },
         ),
         reason: "live_deploy apply (unit install + start)",
       ),
@@ -1940,8 +1940,8 @@ fn host_effect_apply(target: gunbc.host_effect.NodeControlPlane, effect: gunbc.h
     ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } =>
       runner_lifecycle_realize_observe_github_runner_registration(intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
-      NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
-    IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
+      std.realization_reconcile.NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
+    IncompatibleCell { reason: why } => std.realization_reconcile.NotConverged { reason: why, applied: intent }
   }
 }
 
@@ -1956,7 +1956,7 @@ fn host_effect_privilege_verdict(
 }
 
 fn deploy_access_host_target(access: gunbc.ci_deploy_access.DeployAccess) -> gunbc.host_effect.NodeControlPlane {
-  HostOs { node: access.host }
+  gunbc.host_effect.HostOs { node: access.host }
 }
 
 fn deploy_access_shell_apply_success_stdout(
@@ -2118,11 +2118,11 @@ fn host_effect_apply_gated(
         ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } =>
           runner_lifecycle_realize_observe_github_runner_registration(intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
-          NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
-        IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
+          std.realization_reconcile.NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
+        IncompatibleCell { reason: why } => std.realization_reconcile.NotConverged { reason: why, applied: intent }
       }
     Deny { refusal: _ } =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: deploy_access_decision_reason(d: verdict),
         applied: gunbc.host_effect.HostEffectIntent {
           target: target,

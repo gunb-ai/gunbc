@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn bind_eval_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     occurrence_id: SyntheticOccurrence,
     children: []
   }
@@ -20,7 +20,7 @@ fn bind_eval_i64() -> Node {
 }
 
 fn bind_eval_one_value() -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: bind_eval_i64(),
       bytes: [bind_eval_byte()]
@@ -33,7 +33,7 @@ fn bind_eval_lit_one() -> Node {
     Accepted { value: n, diagnostics: _ } => n
     Rejected { diagnostics: _ } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: ^bind_eval_lit_one_lexeme_invalid } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bind_eval_lit_one_lexeme_invalid } },
         occurrence_id: SyntheticOccurrence,
         children: []
       }
@@ -41,7 +41,7 @@ fn bind_eval_lit_one() -> Node {
 }
 
 data bind_eval_counted_value_node: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: Value },
   occurrence_id: SyntheticOccurrence,
   children: []
 }
@@ -88,7 +88,7 @@ fn bind_eval_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^bind_eval_runtime_rejected,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -154,7 +154,7 @@ fn bind_eval_bind_value(
       bindings: map_insert(
         m: bound.bindings,
         key: bind_eval_touch_key(),
-        value: RuntimePrimitive {
+        value: v2.std.runtime.RuntimePrimitive {
           value: v2.std.runtime.RuntimePrimitiveValue {
             primitive_type: bind_eval_i64(),
             bytes: if next == 1 { [bind_eval_byte()] } else { [bind_eval_byte(), bind_eval_byte()] }
@@ -200,7 +200,7 @@ fn bind_eval_context() -> v2.compiler.eval.EvalContext {
 
 fn bind_eval_bind_node(value: Node, body: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Bind },
+    kind: v2.std.node.ComputationNode { behavior: Bind },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: bind_eval_atom(s: ^bind_eval_counted_slot_sym) },
@@ -212,7 +212,7 @@ fn bind_eval_bind_node(value: Node, body: Node) -> Node {
 
 fn bind_eval_pick_call(callee: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [v2.std.node.Edge { label: Positional, target: callee }]
   }
@@ -220,13 +220,13 @@ fn bind_eval_pick_call(callee: Node) -> Node {
 
 fn bind_eval_arrow_with_body(body: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           occurrence_id: SyntheticOccurrence,
           children: []
         }
@@ -240,7 +240,7 @@ fn bind_eval_arrow_with_body(body: Node) -> Node {
 
 fn bind_eval_tree_root(call: Node, expected: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Named { name: ^bind_eval_actual }, target: call },
@@ -272,7 +272,7 @@ fn bind_eval_run(body: Node, expected: Node) -> Outcome<TestClaimRun<Node, Runti
   outcome_accepted(
     value: run_test_claim(
       subject: v2.compiler.eval.TestClaimEvalSubject {
-        claim: CompilesClaim {
+        claim: v2.std.verification.CompilesClaim {
           label: "manual/bind_demand_driven_eval: demand-driven Bind eval acceptance",
           anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
           input: call,
@@ -332,8 +332,8 @@ test fn bind_eval_divergent_value_rejects_holds() -> Bool {
 
 fn bind_eval_minted_atom(s: v2.std.node.Symbol, id: Int) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
-    occurrence_id: MintedOccurrence {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
+    occurrence_id: v2.std.node.MintedOccurrence {
       id: std.occurrence_identity.OccurrenceId { value: id },
     },
     children: []
@@ -342,7 +342,7 @@ fn bind_eval_minted_atom(s: v2.std.node.Symbol, id: Int) -> Node {
 
 fn bind_eval_bind_node_with_binder(binder: Node, value: Node, body: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Bind },
+    kind: v2.std.node.ComputationNode { behavior: Bind },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: binder },

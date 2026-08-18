@@ -12,7 +12,7 @@ data gi_artifact_moved_hex: String = "f316fd8378b70362bcac957857fd6dd68292084d75
 fn gi_artifact(hex: String) -> v2.compiler.self_host.generation.GeneratedArtifactIdentity {
   match sha512_hex_digest(hex: hex) {
     Present { value: d } =>
-      ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
+      v2.compiler.self_host.generation.ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
     Absent => ArtifactNotMaterialized
   }
 }

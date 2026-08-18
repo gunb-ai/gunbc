@@ -18,11 +18,11 @@ fn disposition_carrier_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "This is the chosen first proof-by-use region: **slice-1** (operator GO 2026-06-23, work-item `adhoc-0a633bef-bb9`, `fierce-crane-13` under `neat-dove-397`) models `Disposition` + `ConstructionMechanism` in `std` (a DESIGN-named load-bearing carrier → **checkpoint** to `bright-stag-194` before any row migrates), migrates **this** `data:String` fleet region-by-region (each region red-on-revert so the lens is never inert mid-migration), and lands the fail-closed redundancy lens green-by-execution with a discriminating control. The substrate-mandatory **#1** end-state stays the named goal, not this slice — slice-1 *proves the binary taxonomy by use before cementing it* (see §2a)."),
     h2(text: "1. The carrier — one concept, two carriers (§2 horizontal, single authority)"),
     p(text: "Lens-lifecycle tags and coproduct dissolve-markers are the **same concept**. One typed carrier:"),
-    CodeBlock { code: "type Disposition =\n  | Terminal \{ reason: String \}                      // legitimately closed/lens-forever (the unstructurable: complexity / cost / necessity)\n  | Scaffold \{ dissolves_to: ConstructionMechanism, bind: NodeRef \}   // stand-in until that construction lands\n" },
+    std.markdown.CodeBlock { code: "type Disposition =\n  | Terminal \{ reason: String \}                      // legitimately closed/lens-forever (the unstructurable: complexity / cost / necessity)\n  | Scaffold \{ dissolves_to: ConstructionMechanism, bind: NodeRef \}   // stand-in until that construction lands\n" },
     p(text: "Applied to **both** a coproduct `type` decl and a lens registry entry. Single authority — not two marking schemes. (`dissolves_to` is itself modeled, not a string: the mechanism that will make the scaffold dead code — e.g. `SingleAuthority`, `RealizationDispatch`, `SubstrateMandatoryTag`.)"),
     p(text: "**Carrier note (drift to reconcile):** `bind: NodeRef` above is the *resolved, symbolic* end-state. The landed `std/disposition.dag` ships `bind: DeclarationRef` — a stringly `\{ module_path, decl_name, field \}` pair — as a gated-interim shim (the resolution it needs is blocked on gunbc#5364). That stringly form is itself a §3 anemia the carrier exists to dissolve; tracked as its own region in **§7**."),
     h2(text: "2. The decision — #1 vs #2 vs middle (proactive vs lens-enforced)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: std.markdown.MarkdownTableRow { cells: [cell(text: "approach"), cell(text: "what"), cell(text: "verdict")] },
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -71,7 +71,7 @@ fn disposition_carrier_body() -> List<std.markdown.MarkdownBlock> {
     ]),
     h2(text: "6. The total migration surface (what \"cleaned up\" means in full)"),
     p(text: "\"Total migration\" = every place a disposition lives as prose **or** as an untyped/stringly carrier becomes a typed, resolvable `Disposition`. Five regions, ordered by what the substrate can already enumerate (buildable-now first, gated last):"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: std.markdown.MarkdownTableRow { cells: [cell(text: "region"), cell(text: "count / where"), cell(text: "enumerable now?"), cell(text: "status")] },
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -124,6 +124,6 @@ data disposition_carrier_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "disposition-carrier",
   title: "Plan — the `Disposition` carrier (confront the skipped modeling decisions)",
   body: disposition_carrier_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when `Disposition` is a substrate-mandatory field on every coproduct (#1 reached, the ratcheting lens is dead code) and the redundancy lens is whole-tree — at which point an untagged or not-cleaned-up coproduct is unwritable and this tracker is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when `Disposition` is a substrate-mandatory field on every coproduct (#1 reached, the ratcheting lens is dead code) and the redundancy lens is whole-tree — at which point an untagged or not-cleaned-up coproduct is unwritable and this tracker is redundant.")
   }
 }

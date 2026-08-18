@@ -3,1007 +3,1007 @@ module gunbc.v1_complexity_decl_classification_roster
 
 data v1_complexity_decl_class_SizeExpr: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "SizeExpr",
-  role: AuthorityOf { capability: SizeExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: SizeExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_CostExpr: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "CostExpr",
-  role: AuthorityOf { capability: CostExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: CostExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_Certainty: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "Certainty",
-  role: AuthorityOf { capability: CertaintyAxis }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: CertaintyAxis }
 }
 
 data v1_complexity_decl_class_ComplexitySummary: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "ComplexitySummary",
-  role: HelperOf { capability: WorkAndSpan }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: WorkAndSpan }
 }
 
 data v1_complexity_decl_class_CostInternTable: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "CostInternTable",
-  role: HelperOf { capability: InterproceduralSummaryMemo }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: InterproceduralSummaryMemo }
 }
 
 data v1_complexity_decl_class_empty_cost_intern_table: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "empty_cost_intern_table",
-  role: HelperOf { capability: InterproceduralSummaryMemo }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: InterproceduralSummaryMemo }
 }
 
 data v1_complexity_decl_class_cache_summary: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "cache_summary",
-  role: HelperOf { capability: InterproceduralSummaryMemo }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: InterproceduralSummaryMemo }
 }
 
 data v1_complexity_decl_class_lookup_summary: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "lookup_summary",
-  role: HelperOf { capability: InterproceduralSummaryMemo }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: InterproceduralSummaryMemo }
 }
 
 data v1_complexity_decl_class_evict_summary: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "evict_summary",
-  role: LegacyHazardOf { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo }
+  role: gunbc.v1_complexity_decl_classification_types.LegacyHazardOf { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo }
 }
 
 data v1_complexity_decl_class_SccInfo: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "SccInfo",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_SccBuildAcc: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "SccBuildAcc",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_SccResult: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "SccResult",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_ParserStateParam: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "ParserStateParam",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_ParserResultSource: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "ParserResultSource",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_ParserProgressEdge: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "ParserProgressEdge",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_ParserProgressEnv: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "ParserProgressEnv",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_ParserProgressAcc: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "ParserProgressAcc",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_DescentCheckAcc: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "DescentCheckAcc",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_EvidenceBlockAcc: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "EvidenceBlockAcc",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_SccEdgeBlockAcc: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "SccEdgeBlockAcc",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_is_algebra_iteration_method: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_algebra_iteration_method",
-  role: HelperOf { capability: CollectionMethodCostShapes }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CollectionMethodCostShapes }
 }
 
 data v1_complexity_decl_class_method_size_effect: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "method_size_effect",
-  role: HelperOf { capability: CollectionMethodCostShapes }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CollectionMethodCostShapes }
 }
 
 data v1_complexity_decl_class_method_callback_element_position: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "method_callback_element_position",
-  role: HelperOf { capability: CollectionMethodCostShapes }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CollectionMethodCostShapes }
 }
 
 data v1_complexity_decl_class_iteration_element_name: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "iteration_element_name",
-  role: HelperOf { capability: CollectionMethodCostShapes }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CollectionMethodCostShapes }
 }
 
 data v1_complexity_decl_class_proof_has_non_descending_cycle: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "proof_has_non_descending_cycle",
-  role: HelperOf { capability: DescentEvidenceVocabulary }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentEvidenceVocabulary }
 }
 
 data v1_complexity_decl_class_set_has: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "set_has",
-  role: HelperOf { capability: CostExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_strict_after_parser_witness: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "strict_after_parser_witness",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_empty_parser_progress_env: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "empty_parser_progress_env",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_state_param: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_state_param",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_state_base_var: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_state_base_var",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_result_state_progress: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_result_state_progress",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_state_arg_expr: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_state_arg_expr",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_state_expr_progress: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_state_expr_progress",
-  role: LegacyRealizationOf { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.LegacyRealizationOf { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_block_state_progress: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_block_state_progress",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_result_source_for_expr: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_result_source_for_expr",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_env_with_binding: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_env_with_binding",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_call_edge_progress: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_call_edge_progress",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_collect_parser_progress_block_edges: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_parser_progress_block_edges",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_collect_parser_progress_edges: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_parser_progress_edges",
-  role: AuthorityOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_record_field_value: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_record_field_value",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_expr_is_none: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_expr_is_none",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_success_progress: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_success_progress",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_member_is_always_advancing: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_member_is_always_advancing",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_infer_parser_always_advancing_members_worklist: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "infer_parser_always_advancing_members_worklist",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_infer_parser_always_advancing_members: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "infer_parser_always_advancing_members",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_parser_function_names: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parser_function_names",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_infer_all_parser_always_advancing: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "infer_all_parser_always_advancing",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_seed_string_map: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "seed_string_map",
-  role: HelperOf { capability: CostExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_seed_bool_map: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "seed_bool_map",
-  role: HelperOf { capability: CostExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_seed_cost_map: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "seed_cost_map",
-  role: HelperOf { capability: CostExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_seed_func_entry_map: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "seed_func_entry_map",
-  role: HelperOf { capability: CostExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_build_call_graph_from_parser_edges: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "build_call_graph_from_parser_edges",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_same_progress_subgraph_has_cycle: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "same_progress_subgraph_has_cycle",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_collect_parser_edges_for_scc: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_parser_edges_for_scc",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_classify_parser_scc_recursion_pattern: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "classify_parser_scc_recursion_pattern",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_count_self_calls: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "count_self_calls",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_max_path_self_calls: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "max_path_self_calls",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_max_path_self_calls_with_cont: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "max_path_self_calls_with_cont",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_max_path_self_calls_block: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "max_path_self_calls_block",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_count_target_calls: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "count_target_calls",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_max_path_target_calls: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "max_path_target_calls",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_max_path_target_calls_with_cont: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "max_path_target_calls_with_cont",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_build_scc_measure_params: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "build_scc_measure_params",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_target_call_has_arithmetic_descent: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "target_call_has_arithmetic_descent",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_scc_calls_have_arithmetic_descent: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "scc_calls_have_arithmetic_descent",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_descending_name_set_without_key: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "descending_name_set_without_key",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_expr_descending_witness_source: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "expr_descending_witness_source",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_condition_param_names: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "condition_param_names",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_recursive_measure_param_names: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "recursive_measure_param_names",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_recursive_param_name_for_arg: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "recursive_param_name_for_arg",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_descending_expr: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_descending_expr",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_has_arithmetic_descent: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "has_arithmetic_descent",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_accessor_of_param: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_accessor_of_param",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_children_of_param: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_children_of_param",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_structural_children: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_structural_children",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_child_descent_expr: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_child_descent_expr",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_tree_size_preserving_wrapper: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_tree_size_preserving_wrapper",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_wrapper_inner_arg: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "wrapper_inner_arg",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_sub_value_extractor: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_sub_value_extractor",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_extractor_inner_arg: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "extractor_inner_arg",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_list_shrink_expr: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_list_shrink_expr",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_generalized_shrink: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_generalized_shrink",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_list_passthrough_inner: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "list_passthrough_inner",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_list_passthrough_call: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_list_passthrough_call",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_list_passthrough_inner_arg: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "list_passthrough_inner_arg",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_tokens_consuming_call: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_tokens_consuming_call",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_consuming_tokens_arg: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "consuming_tokens_arg",
-  role: HelperOf { capability: ParserProgressFactProduction }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ParserProgressFactProduction }
 }
 
 data v1_complexity_decl_class_is_tokens_input_expr: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_tokens_input_expr",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_descent_arg: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_descent_arg",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_expr_contains_descent: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "expr_contains_descent",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_collect_field_binding_names: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_field_binding_names",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_if_option_descent: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_if_option_descent",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_match_option_descent: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_match_option_descent",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_collect_descent_vars: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_descent_vars",
-  role: AuthorityOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_all_self_calls_descend: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "all_self_calls_descend",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_all_self_calls_descend_inc: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "all_self_calls_descend_inc",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_unwrap_to_match: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "unwrap_to_match",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_matches_on_sub_value_field: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "matches_on_sub_value_field",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_container_child_descent: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_container_child_descent",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_list_shrinkage_descent: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_list_shrinkage_descent",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_is_arithmetic_descent_expr: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_arithmetic_descent_expr",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_classify_self_call_evidence: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "classify_self_call_evidence",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_try_dimension_for_param: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "try_dimension_for_param",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_try_branching_dimension_for_param: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "try_branching_dimension_for_param",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_merge_optional_evidence: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "merge_optional_evidence",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_collect_evidence_incremental: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_evidence_incremental",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_try_type_directed_dimension: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "try_type_directed_dimension",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_construct_termination_proof: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "construct_termination_proof",
-  role: AuthorityOf { capability: DescentEvidenceVocabulary }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: DescentEvidenceVocabulary }
 }
 
 data v1_complexity_decl_class_construct_branching_termination_proof: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "construct_branching_termination_proof",
-  role: HelperOf { capability: DescentEvidenceVocabulary }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentEvidenceVocabulary }
 }
 
 data v1_complexity_decl_class_proof_to_call_pattern: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "proof_to_call_pattern",
-  role: AuthorityOf { capability: LoweringTargetVocabulary }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: LoweringTargetVocabulary }
 }
 
 data v1_complexity_decl_class_classify_recursion_pattern: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "classify_recursion_pattern",
-  role: AuthorityOf { capability: RecursionPatternClassification }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: RecursionPatternClassification }
 }
 
 data v1_complexity_decl_class_bounded_recursive_cost: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "bounded_recursive_cost",
-  role: HelperOf { capability: RecursionPatternClassification }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: RecursionPatternClassification }
 }
 
 data v1_complexity_decl_class_bounded_scc_cost: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "bounded_scc_cost",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_is_unknown_cost: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_unknown_cost",
-  role: HelperOf { capability: CostExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_extract_unknown_reason: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "extract_unknown_reason",
-  role: HelperOf { capability: CostExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_collect_local_call_edges_in_expr: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_local_call_edges_in_expr",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_build_call_graph: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "build_call_graph",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_scc_label: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "scc_label",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_classify_scc_call_progress: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "classify_scc_call_progress",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_collect_scc_child_edges: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_scc_child_edges",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_is_scc_container_child_descent: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "is_scc_container_child_descent",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_progress_edge_to_proof_edge: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "progress_edge_to_proof_edge",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_count_unknown_progress_edges: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "count_unknown_progress_edges",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_count_unknown_proof_edges: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "count_unknown_proof_edges",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_collect_scc_proof_edges_for_dim: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_scc_proof_edges_for_dim",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_merge_edge_evidence: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "merge_edge_evidence",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_count_known_in_edge_map: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "count_known_in_edge_map",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_pick_best_param_edges: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "pick_best_param_edges",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_collect_scc_independent_dim_edges: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_scc_independent_dim_edges",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_collect_scc_parser_proof_edges: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_scc_parser_proof_edges",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_collect_scc_tree_parser_dim_edges: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_scc_tree_parser_dim_edges",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_collect_scc_cx_l2_tree_edges: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_scc_cx_l2_tree_edges",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_scc_descending_param: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "scc_descending_param",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_construct_scc_termination_proof: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "construct_scc_termination_proof",
-  role: HelperOf { capability: DescentEvidenceVocabulary }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentEvidenceVocabulary }
 }
 
 data v1_complexity_decl_class_classify_scc_recursion_pattern: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "classify_scc_recursion_pattern",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_build_scc_index: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "build_scc_index",
-  role: AuthorityOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_cost_seq: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "cost_seq",
-  role: HelperOf { capability: WorkAndSpan }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: WorkAndSpan }
 }
 
 data v1_complexity_decl_class_cost_par: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "cost_par",
-  role: AuthorityOf { capability: WorkAndSpan }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: WorkAndSpan }
 }
 
 data v1_complexity_decl_class_cost_loop: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "cost_loop",
-  role: AuthorityOf { capability: BoundedSummation }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: BoundedSummation }
 }
 
 data v1_complexity_decl_class_cost_conditional: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "cost_conditional",
-  role: AuthorityOf { capability: RetainedMaxExpression }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: RetainedMaxExpression }
 }
 
 data v1_complexity_decl_class_space_of_note: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "space_of_note",
-  role: DeliberatelyOutOfScope { reason: "module infrastructure or prose note, not a capability surface" as std.types.NonEmptyStr }
+  role: gunbc.v1_complexity_decl_classification_types.DeliberatelyOutOfScope { reason: "module infrastructure or prose note, not a capability surface" as std.types.NonEmptyStr }
 }
 
 data v1_complexity_decl_class_space_of: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "space_of",
-  role: AuthorityOf { capability: SpaceTimeDuality }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: SpaceTimeDuality }
 }
 
 data v1_complexity_decl_class_fold_peak_space: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "fold_peak_space",
-  role: HelperOf { capability: PeakSpaceDerivation }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: PeakSpaceDerivation }
 }
 
 data v1_complexity_decl_class_derive_peak_space_note: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "derive_peak_space_note",
-  role: DeliberatelyOutOfScope { reason: "module infrastructure or prose note, not a capability surface" as std.types.NonEmptyStr }
+  role: gunbc.v1_complexity_decl_classification_types.DeliberatelyOutOfScope { reason: "module infrastructure or prose note, not a capability surface" as std.types.NonEmptyStr }
 }
 
 data v1_complexity_decl_class_derive_peak_space: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "derive_peak_space",
-  role: AuthorityOf { capability: PeakSpaceDerivation }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: PeakSpaceDerivation }
 }
 
 data v1_complexity_decl_class_cost_account_space_from_summary_note: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "cost_account_space_from_summary_note",
-  role: DeliberatelyOutOfScope { reason: "module infrastructure or prose note, not a capability surface" as std.types.NonEmptyStr }
+  role: gunbc.v1_complexity_decl_classification_types.DeliberatelyOutOfScope { reason: "module infrastructure or prose note, not a capability surface" as std.types.NonEmptyStr }
 }
 
 data v1_complexity_decl_class_cost_account_space_from_summary: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "cost_account_space_from_summary",
-  role: AuthorityOf { capability: CostAccountSpaceBridge }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: CostAccountSpaceBridge }
 }
 
 data v1_complexity_decl_class_cost_expr_degree_note: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "cost_expr_degree_note",
-  role: DeliberatelyOutOfScope { reason: "module infrastructure or prose note, not a capability surface" as std.types.NonEmptyStr }
+  role: gunbc.v1_complexity_decl_classification_types.DeliberatelyOutOfScope { reason: "module infrastructure or prose note, not a capability surface" as std.types.NonEmptyStr }
 }
 
 data v1_complexity_decl_class_cost_expr_degree: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "cost_expr_degree",
-  role: AuthorityOf { capability: PolynomialDegreeReading }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: PolynomialDegreeReading }
 }
 
 data v1_complexity_decl_class_degree_to_bound: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "degree_to_bound",
-  role: HelperOf { capability: CostBoundVocabulary }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostBoundVocabulary }
 }
 
 data v1_complexity_decl_class_space_asymptotic_bound: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "space_asymptotic_bound",
-  role: HelperOf { capability: PeakSpaceDerivation }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: PeakSpaceDerivation }
 }
 
 data v1_complexity_decl_class_time_asymptotic_bound: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "time_asymptotic_bound",
-  role: HelperOf { capability: CostBoundVocabulary }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostBoundVocabulary }
 }
 
 data v1_complexity_decl_class_eval_size_expr_concrete: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "eval_size_expr_concrete",
-  role: HelperOf { capability: ConcreteInputEvaluation }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: ConcreteInputEvaluation }
 }
 
 data v1_complexity_decl_class_int_max2: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "int_max2",
-  role: HelperOf { capability: CostExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_eval_cost_expr_concrete: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "eval_cost_expr_concrete",
-  role: AuthorityOf { capability: ConcreteInputEvaluation }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: ConcreteInputEvaluation }
 }
 
 data v1_complexity_decl_class_collection_output: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collection_output",
-  role: AuthorityOf { capability: OutputSizeDerivation }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: OutputSizeDerivation }
 }
 
 data v1_complexity_decl_class_scalar_output: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "scalar_output",
-  role: HelperOf { capability: OutputSizeDerivation }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: OutputSizeDerivation }
 }
 
 data v1_complexity_decl_class_method_preserves_collection_size: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "method_preserves_collection_size",
-  role: HelperOf { capability: CollectionMethodCostShapes }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CollectionMethodCostShapes }
 }
 
 data v1_complexity_decl_class_receiver_size_var: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "receiver_size_var",
-  role: HelperOf { capability: SizeExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: SizeExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_size_binder_name: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "size_binder_name",
-  role: HelperOf { capability: SizeExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: SizeExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_resolve_lambda_arg: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "resolve_lambda_arg",
-  role: HelperOf { capability: CollectionMethodCostShapes }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CollectionMethodCostShapes }
 }
 
 data v1_complexity_decl_class_resolve_callback_cost: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "resolve_callback_cost",
-  role: HelperOf { capability: CollectionMethodCostShapes }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CollectionMethodCostShapes }
 }
 
 data v1_complexity_decl_class_cost_of_method_by_shape: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "cost_of_method_by_shape",
-  role: AuthorityOf { capability: CollectionMethodCostShapes }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: CollectionMethodCostShapes }
 }
 
 data v1_complexity_decl_class_ComplexityViolation: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "ComplexityViolation",
-  role: HelperOf { capability: StructuralBoundReport }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: StructuralBoundReport }
 }
 
 data v1_complexity_decl_class_StructuralBoundResult: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "StructuralBoundResult",
-  role: HelperOf { capability: StructuralBoundReport }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: StructuralBoundReport }
 }
 
 data v1_complexity_decl_class_ComplexityReport: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "ComplexityReport",
-  role: HelperOf { capability: StructuralBoundReport }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: StructuralBoundReport }
 }
 
 data v1_complexity_decl_class_empty_complexity_report: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "empty_complexity_report",
-  role: HelperOf { capability: StructuralBoundReport }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: StructuralBoundReport }
 }
 
 data v1_complexity_decl_class_simplify_cost: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "simplify_cost",
-  role: HelperOf { capability: CostExpressionRendering }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionRendering }
 }
 
 data v1_complexity_decl_class_format_size: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "format_size",
-  role: HelperOf { capability: CostExpressionRendering }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionRendering }
 }
 
 data v1_complexity_decl_class_normalize_asymptotic: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "normalize_asymptotic",
-  role: HelperOf { capability: CostExpressionRendering }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionRendering }
 }
 
 data v1_complexity_decl_class_format_cost_class: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "format_cost_class",
-  role: AuthorityOf { capability: CostExpressionRendering }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: CostExpressionRendering }
 }
 
 data v1_complexity_decl_class_format_cost_inner: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "format_cost_inner",
-  role: HelperOf { capability: CostExpressionRendering }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionRendering }
 }
 
 data v1_complexity_decl_class_parenthesize_additive_cost: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "parenthesize_additive_cost",
-  role: HelperOf { capability: CostExpressionRendering }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionRendering }
 }
 
 data v1_complexity_decl_class_short_var_name: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "short_var_name",
-  role: HelperOf { capability: SizeVariableLegend }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: SizeVariableLegend }
 }
 
 data v1_complexity_decl_class_Legend: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "Legend",
-  role: HelperOf { capability: SizeVariableLegend }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: SizeVariableLegend }
 }
 
 data v1_complexity_decl_class_build_legend: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "build_legend",
-  role: AuthorityOf { capability: SizeVariableLegend }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: SizeVariableLegend }
 }
 
 data v1_complexity_decl_class_substitute_size: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "substitute_size",
-  role: HelperOf { capability: SizeExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: SizeExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_substitute_cost: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "substitute_cost",
-  role: HelperOf { capability: SizeVariableLegend }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: SizeVariableLegend }
 }
 
 data v1_complexity_decl_class_classify_complexity: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "classify_complexity",
-  role: AuthorityOf { capability: AsymptoticClassAndDominance }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: AsymptoticClassAndDominance }
 }
 
 data v1_complexity_decl_class_collect_size_vars_from_size: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_size_vars_from_size",
-  role: HelperOf { capability: SizeExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: SizeExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_collect_size_vars: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_size_vars",
-  role: HelperOf { capability: SizeExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: SizeExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_DeduplicateAcc: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "DeduplicateAcc",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_deduplicate: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "deduplicate",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_FuncEntry: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "FuncEntry",
-  role: DeliberatelyOutOfScope { reason: "module infrastructure or prose note, not a capability surface" as std.types.NonEmptyStr }
+  role: gunbc.v1_complexity_decl_classification_types.DeliberatelyOutOfScope { reason: "module infrastructure or prose note, not a capability surface" as std.types.NonEmptyStr }
 }
 
 data v1_complexity_decl_class_RecursionContext: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "RecursionContext",
-  role: HelperOf { capability: RecursionPatternClassification }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: RecursionPatternClassification }
 }
 
 data v1_complexity_decl_class_SummaryResult: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "SummaryResult",
-  role: HelperOf { capability: WorkAndSpan }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: WorkAndSpan }
 }
 
 data v1_complexity_decl_class_TopoBuildAcc: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "TopoBuildAcc",
-  role: HelperOf { capability: CallGraphAndScc }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CallGraphAndScc }
 }
 
 data v1_complexity_decl_class_MatchCostAccum: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "MatchCostAccum",
-  role: HelperOf { capability: CostExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_cost_of_expr: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "cost_of_expr",
-  role: HelperOf { capability: CostExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_estimate_expr_size: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "estimate_expr_size",
-  role: HelperOf { capability: CostExpressionAlgebra }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: CostExpressionAlgebra }
 }
 
 data v1_complexity_decl_class_get_or_compute_summary: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "get_or_compute_summary",
-  role: AuthorityOf { capability: InterproceduralSummaryMemo }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: InterproceduralSummaryMemo }
 }
 
 data v1_complexity_decl_class_collect_call_evidence: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_call_evidence",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_collect_self_call_evidence: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_self_call_evidence",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_collect_callee_evidence: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "collect_callee_evidence",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_derive_edge_evidence: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "derive_edge_evidence",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_merge_param_evidence: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "merge_param_evidence",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_extract_shrink_factor: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "extract_shrink_factor",
-  role: AuthorityOf { capability: CostBoundVocabulary }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: CostBoundVocabulary }
 }
 
 data v1_complexity_decl_class_max_path_descending: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "max_path_descending",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_distinct_descended_fields: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "distinct_descended_fields",
-  role: HelperOf { capability: DescentDerivationWalkers }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: DescentDerivationWalkers }
 }
 
 data v1_complexity_decl_class_analyze_structural_bounds: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "analyze_structural_bounds",
-  role: AuthorityOf { capability: StructuralBoundReport }
+  role: gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: StructuralBoundReport }
 }
 
 data v1_complexity_decl_class_build_complexity_report: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification = gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification {
   decl_name: "build_complexity_report",
-  role: HelperOf { capability: StructuralBoundReport }
+  role: gunbc.v1_complexity_decl_classification_types.HelperOf { capability: StructuralBoundReport }
 }
 
 data v1_complexity_decl_classification_roster: List<gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification> = [

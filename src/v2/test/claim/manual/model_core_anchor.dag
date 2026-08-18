@@ -3,7 +3,7 @@ module v2.test.manual.model_core_anchor
 
 fn model_core_payload_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^model_core_payload_fail_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^model_core_payload_fail_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -12,7 +12,7 @@ fn model_core_payload_fail_node() -> Node {
 fn model_core_bool_width_fact_holds() -> Bool {
   match model_core_bool_fact_lookup(
     facts: bool_primitive_facts,
-    axis: discriminant(v: ModelCoreFactAxisWidth {})
+    axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {})
   ) {
     Holds { value } => value == bool_width_fact_node(width: bool_primitive_facts.width)
     Violates { diagnostic: _ } => false
@@ -22,7 +22,7 @@ fn model_core_bool_width_fact_holds() -> Bool {
 fn model_core_bool_encoding_fact_holds() -> Bool {
   match model_core_bool_fact_lookup(
     facts: bool_primitive_facts,
-    axis: discriminant(v: ModelCoreFactAxisEncoding {})
+    axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {})
   ) {
     Holds { value } => value == bool_encoding_fact_node(encoding: bool_primitive_facts.encoding)
     Violates { diagnostic: _ } => false
@@ -32,7 +32,7 @@ fn model_core_bool_encoding_fact_holds() -> Bool {
 fn model_core_bool_unbound_axes_fail_closed() -> Bool {
   match model_core_bool_fact_lookup(
     facts: bool_primitive_facts,
-    axis: discriminant(v: ModelCoreFactAxisSignedness {})
+    axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {})
   ) {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true
@@ -81,7 +81,7 @@ fn model_core_payload_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_model_core_payload_contract: v2.std.verification.TestClaim = CompilesClaim {
+data claim_model_core_payload_contract: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "T-33 bool_model_core payload is Bool primitive + BooleanAlgebra inhabitance + three law obligations",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: model_core_payload_claim_input(ok: model_core_payload_contract_holds()),

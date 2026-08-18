@@ -1674,7 +1674,7 @@ fn witness_layer_source_flags(roots: List<String>) -> String {
 }
 
 fn witness_layer_source_flags_rooted(roots: List<String>) -> String {
-  source_roots_shell_flags(roots: roots, style: SourceRootRooted { root_var: "$ROOT" })
+  source_roots_shell_flags(roots: roots, style: gunbc.cli_invoke.SourceRootRooted { root_var: "$ROOT" })
 }
 
 fn witness_layer_scan_flags() -> String {

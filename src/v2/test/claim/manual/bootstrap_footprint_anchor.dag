@@ -3,7 +3,7 @@ module v2.test.manual.bootstrap_footprint_anchor
 
 fn bootstrap_footprint_anchor_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^bootstrap_footprint_anchor_fail_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bootstrap_footprint_anchor_fail_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -11,7 +11,7 @@ fn bootstrap_footprint_anchor_fail_node() -> Node {
 
 fn bootstrap_footprint_anchor_bad_snapshot_root_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^bootstrap_footprint_anchor_bad_snapshot_root } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bootstrap_footprint_anchor_bad_snapshot_root } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -130,7 +130,7 @@ fn bootstrap_footprint_bad_runtime_same_identity_violates() -> Bool {
     })
 }
 
-data claim_bootstrap_footprint_canonical_holds: v2.std.verification.TestClaim = CompilesClaim {
+data claim_bootstrap_footprint_canonical_holds: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "T-20 bootstrap_footprint: canonical projection inputs return Holds with closure_hash",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: bootstrap_footprint_anchor_claim_input(ok: bootstrap_footprint_canonical_holds()),
@@ -138,7 +138,7 @@ data claim_bootstrap_footprint_canonical_holds: v2.std.verification.TestClaim = 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_bootstrap_footprint_non_canonical_violates: v2.std.verification.TestClaim = CompilesClaim {
+data claim_bootstrap_footprint_non_canonical_violates: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "T-20 bootstrap_footprint: non-canonical projection inputs fail closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: bootstrap_footprint_anchor_claim_input(ok: bootstrap_footprint_non_canonical_violates()),
@@ -146,7 +146,7 @@ data claim_bootstrap_footprint_non_canonical_violates: v2.std.verification.TestC
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_bootstrap_footprint_bad_content_hash_violates: v2.std.verification.TestClaim = CompilesClaim {
+data claim_bootstrap_footprint_bad_content_hash_violates: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "T-20 bootstrap_footprint: mismatched snapshot content_hash fails closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: bootstrap_footprint_anchor_claim_input(ok: bootstrap_footprint_bad_content_hash_violates()),
@@ -154,7 +154,7 @@ data claim_bootstrap_footprint_bad_content_hash_violates: v2.std.verification.Te
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_bootstrap_footprint_bad_runtime_violates: v2.std.verification.TestClaim = CompilesClaim {
+data claim_bootstrap_footprint_bad_runtime_violates: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "T-20 bootstrap_footprint: same runtime_identity with a foreign boundary fails closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: bootstrap_footprint_anchor_claim_input(ok: bootstrap_footprint_bad_runtime_same_identity_violates()),

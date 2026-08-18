@@ -22,12 +22,12 @@ fn bl_named_child_lookup(root: Node, name: v2.std.node.Symbol) -> BlNamedChildLo
 
 fn bounded_lattice_lattice_field_completeness(lattice: Node) -> v2.std.algebra.BoundedLatticeInstanceCompleteness {
   match bl_named_child_lookup(root: lattice, name: ^lattice_field_meet) {
-    BlNamedChildMissing => BoundedLatticePartial { missing: MissingMeet }
-    BlNamedChildAmbiguous => BoundedLatticePartial { missing: MissingMeet }
+    BlNamedChildMissing => v2.std.algebra.BoundedLatticePartial { missing: MissingMeet }
+    BlNamedChildAmbiguous => v2.std.algebra.BoundedLatticePartial { missing: MissingMeet }
     BlNamedChildFound { target: _ } =>
       match bl_named_child_lookup(root: lattice, name: ^lattice_field_join) {
-        BlNamedChildMissing => BoundedLatticePartial { missing: MissingJoin }
-        BlNamedChildAmbiguous => BoundedLatticePartial { missing: MissingJoin }
+        BlNamedChildMissing => v2.std.algebra.BoundedLatticePartial { missing: MissingJoin }
+        BlNamedChildAmbiguous => v2.std.algebra.BoundedLatticePartial { missing: MissingJoin }
         BlNamedChildFound { target: _ } => BoundedLatticeComplete
       }
   }
@@ -41,8 +41,8 @@ fn bounded_lattice_instance_completeness(instance: Node) -> v2.std.algebra.Bound
           match bl_named_child_lookup(root: instance, name: ^bounded_lattice_field_lattice) {
             BlNamedChildFound { target: lattice } =>
               bounded_lattice_lattice_field_completeness(lattice: lattice)
-            BlNamedChildMissing => BoundedLatticePartial { missing: MissingLatticeField }
-            BlNamedChildAmbiguous => BoundedLatticePartial { missing: MissingLatticeField }
+            BlNamedChildMissing => v2.std.algebra.BoundedLatticePartial { missing: MissingLatticeField }
+            BlNamedChildAmbiguous => v2.std.algebra.BoundedLatticePartial { missing: MissingLatticeField }
           }
         BlNamedChildMissing => NotBoundedLatticeInstance
         BlNamedChildAmbiguous => NotBoundedLatticeInstance
@@ -59,7 +59,7 @@ fn infer_bounded_lattice_partial_instance_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: discriminant(v: missing),
     at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -70,7 +70,7 @@ fn infer_bounded_lattice_consumer_partial_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_bounded_lattice_consumer_partial,
     at: node_locus(node: consumer),
-    correction: Suggested { node: instance }
+    correction: v2.std.diagnostic.Suggested { node: instance }
   }
 }
 

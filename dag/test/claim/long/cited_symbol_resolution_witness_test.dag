@@ -203,7 +203,7 @@ test fn cited_symbol_refuses_named_field_absent() -> Bool {
     ref: std.decl_ref.DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "NodeKind",
-      field: NamedField { field_name: "NoSuchField_G1_RED" },
+      field: std.decl_ref.NamedField { field_name: "NoSuchField_G1_RED" },
     },
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules

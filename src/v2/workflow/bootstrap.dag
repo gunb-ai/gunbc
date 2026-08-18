@@ -2,10 +2,10 @@ module v2.workflow.bootstrap
 
 
 
-data v2_stage0_hash: Hash = v2_stage0_hash
-data v2_stage1_hash: Hash = v2_stage1_hash
-data v2_stage2_hash: Hash = v2_stage2_hash
-data pinned_v4_fixed_point_hash: Hash = pinned_v4_fixed_point_hash
+data v2_stage0_hash: v2.std.node.Hash = v2_stage0_hash
+data v2_stage1_hash: v2.std.node.Hash = v2_stage1_hash
+data v2_stage2_hash: v2.std.node.Hash = v2_stage2_hash
+data pinned_v4_fixed_point_hash: v2.std.node.Hash = pinned_v4_fixed_point_hash
 
 type BootstrapHashPin {
   digest: v2.std.node.Hash
@@ -58,7 +58,7 @@ type DiverseCompilationRun {
 }
 
 type IndependentCompilerEvidence
-  = IndependentCompilerEvidenceUnavailable { correction: Unavailable }
+  = IndependentCompilerEvidenceUnavailable { correction: v2.std.diagnostic.Unavailable }
 
 type IndependentCompilerPair {
   primary: v2.std.node.Symbol
@@ -103,16 +103,16 @@ type SeedHonestyDecision
   | FixedPointTrustSufficient { rationale: std.types.NonEmptyStr }
 
 data seed_honesty_decision: SeedHonestyDecision = FixedPointTrustSufficient {
-  rationale: "OPERATOR VERDICT 2026-08-02. V1 deletion does not require an independently implemented second compiler. It requires an explicit generation-admission pipeline: each compiler stage executes against a declared requirement revision, binds its exact inputs, outputs, producer and verdict, and prevents downstream use when its local requirements fail. A candidate generation may be produced and inspected but cannot promote itself. Promotion requires declared requirement changes, complete stage and behavioral receipts, no undeclared v1 fallback, and a retained known-good recovery path. Breaking requirement changes require an expand-migrate-contract bridge. The previous generation remains available until the promoted compiler demonstrates that it can produce a valid CHANGED successor, not merely reproduce itself.\n\nWHY DIVERSE DOUBLE COMPILATION IS NOT A PREREQUISITE, STATED SO THE CLASS IT LEAVES OPEN IS NOT UNDERSOLD. DDC protects against compiler-correlated or malicious miscompilation that readable-source review and ordinary fixed-point evidence do NOT rule out. Readability of the seed source is not the defense and must not be cited as one: the classic attack is precisely a binary that miscompiles readable source, and a stage1-equals-stage2 fixed point is exactly what a self-reproducing defect also produces. What is claimed here is narrower and is a mitigation, not a proof. The seed is hand-written Rust in this repository with full readable history; the Rust it emits is committed as plain text and compared against freshly emitted output by the required regen gate on every run; so a perpetuated defect must appear in a readable diff AND survive human review of it, rather than living only in an opaque artifact nobody reads. That is review quality at a declared boundary, and DESIGN 4b places such a class outside the ladder rather than admitting a weak implementation onto it as a rung. The residual accepted by this verdict is explicit: a defect that reproduces itself through both rustc and the emitted text without ever surfacing in that diff is excluded by nothing stated here. It is ranked below the generation-admission program because deleting v1 does not enlarge it -- the exposure is a property of the seed and its host toolchain, which deletion shrinks rather than grows. DDC is retained as a separate trust-hardening program with no prerequisite edge to any v1-exit finish line.\n\nWHAT THIS VERDICT DOES NOT PROTECT, DISPOSED EXPLICITLY RATHER THAN IMPLIED. First: a fixed point does not defeat a self-reproducing defect. Stage1 equalling stage2 is exactly what a defect that reproduces itself also produces, so this verdict ACCEPTS that residual rather than claiming the fixed point rules it out. Second: seed_self_verify_check is a proven decision procedure and NOT the live trust-path authority -- the realized-comparison and regen paths do not route their artifact identities through it. This verdict does not wire that path and must not be read as protecting it; the generation-admission program named above owns it. Third: rollback and fix-forward are different guarantees. Committed emitted Rust gives rollback to any earlier generation, but it does not by itself give fix-forward once a requirements revision has changed what the previous generation can read. The bootstrap reachability invariant in that program is what addresses this, and it is unbuilt today." as NonEmptyStr
+  rationale: "OPERATOR VERDICT 2026-08-02. V1 deletion does not require an independently implemented second compiler. It requires an explicit generation-admission pipeline: each compiler stage executes against a declared requirement revision, binds its exact inputs, outputs, producer and verdict, and prevents downstream use when its local requirements fail. A candidate generation may be produced and inspected but cannot promote itself. Promotion requires declared requirement changes, complete stage and behavioral receipts, no undeclared v1 fallback, and a retained known-good recovery path. Breaking requirement changes require an expand-migrate-contract bridge. The previous generation remains available until the promoted compiler demonstrates that it can produce a valid CHANGED successor, not merely reproduce itself.\n\nWHY DIVERSE DOUBLE COMPILATION IS NOT A PREREQUISITE, STATED SO THE CLASS IT LEAVES OPEN IS NOT UNDERSOLD. DDC protects against compiler-correlated or malicious miscompilation that readable-source review and ordinary fixed-point evidence do NOT rule out. Readability of the seed source is not the defense and must not be cited as one: the classic attack is precisely a binary that miscompiles readable source, and a stage1-equals-stage2 fixed point is exactly what a self-reproducing defect also produces. What is claimed here is narrower and is a mitigation, not a proof. The seed is hand-written Rust in this repository with full readable history; the Rust it emits is committed as plain text and compared against freshly emitted output by the required regen gate on every run; so a perpetuated defect must appear in a readable diff AND survive human review of it, rather than living only in an opaque artifact nobody reads. That is review quality at a declared boundary, and DESIGN 4b places such a class outside the ladder rather than admitting a weak implementation onto it as a rung. The residual accepted by this verdict is explicit: a defect that reproduces itself through both rustc and the emitted text without ever surfacing in that diff is excluded by nothing stated here. It is ranked below the generation-admission program because deleting v1 does not enlarge it -- the exposure is a property of the seed and its host toolchain, which deletion shrinks rather than grows. DDC is retained as a separate trust-hardening program with no prerequisite edge to any v1-exit finish line.\n\nWHAT THIS VERDICT DOES NOT PROTECT, DISPOSED EXPLICITLY RATHER THAN IMPLIED. First: a fixed point does not defeat a self-reproducing defect. Stage1 equalling stage2 is exactly what a defect that reproduces itself also produces, so this verdict ACCEPTS that residual rather than claiming the fixed point rules it out. Second: seed_self_verify_check is a proven decision procedure and NOT the live trust-path authority -- the realized-comparison and regen paths do not route their artifact identities through it. This verdict does not wire that path and must not be read as protecting it; the generation-admission program named above owns it. Third: rollback and fix-forward are different guarantees. Committed emitted Rust gives rollback to any earlier generation, but it does not by itself give fix-forward once a requirements revision has changed what the previous generation can read. The bootstrap reachability invariant in that program is what addresses this, and it is unbuilt today." as std.types.NonEmptyStr
 }
 
-data independent_compiler_evidence_dissolve_on_note: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a future Available arm requires grounded independent-compiler provenance plus executed output bytes/digests under a separately ruled DDC/reference-compiler slice. Until then the evidence carrier is Unavailable-only, and the bootstrap discharge wall must refuse every current construction.")
+data independent_compiler_evidence_dissolve_on_note: std.dissolution.DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a future Available arm requires grounded independent-compiler provenance plus executed output bytes/digests under a separately ruled DDC/reference-compiler slice. Until then the evidence carrier is Unavailable-only, and the bootstrap discharge wall must refuse every current construction.")
 
 data bootstrap_seed_honesty_disconnected_digest_note: String = "The self_host_bytes_digest_source_perturb_teeth_holds witness stays green; this unavailable-only seed-honesty carrier is disconnected from canonical_emitted_bytes_digest in this PR."
 
 fn independent_compiler_evidence_unavailable() -> IndependentCompilerEvidence {
   IndependentCompilerEvidenceUnavailable {
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -128,15 +128,15 @@ type ConvergenceLadder {
   plan: BootstrapPlan
   fixed_point: FixptStage1Stage2
 }
-fn bs_diagnostic(reason: Symbol) -> Diagnostic {
-  Diagnostic {
+fn bs_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: Textual { file: ^bootstrap_workflow_file, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^bootstrap_workflow_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
-fn bs_symbol_eq(left: Symbol, right: Symbol) -> Bool {
+fn bs_symbol_eq(left: v2.std.node.Symbol, right: v2.std.node.Symbol) -> Bool {
   left == right
 }
 
@@ -165,13 +165,13 @@ fn bootstrap_construct_list_append_unique(
   )
 }
 
-fn seed_capability_language_model() -> LanguageModel {
+fn seed_capability_language_model() -> v2.std.language_model.LanguageModel {
   void_language_model(identity: ^bootstrap_seed_language_model_identity)
 }
 
-fn bootstrap_construct_subset_node(identity: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: identity } },
+fn bootstrap_construct_subset_node(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -182,22 +182,22 @@ fn bootstrap_source_snapshot_root() -> Node {
 }
 
 fn bootstrap_seed_capability_inventory_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^bootstrap_construct_source_language_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_source_language_subset)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^bootstrap_construct_target_model_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_target_model_subset)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^bootstrap_construct_runtime_model_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_runtime_model_subset)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^bootstrap_construct_lowering_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_lowering_subset)
       }
@@ -222,7 +222,7 @@ fn bootstrap_construct_fold_init(n: Node) -> BootstrapConstructFoldState {
 
 fn bootstrap_construct_fold_step(
   acc: BootstrapConstructFoldState,
-  edge: Edge,
+  edge: v2.std.node.Edge,
   child: BootstrapConstructFoldState
 ) -> BootstrapConstructFoldState {
   BootstrapConstructFoldState {
@@ -231,7 +231,7 @@ fn bootstrap_construct_fold_step(
 }
 
 fn bootstrap_construct_fold_algebra() -> NodeFold<BootstrapConstructFoldState> {
-  NodeFold {
+  v2.std.node.NodeFold {
     init: bootstrap_construct_fold_init,
     step: bootstrap_construct_fold_step
   }
@@ -245,7 +245,7 @@ fn bootstrap_footprint_constructs_from_node(root: Node) -> List<BootstrapConstru
   bootstrap_construct_fold_state(root: root).constructs
 }
 
-fn bootstrap_target_model_bundle_construct_facet(label: Symbol) -> List<BootstrapConstruct> {
+fn bootstrap_target_model_bundle_construct_facet(label: v2.std.node.Symbol) -> List<BootstrapConstruct> {
   if label == ^target_model_edge_selection_policy {
     [BootstrapConstruct { identity: ^bootstrap_construct_target_model_subset }]
   } else if label == ^target_model_edge_translation_rules {
@@ -261,7 +261,7 @@ fn bootstrap_target_model_bundle_construct_fold_init(n: Node) -> BootstrapConstr
 
 fn bootstrap_target_model_bundle_construct_fold_step(
   acc: BootstrapConstructFoldState,
-  edge: Edge,
+  edge: v2.std.node.Edge,
   child: BootstrapConstructFoldState
 ) -> BootstrapConstructFoldState {
   let facet_constructs = match edge.label {
@@ -275,7 +275,7 @@ fn bootstrap_target_model_bundle_construct_fold_step(
 }
 
 fn bootstrap_target_model_bundle_construct_fold_algebra() -> NodeFold<BootstrapConstructFoldState> {
-  NodeFold {
+  v2.std.node.NodeFold {
     init: bootstrap_target_model_bundle_construct_fold_init,
     step: bootstrap_target_model_bundle_construct_fold_step
   }
@@ -285,11 +285,11 @@ fn bootstrap_target_model_bundle_construct_fold_state(root: Node) -> BootstrapCo
   fold_node(n: root, algebra: bootstrap_target_model_bundle_construct_fold_algebra())
 }
 
-fn bootstrap_target_model_construct_inventory(target: TargetModel) -> List<BootstrapConstruct> {
+fn bootstrap_target_model_construct_inventory(target: v2.std.compilers.target_model.TargetModel) -> List<BootstrapConstruct> {
   bootstrap_target_model_bundle_construct_fold_state(root: target.bundle).constructs
 }
 
-fn bootstrap_runtime_model_construct_inventory(runtime: V4EvaluatorRuntime) -> List<BootstrapConstruct> {
+fn bootstrap_runtime_model_construct_inventory(runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime) -> List<BootstrapConstruct> {
   if runtime.runtime_identity == ^v2_evaluator_runtime_id {
     [BootstrapConstruct { identity: ^bootstrap_construct_runtime_model_subset }]
   } else {
@@ -321,7 +321,7 @@ fn bootstrap_canonical_snapshot_content_hash() -> BootstrapHashPin {
   BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: ^pinned_v4_fixed_point_hash_pin }
 }
 
-fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
+fn bs_list_eq(a: List<v2.std.node.Symbol>, b: List<v2.std.node.Symbol>) -> Bool {
   bag_eq(xs: a, ys: b, eq: bs_symbol_eq)
 }
 
@@ -329,69 +329,69 @@ fn bootstrap_constructs_eq(left: List<BootstrapConstruct>, right: List<Bootstrap
   bag_eq(xs: left, ys: right, eq: bootstrap_construct_eq)
 }
 
-fn bootstrap_projection_runtime_identity_node(runtime: V4EvaluatorRuntime) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: runtime.runtime_identity } },
+fn bootstrap_projection_runtime_identity_node(runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime) -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: runtime.runtime_identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn bootstrap_projection_snapshot_content_hash_pin_node(pin: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: pin } },
+fn bootstrap_projection_snapshot_content_hash_pin_node(pin: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: pin } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
-fn bootstrap_hash_digest_in_fixture_constants(digest: Hash) -> Bool {
+fn bootstrap_hash_digest_in_fixture_constants(digest: v2.std.node.Hash) -> Bool {
   (digest == v2_stage0_hash)
     || (digest == v2_stage1_hash)
     || (digest == v2_stage2_hash)
     || (digest == pinned_v4_fixed_point_hash)
 }
 
-fn bootstrap_hash_digest_fixture_atom_node(digest: Hash) -> Node {
+fn bootstrap_hash_digest_fixture_atom_node(digest: v2.std.node.Hash) -> Node {
   if digest == v2_stage0_hash {
-    Node {
-      kind: TypeNode { connective: Atom { identity: v2_stage0_hash } },
+    v2.std.node.Node {
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: v2_stage0_hash } },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   } else if digest == v2_stage1_hash {
-    Node {
-      kind: TypeNode { connective: Atom { identity: v2_stage1_hash } },
+    v2.std.node.Node {
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: v2_stage1_hash } },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   } else if digest == v2_stage2_hash {
-    Node {
-      kind: TypeNode { connective: Atom { identity: v2_stage2_hash } },
+    v2.std.node.Node {
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: v2_stage2_hash } },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   } else {
-    Node {
-      kind: TypeNode { connective: Atom { identity: pinned_v4_fixed_point_hash } },
+    v2.std.node.Node {
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: pinned_v4_fixed_point_hash } },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+fn bootstrap_hash_pin_pair_projection_node(pin: v2.std.node.Symbol, digest: v2.std.node.Hash) -> Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^bootstrap_projection_hash_pin_slot_edge },
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: pin } },
+        target: v2.std.node.Node {
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: pin } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^bootstrap_projection_hash_digest_slot_edge },
         target: bootstrap_hash_digest_fixture_atom_node(digest: digest)
       }
@@ -481,26 +481,26 @@ fn bootstrap_plan_accepted_hash_pins_projectable_ok() -> Bool {
 data bootstrap_plan_accepted_hash_pins_projectable_witness: Bool = bootstrap_plan_accepted_hash_pins_projectable_ok()
 
 fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^bootstrap_projection_snapshot_root_edge },
         target: inputs.snapshot.root
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^bootstrap_projection_snapshot_language_model_edge },
         target: language_model_to_node(lm: inputs.snapshot.language_model)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^bootstrap_projection_snapshot_content_hash_edge },
         target: bootstrap_projection_snapshot_content_hash_pin_node(pin: inputs.snapshot.content_hash.pin)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^bootstrap_projection_target_bundle_edge },
         target: inputs.target_model.bundle
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^bootstrap_projection_runtime_identity_edge },
         target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model)
       }
@@ -530,7 +530,7 @@ fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFo
       }
     }
   } else {
-    Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_footprint_not_realized) }
+    v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_footprint_not_realized) }
   }
 }
 
@@ -544,9 +544,9 @@ fn bootstrap_seed_capability_matches_footprint(
            && bootstrap_constructs_eq(left: fp.constructs, right: capability.constructs) {
         Holds { value: BootstrapCapabilityExact { footprint: fp, capability: capability } }
       } else {
-        Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_capability_not_minimal) }
+        v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_capability_not_minimal) }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -555,18 +555,18 @@ fn bootstrap_convergence_ladder(plan: Outcome<BootstrapPlan>) -> Witness<Converg
     Accepted { value: bp, diagnostics: _ } =>
       Holds { value: ConvergenceLadder { entry_seed: ^v1_pipeline, plan: bp, fixed_point: bp.fixpt } }
     Rejected { diagnostics: _ } =>
-      Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_plan_unavailable_for_ladder) }
+      v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_plan_unavailable_for_ladder) }
   }
 }
 
 fn independent_compiler_pair_witness(
-  primary: Symbol,
-  secondary: Symbol,
+  primary: v2.std.node.Symbol,
+  secondary: v2.std.node.Symbol,
   evidence: IndependentCompilerEvidence
 ) -> Witness<IndependentCompilerPair> {
   match evidence {
     IndependentCompilerEvidenceUnavailable { correction: _ } =>
-      Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
+      v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
   }
 }
 
@@ -611,18 +611,18 @@ fn diverse_compilation_agreement_witness(
 ) -> Witness<DiverseCompilationAgreement> {
   match evidence {
     IndependentCompilerEvidenceUnavailable { correction: _ } =>
-      Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
+      v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
   }
 }
 
 fn bootstrap_seed_honesty_discharge_witness(
-  axiom: Symbol,
+  axiom: v2.std.node.Symbol,
   diverse_double_compilation: Witness<DiverseCompilationAgreement>
 ) -> Witness<SeedHonestyDischarge> {
   match diverse_double_compilation {
     Holds { value: _ } =>
-      Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+      v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -636,7 +636,7 @@ fn bootstrap_fixpt_witness(f: FixptStage1Stage2) -> Witness<FixptStage1Stage2> {
        && (f.pinned_hash.digest == f.left_hash.digest) {
     Holds { value: f }
   } else {
-    Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_mis_wired) }
+    v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_mis_wired) }
   }
 }
 
@@ -723,7 +723,7 @@ data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap
   )
 )
 
-fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
+fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: v2.std.node.Symbol) -> Bool {
   match plan {
     Accepted { value: bp, diagnostics: _ } =>
       (s == bp.seed.produces) || (s == bp.self0.produces) || (s == bp.self1.produces)
@@ -818,5 +818,5 @@ data bootstrap_convergence_ladder_witness: Witness<ConvergenceLadder> = bootstra
 
 data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_plan {
   Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
-  Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+  Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
 }

@@ -72,7 +72,7 @@ fn fixture_bool_witness_record() -> v2.compiler.discovery_enumeration.OwnedDataD
     entry: "dag/gunbc/floor_discovery_scaffold.dag",
     module: "gunbc.floor_discovery_scaffold",
     decl_name: "unified_claim_floor_discovery_fixture",
-    initializer: OwnedBoolWitnessClaimInit {
+    initializer: v2.compiler.discovery_enumeration.OwnedBoolWitnessClaimInit {
       witness_entry: fixture_witness_entry,
       witness_function: fixture_witness_function
     }
@@ -84,7 +84,7 @@ fn fixture_bool_witness_record_empty_transport() -> v2.compiler.discovery_enumer
     entry: "dag/gunbc/floor_discovery_scaffold.dag",
     module: "gunbc.floor_discovery_scaffold",
     decl_name: "unified_claim_floor_discovery_fixture_empty",
-    initializer: OwnedBoolWitnessClaimInit {
+    initializer: v2.compiler.discovery_enumeration.OwnedBoolWitnessClaimInit {
       witness_entry: "",
       witness_function: ""
     }

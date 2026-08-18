@@ -20,8 +20,8 @@ fn sample_fragment() -> std.markup.Fragment {
     tag: "a",
     attributes: [ std.markup.Attribute { name: "href", ctx: UrlContext, value: "/x?a=1&b=2" } ],
     children: [
-      FragmentText { content: "hi <b> & \"q\"" },
-      extdeps.browser.Element { tag: "span", attributes: [], children: [ FragmentText { content: ">end" } ] }
+      std.markup.FragmentText { content: "hi <b> & \"q\"" },
+      extdeps.browser.Element { tag: "span", attributes: [], children: [ std.markup.FragmentText { content: ">end" } ] }
     ]
   }
 }
@@ -35,7 +35,7 @@ fn html_consumer_button() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "button",
     attributes: [ std.markup.Attribute { name: "class", ctx: AttributeContext, value: "primary" } ],
-    children: [ FragmentText { content: "Go" } ]
+    children: [ std.markup.FragmentText { content: "Go" } ]
   }
 }
 
@@ -43,7 +43,7 @@ fn react_consumer_button() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "button",
     attributes: [ std.markup.Attribute { name: "class", ctx: AttributeContext, value: "primary" } ],
-    children: [ FragmentText { content: "Go" } ]
+    children: [ std.markup.FragmentText { content: "Go" } ]
   }
 }
 

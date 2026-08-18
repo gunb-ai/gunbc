@@ -46,11 +46,11 @@ data copied_port_citation_frontier_row_map_merge: CopiedPortCitationFrontierRow 
 }
 
 fn copied_port_citation_frontier_rows() -> List<CopiedPortCitationFrontierRow> {
-  Cons {
+  std.algebra.Cons {
     head: copied_port_citation_frontier_row_list_append,
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: copied_port_citation_frontier_row_list_snoc_item,
-      tail: Cons {
+      tail: std.algebra.Cons {
         head: copied_port_citation_frontier_row_map_merge,
         tail: Empty
       }
@@ -69,7 +69,7 @@ fn copied_port_citation_retained_count() -> Int {
 
 fn citation_conj_measure(left: Node, right: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: left },
       v2.std.node.Edge { label: Positional, target: right }
@@ -91,7 +91,7 @@ fn citation_arrow_multi_linear_ambiguous(left_sym: v2.std.node.Symbol, right_sym
 
 fn citation_param_ref(sym: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -99,12 +99,12 @@ fn citation_param_ref(sym: v2.std.node.Symbol) -> Node {
 
 fn citation_loop_body_linear_in(measure: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: ComputationNode { behavior: Transform },
+          kind: v2.std.node.ComputationNode { behavior: Transform },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -123,12 +123,12 @@ fn citation_arrow_two_param_loop(
   let left = citation_param_ref(sym: left_sym)
   let right = citation_param_ref(sym: right_sym)
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             v2.std.node.Edge { label: Named { name: left_sym }, target: left },
             v2.std.node.Edge { label: Named { name: right_sym }, target: right }
@@ -139,7 +139,7 @@ fn citation_arrow_two_param_loop(
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^copied_port_citation_return_type } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^copied_port_citation_return_type } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -187,7 +187,7 @@ data copied_port_combiner_arrow_citations: List<v2.lens.cost.copied_port_derivat
 ]
 
 fn copied_port_fact_list_prepend(row: v2.std.algebra.CopiedPortFact, xs: List<v2.std.algebra.CopiedPortFact>) -> List<v2.std.algebra.CopiedPortFact> {
-  Cons { head: row, tail: xs }
+  std.algebra.Cons { head: row, tail: xs }
 }
 
 fn copied_port_derived_registry_rows() -> List<v2.std.algebra.CopiedPortFact> {

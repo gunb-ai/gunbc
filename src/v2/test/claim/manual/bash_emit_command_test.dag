@@ -9,12 +9,12 @@ fn bash_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
 
 fn bash_arrow_emitted_red_fixture() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^bash_word_git } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bash_word_git } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -22,7 +22,7 @@ fn bash_arrow_emitted_red_fixture() -> Node {
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^bash_word_rev_parse } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bash_word_rev_parse } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -30,7 +30,7 @@ fn bash_arrow_emitted_red_fixture() -> Node {
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^bash_word_show_toplevel } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bash_word_show_toplevel } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -77,7 +77,7 @@ test fn bash_emit_command_accepts_holds() -> Bool {
 }
 
 data bash_empty_bundle: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }

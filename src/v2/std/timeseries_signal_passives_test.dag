@@ -43,7 +43,7 @@ test fn branch_current_of_magnitude_is_structural_identity_holds() -> Bool {
   }
 }
 
-data claim_timeseries_signal_module_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_timeseries_signal_module_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "std/timeseries_signal: torsor + passive topology + map/fold passives compile",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: GroundReference,

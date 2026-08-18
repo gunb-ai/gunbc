@@ -50,8 +50,8 @@ fn idempotency_fact_unresolved(fact: IdempotencyFact) -> Bool {
 fn idempotency_witness_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^idempotency_reason_unresolved_projection,
-    at: Textual { file: ^idempotency_projection_virtual_file, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^idempotency_projection_virtual_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
@@ -60,10 +60,10 @@ fn idempotency_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<
   let law_diagnostic = idempotency_first_law_violation_diagnostic(fact: fact)
   match optional_present_witness(opt: law_diagnostic) {
     Holds { value: d } =>
-      Violates { diagnostic: d }
+      v2.std.witness.Violates { diagnostic: d }
     Violates { diagnostic: _ } =>
       if idempotency_fact_unresolved(fact: fact) {
-        Violates { diagnostic: idempotency_witness_diagnostic() }
+        v2.std.witness.Violates { diagnostic: idempotency_witness_diagnostic() }
       } else {
         Holds { value: fact }
       }
@@ -95,5 +95,5 @@ fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }

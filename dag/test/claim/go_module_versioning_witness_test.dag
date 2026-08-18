@@ -11,15 +11,15 @@ test fn w_major_v0_or_v1_suffix_is_empty() -> Bool {
 }
 
 test fn w_major_v2_suffix() -> Bool {
-  go_major_suffix_str(suffix: MajorV2Plus { major: 2 }) == "/v2"
+  go_major_suffix_str(suffix: extdeps.languages.go.module.MajorV2Plus { major: 2 }) == "/v2"
 }
 
 test fn w_major_v3_suffix() -> Bool {
-  go_major_suffix_str(suffix: MajorV2Plus { major: 3 }) == "/v3"
+  go_major_suffix_str(suffix: extdeps.languages.go.module.MajorV2Plus { major: 3 }) == "/v3"
 }
 
 test fn w_suffixes_are_distinct() -> Bool {
-  go_major_suffix_str(suffix: MajorV2Plus { major: 2 }) != go_major_suffix_str(suffix: MajorV0OrV1)
+  go_major_suffix_str(suffix: extdeps.languages.go.module.MajorV2Plus { major: 2 }) != go_major_suffix_str(suffix: MajorV0OrV1)
 }
 
 test fn w_semver_release_label() -> Bool {

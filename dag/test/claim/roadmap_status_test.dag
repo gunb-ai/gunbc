@@ -45,10 +45,10 @@ fn is_underivable(v: gunbc.roadmap_status.DriftVerdict) -> Bool {
 }
 
 fn derivable_item(prs: List<Int>, title: String) -> gunbc.roadmap_status.RoadmapItem {
-  DerivableLine { prs: prs, title: title, description: "" }
+  gunbc.roadmap_status.DerivableLine { prs: prs, title: title, description: "" }
 }
 fn authored_status_fixture(done: Bool, content: String) -> gunbc.roadmap_status.RoadmapItem {
-  AuthoredLine { done: done, content: content }
+  gunbc.roadmap_status.AuthoredLine { done: done, content: content }
 }
 
 test fn witness_merged_pr_is_merged() -> Bool {
@@ -128,13 +128,13 @@ test fn item_against_prs_drifts() -> Bool {
 }
 
 test fn witness_superseded_is_done_and_names_successor() -> Bool {
-  let item = SupersededLine { by: "dag/gunbc/v1_deletion_plan.dag", content: "old lane row" }
+  let item = gunbc.roadmap_status.SupersededLine { by: "dag/gunbc/v1_deletion_plan.dag", content: "old lane row" }
   item_is_done(item: item, merged: [])
     && item_superseded_by(item: item) == "dag/gunbc/v1_deletion_plan.dag"
 }
 
 test fn witness_superseded_underivable_no_drift() -> Bool {
-  let item = SupersededLine { by: "successor-node", content: "old lane row" }
+  let item = gunbc.roadmap_status.SupersededLine { by: "successor-node", content: "old lane row" }
   is_underivable(v: status_drift(item: item, committed_box: true, merged: []))
     && !item_drifted(item: item, committed_box: false, merged: [5445])
 }
@@ -142,6 +142,6 @@ test fn witness_superseded_underivable_no_drift() -> Bool {
 test fn witness_non_superseded_has_no_successor() -> Bool {
   item_superseded_by(item: authored_status_fixture(done: false, content: "live row")) == ""
     && item_superseded_by(item: derivable_item(prs: [5445], title: "bound row")) == ""
-    && item_superseded_by(item: PlainLine { content: "prose row" }) == ""
+    && item_superseded_by(item: gunbc.roadmap_status.PlainLine { content: "prose row" }) == ""
 }
 

@@ -21,7 +21,7 @@ test fn install_media_fetch_already_present_fixture() -> Bool {
       p == srv3_ubuntu_install_media_install_path
         && h == srv3_ubuntu_install_media_artifact.content_sha256
         && install_media_fetch_verdict_is_idempotent_skip(
-          verdict: AlreadyPresent { install_path: p, content_sha256: h },
+          verdict: gunbc.srv3_install_media_fetch.AlreadyPresent { install_path: p, content_sha256: h },
         )
     _ => false
   }
@@ -37,7 +37,7 @@ test fn install_media_fetch_hash_mismatch_refusal_fixture() -> Bool {
         && e == srv3_ubuntu_install_media_artifact.content_sha256
         && o == "0000000000000000000000000000000000000000000000000000000000000000"
         && install_media_fetch_verdict_is_idempotent_skip(
-          verdict: HashMismatchRefusal { install_path: p, expected_sha256: e, observed_sha256: o },
+          verdict: gunbc.srv3_install_media_fetch.HashMismatchRefusal { install_path: p, expected_sha256: e, observed_sha256: o },
         ) == false
     _ => false
   }

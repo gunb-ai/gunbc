@@ -48,7 +48,7 @@ fn deploy_access_apt_get_privileged_command() -> PrivilegedCommand {
   PrivilegedCommand {
     grant: gunbc.fleet_posix_accounts.PosixSudoGrant {
       command_path: deploy_access_apt_get_binary_path,
-      probe: NopasswdExecuteCheck { check_argv: "--help" },
+      probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--help" },
     }
   }
 }
@@ -122,7 +122,7 @@ fn ci_deploy_srv1_operator_ssh_access() -> DeployAccess {
   DeployAccess {
     principal: principal,
     host: srv1_host,
-    transport: SshShell { ssh_host: operator_host_srv1 as std.types.NonEmptyStr },
+    transport: gunbc.host_effect.SshShell { ssh_host: operator_host_srv1 as std.types.NonEmptyStr },
     privileged_commands: grounded_principal_privileged_commands(p: principal),
   }
 }
@@ -152,7 +152,7 @@ fn deploy_access_with_ssh_transport(access: DeployAccess, ssh_host: std.types.No
   DeployAccess {
     principal: access.principal,
     host: access.host,
-    transport: SshShell { ssh_host: ssh_host },
+    transport: gunbc.host_effect.SshShell { ssh_host: ssh_host },
     privileged_commands: access.privileged_commands,
   }
 }
@@ -179,20 +179,20 @@ fn deploy_access_authorization_query(access: DeployAccess) -> DeployAuthorizatio
 }
 
 fn deploy_access_read_principal_effect() -> gunbc.host_effect.HostEffect {
-  ReadEffectivePosixPrincipal { read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead {} }
+  gunbc.host_effect.ReadEffectivePosixPrincipal { read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead {} }
 }
 
 fn deploy_access_sudo_probe_effect(cmd: PrivilegedCommand) -> gunbc.host_effect.HostEffect {
   match cmd.grant.probe {
     NopasswdExecuteCheck { check_argv: check } =>
-      SudoNopasswdExecuteProbe {
+      gunbc.host_effect.SudoNopasswdExecuteProbe {
         probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdExecuteProbeShape {
           command_path: cmd.grant.command_path,
           check_argv: check,
         }
       }
     NopasswdGrantListCheck =>
-      SudoNopasswdGrantListProbe {
+      gunbc.host_effect.SudoNopasswdGrantListProbe {
         probe: cmd.grant.command_path as extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape
       }
   }

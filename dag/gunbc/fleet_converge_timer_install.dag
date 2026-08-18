@@ -76,7 +76,7 @@ fn fleet_timer_install_prerequisite_refusal(why: String) -> std.process.ProcessE
 // step (run_shell_commands short-circuits); a staging write failure refuses before any
 // systemd state changes.
 func fleet_timer_self_install_wet() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let hn = run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["hostname", "-s"] }, transport: LocalExec)
   let this_host = trim(s: hn.stdout)

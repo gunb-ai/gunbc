@@ -58,7 +58,7 @@ data bmc_srv3_admin_legacy_binding: gunbc.auth.secret_access_grant.SecretAccessG
   consumer: "bmc_bootstrap_provision_srv3",
   justification: "already bound and proven live against gunbai-secrets on 2026-06-24, predates this grant model (docs/runbooks/bmc-assimilator-wif-setup.md); Signed = operator affirms keep, Unsigned = flagged pending an explicit keep-or-retire decision, neither state is applied by this codebase",
   signoff: Unsigned,
-  provenance: AppliedOutOfBand {
+  provenance: gunbc.auth.secret_access_grant.AppliedOutOfBand {
     applied_at: "2026-06-24",
     note: "gunbc.assimilate.bmc_bootstrap_provision.bmc_bootstrap_provision_srv3, bmc_secret_iam_bindings()"
   }

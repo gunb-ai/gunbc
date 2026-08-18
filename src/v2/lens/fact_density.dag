@@ -63,7 +63,7 @@ fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
         v2.std.diagnostic.Diagnostic {
           reason: ^fact_density_hollow_alias_locus,
           at: port_locus(port: ^fact_density_hollow_alias_locus),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
     NotATypeCarrier => outcome_accepted(value: Holds { value: node })
@@ -73,5 +73,5 @@ fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

@@ -92,7 +92,7 @@ fn swapped_count(productions: List<v2.std.grammar.GrammarProduction>) -> Int {
 fn pre_repair_grammar() -> v2.std.grammar.ParseGrammar {
   match dag_grammar() {
     ModeledGrammar { root: r } =>
-      ModeledGrammar {
+      v2.std.grammar.ModeledGrammar {
         root: v2.std.grammar.GrammarRoot {
           start: r.start,
           productions: swap_expr_production(productions: r.productions),

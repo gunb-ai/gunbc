@@ -254,7 +254,7 @@ fn mandatory_tag_missing_decl_diagnostic(module_node: Node) -> v2.std.diagnostic
   v2.std.diagnostic.Diagnostic {
     reason: ^mandatory_tag_missing_required_decl,
     at: node_locus(node: module_node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -262,7 +262,7 @@ fn mandatory_tag_projection_gated_diagnostic(module_node: Node) -> v2.std.diagno
   v2.std.diagnostic.Diagnostic {
     reason: ^mandatory_tag_name_projection_gated,
     at: node_locus(node: module_node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -270,7 +270,7 @@ fn mandatory_tag_type_mismatch_diagnostic(d: Node) -> v2.std.diagnostic.Diagnost
   v2.std.diagnostic.Diagnostic {
     reason: ^mandatory_tag_required_decl_type_mismatch,
     at: node_locus(node: d),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -278,7 +278,7 @@ fn mandatory_tag_value_unreadable_diagnostic(d: Node) -> v2.std.diagnostic.Diagn
   v2.std.diagnostic.Diagnostic {
     reason: ^mandatory_tag_value_vocabulary_unreadable,
     at: node_locus(node: d),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -286,7 +286,7 @@ fn mandatory_tag_value_not_accepted_diagnostic(d: Node) -> v2.std.diagnostic.Dia
   v2.std.diagnostic.Diagnostic {
     reason: ^mandatory_tag_value_not_accepted,
     at: node_locus(node: d),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -331,7 +331,7 @@ fn mandatory_tag_value_findings(d: Node, region: MandatoryTagRegion) -> List<v2.
           }
         Cons { head: first_hit, tail: rest_hits } =>
           if fold(
-            Cons { head: first_hit, tail: rest_hits },
+            std.algebra.Cons { head: first_hit, tail: rest_hits },
             init: true,
             f: fn(acc, a) { acc && mandatory_tag_symbols_contain(xs: region.value_accepted, s: a) }
           ) {

@@ -42,7 +42,7 @@ test fn firmware_intent_match_crosses_as_typed_disposition() -> Bool {
     observed_at: 1,
   }
   match bmc_firmware_observation_intent_verdict(
-    intent: BmcFirmwareTrackRequired {
+    intent: extdeps.bmc.capability.BmcFirmwareTrackRequired {
       track: extdeps.bmc.capability.BmcFirmwareTrack {
         family: OpenBmc,
         major_version: 3,
@@ -52,7 +52,7 @@ test fn firmware_intent_match_crosses_as_typed_disposition() -> Bool {
   ) {
     BmcFirmwareIntentSatisfied =>
       match bmc_firmware_observation_intent_verdict(
-        intent: BmcFirmwareTrackRequired {
+        intent: extdeps.bmc.capability.BmcFirmwareTrackRequired {
           track: extdeps.bmc.capability.BmcFirmwareTrack {
             family: OpenBmc,
             major_version: 2,

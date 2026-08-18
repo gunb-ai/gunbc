@@ -87,7 +87,7 @@ fn runtime_value_parse_from_row(
   let expected = runtime_value_codec_expected_byte_count(codec: row.transport.runtime_value_codec)
   if length(xs: bytes) == expected {
     Accepted {
-      value: RuntimePrimitive {
+      value: v2.std.runtime.RuntimePrimitive {
         value: {
           primitive_type: row.runtime_primitive_type,
           bytes: bytes

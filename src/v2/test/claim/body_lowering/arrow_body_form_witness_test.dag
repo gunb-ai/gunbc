@@ -10,14 +10,14 @@ module v2.test.claim.body_lowering.arrow_body_form_witness
 
 fn arrow_body_form_fixture_atom(identity: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Atom { identity: identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: []
   )
 }
 
 fn arrow_body_form_fixture_arrow_with_body(body: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_domain) },
       v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
@@ -30,7 +30,7 @@ fn arrow_body_form_fixture_arrow_with_body(body: Node) -> Node {
 fn arrow_body_form_id_arrow_fixture() -> Node {
   dag_arrow_with_body_node(
     domain: node_synthetic(
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge {
           label: Named { name: ^dag_binding_param_x },
@@ -40,7 +40,7 @@ fn arrow_body_form_id_arrow_fixture() -> Node {
     ),
     return_type_binding: dag_int_type_binding(),
     body: node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^dag_binding_param_x } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_param_x } },
       children: []
     )
   )
@@ -51,7 +51,7 @@ fn arrow_body_form_zero_arrow_fixture() -> Optional<Node> {
     Accepted { value: zero_lit, diagnostics: _ } =>
       optional_present(
         value: dag_arrow_with_body_node(
-          domain: node_synthetic(kind: TypeNode { connective: Conj }, children: []),
+          domain: node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: []),
           return_type_binding: dag_int_type_binding(),
           body: zero_lit
         )
@@ -110,7 +110,7 @@ test fn arrow_body_form_classify_direct_atom_holds() -> Bool {
 test fn arrow_body_form_classify_record_construct_holds() -> Bool {
   match classify_arrow_body_form(
     target: node_synthetic(
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge {
           label: Named { name: ^arrow_body_form_record_field },
@@ -126,7 +126,7 @@ test fn arrow_body_form_classify_record_construct_holds() -> Bool {
 
 test fn arrow_body_form_classify_computation_transform_holds() -> Bool {
   match classify_arrow_body_form(
-    target: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [])
+    target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: Transform }, children: [])
   ) {
     ComputationBody { behavior: Transform } => true
     _ => false
@@ -135,7 +135,7 @@ test fn arrow_body_form_classify_computation_transform_holds() -> Bool {
 
 test fn arrow_body_form_classify_unsupported_holds() -> Bool {
   match classify_arrow_body_form(
-    target: node_synthetic(kind: TypeNode { connective: Disj }, children: [])
+    target: node_synthetic(kind: v2.std.node.TypeNode { connective: Disj }, children: [])
   ) {
     UnsupportedArrowBody => true
     _ => false
@@ -153,7 +153,7 @@ test fn arrow_body_form_atom_arrow_well_formed_holds() -> Bool {
 test fn arrow_body_form_unsupported_body_refused_well_formed_holds() -> Bool {
   !well_formed(
     n: arrow_body_form_fixture_arrow_with_body(
-      body: node_synthetic(kind: TypeNode { connective: Disj }, children: [])
+      body: node_synthetic(kind: v2.std.node.TypeNode { connective: Disj }, children: [])
     )
   )
 }
@@ -162,7 +162,7 @@ test fn arrow_body_form_value_illegal_child_refused_well_formed_holds() -> Bool 
   !well_formed(
     n: arrow_body_form_fixture_arrow_with_body(
       body: node_synthetic(
-        kind: ComputationNode { behavior: Value },
+        kind: v2.std.node.ComputationNode { behavior: Value },
         children: [v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_value_child) }]
       )
     )
@@ -177,7 +177,7 @@ test fn arrow_body_form_atom_body_admitted_structurally_holds() -> Bool {
 
 test fn arrow_body_form_transform_body_admitted_structurally_holds() -> Bool {
   arrow_body_target_is_valid_realization(
-    target: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [])
+    target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: Transform }, children: [])
   )
 }
 
@@ -190,7 +190,7 @@ test fn arrow_body_form_RED_no_direct_atom_refuses_atom_body_holds() -> Bool {
 
 test fn arrow_body_form_RED_no_computation_refuses_transform_body_holds() -> Bool {
   !arrow_body_form_admits_body_with_mirror(
-    target: node_synthetic(kind: ComputationNode { behavior: Transform }, children: []),
+    target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: Transform }, children: []),
     mirror: ArrowBodyFormAdmissionRedNoComputationBody
   )
 }
@@ -207,18 +207,18 @@ test fn arrow_body_form_atom_admits_eval_entry_holds() -> Bool {
 }
 
 test fn arrow_body_form_transform_admits_eval_entry_holds() -> Bool {
-  arrow_body_admits_eval_entry(form: ComputationBody { behavior: Transform })
+  arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Transform })
 }
 
 test fn arrow_body_form_dispatch_behaviors_admit_eval_entry_holds() -> Bool {
-  arrow_body_admits_eval_entry(form: ComputationBody { behavior: Branch })
-    && arrow_body_admits_eval_entry(form: ComputationBody { behavior: Bind })
-    && arrow_body_admits_eval_entry(form: ComputationBody { behavior: Loop })
+  arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Branch })
+    && arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Bind })
+    && arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Loop })
 }
 
 test fn arrow_body_form_value_refused_eval_entry_holds() -> Bool {
-  !arrow_body_admits_eval_entry(form: ComputationBody { behavior: Value })
-    && !arrow_body_admits_eval_entry(form: ComputationBody { behavior: Match })
+  !arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Value })
+    && !arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Match })
     && !arrow_body_admits_eval_entry(form: RecordConstructBody)
     && !arrow_body_admits_eval_entry(form: UnsupportedArrowBody)
 }
@@ -227,7 +227,7 @@ test fn arrow_body_form_value_body_refused_eval_entry_holds() -> Bool {
   !arrow_body_form_eval_call_does_not_reject_unsupported_callee(
     call: arrow_body_form_eval_nullary_call_node(
       callee: arrow_body_form_fixture_arrow_with_body(
-        body: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+        body: node_synthetic(kind: v2.std.node.ComputationNode { behavior: Value }, children: [])
       )
     )
   )

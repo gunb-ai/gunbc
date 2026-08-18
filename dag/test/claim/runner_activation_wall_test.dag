@@ -92,19 +92,19 @@ test fn witness_bare_host_admission_cannot_yield_an_enable_command() -> Bool {
 
 test fn witness_absent_endpoint_cannot_admit_activation() -> Bool {
   observation_admits_activation(
-    observed: EndpointAbsent { instance: ready_instance_fixture(host: "srv4") },
+    observed: gunbc.build_cache_instance.EndpointAbsent { instance: ready_instance_fixture(host: "srv4") },
   ) == false
 }
 
 test fn witness_runner_owned_cannot_admit_activation_either_lifecycle() -> Bool {
   let retired = placement_admits_activation(
-    placement: ServerRunnerOwned {
+    placement: gunbc.build_cache_instance.ServerRunnerOwned {
       slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 },
       lifecycle: RetiredRunnerSlot,
     },
   )
   let desired = placement_admits_activation(
-    placement: ServerRunnerOwned {
+    placement: gunbc.build_cache_instance.ServerRunnerOwned {
       slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv2", slot_index: 5 },
       lifecycle: DesiredRunnerSlot,
     },
@@ -114,19 +114,19 @@ test fn witness_runner_owned_cannot_admit_activation_either_lifecycle() -> Bool 
 
 test fn witness_unknown_unsupervised_and_ambiguous_cannot_admit_activation() -> Bool {
   let unknown = placement_admits_activation(
-    placement: ServerPlacementUnknown { detail: "unreadable" as std.types.NonEmptyStr },
+    placement: gunbc.build_cache_instance.ServerPlacementUnknown { detail: "unreadable" as std.types.NonEmptyStr },
   )
   let unsupervised = placement_admits_activation(
-    placement: ServerUnsupervised { cgroup: "/system.slice/other.service" as std.types.NonEmptyStr },
+    placement: gunbc.build_cache_instance.ServerUnsupervised { cgroup: "/system.slice/other.service" as std.types.NonEmptyStr },
   )
   let ambiguous = observation_admits_activation(
-    observed: EndpointOwnershipAmbiguous {
+    observed: gunbc.build_cache_instance.EndpointOwnershipAmbiguous {
       instance: ready_instance_fixture(host: "srv1"),
       candidate_count: 2,
     },
   )
   let unreachable = observation_admits_activation(
-    observed: EndpointObservationUnavailable {
+    observed: gunbc.build_cache_instance.EndpointObservationUnavailable {
       instance: ready_instance_fixture(host: "srv4"),
       reason: ReachRefused { detail: "Permission denied (publickey)" as std.types.NonEmptyStr },
     },

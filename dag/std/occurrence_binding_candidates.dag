@@ -1637,7 +1637,7 @@ fn remap_containment_path(
     f: (acc, ancestor) => {
       let remapped = remap_occurrence_id(id: ancestor, state: acc.state)
       OccurrenceAncestorRemapBuild {
-        ancestors: Cons { head: remapped.id, tail: acc.ancestors },
+        ancestors: std.algebra.Cons { head: remapped.id, tail: acc.ancestors },
         state: remapped.state,
       }
     },

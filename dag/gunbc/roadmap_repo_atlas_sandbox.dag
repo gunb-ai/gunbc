@@ -360,21 +360,21 @@ data repo_atlas_comparison_head: String = "HEAD"
 fn repo_atlas_observe_changes() -> gunbc.repo_atlas_projection.AtlasChangeObservation {
   let status = git.Inspect.WorkingTreeStatus()
   if status.success == false {
-    AtlasComparisonUnavailable {
-      cause: ComparisonReadFailed { detail: concat("git status did not succeed — ", status.stderr) }
+    gunbc.repo_atlas_projection.AtlasComparisonUnavailable {
+      cause: gunbc.repo_atlas_projection.ComparisonReadFailed { detail: concat("git status did not succeed — ", status.stderr) }
     }
   } else {
     if status.entries_nul != "" {
-      AtlasComparisonUnavailable {
-        cause: ComparisonHeadUnbound {
+      gunbc.repo_atlas_projection.AtlasComparisonUnavailable {
+        cause: gunbc.repo_atlas_projection.ComparisonHeadUnbound {
           detail: "the working tree carries uncommitted or untracked changes, so the live module population does not correspond to any commit"
         }
       }
     } else {
       let head = git.Inspect.HeadCommit()
       if head.success == false {
-        AtlasComparisonUnavailable {
-          cause: ComparisonReadFailed { detail: "git rev-parse HEAD did not succeed" }
+        gunbc.repo_atlas_projection.AtlasComparisonUnavailable {
+          cause: gunbc.repo_atlas_projection.ComparisonReadFailed { detail: "git rev-parse HEAD did not succeed" }
         }
       } else {
         let diff = git.Core.DiffNameStatus(
@@ -382,11 +382,11 @@ fn repo_atlas_observe_changes() -> gunbc.repo_atlas_projection.AtlasChangeObserv
           head: repo_atlas_comparison_head,
           range: TwoDot)
         if diff.success == false {
-          AtlasComparisonUnavailable {
-            cause: ComparisonReadFailed { detail: "git diff --name-status did not succeed" }
+          gunbc.repo_atlas_projection.AtlasComparisonUnavailable {
+            cause: gunbc.repo_atlas_projection.ComparisonReadFailed { detail: "git diff --name-status did not succeed" }
           }
         } else {
-          AtlasComparisonObserved {
+          gunbc.repo_atlas_projection.AtlasComparisonObserved {
             comparison: gunbc.repo_atlas_projection.AtlasComparison {
               base: repo_atlas_comparison_base,
               head: head.sha,
@@ -406,7 +406,7 @@ fn repo_atlas_observed_subject(observation: gunbc.repo_atlas_projection.AtlasCha
     AtlasComparisonUnavailable { cause: _ } => AtlasSubjectUnobserved
     AtlasComparisonObserved { comparison: comparison, diff: _ } =>
       match git_sha1_object_id(hex: comparison.head) {
-        Present { value: id } => AtlasSubjectRevision { revision: id }
+        Present { value: id } => gunbc.repo_atlas_projection.AtlasSubjectRevision { revision: id }
         Absent => AtlasSubjectUnobserved
       }
   }
@@ -428,12 +428,12 @@ THE CHANNELS, and why each is what it is. Structure is the FIGURE role held belo
 GLOW IS ABSENT ON PURPOSE. It belongs to selection, there is no selection on this page yet, and an unused channel is safer than one that collides with occupancy when the occupancy overlay finally arrives."
 
 fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
-  ClassSelector { name: name }
+  extdeps.languages.css.selectors.ClassSelector { name: name }
 }
 
 fn atlas_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: "atlas"),
       decls: [
         decl(prop: Display, value: "block"),
@@ -442,44 +442,44 @@ fn atlas_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: Margin, value: "0 auto"),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: "atlas-dot"),
       decls: [
         decl(prop: Fill, value: role_var(r: FigureRole)),
         decl(prop: Opacity, value: "0.45"),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: "atlas-dot-shared"),
       decls: [
         decl(prop: Stroke, value: role_var(r: FigureRole)),
-        decl(prop: RawProperty { name: "stroke-width" }, value: "1"),
+        decl(prop: extdeps.languages.css.properties.RawProperty { name: "stroke-width" }, value: "1"),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: "atlas-dot-changed"),
       decls: [
         decl(prop: Fill, value: role_var(r: FigureLitRole)),
         decl(prop: Opacity, value: "1"),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: "atlas-impact-ring"),
       decls: [
         decl(prop: Stroke, value: role_var(r: FigureEdgeRole)),
-        decl(prop: RawProperty { name: "stroke-width" }, value: "1"),
+        decl(prop: extdeps.languages.css.properties.RawProperty { name: "stroke-width" }, value: "1"),
         decl(prop: Opacity, value: "0.8"),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: "atlas-glass-edge"),
       decls: [
         decl(prop: Stroke, value: role_var(r: BorderRole)),
-        decl(prop: RawProperty { name: "stroke-width" }, value: "1"),
+        decl(prop: extdeps.languages.css.properties.RawProperty { name: "stroke-width" }, value: "1"),
         decl(prop: Opacity, value: "0.5"),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: "atlas-readout"),
       decls: [
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
@@ -487,15 +487,15 @@ fn atlas_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: Color, value: role_var(r: TextDimRole)),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: "atlas-readout-refused"),
       decls: [ decl(prop: Color, value: role_var(r: TextRole)) ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: "atlas-readout-absent"),
       decls: [ decl(prop: Color, value: role_var(r: TextRole)) ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: "atlas-legend"),
       decls: [
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
@@ -504,7 +504,7 @@ fn atlas_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: Margin, value: scale_var(t: space_4)),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: "atlas-unprojected-list"),
       decls: [
         decl(prop: FontFamily, value: scale_var(t: font_mono)),

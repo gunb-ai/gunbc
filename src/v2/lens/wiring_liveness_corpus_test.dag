@@ -96,7 +96,7 @@ fn corpus_clean_excluding_deadlet_fixtures(decls: List<v2.std.fn_index.FnArrowDe
 
 fn probe_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -107,7 +107,7 @@ fn dead_wire_decl() -> v2.std.fn_index.FnArrowDecl {
     qualified_name: "synthetic.wiring_corpus.dead_wire",
     name: "wiring_corpus_synthetic_dead_wire",
     output: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge { label: Positional, target: probe_atom(s: ^wiring_corpus_present_input) }
       ],

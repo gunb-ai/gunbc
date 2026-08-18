@@ -7,7 +7,7 @@ fn orch_emit_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts
 }
 
 data orch_emit_unsupported_step_anchor: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^orch_emit_unsupported_step } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^orch_emit_unsupported_step } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -997,7 +997,7 @@ fn orch_emit_unsupported_step_diagnostics(reason: v2.std.node.Symbol) -> v2.std.
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: orch_emit_unsupported_step_anchor),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

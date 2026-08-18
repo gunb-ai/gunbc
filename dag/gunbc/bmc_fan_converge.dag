@@ -522,12 +522,12 @@ fn bmc_fan_observe_temperature(
   )
   let raw_value = match service_result {
     OpenBmcSensorServicesRefused { reason } =>
-      OpenBmcSensorValueRefused { reason: reason }
+      extdeps.bmc.openbmc_fan_control.OpenBmcSensorValueRefused { reason: reason }
     OpenBmcSensorServicesObserved { services } =>
       match services {
         OpenBmcCollectionZero => OpenBmcSensorValueAbsent
         OpenBmcCollectionMany { values: _ } =>
-          OpenBmcSensorValueRefused {
+          extdeps.bmc.openbmc_fan_control.OpenBmcSensorValueRefused {
             reason: "temperature ObjectMapper service binding is ambiguous",
           }
         OpenBmcCollectionOne { value: selected_service } =>
@@ -809,7 +809,7 @@ fn bmc_fan_parse_controller_shape(
         FanControllerShapeParseRefused { reason: "aggregate fan tach inputs are absent" }
       } else {
         FanControllerShapeParsed {
-          shape: FanPidAggregatedEntry {
+          shape: extdeps.bmc.types.FanPidAggregatedEntry {
             entry_name: controller.name,
             tach_inputs: controller.inputs,
           },
@@ -817,7 +817,7 @@ fn bmc_fan_parse_controller_shape(
       }
     OpenBmcCollectionMany { values } =>
       FanControllerShapeParsed {
-        shape: FanPidIndependentEntries {
+        shape: extdeps.bmc.types.FanPidIndependentEntries {
           entry_names: values |> map(controller => controller.name),
         },
       }
@@ -877,7 +877,7 @@ fn bmc_fan_build_live_observation(
                           controller_shape: shape,
                           observed_at: observed_at,
                         },
-                        persistence: BmcOverlayConfigObserved {
+                        persistence: extdeps.bmc.types.BmcOverlayConfigObserved {
                           firmware: identity.firmware,
                           config_path: board_config_path,
                           overlay: overlay,
@@ -1467,7 +1467,7 @@ func bmc_fan_run(
   target: BmcFanConvergeTarget,
   action: BmcFanRequestedAction,
 ) -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let sshpass = shell.Which.Check(command: "sshpass")
   if !sshpass.exists {
@@ -1502,19 +1502,19 @@ func bmc_fan_run(
             CoolingCatalogRefused { host: host, cause: cause } =>
               exit_failure(
                 reason: bmc_fan_cooling_refusal_reason(
-                  verdict: CoolingCatalogRefused { host: host, cause: cause },
+                  verdict: product.cooling_qualification.CoolingCatalogRefused { host: host, cause: cause },
                 ),
               )
             InstalledCoolingUnobserved { host: host } =>
               exit_failure(
                 reason: bmc_fan_cooling_refusal_reason(
-                  verdict: InstalledCoolingUnobserved { host: host },
+                  verdict: product.cooling_qualification.InstalledCoolingUnobserved { host: host },
                 ),
               )
             InstalledCoolingAmbiguous { host: host, candidate_count: candidate_count } =>
               exit_failure(
                 reason: bmc_fan_cooling_refusal_reason(
-                  verdict: InstalledCoolingAmbiguous {
+                  verdict: product.cooling_qualification.InstalledCoolingAmbiguous {
                     host: host,
                     candidate_count: candidate_count,
                   },
@@ -1531,7 +1531,7 @@ func bmc_fan_run(
 }
 
 func srv3_bmc_fan_observe() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   bmc_fan_run(
     target: srv3_bmc_fan_converge_target,
@@ -1540,7 +1540,7 @@ func srv3_bmc_fan_observe() -> std.process.ProcessExit
 }
 
 func srv3_bmc_fan_converge() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   bmc_fan_run(
     target: srv3_bmc_fan_converge_target,
@@ -1549,7 +1549,7 @@ func srv3_bmc_fan_converge() -> std.process.ProcessExit
 }
 
 func srv4_bmc_fan_observe() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   bmc_fan_run(
     target: srv4_bmc_fan_converge_target,
@@ -1558,7 +1558,7 @@ func srv4_bmc_fan_observe() -> std.process.ProcessExit
 }
 
 func srv4_bmc_fan_converge() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   bmc_fan_run(
     target: srv4_bmc_fan_converge_target,
@@ -1567,7 +1567,7 @@ func srv4_bmc_fan_converge() -> std.process.ProcessExit
 }
 
 func srv4_bmc_fan_rollback_previous() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   bmc_fan_run(
     target: srv4_bmc_fan_converge_target,

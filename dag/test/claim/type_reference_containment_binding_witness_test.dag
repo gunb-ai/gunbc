@@ -83,7 +83,7 @@ fn trcb_authored_order(occurrence: std.occurrence_identity.OccurrenceId, ordinal
 fn trcb_module_exposure(occurrence: std.occurrence_identity.OccurrenceId, module: String) -> std.occurrence_binding_candidates.DeclarationExposureRow {
   std.occurrence_binding_candidates.DeclarationExposureRow {
     occurrence: occurrence,
-    exposure: ModuleExposure { module: trcb_module_path(dotted: module) },
+    exposure: std.occurrence_binding_candidates.ModuleExposure { module: trcb_module_path(dotted: module) },
   }
 }
 

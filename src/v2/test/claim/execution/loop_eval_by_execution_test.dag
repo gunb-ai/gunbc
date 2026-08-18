@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn loop_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     occurrence_id: SyntheticOccurrence,
     children: []
   }
@@ -20,7 +20,7 @@ fn loop_i64_node() -> Node {
 }
 
 fn loop_int_value(bytes: List<Byte>) -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: loop_i64_node(),
       bytes: bytes
@@ -48,7 +48,7 @@ fn loop_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^loop_runtime_rejected,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -160,7 +160,7 @@ fn loop_context() -> v2.compiler.eval.EvalContext {
 
 fn loop_pick_call(callee: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: callee }
@@ -170,7 +170,7 @@ fn loop_pick_call(callee: Node) -> Node {
 
 fn loop_tree_root(call: Node, expected: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Named { name: ^loop_actual }, target: call },
@@ -229,7 +229,7 @@ fn loop_inferred_run_tree(callee: Node, expected: Node) -> Outcome<v2.compiler.i
 }
 
 fn loop_claim(input: Node, expected: Node) -> v2.std.verification.TestClaim {
-  CompilesClaim {
+  v2.std.verification.CompilesClaim {
     label: "manual/loop: source-bridged loop body executes through eval",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: input,

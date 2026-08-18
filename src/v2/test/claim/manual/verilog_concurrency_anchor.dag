@@ -16,24 +16,24 @@ data verilog_anchor_posedge_clk: v2.extdeps.languages.verilog.SensitivityItem = 
   event_expression_lexeme: "clk"
 }
 data verilog_anchor_posedge_always: v2.extdeps.languages.verilog.AlwaysBlock = v2.extdeps.languages.verilog.AlwaysBlock {
-  sensitivity: ExplicitEventList { items: [verilog_anchor_posedge_clk] },
+  sensitivity: v2.extdeps.languages.verilog.ExplicitEventList { items: [verilog_anchor_posedge_clk] },
   body_lexeme: "q <= d;"
 }
 data verilog_anchor_cost: v2.extdeps.languages.verilog.VerilogCost = v2.extdeps.languages.verilog.VerilogCost {
   gate_cost: 1,
   area_cost: 1
 }
-data verilog_anchor_module_fixture: verilog_anchor_module = NoPortListModule {
+data verilog_anchor_module_fixture: verilog_anchor_module = v2.extdeps.languages.verilog.NoPortListModule {
   attributes: NoAttributeInstances,
   module_keyword: ModuleKw,
   name: ^verilog_anchor_q,
   parameter_port_list: NoModuleParameterPortList,
   items: [
-    ContinuousAssignItem {
+    v2.extdeps.languages.verilog.ContinuousAssignItem {
       attributes: NoAttributeInstances,
       assign: verilog_anchor_continuous_assign
     },
-    AlwaysBlockItem {
+    v2.extdeps.languages.verilog.AlwaysBlockItem {
       attributes: NoAttributeInstances,
       always_block: verilog_anchor_posedge_always
     }

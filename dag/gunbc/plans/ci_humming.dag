@@ -68,5 +68,5 @@ data ci_humming_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "ci-humming",
   title: "CI humming — throughput, wall-clock, reliability (the single CI-operations authority)",
   body: ci_humming_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when CI throughput, wall-clock, and reliability all fall out of the single modeled fleet budget consumed by a verified-effective apply (T0 un-zeroes the runner slice, T1/T2 caps are verified-effective on srv1+srv2, and the session slice is capped or oomd-backstopped) — so capacity is safe by construction rather than hand-managed.") }
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when CI throughput, wall-clock, and reliability all fall out of the single modeled fleet budget consumed by a verified-effective apply (T0 un-zeroes the runner slice, T1/T2 caps are verified-effective on srv1+srv2, and the session slice is capped or oomd-backstopped) — so capacity is safe by construction rather than hand-managed.") }
 }

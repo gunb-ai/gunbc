@@ -35,12 +35,12 @@ data gerber_semantic_carriage: List<extdeps.ipc.dpmx.FormatSemanticRow> = [
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
     semantic: DrillData,
-    carriage: CarriedInCompanionArtifact { artifact: "drill file" },
+    carriage: extdeps.ipc.dpmx.CarriedInCompanionArtifact { artifact: "drill file" },
     authority: extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
     semantic: Stackup,
-    carriage: CarriedInCompanionArtifact { artifact: "Gerber job file" },
+    carriage: extdeps.ipc.dpmx.CarriedInCompanionArtifact { artifact: "Gerber job file" },
     authority: extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {

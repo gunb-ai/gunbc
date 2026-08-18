@@ -60,7 +60,7 @@ fn vacuity_consumer_witness_live_derived_sites() -> List<VacuitySiteKey> {
 
 fn vacuity_consumer_witness_evidence_for_site(site: VacuitySiteKey) -> v2.lens.vacuity.VacuityEvidence {
   classify_unified_test_claim_vacuity(
-    claim: BoolWitnessClaim { witness: v2.std.verification.BoolWitness { entry: site.file, function: site.function } },
+    claim: v2.std.verification.BoolWitnessClaim { witness: v2.std.verification.BoolWitness { entry: site.file, function: site.function } },
     lhs_provenance: OperandProvenanceUnknown,
     rhs_provenance: OperandProvenanceUnknown,
     operand_provenance: OperandProvenanceUnknown
@@ -134,7 +134,7 @@ data vacuity_consumer_witness_constant_unknown_collapse_control_note: String = "
 
 fn vacuity_consumer_witness_synthetic_equals_operand() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -159,7 +159,7 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
         Present { value: _ } => false
       }
       let classified = classify_unified_test_claim_vacuity(
-        claim: BoolWitnessClaim { witness: v2.std.verification.BoolWitness { entry: target_file, function: target_fn } },
+        claim: v2.std.verification.BoolWitnessClaim { witness: v2.std.verification.BoolWitness { entry: target_file, function: target_fn } },
         lhs_provenance: OperandProvenanceUnknown,
         rhs_provenance: OperandProvenanceUnknown,
         operand_provenance: OperandProvenanceUnknown
@@ -169,8 +169,8 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
   let operand = vacuity_consumer_witness_synthetic_equals_operand()
   let dispatcher_reaches_proven_duplicate = vacuity_evidence_eq(
     a: classify_unified_test_claim_vacuity(
-      claim: NodeCorpus {
-        claim: EqualsClaim {
+      claim: v2.std.verification.NodeCorpus {
+        claim: v2.std.verification.EqualsClaim {
           label: "vacuity_consumer_witness: dispatcher reaches ProvenDuplicate via NodeCorpus, not just Unknown",
           anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
           lhs: operand,

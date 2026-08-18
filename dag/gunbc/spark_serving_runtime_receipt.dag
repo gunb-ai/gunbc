@@ -35,7 +35,7 @@ fn spark_serving_runtime_receipt_probe_words() -> List<String> {
 fn spark_serving_parse_runtime_receipt_json(stdout: String) -> gunbc.spark_serving_readback_parse.SparkServingReadbackField {
   match parse_json(s: stdout) {
     Absent =>
-      SparkServingReadbackRefused {
+      gunbc.spark_serving_readback_parse.SparkServingReadbackRefused {
         cause: "ollama runtime archive admission receipt is not parseable JSON" as std.types.NonEmptyStr,
       }
     Present { value: doc } =>
@@ -54,14 +54,14 @@ fn spark_serving_runtime_receipt_field_from_probe(
 ) -> gunbc.spark_serving_readback_parse.SparkServingReadbackField {
   match probe {
     Absent =>
-      SparkServingReadbackRefused {
+      gunbc.spark_serving_readback_parse.SparkServingReadbackRefused {
         cause: "runtime archive admission receipt probe leg did not run" as std.types.NonEmptyStr,
       }
     Present { value: r } =>
       if r.success {
         spark_serving_parse_runtime_receipt_json(stdout: r.stdout)
       } else {
-        SparkServingReadbackRefused {
+        gunbc.spark_serving_readback_parse.SparkServingReadbackRefused {
           cause: join([
             "runtime archive admission receipt probe failed exit=", to_string(r.exit_code),
             " stderr=", r.stderr,

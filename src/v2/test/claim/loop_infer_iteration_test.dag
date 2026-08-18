@@ -7,7 +7,7 @@ data loop_infer_refinement_proxy_note: String = "FLAG C witness (body-lowering d
 
 fn loop_infer_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -19,7 +19,7 @@ fn loop_infer_int_binding_type_node() -> Node {
 
 fn loop_infer_two_stage_loop_node(first: Node, second: Node, measure: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: first },
       v2.std.node.Edge { label: Positional, target: second },
@@ -31,7 +31,7 @@ fn loop_infer_two_stage_loop_node(first: Node, second: Node, measure: Node) -> N
 
 fn loop_infer_one_stage_loop_node(stage: Node, measure: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: stage },
       v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: measure }
@@ -113,7 +113,7 @@ test fn loop_infer_unregistered_measure_is_refused() -> Bool {
 
 test fn loop_infer_missing_measure_is_refused() -> Bool {
   let body = v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: dag_int_literal_fixture_one() }
     ],

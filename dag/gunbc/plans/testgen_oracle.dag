@@ -7,7 +7,7 @@ fn testgen_oracle_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "**Verified against the live tree 2026-06-21.** Receipts below; re-check before acting."),
     h2(text: "0. What testgen actually is today"),
     p(text: "A compile-time lens (`src/v2/lens/testgen.dag`, ~2078 lines) that emits conformance test modules into `src/v2/test/claim/generated/` (`module v2.test.generated.*`, all stamped one batch). Categories present:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "category"), cell(text: "file"), cell(text: "source")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -29,7 +29,7 @@ fn testgen_oracle_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "2. The oracle method — route each bug class to its mechanism"),
     p(text: "The retro the operator wants: for every bug class we hit, ask three questions and record the answer. (1) Is there a generator **category** for this class? (2) Is it **structural** (witnesses derivable from the declared Node tree) or hand-anchored? (3) Is its **output gated** (run in the floor)? A \"no\" on any axis is *candidate* work — but the deeper output is that a \"no on category\" splits three ways, and only one of those is **testgen's** job. Testgen *generates* conformance witnesses from a **single declared structure**; it cannot detect a **corpus-wide coincidence or absence** (two decls that should be one; a missing consumer) — that is a **lens** (§5/§6 residue-validation, a pure reader over the corpus). And a runtime/semantic class is a **construction wall** or out of scope. So the map routes each class to one of three mechanisms — **testgen generator · lens · construction wall** — which is DESIGN §5's trichotomy (wall / lens-residue / undecidable) turned on test coverage, the [expressibility-frontier frame](expressibility-frontier.md) applied: classify *before* gating."),
     p(text: "**(A) Covered by a testgen generator — structural, gated (the working core):**"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "bug class"), cell(text: "category"), cell(text: "structural?"), cell(text: "gated?")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -39,7 +39,7 @@ fn testgen_oracle_body() -> List<std.markdown.MarkdownBlock> {
       ],
     },
     p(text: "**(B) Has a testgen category but still hand-anchored — gated, structural-routing HELD (operator STOP):**"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "bug class"), cell(text: "category"), cell(text: "structural?"), cell(text: "gated?")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -51,7 +51,7 @@ fn testgen_oracle_body() -> List<std.markdown.MarkdownBlock> {
     },
     p(text: "The primitive to make these structural now exists (`node_query.coproduct_arm_keys` / `collect_nodes_where`), but routing them is a **new structural-generation decision** and `testgen.dag`'s header says *new TestgenConcept arms = operator STOP*. This is testgen's only genuinely-*testgen* remaining frontier — **held, operator-gated** (§4 step \"make them structural\"; route the request through the planning lane)."),
     p(text: "**(C) Structural-enumerable but NOT a generator's job — a LENS, not testgen.** The violation is a *coincidence or absence across the corpus*, which a generator-from-one-structure cannot emit. Most already have a lens; none is a testgen gap."),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "bug class"), cell(text: "mechanism (not testgen)"), cell(text: "state")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -64,7 +64,7 @@ fn testgen_oracle_body() -> List<std.markdown.MarkdownBlock> {
       ],
     },
     p(text: "**(D) Not structurally enumerable / not testgen — construction wall or out of scope:**"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "bug class"), cell(text: "mechanism"), cell(text: "note")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -94,6 +94,6 @@ data testgen_oracle_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "testgen-oracle",
   title: "Plan — testgen as the bug-class oracle (coverage by construction)",
   body: testgen_oracle_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when testgen's generated output is floor-gated (drift-closed), the structural categories are derived from `node_query` (not hand-rosters), and the bug-class→category map has no structural-class \"no\" — at which point a new bug in a structural class is caught by the generator that already enumerates it, and this tracker is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when testgen's generated output is floor-gated (drift-closed), the structural categories are derived from `node_query` (not hand-rosters), and the bug-class→category map has no structural-class \"no\" — at which point a new bug in a structural class is caught by the generator that already enumerates it, and this tracker is redundant.")
   }
 }

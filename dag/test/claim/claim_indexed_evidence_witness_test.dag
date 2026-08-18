@@ -6,20 +6,20 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn provider_evidence_fixture() -> extdeps.llm.cli_lifecycle.ProviderInstance {
   extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: CodexCliProvider,
-    host: ProviderInstanceFieldUnobserved {
+    host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "claim-evidence fixture",
     },
     executable: "codex",
-    observed_version: ProviderInstanceFieldUnobserved {
+    observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "claim-evidence fixture",
     },
-    state_directory: ProviderInstanceFieldUnobserved {
+    state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "dedicated CODEX_HOME fixture",
     },
-    credential_storage_method: ProviderInstanceFieldUnobserved {
+    credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "claim-evidence fixture",
     },
-    service_identity: ProviderInstanceFieldUnobserved {
+    service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "claim-evidence fixture",
     },
   }
@@ -65,7 +65,7 @@ fn provider_login_status_fact(
     value: gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation {
       provider: provider_evidence_fixture(),
       bound: provider_evidence_bound,
-      result: ProviderLoginCredentialRecorded {
+      result: gunbc.provider_readiness_claim_evidence.ProviderLoginCredentialRecorded {
         response: "Logged in using ChatGPT",
       },
     },
@@ -81,7 +81,7 @@ fn provider_live_request_failed_fact(
     value: gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation {
       provider: provider_evidence_fixture(),
       bound: provider_evidence_bound,
-      result: ProviderLiveRefreshRefused { reason: reason },
+      result: gunbc.provider_readiness_claim_evidence.ProviderLiveRefreshRefused { reason: reason },
     },
   }
 }
@@ -94,7 +94,7 @@ fn provider_live_request_succeeded_fact(
     value: gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation {
       provider: provider_evidence_fixture(),
       bound: provider_evidence_bound,
-      result: ProviderLiveModelResponseReceived {
+      result: gunbc.provider_readiness_claim_evidence.ProviderLiveModelResponseReceived {
         response: "provider returned a model response",
       },
     },
@@ -164,7 +164,7 @@ test fn witness_provider_adapter_cannot_manufacture_live_success_from_login_stat
     value: gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation {
       provider: provider,
       bound: provider_evidence_bound,
-      result: ProviderLoginCredentialRecorded {
+      result: gunbc.provider_readiness_claim_evidence.ProviderLoginCredentialRecorded {
         response: "Logged in using ChatGPT",
       },
     },
@@ -336,7 +336,7 @@ test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
     probe: gunbc.readback_independence.ReadBackProbe {
       label: "ensure provider then claim success",
       subject: "provider authentication",
-      effect_on_subject: ProbeMayEstablish {
+      effect_on_subject: gunbc.readback_independence.ProbeMayEstablish {
         mechanism: "the operation refreshes credentials before reporting",
       },
     },
@@ -365,7 +365,7 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
   let probe = gunbc.readback_independence.ReadBackProbe {
     label: "ensure credentials then report status",
     subject: "credential material is recorded",
-    effect_on_subject: ProbeMayEstablish {
+    effect_on_subject: gunbc.readback_independence.ProbeMayEstablish {
       mechanism: "the query installs or refreshes credentials before reporting",
     },
   }

@@ -12,7 +12,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 data filed_facts_derive_not_store_note: String = "Store ONLY filed monetary facts with accession + fiscal-period citations. Margins and other ratios are DERIVED projections computed from stored facts at read time (DESIGN section 2 derive-not-store) — never stored fields on the fact row."
 
 // SEC XBRL monetary facts report USD in whole dollars (companyfacts/companyconcept `val` field). Grounded on std.measure MoneyAmount<One, Currency> — not bare Int — so currency is in the type, not the field name.
-type UsdWholeDollars = MoneyAmount<One>
+type UsdWholeDollars = MoneyAmount<std.measure.One>
 
 fn usd_whole_dollars(count: std.nat.Nat) -> UsdWholeDollars {
   UsdWholeDollars { count: count }

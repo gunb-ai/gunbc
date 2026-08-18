@@ -26,7 +26,7 @@ fn inputs_root_only(root: Node) -> Inputs {
 
 fn symbol_atom_node(sym: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -416,7 +416,7 @@ fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: v2.std.node
 
 fn test_claim_cache_digest_tag_node(tag: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: tag } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: tag } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -629,7 +629,7 @@ fn descent_witness_digest(d: Witness<v2.std.cardinality.TerminationProof>) -> v2
 
 fn eval_grounding_not_derived_digest_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^eval_grounding_not_derived_digest_tag } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^eval_grounding_not_derived_digest_tag } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -809,7 +809,7 @@ fn eval_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.std.diagnostic.
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
-    correction: Unavailable { reason: AmbiguousIntent }
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
@@ -925,14 +925,14 @@ fn eval_runtime_value_acceptance_witness(
   RuntimeValueAcceptanceWitness {
     resolved_type: match inferred_facts_resolved_type(facts: facts) {
       Violates { diagnostic: _ } =>
-        Violates {
+        v2.std.witness.Violates {
           diagnostic: eval_diagnostic(reason: ^eval_rejected_grounding_not_derived, node: node)
         }
       Holds { value: declared } =>
         if declared == runtime_value_resolved_type(value: value) {
           Holds { value: runtime_value_resolved_type(value: value) }
         } else {
-          Violates {
+          v2.std.witness.Violates {
             diagnostic: eval_diagnostic(reason: ^eval_rejected_resolved_type_mismatch, node: node)
           }
         }
@@ -940,14 +940,14 @@ fn eval_runtime_value_acceptance_witness(
     inhabitance: if inferred_facts_canonical_admitted(facts: facts) {
       Holds { value: facts }
     } else {
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: eval_diagnostic(reason: ^eval_rejected_inhabitance_mismatch, node: node)
       }
     },
     canonical: if inferred_facts_canonical_admitted(facts: facts) {
       Holds { value: facts }
     } else {
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: eval_diagnostic(reason: ^eval_rejected_canonical_mismatch, node: node)
       }
     }
@@ -1287,7 +1287,7 @@ fn eval_node_is_loop(node: Node) -> Bool {
 
 fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
       v2.std.node.Edge { label: Positional, target: locator },
       v2.std.node.Edge { label: Positional, target: payload }
@@ -1370,9 +1370,9 @@ fn eval_effect_io_roundtrip(
         bind_outcome(
           o: eval_bind_value_argument(args: args, node: node),
           f: fn(payload) {
-            let write_args = Cons {
+            let write_args = std.algebra.Cons {
               head: locator_arg,
-              tail: Cons { head: payload, tail: Empty }
+              tail: std.algebra.Cons { head: payload, tail: Empty }
             }
             let write_request = effect_io_pure_write_request(args: write_args)
             bind_outcome(
@@ -1397,7 +1397,7 @@ fn eval_effect_io_roundtrip(
                         handlers: rebound.handlers,
                         receipt_log: write_yield.bundle.receipt_log
                       }
-                      let read_args = Cons { head: locator_arg, tail: Empty }
+                      let read_args = std.algebra.Cons { head: locator_arg, tail: Empty }
                       let read_request = effect_io_pure_read_request(args: read_args)
                       bind_outcome(
                         o: eval_yield_effect_request(bundle: read_bundle, request: read_request),
@@ -2071,7 +2071,7 @@ fn eval_fold_closure_argument_child_state(
     structural: eval_structural_node_for_eval(tree: tree, node: edge.target),
     child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
     value: Accepted {
-      value: RuntimeClosure {
+      value: v2.std.runtime.RuntimeClosure {
         value: v2.std.runtime.RuntimeClosureValue {
           arrow_type: edge.target,
           arrow: edge.target,
@@ -2301,7 +2301,7 @@ fn eval_runtime_control_node(
         ComputationNode { behavior: b } =>
           interpretation_behavior_dispatch(interpretation: interpretation, behavior: b)
         _ =>
-          TransformRuntimeInterpreter {
+          v2.std.runtime.TransformRuntimeInterpreter {
             interpreter: interpretation.transform
           }
       }

@@ -10,7 +10,7 @@ fn add_body_fold_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.no
 fn add_body_fold_add_operator_row_minus() -> Node {
   target_operator_realization_node(
     operation: canonical_operation_op_add(),
-    shape: InfixToken { token: ^ts_token_minus }
+    shape: v2.std.compilers.target_model.InfixToken { token: ^ts_token_minus }
   )
 }
 
@@ -24,7 +24,7 @@ fn add_body_fold_operator_catalog_empty() -> Node {
 
 fn add_body_fold_target_model_bundle(operator_catalog: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       add_body_fold_named_edge(
         name: ^target_model_edge_selection_policy,
@@ -93,17 +93,17 @@ fn add_body_fold_tokens_equal(
 
 fn add_body_fold_operand_swap_body_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_y },
-    FixedToken { token_class: ^ts_token_plus },
-    BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_x }
+    v2.std.compilers.target_model.BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^ts_token_plus },
+    v2.std.compilers.target_model.BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_x }
   ]
 }
 
 fn add_body_fold_catalog_minus_body_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_x },
-    FixedToken { token_class: ^ts_token_minus },
-    BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_y }
+    v2.std.compilers.target_model.BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^ts_token_minus },
+    v2.std.compilers.target_model.BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_y }
   ]
 }
 

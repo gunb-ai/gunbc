@@ -81,7 +81,7 @@ test fn occurrence_identity_v2_synthetic_facade_round_trip_holds() -> Bool {
 }
 
 test fn occurrence_identity_v2_minted_facade_round_trip_holds() -> Bool {
-  let facade: v2.std.node.NodeOccurrenceId = MintedOccurrence {
+  let facade: v2.std.node.NodeOccurrenceId = v2.std.node.MintedOccurrence {
     id: std.occurrence_identity.OccurrenceId { value: 11 },
   }
   match v2.std.node.node_occurrence_id_from_shared(

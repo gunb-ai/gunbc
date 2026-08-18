@@ -24,7 +24,7 @@ data synthetic_binding_witness: std.realization_schedule.ScheduleWitnessEntry = 
 }
 
 test fn roster_read_liveness_discriminates() -> Bool {
-  let bound = BoundConsumerWitness { witness: synthetic_binding_witness }
+  let bound = v2.lens.enforcement.vocab.BoundConsumerWitness { witness: synthetic_binding_witness }
   consumer_kind_eq(
     a: consumer_enrolled_for(binding: bound, ci_entries: [synthetic_binding_witness], prepush_entries: []),
     b: EnrolledInFloorRoster

@@ -5,8 +5,8 @@ fn ci_cache_hash_files() -> extdeps.github.expressions.Expression {
   extdeps.llm.openai.FunctionCall {
     function: HashFiles,
     args: [
-      StringLiteral { value: "**/Cargo.lock" },
-      StringLiteral { value: "rust-toolchain.toml" }
+      extdeps.github.expressions.StringLiteral { value: "**/Cargo.lock" },
+      extdeps.github.expressions.StringLiteral { value: "rust-toolchain.toml" }
     ]
   }
 }
@@ -28,64 +28,64 @@ fn ci_cache_hash_files() -> extdeps.github.expressions.Expression {
 // policy still read as if it worked. Only the main-push arm is exempted, and only because
 // on main a cancelled run destroys the sole verdict that commit will ever get.
 fn ci_concurrency_discriminator() -> extdeps.github.expressions.Expression {
-  LogicalOr {
-    left: LogicalOr {
-      left: ContextAccess { context: Github, path: ["event", "pull_request", "number"] },
-      right: LogicalAnd {
-        left: Equals {
-          left: ContextAccess { context: Github, path: ["ref"] },
-          right: StringLiteral { value: "refs/heads/main" }
+  extdeps.github.expressions.LogicalOr {
+    left: extdeps.github.expressions.LogicalOr {
+      left: extdeps.github.expressions.ContextAccess { context: Github, path: ["event", "pull_request", "number"] },
+      right: extdeps.github.expressions.LogicalAnd {
+        left: extdeps.github.expressions.Equals {
+          left: extdeps.github.expressions.ContextAccess { context: Github, path: ["ref"] },
+          right: extdeps.github.expressions.StringLiteral { value: "refs/heads/main" }
         },
-        right: ContextAccess { context: Github, path: ["sha"] }
+        right: extdeps.github.expressions.ContextAccess { context: Github, path: ["sha"] }
       }
     },
-    right: ContextAccess { context: Github, path: ["ref"] }
+    right: extdeps.github.expressions.ContextAccess { context: Github, path: ["ref"] }
   }
 }
 
 data ci_concurrency_group_template: extdeps.github.expressions.ExpressionTemplate = {
   segments: [
-    Interpolation { expression: ContextAccess { context: Github, path: ["workflow"] } },
-    LiteralText { text: "-" },
-    Interpolation { expression: ci_concurrency_discriminator() }
+    extdeps.github.expressions.Interpolation { expression: extdeps.github.expressions.ContextAccess { context: Github, path: ["workflow"] } },
+    extdeps.github.expressions.LiteralText { text: "-" },
+    extdeps.github.expressions.Interpolation { expression: ci_concurrency_discriminator() }
   ]
 }
 
 data ci_setup_rust_home_template: extdeps.github.expressions.ExpressionTemplate = {
   segments: [
-    Interpolation { expression: runner_temp() }
+    extdeps.github.expressions.Interpolation { expression: runner_temp() }
   ]
 }
 
 data ci_cache_path_template: extdeps.github.expressions.ExpressionTemplate = {
   segments: [
-    Interpolation { expression: runner_temp() },
-    LiteralText { text: "/cargo/registry/index/\n" },
-    Interpolation { expression: runner_temp() },
-    LiteralText { text: "/cargo/registry/cache/\n" },
-    Interpolation { expression: runner_temp() },
-    LiteralText { text: "/cargo/git/db/\ntarget/" }
+    extdeps.github.expressions.Interpolation { expression: runner_temp() },
+    extdeps.github.expressions.LiteralText { text: "/cargo/registry/index/\n" },
+    extdeps.github.expressions.Interpolation { expression: runner_temp() },
+    extdeps.github.expressions.LiteralText { text: "/cargo/registry/cache/\n" },
+    extdeps.github.expressions.Interpolation { expression: runner_temp() },
+    extdeps.github.expressions.LiteralText { text: "/cargo/git/db/\ntarget/" }
   ]
 }
 
 data ci_cache_key_template: extdeps.github.expressions.ExpressionTemplate = {
   segments: [
-    LiteralText { text: "cargo-ci-" },
-    Interpolation { expression: runner_os() },
-    LiteralText { text: "-" },
-    Interpolation { expression: runner_arch() },
-    LiteralText { text: "-" },
-    Interpolation { expression: ci_cache_hash_files() }
+    extdeps.github.expressions.LiteralText { text: "cargo-ci-" },
+    extdeps.github.expressions.Interpolation { expression: runner_os() },
+    extdeps.github.expressions.LiteralText { text: "-" },
+    extdeps.github.expressions.Interpolation { expression: runner_arch() },
+    extdeps.github.expressions.LiteralText { text: "-" },
+    extdeps.github.expressions.Interpolation { expression: ci_cache_hash_files() }
   ]
 }
 
 data ci_cache_restore_keys_template: extdeps.github.expressions.ExpressionTemplate = {
   segments: [
-    LiteralText { text: "cargo-ci-" },
-    Interpolation { expression: runner_os() },
-    LiteralText { text: "-" },
-    Interpolation { expression: runner_arch() },
-    LiteralText { text: "-\n" }
+    extdeps.github.expressions.LiteralText { text: "cargo-ci-" },
+    extdeps.github.expressions.Interpolation { expression: runner_os() },
+    extdeps.github.expressions.LiteralText { text: "-" },
+    extdeps.github.expressions.Interpolation { expression: runner_arch() },
+    extdeps.github.expressions.LiteralText { text: "-\n" }
   ]
 }
 

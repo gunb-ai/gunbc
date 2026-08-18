@@ -22,15 +22,15 @@ fn is_enforced(e: gunbc.runner_slot_enforcement.RunnerSlotEnforcement) -> Bool {
 }
 
 fn matching_read() -> ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> {
-  ReadObserved { value: CapEffective { bytes: fixture_expected_cap() } }
+  std.realization_reconcile.ReadObserved { value: gunbc.ci_floor_measurement.CapEffective { bytes: fixture_expected_cap() } }
 }
 
 fn unbounded_read() -> ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> {
-  ReadObserved { value: CapUnbounded }
+  std.realization_reconcile.ReadObserved { value: CapUnbounded }
 }
 
 fn drift_read() -> ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> {
-  ReadObserved { value: CapEffective { bytes: fixture_drift_cap() } }
+  std.realization_reconcile.ReadObserved { value: gunbc.ci_floor_measurement.CapEffective { bytes: fixture_drift_cap() } }
 }
 
 fn apply_fixture() -> gunbc.runner_slot_enforcement.RunnerSlotApplyEffect {

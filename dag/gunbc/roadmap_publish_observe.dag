@@ -29,8 +29,8 @@ fn remote_branch_observation_of(
   advertised: List<String>,
 ) -> gunbc.roadmap_publish.RemoteBranchObservation {
   if exit_code != 0 {
-    RemoteBranchesUnreadable {
-      cause: RefAdvertisementRefused {
+    gunbc.roadmap_publish.RemoteBranchesUnreadable {
+      cause: gunbc.roadmap_publish.RefAdvertisementRefused {
         remote: remote,
         exit_code: exit_code,
         stderr: stderr,
@@ -39,8 +39,8 @@ fn remote_branch_observation_of(
   } else {
     match scan_advertised_refs(lines: advertised) {
       AdvertisedRefLineUnparsed { line, index } =>
-        RemoteBranchesUnreadable {
-          cause: AdvertisedLineUnparsed {
+        gunbc.roadmap_publish.RemoteBranchesUnreadable {
+          cause: gunbc.roadmap_publish.AdvertisedLineUnparsed {
             remote: remote,
             index: index,
             line: line,
@@ -49,14 +49,14 @@ fn remote_branch_observation_of(
       AdvertisedRefsRead { refs } =>
         let degenerate = advertised_refs_projecting_empty_branch(refs: refs)
         if count(degenerate) > 0 {
-          RemoteBranchesUnreadable {
-            cause: AdvertisedRefProjectsEmptyBranch {
+          gunbc.roadmap_publish.RemoteBranchesUnreadable {
+            cause: gunbc.roadmap_publish.AdvertisedRefProjectsEmptyBranch {
               remote: remote,
               ref_names: map(degenerate, r => r.ref_name),
             },
           }
         } else {
-          RemoteBranchesRead {
+          gunbc.roadmap_publish.RemoteBranchesRead {
             branches: map(refs, r => advertised_ref_to_remote_branch(r: r, remote: remote)),
           }
         }
@@ -131,8 +131,8 @@ fn observe_pull_requests(
 ) -> gunbc.roadmap_publish.PullRequestObservation {
   match credential {
     CredentialSourceAbsent { reason } =>
-      PullRequestsUnreadable {
-        cause: PullRequestCredentialUnavailable {
+      gunbc.roadmap_publish.PullRequestsUnreadable {
+        cause: gunbc.roadmap_publish.PullRequestCredentialUnavailable {
           repository: repo.full_name,
           reason: reason,
         },
@@ -145,25 +145,25 @@ fn observe_pull_requests(
         state: extdeps.github.pulls.Open,
       )
       match result.outcome {
-        RestOk => PullRequestsRead { pulls: result.pulls }
+        RestOk => gunbc.roadmap_publish.PullRequestsRead { pulls: result.pulls }
         RestStatusRefused { status, body } =>
-          PullRequestsUnreadable {
-            cause: PullRequestStatusRefused {
+          gunbc.roadmap_publish.PullRequestsUnreadable {
+            cause: gunbc.roadmap_publish.PullRequestStatusRefused {
               repository: repo.full_name,
               status: status,
               body: body,
             },
           }
         RestTransportRefused { cause } =>
-          PullRequestsUnreadable {
-            cause: PullRequestTransportRefused {
+          gunbc.roadmap_publish.PullRequestsUnreadable {
+            cause: gunbc.roadmap_publish.PullRequestTransportRefused {
               repository: repo.full_name,
               cause: cause,
             },
           }
         RestBodyUndecodable { status, cause } =>
-          PullRequestsUnreadable {
-            cause: PullRequestBodyUndecodable {
+          gunbc.roadmap_publish.PullRequestsUnreadable {
+            cause: gunbc.roadmap_publish.PullRequestBodyUndecodable {
               repository: repo.full_name,
               status: status,
               cause: cause,

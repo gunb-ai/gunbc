@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn add_arrow_eval_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     occurrence_id: SyntheticOccurrence,
     children: []
   }
@@ -37,7 +37,7 @@ fn add_arrow_eval_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^add_arrow_eval_runtime_rejected,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -59,7 +59,7 @@ fn add_arrow_eval_ordered_add_args(args: List<v2.std.runtime.RuntimeValue>) -> B
 }
 
 fn add_arrow_eval_int_runtime_value(n: Int) -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: add_arrow_eval_i64_node(),
       bytes: integer_int_to_signed_i32_le_bytes(value: n)
@@ -115,7 +115,7 @@ fn add_arrow_eval_lazy_arm_branch_node() -> Node {
       match add_arrow_eval_int_literal_optional(lexeme: "5") {
         Present { value: five_lit } =>
           v2.std.node.Node {
-            kind: ComputationNode { behavior: Branch },
+            kind: v2.std.node.ComputationNode { behavior: Branch },
             occurrence_id: SyntheticOccurrence,
             children: [
               v2.std.node.Edge { label: Positional, target: two_lit },
@@ -259,7 +259,7 @@ fn add_arrow_eval_add_call_optional(
         Present { value: right } =>
           Present {
             value: v2.std.node.Node {
-              kind: ComputationNode { behavior: Transform },
+              kind: v2.std.node.ComputationNode { behavior: Transform },
               occurrence_id: SyntheticOccurrence,
               children: [
                 v2.std.node.Edge { label: Positional, target: callee },
@@ -276,7 +276,7 @@ fn add_arrow_eval_add_call_optional(
 
 fn add_arrow_eval_tree_root(call: Node, expected: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Named { name: ^add_arrow_eval_actual }, target: call },
@@ -332,7 +332,7 @@ fn add_arrow_eval_inferred_run_tree(
 }
 
 fn add_arrow_eval_claim(input: Node, expected: Node) -> v2.std.verification.TestClaim {
-  CompilesClaim {
+  v2.std.verification.CompilesClaim {
     label: "manual/add_arrow: source-bridged add Arrow.body executes through eval callee dispatch",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: input,
@@ -400,7 +400,7 @@ fn add_arrow_eval_run(
 
 fn add_arrow_swapped_operand_body() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus) },
@@ -412,7 +412,7 @@ fn add_arrow_swapped_operand_body() -> Node {
 
 fn add_arrow_swapped_add_arrow() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
@@ -425,7 +425,7 @@ fn add_arrow_swapped_add_arrow() -> Node {
 
 fn add_arrow_excess_signature_arrow() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
@@ -439,7 +439,7 @@ fn add_arrow_excess_signature_arrow() -> Node {
 
 fn add_arrow_eval_canonical_body() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus) },
@@ -451,7 +451,7 @@ fn add_arrow_eval_canonical_body() -> Node {
 
 fn add_arrow_excess_body_arrow() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
@@ -464,7 +464,7 @@ fn add_arrow_excess_body_arrow() -> Node {
 
 fn add_arrow_excess_body() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus) },
@@ -482,7 +482,7 @@ fn add_arrow_excess_actual_call_optional(callee: Node) -> Optional<Node> {
         Present { value: three_lit } =>
           Present {
             value: v2.std.node.Node {
-              kind: ComputationNode { behavior: Transform },
+              kind: v2.std.node.ComputationNode { behavior: Transform },
               occurrence_id: SyntheticOccurrence,
               children: [
                 v2.std.node.Edge { label: Positional, target: callee },
@@ -726,7 +726,7 @@ fn add_arrow_eval_lazy_arm_loop_interpretation() -> v2.std.runtime.Interpretatio
 
 fn add_arrow_eval_lazy_arm_loop_node() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal) },

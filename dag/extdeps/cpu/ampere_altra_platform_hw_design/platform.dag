@@ -238,7 +238,7 @@ type MechanicalFactAvailability
 // fact about that document. The RULE that turns a status into what this
 // repository may carry is gunbc policy and lives in
 // gunbc.upstream_document_carriage; nothing in this module decides it.
-data altra_platform_hw_design_publication_status: extdeps.publication.DocumentPublicationStatus = PubliclyPublishedWithRestrictiveMarking {
+data altra_platform_hw_design_publication_status: extdeps.publication.DocumentPublicationStatus = extdeps.publication.PubliclyPublishedWithRestrictiveMarking {
   marking: "Ampere Computing Proprietary",
 }
 

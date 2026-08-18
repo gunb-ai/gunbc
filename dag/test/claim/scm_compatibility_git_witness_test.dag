@@ -66,15 +66,15 @@ test fn witness_git_modeled_advance_refuses_different_guarantee() -> Bool {
       ) {
         CompatibilityCapabilitySatisfied =>
           match compatibility_check_advance_requirement(
-            requirement: CompatibilityModeledAdvanceRequired {
+            requirement: gunbc.scm_compatibility_shape.CompatibilityModeledAdvanceRequired {
               guarantee: CompatibilityExactCompareAndAdvance,
             },
             observed: capability,
           ) {
             CompatibilityCapabilitySatisfied =>
               match compatibility_check_advance_requirement(
-                requirement: CompatibilityModeledAdvanceRequired {
-                  guarantee: CompatibilityNamedConditionalAdvance {
+                requirement: gunbc.scm_compatibility_shape.CompatibilityModeledAdvanceRequired {
+                  guarantee: gunbc.scm_compatibility_shape.CompatibilityNamedConditionalAdvance {
                     authority: "fixture-other-authority",
                     contract: "fixture-other-contract",
                   },

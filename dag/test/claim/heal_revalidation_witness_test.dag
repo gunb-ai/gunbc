@@ -8,7 +8,7 @@ data required_roster: std.content_hash.Fnv1a64Structural = content_hash_atom(val
 data required_gate: std.content_hash.Fnv1a64Structural = content_hash_atom(value: "heal-gate")
 
 fn produced() -> gunbc.heal_revalidation.HealOutcome {
-  HealProduced {
+  gunbc.heal_revalidation.HealProduced {
     prior_head: prior_head,
     healed_head: healed_head,
     changed_artifacts: [".github/workflows/ci.yml"]
@@ -16,7 +16,7 @@ fn produced() -> gunbc.heal_revalidation.HealOutcome {
 }
 
 fn successful_coverage(head: std.types.CommitSha) -> gunbc.merge_admission.CheckCoverage {
-  CheckCoverageComplete {
+  gunbc.merge_admission.CheckCoverageComplete {
     head: head,
     roster: required_roster,
     conclusions: [gunbc.merge_admission.CoveredGateConclusion { gate: required_gate, conclusion: Success }]
@@ -25,7 +25,7 @@ fn successful_coverage(head: std.types.CommitSha) -> gunbc.merge_admission.Check
 
 test fn heal_no_change_creates_no_revalidation_obligation() -> Bool {
   heal_revalidation_admits(
-    state: heal_revalidation_initial(outcome: HealNoChange { head: prior_head }),
+    state: heal_revalidation_initial(outcome: gunbc.heal_revalidation.HealNoChange { head: prior_head }),
     required_roster: required_roster,
     required_gates: [required_gate]
   )
@@ -33,7 +33,7 @@ test fn heal_no_change_creates_no_revalidation_obligation() -> Bool {
 
 test fn heal_author_commit_required_creates_no_revalidation_obligation() -> Bool {
   heal_revalidation_admits(
-    state: heal_revalidation_initial(outcome: HealAuthorCommitRequired {
+    state: heal_revalidation_initial(outcome: gunbc.heal_revalidation.HealAuthorCommitRequired {
       head: prior_head,
       author_commit_paths: [".github/workflows/ci.yml"]
     }),
@@ -43,7 +43,7 @@ test fn heal_author_commit_required_creates_no_revalidation_obligation() -> Bool
 }
 
 test fn author_commit_required_does_not_supersede_prior_run() -> Bool {
-  match prior_run_disposition(outcome: HealAuthorCommitRequired {
+  match prior_run_disposition(outcome: gunbc.heal_revalidation.HealAuthorCommitRequired {
     head: prior_head,
     author_commit_paths: [".github/workflows/ci.yml", ".github/workflows/falsifier.yml"]
   }) {
@@ -79,11 +79,11 @@ test fn produced_head_supersedes_prior_run() -> Bool {
 
 test fn accepted_dispatch_is_not_revalidation() -> Bool {
   !heal_revalidation_admits(
-    state: HealRevalidationRequired {
+    state: gunbc.heal_revalidation.HealRevalidationRequired {
       prior_head: prior_head,
       healed_head: healed_head,
       changed_artifacts: [".github/workflows/ci.yml"],
-      dispatch: HealDispatchAccepted { healed_head: healed_head, run: "run-42" }
+      dispatch: gunbc.heal_revalidation.HealDispatchAccepted { healed_head: healed_head, run: "run-42" }
     },
     required_roster: required_roster,
     required_gates: [required_gate]
@@ -92,11 +92,11 @@ test fn accepted_dispatch_is_not_revalidation() -> Bool {
 
 test fn refused_dispatch_stays_required_and_located() -> Bool {
   let verdict = classify_heal_revalidation_admission(
-    state: HealRevalidationRequired {
+    state: gunbc.heal_revalidation.HealRevalidationRequired {
       prior_head: prior_head,
       healed_head: healed_head,
       changed_artifacts: [".github/workflows/ci.yml"],
-      dispatch: HealDispatchRefused {
+      dispatch: gunbc.heal_revalidation.HealDispatchRefused {
         healed_head: healed_head,
         cause: "CreateWorkflowDispatch permission denied"
       }
@@ -120,7 +120,7 @@ test fn refused_dispatch_stays_required_and_located() -> Bool {
 
 test fn only_exact_healed_head_complete_coverage_admits() -> Bool {
   heal_revalidation_admits(
-    state: HealRevalidationCoverageObserved {
+    state: gunbc.heal_revalidation.HealRevalidationCoverageObserved {
       prior_head: prior_head,
       healed_head: healed_head,
       changed_artifacts: [".github/workflows/ci.yml"],
@@ -129,7 +129,7 @@ test fn only_exact_healed_head_complete_coverage_admits() -> Bool {
     required_roster: required_roster,
     required_gates: [required_gate]
   ) && !heal_revalidation_admits(
-    state: HealRevalidationCoverageObserved {
+    state: gunbc.heal_revalidation.HealRevalidationCoverageObserved {
       prior_head: prior_head,
       healed_head: healed_head,
       changed_artifacts: [".github/workflows/ci.yml"],

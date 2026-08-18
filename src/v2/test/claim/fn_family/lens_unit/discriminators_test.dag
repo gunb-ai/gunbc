@@ -4,7 +4,7 @@ module v2.test.fn_family.lens_unit.discriminators_test
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn atom_node(id: v2.std.node.Symbol) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } }, children: [])
 }
 
 fn edge_of(k: Node) -> v2.std.node.Edge {
@@ -25,7 +25,7 @@ fn kids_to_edges(kids: List<Node>) -> List<v2.std.node.Edge> {
 
 fn conj_of(kids: List<Node>) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: kids_to_edges(kids: kids)
   )
 }
@@ -87,7 +87,7 @@ test fn witness_disjoint_defs_no_family() -> Bool {
 
 fn parse_wrapped_fn_decl(body: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       grammar_named_edge(name: ^grammar_production_identity_node_projection, target: atom_node(id: ^dag_surface_fn_decl)),
       grammar_named_edge(name: ^grammar_production_captured_node_projection, target: body)

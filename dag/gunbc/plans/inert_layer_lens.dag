@@ -35,7 +35,7 @@ fn inert_layer_lens_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "2. The census (the discriminating witnesses the lens must reproduce)"),
     p(text: "Measured 2026-06-21 over `dag/**` + `src/v2/**`, reachability cross-checked against run-roots (`ci_floor_plan`, `scheduler`, the v1 run path). This is what the lens must independently re-derive:"),
     p(text: "**Fully inert (0 live consumers), load-bearing — the target class:**"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "carrier"), cell(text: "home"), cell(text: "what it models")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -47,7 +47,7 @@ fn inert_layer_lens_body() -> List<std.markdown.MarkdownBlock> {
       ],
     },
     p(text: "**Edge-wired (consumed by a model that is not itself the live source yet):**"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "carrier"), cell(text: "consumed by"), cell(text: "why still inert-at-the-edge")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -55,7 +55,7 @@ fn inert_layer_lens_body() -> List<std.markdown.MarkdownBlock> {
       ],
     },
     p(text: "**Now-wired (recorded so the lens does *not* false-positive these):**"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "carrier"), cell(text: "reached via")]),
       alignments: [AlignNone, AlignNone],
       rows: [
@@ -75,7 +75,7 @@ fn inert_layer_lens_body() -> List<std.markdown.MarkdownBlock> {
       li(text: "**The ranking is the ② residue**, permanently advisory (judging \"load-bearing\" needs domain knowledge)."),
     ]),
     h2(text: "6. Reuse map (do not fork — §3)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "need"), cell(text: "reuse"), cell(text: "file")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -98,7 +98,7 @@ fn inert_layer_lens_body() -> List<std.markdown.MarkdownBlock> {
       p(text: "**Kin families (§2/§3, distinct invariants).** Inertness is *\"not reached from a live root\"* — a **root-relative reachability** verdict (§1, not authority count) — and its structural kin is the **authority/oracle-provenance axis** surfaced by the [vacuity lens](vacuity-lens-design.md) (whether a test carries independent information or duplicates what the code already expresses). Both are redundancy-adjacent §2/§3 concerns sharing the counted-relation **mechanism** (per [lens consolidation](lens-consolidation-design.md): consolidate mechanisms, not meanings), but their **verdicts and remedies diverge**: inertness → reachability gate or exception roster; vacuity → oracle provenance (`VacuityEvidence`: `ProvenDuplicate | ProvenIndependent | Unknown`) with distinct remedy (independent oracle, construction, or deletion—not `Share`). Same root (minimize redundancy), opposite endpoints of distinct invariants."),
     ]),
     p(text: "Reachability-completeness is **not specific to code** — it is a §2-horizontal \"one concept, every breadth\": *every declared node in a graph must be reachable from a root, on an exception roster, or deleted.* It already runs over the **lens** graph (#5433). It applies unchanged to the **doc** graph — and the doc instance is the **cheapest wall of all** (pure link reachability — no reflective edges *needed for the dangling half*, and far simpler than the code substrate):"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "substrate"), cell(text: "nodes"), cell(text: "edges"), cell(text: "roots"), cell(text: "inert ="), cell(text: "dangling =")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -129,6 +129,6 @@ data inert_layer_lens_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "inert-layer-lens",
   title: "The inert-layer lens — modeled but unreached",
   body: inert_layer_lens_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the inert-layer lens family it specifies is fully built and self-describing in the carriers: the still-unbuilt code Tier-1/Tier-2 target class (`v2.lens.inert_layer` over the run-roots, covering `CacheLayerPlan` / `WorkDemand` / `execution_receipt_digest`) has landed as fail-closed floor witnesses alongside the already-live doc-graph (gunbc#5484) and inert-carrier (Lane 7) instances — at which point the rule \"reachable from a run-root, on the exception roster, or deleted\" is enforced by execution across all three substrates and this design prose is superseded by the lenses themselves (the lens never dissolves; this doc does, per DESIGN §6's mark-on-carrier-is-authority).")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the inert-layer lens family it specifies is fully built and self-describing in the carriers: the still-unbuilt code Tier-1/Tier-2 target class (`v2.lens.inert_layer` over the run-roots, covering `CacheLayerPlan` / `WorkDemand` / `execution_receipt_digest`) has landed as fail-closed floor witnesses alongside the already-live doc-graph (gunbc#5484) and inert-carrier (Lane 7) instances — at which point the rule \"reachable from a run-root, on the exception roster, or deleted\" is enforced by execution across all three substrates and this design prose is superseded by the lenses themselves (the lens never dissolves; this doc does, per DESIGN §6's mark-on-carrier-is-authority).")
   }
 }

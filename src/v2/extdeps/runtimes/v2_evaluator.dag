@@ -10,14 +10,14 @@ type V4EvaluatorRuntime {
 
 fn v2_eval_unit_type_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^v2_eval_unit_type_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_eval_unit_type_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
 data v2_eval_bool_literal_pin: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^v2_eval_bool_literal_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_eval_bool_literal_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -29,7 +29,7 @@ fn v2_eval_bool_true_byte() -> Byte {
 }
 
 fn v2_eval_bool_true_primitive() -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: v2_eval_bool_literal_pin,
       bytes: [v2_eval_bool_true_byte()]
@@ -38,7 +38,7 @@ fn v2_eval_bool_true_primitive() -> v2.std.runtime.RuntimeValue {
 }
 
 fn v2_eval_unit_runtime_value() -> v2.std.runtime.RuntimeValue {
-  RuntimeUnit {
+  v2.std.runtime.RuntimeUnit {
     value: v2.std.runtime.RuntimeUnitValue {
       unit_type: v2_eval_unit_literal_pin
     }
@@ -47,7 +47,7 @@ fn v2_eval_unit_runtime_value() -> v2.std.runtime.RuntimeValue {
 
 fn v2_eval_boundary_operation_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^v2_eval_boundary_operation_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_eval_boundary_operation_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -55,7 +55,7 @@ fn v2_eval_boundary_operation_node() -> Node {
 
 fn v2_eval_effect_signature_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^v2_eval_boundary_effect_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_eval_boundary_effect_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -65,16 +65,16 @@ fn v2_eval_runtime_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^v2_eval_semantics_deferred,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 fn v2_eval_binding_lookup_miss(_key: v2.std.runtime.EnvironmentBindingKey) -> Witness<v2.std.runtime.RuntimeValue> {
-  Violates {
+  v2.std.witness.Violates {
     diagnostic: v2.std.diagnostic.Diagnostic {
       reason: ^v2_eval_binding_miss,
       at: port_locus(port: ^v2_eval_binding_miss),
-      correction: Unavailable { reason: AmbiguousIntent }
+      correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
     }
   }
 }
@@ -100,14 +100,14 @@ fn v2_eval_empty_frame() -> v2.std.runtime.EvaluationFrame {
 
 fn v2_eval_int_type_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn v2_eval_int_runtime_value(value: Int) -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: v2_eval_int_type_node(),
       bytes: integer_int_to_signed_i32_le_bytes(value: value)
@@ -116,7 +116,7 @@ fn v2_eval_int_runtime_value(value: Int) -> v2.std.runtime.RuntimeValue {
 }
 
 fn v2_eval_bool_runtime_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: v2_eval_bool_literal_pin,
       bytes: if is_true {

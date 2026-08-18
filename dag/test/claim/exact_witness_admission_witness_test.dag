@@ -326,7 +326,7 @@ fn synthetic_pre_verdict_row() -> gunbc.explicit_witness_admission.ExplicitWitne
     f: "cannot_resolve_at_all",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
-    expected: ExpectTypedPreVerdictRefusal {
+    expected: std.witness_admission.ExpectTypedPreVerdictRefusal {
       phase: PreVerdictResolve,
       cause: UnboundImportedVariantConstructor
     },

@@ -221,13 +221,13 @@ fn assimilation_completion_inputs_for(participation: List<FleetParticipation>) -
 fn default_unsatisfied_witness_for_input(input: gunbc.host_standup.AssimilationCompleteInput) -> gunbc.host_standup.AssimilationInputWitness {
   match input {
     NodeRegistered =>
-      InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" }
+      gunbc.host_standup.InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" }
     ResourcesPresent =>
-      InputGap { input: ResourcesPresent, interim_realization: "ctrl:resources-present-unmodeled" }
+      gunbc.host_standup.InputGap { input: ResourcesPresent, interim_realization: "ctrl:resources-present-unmodeled" }
     GreenPlacePinCoherent =>
       assimilation_input_witness_from_green_place(w: host_standup_p3_green_place_input_witness())
     RunnerSlotHealthy =>
-      InputGap { input: RunnerSlotHealthy, interim_realization: "gunbc.runner_slot_enforcement until P1 converged" }
+      gunbc.host_standup.InputGap { input: RunnerSlotHealthy, interim_realization: "gunbc.runner_slot_enforcement until P1 converged" }
   }
 }
 

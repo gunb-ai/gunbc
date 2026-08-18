@@ -10,7 +10,7 @@ fn diagnostic_a() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^sequence_outcome_witness_reason_a
     at: port_locus(port: ^sequence_outcome_witness_port_a)
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -18,7 +18,7 @@ fn diagnostic_b() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^sequence_outcome_witness_reason_b
     at: port_locus(port: ^sequence_outcome_witness_port_b)
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

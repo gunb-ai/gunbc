@@ -11,10 +11,10 @@ fn synthetic_transport() -> v2.std.host_transport.HostTransportDescriptor {
     workspace: [],
     build: [],
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "true" },
+      program: v2.std.host_transport.HostToolProgram { executable: "true" },
       args: []
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 

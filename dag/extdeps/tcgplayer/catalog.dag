@@ -22,9 +22,9 @@ type CatalogProduct {
 data structural_coverage_gap_catalog_product_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "CatalogProduct" },
-      JsonPending { field: "extendedData" },
-      JsonPending { field: "skus" }
+      extdeps.coverage.Subject { path: "CatalogProduct" },
+      extdeps.coverage.JsonPending { field: "extendedData" },
+      extdeps.coverage.JsonPending { field: "skus" }
     ],
     trigger: "catalog consumer needs extended fields or inline sku rows (getExtendedFields, includeSkus)"
   }

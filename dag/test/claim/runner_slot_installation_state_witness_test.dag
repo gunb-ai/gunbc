@@ -3,7 +3,7 @@ module test.claim.runner_slot_installation_state_witness
 
 test fn witness_never_activated_materialized_is_ready() -> Bool {
   runner_slot_installation_is_ready_to_activate(
-    state: SlotMaterializedNotActive {
+    state: gunbc.runner_incarnation.SlotMaterializedNotActive {
       install_tree_complete: true,
       unit_active: false,
       stale_runner_dot_present: false,
@@ -13,14 +13,14 @@ test fn witness_never_activated_materialized_is_ready() -> Bool {
 
 test fn witness_stale_runner_dot_does_not_block_activation() -> Bool {
   runner_slot_installation_is_ready_to_activate(
-    state: SlotMaterializedNotActive {
+    state: gunbc.runner_incarnation.SlotMaterializedNotActive {
       install_tree_complete: true,
       unit_active: false,
       stale_runner_dot_present: true,
     },
   )
     && !runner_slot_add_requires_incarnation_replace(
-      state: SlotMaterializedNotActive {
+      state: gunbc.runner_incarnation.SlotMaterializedNotActive {
         install_tree_complete: true,
         unit_active: false,
         stale_runner_dot_present: true,
@@ -68,14 +68,14 @@ test fn witness_srv3_slot_07_ready_to_activate() -> Bool {
 
 test fn witness_active_unit_is_converged_not_ready() -> Bool {
   !runner_slot_installation_is_ready_to_activate(
-    state: SlotMaterializedNotActive {
+    state: gunbc.runner_incarnation.SlotMaterializedNotActive {
       install_tree_complete: true,
       unit_active: true,
       stale_runner_dot_present: true,
     },
   )
     && runner_slot_installation_is_converged(
-      state: SlotMaterializedNotActive {
+      state: gunbc.runner_incarnation.SlotMaterializedNotActive {
         install_tree_complete: true,
         unit_active: true,
         stale_runner_dot_present: true,

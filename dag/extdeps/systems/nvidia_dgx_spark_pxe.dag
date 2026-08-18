@@ -88,43 +88,43 @@ type SparkPxeSecureBootPrerequisite
 
 fn spark_fastos_unattended_kernel_cmdline(http_image_root: extdeps.uri.Uri) -> String {
   kernel_cmdline_render(args: [
-    KernelKeyValue { key: "nouveau.modeset", value: "0" },
-    KernelFlag { name: "console=tty0" },
-    KernelFlag { name: "console=ttyS0,921600" },
-    KernelKeyValue { key: "sbsa_gwdt.action", value: "1" },
-    KernelFlag { name: spark_installer_kernel_parameter_name(p: SparkInstallerNoui) },
-    KernelKeyValue {
+    extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "nouveau.modeset", value: "0" },
+    extdeps.firmware.kernel_cmdline.KernelFlag { name: "console=tty0" },
+    extdeps.firmware.kernel_cmdline.KernelFlag { name: "console=ttyS0,921600" },
+    extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "sbsa_gwdt.action", value: "1" },
+    extdeps.firmware.kernel_cmdline.KernelFlag { name: spark_installer_kernel_parameter_name(p: SparkInstallerNoui) },
+    extdeps.firmware.kernel_cmdline.KernelKeyValue {
       key: spark_installer_kernel_parameter_name(p: SparkInstallerPxeInstall),
       value: "true",
     },
-    KernelKeyValue {
+    extdeps.firmware.kernel_cmdline.KernelKeyValue {
       key: "fastos_usbimg_url",
       value: concat(
         uri_wire(uri: http_image_root),
         concat("/", spark_pxe_http_install_image_path(image: FastOsRecoveryTarball) as String),
       ),
     },
-    KernelFlag { name: "ip=dhcp" },
+    extdeps.firmware.kernel_cmdline.KernelFlag { name: "ip=dhcp" },
   ])
 }
 
 fn spark_dgx_os_unattended_kernel_cmdline(http_image_root: extdeps.uri.Uri) -> String {
   kernel_cmdline_render(args: [
-    KernelFlag { name: "fsck.mode=skip" },
-    KernelFlag { name: spark_installer_kernel_parameter_name(p: SparkInstallerAutoinstall) },
-    KernelFlag { name: "ip=dhcp" },
-    KernelKeyValue {
+    extdeps.firmware.kernel_cmdline.KernelFlag { name: "fsck.mode=skip" },
+    extdeps.firmware.kernel_cmdline.KernelFlag { name: spark_installer_kernel_parameter_name(p: SparkInstallerAutoinstall) },
+    extdeps.firmware.kernel_cmdline.KernelFlag { name: "ip=dhcp" },
+    extdeps.firmware.kernel_cmdline.KernelKeyValue {
       key: "url",
       value: concat(
         uri_wire(uri: http_image_root),
         concat("/", spark_pxe_http_install_image_path(image: DgxOsIsoImage) as String),
       ),
     },
-    KernelFlag { name: "nvme-core.multipath=n" },
-    KernelKeyValue { key: "nouveau.modeset", value: "0" },
+    extdeps.firmware.kernel_cmdline.KernelFlag { name: "nvme-core.multipath=n" },
+    extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "nouveau.modeset", value: "0" },
   ])
 }
 
 fn spark_pxe_client_boot_mode(tftp_root: extdeps.uri.Uri) -> extdeps.provisioning.network_boot.ClientNetworkBootMode {
-  UefiPxe { tftp_root: tftp_root }
+  extdeps.provisioning.network_boot.UefiPxe { tftp_root: tftp_root }
 }

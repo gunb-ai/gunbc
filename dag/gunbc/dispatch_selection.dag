@@ -191,7 +191,7 @@ fn codex_limit_dispatch_draw_for_selection(
     ProfileExactOverride =>
       match operator_asserted_native_limit_bucket {
         Present { value: native_key } =>
-          LimitDispatchDrawNativeBucket {
+          gunbc.provider_standing.LimitDispatchDrawNativeBucket {
             credential: LimitCredentialUnspecified,
             native_key: native_key,
           }
@@ -202,7 +202,7 @@ fn codex_limit_dispatch_draw_for_selection(
 }
 
 fn claude_limit_dispatch_draw_for_model(model: std.types.NonEmptyStr) -> gunbc.provider_standing.ProviderLimitDispatchDraw {
-  LimitDispatchDrawModel {
+  gunbc.provider_standing.LimitDispatchDrawModel {
     credential: LimitCredentialUnspecified,
     model: model,
   }
@@ -365,13 +365,13 @@ fn dispatch_execution_receipt(
 }
 
 fn production_codex_process_fingerprint_standing() -> gunbc.codex_provider_runtime_receipt.CodexProcessFingerprintStanding {
-  CodexProcessFingerprintUnobserved {
+  gunbc.codex_provider_runtime_receipt.CodexProcessFingerprintUnobserved {
     reason: codex_process_fingerprint_unobserved_reason,
   }
 }
 
 fn fixture_codex_process_fingerprint_standing() -> gunbc.codex_provider_runtime_receipt.CodexProcessFingerprintStanding {
-  CodexProcessFingerprintObserved {
+  gunbc.codex_provider_runtime_receipt.CodexProcessFingerprintObserved {
     fingerprint: dispatch_codex_process_fingerprint,
   }
 }
@@ -392,20 +392,20 @@ fn codex_offer_for_instance_with_standing(
   CodexOffer {
     instance: extdeps.llm.cli_lifecycle.ProviderInstance {
       kind: CodexCliProvider,
-      host: ProviderInstanceFieldUnobserved {
+      host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
         reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
       },
       executable: executable as std.types.NonEmptyStr,
-      observed_version: ProviderInstanceFieldUnobserved {
+      observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
         reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
       },
-      state_directory: ProviderInstanceFieldUnobserved {
+      state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
         reason: "account_state_root is the credential reference" as std.types.NonEmptyStr,
       },
-      credential_storage_method: ProviderInstanceFieldUnobserved {
+      credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
         reason: "codex stores credentials under account_state_root" as std.types.NonEmptyStr,
       },
-      service_identity: ProviderInstanceFieldUnobserved {
+      service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
         reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
       },
     },
@@ -507,20 +507,20 @@ fn claude_offer_for_instance_with_standing(
   ClaudeOffer {
     instance: extdeps.llm.cli_lifecycle.ProviderInstance {
       kind: ClaudeCliProvider,
-      host: ProviderInstanceFieldUnobserved {
+      host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
         reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
       },
       executable: claude_cli_program as std.types.NonEmptyStr,
-      observed_version: ProviderInstanceFieldUnobserved {
+      observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
         reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
       },
-      state_directory: ProviderInstanceFieldUnobserved {
+      state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
         reason: "ClaudeStateRootRef is the credential reference" as std.types.NonEmptyStr,
       },
-      credential_storage_method: ProviderInstanceFieldUnobserved {
+      credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
         reason: "claude credentials live under explicit state root or managed secret" as std.types.NonEmptyStr,
       },
-      service_identity: ProviderInstanceFieldUnobserved {
+      service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
         reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
       },
     },
@@ -550,20 +550,20 @@ fn provider_inventory_for_instance(instance: gunbc.roadmap_dashboard_instance.Ho
           offer: CursorOffer {
             instance: extdeps.llm.cli_lifecycle.ProviderInstance {
               kind: CursorCliProvider,
-              host: ProviderInstanceFieldUnobserved {
+              host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
                 reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
               },
               executable: "cursor-agent" as std.types.NonEmptyStr,
-              observed_version: ProviderInstanceFieldUnobserved {
+              observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
                 reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
               },
-              state_directory: ProviderInstanceFieldUnobserved {
+              state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
                 reason: "cursor has no per-account state root" as std.types.NonEmptyStr,
               },
-              credential_storage_method: ProviderInstanceFieldUnobserved {
+              credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
                 reason: "cursor credentials are secret references only" as std.types.NonEmptyStr,
               },
-              service_identity: ProviderInstanceFieldUnobserved {
+              service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
                 reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
               },
             },
@@ -1360,7 +1360,7 @@ fn automatic_codex_behavior_preservation_holds(instance: gunbc.roadmap_dashboard
       match resolve_dispatch_selection(
         inventory: inventory,
         request: default_provider_selection_request(),
-        node_sizing: Sized {
+        node_sizing: gunbc.roadmap_model.Sized {
           intricacy: IntricacyHigh,
           volume: VolumeMedium,
           repo: "gunbc",
@@ -1386,20 +1386,20 @@ fn fixture_claude_offer(standing: gunbc.provider_standing.ProviderStanding) -> P
     offer: ClaudeOffer {
       instance: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: ClaudeCliProvider,
-        host: ProviderInstanceFieldUnobserved {
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "fixture claude inventory row" as std.types.NonEmptyStr,
         },
         executable: "claude" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved {
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "fixture claude inventory row" as std.types.NonEmptyStr,
         },
-        state_directory: ProviderInstanceFieldUnobserved {
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "fixture claude inventory row" as std.types.NonEmptyStr,
         },
-        credential_storage_method: ProviderInstanceFieldUnobserved {
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "fixture claude inventory row" as std.types.NonEmptyStr,
         },
-        service_identity: ProviderInstanceFieldUnobserved {
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "fixture claude inventory row" as std.types.NonEmptyStr,
         },
       },
@@ -1452,20 +1452,20 @@ fn fixture_inventory_codex_and_cursor_available(
   )
   let cursor_instance = extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: CursorCliProvider,
-    host: ProviderInstanceFieldUnobserved {
+    host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture cursor inventory row" as std.types.NonEmptyStr,
     },
     executable: "cursor-agent" as std.types.NonEmptyStr,
-    observed_version: ProviderInstanceFieldUnobserved {
+    observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture cursor inventory row" as std.types.NonEmptyStr,
     },
-    state_directory: ProviderInstanceFieldUnobserved {
+    state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture cursor inventory row" as std.types.NonEmptyStr,
     },
-    credential_storage_method: ProviderInstanceFieldUnobserved {
+    credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture cursor inventory row" as std.types.NonEmptyStr,
     },
-    service_identity: ProviderInstanceFieldUnobserved {
+    service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture cursor inventory row" as std.types.NonEmptyStr,
     },
   }

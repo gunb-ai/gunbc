@@ -327,7 +327,7 @@ fn article_manufacturing_profile_selected(a: BoardPowerInterfaceArticle) -> Bool
 // the capacitor filters. Thevenin resistance at that node is the parallel combination, so the two
 // values decide both the level AND the time constant — which is why they are a design pair rather
 // than one resistor with a second added beside it.
-data pg_divider_top: product.compute_board.analog.ElectricalComponentInstance = ResistorInstance {
+data pg_divider_top: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.ResistorInstance {
   identity: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"),
   part: "power-good divider, upper leg",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
@@ -335,7 +335,7 @@ data pg_divider_top: product.compute_board.analog.ElectricalComponentInstance = 
   resistance: std.measure.Measure { count: 30 },
 }
 
-data pg_divider_bottom: product.compute_board.analog.ElectricalComponentInstance = ResistorInstance {
+data pg_divider_bottom: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.ResistorInstance {
   identity: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"),
   part: "power-good divider, lower leg",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
@@ -343,7 +343,7 @@ data pg_divider_bottom: product.compute_board.analog.ElectricalComponentInstance
   resistance: std.measure.Measure { count: 10 },
 }
 
-data pg_conditioning_capacitor: product.compute_board.analog.ElectricalComponentInstance = CapacitorInstance {
+data pg_conditioning_capacitor: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.CapacitorInstance {
   identity: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"),
   part: "power-good conditioning capacitor",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
@@ -351,7 +351,7 @@ data pg_conditioning_capacitor: product.compute_board.analog.ElectricalComponent
   capacitance: std.measure.Measure { count: 100 },
 }
 
-data logic_supply_source: product.compute_board.analog.ElectricalComponentInstance = IndependentVoltageSourceInstance {
+data logic_supply_source: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.IndependentVoltageSourceInstance {
   identity: component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"),
   part: "logic supply input",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
@@ -401,19 +401,19 @@ data power_good_conditioning_intent: product.compute_board.analog.AnalogCircuitI
 data power_good_model_bindings: List<product.compute_board.analog.ComponentModelBinding> = [
   product.compute_board.analog.ComponentModelBinding {
     component: component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"),
-    standing: ElectricalModelCited { model_card: "ideal independent source at declared fidelity", fidelity: IdealLumped },
+    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal independent source at declared fidelity", fidelity: IdealLumped },
   },
   product.compute_board.analog.ComponentModelBinding {
     component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"),
-    standing: ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
+    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
   },
   product.compute_board.analog.ComponentModelBinding {
     component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"),
-    standing: ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
+    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
   },
   product.compute_board.analog.ComponentModelBinding {
     component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"),
-    standing: ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
+    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
   },
 ]
 

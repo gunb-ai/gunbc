@@ -2,7 +2,7 @@ module v2.test.emit.fold_call_closure_fixture
 
 
 fn fold_fixture_atom(id: v2.std.node.Symbol) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } }, children: [])
 }
 
 fn fold_fixture_positional(target: Node) -> v2.std.node.Edge {
@@ -15,7 +15,7 @@ fn fold_fixture_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.nod
 
 fn fold_fixture_param_domain_conj() -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       fold_fixture_named_edge(
         name: ^dag_binding_mvp1_fold_xs,
@@ -30,16 +30,16 @@ fn fold_fixture_param_domain_conj() -> Node {
 }
 
 fn fold_fixture_empty_domain_conj() -> Node {
-  node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: [])
 }
 
 fn fold_fixture_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       fold_fixture_positional(
         target: node_synthetic(
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             fold_fixture_named_edge(
               name: ^dag_binding_mvp1_fold_acc,
@@ -56,7 +56,7 @@ fn fold_fixture_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v
       fold_fixture_named_edge(
         name: ^arrow_body_edge,
         target: node_synthetic(
-          kind: ComputationNode { behavior: Transform },
+          kind: v2.std.node.ComputationNode { behavior: Transform },
           children: [
             fold_fixture_positional(target: fold_fixture_atom(id: ^dag_token_plus)),
             fold_fixture_positional(target: fold_fixture_atom(id: left_operand)),
@@ -70,11 +70,11 @@ fn fold_fixture_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v
 
 fn fold_fixture_closure_arrow_sub(left_operand: v2.std.node.Symbol, right_operand: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       fold_fixture_positional(
         target: node_synthetic(
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             fold_fixture_named_edge(
               name: ^dag_binding_mvp1_fold_acc,
@@ -91,7 +91,7 @@ fn fold_fixture_closure_arrow_sub(left_operand: v2.std.node.Symbol, right_operan
       fold_fixture_named_edge(
         name: ^arrow_body_edge,
         target: node_synthetic(
-          kind: ComputationNode { behavior: Transform },
+          kind: v2.std.node.ComputationNode { behavior: Transform },
           children: [
             fold_fixture_positional(target: fold_fixture_atom(id: ^dag_token_minus)),
             fold_fixture_positional(target: fold_fixture_atom(id: left_operand)),
@@ -105,7 +105,7 @@ fn fold_fixture_closure_arrow_sub(left_operand: v2.std.node.Symbol, right_operan
 
 fn fold_fixture_call_body(xs: Node, z: Node, closure: Node) -> Node {
   node_synthetic(
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
       fold_fixture_positional(target: fold_fixture_atom(id: ^dag_binding_mvp1_fold_callee)),
       fold_fixture_positional(target: xs),
@@ -117,7 +117,7 @@ fn fold_fixture_call_body(xs: Node, z: Node, closure: Node) -> Node {
 
 fn fold_fixture_arrow_with_body(domain: Node, body: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       fold_fixture_positional(target: domain),
       fold_fixture_positional(target: fold_fixture_atom(id: ^dag_binding_type_int)),

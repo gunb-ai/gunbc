@@ -3,15 +3,15 @@ module v2.test.manual.path_y_fidelity_successor
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn path_y_core_expr() -> extdeps.github.expressions.Expression {
-  LogicalOr {
-    left: LogicalOr {
+  extdeps.github.expressions.LogicalOr {
+    left: extdeps.github.expressions.LogicalOr {
       left: extdeps.github.expressions.FunctionCall {
         function: HashFiles,
-        args: [ StringLiteral { value: "Cargo.lock" }, StringLiteral { value: "Cargo.toml" } ],
+        args: [ extdeps.github.expressions.StringLiteral { value: "Cargo.lock" }, extdeps.github.expressions.StringLiteral { value: "Cargo.toml" } ],
       },
-      right: ContextAccess { context: Github, path: ["event", "number"] },
+      right: extdeps.github.expressions.ContextAccess { context: Github, path: ["event", "number"] },
     },
-    right: ContextAccess { context: Runner, path: ["os"] },
+    right: extdeps.github.expressions.ContextAccess { context: Runner, path: ["os"] },
   }
 }
 

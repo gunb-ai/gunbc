@@ -4,12 +4,12 @@ module v2.test.self_host.direct_rust_door_group_algebra
 data direct_rust_door_group_algebra_note: String = "FAST lane: discriminates the direct-rust-door group ALGEBRA over PLANTED observations, paying ZERO production walks — no ingest, assemble, infer, or emit runs here. This is the cheap half of the composition pilot: the one canonical heavy root in long/direct_rust_door_production_group_test.dag establishes what production actually does, and these controls establish what the group does with any observation it is handed. Splitting them is what keeps the expensive walk to ONE PER GROUP CONSTRUCTION while the group behaviour stays fully discriminated. That is a claim about the walk per construction and about there being ONE production implementation authority --- it is NOT a claim about the schedule, which today constructs the group TWICE because an expensive-and-known-red root must join two rosters to earn its budget. schedule_occurrence_multiplicity_test measures that and reds at 2."
 
 fn planted_emission_rejected() -> v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation {
-  EmissionRejected {
+  v2.compiler.self_host.candidate_generation.EmissionRejected {
     diagnostics: diagnostics_singleton(
       d: v2.std.diagnostic.Diagnostic {
         reason: ^direct_rust_door_group_algebra_planted_emission_refusal,
         at: port_locus(port: ^direct_rust_door_group_algebra),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     )
   }
@@ -30,7 +30,7 @@ fn planted_artifact(
     realized_closure: closure
   ) {
     Present { value: receipt } =>
-      ArtifactProduced {
+      v2.compiler.self_host.candidate_generation.ArtifactProduced {
         artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact {
           source: extdeps.communication.medium.Medium { carried: source_text, fidelity: Lossless },
           emitted: rust_fixture_emitted_add_fn,
@@ -106,7 +106,7 @@ test fn one_refused_leaf_keeps_the_parent_open() -> Bool {
   !direct_rust_door_production_group_holds(
     group: direct_rust_door_group_from_observations(
       emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source),
-      missing_rule: DirectRustDoorRefused { failure: MissingRuleAcceptedDespiteGap }
+      missing_rule: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorRefused { failure: MissingRuleAcceptedDespiteGap }
     )
   )
 }
@@ -134,7 +134,7 @@ test fn missing_rule_leaf_projects_its_admission() -> Bool {
   let refused = match direct_rust_door_missing_rule_leaf(
     group: direct_rust_door_group_from_observations(
       emission: planted_emission_rejected(),
-      missing_rule: DirectRustDoorRefused { failure: MissingRuleAcceptedDespiteGap }
+      missing_rule: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorRefused { failure: MissingRuleAcceptedDespiteGap }
     )
   ) {
     LeafRefused { cause: _ } => true
@@ -149,7 +149,7 @@ fn planted_diag() -> v2.std.diagnostic.NonEmptyDiagnostics {
     d: v2.std.diagnostic.Diagnostic {
       reason: ^direct_rust_door_group_algebra_planted_stage_refusal,
       at: port_locus(port: ^direct_rust_door_group_algebra),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     }
   )
 }
@@ -183,25 +183,25 @@ fn group_of(emission: v2.compiler.self_host.candidate_generation.ProvenancedRust
 test fn each_stage_rejection_names_its_own_not_reached_cause() -> Bool {
   leaf_not_reached_cause_is(
     leaf: direct_rust_door_source_fidelity_leaf(
-      group: group_of(emission: AssemblyRejected { diagnostics: planted_diag() })
+      group: group_of(emission: v2.compiler.self_host.candidate_generation.AssemblyRejected { diagnostics: planted_diag() })
     ),
     wanted: direct_rust_door_leaf_not_reached_assembly
   )
     && leaf_not_reached_cause_is(
       leaf: direct_rust_door_source_fidelity_leaf(
-        group: group_of(emission: InferenceRejected { diagnostics: planted_diag() })
+        group: group_of(emission: v2.compiler.self_host.candidate_generation.InferenceRejected { diagnostics: planted_diag() })
       ),
       wanted: direct_rust_door_leaf_not_reached_inference
     )
     && leaf_not_reached_cause_is(
       leaf: direct_rust_door_source_fidelity_leaf(
-        group: group_of(emission: EmissionRejected { diagnostics: planted_diag() })
+        group: group_of(emission: v2.compiler.self_host.candidate_generation.EmissionRejected { diagnostics: planted_diag() })
       ),
       wanted: direct_rust_door_leaf_not_reached_emission
     )
     && leaf_not_reached_cause_is(
       leaf: direct_rust_door_source_fidelity_leaf(
-        group: group_of(emission: ProducerReceiptRejected { diagnostics: planted_diag() })
+        group: group_of(emission: v2.compiler.self_host.candidate_generation.ProducerReceiptRejected { diagnostics: planted_diag() })
       ),
       wanted: direct_rust_door_leaf_not_reached_receipt
     )
@@ -256,7 +256,7 @@ data direct_rust_door_observation_projection_note: String = "THE EXECUTING CONSU
 
 test fn projection_names_the_refusing_stage() -> Bool {
   match project_direct_rust_door_observation(
-    group: group_of(emission: EmissionRejected { diagnostics: planted_diag() })
+    group: group_of(emission: v2.compiler.self_host.candidate_generation.EmissionRejected { diagnostics: planted_diag() })
   ) {
     CandidateRejected { reason: _ } => true
     _ => false
@@ -309,7 +309,7 @@ test fn observation_establishes_only_on_source_produced() -> Bool {
     group: group_of(emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source))
   )
   let stopped = project_direct_rust_door_observation(
-    group: group_of(emission: EmissionRejected { diagnostics: planted_diag() })
+    group: group_of(emission: v2.compiler.self_host.candidate_generation.EmissionRejected { diagnostics: planted_diag() })
   )
   direct_rust_door_observation_establishes(o: good)
     && !direct_rust_door_observation_establishes(o: stopped)
@@ -317,10 +317,10 @@ test fn observation_establishes_only_on_source_produced() -> Bool {
 
 test fn observation_candidate_rejection_names_only_the_emission_stop() -> Bool {
   let stopped = project_direct_rust_door_observation(
-    group: group_of(emission: EmissionRejected { diagnostics: planted_diag() })
+    group: group_of(emission: v2.compiler.self_host.candidate_generation.EmissionRejected { diagnostics: planted_diag() })
   )
   let assembly = project_direct_rust_door_observation(
-    group: group_of(emission: AssemblyRejected { diagnostics: planted_diag() })
+    group: group_of(emission: v2.compiler.self_host.candidate_generation.AssemblyRejected { diagnostics: planted_diag() })
   )
   direct_rust_door_observation_is_candidate_rejection(o: stopped)
     && !direct_rust_door_observation_is_candidate_rejection(o: assembly)
@@ -409,7 +409,7 @@ test fn behavioral_advance_refuses_an_unbound_probe_even_when_told_true() -> Boo
 test fn behavioral_advance_still_reachable_with_a_bound_probe() -> Bool {
   match probe_mint(
     qualifications: cargo_green_qualifications,
-    probe: BehavioralProbeBound {
+    probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeBound {
       entry: "src/v2/test/claim/self_host/direct_rust_door_group_algebra_test.dag",
       function: "behavioral_advance_still_reachable_with_a_bound_probe"
     }

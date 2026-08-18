@@ -47,7 +47,7 @@ test fn attempts_multi_line_output_parses() -> Bool {
 }
 
 test fn attempts_observed_projects_to_wire() -> Bool {
-  let j = belt_attempts_observed_json(a: AttemptsObserved { attempts: [attempt_fixture()] })
+  let j = belt_attempts_observed_json(a: gunbc.roadmap_belt_actuate.AttemptsObserved { attempts: [attempt_fixture()] })
   return string_contains(s: j, pattern: "\"schema\": \"roadmap-attempts/v1\"")
     && string_contains(s: j, pattern: "\"attempts_refused\": false")
     && string_contains(s: j, pattern: "\"branch\": \"dispatch/5-regen-cutover-afeedfacefeedface\"")
@@ -56,11 +56,11 @@ test fn attempts_observed_projects_to_wire() -> Bool {
     && string_contains(s: j, pattern: "\"process_identity_evidence\": \"unobserved\"")
     && string_contains(s: j, pattern: "\"transcript_evidence\": \"unobserved\"")
     && string_contains(s: j, pattern: "\"terminal_outcome_evidence\": \"unobserved\"")
-    && belt_attempts_http_status(a: AttemptsObserved { attempts: [] }) == 200
+    && belt_attempts_http_status(a: gunbc.roadmap_belt_actuate.AttemptsObserved { attempts: [] }) == 200
 }
 
 test fn attempts_refusal_is_loud_on_the_wire() -> Bool {
-  let a = AttemptsRefused { reason: "git not found on PATH — the attempts set is unknowable" }
+  let a = gunbc.roadmap_belt_actuate.AttemptsRefused { reason: "git not found on PATH — the attempts set is unknowable" }
   let j = belt_attempts_observed_json(a: a)
   return string_contains(s: j, pattern: "\"attempts_refused\": true")
     && string_contains(s: j, pattern: "unknowable")

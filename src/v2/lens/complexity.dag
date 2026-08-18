@@ -18,7 +18,7 @@ data complexity_variables_vacuous_validation: VacuousValidation<List<v2.lens.cos
 }
 
 fn complexity_projection_locus() -> v2.std.diagnostic.Locus {
-  Textual { file: ^complexity_projection_virtual_file, extent: WholeFile }
+  v2.std.diagnostic.Textual { file: ^complexity_projection_virtual_file, extent: WholeFile }
 }
 
 type ComplexityVariables = List<v2.lens.cost.SizeVariable>
@@ -148,8 +148,8 @@ fn complexity_bound_from_cost(cost: v2.lens.cost.SymbolicCost) -> ComplexityBoun
 fn complexity_projection_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^complexity_reason_unmodeled_cost_projection,
-    at: Textual { file: ^complexity_projection_virtual_file, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^complexity_projection_virtual_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
@@ -179,8 +179,8 @@ fn asymptotic_class_from_sized_class(class: SizeIndexedAsymptoticClass) -> v2.le
     SizedLogClass => ClassLog
     SizedLinearClass => ClassLinear
     SizedLinearithmicClass => ClassLinearithmic
-    SizedPolynomialClass { degree: d } => ClassPolynomial { degree: d }
-    SizedPolyLogClass { exponent: e } => ClassPolyLog { exponent: e }
+    SizedPolynomialClass { degree: d } => v2.lens.cost.ClassPolynomial { degree: d }
+    SizedPolyLogClass { exponent: e } => v2.lens.cost.ClassPolyLog { exponent: e }
     SizedExponentialClass => ClassExponential
     SizedFactorialClass => ClassFactorial
   }

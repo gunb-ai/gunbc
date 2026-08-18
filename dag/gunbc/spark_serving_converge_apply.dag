@@ -74,13 +74,13 @@ fn spark_serving_exec_frozen_typed_rows(
     SparkServingFrozenApplied { remote_operations: operations, effect_count: n } =>
       if n == 0 {
         SparkServingFrozenRemoteExecApplied {
-          exec_outcome: RemoteOperationRefused {
+          exec_outcome: gunbc.remote_operation.RemoteOperationRefused {
             reason: "spark_serving_converge_apply: converged plan — zero frozen install effects, remote exec is noop",
           },
         }
       } else if operations.length() == 0 {
         SparkServingFrozenRemoteExecApplied {
-          exec_outcome: RemoteOperationRefused {
+          exec_outcome: gunbc.remote_operation.RemoteOperationRefused {
             reason: "spark_serving_converge_apply: frozen effects realized to zero operations — refusing rather than reporting a noop as applied",
           },
         }
@@ -112,17 +112,17 @@ func spark_serving_run_operation(
   operation: gunbc.remote_operation.RemoteOperation,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> gunbc.remote_operation.RemoteOperationOutcome
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   match operation {
     RemoteArgv { argv: argv } =>
       match run_typed_argv_transport(argv: argv, transport: transport) {
-        TypedArgvExecRefused { reason: why } => RemoteOperationRefused { reason: why }
+        TypedArgvExecRefused { reason: why } => gunbc.remote_operation.RemoteOperationRefused { reason: why }
         TypedArgvExecConverged { result: r } =>
           if r.success {
-            RemoteOperationSucceeded { label: join(argv, " ") }
+            gunbc.remote_operation.RemoteOperationSucceeded { label: join(argv, " ") }
           } else {
-            RemoteOperationRefused {
+            gunbc.remote_operation.RemoteOperationRefused {
               reason: join([
                 "argv exit=", to_string(r.exit_code), " stderr=", r.stderr,
               ], ""),
@@ -135,31 +135,31 @@ func spark_serving_run_operation(
           match converge_typed_remote_file(
             target: t,
             context: ctx,
-            admission: TypedRemoteFileWriteAdmitted { write: w },
+            admission: gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w },
             mode: m,
           ) {
             TypedRemoteFileConvergenceRefused { step: step, reason: why } =>
-              RemoteOperationRefused {
+              gunbc.remote_operation.RemoteOperationRefused {
                 reason: join(["file-write refused at ", step, ": ", why], ""),
               }
             TypedRemoteFileConverged { path: p, mode: _ } =>
-              RemoteOperationSucceeded {
+              gunbc.remote_operation.RemoteOperationSucceeded {
                 label: join(["write-file ", p as String], ""),
               }
           }
         LocalShell =>
-          RemoteOperationRefused {
+          gunbc.remote_operation.RemoteOperationRefused {
             reason: "file write requires an anchored FleetSsh transport; LocalShell carries no remote target",
           }
         SshShell { ssh_host: h } =>
-          RemoteOperationRefused {
+          gunbc.remote_operation.RemoteOperationRefused {
             reason: join([
               "file write requires an anchored FleetSsh transport; SshShell(", h as String,
               ") carries no verified credential or known-hosts anchor",
             ], ""),
           }
         EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-          RemoteOperationRefused {
+          gunbc.remote_operation.RemoteOperationRefused {
             reason: "file write requires an anchored FleetSsh transport; EmitArtifactThenThinRun is not a live session",
           }
       }
@@ -180,7 +180,7 @@ func spark_serving_sequence_step(
   operation: gunbc.remote_operation.RemoteOperation,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> SparkServingSequenceAcc
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   match acc {
     SparkServingSequenceNotStarted =>
@@ -202,7 +202,7 @@ func spark_serving_run_operation_sequence(
   operations: List<gunbc.remote_operation.RemoteOperation>,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> gunbc.remote_operation.RemoteOperationOutcome
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   match fold(
     operations,
@@ -210,7 +210,7 @@ func spark_serving_run_operation_sequence(
     f: fn(acc, op) { spark_serving_sequence_step(acc: acc, operation: op, transport: transport) },
   ) {
     SparkServingSequenceNotStarted =>
-      RemoteOperationRefused {
+      gunbc.remote_operation.RemoteOperationRefused {
         reason: "spark_serving_converge_apply: empty operation sequence executed nothing",
       }
     SparkServingSequenceOutcome { outcome: o } => o

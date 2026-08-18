@@ -109,7 +109,7 @@ fn fixture_primary(
     RenameReferenceUniqueMeaning => Landed {
       result_preview: "rename plus reference resolves to one unique meaning",
     }
-    TwoLegitimateMeaningsNeedChoice => ChoiceRequired {
+    TwoLegitimateMeaningsNeedChoice => gunbc.native_scm_interaction_contract.ChoiceRequired {
       question: "The call can follow the rename or stay separate. Which meaning should land?",
       continuation: gunbc.native_scm_interaction_contract.NativeScmContinuation {
         proposal: identity,
@@ -128,7 +128,7 @@ fn fixture_primary(
         },
       },
     }
-    IncompatibleGoalsNeedAuthorizedDecider => ChoiceRequired {
+    IncompatibleGoalsNeedAuthorizedDecider => gunbc.native_scm_interaction_contract.ChoiceRequired {
       question: "Two requested goals cannot both be retained. Which one should the authorized decider keep?",
       continuation: gunbc.native_scm_interaction_contract.NativeScmContinuation {
         proposal: identity,

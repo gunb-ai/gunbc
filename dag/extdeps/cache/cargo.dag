@@ -17,7 +17,7 @@ data cargo_target_dir_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   transport_encoding: CargoFingerprintEncoding
   key_derivation: {
 
-    key_inputs: NativeInternal { cited_inputs: [RustcInvocation, FilePaths, ToolchainSpec] }
+    key_inputs: extdeps.cache.types.NativeInternal { cited_inputs: [RustcInvocation, FilePaths, ToolchainSpec] }
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: false
@@ -41,7 +41,7 @@ data cargo_target_dir_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   evidence: [
     {
       field: "locality"
-      evidence: VendorCitation {
+      evidence: std.cache_interface.VendorCitation {
         source: "Cargo build artifacts in target/"
         url: "https://doc.rust-lang.org/cargo/guide/build-cache.html"
       }

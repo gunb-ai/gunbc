@@ -188,13 +188,13 @@ test fn preflight_subject_without_turn_never_displays_as_running_or_finished() -
 }
 
 test fn failed_unclassified_cannot_authorize_recovery() -> Bool {
-  let unknown = ProviderTurnFailed {
-    cause: ProviderNativeCauseUnknown {
+  let unknown = gunbc.provider_turn_adjudication.ProviderTurnFailed {
+    cause: gunbc.provider_turn_adjudication.ProviderNativeCauseUnknown {
       evidence: "malformed app-server line retained as evidence" as std.types.NonEmptyStr,
     },
   }
-  let classified_retryable = ProviderTurnFailed {
-    cause: ProviderNativeCauseClassified {
+  let classified_retryable = gunbc.provider_turn_adjudication.ProviderTurnFailed {
+    cause: gunbc.provider_turn_adjudication.ProviderNativeCauseClassified {
       class: RetryableTransient,
       evidence: "provider-native retryable class with retained evidence" as std.types.NonEmptyStr,
     },
@@ -217,7 +217,7 @@ test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> 
   match fixture_preflight_subject() {
     Absent => false
     Present { value: subject } =>
-      let outcome = CodexPressAccountReady {
+      let outcome = gunbc.codex_app_server_press.CodexPressAccountReady {
         receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt {
           subject: subject,
           standing: standing,
@@ -403,7 +403,7 @@ test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
   match fixture_preflight_subject() {
     Absent => false
     Present { value: subject } =>
-      let outcome = CodexPressRefused {
+      let outcome = gunbc.codex_app_server_press.CodexPressRefused {
         reason: "codex quota exhausted at account/rateLimits/read" as std.types.NonEmptyStr,
         receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt {
           subject: subject,
@@ -551,7 +551,7 @@ test fn login_required_wire_status_is_not_accepted_or_turn_started() -> Bool {
   match fixture_preflight_subject() {
     Absent => false
     Present { value: subject } =>
-      let outcome = CodexPressLoginRequired {
+      let outcome = gunbc.codex_app_server_press.CodexPressLoginRequired {
         reason: "codex app-server account trip requires login" as std.types.NonEmptyStr,
         receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt {
           subject: subject,

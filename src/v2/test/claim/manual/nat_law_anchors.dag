@@ -1,7 +1,7 @@
 module v2.test.manual.nat_law_anchors
 
 
-data claim_nat_add_left_identity: v2.std.verification.TestClaim = CompilesClaim {
+data claim_nat_add_left_identity: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/nat: monoid left identity nat_add(v2.std.nat.Zero,a)=a (law)",
   anchor: manual_claim_anchor(anchor: ManualNatAddLeftIdentity),
   input: stub_empty_conj,
@@ -9,7 +9,7 @@ data claim_nat_add_left_identity: v2.std.verification.TestClaim = CompilesClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_nat_add_right_identity: v2.std.verification.TestClaim = CompilesClaim {
+data claim_nat_add_right_identity: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/nat: monoid right identity nat_add(a,v2.std.nat.Zero)=a (law)",
   anchor: manual_claim_anchor(anchor: ManualNatAddRightIdentity),
   input: stub_empty_conj,
@@ -17,7 +17,7 @@ data claim_nat_add_right_identity: v2.std.verification.TestClaim = CompilesClaim
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_nat_add_associativity: v2.std.verification.TestClaim = CompilesClaim {
+data claim_nat_add_associativity: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/nat: monoid associativity nat_add(nat_add(a,b),c)=nat_add(a,nat_add(b,c)) (law)",
   anchor: manual_claim_anchor(anchor: ManualNatAddAssociativity),
   input: stub_empty_conj,
@@ -25,7 +25,7 @@ data claim_nat_add_associativity: v2.std.verification.TestClaim = CompilesClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_nat_mul_left_identity: v2.std.verification.TestClaim = CompilesClaim {
+data claim_nat_mul_left_identity: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/nat: multiplicative monoid identity nat_mul(one,a)=a where one is v2.std.nat.Succ-of-v2.std.nat.Zero (law)",
   anchor: manual_claim_anchor(anchor: ManualNatMulLeftIdentity),
   input: stub_empty_conj,
@@ -33,7 +33,7 @@ data claim_nat_mul_left_identity: v2.std.verification.TestClaim = CompilesClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_nat_mul_annihilator: v2.std.verification.TestClaim = CompilesClaim {
+data claim_nat_mul_annihilator: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/nat: semiring zero annihilator nat_mul(v2.std.nat.Zero,a)=v2.std.nat.Zero (law)",
   anchor: manual_claim_anchor(anchor: ManualNatMulAnnihilator),
   input: stub_empty_conj,
@@ -41,7 +41,7 @@ data claim_nat_mul_annihilator: v2.std.verification.TestClaim = CompilesClaim {
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_nat_mul_associativity: v2.std.verification.TestClaim = CompilesClaim {
+data claim_nat_mul_associativity: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/nat: multiplicative monoid associativity (law)",
   anchor: manual_claim_anchor(anchor: ManualNatMulAssociativity),
   input: stub_empty_conj,

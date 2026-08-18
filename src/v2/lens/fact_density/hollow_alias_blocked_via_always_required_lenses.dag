@@ -3,7 +3,7 @@ module v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses
 
 
 data hollow_alias_ar_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^hollow_alias_ar_subject } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^hollow_alias_ar_subject } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -36,14 +36,14 @@ fn hollow_alias_blocked_via_always_required_lenses_rhs() -> Node {
     hollow_alias_ar_authority
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_hollow_alias_blocked_via_always_required_lenses: v2.std.verification.TestClaim = EqualsClaim {
+data claim_hollow_alias_blocked_via_always_required_lenses: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_fact_density/hollow_alias_blocked_via_always_required_lenses: always_required_lenses() (wired into validate_then_compile) blocks hollow alias",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: hollow_alias_ar_authority,

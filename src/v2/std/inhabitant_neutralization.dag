@@ -5,7 +5,7 @@ fn inhabitant_neutralization_std_projection_missing_diagnostic(node: Node) -> v2
   v2.std.diagnostic.Diagnostic {
     reason: ^inhabitant_neutralization_std_projection_missing,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -13,7 +13,7 @@ fn inhabitant_neutralization_type_atom_missing_diagnostic(node: Node) -> v2.std.
   v2.std.diagnostic.Diagnostic {
     reason: ^inhabitant_neutralization_type_atom_missing,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -21,7 +21,7 @@ fn inhabitant_neutralization_surface_spelling_missing_diagnostic(node: Node) -> 
   v2.std.diagnostic.Diagnostic {
     reason: ^inhabitant_neutralization_surface_spelling_missing,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -30,8 +30,8 @@ fn inhabitant_neutralization_no_target_diagnostic(
 ) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^inhabitant_neutralization_no_target_inhabitant,
-    at: Textual { file: std_projection, extent: WholeFile },
-    correction: Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.Textual { file: std_projection, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -40,8 +40,8 @@ fn inhabitant_neutralization_ambiguous_target_diagnostic(
 ) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^inhabitant_neutralization_ambiguous_target_inhabitant,
-    at: Textual { file: std_projection, extent: WholeFile },
-    correction: Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.Textual { file: std_projection, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -188,7 +188,7 @@ fn target_inhabitant_selection_policy_fold_step(
           selection: selection_policy
         ) {
         match acc {
-          NoPassingCandidate => OnePassingCandidate { candidate: candidate }
+          NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
           OnePassingCandidate { candidate: _ } => ManyPassingCandidates
           ManyPassingCandidates => ManyPassingCandidates
         }
@@ -241,7 +241,7 @@ fn target_inhabitant_fold_step(
     Accepted { value: proj, diagnostics: _ } =>
       if proj == std_projection {
         match acc {
-          NoPassingCandidate => OnePassingCandidate { candidate: candidate }
+          NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
           OnePassingCandidate { candidate: _ } => ManyPassingCandidates
           ManyPassingCandidates => ManyPassingCandidates
         }

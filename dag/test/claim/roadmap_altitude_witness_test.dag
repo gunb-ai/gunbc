@@ -70,7 +70,7 @@ fn done_signed_node() -> gunbc.roadmap_model.RoadmapNode {
     sizing: base.sizing,
     execution: base.execution,
     owner: base.owner,
-    signoff: signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
+    signoff: signed(by: "op", works: gunbc.roadmap_status.RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: gunbc.roadmap_status.HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
   }
 }
 

@@ -3,7 +3,7 @@ module v2.test.manual.target_model_atom_lookup_dissolution
 
 fn atom_lookup_dissolution_probe_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^atom_lookup_dissolution_probe } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^atom_lookup_dissolution_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -11,7 +11,7 @@ fn atom_lookup_dissolution_probe_node() -> Node {
 
 fn atom_lookup_dissolution_pass_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^atom_lookup_dissolution_pass } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^atom_lookup_dissolution_pass } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -19,7 +19,7 @@ fn atom_lookup_dissolution_pass_node() -> Node {
 
 fn atom_lookup_dissolution_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^atom_lookup_dissolution_fail } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^atom_lookup_dissolution_fail } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -39,7 +39,7 @@ fn passing_candidate_fold_duplicate_produces_many() -> Bool {
     empty: NoPassingCandidate,
     cons: fn(acc, n) {
       match acc {
-        NoPassingCandidate => OnePassingCandidate { candidate: n }
+        NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: n }
         OnePassingCandidate { candidate: _ } => ManyPassingCandidates
         ManyPassingCandidates => ManyPassingCandidates
       }
@@ -85,7 +85,7 @@ fn atom_lookup_in_catalog_node_non_conj_rejects_decode_invalid() -> Bool {
 fn atom_catalog_with_malformed_row_skips_accepts_valid() -> Bool {
   match target_atom_realization_lookup_in_catalog_node(
     catalog: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge { label: Positional, target: atom_lookup_dissolution_probe_node() },
         v2.std.node.Edge {
@@ -106,7 +106,7 @@ fn atom_catalog_with_malformed_row_skips_accepts_valid() -> Bool {
   }
 }
 
-data claim_passing_candidate_fold_ambiguity: v2.std.verification.TestClaim = CompilesClaim {
+data claim_passing_candidate_fold_ambiguity: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/atom_lookup_dissolution: PassingCandidateFold duplicate nodes yield ManyPassingCandidates",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: atom_lookup_dissolution_claim_input(ok: passing_candidate_fold_duplicate_produces_many()),
@@ -114,7 +114,7 @@ data claim_passing_candidate_fold_ambiguity: v2.std.verification.TestClaim = Com
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_atom_lookup_in_catalog_accepts: v2.std.verification.TestClaim = CompilesClaim {
+data claim_atom_lookup_in_catalog_accepts: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/atom_lookup_dissolution: target_atom_realization_lookup_in_catalog accepts known carrier",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: atom_lookup_dissolution_claim_input(ok: atom_lookup_in_catalog_known_carrier_accepts()),
@@ -122,7 +122,7 @@ data claim_atom_lookup_in_catalog_accepts: v2.std.verification.TestClaim = Compi
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_atom_lookup_in_catalog_miss: v2.std.verification.TestClaim = CompilesClaim {
+data claim_atom_lookup_in_catalog_miss: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/atom_lookup_dissolution: target_atom_realization_lookup_in_catalog unknown carrier rejects miss",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: atom_lookup_dissolution_claim_input(ok: atom_lookup_in_catalog_unknown_carrier_rejects_miss()),
@@ -130,7 +130,7 @@ data claim_atom_lookup_in_catalog_miss: v2.std.verification.TestClaim = Compiles
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_atom_lookup_in_catalog_node_non_conj: v2.std.verification.TestClaim = CompilesClaim {
+data claim_atom_lookup_in_catalog_node_non_conj: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/atom_lookup_dissolution: target_atom_realization_lookup_in_catalog_node non-Conj rejects decode-invalid",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: atom_lookup_dissolution_claim_input(ok: atom_lookup_in_catalog_node_non_conj_rejects_decode_invalid()),
@@ -138,7 +138,7 @@ data claim_atom_lookup_in_catalog_node_non_conj: v2.std.verification.TestClaim =
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_atom_catalog_malformed_row_skips: v2.std.verification.TestClaim = CompilesClaim {
+data claim_atom_catalog_malformed_row_skips: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/atom_lookup_dissolution: Conj catalog with malformed row skips it, accepts valid row (fail-open witness)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: atom_lookup_dissolution_claim_input(ok: atom_catalog_with_malformed_row_skips_accepts_valid()),

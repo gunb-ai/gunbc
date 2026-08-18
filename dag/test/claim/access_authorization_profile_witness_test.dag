@@ -8,8 +8,8 @@ fn string_set(a: String, b: String) -> Set<String> {
 }
 
 test fn overlapping_audiences_are_not_forced_into_a_chain() -> Bool {
-  let left = EnumeratedAudience { members: string_set(a: "alice", b: "bob") }
-  let right = EnumeratedAudience { members: string_set(a: "bob", b: "carol") }
+  let left = std.authorization_profile.EnumeratedAudience { members: string_set(a: "alice", b: "bob") }
+  let right = std.authorization_profile.EnumeratedAudience { members: string_set(a: "bob", b: "carol") }
   !audience_subset(left: left, right: right)
     && !audience_subset(left: right, right: left)
     && match audience_join(left: left, right: right) {
@@ -32,7 +32,7 @@ test fn every_profile_projects_context_and_evidence_into_the_kernel() -> Bool {
   })
   let disclosure = disclosure_access_request(request: std.authorization_profile.DisclosureRequest {
     principal: "principal", resource: "record", fields: ["email"],
-    audience: EnumeratedAudience { members: set_insert(empty_set(), "principal") },
+    audience: std.authorization_profile.EnumeratedAudience { members: set_insert(empty_set(), "principal") },
     context: "purpose", evidence: "consent",
   })
   let sealed = sealed_execution_access_request(request: std.authorization_profile.SealedExecutionRequest {

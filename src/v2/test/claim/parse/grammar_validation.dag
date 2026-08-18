@@ -3,10 +3,10 @@ module v2.test.parse.grammar_validation
 
 fn validation_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^validation_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^validation_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
@@ -33,25 +33,25 @@ fn validation_token(class: v2.std.node.Symbol, start: Int, end: Int) -> v2.std.c
 
 data validation_dup_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_start,
-  productions: Cons {
+  productions: std.algebra.Cons {
     head: validation_terminal_production(name: ^validation_start),
-    tail: Cons { head: validation_terminal_production(name: ^validation_start), tail: Empty }
+    tail: std.algebra.Cons { head: validation_terminal_production(name: ^validation_start), tail: Empty }
   },
   sync_tokens: grammar_empty_sync_tokens()
 }
 
 data validation_missing_start_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_start,
-  productions: Cons { head: validation_terminal_production(name: ^validation_other), tail: Empty },
+  productions: std.algebra.Cons { head: validation_terminal_production(name: ^validation_other), tail: Empty },
   sync_tokens: grammar_empty_sync_tokens()
 }
 
 data validation_dangling_ref_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_start,
-  productions: Cons {
+  productions: std.algebra.Cons {
     head: v2.std.grammar.GrammarProduction {
       name: ^validation_start,
-      expression: Nonterminal { production: ^validation_other },
+      expression: v2.std.grammar.Nonterminal { production: ^validation_other },
       emitted: grammar_atom(identity: ^validation_start)
     },
     tail: Empty
@@ -61,11 +61,11 @@ data validation_dangling_ref_root: v2.std.grammar.GrammarRoot = v2.std.grammar.G
 
 data validation_left_recursive_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_rec_start,
-  productions: Cons {
+  productions: std.algebra.Cons {
     head: v2.std.grammar.GrammarProduction {
       name: ^validation_rec_start,
-      expression: Sequence {
-        left: Nonterminal { production: ^validation_rec_start },
+      expression: v2.std.grammar.Sequence {
+        left: v2.std.grammar.Nonterminal { production: ^validation_rec_start },
         right: Terminal { token_class: ^validation_tok_class, stamp: StampClass }
       },
       emitted: grammar_atom(identity: ^validation_rec_start)
@@ -77,12 +77,12 @@ data validation_left_recursive_root: v2.std.grammar.GrammarRoot = v2.std.grammar
 
 data validation_right_recursive_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_rec_start,
-  productions: Cons {
+  productions: std.algebra.Cons {
     head: v2.std.grammar.GrammarProduction {
       name: ^validation_rec_start,
-      expression: Sequence {
+      expression: v2.std.grammar.Sequence {
         left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
-        right: Optional { element: Nonterminal { production: ^validation_rec_start } }
+        right: Optional { element: v2.std.grammar.Nonterminal { production: ^validation_rec_start } }
       },
       emitted: grammar_atom(identity: ^validation_rec_start)
     },
@@ -93,19 +93,19 @@ data validation_right_recursive_root: v2.std.grammar.GrammarRoot = v2.std.gramma
 
 data validation_two_distinct_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_start,
-  productions: Cons {
+  productions: std.algebra.Cons {
     head: validation_terminal_production(name: ^validation_start),
-    tail: Cons { head: validation_terminal_production(name: ^validation_other), tail: Empty }
+    tail: std.algebra.Cons { head: validation_terminal_production(name: ^validation_other), tail: Empty }
   },
   sync_tokens: grammar_empty_sync_tokens()
 }
 
 data validation_ambiguous_choice_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_start,
-  productions: Cons {
+  productions: std.algebra.Cons {
     head: v2.std.grammar.GrammarProduction {
       name: ^validation_start,
-      expression: Choice {
+      expression: v2.std.grammar.Choice {
         left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
         right: Terminal { token_class: ^validation_tok_class, stamp: StampClass }
       },
@@ -118,10 +118,10 @@ data validation_ambiguous_choice_root: v2.std.grammar.GrammarRoot = v2.std.gramm
 
 data validation_disjoint_choice_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_start,
-  productions: Cons {
+  productions: std.algebra.Cons {
     head: v2.std.grammar.GrammarProduction {
       name: ^validation_start,
-      expression: Choice {
+      expression: v2.std.grammar.Choice {
         left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
         right: Terminal { token_class: ^validation_tok_class_b, stamp: StampClass }
       },
@@ -146,10 +146,10 @@ fn validation_overlap_choice_validate_accepts_with_residue() -> Bool {
 
 data validation_nullable_ambiguous_choice_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_start,
-  productions: Cons {
+  productions: std.algebra.Cons {
     head: v2.std.grammar.GrammarProduction {
       name: ^validation_start,
-      expression: Choice {
+      expression: v2.std.grammar.Choice {
         left: Optional { element: Terminal { token_class: ^validation_tok_class, stamp: StampClass } },
         right: Optional { element: Terminal { token_class: ^validation_tok_class, stamp: StampClass } }
       },
@@ -202,14 +202,14 @@ fn validation_lookup_missing_violates() -> Bool {
   }
 }
 
-data validation_one_token_list: List<v2.std.compilers.lexing.Token> = Cons {
+data validation_one_token_list: List<v2.std.compilers.lexing.Token> = std.algebra.Cons {
   head: validation_token(class: ^validation_tok_class, start: 0, end: 1),
   tail: Empty
 }
 
-data validation_two_token_list: List<v2.std.compilers.lexing.Token> = Cons {
+data validation_two_token_list: List<v2.std.compilers.lexing.Token> = std.algebra.Cons {
   head: validation_token(class: ^validation_tok_class, start: 0, end: 1),
-  tail: Cons { head: validation_token(class: ^validation_tok_class, start: 1, end: 2), tail: Empty }
+  tail: std.algebra.Cons { head: validation_token(class: ^validation_tok_class, start: 1, end: 2), tail: Empty }
 }
 
 fn validation_right_recursive_parse_fixture() -> Outcome<v2.std.grammar.ParseTree> {
@@ -234,7 +234,7 @@ fn validation_empty_sync_found() -> Bool {
   }
 }
 
-data claim_duplicate_productions_detected: v2.std.verification.TestClaim = EqualsClaim {
+data claim_duplicate_productions_detected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_has_duplicate_productions returns true for duplicate production names",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: grammar_has_duplicate_productions(root: validation_dup_root)),
@@ -242,7 +242,7 @@ data claim_duplicate_productions_detected: v2.std.verification.TestClaim = Equal
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_distinct_productions_not_duplicate: v2.std.verification.TestClaim = EqualsClaim {
+data claim_distinct_productions_not_duplicate: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_has_duplicate_productions returns false for distinct production names",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: grammar_has_duplicate_productions(root: validation_two_distinct_root)),
@@ -250,7 +250,7 @@ data claim_distinct_productions_not_duplicate: v2.std.verification.TestClaim = E
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_lookup_production_present_holds: v2.std.verification.TestClaim = EqualsClaim {
+data claim_lookup_production_present_holds: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_lookup_production returns Holds with the production matching the requested name",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_lookup_present_holds_named()),
@@ -258,7 +258,7 @@ data claim_lookup_production_present_holds: v2.std.verification.TestClaim = Equa
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_lookup_production_absent_violates: v2.std.verification.TestClaim = EqualsClaim {
+data claim_lookup_production_absent_violates: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_lookup_production returns Violates for a name absent from productions",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_lookup_missing_violates()),
@@ -266,7 +266,7 @@ data claim_lookup_production_absent_violates: v2.std.verification.TestClaim = Eq
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_undefined_nonterminal_detected: v2.std.verification.TestClaim = EqualsClaim {
+data claim_undefined_nonterminal_detected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_has_undefined_nonterminals returns true for missing start production",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: grammar_has_undefined_nonterminals(root: validation_missing_start_root)),
@@ -274,7 +274,7 @@ data claim_undefined_nonterminal_detected: v2.std.verification.TestClaim = Equal
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_dangling_nonterminal_in_expression_detected: v2.std.verification.TestClaim = EqualsClaim {
+data claim_dangling_nonterminal_in_expression_detected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_has_undefined_nonterminals returns true when start production references undefined nonterminal",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: grammar_has_undefined_nonterminals(root: validation_dangling_ref_root)),
@@ -282,7 +282,7 @@ data claim_dangling_nonterminal_in_expression_detected: v2.std.verification.Test
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_empty_sync_set_no_token_drain: v2.std.verification.TestClaim = EqualsClaim {
+data claim_empty_sync_set_no_token_drain: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "parse_skip_to_sync with empty sync set returns found_sync: false for non-empty input",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_empty_sync_found()),
@@ -290,7 +290,7 @@ data claim_empty_sync_set_no_token_drain: v2.std.verification.TestClaim = Equals
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_left_recursion_detected: v2.std.verification.TestClaim = EqualsClaim {
+data claim_left_recursion_detected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_has_left_recursion returns true for A = A 'x' (direct left recursion)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: grammar_has_left_recursion(root: validation_left_recursive_root)),
@@ -298,7 +298,7 @@ data claim_left_recursion_detected: v2.std.verification.TestClaim = EqualsClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_right_recursion_not_left_recursive: v2.std.verification.TestClaim = EqualsClaim {
+data claim_right_recursion_not_left_recursive: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_has_left_recursion returns false for A = 'x' A? (right-recursive, non-left)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: grammar_has_left_recursion(root: validation_right_recursive_root)),
@@ -306,7 +306,7 @@ data claim_right_recursion_not_left_recursive: v2.std.verification.TestClaim = E
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_right_recursive_parse_succeeds: v2.std.verification.TestClaim = EqualsClaim {
+data claim_right_recursive_parse_succeeds: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "parse_production accepts right-recursive A = 'x' A? on two matching tokens via memoized ParseTable",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(
@@ -316,7 +316,7 @@ data claim_right_recursive_parse_succeeds: v2.std.verification.TestClaim = Equal
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_choice_ambiguity_detected: v2.std.verification.TestClaim = EqualsClaim {
+data claim_choice_ambiguity_detected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_has_choice_ambiguity returns true when Choice branches share a FIRST terminal",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: grammar_has_choice_ambiguity(root: validation_ambiguous_choice_root)),
@@ -324,7 +324,7 @@ data claim_choice_ambiguity_detected: v2.std.verification.TestClaim = EqualsClai
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_disjoint_choice_not_ambiguous: v2.std.verification.TestClaim = EqualsClaim {
+data claim_disjoint_choice_not_ambiguous: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_has_choice_ambiguity returns false when Choice FIRST sets are disjoint",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: grammar_has_choice_ambiguity(root: validation_disjoint_choice_root)),
@@ -332,7 +332,7 @@ data claim_disjoint_choice_not_ambiguous: v2.std.verification.TestClaim = Equals
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_validate_accepts_overlap_with_counted_residue: v2.std.verification.TestClaim = EqualsClaim {
+data claim_validate_accepts_overlap_with_counted_residue: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_validate_for_parse accepts non-nullable Choice FIRST overlap as counted typed residue (reason parse_grammar_choice_overlap_residue); runtime routes it to parse_choice_residue_backtrack",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_overlap_choice_validate_accepts_with_residue()),
@@ -340,7 +340,7 @@ data claim_validate_accepts_overlap_with_counted_residue: v2.std.verification.Te
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_validate_rejects_nullable_choice_ambiguity: v2.std.verification.TestClaim = EqualsClaim {
+data claim_validate_rejects_nullable_choice_ambiguity: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_validate_for_parse stays fail-closed on genuine ambiguity: both-nullable Choice arms sharing a FIRST terminal are Rejected",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_nullable_ambiguity_validate_rejects()),
@@ -348,7 +348,7 @@ data claim_validate_rejects_nullable_choice_ambiguity: v2.std.verification.TestC
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_disjoint_choice_validate_residue_none: v2.std.verification.TestClaim = EqualsClaim {
+data claim_disjoint_choice_validate_residue_none: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "disjoint-FIRST Choice validates with zero residue diagnostics (residue channel discriminates overlap from clean)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_disjoint_choice_residue_is_none()),
@@ -356,7 +356,7 @@ data claim_disjoint_choice_validate_residue_none: v2.std.verification.TestClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_validate_accepts_disjoint_choice: v2.std.verification.TestClaim = EqualsClaim {
+data claim_validate_accepts_disjoint_choice: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "grammar_validate_for_parse accepts grammars whose Choice branches have disjoint FIRST sets",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_disjoint_choice_validate_accepts()),

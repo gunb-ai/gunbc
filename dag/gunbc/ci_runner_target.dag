@@ -15,8 +15,8 @@ type RunnerMemoryRegime
 fn ci_runner_target_spec(target: CiRunnerTarget) -> extdeps.github.actions.RunnerSpec {
   match target {
     FleetSelfHosted => runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
-    UbicloudRunner { row: row } => SelfHosted { labels: [row.runs_on_label] }
-    GithubHostedRunner { row: row } => HostedRunner { label: row.runs_on_label }
+    UbicloudRunner { row: row } => extdeps.github.actions.SelfHosted { labels: [row.runs_on_label] }
+    GithubHostedRunner { row: row } => extdeps.github.actions.HostedRunner { label: row.runs_on_label }
   }
 }
 

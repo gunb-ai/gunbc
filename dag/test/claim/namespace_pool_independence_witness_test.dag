@@ -63,10 +63,10 @@ fn npi_witness_projection(
   dependencies: List<std.occurrence_binding_candidates.DirectFileDependency>,
   providers: List<std.occurrence_binding_candidates.BoundReferenceProvider>,
 ) -> std.occurrence_binding_candidates.ReferenceDerivedDependencyProjection {
-  ReferenceDerivedDependencyProjectionReady {
+  std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionReady {
     binding_provenance: provenances,
     file_dependencies: dependencies,
-    bound_population: AllReferencesBound { providers: providers },
+    bound_population: std.occurrence_binding_candidates.AllReferencesBound { providers: providers },
   }
 }
 
@@ -342,7 +342,7 @@ test fn red_bound_population_mismatch_holds() -> Bool {
 
 test fn red_file_dependency_mismatch_holds() -> Bool {
   let baseline = npi_witness_baseline_projection()
-  let perturbed = ReferenceDerivedDependencyProjectionReady {
+  let perturbed = std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionReady {
     binding_provenance: [
       npi_witness_provenance(
         reference_occurrence: npi_witness_ref_one(),
@@ -360,7 +360,7 @@ test fn red_file_dependency_mismatch_holds() -> Bool {
         provider_file: "app/unrelated.dag",
       },
     ],
-    bound_population: AllReferencesBound {
+    bound_population: std.occurrence_binding_candidates.AllReferencesBound {
       providers: [
         npi_witness_provider(
           reference_occurrence: npi_witness_ref_one(),
@@ -385,9 +385,9 @@ test fn red_file_dependency_mismatch_holds() -> Bool {
 
 test fn red_refusal_outcome_mismatch_holds() -> Bool {
   let baseline = npi_witness_baseline_projection()
-  let perturbed = ReferenceDerivedDependencyProjectionBindingRefused {
-    population: ReferencePopulationRefused {
-      first_failure: ReferenceBindingProjectionUnbound {
+  let perturbed = std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionBindingRefused {
+    population: std.occurrence_binding_candidates.ReferencePopulationRefused {
+      first_failure: std.occurrence_binding_candidates.ReferenceBindingProjectionUnbound {
         occurrence: npi_witness_ref_one(),
       },
       more_failures: [],

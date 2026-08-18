@@ -2,7 +2,7 @@ module test.claim.host_phase_status
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data modeled_phase_fixture: gunbc.host_standup.PhaseDisposition = ModeledCompose {
+data modeled_phase_fixture: gunbc.host_standup.PhaseDisposition = gunbc.host_standup.ModeledCompose {
   authorities: [
     std.decl_ref.DeclarationRef {
       module_path: "gunbc.host_phase_status",
@@ -12,7 +12,7 @@ data modeled_phase_fixture: gunbc.host_standup.PhaseDisposition = ModeledCompose
   ]
 }
 
-data unmodeled_phase_fixture: gunbc.host_standup.PhaseDisposition = DeclaredGap {
+data unmodeled_phase_fixture: gunbc.host_standup.PhaseDisposition = gunbc.host_standup.DeclaredGap {
   interim_realization: "ctrl:scripts/session-dashboard/lib/spawn_placement.mjs",
   refusal: "host_standup:P4:session-placement-enrollment:unmodeled — refuse until placement enrollment has a .dag authority",
 }

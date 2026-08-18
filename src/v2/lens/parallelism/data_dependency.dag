@@ -4,7 +4,7 @@ module v2.test.lens_parallelism.data_dependency
 data parallelism_child: Node = claim_atom_node(s: ^parallelism_child_symbol)
 
 data parallelism_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^parallelism_root_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^parallelism_root_symbol } },
   children: [
     v2.std.node.Edge { label: Named { name: ^parallelism_edge_symbol }, target: parallelism_child }
   ],
@@ -66,7 +66,7 @@ data parallelism_data_dependency_claim_passes: Bool = parallelism_data_dependenc
 
 fn parallelism_claim_pass_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^parallelism_claim_pass_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^parallelism_claim_pass_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -74,7 +74,7 @@ fn parallelism_claim_pass_node() -> Node {
 
 fn parallelism_claim_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^parallelism_claim_fail_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^parallelism_claim_fail_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -88,7 +88,7 @@ fn parallelism_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_parallelism_data_dependency_receipt: v2.std.verification.TestClaim = EqualsClaim {
+data claim_parallelism_data_dependency_receipt: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_parallelism data dependency witness classifies DataDependsOn as DataDependent",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: parallelism_claim_input(ok: parallelism_data_dependency_claim_passes),
@@ -113,7 +113,7 @@ fn parallelism_executable_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_parallelism_data_dependency_run_test_claim_receipt: v2.std.verification.TestClaim = EqualsClaim {
+data claim_parallelism_data_dependency_run_test_claim_receipt: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_parallelism data dependency witness gates run_test_claim executable receipt",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: parallelism_executable_claim_input(ok: parallelism_data_dependency_claim_passes),

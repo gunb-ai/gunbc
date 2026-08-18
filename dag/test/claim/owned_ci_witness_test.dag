@@ -7,7 +7,7 @@ fn sample_tree_hash() -> extdeps.git.object_store.GitObjectId {
   match git_sha1_object_id(hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904") {
     Present { value: oid } => oid
     Absent =>
-      GitSha1ObjectId {
+      extdeps.git.object_store.GitSha1ObjectId {
         digest: std.content_hash.Sha1Digest {
           hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" as std.content_hash.Sha1DigestHex,
         },
@@ -17,7 +17,7 @@ fn sample_tree_hash() -> extdeps.git.object_store.GitObjectId {
 
 test fn witness_refused_subject_has_no_head_sha() -> Bool {
   match ci_subject_head_sha(
-    subject: ForkPullRequestRefused {
+    subject: gunbc.ci_execution_plan.ForkPullRequestRefused {
       pr_number: 1,
       head_repo_full_name: "other/fork",
       reason: "fork PRs refuse in v0" as std.types.NonEmptyStr,
@@ -46,7 +46,7 @@ test fn witness_poll_without_github_read_refuses() -> Bool {
 }
 
 test fn witness_fork_pr_refused() -> Bool {
-  let subject = ForkPullRequestRefused {
+  let subject = gunbc.ci_execution_plan.ForkPullRequestRefused {
     pr_number: 1,
     head_repo_full_name: "other/fork",
     reason: "fork PRs refuse in v0" as std.types.NonEmptyStr,
@@ -73,20 +73,20 @@ test fn witness_pr_to_main_base_ref_admits() -> Bool {
 test fn witness_expired_lease_is_reclaimed() -> Bool {
   let lease = gunbc.owned_ci.QueueLease {
     holder: "stale-host",
-    expires_at: NumericDateWholeSeconds { seconds: 50 },
+    expires_at: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 50 },
   }
-  let now = NumericDateWholeSeconds { seconds: 50 }
+  let now = extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 50 }
   match queue_lease_reclaim_decision(lease: lease, now: now) {
     ReclaimExpiredLease => true
     RetainActiveLease => false
     LeaseReclaimRefused { cause: _ } => false
   }
-    && match queue_lease_reclaim_decision(lease: lease, now: NumericDateWholeSeconds { seconds: 51 }) {
+    && match queue_lease_reclaim_decision(lease: lease, now: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 51 }) {
       ReclaimExpiredLease => true
       RetainActiveLease => false
       LeaseReclaimRefused { cause: _ } => false
     }
-    && match queue_lease_reclaim_decision(lease: lease, now: NumericDateWholeSeconds { seconds: 49 }) {
+    && match queue_lease_reclaim_decision(lease: lease, now: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 49 }) {
       ReclaimExpiredLease => false
       RetainActiveLease => true
       LeaseReclaimRefused { cause: _ } => false
@@ -96,12 +96,12 @@ test fn witness_expired_lease_is_reclaimed() -> Bool {
 test fn witness_queue_lease_expiry() -> Bool {
   let lease = gunbc.owned_ci.QueueLease {
     holder: "host-1",
-    expires_at: NumericDateWholeSeconds { seconds: 100 },
+    expires_at: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 100 },
   }
-  let at = NumericDateWholeSeconds { seconds: 100 }
-  let after = NumericDateWholeSeconds { seconds: 101 }
-  let before = NumericDateWholeSeconds { seconds: 99 }
-  let mid = NumericDateWholeSeconds { seconds: 50 }
+  let at = extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 100 }
+  let after = extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 101 }
+  let before = extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 99 }
+  let mid = extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 50 }
   match queue_lease_reclaim_decision(lease: lease, now: at) {
     ReclaimExpiredLease => true
     RetainActiveLease => false
@@ -134,9 +134,9 @@ test fn witness_queue_lease_expiry() -> Bool {
 test fn witness_fractional_lease_clock_refuses() -> Bool {
   let whole_lease = gunbc.owned_ci.QueueLease {
     holder: "host",
-    expires_at: NumericDateWholeSeconds { seconds: 100 },
+    expires_at: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 100 },
   }
-  let fractional_now = NumericDateFractionalSeconds {
+  let fractional_now = extdeps.auth.jwt.NumericDateFractionalSeconds {
     whole_seconds: 200,
     fractional_digits: "5" as std.types.NonEmptyStr,
   }
@@ -167,7 +167,7 @@ test fn witness_unpublished_completed_run_has_no_check_conclusion() -> Bool {
   }
     && match owned_ci_check_conclusion_for_queue(
       state: QueueCompleted,
-      publication: CheckPublicationPending {
+      publication: gunbc.owned_ci.CheckPublicationPending {
         local_conclusion: Success,
         details_url: "http://localhost/ci/run/x" as std.types.NonEmptyStr,
       },
@@ -179,7 +179,7 @@ test fn witness_unpublished_completed_run_has_no_check_conclusion() -> Bool {
 
 test fn witness_queue_refused_maps_to_failure() -> Bool {
   match owned_ci_check_conclusion_for_queue(
-    state: QueueRefused { cause: "fork PR refused in v0" },
+    state: gunbc.owned_ci.QueueRefused { cause: "fork PR refused in v0" },
     publication: CheckPublicationNotStarted,
   ) {
     Present { value: Failure } => true
@@ -189,7 +189,7 @@ test fn witness_queue_refused_maps_to_failure() -> Bool {
 }
 
 test fn witness_publication_pending_is_not_github_success() -> Bool {
-  let pending = CheckPublicationPending {
+  let pending = gunbc.owned_ci.CheckPublicationPending {
     local_conclusion: Success,
     details_url: "http://localhost/ci/run/x" as std.types.NonEmptyStr,
   }
@@ -198,13 +198,13 @@ test fn witness_publication_pending_is_not_github_success() -> Bool {
 }
 
 test fn witness_publication_completed_is_github_success() -> Bool {
-  let done = CheckPublicationCompleted { check_run_id: 1, conclusion: Success }
+  let done = gunbc.owned_ci.CheckPublicationCompleted { check_run_id: 1, conclusion: Success }
   check_publication_reports_github_success(state: done)
     && !(check_publication_is_pending_honest(state: done))
 }
 
 test fn witness_execution_plan_stages_build_regen_floor() -> Bool {
-  let subject = PushToMain {
+  let subject = gunbc.ci_execution_plan.PushToMain {
     head_sha: "abc123",
     base_tree_hash: sample_tree_hash(),
   }
@@ -217,15 +217,15 @@ test fn witness_execution_plan_stages_build_regen_floor() -> Bool {
 }
 
 test fn witness_subject_identity_keys_differ_by_sha() -> Bool {
-  let a = PushToMain { head_sha: "aaa", base_tree_hash: sample_tree_hash() }
-  let b = PushToMain { head_sha: "bbb", base_tree_hash: sample_tree_hash() }
+  let a = gunbc.ci_execution_plan.PushToMain { head_sha: "aaa", base_tree_hash: sample_tree_hash() }
+  let b = gunbc.ci_execution_plan.PushToMain { head_sha: "bbb", base_tree_hash: sample_tree_hash() }
   (ci_subject_identity_key(subject: a) == concat(concat(gunbc_default_branch_name, ":"), "aaa"))
     && (ci_subject_identity_key(subject: b) == concat(concat(gunbc_default_branch_name, ":"), "bbb"))
     && (ci_subject_identity_key(subject: a) != ci_subject_identity_key(subject: b))
 }
 
 test fn witness_operator_rerun_identity_key() -> Bool {
-  let subject = OperatorRerun {
+  let subject = gunbc.ci_execution_plan.OperatorRerun {
     head_sha: "deadbeef",
     base_ref: gunbc_default_branch_name,
     base_tree_hash: sample_tree_hash(),

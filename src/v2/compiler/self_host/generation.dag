@@ -326,7 +326,7 @@ fn generation_axis_stale_diagnostic(axis: GenerationAxis) -> v2.std.diagnostic.D
   v2.std.diagnostic.Diagnostic {
     reason: generation_axis_symbol(axis: axis),
     at: port_locus(port: ^generation_identity_axis_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

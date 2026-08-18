@@ -5,31 +5,31 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn sample_doc() -> std.markdown.MarkdownDocument {
   std.markdown.MarkdownDocument {
     blocks: [
-      HeadingBlock { level: H1, inlines: [ TextInline { text: "Roadmap" } ] },
-      ParagraphBlock {
+      std.markdown.HeadingBlock { level: H1, inlines: [ std.markdown.TextInline { text: "Roadmap" } ] },
+      std.markdown.ParagraphBlock {
         inlines: [
-          TextInline { text: "See " },
-          LinkInline {
-            inlines: [ TextInline { text: "plan" } ],
+          std.markdown.TextInline { text: "See " },
+          std.markdown.LinkInline {
+            inlines: [ std.markdown.TextInline { text: "plan" } ],
             url: "docs/plan.md",
           },
-          TextInline { text: "." },
+          std.markdown.TextInline { text: "." },
         ],
       },
-      TaskListBlock {
+      std.markdown.TaskListBlock {
         items: [
           std.markdown.MarkdownTaskItem {
             state: Checked,
-            blocks: [ ParagraphBlock { inlines: [ TextInline { text: "done item" } ] } ],
+            blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "done item" } ] } ],
           },
           std.markdown.MarkdownTaskItem {
             state: Unchecked,
             blocks: [
-              ParagraphBlock { inlines: [ TextInline { text: "todo item" } ] },
-              UnorderedListBlock {
+              std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "todo item" } ] },
+              std.markdown.UnorderedListBlock {
                 items: [
                   std.markdown.MarkdownListItem {
-                    blocks: [ ParagraphBlock { inlines: [ TextInline { text: "subnote" } ] } ],
+                    blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "subnote" } ] } ],
                   },
                 ],
               },
@@ -37,51 +37,51 @@ fn sample_doc() -> std.markdown.MarkdownDocument {
           },
         ],
       },
-      UnorderedListBlock {
+      std.markdown.UnorderedListBlock {
         items: [
           std.markdown.MarkdownListItem {
             blocks: [
-              ParagraphBlock {
+              std.markdown.ParagraphBlock {
                 inlines: [
-                  StrongInline { inlines: [ TextInline { text: "bold" } ] },
-                  TextInline { text: " and " },
-                  EmphasisInline { inlines: [ TextInline { text: "italic" } ] },
+                  std.markdown.StrongInline { inlines: [ std.markdown.TextInline { text: "bold" } ] },
+                  std.markdown.TextInline { text: " and " },
+                  std.markdown.EmphasisInline { inlines: [ std.markdown.TextInline { text: "italic" } ] },
                 ],
               },
             ],
           },
         ],
       },
-      OrderedListBlock {
+      std.markdown.OrderedListBlock {
         items: [
-          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "one" } ] } ] },
-          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "two" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "one" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "two" } ] } ] },
         ],
       },
-      CodeBlock { code: "let x = 1;\n" },
-      TableBlock {
+      std.markdown.CodeBlock { code: "let x = 1;\n" },
+      std.markdown.TableBlock {
         header: std.markdown.MarkdownTableRow {
           cells: [
-            std.markdown.MarkdownTableCell { inlines: [ TextInline { text: "h1" } ] },
-            std.markdown.MarkdownTableCell { inlines: [ TextInline { text: "h2" } ] },
+            std.markdown.MarkdownTableCell { inlines: [ std.markdown.TextInline { text: "h1" } ] },
+            std.markdown.MarkdownTableCell { inlines: [ std.markdown.TextInline { text: "h2" } ] },
           ],
         },
         alignments: [ AlignNone, AlignCenter ],
         rows: [
           std.markdown.MarkdownTableRow {
             cells: [
-              std.markdown.MarkdownTableCell { inlines: [ TextInline { text: "a" } ] },
-              std.markdown.MarkdownTableCell { inlines: [ TextInline { text: "b" } ] },
+              std.markdown.MarkdownTableCell { inlines: [ std.markdown.TextInline { text: "a" } ] },
+              std.markdown.MarkdownTableCell { inlines: [ std.markdown.TextInline { text: "b" } ] },
             ],
           },
         ],
       },
-      BlockquoteBlock {
+      std.markdown.BlockquoteBlock {
         blocks: [
-          ParagraphBlock {
+          std.markdown.ParagraphBlock {
             inlines: [
-              TextInline { text: "quote " },
-              CodeInline { text: "code" },
+              std.markdown.TextInline { text: "quote " },
+              std.markdown.CodeInline { text: "code" },
             ],
           },
         ],
@@ -122,7 +122,7 @@ test fn witness_exact_bytes() -> Bool {
 }
 
 fn code_only_doc(code: String) -> std.markdown.MarkdownDocument {
-  std.markdown.MarkdownDocument { blocks: [ CodeBlock { code: code } ] }
+  std.markdown.MarkdownDocument { blocks: [ std.markdown.CodeBlock { code: code } ] }
 }
 
 test fn witness_code_block_closing_fence_on_own_line() -> Bool {
@@ -164,9 +164,9 @@ fn perturbed_bullet_spellings() -> extdeps.languages.markdown.MarkdownSpellings 
 fn tiny_list_doc() -> std.markdown.MarkdownDocument {
   std.markdown.MarkdownDocument {
     blocks: [
-      UnorderedListBlock {
+      std.markdown.UnorderedListBlock {
         items: [
-          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "x" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "x" } ] } ] },
         ],
       },
     ],

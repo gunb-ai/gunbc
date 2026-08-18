@@ -58,7 +58,7 @@ type EffectRequest<S, A, O, C, E> {
 
 fn effect_access_request<S, A, O, C, E>(
   request: EffectRequest<S, A, O, C, E>,
-) -> AccessRequest<S, EffectAuthorizationAction<A>, O, extdeps.languages.c.subject.C, E> {
+) -> AccessRequest<std.types.S, EffectAuthorizationAction<A>, O, extdeps.languages.c.subject.C, E> {
   std.access.AccessRequest {
     subject: request.subject,
     action: EffectAuthorizationAction { effect: request.effect },
@@ -117,7 +117,7 @@ type PublicationAdmissionRequest<S, Source, R, C, E, P> {
 
 fn publication_access_request<S, Source, R, C, E, P>(
   request: PublicationAdmissionRequest<S, Source, R, C, E, P>,
-) -> AccessRequest<S, PublicationAdmissionAction<Source>, R, PublicationContext<extdeps.languages.c.subject.C, P>, E> {
+) -> AccessRequest<std.types.S, PublicationAdmissionAction<Source>, R, PublicationContext<extdeps.languages.c.subject.C, P>, E> {
   std.access.AccessRequest {
     subject: request.subject,
     action: PublicationAdmissionAction { source: request.source },

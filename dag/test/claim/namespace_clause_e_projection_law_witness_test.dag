@@ -63,11 +63,11 @@ fn contract_witness_production(
   dependencies: List<std.occurrence_binding_candidates.DirectFileDependency>,
   providers: List<std.occurrence_binding_candidates.BoundReferenceProvider>,
 ) -> std.occurrence_binding_candidates.ReferenceDerivedClauseEProduction {
-  ReferenceDerivedClauseEProductionReady {
-    projection: ReferenceDerivedDependencyProjectionReady {
+  std.occurrence_binding_candidates.ReferenceDerivedClauseEProductionReady {
+    projection: std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionReady {
       binding_provenance: provenances,
       file_dependencies: dependencies,
-      bound_population: AllReferencesBound { providers: providers },
+      bound_population: std.occurrence_binding_candidates.AllReferencesBound { providers: providers },
     },
     consumer_file: contract_witness_consumer_file(),
   }
@@ -311,8 +311,8 @@ test fn witness_substrate_refuses_projection_inconsistent_with_bound_population(
 
 test fn witness_substrate_refuses_reference_population_refused() -> Bool {
   match assess_controlled_two_mention_provenance_projection(
-    production: ReferenceDerivedClauseEProductionReady {
-      projection: ReferenceDerivedDependencyProjectionReady {
+    production: std.occurrence_binding_candidates.ReferenceDerivedClauseEProductionReady {
+      projection: std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionReady {
         binding_provenance: [
           contract_witness_provenance(
             reference_occurrence: contract_witness_ref_one(),
@@ -324,8 +324,8 @@ test fn witness_substrate_refuses_reference_population_refused() -> Bool {
           ),
         ],
         file_dependencies: [contract_witness_file_dependency()],
-        bound_population: ReferencePopulationRefused {
-          first_failure: ReferenceBindingProjectionUnbound {
+        bound_population: std.occurrence_binding_candidates.ReferencePopulationRefused {
+          first_failure: std.occurrence_binding_candidates.ReferenceBindingProjectionUnbound {
             occurrence: std.occurrence_identity.OccurrenceId { value: 99 },
           },
           more_failures: [],
@@ -343,9 +343,9 @@ test fn witness_substrate_refuses_reference_population_refused() -> Bool {
 
 test fn witness_substrate_refuses_file_path_missing() -> Bool {
   match assess_controlled_two_mention_provenance_projection(
-    production: ReferenceDerivedClauseEProductionReady {
-      projection: ReferenceDerivedDependencyProjectionFileRefused {
-        first_failure: CrossFileBindingProvenanceProjectionFilePathMissing {
+    production: std.occurrence_binding_candidates.ReferenceDerivedClauseEProductionReady {
+      projection: std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionFileRefused {
+        first_failure: std.occurrence_binding_candidates.CrossFileBindingProvenanceProjectionFilePathMissing {
           module_path: "app.missing" as std.types.NonEmptyStr,
         },
         more_failures: [],

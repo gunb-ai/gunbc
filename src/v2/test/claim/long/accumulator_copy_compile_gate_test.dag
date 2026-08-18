@@ -91,7 +91,7 @@ test fn gate_refusal_ledger_counted_not_gating() -> Bool {
 data compile_gate_target_stub: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   },
@@ -106,7 +106,7 @@ test fn door_root_roster_runs_and_passes_clean_tree() -> Bool {
   match validate_then_compile(
     source: fixture_add_resolved_tree(),
     lenses: [],
-    mode: TranslateTo { target: compile_gate_target_stub }
+    mode: v2.compiler.compile.TranslateTo { target: compile_gate_target_stub }
   ) {
     Rejected { diagnostics: d } =>
       !non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)

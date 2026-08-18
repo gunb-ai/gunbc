@@ -22,7 +22,7 @@ fn srv3_nbd_proxy_serve_intent() -> extdeps.bmc.webui.nbd_proxy_serve.NbdProxySe
 }
 
 fn srv3_nbd_proxy_serve_host_effect() -> gunbc.host_effect.HostEffect {
-  Srv3NbdProxyServe {
+  gunbc.host_effect.Srv3NbdProxyServe {
     intent: srv3_nbd_proxy_serve_transport_intent(),
     lease_key: srv3_nbd_proxy_lease_key,
   }

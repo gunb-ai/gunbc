@@ -38,8 +38,8 @@ test fn freemonoid_association_unobservable_holds() -> Bool {
 
 test fn identity_law1_projection_holds() -> Bool {
   let ref_identical = identity_evidence_equal(evidence: ReferenceIdentical)
-  let compared_equal = identity_evidence_equal(evidence: StructurallyCompared { equal: true })
-  let compared_distinct = identity_evidence_equal(evidence: StructurallyCompared { equal: false })
+  let compared_equal = identity_evidence_equal(evidence: v2.std.runtime.StructurallyCompared { equal: true })
+  let compared_distinct = identity_evidence_equal(evidence: v2.std.runtime.StructurallyCompared { equal: false })
   ref_identical && compared_equal && !compared_distinct
 }
 

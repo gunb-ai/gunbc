@@ -235,8 +235,8 @@ test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
 // roster full of drift-detection claims is satisfied by a projection that reports drift always.
 fn observed_exactly_desired(r: gunbc.spark_serving_release.SparkServingRelease) -> gunbc.spark_serving_observed_members.SparkServingObservedMemberProjection {
   spark_serving_observed_members(
-    observation: SparkServingObserved { host: subject_host, loaded_release: r },
-    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+    observation: gunbc.spark_serving_release.SparkServingObserved { host: subject_host, loaded_release: r },
+    unit: gunbc.spark_serving_observed_members.UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
     linger: LingerObservedEnabled,
   )
 }
@@ -277,14 +277,14 @@ test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
         occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
         projection: spark_serving_observed_members(
-          observation: SparkServingObserved {
+          observation: gunbc.spark_serving_release.SparkServingObserved {
             host: subject_host,
             loaded_release: gunbc.spark_serving_release.SparkServingRelease {
               runtime: gunbc.spark_serving_release.RuntimeArtifactIdentity { closure_digest: "drifted-runtime" as std.types.NonEmptyStr },
               model: r.model,
             },
           },
-          unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+          unit: gunbc.spark_serving_observed_members.UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
           linger: LingerObservedEnabled,
         ),
       ) {

@@ -44,46 +44,46 @@ fn select_artifact_path(
       CargoArtifactSelected { executable: exe } =>
         ArtifactPathReported { executable: exe }
       CargoArtifactAbsent { target_name: t } =>
-        ArtifactPathRefused { selection: CargoArtifactAbsent { target_name: t } }
+        ArtifactPathRefused { selection: extdeps.cargo_message.CargoArtifactAbsent { target_name: t } }
       CargoArtifactAmbiguous { target_name: t, count: c } =>
         ArtifactPathRefused {
-          selection: CargoArtifactAmbiguous { target_name: t, count: c }
+          selection: extdeps.cargo_message.CargoArtifactAmbiguous { target_name: t, count: c }
         }
       CargoArtifactWithoutExecutable { target_name: t } =>
         ArtifactPathRefused {
-          selection: CargoArtifactWithoutExecutable { target_name: t }
+          selection: extdeps.cargo_message.CargoArtifactWithoutExecutable { target_name: t }
         }
       CargoArtifactExecutablePathEmpty { target_name: t, line_number: n } =>
         ArtifactPathRefused {
-          selection: CargoArtifactExecutablePathEmpty { target_name: t, line_number: n }
+          selection: extdeps.cargo_message.CargoArtifactExecutablePathEmpty { target_name: t, line_number: n }
         }
       CargoArtifactExecutableNotAString { target_name: t, line_number: n } =>
         ArtifactPathRefused {
-          selection: CargoArtifactExecutableNotAString { target_name: t, line_number: n }
+          selection: extdeps.cargo_message.CargoArtifactExecutableNotAString { target_name: t, line_number: n }
         }
       CargoMessageExecutableAbsent { line_number: n } =>
         ArtifactPathRefused {
-          selection: CargoMessageExecutableAbsent { line_number: n }
+          selection: extdeps.cargo_message.CargoMessageExecutableAbsent { line_number: n }
         }
       CargoMessageLineUnparseable { line_number: n } =>
-        ArtifactPathRefused { selection: CargoMessageLineUnparseable { line_number: n } }
+        ArtifactPathRefused { selection: extdeps.cargo_message.CargoMessageLineUnparseable { line_number: n } }
       CargoMessageLineNotAnObject { line_number: n } =>
-        ArtifactPathRefused { selection: CargoMessageLineNotAnObject { line_number: n } }
+        ArtifactPathRefused { selection: extdeps.cargo_message.CargoMessageLineNotAnObject { line_number: n } }
       CargoMessageReasonAbsent { line_number: n } =>
-        ArtifactPathRefused { selection: CargoMessageReasonAbsent { line_number: n } }
+        ArtifactPathRefused { selection: extdeps.cargo_message.CargoMessageReasonAbsent { line_number: n } }
       CargoMessageReasonNotAString { line_number: n } =>
-        ArtifactPathRefused { selection: CargoMessageReasonNotAString { line_number: n } }
+        ArtifactPathRefused { selection: extdeps.cargo_message.CargoMessageReasonNotAString { line_number: n } }
       CargoMessageMemberDuplicated { line_number: n, key: k } =>
         ArtifactPathRefused {
-          selection: CargoMessageMemberDuplicated { line_number: n, key: k }
+          selection: extdeps.cargo_message.CargoMessageMemberDuplicated { line_number: n, key: k }
         }
       CargoMessageTargetNotAnObject { line_number: n } =>
-        ArtifactPathRefused { selection: CargoMessageTargetNotAnObject { line_number: n } }
+        ArtifactPathRefused { selection: extdeps.cargo_message.CargoMessageTargetNotAnObject { line_number: n } }
       CargoMessageTargetNameAbsent { line_number: n } =>
-        ArtifactPathRefused { selection: CargoMessageTargetNameAbsent { line_number: n } }
+        ArtifactPathRefused { selection: extdeps.cargo_message.CargoMessageTargetNameAbsent { line_number: n } }
       CargoMessageTargetNameNotAString { line_number: n } =>
         ArtifactPathRefused {
-          selection: CargoMessageTargetNameNotAString { line_number: n }
+          selection: extdeps.cargo_message.CargoMessageTargetNameNotAString { line_number: n }
         }
     }
   }
@@ -152,11 +152,11 @@ fn materialize_artifact_wet(
   let observation = match path {
     ArtifactPathReported { executable: exe } => sha512sum_observe_file(path: exe)
     ArtifactPathBuildFailed { target_name: _ } =>
-      Sha512FileObservationRefused {
+      extdeps.tools.sha512sum.Sha512FileObservationRefused {
         cause: "no artifact path was reported, so no file was digested" as std.types.NonEmptyStr
       }
     ArtifactPathRefused { selection: _ } =>
-      Sha512FileObservationRefused {
+      extdeps.tools.sha512sum.Sha512FileObservationRefused {
         cause: "no artifact path was reported, so no file was digested" as std.types.NonEmptyStr
       }
   }
@@ -169,7 +169,7 @@ fn materialize_artifact_wet(
 fn artifact_identity_of(outcome: ArtifactMaterializationOutcome) -> v2.compiler.self_host.generation.GeneratedArtifactIdentity {
   match outcome {
     ArtifactMaterializationObserved { executable: _, digest: d } =>
-      ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
+      v2.compiler.self_host.generation.ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
     ArtifactMaterializationBuildFailed { target_name: _ } => ArtifactNotMaterialized
     ArtifactMaterializationPathRefused { selection: _ } => ArtifactNotMaterialized
     ArtifactMaterializationDigestRefused { executable: _, cause: _ } =>

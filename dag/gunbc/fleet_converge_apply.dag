@@ -6,7 +6,7 @@ fn fleet_compute_host_for_identity(identity: product.placement_supply.HostIdenti
 }
 
 fn converge_plan_effect(host_converge: gunbc.host_converge.HostConverge) -> gunbc.host_effect.HostEffect {
-  ConvergePlan { policy: host_converge }
+  gunbc.host_effect.ConvergePlan { policy: host_converge }
 }
 
 fn converge_apply_for_host(
@@ -17,7 +17,7 @@ fn converge_apply_for_host(
     Present { value: host } =>
       Present {
         value: host_effect_apply(
-          target: HostOs { node: host },
+          target: gunbc.host_effect.HostOs { node: host },
           effect: converge_plan_effect(host_converge: host_converge),
           evidence: host_effect_converge_loop_evidence,
           transport: transport,

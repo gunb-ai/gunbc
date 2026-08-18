@@ -81,9 +81,9 @@ fn is_refused(a: std.access.AccessDecision) -> Bool {
 
 test fn effect_grant_verb_coarsening_witnesses() -> Bool {
   verb_eq(a: verb_of_effect_shape(shape: ReadEffect), b: Read)
-    && verb_eq(a: verb_of_effect_shape(shape: UpsertEffect { key_source: PathParam { param: "id" } }), b: Write)
-    && verb_eq(a: verb_of_effect_shape(shape: DeleteEffect { key_source: PathParam { param: "id" } }), b: Write)
-    && verb_eq(a: verb_of_effect_shape(shape: CreateEffect { cause: PostAlways }), b: Write)
+    && verb_eq(a: verb_of_effect_shape(shape: std.effects.UpsertEffect { key_source: PathParam { param: "id" } }), b: Write)
+    && verb_eq(a: verb_of_effect_shape(shape: std.effects.DeleteEffect { key_source: PathParam { param: "id" } }), b: Write)
+    && verb_eq(a: verb_of_effect_shape(shape: std.effects.CreateEffect { cause: PostAlways }), b: Write)
     && verb_eq(a: verb_of_effect_shape(shape: AppendEffect), b: Write)
     && verb_eq(a: verb_of_effect_shape(shape: ExecuteEffect), b: Execute)
     && !verb_eq(a: verb_of_effect_shape(shape: ReadEffect), b: Write)

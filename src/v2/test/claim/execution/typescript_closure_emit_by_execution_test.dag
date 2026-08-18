@@ -75,7 +75,7 @@ fn ts_closure_infix_catalog() -> Node {
     rows: [
       target_operator_realization_node(
         operation: canonical_operation_op_add(),
-        shape: InfixToken { token: ^ts_token_plus }
+        shape: v2.std.compilers.target_model.InfixToken { token: ^ts_token_plus }
       )
     ]
   )
@@ -86,7 +86,7 @@ fn ts_closure_prefix_catalog() -> Node {
     rows: [
       target_operator_realization_node(
         operation: canonical_operation_op_add(),
-        shape: PrefixToken { token: ^ts_token_plus }
+        shape: v2.std.compilers.target_model.PrefixToken { token: ^ts_token_plus }
       )
     ]
   )

@@ -73,7 +73,7 @@ data frontend_endpoint: v2.extdeps.coordination.Endpoint = v2.extdeps.coordinati
   identity: v2.extdeps.coordination.EndpointRef { identity: ^react_frontend_endpoint },
   address: frontend_address,
   language: v2.extdeps.coordination.LanguageRef { identity: ^typescript_language },
-  framework: HostedByFramework { framework: v2.extdeps.coordination.FrameworkRef { identity: ^react_framework } }
+  framework: v2.extdeps.coordination.HostedByFramework { framework: v2.extdeps.coordination.FrameworkRef { identity: ^react_framework } }
 }
 
 data create_task_facts: v2.extdeps.coordination.WireContractFacts = v2.extdeps.coordination.WireContractFacts {
@@ -196,7 +196,7 @@ fn task_manager_absent_column_default() -> v2.extdeps.formats.sql.SqlColumnDefau
 }
 
 fn task_manager_sql_identifier(name: String) -> v2.extdeps.formats.sql.SqlIdentifier {
-  SqlRegularIdentifier { name: name }
+  v2.extdeps.formats.sql.SqlRegularIdentifier { name: name }
 }
 
 fn task_manager_projectable_scalar_to_sql_data_type(
@@ -213,7 +213,7 @@ fn task_manager_reject_unmapped_domain_scalar(node: Node) -> Outcome<v2.extdeps.
   outcome_rejected(d: v2.std.diagnostic.Diagnostic {
     reason: ^task_manager_unmapped_domain_scalar,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   })
 }
 
@@ -286,7 +286,7 @@ fn task_to_sql_create_table() -> Outcome<v2.extdeps.formats.sql.SqlSchemaOperati
   bind_outcome(
     o: task_to_sql_table_definition(),
     f: fn(table) {
-      outcome_accepted(value: SqlCreateTable { table: table })
+      outcome_accepted(value: v2.extdeps.formats.sql.SqlCreateTable { table: table })
     }
   )
 }

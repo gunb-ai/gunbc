@@ -4,7 +4,7 @@ data rung34_emit_host_rust_target_model: v2.std.compilers.target_model.TargetMod
 
 fn rung34_algebra_evidence_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^rung34_algebra_evidence_axis },
@@ -43,7 +43,7 @@ fn rung34_inferred_tree(root: Node) -> v2.compiler.infer.InferredTree {
 
 fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^rung34_roundtrip_module_axis },

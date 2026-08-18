@@ -57,7 +57,7 @@ fn converged_serve_receipt() -> std.temporal_effect.EffectStepReceipt {
     observation_digest: content_hash_of_value(value: "obs" as std.types.NonEmptyStr),
     verdict_label: "Converged" as std.types.NonEmptyStr,
     plan_label: "Noop" as std.types.NonEmptyStr,
-    applied: EffectApplied { effect_id: "nbd-serve-effect-1" as std.types.NonEmptyStr },
+    applied: std.temporal_effect.EffectApplied { effect_id: "nbd-serve-effect-1" as std.types.NonEmptyStr },
     read_back_ok: true,
     recorded_at: "2026-07-02T23:02:00Z",
   }
@@ -122,7 +122,7 @@ test fn converged_receipt_stale_lease_drains_not_noop() -> Bool {
     escalation_id: witness_escalation_id,
     grant: GrantAbsent,
     lease: stale_lease,
-    prior: PriorReceipt { receipt: converged_serve_receipt() },
+    prior: std.temporal_effect.PriorReceipt { receipt: converged_serve_receipt() },
     observed_at: witness_observed_at,
   ) {
     PlanDrainThenStart { step_id: sid, lease_key: lk } =>
@@ -139,7 +139,7 @@ test fn applied_without_read_back_refuses() -> Bool {
     observation_digest: content_hash_of_value(value: "obs" as std.types.NonEmptyStr),
     verdict_label: "Stale" as std.types.NonEmptyStr,
     plan_label: "Apply" as std.types.NonEmptyStr,
-    applied: EffectApplied { effect_id: "nbd-serve-effect-1" as std.types.NonEmptyStr },
+    applied: std.temporal_effect.EffectApplied { effect_id: "nbd-serve-effect-1" as std.types.NonEmptyStr },
     read_back_ok: false,
     recorded_at: "2026-07-02T23:01:00Z",
   }
@@ -150,7 +150,7 @@ test fn applied_without_read_back_refuses() -> Bool {
     escalation_id: witness_escalation_id,
     grant: GrantAbsent,
     lease: expected_lease,
-    prior: PriorReceipt { receipt: bad_receipt },
+    prior: std.temporal_effect.PriorReceipt { receipt: bad_receipt },
     observed_at: witness_observed_at,
   ) {
     PlanRefuse { step_id: _, reason: r } => string_contains(s: r, pattern: "read-back")
@@ -166,7 +166,7 @@ test fn converged_receipt_expected_lease_yields_noop() -> Bool {
     escalation_id: witness_escalation_id,
     grant: GrantAbsent,
     lease: expected_lease,
-    prior: PriorReceipt { receipt: converged_serve_receipt() },
+    prior: std.temporal_effect.PriorReceipt { receipt: converged_serve_receipt() },
     observed_at: witness_observed_at,
   ) {
     PlanNoop { step_id: sid } => sid == witness_step_serve
@@ -176,7 +176,7 @@ test fn converged_receipt_expected_lease_yields_noop() -> Bool {
 
 test fn active_grant_covers_matching_intent() -> Bool {
   approval_grant_covers_intent(
-    grant: GrantActive {
+    grant: std.temporal_effect.GrantActive {
       escalation_id: witness_escalation_id,
       intent_hash: witness_intent_hash,
       granted_by: "operator" as std.types.NonEmptyStr,
@@ -191,7 +191,7 @@ test fn active_grant_covers_matching_intent() -> Bool {
 
 test fn expired_grant_does_not_authorize_destructive() -> Bool {
   !approval_grant_covers_intent(
-    grant: GrantActive {
+    grant: std.temporal_effect.GrantActive {
       escalation_id: witness_escalation_id,
       intent_hash: witness_intent_hash,
       granted_by: "operator" as std.types.NonEmptyStr,
@@ -207,7 +207,7 @@ test fn expired_grant_does_not_authorize_destructive() -> Bool {
       pending_step_id: witness_step_boot,
       requires_destructive_approval: true,
       escalation_id: witness_escalation_id,
-      grant: GrantActive {
+      grant: std.temporal_effect.GrantActive {
         escalation_id: witness_escalation_id,
         intent_hash: witness_intent_hash,
         granted_by: "operator" as std.types.NonEmptyStr,
@@ -260,7 +260,7 @@ test fn derived_cursor_uses_last_receipt_step() -> Bool {
 
 test fn consumed_grant_does_not_authorize_destructive() -> Bool {
   !approval_grant_covers_intent(
-    grant: GrantConsumed {
+    grant: std.temporal_effect.GrantConsumed {
       escalation_id: witness_escalation_id,
       intent_hash: witness_intent_hash,
       consumed_by_step: witness_step_boot,
@@ -274,7 +274,7 @@ test fn consumed_grant_does_not_authorize_destructive() -> Bool {
       pending_step_id: witness_step_boot,
       requires_destructive_approval: true,
       escalation_id: witness_escalation_id,
-      grant: GrantConsumed {
+      grant: std.temporal_effect.GrantConsumed {
         escalation_id: witness_escalation_id,
         intent_hash: witness_intent_hash,
         consumed_by_step: witness_step_boot,
@@ -406,7 +406,7 @@ test fn stall_budget_within_limit_preserves_apply_plan() -> Bool {
     StallBudgetExceeded { step_id: _, elapsed_ms: _, limit_ms: _ } => false
   }
     && match next_step_plan_on_stall_budget(
-      pending_plan: PlanApply { step_id: witness_step_serve },
+      pending_plan: std.temporal_effect.PlanApply { step_id: witness_step_serve },
       budget: budget,
     ) {
       PlanApply { step_id: sid } => sid == witness_step_serve
@@ -425,7 +425,7 @@ test fn stall_budget_exceeded_refuses_not_widen() -> Bool {
     StallWithinBudget => false
   }
     && match next_step_plan_on_stall_budget(
-      pending_plan: PlanApply { step_id: witness_step_serve },
+      pending_plan: std.temporal_effect.PlanApply { step_id: witness_step_serve },
       budget: budget,
     ) {
       PlanRefuse { step_id: _, reason: r } => string_contains(s: r, pattern: "stall budget exceeded")
@@ -436,8 +436,8 @@ test fn stall_budget_exceeded_refuses_not_widen() -> Bool {
 
 test fn stall_cause_fold_router_absent_dominates_silent_installer() -> Bool {
   match cause_fold_dominant_hang_stall(causes: [
-    HangStallInstallerProgressSilent { elapsed_ms: millisecond(count: 1000000) },
-    HangStallRouterLeaseAbsent { elapsed_ms: millisecond(count: 4600000) },
+    gunbc.srv3_os_install_diagnostic.HangStallInstallerProgressSilent { elapsed_ms: millisecond(count: 1000000) },
+    gunbc.srv3_os_install_diagnostic.HangStallRouterLeaseAbsent { elapsed_ms: millisecond(count: 4600000) },
   ]) {
     HangStallRouterLeaseAbsent { elapsed_ms: _ } => true
     _ => false

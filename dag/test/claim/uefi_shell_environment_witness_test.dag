@@ -3,7 +3,7 @@ module test.claim.uefi_shell_environment
 
 test fn new_shell_commands_render() -> Bool {
   uefi_shell_command_line(cmd: ConnectRecursive) == "connect -r"
-    && uefi_shell_command_line(cmd: Ifconfig { action: IfconfigSetDhcp { interface: "eth0" } }) == "ifconfig -s eth0 dhcp"
+    && uefi_shell_command_line(cmd: extdeps.firmware.uefi_shell.Ifconfig { action: extdeps.firmware.uefi_shell.IfconfigSetDhcp { interface: "eth0" } }) == "ifconfig -s eth0 dhcp"
 }
 
 test fn srv4_observed_env_has_link_and_windows() -> Bool {

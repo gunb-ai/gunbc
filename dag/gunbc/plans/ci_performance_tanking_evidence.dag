@@ -7,7 +7,7 @@ fn ci_performance_tanking_evidence_body() -> List<std.markdown.MarkdownBlock> {
 
     h2(text: "1. Baseline: what green main looked like (through 2026-07-10 21:39Z)"),
     p(text: "Five consecutive green main runs that afternoon; the ci job's wall and its floor step:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "run"), cell(text: "merge"), cell(text: "ci job wall"), cell(text: "release-build step"), cell(text: "floor step")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -44,7 +44,7 @@ fn ci_performance_tanking_evidence_body() -> List<std.markdown.MarkdownBlock> {
 
     h2(text: "6. The stack-up: why every main run since 23:11 hits a ceiling"),
     p(text: "After the emit-directive fix, main's failures are all TIMEOUT class:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "run (main)"), cell(text: "merge"), cell(text: "failure mode")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -88,6 +88,6 @@ data ci_performance_tanking_evidence_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "ci-performance-tanking-evidence",
   title: "Why CI performance is tanking - the evidence, argued serially (2026-07-10/11 main-red incident)",
   body: ci_performance_tanking_evidence_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "This is an incident-evidence document, not a standing design. It dissolves when (a) main is green with the affected-set flip ON for a sustained window, and (b) the two pinning receipts it names have landed: the P1 complete latent-red enumeration and the P2 direct corpus A/B (admission fix acceptance). At that point its durable content lives in the carriers it cites (the floor receipts, the admission increment's rows, the resolver design docs) and this narrative retires.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "This is an incident-evidence document, not a standing design. It dissolves when (a) main is green with the affected-set flip ON for a sustained window, and (b) the two pinning receipts it names have landed: the P1 complete latent-red enumeration and the P2 direct corpus A/B (admission fix acceptance). At that point its durable content lives in the carriers it cites (the floor receipts, the admission increment's rows, the resolver design docs) and this narrative retires.")
   }
 }

@@ -7,17 +7,17 @@ data shlw_file_anchor: v2.std.node.Symbol = ^shlw_file_anchor
 
 data shlw_logic_path: String = "dag/std/logic.dag"
 
-data shlw_purity_source: String = Cons {
+data shlw_purity_source: String = std.algebra.Cons {
   head: 109,
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: 111,
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: 100,
-      tail: Cons {
+      tail: std.algebra.Cons {
         head: 117,
-        tail: Cons {
+        tail: std.algebra.Cons {
           head: 108,
-          tail: Cons {
+          tail: std.algebra.Cons {
             head: 101,
             tail: std.algebra.Empty
           }
@@ -70,13 +70,13 @@ fn shlw_tokenize_path_accepts(path: String) -> Bool {
 }
 
 fn shlw_trunc_paths() -> List<String> {
-  Cons {
+  std.algebra.Cons {
     head: shlw_trunc_eighth_path,
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: shlw_trunc_quarter_path,
-      tail: Cons {
+      tail: std.algebra.Cons {
         head: shlw_trunc_half_path,
-        tail: Cons { head: shlw_trunc_full_path, tail: std.algebra.Empty }
+        tail: std.algebra.Cons { head: shlw_trunc_full_path, tail: std.algebra.Empty }
       }
     }
   }

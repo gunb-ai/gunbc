@@ -42,7 +42,7 @@ test fn w_red_a_concrete_referent_would_resolve_the_question() -> Bool {
   designation_referent_is_resolved(referent: SocketBodyOnly)
     && designation_referent_is_resolved(referent: IndependentLoadingMechanismOnly)
     && designation_referent_is_resolved(referent: SocketAssemblyIncludingLoadingMechanism)
-    && !designation_referent_is_resolved(referent: ReferentUnresolvedByCitedDocuments { reason: "any reason at all" })
+    && !designation_referent_is_resolved(referent: extdeps.cpu_attachment.ilm4926.ReferentUnresolvedByCitedDocuments { reason: "any reason at all" })
 }
 
 // RED control: a single-publisher population must NOT read as independent
@@ -104,11 +104,11 @@ test fn w_no_footprint_may_emit_while_the_socket_body_is_unnamed() -> Bool {
 // nothing about the corpus, so a fully identified socket body must open it -- and dropping either
 // axis alone must close it again, which is what makes the conjunction real rather than decorative.
 test fn w_red_an_identified_socket_body_with_a_land_pattern_would_permit_emission() -> Bool {
-  let cited = DesignationFactEstablished {
+  let cited = extdeps.cpu_attachment.ilm4926.DesignationFactEstablished {
     value: "some cited value",
     authority: lotes_azif0222_product_authority,
   }
-  let missing = DesignationFactUnresolved {
+  let missing = extdeps.cpu_attachment.ilm4926.DesignationFactUnresolved {
     reason: "any reason at all",
     next_authority_to_consult: none,
   }
@@ -165,11 +165,11 @@ test fn w_red_an_identified_socket_body_with_a_land_pattern_would_permit_emissio
 
 // RED control: the established arm is reachable only by inhabiting DesignationFactEstablished.
 test fn w_red_a_cited_value_would_establish_a_resolution_axis() -> Bool {
-  let established = DesignationFactEstablished {
+  let established = extdeps.cpu_attachment.ilm4926.DesignationFactEstablished {
     value: "Lotes",
     authority: extdeps_external_authority_anchor,
   }
-  let unresolved = DesignationFactUnresolved {
+  let unresolved = extdeps.cpu_attachment.ilm4926.DesignationFactUnresolved {
     reason: "any reason at all",
     next_authority_to_consult: none,
   }

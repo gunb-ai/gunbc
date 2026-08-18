@@ -16,7 +16,7 @@ fn probe_subject(profile: String) -> gunbc.devboot.subject.BuildSubject? {
           match admit_build_subject(
             tree_oid: tree,
             package: "v1-compiler",
-            cargo_target: Bin { name: "gunbc" },
+            cargo_target: extdeps.cargo.Bin { name: "gunbc" },
             toolchain: extdeps.toolchain.types.ToolchainRequirement { name: "rustc", version: "1.93.0" },
             target: host,
             profile: profile,
@@ -25,7 +25,7 @@ fn probe_subject(profile: String) -> gunbc.devboot.subject.BuildSubject? {
             linker: none,
             sysroot: none,
             cargo_config: [],
-            platform_c_library: GnuLibc { version: "2.36" as std.types.NonEmptyStr },
+            platform_c_library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr },
           ) {
             SubjectRefused { cause } => none
             SubjectAdmitted { subject } => Present { value: subject }
@@ -91,12 +91,12 @@ test fn an_empty_record_refuses() -> Bool {
 
 // THE WAIT ABSORBS ONCE THE ARTIFACT HAS APPEARED. Every remaining tick must return the same answer rather than looking again: a later poll could observe a different state and overwrite a settled terminal one, so a waiter holding its artifact could end up reporting a refusal from a subsequent hiccup.
 test fn a_wait_that_found_its_artifact_is_settled() -> Bool {
-  attach_wait_settled(acc: AttachArtifactAppeared { oid: "e503761a" })
+  attach_wait_settled(acc: gunbc.devboot.produce.AttachArtifactAppeared { oid: "e503761a" })
 }
 
 // AND ABSORBS ON REFUSAL, for the mirror reason: a store that could not be read must not be re-read into an accidental success by a later tick.
 test fn a_wait_that_refused_is_settled() -> Bool {
-  attach_wait_settled(acc: AttachWaitRefused { detail: "store unreadable" })
+  attach_wait_settled(acc: gunbc.devboot.produce.AttachWaitRefused { detail: "store unreadable" })
 }
 
 // THE DISCRIMINATING NEGATIVE. Still producing is NOT settled, so the fold keeps polling. Without this the two witnesses above would pass on a function that answered true unconditionally -- and a wait that is always settled never waits at all, which would return the caller to the attach-without-an-artifact behaviour this vertical deleted.

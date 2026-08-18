@@ -15,7 +15,7 @@ data mod_b: v2.lens.module_impact_query.ModuleIdentity = v2.lens.module_impact_q
 data mod_c: v2.lens.module_impact_query.ModuleIdentity = v2.lens.module_impact_query.ModuleIdentity { name: "m.c" }
 
 data pool_independence_unavailable: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> = [
-  ReferenceDerivedClosureUnavailable {
+  gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
     capability: UnrelatedLoadedFileExcluded,
     trigger: P2aPoolIndependentDependencyProjection7515
   },
@@ -28,7 +28,7 @@ data pool_independence_established: List<gunbc.namespace_reference_derived_closu
 ]
 
 data unrelated_admission_only: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> = [
-  ReferenceDerivedClosureUnavailable {
+  gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
     capability: RepeatedMentionsCollapseDependency,
     trigger: P2aReferenceDependencyProjection7515
   },
@@ -450,7 +450,7 @@ test fn witness_partial_never_yields_a_skip_authority() -> Bool {
 
 test fn witness_a_refused_observation_never_yields_a_skip_authority() -> Bool {
   match v2.lens.module_impact_query.changed_surface_skip_authority(
-    outcome: ChangedSurfaceRefused { reason: "diff observation failed" }
+    outcome: v2.lens.module_impact_query.ChangedSurfaceRefused { reason: "diff observation failed" }
   ) {
     SkipAuthorityWithheld { cause } =>
       match cause {

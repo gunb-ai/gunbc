@@ -18,7 +18,7 @@ fn row(host: String, endpoint: String, key: String) -> gunbc.fleet_host_key_enro
     key_type: "ssh-ed25519",
     public_key_base64: key,
     sha256_fingerprint: concat("SHA256:", key),
-    provenance: ScannedFirstContact { scanned_from: "synthetic fixture" as std.types.NonEmptyStr },
+    provenance: gunbc.fleet_host_key_enrollment.ScannedFirstContact { scanned_from: "synthetic fixture" as std.types.NonEmptyStr },
   }
 }
 

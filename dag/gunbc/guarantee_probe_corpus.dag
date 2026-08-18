@@ -10,11 +10,11 @@ data guarantee_probe_corpus_probe_order_note: String = "CANONICAL PROBE ORDERING
 data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt as MeasurementRevision (GitRevision | ContentFingerprint). build_v1_compile_receipt and build_v2_infer_eval_receipt take a path-typed probe row and derive probe_set_digest from row.probe only (single-probe execution in slice 1). Until the baseline stage supplies anchor git commits, witness fixtures mint ContentFingerprint revisions from measured content: synthetic_program_subject_revision fingerprints compiled source text; synthetic_infer_eval_subject_revision_from_node fingerprints the executed Node fixture via v2.std.node.content_hash; v1_compile_harness_revision and v2_infer_eval_harness_revision fingerprint filesystem_read harness source material (v1_compile_harness_source_paths / v2_infer_eval_harness_source_paths) plus the registry row's ProbeExpectation — never symbol-name spines or prose scope notes. dissolve-on ladder-baseline stage naming real GitRevision subject_revision/harness_revision commits."
 
 fn synthetic_program_subject_revision(source: String) -> gunbc.guarantee_measurement.MeasurementRevision {
-  ContentFingerprint { digest: content_hash_atom(value: source as std.types.NonEmptyStr) }
+  gunbc.guarantee_measurement.ContentFingerprint { digest: content_hash_atom(value: source as std.types.NonEmptyStr) }
 }
 
 fn synthetic_infer_eval_subject_revision(subject_material: std.types.NonEmptyStr) -> gunbc.guarantee_measurement.MeasurementRevision {
-  ContentFingerprint {
+  gunbc.guarantee_measurement.ContentFingerprint {
     digest: content_hash_tagged_structural(
       tag: "v2-infer-eval-subject-v1" as std.types.NonEmptyStr,
       payload: content_hash_atom(value: subject_material),
@@ -23,7 +23,7 @@ fn synthetic_infer_eval_subject_revision(subject_material: std.types.NonEmptyStr
 }
 
 fn synthetic_program_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbeId, harness_material: std.types.NonEmptyStr) -> gunbc.guarantee_measurement.MeasurementRevision {
-  ContentFingerprint {
+  gunbc.guarantee_measurement.ContentFingerprint {
     digest: content_hash_tagged_structural(
       tag: "guarantee-probe-harness-v1" as std.types.NonEmptyStr,
       payload: content_hash_combine_structural(
@@ -42,7 +42,7 @@ fn v1_compile_rust_path() -> gunbc.guarantee_measurement.GuaranteePath {
     id: v1_compile_rust_path_id,
     subject_grain: SyntheticProgram,
     acceptance_boundary: CompileAccept,
-    realization_target: EmittedTarget { language: "rust" as gunbc.guarantee_measurement.GuaranteeTargetName },
+    realization_target: gunbc.guarantee_measurement.EmittedTarget { language: "rust" as gunbc.guarantee_measurement.GuaranteeTargetName },
   }
 }
 
@@ -213,7 +213,7 @@ fn expectation_harness_digest(e: ProbeExpectation) -> std.content_hash.Fnv1a64St
 }
 
 fn synthetic_program_harness_revision_from_digest(probe: gunbc.guarantee_measurement.GuaranteeProbeId, digest: std.content_hash.Fnv1a64Structural) -> gunbc.guarantee_measurement.MeasurementRevision {
-  ContentFingerprint {
+  gunbc.guarantee_measurement.ContentFingerprint {
     digest: content_hash_tagged_structural(
       tag: "guarantee-probe-harness-v1" as std.types.NonEmptyStr,
       payload: content_hash_combine_structural(
@@ -229,7 +229,7 @@ fn infer_eval_node_structural_hash(node: Node) -> std.content_hash.Fnv1a64Struct
 }
 
 fn synthetic_infer_eval_subject_revision_from_node(node: Node) -> gunbc.guarantee_measurement.MeasurementRevision {
-  ContentFingerprint {
+  gunbc.guarantee_measurement.ContentFingerprint {
     digest: content_hash_tagged_structural(
       tag: "v2-infer-eval-subject-node-v1" as std.types.NonEmptyStr,
       payload: infer_eval_node_structural_hash(node: node),
@@ -555,7 +555,7 @@ fn probe_observation_from_accepted_infer_diagnostics(diagnostics: v2.std.diagnos
   match diagnostics {
     None => AcceptedClean
     Some { diagnostics: nes } =>
-      AcceptedCounted {
+      gunbc.guarantee_measurement.AcceptedCounted {
         diagnostic_class: nes.head.reason as std.types.NonEmptyStr,
         count: non_empty_diagnostics_count_reason(nes: nes, reason: nes.head.reason),
       }
@@ -688,7 +688,7 @@ fn census_primary_observation(rows: List<gunbc.compile_diagnostic_census.Compile
   if census_row_count(rows: blocking) >= 1 {
     match blocking |> first {
       Present { value: r } =>
-        RefusedTyped {
+        gunbc.guarantee_measurement.RefusedTyped {
           diagnostic_class: r.diagnostic_class,
           count: census_total_count(
             rows: census_rows_of_class(rows: blocking, wanted: r.diagnostic_class as String),
@@ -701,7 +701,7 @@ fn census_primary_observation(rows: List<gunbc.compile_diagnostic_census.Compile
   } else {
     match rows |> first {
       Present { value: r } =>
-        AcceptedCounted { diagnostic_class: r.diagnostic_class, count: r.count }
+        gunbc.guarantee_measurement.AcceptedCounted { diagnostic_class: r.diagnostic_class, count: r.count }
       Absent => AcceptedClean
     }
   }
@@ -709,7 +709,7 @@ fn census_primary_observation(rows: List<gunbc.compile_diagnostic_census.Compile
 
 fn probe_observation_from_census(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus) -> gunbc.guarantee_measurement.ProbeObservation {
   match census {
-    CensusNotRunnable { cause: c } => ProbeNotRunnable { cause: c }
+    CensusNotRunnable { cause: c } => gunbc.guarantee_measurement.ProbeNotRunnable { cause: c }
     CensusObserved { rows: rows } => census_primary_observation(rows: rows)
   }
 }

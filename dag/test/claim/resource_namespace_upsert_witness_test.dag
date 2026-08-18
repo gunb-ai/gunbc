@@ -18,7 +18,7 @@ data nbd_proxy_scope: gunbc.session_lease.ProcessPortScope = gunbc.session_lease
 test fn foreign_process_on_10809_is_conflict_not_kill() -> Bool {
   match classify_process_port_upsert(
     scope: nbd_proxy_scope,
-    obs: PortObserved {
+    obs: gunbc.session_lease.PortObserved {
       observed_port: srv3_nbd_proxy_port,
       pid: 424242,
       cmdline: "foreign-nbdkit" as std.types.NonEmptyStr,
@@ -34,7 +34,7 @@ test fn foreign_process_on_10809_is_conflict_not_kill() -> Bool {
 test fn stale_matching_process_on_10809_drains_then_starts() -> Bool {
   match classify_process_port_upsert(
     scope: nbd_proxy_scope,
-    obs: PortObservedStaleExpected {
+    obs: gunbc.session_lease.PortObservedStaleExpected {
       observed_port: srv3_nbd_proxy_port,
       pid: 99999,
       cmdline: "gunbc-nbd-proxy" as std.types.NonEmptyStr,
@@ -54,7 +54,7 @@ test fn stale_matching_process_on_10809_drains_then_starts() -> Bool {
 test fn expected_process_on_10809_is_converged_noop() -> Bool {
   match classify_process_port_upsert(
     scope: nbd_proxy_scope,
-    obs: PortObserved {
+    obs: gunbc.session_lease.PortObserved {
       observed_port: srv3_nbd_proxy_port,
       pid: 12345,
       cmdline: "gunbc-nbd-proxy" as std.types.NonEmptyStr,

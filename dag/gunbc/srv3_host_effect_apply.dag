@@ -6,7 +6,7 @@ type Srv3TypedReceipt {
 }
 
 fn srv3_actuator_target() -> gunbc.host_effect.NodeControlPlane {
-  HostOs { node: srv3_os_install_actuator_host }
+  gunbc.host_effect.HostOs { node: srv3_os_install_actuator_host }
 }
 
 data srv3_seeded_install_media_toolchain_ensure_deploy_access: gunbc.ci_deploy_access.DeployAccess = ci_deploy_srv1_access
@@ -76,7 +76,7 @@ fn srv3_typed_receipt_from_lines(lines: List<String>) -> Srv3TypedReceipt {
 }
 
 fn srv3_receipt_emit_apply(receipt: Srv3TypedReceipt) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  srv3_host_effect_apply(effect: Srv3ReceiptEmit { lines: receipt.lines })
+  srv3_host_effect_apply(effect: gunbc.host_effect.Srv3ReceiptEmit { lines: receipt.lines })
 }
 
 fn srv3_shell_stdout_from_apply(

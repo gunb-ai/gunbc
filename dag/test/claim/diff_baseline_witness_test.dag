@@ -10,7 +10,7 @@ fn planted_oid(hex: String) -> extdeps.git.object_store.GitObjectId {
   match git_sha1_object_id(hex: hex) {
     Present { value: oid } => oid
     Absent =>
-      GitSha1ObjectId {
+      extdeps.git.object_store.GitSha1ObjectId {
         digest: std.content_hash.Sha1Digest {
           hex: planted_merge_base_sha as std.content_hash.Sha1DigestHex
         }
@@ -22,7 +22,7 @@ data planted_target_generation_sha: String = "1111111111111111111111111111111111
 
 fn planted_diff_window() -> gunbc.git_diff_change_window.GitDiffWindowObservation {
   Present {
-    value: GitDiffWindowObserved {
+    value: gunbc.git_diff_change_window.GitDiffWindowObserved {
       window: git_exact_diff_window_for_verification(
         target: "origin/main" as std.types.GitRef,
         target_generation: planted_oid(hex: planted_target_generation_sha),
@@ -142,7 +142,7 @@ test fn witness_push_selects_before_sha() -> Bool {
     override_ref: none,
     event_name: "push",
     base_ref: none,
-    push_before: Present { value: PushBeforeSha { sha: planted_merge_base_sha } },
+    push_before: Present { value: gunbc.diff_baseline.PushBeforeSha { sha: planted_merge_base_sha } },
     head_sha: Present { value: planted_head_sha },
     diff_window: none
   )
@@ -171,7 +171,7 @@ test fn witness_push_observation_read_refusal_propagates() -> Bool {
       event_name: "push",
       base_ref: none,
       push_before: Present {
-        value: PushBeforeInputRefused {
+        value: gunbc.diff_baseline.PushBeforeInputRefused {
           reason: "push event payload unreadable at /tmp/missing.json — no such file; halting the floor (AFFECTED-SET REFUSAL)"
         }
       },
@@ -188,7 +188,7 @@ test fn witness_push_observation_absent_propagates() -> Bool {
       event_name: "push",
       base_ref: none,
       push_before: Present {
-        value: PushBeforeInputRefused {
+        value: gunbc.diff_baseline.PushBeforeInputRefused {
           reason: "push event before SHA absent — push event payload has no before member; halting the floor (AFFECTED-SET REFUSAL)"
         }
       },
@@ -205,7 +205,7 @@ test fn witness_push_observation_refusal_propagates() -> Bool {
       event_name: "push",
       base_ref: none,
       push_before: Present {
-        value: PushBeforeInputRefused {
+        value: gunbc.diff_baseline.PushBeforeInputRefused {
           reason: "push event before SHA malformed — GITHUB_EVENT_PATH payload is not valid JSON; halting the floor (AFFECTED-SET REFUSAL)"
         }
       },
@@ -235,7 +235,7 @@ test fn witness_push_self_compare_refuses() -> Bool {
       override_ref: none,
       event_name: "push",
       base_ref: none,
-      push_before: Present { value: PushBeforeSha { sha: sha } },
+      push_before: Present { value: gunbc.diff_baseline.PushBeforeSha { sha: sha } },
       head_sha: Present { value: sha },
       diff_window: none
     )
@@ -248,7 +248,7 @@ test fn witness_push_head_absent_refuses() -> Bool {
       override_ref: none,
       event_name: "push",
       base_ref: none,
-      push_before: Present { value: PushBeforeSha { sha: planted_merge_base_sha } },
+      push_before: Present { value: gunbc.diff_baseline.PushBeforeSha { sha: planted_merge_base_sha } },
       head_sha: none,
       diff_window: none
     )

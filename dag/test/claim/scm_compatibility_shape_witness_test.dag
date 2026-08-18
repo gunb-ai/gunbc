@@ -17,33 +17,33 @@ fn synthetic_fourth_handler(
         generation_evidence: receipt.generation,
         projection: concat("synthetic-projection:", receipt.generation),
         read_back: concat("synthetic-readback:", receipt.generation),
-        advance: CompatibilityAdvanceUnavailable {
+        advance: gunbc.scm_compatibility_shape.CompatibilityAdvanceUnavailable {
           cause: "synthetic R0 intentionally has no conditional advance",
         },
         fidelity: gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
           endpoint_state: CompatibilityFidelityPreserved,
-          upstream_change_evidence: CompatibilityFidelityUnavailable {
+          upstream_change_evidence: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
             cause: "synthetic fixture carries endpoint state only",
           },
-          native_proposal_contract: CompatibilityFidelityUnavailable {
+          native_proposal_contract: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
             cause: "synthetic fixture carries endpoint state only",
           },
-          history: CompatibilityFidelityUnavailable {
+          history: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
             cause: "synthetic fixture carries endpoint state only",
           },
-          publication: CompatibilityFidelityUnavailable {
+          publication: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
             cause: "synthetic fixture carries endpoint state only",
           },
-          conflict_facts: CompatibilityFidelityUnavailable {
+          conflict_facts: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
             cause: "synthetic fixture carries endpoint state only",
           },
-          path_and_mode: CompatibilityFidelityUnavailable {
+          path_and_mode: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
             cause: "synthetic fixture carries endpoint state only",
           },
-          availability: CompatibilityFidelityUnavailable {
+          availability: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
             cause: "synthetic fixture carries endpoint state only",
           },
-          native_identity: CompatibilityFidelityUnavailable {
+          native_identity: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
             cause: "synthetic fixture carries endpoint state only",
           },
         },

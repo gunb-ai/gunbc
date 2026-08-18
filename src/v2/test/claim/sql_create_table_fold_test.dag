@@ -51,15 +51,15 @@ fn sql_fold_fold_matches_oracle(op: v2.extdeps.formats.sql.SqlSchemaOperation) -
 }
 
 fn sql_fold_single_col_operation() -> v2.extdeps.formats.sql.SqlSchemaOperation {
-  SqlCreateTable { table: sql_fold_tasks_single_col_table }
+  v2.extdeps.formats.sql.SqlCreateTable { table: sql_fold_tasks_single_col_table }
 }
 
 fn sql_fold_two_col_operation() -> v2.extdeps.formats.sql.SqlSchemaOperation {
-  SqlCreateTable { table: sql_fold_tasks_two_col_table }
+  v2.extdeps.formats.sql.SqlCreateTable { table: sql_fold_tasks_two_col_table }
 }
 
 fn sql_fold_pk_operation() -> v2.extdeps.formats.sql.SqlSchemaOperation {
-  SqlCreateTable { table: sql_fold_tasks_pk_table }
+  v2.extdeps.formats.sql.SqlCreateTable { table: sql_fold_tasks_pk_table }
 }
 
 test fn sql_fold_relation_row_single_col_witness_holds() -> Bool {
@@ -145,7 +145,7 @@ test fn sql_fold_emitted_tree_differs_on_two_col_fixture_holds() -> Bool {
 
 test fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> Bool {
   match sql_serialize_schema_operation(
-    op: SqlDropTable { table_name: SqlRegularIdentifier { name: "t" } }
+    op: v2.extdeps.formats.sql.SqlDropTable { table_name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "t" } }
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -154,7 +154,7 @@ test fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> Bool {
 
 test fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> Bool {
   match sql_serialize_data_type(
-    dt: SqlTypeNumeric {
+    dt: v2.extdeps.formats.sql.SqlTypeNumeric {
       precision: v2.std.cardinality.NonZeroNat { prev: Zero },
       scale: Zero
     }

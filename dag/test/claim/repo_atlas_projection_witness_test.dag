@@ -8,7 +8,7 @@ fn atlas_fixture_comparison() -> gunbc.repo_atlas_projection.AtlasComparison {
 }
 
 fn atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusParseOutcome) -> gunbc.repo_atlas_projection.AtlasChangeObservation {
-  AtlasComparisonObserved { comparison: atlas_fixture_comparison(), diff: diff }
+  gunbc.repo_atlas_projection.AtlasComparisonObserved { comparison: atlas_fixture_comparison(), diff: diff }
 }
 
 fn atlas_fixture_module(name: String, path: String) -> v2.lens.module_graph.ModuleDeclarationFact {
@@ -113,7 +113,7 @@ test fn no_observation_is_not_the_same_state_as_an_empty_comparison() -> Bool {
     observation: AtlasChangesNotObserved,
     nodes: atlas_fixture_pool())
   let empty_comparison = atlas_change_overlay(
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [] }),
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [] }),
     nodes: atlas_fixture_pool())
   let a = match unobserved {
     AtlasChangeNotObserved => true
@@ -130,8 +130,8 @@ test fn no_observation_is_not_the_same_state_as_an_empty_comparison() -> Bool {
 
 test fn an_unbound_head_refuses_the_overlay_with_a_located_cause() -> Bool {
   let overlay = atlas_change_overlay(
-    observation: AtlasComparisonUnavailable {
-      cause: ComparisonHeadUnbound { detail: "dirty tree" }
+    observation: gunbc.repo_atlas_projection.AtlasComparisonUnavailable {
+      cause: gunbc.repo_atlas_projection.ComparisonHeadUnbound { detail: "dirty tree" }
     },
     nodes: atlas_fixture_pool())
   match overlay {
@@ -148,7 +148,7 @@ data atlas_comparison_identity_claim_note: String = "A projected overlay must ca
 
 test fn a_projected_overlay_carries_its_comparison_endpoints() -> Bool {
   let overlay = atlas_change_overlay(
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
     ] }),
     nodes: atlas_fixture_pool())
@@ -189,7 +189,7 @@ data atlas_multi_seed_claim_note: String = "ACCEPTANCE 5. One changed path resol
 
 test fn one_path_resolving_to_several_modules_marks_all_of_them() -> Bool {
   let overlay = atlas_change_overlay(
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: atlas_shared_path, old_path: Absent },
     ] }),
     nodes: atlas_multi_seed_pool())
@@ -208,7 +208,7 @@ data atlas_departed_claim_note: String = "ACCEPTANCE 6. A deleted path, and a re
 
 test fn a_deleted_path_is_never_resolved_against_the_head() -> Bool {
   let overlay = atlas_change_overlay(
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry {
         status: DiffDeletedStatus,
         path: "dag/fixture/alpha.dag",
@@ -231,9 +231,9 @@ test fn a_deleted_path_is_never_resolved_against_the_head() -> Bool {
 
 test fn a_renamed_old_path_departs_while_its_new_path_projects() -> Bool {
   let overlay = atlas_change_overlay(
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry {
-        status: DiffRenamedStatus { similarity: percent(count: 96) },
+        status: extdeps.git.DiffRenamedStatus { similarity: percent(count: 96) },
         path: "dag/fixture/beta.dag",
         old_path: Present { value: "dag/fixture/departed.dag" }
       },
@@ -255,7 +255,7 @@ test fn a_renamed_old_path_departs_while_its_new_path_projects() -> Bool {
 
 test fn a_path_declaring_no_module_is_counted_not_dropped() -> Bool {
   let overlay = atlas_change_overlay(
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry { status: DiffAddedStatus, path: "README.md", old_path: Absent },
     ] }),
     nodes: atlas_fixture_pool())
@@ -276,7 +276,7 @@ data atlas_refusal_claim_note: String = "ACCEPTANCE 7. Each untrustworthy observ
 
 test fn an_unmerged_entry_refuses_the_whole_overlay() -> Bool {
   let overlay = atlas_change_overlay(
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       extdeps.git.GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/beta.dag", old_path: Absent },
     ] }),
@@ -293,7 +293,7 @@ test fn an_unmerged_entry_refuses_the_whole_overlay() -> Bool {
 
 test fn a_pairing_broken_entry_refuses_the_whole_overlay() -> Bool {
   let overlay = atlas_change_overlay(
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       extdeps.git.GitDiffStatusEntry { status: DiffPairingBrokenStatus, path: "dag/fixture/gamma.dag", old_path: Absent },
     ] }),
@@ -310,10 +310,10 @@ test fn a_pairing_broken_entry_refuses_the_whole_overlay() -> Bool {
 
 test fn an_unknown_status_refuses_the_whole_overlay() -> Bool {
   let overlay = atlas_change_overlay(
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       extdeps.git.GitDiffStatusEntry {
-        status: DiffUnknownGitStatus { raw: "Z9" },
+        status: extdeps.git.DiffUnknownGitStatus { raw: "Z9" },
         path: "dag/fixture/gamma.dag",
         old_path: Absent
       },
@@ -331,8 +331,8 @@ test fn an_unknown_status_refuses_the_whole_overlay() -> Bool {
 
 test fn a_truncated_diff_observation_refuses_the_whole_overlay() -> Bool {
   let overlay = atlas_change_overlay(
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusTruncated {
-      pending: AwaitingSinglePath { status: DiffModifiedStatus },
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusTruncated {
+      pending: extdeps.git.AwaitingSinglePath { status: DiffModifiedStatus },
       entries: [
         extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       ]
@@ -352,9 +352,9 @@ data atlas_ordinary_statuses_note: String = "The refusal arms above are only hon
 
 test fn copied_and_type_changed_entries_still_project() -> Bool {
   let overlay = atlas_change_overlay(
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry {
-        status: DiffCopiedStatus { similarity: percent(count: 80) },
+        status: extdeps.git.DiffCopiedStatus { similarity: percent(count: 80) },
         path: "dag/fixture/alpha.dag",
         old_path: Present { value: "dag/fixture/beta.dag" }
       },
@@ -435,7 +435,7 @@ test fn a_snapshot_composes_the_four_facts_without_substitution() -> Bool {
   let snapshot = repo_atlas_snapshot(
     subject: AtlasSubjectUnobserved,
     nodes: atlas_fixture_pool(),
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
     ] }),
     impact: AtlasImpactNotComputed)
@@ -458,7 +458,7 @@ test fn a_refused_overlay_leaves_the_structure_plane_intact() -> Bool {
   let snapshot = repo_atlas_snapshot(
     subject: AtlasSubjectUnobserved,
     nodes: atlas_fixture_pool(),
-    observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
+    observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
     ] }),
     impact: AtlasImpactNotComputed)

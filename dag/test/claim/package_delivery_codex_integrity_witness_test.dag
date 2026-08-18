@@ -11,7 +11,7 @@ test fn codex_admits_measured_sha512_integrity() -> Bool {
   match npm_decode_integrity(wire: claude_agent_sdk_integrity) {
     NpmSingleSha512Integrity { digest } =>
       match npm_registry_integrity_from_decode(
-        decoded: NpmSingleSha512Integrity { digest: digest },
+        decoded: extdeps.npm.NpmSingleSha512Integrity { digest: digest },
       ) {
         NpmRegistryIntegrityAdmitted { integrity } =>
           match codex_admit_npm_integrity(integrity: integrity) {
@@ -29,7 +29,7 @@ test fn codex_profile_refuses_sha1_integrity() -> Bool {
   match npm_decode_integrity(wire: "sha1-AAECAwQFBgcICQoLDA0ODxAREhM=") {
     NpmSingleSha1Integrity { digest } =>
       match npm_registry_integrity_from_decode(
-        decoded: NpmSingleSha1Integrity { digest: digest },
+        decoded: extdeps.npm.NpmSingleSha1Integrity { digest: digest },
       ) {
         NpmRegistryIntegrityAdmitted { integrity } =>
           match codex_admit_npm_integrity(integrity: integrity) {
@@ -58,7 +58,7 @@ test fn npm_registry_artifact_derives_exact_pin_from_native_integrity() -> Bool 
   match npm_decode_integrity(wire: claude_agent_sdk_integrity) {
     NpmSingleSha512Integrity { digest } =>
       match npm_registry_integrity_from_decode(
-        decoded: NpmSingleSha512Integrity { digest: digest },
+        decoded: extdeps.npm.NpmSingleSha512Integrity { digest: digest },
       ) {
         NpmRegistryIntegrityAdmitted { integrity } => {
           let artifact = extdeps.npm.NpmRegistryArtifact {

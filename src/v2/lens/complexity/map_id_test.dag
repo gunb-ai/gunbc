@@ -9,13 +9,13 @@ type LensComplexityClaim {
   falsification: v2.std.diagnostic.Diagnostic
 }
 data map_id_body_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^map_id_body_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^map_id_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data map_id_body: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: Transform },
   children: [
     v2.std.node.Edge { label: Positional, target: map_id_body_leaf }
   ],
@@ -23,7 +23,7 @@ data map_id_body: Node = v2.std.node.Node {
 }
 
 data map_id_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: map_id_body }
   ],
@@ -32,12 +32,12 @@ data map_id_input: Node = v2.std.node.Node {
 
 data map_id_claim: LensComplexityClaim = LensComplexityClaim {
   input: map_id_input,
-  expected_cost: LinearCost { variable: v2.lens.cost.SizeVariable { source: map_id_input } },
+  expected_cost: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: map_id_input } },
   expected_complexity: linear_complexity(size_var: v2.lens.cost.SizeVariable { source: map_id_input }),
   falsification: v2.std.diagnostic.Diagnostic {
     reason: ^map_id_claim_reason,
-    at: Textual { file: ^map_id_claim_file, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^map_id_claim_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 

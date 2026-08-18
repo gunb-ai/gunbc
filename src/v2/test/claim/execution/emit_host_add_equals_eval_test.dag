@@ -4,7 +4,7 @@ module v2.test.execution.emit_host_add_equals_eval
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn emit_eval_oct5_value(n: Int) -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: rust_emit_host_runtime_primitive_type_node(),
       bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
@@ -16,7 +16,7 @@ fn emit_eval_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.std.diagno
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -132,7 +132,7 @@ fn emit_eval_subject_tree() -> v2.compiler.infer.InferredTree {
 }
 
 fn emit_eval_claim(rhs_result_node: Node) -> v2.std.verification.TestClaim {
-  EqualsClaim {
+  v2.std.verification.EqualsClaim {
     label: "S0: rust emit(add-fn) host-run == eval(add-subgraph) via shared octet codec",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     lhs: rhs_result_node,

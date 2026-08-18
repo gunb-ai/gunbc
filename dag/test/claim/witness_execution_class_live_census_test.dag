@@ -60,7 +60,7 @@ fn plan_member_rows(plan: std.selected_witness_bundle.SelectedWitnessPlan, state
               disposition: plan_entry_disposition(entry: w.entry),
               effect_obligation: false,
               interpreter_subject: false,
-              carriage: CarriedInEnrolledBundle {
+              carriage: gunbc.witness_execution_class.CarriedInEnrolledBundle {
                 bundle_identity: plan_bundle_name(),
                 member: w.function
               }
@@ -82,11 +82,11 @@ fn discovery_class_rows(state: v2.workflow.floor_discovery_producer.FloorDiscove
         effect_obligation: false,
         interpreter_subject: false,
         carriage: match plan_carries(plan: plan, entry: r.entry, function: r.function) {
-          true => CarriedInEnrolledBundle {
+          true => gunbc.witness_execution_class.CarriedInEnrolledBundle {
             bundle_identity: plan_bundle_name(),
             member: r.function
           }
-          false => NoEmitterCarriage { cause: GeneralWitnessTargetModelUnavailable }
+          false => gunbc.witness_execution_class.NoEmitterCarriage { cause: GeneralWitnessTargetModelUnavailable }
         }
       )
     }])

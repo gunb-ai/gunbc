@@ -3,25 +3,25 @@ module test.claim.gha_expression_roundtrip
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn core_expr() -> extdeps.github.expressions.Expression {
-  LogicalOr {
-    left: LogicalOr {
+  extdeps.github.expressions.LogicalOr {
+    left: extdeps.github.expressions.LogicalOr {
       left: extdeps.github.expressions.FunctionCall {
         function: HashFiles,
-        args: [ StringLiteral { value: "Cargo.lock" }, StringLiteral { value: "Cargo.toml" } ],
+        args: [ extdeps.github.expressions.StringLiteral { value: "Cargo.lock" }, extdeps.github.expressions.StringLiteral { value: "Cargo.toml" } ],
       },
-      right: ContextAccess { context: Github, path: ["event", "number"] },
+      right: extdeps.github.expressions.ContextAccess { context: Github, path: ["event", "number"] },
     },
-    right: ContextAccess { context: Runner, path: ["os"] },
+    right: extdeps.github.expressions.ContextAccess { context: Runner, path: ["os"] },
   }
 }
 
 fn core_template() -> extdeps.github.expressions.ExpressionTemplate {
   extdeps.github.expressions.ExpressionTemplate {
     segments: [
-      LiteralText { text: "cargo-ci-" },
-      Interpolation { expression: ContextAccess { context: Runner, path: ["os"] } },
-      LiteralText { text: "-" },
-      Interpolation { expression: ContextAccess { context: Runner, path: ["arch"] } },
+      extdeps.github.expressions.LiteralText { text: "cargo-ci-" },
+      extdeps.github.expressions.Interpolation { expression: extdeps.github.expressions.ContextAccess { context: Runner, path: ["os"] } },
+      extdeps.github.expressions.LiteralText { text: "-" },
+      extdeps.github.expressions.Interpolation { expression: extdeps.github.expressions.ContextAccess { context: Runner, path: ["arch"] } },
     ],
   }
 }
@@ -86,21 +86,21 @@ test fn witness_ingest_reads_rows() -> Bool {
 }
 
 fn left_nested_or() -> extdeps.github.expressions.Expression {
-  LogicalOr {
-    left: LogicalOr {
-      left: ContextAccess { context: Runner, path: ["os"] },
-      right: ContextAccess { context: Runner, path: ["arch"] },
+  extdeps.github.expressions.LogicalOr {
+    left: extdeps.github.expressions.LogicalOr {
+      left: extdeps.github.expressions.ContextAccess { context: Runner, path: ["os"] },
+      right: extdeps.github.expressions.ContextAccess { context: Runner, path: ["arch"] },
     },
-    right: ContextAccess { context: Runner, path: ["temp"] },
+    right: extdeps.github.expressions.ContextAccess { context: Runner, path: ["temp"] },
   }
 }
 
 fn right_nested_or() -> extdeps.github.expressions.Expression {
-  LogicalOr {
-    left: ContextAccess { context: Runner, path: ["os"] },
-    right: LogicalOr {
-      left: ContextAccess { context: Runner, path: ["arch"] },
-      right: ContextAccess { context: Runner, path: ["temp"] },
+  extdeps.github.expressions.LogicalOr {
+    left: extdeps.github.expressions.ContextAccess { context: Runner, path: ["os"] },
+    right: extdeps.github.expressions.LogicalOr {
+      left: extdeps.github.expressions.ContextAccess { context: Runner, path: ["arch"] },
+      right: extdeps.github.expressions.ContextAccess { context: Runner, path: ["temp"] },
     },
   }
 }
@@ -117,20 +117,20 @@ test fn witness_or_associativity_partition() -> Bool {
 }
 
 fn frontier_string_with_or() -> extdeps.github.expressions.Expression {
-  StringLiteral { value: "a || b" }
+  extdeps.github.expressions.StringLiteral { value: "a || b" }
 }
 
 fn frontier_nested_multiarg_call() -> extdeps.github.expressions.Expression {
   extdeps.github.expressions.FunctionCall {
     function: extdeps.github.expressions.Contains,
     args: [
-      ContextAccess { context: Github, path: ["event"] },
+      extdeps.github.expressions.ContextAccess { context: Github, path: ["event"] },
       extdeps.github.expressions.FunctionCall {
         function: Format,
         args: [
-          StringLiteral { value: "v" },
-          ContextAccess { context: Runner, path: ["os"] },
-          ContextAccess { context: Runner, path: ["arch"] },
+          extdeps.github.expressions.StringLiteral { value: "v" },
+          extdeps.github.expressions.ContextAccess { context: Runner, path: ["os"] },
+          extdeps.github.expressions.ContextAccess { context: Runner, path: ["arch"] },
         ],
       },
     ],

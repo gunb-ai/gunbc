@@ -146,8 +146,8 @@ type ResidualReapEvidence {
 fn ground_residual_reap(obs_list: List<ResidualSlotObservation>) -> Grounding<ResidualReapEvidence> {
   let checks = fold(obs_list, init: [], f: fn(acc, obs) { concat(acc, [residual_reap_check(obs: obs)]) })
   match first_reap_check_failure(checks: checks) {
-    Absent => Grounds { evidence: ResidualReapEvidence { exempt_causes: collect_exempt_causes(obs_list: obs_list) } }
-    Present { value: reason } => DoesNotGround { reason: reason }
+    Absent => std.realization_reconcile.Grounds { evidence: ResidualReapEvidence { exempt_causes: collect_exempt_causes(obs_list: obs_list) } }
+    Present { value: reason } => std.realization_reconcile.DoesNotGround { reason: reason }
   }
 }
 
@@ -159,7 +159,7 @@ fn reconcile_residual_reap(
       reconcile_grounded(
         apply_effect: "host_hygiene_reaper.timer",
         show_read: read,
-        grounding: DoesNotGround { reason: why }
+        grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
     ReadObserved { value: obs_list } =>
       reconcile_grounded(
@@ -170,7 +170,7 @@ fn reconcile_residual_reap(
   }
 }
 
-data gunbc_host_hygiene_reaper_show_effective_read: ShowEffectiveRead<List<ResidualSlotObservation>> = ReadAbsent {
+data gunbc_host_hygiene_reaper_show_effective_read: ShowEffectiveRead<List<ResidualSlotObservation>> = std.realization_reconcile.ReadAbsent {
   reason: "no live per-slot cgroup/system.control read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"
 }
 

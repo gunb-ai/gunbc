@@ -5,16 +5,16 @@ data frontier_probe_cause_location_manifest_fixture_note: String = "REAL EMITTED
 
 data frontier_probe_cause_location_emitted_receipt: v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt = v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
   module_path: "src/v2/compiler/use_site_verdict.dag",
-  blocker_class: UnknownProbeCause { reason: ^tokenize_lex_e1_unrecognized_char },
+  blocker_class: v2.compiler.self_host.frontier_probe_types.UnknownProbeCause { reason: ^tokenize_lex_e1_unrecognized_char },
   located_stage: ProbeStageAssemble,
   located_reason: ^tokenize_lex_e1_unrecognized_char,
   detail: FrontierProbeDetailAbsent,
-  assemble_detail: AssembleRejectionDetail {
+  assemble_detail: v2.compiler.self_host.frontier_probe_types.AssembleRejectionDetail {
   rejection_chain: v2.compiler.self_host.frontier_probe_types.NonEmptySymbolChain {
   head: ^tokenize_lex_e1_unrecognized_char,
   tail: Empty
 },
-  cause: OtherAssembleRefusal { reason: ^tokenize_lex_e1_unrecognized_char },
-  at: CauseLocationTextual { file: "dag/std/algebra.dag", extent: ByteRange { start: 28138, end: 28138 } }
+  cause: v2.compiler.self_host.frontier_probe_types.OtherAssembleRefusal { reason: ^tokenize_lex_e1_unrecognized_char },
+  at: v2.compiler.self_host.frontier_probe_types.CauseLocationTextual { file: "dag/std/algebra.dag", extent: v2.std.diagnostic.ByteRange { start: 28138, end: 28138 } }
 }
 }

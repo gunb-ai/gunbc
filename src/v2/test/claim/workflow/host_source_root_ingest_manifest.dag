@@ -6,8 +6,8 @@ data host_source_root_ingest_content_hash: String = ""
 data host_source_root_ingest_coverage_receipt: v2.compiler.source_authority.SourceRootProvenanceCoverageReceipt = v2.compiler.source_authority.SourceRootProvenanceCoverageReceipt {
   ingest_read_count: 0,
   produced_row_count: 0,
-  discovered_source_refs_digest: DiscoveredSourceRefsDigestUnavailable {
-    cause: DiscoveredSourceRefsDigestNoRefList {
+  discovered_source_refs_digest: v2.compiler.source_authority.DiscoveredSourceRefsDigestUnavailable {
+    cause: v2.compiler.source_authority.DiscoveredSourceRefsDigestNoRefList {
       reason: "committed-stub-no-host-manifest"
     }
   },
@@ -20,9 +20,9 @@ data host_source_root_closure_refs: List<v2.compiler.source_authority.SourceRef>
 
 data host_compiler_closure_admission: v2.compiler.name_resolve.Admission = v2.compiler.name_resolve.Admission {
   subject: v2.compiler.name_resolve.ResolutionSubject {
-    name: Cons {
+    name: std.algebra.Cons {
       head: ^v2,
-      tail: Cons { head: ^compiler, tail: Cons { head: ^compile, tail: Empty } }
+      tail: std.algebra.Cons { head: ^compiler, tail: std.algebra.Cons { head: ^compile, tail: Empty } }
     }
   },
   imports: Empty

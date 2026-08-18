@@ -122,7 +122,7 @@ test fn w_source_identity_unavailable_refuses_before_plan_rows() -> Bool {
 }
 
 test fn w_absent_host_supply_cannot_generate_artifact_bytes() -> Bool {
-  let outcome = stage0_emission_plan_from_supply(supply: Stage0SourceIdentitySupplyUnavailable { cause: "synthetic absent host realization" })
+  let outcome = stage0_emission_plan_from_supply(supply: gunbc.stage0_emit_plan.Stage0SourceIdentitySupplyUnavailable { cause: "synthetic absent host realization" })
   let plan_refuses = match outcome {
     Stage0EmissionPlanRefused { cause: SourceIdentitySupplyUnavailableRefusal { cause } } => length(cause) > 0
     _ => false

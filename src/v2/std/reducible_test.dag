@@ -13,20 +13,20 @@ test fn classify_leaf_empty_is_unknown() -> Bool {
 test fn classify_leaf_named_is_irreducible() -> Bool {
   verdict_eq(
     a: classify_leaf(witness: "grounded-atom"),
-    b: Irreducible { witness: "grounded-atom" }
+    b: std.reducible.Irreducible { witness: "grounded-atom" }
   )
 }
 
 fn verdict_eq_discriminates_variants() -> Bool {
-  verdict_eq(a: Reduced { last_parts: 1 }, b: Reduced { last_parts: 1 })
-    && !verdict_eq(a: Reduced { last_parts: 1 }, b: Reduced { last_parts: 2 })
+  verdict_eq(a: std.reducible.Reduced { last_parts: 1 }, b: std.reducible.Reduced { last_parts: 1 })
+    && !verdict_eq(a: std.reducible.Reduced { last_parts: 1 }, b: std.reducible.Reduced { last_parts: 2 })
     && verdict_eq(
-      a: Irreducible { witness: "w" },
-      b: Irreducible { witness: "w" }
+      a: std.reducible.Irreducible { witness: "w" },
+      b: std.reducible.Irreducible { witness: "w" }
     )
     && !verdict_eq(
-      a: Irreducible { witness: "w" },
-      b: Irreducible { witness: "x" }
+      a: std.reducible.Irreducible { witness: "w" },
+      b: std.reducible.Irreducible { witness: "x" }
     )
     && verdict_eq(
       a: Unknown { missing: "axis" },
@@ -36,9 +36,9 @@ fn verdict_eq_discriminates_variants() -> Bool {
 
 fn mixed_verdicts_unknown_absorbs_leftmost() -> List<std.reducible.ReduceVerdict> {
   [
-    Reduced { last_parts: 1 },
+    std.reducible.Reduced { last_parts: 1 },
     Unknown { missing: "latch-axis" },
-    Reduced { last_parts: 9 },
+    std.reducible.Reduced { last_parts: 9 },
   ]
 }
 
@@ -57,7 +57,7 @@ data witness_reduce_verdicts_located_RED: Bool = verdict_eq(
     verdicts: mixed_verdicts_unknown_absorbs_leftmost(),
     empty_missing: "verdict-list:empty"
   ),
-  b: Reduced { last_parts: 9 }
+  b: std.reducible.Reduced { last_parts: 9 }
 )
 
 test fn reducible_verdict_eq_holds() -> Bool {

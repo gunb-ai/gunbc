@@ -26,7 +26,7 @@ fn expressibility_frontier_body() -> List<std.markdown.MarkdownBlock> {
       li(text: "**Two lenses on the same ⟨axis, preferred form⟩ are a meta-fork** — §3 single-authority turned on the lens *corpus itself* (a nickname *between lenses*). The schema makes it a forced question — \"is `unused_parameters` just `subsumption` along the same axis?\" — instead of a coincidence noticed years later."),
     ]),
     h2(text: "2. The frontier — three regions by decidability of membership"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Region"), cell(text: "Membership"), cell(text: "Enforcement"), cell(text: "Can the fix be *presented*?")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -42,7 +42,7 @@ fn expressibility_frontier_body() -> List<std.markdown.MarkdownBlock> {
     ]),
     h2(text: "3. The two instances, side by side"),
     p(text: "This is the pattern the frontier names — the same three regions, in two unrelated disciplines:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Region"), cell(text: "**Anemic modeling**"), cell(text: "**Algorithmic complexity**")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -77,6 +77,6 @@ data expressibility_frontier_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "expressibility-frontier",
   title: "The expressibility frontier — what a modeling discipline can gate, and what stays review",
   body: expressibility_frontier_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the frontier partition stops being a standalone methodology held beside DESIGN — either the wall/lens/review trichotomy-as-method is absorbed into DESIGN §5 itself (the authority doc carries it, so a parallel methodology doc becomes the §6 parallel-ledger violation), or §6's open question is answered by a landed gate-classifier lens that mechanizes the ①/②/③ partition and fails closed on a ① claimed over an undecidable set — at which point the executable check supersedes the prose and this doc dissolves into its witness.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the frontier partition stops being a standalone methodology held beside DESIGN — either the wall/lens/review trichotomy-as-method is absorbed into DESIGN §5 itself (the authority doc carries it, so a parallel methodology doc becomes the §6 parallel-ledger violation), or §6's open question is answered by a landed gate-classifier lens that mechanizes the ①/②/③ partition and fails closed on a ① claimed over an undecidable set — at which point the executable check supersedes the prose and this doc dissolves into its witness.")
   }
 }

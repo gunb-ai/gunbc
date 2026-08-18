@@ -27,8 +27,8 @@ data ts_item_forms: List<std.syntax.ItemForm> = [
 ]
 
 data ts_keyword_literals: Map<String, std.syntax.LiteralValue> = {
-  "true": LitBool { value: true },
-  "false": LitBool { value: false }
+  "true": std.syntax.LitBool { value: true },
+  "false": std.syntax.LitBool { value: false }
 }
 
 data ts_keyword_set: Map<String, Bool> = {

@@ -6,7 +6,7 @@ module test.claim.plan_lens_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn plan_with_trigger() -> gunbc.plan.Plan {
-  gunbc.plan.Plan { slug: "x", title: "x", body: [], retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "delete when X is witnessed") } }
+  gunbc.plan.Plan { slug: "x", title: "x", body: [], retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "delete when X is witnessed") } }
 }
 
 fn plan_without_trigger() -> gunbc.plan.Plan {
@@ -27,11 +27,11 @@ fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionConditi
 }
 
 fn plan_with_empty_retirement() -> gunbc.plan.Plan {
-  gunbc.plan.Plan { slug: "w", title: "w", body: [], retirement: PlanRetiresWhen { condition: synthetic_empty_condition(text: "") } }
+  gunbc.plan.Plan { slug: "w", title: "w", body: [], retirement: gunbc.plan.PlanRetiresWhen { condition: synthetic_empty_condition(text: "") } }
 }
 
 fn plan_untitled() -> gunbc.plan.Plan {
-  gunbc.plan.Plan { slug: "z", title: "", body: [], retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "t") } }
+  gunbc.plan.Plan { slug: "z", title: "", body: [], retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "t") } }
 }
 
 test fn every_registered_plan_has_retirement() -> Bool {

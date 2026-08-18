@@ -171,7 +171,7 @@ test fn w_red_reachability_without_isolation_not_ready() -> Bool {
 test fn w_firmware_intervention_instruction_derives_bootloader_authority() -> Bool {
   match evaluate_spark_pxe_firmware_standing(
     config: gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
-      secure_boot: BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
+      secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
       network_stack_enabled: true,
       ipv4_pxe_support_enabled: true,
       nic_pxe_boot_enabled: true,
@@ -189,7 +189,7 @@ test fn w_firmware_intervention_instruction_derives_bootloader_authority() -> Bo
 test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> Bool {
   match evaluate_spark_pxe_firmware_standing(
     config: gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
-      secure_boot: BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
+      secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
       network_stack_enabled: true,
       ipv4_pxe_support_enabled: true,
       nic_pxe_boot_enabled: true,
@@ -201,7 +201,7 @@ test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> 
   }
     && match evaluate_spark_pxe_firmware_standing(
       config: gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
-        secure_boot: BootloaderEnrolledForPxe { bootloader: spark_pxe_bootloader_filename },
+        secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.BootloaderEnrolledForPxe { bootloader: spark_pxe_bootloader_filename },
         network_stack_enabled: true,
         ipv4_pxe_support_enabled: true,
         nic_pxe_boot_enabled: true,

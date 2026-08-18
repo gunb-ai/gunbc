@@ -55,18 +55,18 @@ data python_source_text: String = "def add(x, y): return x + y"
 
 fn python_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^python_token_kw_def },
-    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_fn_add },
-    FixedToken { token_class: ^python_token_lparen },
-    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_x },
-    FixedToken { token_class: ^python_token_comma },
-    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_y },
-    FixedToken { token_class: ^python_token_rparen },
-    FixedToken { token_class: ^python_token_colon },
-    FixedToken { token_class: ^python_token_kw_return },
-    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_x },
-    FixedToken { token_class: ^python_token_plus },
-    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_y }
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_kw_def },
+    v2.std.compilers.target_model.BoundToken { token_class: ^python_token_ident, binding: ^python_binding_fn_add },
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_comma },
+    v2.std.compilers.target_model.BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_colon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_kw_return },
+    v2.std.compilers.target_model.BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_plus },
+    v2.std.compilers.target_model.BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_y }
   ]
 }
 
@@ -138,7 +138,7 @@ data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn python_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -155,7 +155,7 @@ fn python_primitive_facts_node(
   std_projection: v2.std.node.Symbol
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       python_named_edge(
         name: ^python_facts_field_surface_spelling,
@@ -182,7 +182,7 @@ fn python_primitive_algebra_witness_node(
   std_projection: v2.std.node.Symbol
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       python_named_edge(
         name: witness_field_name,
@@ -236,12 +236,12 @@ fn python_g1_2_pair_axis_fact_bundle_entries(
   [
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
       fact_value: python_inhabitant_atom(id: surface_spelling)
     ),
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: ModelCoreFactAxisEncoding {},
+      fact_axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
       fact_value: python_inhabitant_atom(id: encoding_value)
     )
   ]
@@ -722,7 +722,7 @@ fn python_model_core() -> Outcome<v2.std.model_core.ModelCore> {
 
 fn python_inhabitant_node(id: v2.std.node.Symbol, facts: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       python_named_edge(name: ^python_inhabitant_field_atom, target: python_inhabitant_atom(id: id)),
       python_named_edge(name: ^python_inhabitant_field_facts, target: facts)
@@ -747,7 +747,7 @@ fn python_float_inhabitant_node() -> Node {
 
 fn python_declared_inhabitants_root() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       python_named_edge(name: ^python_inhabitant_field_int, target: python_int_inhabitant_node()),
       python_named_edge(name: ^python_inhabitant_field_float, target: python_float_inhabitant_node())
@@ -794,7 +794,7 @@ fn python_coercion_candidate_edges() -> List<v2.std.node.Edge> {
 
 fn python_add_declared_inhabitants_root() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: python_coercion_candidate_edges(),
     occurrence_id: SyntheticOccurrence
 }
@@ -806,7 +806,7 @@ fn python_selection_policy_node() -> Node {
 
 fn python_emitted_add_fn_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: python_int_inhabitant_node() },
       v2.std.node.Edge { label: Positional, target: python_int_inhabitant_node() },
@@ -841,7 +841,7 @@ fn python_serialize_source_children() -> List<v2.std.node.Edge> {
 
 fn python_serialize_source_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: python_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
@@ -885,7 +885,7 @@ fn python_formal_rhs_to_grammar_expr(rhs: List<v2.std.grammar.FormalGrammarSymbo
           PythonFormalRhsToExprReady { expr: piece }
         PythonFormalRhsToExprReady { expr: acc } =>
           PythonFormalRhsToExprReady {
-            expr: Sequence { left: acc, right: piece }
+            expr: v2.std.grammar.Sequence { left: acc, right: piece }
           }
       }
     }
@@ -910,7 +910,7 @@ fn python_formal_alternatives_to_choice_expr(alts: List<List<v2.std.grammar.Form
           PythonFormalAltChoiceReady { expr: alt_expr }
         PythonFormalAltChoiceReady { expr: acc } =>
           PythonFormalAltChoiceReady {
-            expr: Choice { left: acc, right: alt_expr }
+            expr: v2.std.grammar.Choice { left: acc, right: alt_expr }
           }
       }
     }
@@ -999,7 +999,7 @@ fn python_grammar_relation_row() -> PythonGrammarRelationRow {
 
 fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       python_named_edge(name: ^grammar_relation_field_production, target: formal_production_to_node(production: row.production)),
       python_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
@@ -1017,7 +1017,7 @@ fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> Node {
 
 fn python_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       python_named_edge(
         name: ^python_relation_rule_fn_add,
@@ -1030,7 +1030,7 @@ fn python_translation_rules_node() -> Node {
 
 fn python_emit_host_runtime_primitive_type_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^python_emit_host_runtime_primitive_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^python_emit_host_runtime_primitive_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -1047,15 +1047,15 @@ fn python_host_transport_descriptor() -> v2.std.host_transport.HostTransportDesc
     ],
     build: Empty,
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "python3" },
-      args: [WorkspacePath { path: "fixture.py" }]
+      program: v2.std.host_transport.HostToolProgram { executable: "python3" },
+      args: [v2.std.host_transport.WorkspacePath { path: "fixture.py" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn python_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: python_host_transport_descriptor(),
       runtime_primitive_type: python_emit_host_runtime_primitive_type_node()
@@ -1065,7 +1065,7 @@ fn python_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
 
 fn python_target_model_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       python_named_edge(name: ^target_model_edge_selection_policy, target: python_selection_policy_node()),
       python_named_edge(name: ^target_model_edge_declared_inhabitants, target: python_add_declared_inhabitants_root()),
@@ -1101,41 +1101,41 @@ fn python_target_model() -> v2.std.compilers.target_model.TargetModel {
 }
 
 fn python_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+  v2.std.compilers.lexing.TokenRule { token_class: token_class, pattern: v2.std.compilers.lexing.LiteralPattern { text: text } }
 }
 
 fn python_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: CharClassPattern { class: IdentStartChar },
-    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
   }
 }
 
 fn python_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^python_token_ident,
     pattern: python_ident_lex_pattern()
   }
 }
 
 fn python_nonzero_digit_char_pattern() -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern {
-    left: CharPattern { char: 49 },
-    right: ChoicePattern {
-      left: CharPattern { char: 50 },
-      right: ChoicePattern {
-        left: CharPattern { char: 51 },
-        right: ChoicePattern {
-          left: CharPattern { char: 52 },
-          right: ChoicePattern {
-            left: CharPattern { char: 53 },
-            right: ChoicePattern {
-              left: CharPattern { char: 54 },
-              right: ChoicePattern {
-                left: CharPattern { char: 55 },
-                right: ChoicePattern {
-                  left: CharPattern { char: 56 },
-                  right: CharPattern { char: 57 }
+  v2.std.compilers.lexing.ChoicePattern {
+    left: v2.std.compilers.lexing.CharPattern { char: 49 },
+    right: v2.std.compilers.lexing.ChoicePattern {
+      left: v2.std.compilers.lexing.CharPattern { char: 50 },
+      right: v2.std.compilers.lexing.ChoicePattern {
+        left: v2.std.compilers.lexing.CharPattern { char: 51 },
+        right: v2.std.compilers.lexing.ChoicePattern {
+          left: v2.std.compilers.lexing.CharPattern { char: 52 },
+          right: v2.std.compilers.lexing.ChoicePattern {
+            left: v2.std.compilers.lexing.CharPattern { char: 53 },
+            right: v2.std.compilers.lexing.ChoicePattern {
+              left: v2.std.compilers.lexing.CharPattern { char: 54 },
+              right: v2.std.compilers.lexing.ChoicePattern {
+                left: v2.std.compilers.lexing.CharPattern { char: 55 },
+                right: v2.std.compilers.lexing.ChoicePattern {
+                  left: v2.std.compilers.lexing.CharPattern { char: 56 },
+                  right: v2.std.compilers.lexing.CharPattern { char: 57 }
                 }
               }
             }
@@ -1147,17 +1147,17 @@ fn python_nonzero_digit_char_pattern() -> v2.std.compilers.lexing.LexPattern {
 }
 
 fn python_decimal_int_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern {
-    left: LiteralPattern { text: "0" },
-    right: SequencePattern {
+  v2.std.compilers.lexing.ChoicePattern {
+    left: v2.std.compilers.lexing.LiteralPattern { text: "0" },
+    right: v2.std.compilers.lexing.SequencePattern {
       left: python_nonzero_digit_char_pattern(),
-      right: RepeatPattern { element: CharClassPattern { class: DigitChar } }
+      right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: DigitChar } }
     }
   }
 }
 
 fn python_int_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^python_token_int_literal,
     pattern: python_decimal_int_literal_pattern()
   }
@@ -1188,7 +1188,7 @@ fn python_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn python_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: python_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: python_lex_rules() }
 }
 
 fn python_grammar_atom(id: v2.std.node.Symbol) -> Node {
@@ -1367,7 +1367,7 @@ fn python_grammar_root() -> v2.std.grammar.GrammarRoot {
 }
 
 fn python_grammar() -> v2.std.grammar.ParseGrammar {
-  ModeledGrammar { root: python_grammar_root() }
+  v2.std.grammar.ModeledGrammar { root: python_grammar_root() }
 }
 
 fn python_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {

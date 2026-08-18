@@ -15,29 +15,29 @@ fn fixture_multibucket_codex_standing_inventory(
             standing: provider_standing_from_fixture_bundle(
               provider: extdeps.llm.cli_lifecycle.ProviderInstance {
                 kind: CodexCliProvider,
-                host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+                host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
                 executable: "codex" as std.types.NonEmptyStr,
-                observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-                state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-                credential_storage_method: ProviderInstanceFieldUnobserved {
+                observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+                state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+                credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
                   reason: "fixture" as std.types.NonEmptyStr,
                 },
-                service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+                service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
               },
               bundle: gunbc.provider_standing.ProviderStandingBundle {
                 installation: InstallationReady,
                 authentication: AuthenticationAuthenticated,
                 entitlement: EntitlementObservedAvailable,
                 limits: [
-                  LimitExhausted {
-                    subject: ProviderNativeLimitBucket {
+                  gunbc.provider_standing.LimitExhausted {
+                    subject: gunbc.provider_standing.ProviderNativeLimitBucket {
                       credential: LimitCredentialUnspecified,
                       native_key: codex_default_rate_limit_id,
                     },
                     native_token: codex_default_rate_limit_id,
                   },
-                  LimitObservedAvailable {
-                    subject: ProviderNativeLimitBucket {
+                  gunbc.provider_standing.LimitObservedAvailable {
+                    subject: gunbc.provider_standing.ProviderNativeLimitBucket {
                       credential: LimitCredentialUnspecified,
                       native_key: codex_bengalfox_rate_limit_id,
                     },
@@ -66,7 +66,7 @@ test fn witness_intricacy_does_not_change_automatic_effort() -> Bool {
   let high = resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
-    node_sizing: Sized {
+    node_sizing: gunbc.roadmap_model.Sized {
       intricacy: IntricacyHigh,
       volume: VolumeMedium,
       repo: "gunbc",
@@ -76,7 +76,7 @@ test fn witness_intricacy_does_not_change_automatic_effort() -> Bool {
   let low = resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
-    node_sizing: Sized {
+    node_sizing: gunbc.roadmap_model.Sized {
       intricacy: IntricacyLow,
       volume: VolumeMedium,
       repo: "gunbc",
@@ -102,7 +102,7 @@ test fn witness_deep_profile_refuses_without_realization() -> Bool {
     inventory: fixture_inventory_codex_only_available(
       instance: srv1_live_dashboard_instance(),
     ),
-    request: SelectAutomatically { profile: ProfileDeep },
+    request: gunbc.dispatch_selection.SelectAutomatically { profile: ProfileDeep },
     node_sizing: Unsized,
   ) {
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
@@ -166,18 +166,18 @@ test fn witness_srv1_inventory_includes_claude() -> Bool {
       claude_standing: provider_standing_from_fixture_bundle(
         provider: extdeps.llm.cli_lifecycle.ProviderInstance {
           kind: ClaudeCliProvider,
-          host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as std.types.NonEmptyStr },
+          host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as std.types.NonEmptyStr },
           executable: "claude" as std.types.NonEmptyStr,
-          observed_version: ProviderInstanceFieldUnobserved {
+          observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
             reason: "fixture claude inventory row" as std.types.NonEmptyStr,
           },
-          state_directory: ProviderInstanceFieldUnobserved {
+          state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
             reason: "fixture claude inventory row" as std.types.NonEmptyStr,
           },
-          credential_storage_method: ProviderInstanceFieldUnobserved {
+          credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
             reason: "fixture claude inventory row" as std.types.NonEmptyStr,
           },
-          service_identity: ProviderInstanceFieldUnobserved {
+          service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
             reason: "fixture claude inventory row" as std.types.NonEmptyStr,
           },
         },
@@ -211,7 +211,7 @@ test fn witness_srv2_cursor_selection_resolves() -> Bool {
     inventory: fixture_inventory_codex_and_cursor_available(
       instance: srv2_lab_dashboard_instance(),
     ),
-    request: SelectCursor {
+    request: gunbc.dispatch_selection.SelectCursor {
       profile: ProfileAutomatic,
       credential: CursorLocalLoginRef,
       model: cursor_model_auto,
@@ -226,7 +226,7 @@ test fn witness_srv2_cursor_selection_resolves() -> Bool {
 }
 
 test fn witness_receipt_records_requested_and_resolved() -> Bool {
-  let request = SelectAutomatically { profile: ProfileAutomatic }
+  let request = gunbc.dispatch_selection.SelectAutomatically { profile: ProfileAutomatic }
   match resolve_dispatch_selection(
     inventory: fixture_inventory_codex_only_available(
       instance: srv1_live_dashboard_instance(),
@@ -283,7 +283,7 @@ test fn witness_carrier_notes_record_directive_addendum() -> Bool {
 test fn witness_wrong_selection_shape_refuses() -> Bool {
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
-    request: SelectCursor {
+    request: gunbc.dispatch_selection.SelectCursor {
       profile: ProfileAutomatic,
       credential: CursorLocalLoginRef,
       model: cursor_model_auto,
@@ -318,12 +318,12 @@ test fn witness_probe_bridge_ineligible_standing_refuses_selection() -> Bool {
                 bundle: provider_standing_bundle_from_codex_dashboard_probes(
                   observation: gunbc.provider_standing_probe_bridge.CodexProviderDashboardProbeObservation {
                     state_root: CodexStateRootPresent,
-                    runtime: ProviderDashboardExecProbeReported {
+                    runtime: gunbc.provider_standing_probe_bridge.ProviderDashboardExecProbeReported {
                       succeeded: true,
                       stdout: "codex-cli 0.145.0" as String,
                       stderr: "" as String,
                     },
-                    auth: ProviderDashboardExecProbeReported {
+                    auth: gunbc.provider_standing_probe_bridge.ProviderDashboardExecProbeReported {
                       succeeded: true,
                       stdout: "" as String,
                       stderr: "Logged in using ChatGPT" as String,
@@ -349,18 +349,18 @@ test fn witness_srv1_claude_selection_resolves_with_fixture_standing() -> Bool {
   let instance = srv1_live_dashboard_instance()
   let claude_provider = extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: ClaudeCliProvider,
-    host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as std.types.NonEmptyStr },
+    host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as std.types.NonEmptyStr },
     executable: "claude" as std.types.NonEmptyStr,
-    observed_version: ProviderInstanceFieldUnobserved {
+    observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
-    state_directory: ProviderInstanceFieldUnobserved {
+    state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
-    credential_storage_method: ProviderInstanceFieldUnobserved {
+    credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
-    service_identity: ProviderInstanceFieldUnobserved {
+    service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
   }
@@ -404,7 +404,7 @@ test fn witness_claude_request_refuses_on_codex_only_inventory() -> Bool {
 test fn witness_exact_override_requires_explicit_provider_arm() -> Bool {
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
-    request: SelectAutomatically { profile: ProfileExactOverride },
+    request: gunbc.dispatch_selection.SelectAutomatically { profile: ProfileExactOverride },
     node_sizing: Unsized,
   ) {
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
@@ -433,7 +433,7 @@ test fn witness_explicit_override_bengalfox_admitted_from_same_inventory() -> Bo
   )
   match resolve_dispatch_selection(
     inventory: inventory,
-    request: SelectCodex {
+    request: gunbc.dispatch_selection.SelectCodex {
       profile: ProfileExactOverride,
       account: codex_roadmap_account_selection(),
       model: dispatch_codex_default_model,
@@ -457,24 +457,24 @@ test fn witness_explicit_override_bengalfox_admitted_from_same_inventory() -> Bo
 
 test fn witness_select_claude_automatic_honors_request_credential_and_model() -> Bool {
   let instance = srv1_live_dashboard_instance()
-  let request_credential = ClaudeStateRootRef {
+  let request_credential = gunbc.dispatch_selection.ClaudeStateRootRef {
     root: "/managed/claude-enrollment" as std.types.FilePath,
   }
   let request_model = "claude-managed-model" as std.types.NonEmptyStr
   let claude_provider = extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: ClaudeCliProvider,
-    host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as std.types.NonEmptyStr },
+    host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as std.types.NonEmptyStr },
     executable: "claude" as std.types.NonEmptyStr,
-    observed_version: ProviderInstanceFieldUnobserved {
+    observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
-    state_directory: ProviderInstanceFieldUnobserved {
+    state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
-    credential_storage_method: ProviderInstanceFieldUnobserved {
+    credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
-    service_identity: ProviderInstanceFieldUnobserved {
+    service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
   }
@@ -487,7 +487,7 @@ test fn witness_select_claude_automatic_honors_request_credential_and_model() ->
         bundle: fixture_standing_bundle_authenticated_available(),
       ),
     ),
-    request: SelectClaude {
+    request: gunbc.dispatch_selection.SelectClaude {
       profile: ProfileAutomatic,
       credential: request_credential,
       model: request_model,

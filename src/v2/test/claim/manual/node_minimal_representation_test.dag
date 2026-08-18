@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn substrate_v2_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^node_minimal_probe } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^node_minimal_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -127,7 +127,7 @@ test fn node_minimal_migrated_bucket_count_holds() -> Bool {
   witness_node_minimal_migrated_bucket_count
 }
 
-data claim_node_minimal_representation_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_node_minimal_representation_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/node_minimal_representation: per-kind MinimalResolvedNode model sketch compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: substrate_v2_node(),

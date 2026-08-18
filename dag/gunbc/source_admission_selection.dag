@@ -411,7 +411,7 @@ fn production_annotation_mechanism_identity() -> AnnotationMechanismIdentity {
 }
 
 // gunbc#8201 merge commit. AnnotationCorpusAdmitted may be minted only against this exact tree, after a census that identity-joins the active-source manifest, under a Computed mechanism identity. Main has moved since that merge; a receipt against any later tree is not this induction base. Completeness is an identity join over admitted source identities, never diagnostic-count-is-zero. This landing does not mint the receipt: production_annotation_mechanism_identity is Unobservable.
-data annotation_corpus_induction_base_tree: extdeps.git.object_store.GitObjectId = GitSha1ObjectId {
+data annotation_corpus_induction_base_tree: extdeps.git.object_store.GitObjectId = extdeps.git.object_store.GitSha1ObjectId {
   digest: std.content_hash.Sha1Digest { hex: "a85594dc557386f4c85d9bc6d7be057325b75c58" as std.content_hash.Sha1DigestHex },
 }
 

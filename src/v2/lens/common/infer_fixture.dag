@@ -3,7 +3,7 @@ module v2.test.lens_common.infer_fixture
 
 fn claim_atom_node(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -35,7 +35,7 @@ fn claim_inferred_facts_witness(
   descent: Witness<v2.std.cardinality.TerminationProof>
 ) -> v2.compiler.infer.InferredFacts {
   v2.compiler.infer.InferredFacts {
-    grounding: DerivedGrounding { grounding: grounding },
+    grounding: v2.compiler.infer.DerivedGrounding { grounding: grounding },
     descent: descent
   }
 }

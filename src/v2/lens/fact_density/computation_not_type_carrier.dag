@@ -2,7 +2,7 @@ module v2.test.lens_fact_density.computation_not_type_carrier
 
 
 data computation_not_type_carrier_input: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: Transform },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -16,14 +16,14 @@ fn computation_not_type_carrier_claim_rhs() -> Node {
     computation_not_type_carrier_input
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_computation_not_type_carrier: v2.std.verification.TestClaim = EqualsClaim {
+data claim_computation_not_type_carrier: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_fact_density/computation_not_type_carrier: Transform is NotATypeCarrier",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: computation_not_type_carrier_input,

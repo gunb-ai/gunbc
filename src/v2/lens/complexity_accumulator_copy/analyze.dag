@@ -31,7 +31,7 @@ fn find_capture(root: Node, emitted: v2.std.node.Symbol) -> Optional<Node> {
 }
 
 fn capture_list_prepend(item: Node, xs: List<Node>) -> List<Node> {
-  Cons { head: item, tail: xs }
+  std.algebra.Cons { head: item, tail: xs }
 }
 
 fn collect_direct_captures(n: Node, emitted: v2.std.node.Symbol, acc: List<Node>) -> List<Node> {
@@ -86,7 +86,7 @@ fn edge_skips_identifier_count(e: v2.std.node.Edge) -> Bool {
 }
 
 fn symbol_list_prepend(item: v2.std.node.Symbol, xs: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
-  Cons { head: item, tail: xs }
+  std.algebra.Cons { head: item, tail: xs }
 }
 
 fn symbol_list_length(xs: List<v2.std.node.Symbol>) -> Int {
@@ -306,7 +306,7 @@ fn analyze_let_spine(
       append_findings(
         fresh: analyze(
           node: spine.rest,
-          carriers: Cons { head: nm, tail: carriers },
+          carriers: std.algebra.Cons { head: nm, tail: carriers },
           bindings: bindings,
           iterating: iterating
         ),
@@ -317,7 +317,7 @@ fn analyze_let_spine(
         fresh: analyze(
           node: spine.rest,
           carriers: carriers,
-          bindings: Cons { head: b, tail: bindings },
+          bindings: std.algebra.Cons { head: b, tail: bindings },
           iterating: iterating
         ),
         acc: left_findings
@@ -439,7 +439,7 @@ fn analyze_postfix_projection_call(
               carriers: carriers,
               bindings: bindings,
               iterating: iterating,
-              here: Cons { head: f, tail: std.algebra.Empty }
+              here: std.algebra.Cons { head: f, tail: std.algebra.Empty }
             )
           Absent =>
             analyze_children(
@@ -552,7 +552,7 @@ fn analyze_lowered_loop(
     Present { value: carrier } =>
       analyze_children(
         n: node,
-        carriers: Cons { head: carrier, tail: carriers },
+        carriers: std.algebra.Cons { head: carrier, tail: carriers },
         bindings: bindings,
         iterating: true,
         here: std.algebra.Empty
@@ -563,7 +563,7 @@ fn analyze_lowered_loop(
         carriers: carriers,
         bindings: bindings,
         iterating: true,
-        here: Cons {
+        here: std.algebra.Cons {
           head: v2.lens.complexity_accumulator_copy.Unclassifiable { at: node, cause: ^fold_accumulator_unread },
           tail: std.algebra.Empty
         }
@@ -585,7 +585,7 @@ fn analyze_lowered_transform_call(
       ports: resolved_lowered_transform_port_readings(node: node, bindings: bindings),
       carriers: carriers
     ) {
-      Present { value: f } => Cons { head: f, tail: std.algebra.Empty }
+      Present { value: f } => std.algebra.Cons { head: f, tail: std.algebra.Empty }
       Absent => std.algebra.Empty
     }
   } else {
@@ -654,7 +654,7 @@ fn analyze(node: Node, carriers: List<v2.std.node.Symbol>, bindings: List<v2.len
               Present { value: carrier } =>
                 analyze_children(
                   n: node,
-                  carriers: Cons { head: carrier, tail: carriers },
+                  carriers: std.algebra.Cons { head: carrier, tail: carriers },
                   bindings: bindings,
                   iterating: true,
                   here: std.algebra.Empty
@@ -665,7 +665,7 @@ fn analyze(node: Node, carriers: List<v2.std.node.Symbol>, bindings: List<v2.len
                   carriers: carriers,
                   bindings: bindings,
                   iterating: true,
-                  here: Cons {
+                  here: std.algebra.Cons {
                     head: v2.lens.complexity_accumulator_copy.Unclassifiable { at: node, cause: ^fold_accumulator_unread },
                     tail: std.algebra.Empty
                   }
@@ -681,7 +681,7 @@ fn analyze(node: Node, carriers: List<v2.std.node.Symbol>, bindings: List<v2.len
                     ports: resolved_projection_call_port_readings(cap: cap, bindings: bindings),
                     carriers: carriers
                   ) {
-                    Present { value: f } => Cons { head: f, tail: std.algebra.Empty }
+                    Present { value: f } => std.algebra.Cons { head: f, tail: std.algebra.Empty }
                     Absent => std.algebra.Empty
                   }
                 Absent =>
@@ -691,7 +691,7 @@ fn analyze(node: Node, carriers: List<v2.std.node.Symbol>, bindings: List<v2.len
                     ports: resolved_port_readings(call_capture: cap, bindings: bindings),
                     carriers: carriers
                   ) {
-                    Present { value: f } => Cons { head: f, tail: std.algebra.Empty }
+                    Present { value: f } => std.algebra.Cons { head: f, tail: std.algebra.Empty }
                     Absent => std.algebra.Empty
                   }
               }
@@ -706,7 +706,7 @@ fn analyze(node: Node, carriers: List<v2.std.node.Symbol>, bindings: List<v2.len
               ports: resolved_port_readings(call_capture: cap, bindings: bindings),
               carriers: carriers
             ) {
-              Cons {
+              std.algebra.Cons {
                 head: v2.lens.complexity_accumulator_copy.Unclassifiable { at: node, cause: ^call_head_unreadable },
                 tail: std.algebra.Empty
               }

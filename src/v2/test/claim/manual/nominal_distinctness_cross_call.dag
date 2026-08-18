@@ -20,7 +20,7 @@ data nominal_distinct_compile_target: v2.std.compilers.target_model.TargetModel 
 
 fn nominal_distinct_input_node(sym: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -59,7 +59,7 @@ fn nominal_distinct_cross_call_must_reject_diagnostic(at: Node) -> v2.std.diagno
   v2.std.diagnostic.Diagnostic {
     reason: ^nominal_distinct_cross_call_must_reject,
     at: node_locus(node: at),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -67,7 +67,7 @@ fn nominal_distinct_compile_accepted_miss_diagnostic(at: Node) -> v2.std.diagnos
   v2.std.diagnostic.Diagnostic {
     reason: ^nominal_distinct_compile_accepted_miss,
     at: node_locus(node: at),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -98,7 +98,7 @@ fn nominal_distinct_control_compiles_ok() -> Bool {
   }
 }
 
-data claim_nominal_distinct_records_cross_call_rejects: v2.std.verification.TestClaim = DiagnosticClaim {
+data claim_nominal_distinct_records_cross_call_rejects: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "manual/nominal: structurally-identical WrapA/WrapB records reject cross-call",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: nominal_distinct_records_input,
@@ -106,7 +106,7 @@ data claim_nominal_distinct_records_cross_call_rejects: v2.std.verification.Test
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_nominal_distinct_branded_aliases_cross_call_rejects: v2.std.verification.TestClaim = DiagnosticClaim {
+data claim_nominal_distinct_branded_aliases_cross_call_rejects: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "manual/nominal: IntentId/IssueId desugared nominal records reject cross-call",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: nominal_distinct_brands_input,
@@ -114,7 +114,7 @@ data claim_nominal_distinct_branded_aliases_cross_call_rejects: v2.std.verificat
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_nominal_distinct_same_type_control_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_nominal_distinct_same_type_control_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/nominal: same-type WrapA cross-call compiles (positive control)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: nominal_distinct_control_input,
@@ -124,14 +124,14 @@ data claim_nominal_distinct_same_type_control_compiles: v2.std.verification.Test
 
 fn nominal_distinct_runtime_type_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^nominal_distinct_type_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^nominal_distinct_type_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
 fn nominal_distinct_runtime_unit(node: Node) -> v2.std.runtime.RuntimeValue {
-  RuntimeUnit {
+  v2.std.runtime.RuntimeUnit {
     value: v2.std.runtime.RuntimeUnitValue { unit_type: nominal_distinct_runtime_type_node() }
   }
 }

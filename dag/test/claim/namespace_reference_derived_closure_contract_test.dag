@@ -81,37 +81,37 @@ fn p1_outcome(supplied_candidates: List<std.occurrence_identity.OccurrenceId>) -
   )
 }
 
-fn p1_resolution(supplied_candidates: List<std.occurrence_identity.OccurrenceId>) -> StructuralBindingResolved {
-  StructuralBindingResolved {
+fn p1_resolution(supplied_candidates: List<std.occurrence_identity.OccurrenceId>) -> std.reference_binding_observation.StructuralBindingResolved {
+  std.reference_binding_observation.StructuralBindingResolved {
     binding_outcome: p1_outcome(supplied_candidates: supplied_candidates),
   }
 }
 
 fn positive_admissions() -> List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> {
   [
-    assess_reference_binding_observation(observation: SameFileNeighbourObservation {
+    assess_reference_binding_observation(observation: std.reference_binding_observation.SameFileNeighbourObservation {
       neighbour: oid(value: 1),
       resolution: p1_resolution(supplied_candidates: [oid(value: 1)]),
     }),
-    assess_reference_binding_observation(observation: SiblingBranchObservation {
+    assess_reference_binding_observation(observation: std.reference_binding_observation.SiblingBranchObservation {
       own_branch_declaration: oid(value: 2),
       sibling_branch_declaration: oid(value: 3),
       resolution: p1_resolution(supplied_candidates: [oid(value: 2)]),
     }),
-    assess_reference_binding_observation(observation: LaterDeclarationObservation {
+    assess_reference_binding_observation(observation: std.reference_binding_observation.LaterDeclarationObservation {
       later_declaration: oid(value: 3),
       resolution: p1_resolution(supplied_candidates: []),
     }),
-    assess_reference_binding_observation(observation: DistinctHomonymObservation {
+    assess_reference_binding_observation(observation: std.reference_binding_observation.DistinctHomonymObservation {
       first_declaration: oid(value: 1),
       second_declaration: oid(value: 2),
       resolution: p1_resolution(supplied_candidates: [oid(value: 1), oid(value: 2)]),
     }),
-    assess_reference_binding_observation(observation: RepeatedMentionDependencyObservation {
+    assess_reference_binding_observation(observation: std.reference_binding_observation.RepeatedMentionDependencyObservation {
       provider_file: "dag/provider.dag",
       projected_dependencies: ["dag/provider.dag"],
     }),
-    assess_reference_binding_observation(observation: UnrelatedLoadedFileObservation {
+    assess_reference_binding_observation(observation: std.reference_binding_observation.UnrelatedLoadedFileObservation {
       provider_file: "dag/provider.dag",
       unrelated_loaded_file: "dag/unrelated.dag",
       projected_dependencies: ["dag/provider.dag"],
@@ -126,7 +126,7 @@ test fn witness_positive_population_closes_exact_six_capabilities() -> Bool {
 }
 
 test fn witness_same_file_neighbour_removal_fires_refusal() -> Bool {
-  match assess_reference_binding_observation(observation: SameFileNeighbourObservation {
+  match assess_reference_binding_observation(observation: std.reference_binding_observation.SameFileNeighbourObservation {
     neighbour: oid(value: 1),
     resolution: p1_resolution(supplied_candidates: []),
   }) {
@@ -137,7 +137,7 @@ test fn witness_same_file_neighbour_removal_fires_refusal() -> Bool {
 }
 
 test fn witness_sibling_branch_leak_fires_refusal() -> Bool {
-  match assess_reference_binding_observation(observation: SiblingBranchObservation {
+  match assess_reference_binding_observation(observation: std.reference_binding_observation.SiblingBranchObservation {
     own_branch_declaration: oid(value: 1),
     sibling_branch_declaration: oid(value: 2),
     resolution: p1_resolution(supplied_candidates: [oid(value: 1), oid(value: 2)]),
@@ -149,7 +149,7 @@ test fn witness_sibling_branch_leak_fires_refusal() -> Bool {
 }
 
 test fn witness_later_declaration_leak_fires_refusal() -> Bool {
-  match assess_reference_binding_observation(observation: LaterDeclarationObservation {
+  match assess_reference_binding_observation(observation: std.reference_binding_observation.LaterDeclarationObservation {
     later_declaration: oid(value: 3),
       resolution: p1_resolution(supplied_candidates: [oid(value: 3)]),
   }) {
@@ -160,7 +160,7 @@ test fn witness_later_declaration_leak_fires_refusal() -> Bool {
 }
 
 test fn witness_distinct_homonym_collapse_fires_refusal() -> Bool {
-  match assess_reference_binding_observation(observation: DistinctHomonymObservation {
+  match assess_reference_binding_observation(observation: std.reference_binding_observation.DistinctHomonymObservation {
     first_declaration: oid(value: 1),
     second_declaration: oid(value: 2),
     resolution: p1_resolution(supplied_candidates: [oid(value: 1)]),
@@ -172,7 +172,7 @@ test fn witness_distinct_homonym_collapse_fires_refusal() -> Bool {
 }
 
 test fn witness_repeated_mention_dependency_duplication_fires_refusal() -> Bool {
-  match assess_reference_binding_observation(observation: RepeatedMentionDependencyObservation {
+  match assess_reference_binding_observation(observation: std.reference_binding_observation.RepeatedMentionDependencyObservation {
     provider_file: "dag/provider.dag",
     projected_dependencies: ["dag/provider.dag", "dag/provider.dag"],
   }) {
@@ -183,7 +183,7 @@ test fn witness_repeated_mention_dependency_duplication_fires_refusal() -> Bool 
 }
 
 test fn witness_unrelated_loaded_file_dependency_fires_refusal() -> Bool {
-  match assess_reference_binding_observation(observation: UnrelatedLoadedFileObservation {
+  match assess_reference_binding_observation(observation: std.reference_binding_observation.UnrelatedLoadedFileObservation {
     provider_file: "dag/provider.dag",
     unrelated_loaded_file: "dag/unrelated.dag",
     projected_dependencies: ["dag/provider.dag", "dag/unrelated.dag"],
@@ -195,7 +195,7 @@ test fn witness_unrelated_loaded_file_dependency_fires_refusal() -> Bool {
 }
 
 test fn witness_duplicate_admission_cannot_erase_missing_capability() -> Bool {
-  let one = assess_reference_binding_observation(observation: SameFileNeighbourObservation {
+  let one = assess_reference_binding_observation(observation: std.reference_binding_observation.SameFileNeighbourObservation {
     neighbour: oid(value: 1),
     resolution: p1_resolution(supplied_candidates: [oid(value: 1)]),
   })
@@ -205,7 +205,7 @@ test fn witness_duplicate_admission_cannot_erase_missing_capability() -> Bool {
 }
 
 test fn witness_refusal_vetoes_a_contradictory_established_receipt() -> Bool {
-  let refusal = assess_reference_binding_observation(observation: SameFileNeighbourObservation {
+  let refusal = assess_reference_binding_observation(observation: std.reference_binding_observation.SameFileNeighbourObservation {
     neighbour: oid(value: 1),
     resolution: p1_resolution(supplied_candidates: []),
   })

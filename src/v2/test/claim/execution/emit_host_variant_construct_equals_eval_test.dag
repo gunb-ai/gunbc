@@ -34,7 +34,7 @@ data emit_variant_construct_eval_tree: v2.compiler.infer.InferredTree = emit_var
 data emit_variant_construct_eval_wrong_value_tree: v2.compiler.infer.InferredTree = emit_variant_construct_eval_tree_for(root: dag_variant_construct_arrow_with_body_wrong_value_fixture)
 
 fn emit_variant_construct_eval_octet_value(n: Int) -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: rust_emit_host_runtime_primitive_type_node(),
       bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
@@ -46,7 +46,7 @@ fn emit_variant_construct_eval_diagnostic(reason: v2.std.node.Symbol, node: Node
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -242,7 +242,7 @@ fn emit_variant_construct_eval_context() -> v2.compiler.eval.EvalContext {
 }
 
 fn emit_variant_construct_eval_claim(rhs_result_node: Node) -> v2.std.verification.TestClaim {
-  EqualsClaim {
+  v2.std.verification.EqualsClaim {
     label: "S2 F7: rust emit(variant-construct-then-match fn) host-run == eval(match-body) via shared octet codec",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     lhs: rhs_result_node,

@@ -9,8 +9,8 @@ data byte_bounded_provider: std.materialization_ladder.CacheProvider = provider_
   id: "artifact-store-test",
   scope: [],
   coverage: CoversAllComputations,
-  tier: ArtifactTier { keying: ContentKeyed },
-  retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 100) } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
+  tier: std.materialization_ladder.ArtifactTier { keying: ContentKeyed },
+  retention: persistent_retention(capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: byte_size(count: 100) } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
 data scopeexit_provider: std.materialization_ladder.CacheProvider = provider_row(
@@ -107,10 +107,10 @@ test fn entry_capped_provider_is_refused_for_the_unit_not_the_ceiling() -> Bool 
     id: "entry-capped-test",
     scope: [],
     coverage: CoversAllComputations,
-    tier: ArtifactTier { keying: ContentKeyed },
-    retention: persistent_retention(capacity: CapacityBounded {
-      limit: EntryCountCapacity { limit: ExactLimit { value: 512 } },
-      at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }
+    tier: std.materialization_ladder.ArtifactTier { keying: ContentKeyed },
+    retention: persistent_retention(capacity: std.cache_interface.CapacityBounded {
+      limit: std.cache_interface.EntryCountCapacity { limit: std.cache_interface.ExactLimit { value: 512 } },
+      at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed }
     })
   )
   match store_over_provider(provider: entry_capped) {
@@ -124,10 +124,10 @@ test fn unobserved_byte_value_is_refused_rather_than_defaulted() -> Bool {
     id: "value-unobserved-test",
     scope: [],
     coverage: CoversAllComputations,
-    tier: ArtifactTier { keying: ContentKeyed },
-    retention: persistent_retention(capacity: CapacityBounded {
-      limit: ByteCapacity { limit: EffectiveLimitUnobserved },
-      at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }
+    tier: std.materialization_ladder.ArtifactTier { keying: ContentKeyed },
+    retention: persistent_retention(capacity: std.cache_interface.CapacityBounded {
+      limit: std.cache_interface.ByteCapacity { limit: EffectiveLimitUnobserved },
+      at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed }
     })
   )
   match store_over_provider(provider: value_unknown) {
@@ -144,9 +144,9 @@ test fn refuse_new_store_provider_is_not_realized_as_lru() -> Bool {
     id: "refuse-new-test",
     scope: [],
     coverage: CoversAllComputations,
-    tier: ArtifactTier { keying: ContentKeyed },
-    retention: persistent_retention(capacity: CapacityBounded {
-      limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 100) } },
+    tier: std.materialization_ladder.ArtifactTier { keying: ContentKeyed },
+    retention: persistent_retention(capacity: std.cache_interface.CapacityBounded {
+      limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: byte_size(count: 100) } },
       at_capacity: RefuseNewStore
     })
   )

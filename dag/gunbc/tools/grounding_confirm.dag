@@ -33,7 +33,7 @@ fn enriched_user(f: GroundingFinding) -> String {
 }
 
 fn candidate_message(body: String) -> List<extdeps.llm.anthropic.AnthropicChatMessage> {
-  [UserMessage { content: [UserTextBlock { text: body }] }]
+  [extdeps.llm.anthropic.UserMessage { content: [extdeps.llm.anthropic.UserTextBlock { text: body }] }]
 }
 
 data haiku_confirm_findings: List<GroundingFinding> = [

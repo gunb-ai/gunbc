@@ -30,9 +30,9 @@ fn runner_spec_from_offer(offer: gunbc.ci_fleet.ComputeOffer) -> extdeps.github.
   let os = offer.supply.execution.os
   match compute_host_primary_cpu(host: offer.supply.physical) {
     Absent =>
-      SelfHosted { labels: concat(["self-hosted"], [kernel_runner_label(kernel: os.kernel)]) }
+      extdeps.github.actions.SelfHosted { labels: concat(["self-hosted"], [kernel_runner_label(kernel: os.kernel)]) }
     Present { value: cpu } =>
-      SelfHosted {
+      extdeps.github.actions.SelfHosted {
         labels: concat(
           concat(["self-hosted"], [kernel_runner_label(kernel: os.kernel)]),
           [cpu_architecture_runner_label(arch: cpu_facts_architecture(cpu: cpu))],

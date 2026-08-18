@@ -3,10 +3,10 @@ module v2.extdeps.languages.bash_orch_tier2
 
 fn bash_orch_procedure_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_procedure_name },
-    FixedToken { token_class: ^bash_token_orch_procedure_open },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_procedure_body },
-    FixedToken { token_class: ^bash_token_orch_procedure_close }
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_procedure_name },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_orch_procedure_open },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_procedure_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_orch_procedure_close }
   ]
 }
 
@@ -55,7 +55,7 @@ fn bash_orch_procedure_target_model(name: String, body: String) -> v2.std.compil
 
 fn bash_orch_call_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_call_spelling }
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_call_spelling }
   ]
 }
 

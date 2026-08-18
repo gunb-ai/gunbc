@@ -91,7 +91,7 @@ fn known_red_pre_verdict_probe(
     f: f,
     kind: kind,
     budget: budget,
-    expected: ExpectTypedPreVerdictRefusal { phase: phase, cause: cause },
+    expected: std.witness_admission.ExpectTypedPreVerdictRefusal { phase: phase, cause: cause },
     reason: reason,
     dissolution: dissolution
   )
@@ -375,7 +375,7 @@ fn explicit_witness_admission_executing_witness_roster() -> List<std.realization
     init: Empty,
     f: fn(acc, row) {
       if explicit_witness_admission_is_executing_witness(row: row) {
-        Cons { head: row.witness, tail: acc }
+        std.algebra.Cons { head: row.witness, tail: acc }
       } else {
         acc
       }
@@ -398,7 +398,7 @@ fn witness_long_eval_budget_roster() -> List<std.realization_schedule.ScheduleWi
     init: Empty,
     f: fn(acc, row) {
       if explicit_witness_admission_requires_long_eval_budget(row: row) {
-        Cons { head: row.witness, tail: acc }
+        std.algebra.Cons { head: row.witness, tail: acc }
       } else {
         acc
       }
@@ -413,7 +413,7 @@ fn known_red_probe_roster_of_kind(kind: std.realization_schedule.WitnessKind) ->
     f: fn(acc, row) {
       if explicit_witness_admission_is_known_red(row: row)
         && witness_kind_eq(a: row.witness.kind, b: kind) {
-        Cons { head: row.witness, tail: acc }
+        std.algebra.Cons { head: row.witness, tail: acc }
       } else {
         acc
       }
@@ -450,7 +450,7 @@ fn known_red_probe_corpus_roster() -> List<std.realization_schedule.ScheduleWitn
       if known_red_entry_needs_v1_envelope(entry: witness.entry) {
         acc
       } else {
-        Cons { head: witness, tail: acc }
+        std.algebra.Cons { head: witness, tail: acc }
       }
     }
   ))
@@ -471,7 +471,7 @@ fn known_red_probe_corpus_assertion_false_roster() -> List<std.realization_sched
       ) {
         acc
       } else {
-        Cons { head: witness, tail: acc }
+        std.algebra.Cons { head: witness, tail: acc }
       }
     }
   ))
@@ -486,7 +486,7 @@ fn known_red_probe_corpus_pre_verdict_roster() -> List<std.realization_schedule.
         xs: known_red_pre_verdict_refusal_roster(),
         w: witness
       ) {
-        Cons { head: witness, tail: acc }
+        std.algebra.Cons { head: witness, tail: acc }
       } else {
         acc
       }
@@ -503,7 +503,7 @@ fn known_red_probe_corpus_pre_verdict_long_budget_roster() -> List<std.realizati
         xs: witness_long_eval_budget_roster(),
         w: witness
       ) {
-        Cons { head: witness, tail: acc }
+        std.algebra.Cons { head: witness, tail: acc }
       } else {
         acc
       }
@@ -522,7 +522,7 @@ fn known_red_probe_corpus_pre_verdict_fast_budget_roster() -> List<std.realizati
       ) {
         acc
       } else {
-        Cons { head: witness, tail: acc }
+        std.algebra.Cons { head: witness, tail: acc }
       }
     }
   ))
@@ -537,7 +537,7 @@ fn known_red_probe_corpus_long_budget_roster() -> List<std.realization_schedule.
         xs: witness_long_eval_budget_roster(),
         w: witness
       ) {
-        Cons { head: witness, tail: acc }
+        std.algebra.Cons { head: witness, tail: acc }
       } else {
         acc
       }
@@ -556,7 +556,7 @@ fn known_red_probe_corpus_fast_budget_roster() -> List<std.realization_schedule.
       ) {
         acc
       } else {
-        Cons { head: witness, tail: acc }
+        std.algebra.Cons { head: witness, tail: acc }
       }
     }
   ))
@@ -568,7 +568,7 @@ fn known_red_pre_verdict_refusal_roster() -> List<std.realization_schedule.Sched
     init: Empty,
     f: fn(acc, row) {
       match row.expected {
-        ExpectTypedPreVerdictRefusal { phase: _, cause: _ } => Cons { head: row.witness, tail: acc }
+        ExpectTypedPreVerdictRefusal { phase: _, cause: _ } => std.algebra.Cons { head: row.witness, tail: acc }
         ExpectAssertionFalse => acc
         ExpectWitnessHolds => acc
       }
@@ -582,7 +582,7 @@ fn known_red_probe_v1_envelope_roster() -> List<std.realization_schedule.Schedul
     init: Empty,
     f: fn(acc, witness) {
       if known_red_entry_needs_v1_envelope(entry: witness.entry) {
-        Cons { head: witness, tail: acc }
+        std.algebra.Cons { head: witness, tail: acc }
       } else {
         acc
       }

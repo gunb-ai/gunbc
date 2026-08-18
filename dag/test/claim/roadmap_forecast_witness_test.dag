@@ -24,9 +24,9 @@ fn sized_node(id: String, cell: gunbc.roadmap_forecast.SizingCell) -> gunbc.road
   gunbc.roadmap_model.RoadmapNode {
     identity: concat("fixture-", id) as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: id as gunbc.roadmap_model.RoadmapNodeId,
-    line: PlainLine { content: id },
+    line: gunbc.roadmap_status.PlainLine { content: id },
     carriers: [],
-    sizing: Sized {
+    sizing: gunbc.roadmap_model.Sized {
       intricacy: cell.intricacy,
       volume: cell.volume,
       repo: "gunbc",

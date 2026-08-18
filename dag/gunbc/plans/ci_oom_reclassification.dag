@@ -9,7 +9,7 @@ fn ci_oom_reclassification_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "But if green-on-main enforcement consumed that verdict directly, a contention OOM on a re-run would read `Structural ⇒ block ⇒ re-run ⇒ OOM ⇒ …` — the livelock deep-otter-528 warned of. So the flip needs a SECOND-pass consumer that reclassifies a *clustered* OOM back to `Infra` on positive cross-run evidence. That consumer is this design; without it, the verdict is computed but must stay unconsumed (where #5651 leaves it)."),
     h2(text: "2. The fact: one OOM-kill, two Realization handlers"),
     p(text: "\"The kernel killed a process for memory\" is ONE grounded fact. Per §2/§3 the agnostic *was-OOM-killed* shape stays central; the ways to OBSERVE it are Realization **handlers** that live peripheral (in `extdeps`) with the dispatch — never forked into the interface. There are two handlers, because Linux kills for memory in two places:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: gunbc.plans.md_helpers.row(cells: [cell(text: "handler"), cell(text: "grounded source"), cell(text: "what it catches"), cell(text: "read seam")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -43,6 +43,6 @@ data ci_oom_reclassification_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "ci-oom-reclassification",
   title: "CI OOM reclassification — the green-on-main LIVE-flip prerequisite (cross-run clustering consumer)",
   body: ci_oom_reclassification_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the cross-run clustering reclassifier is built, wired, and its discriminating witness (clustered-137 ⇒ Infra; lone-137 ⇒ Structural) is floor-green by execution — at which point the green-on-main prerequisite (a) of ci-merge-freshness §6 is satisfied as a witnessed property and this design is superseded by the carrier + witness.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the cross-run clustering reclassifier is built, wired, and its discriminating witness (clustered-137 ⇒ Infra; lone-137 ⇒ Structural) is floor-green by execution — at which point the green-on-main prerequisite (a) of ci-merge-freshness §6 is satisfied as a witnessed property and this design is superseded by the carrier + witness.")
   }
 }

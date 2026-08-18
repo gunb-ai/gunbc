@@ -4,7 +4,7 @@ module v2.test.lens_cost.summary_span
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn unit_cost_expr() -> v2.lens.cost.expr.CostExpr {
-  cost_const(value: Succ { prev: Zero })
+  cost_const(value: v2.std.nat.Succ { prev: Zero })
 }
 
 fn unit_complexity_summary() -> v2.lens.cost.summary.ComplexitySummary {

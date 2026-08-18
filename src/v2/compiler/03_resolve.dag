@@ -262,7 +262,7 @@ fn malformed_tree_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^resolve_reason_malformed_tree,
     at: node_locus(node: n),
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -270,7 +270,7 @@ fn unbound_symbol_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^resolve_reason_unbound_symbol,
     at: node_locus(node: n),
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -278,7 +278,7 @@ fn ambiguous_symbol_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^resolve_reason_ambiguous_symbol,
     at: node_locus(node: n),
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -288,7 +288,7 @@ fn namespace_has_canonical_symbol(namespace: Namespace, name: v2.std.node.Symbol
 
 fn canonical_atom(identity: v2.std.node.Symbol, occurrence_id: v2.std.node.NodeOccurrenceId) -> Node {
   node_with_occurrence_id(
-    kind: TypeNode { connective: Atom { identity: identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
     occurrence_id: occurrence_id
   )

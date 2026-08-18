@@ -64,7 +64,7 @@ data stage0_unit_v1_artifact: v2.std.compilers.compilation_unit.CompilationUnitI
 data stage0_unit_emit_core: v2.std.compilers.compilation_unit.CompilationUnitId = "stage0-unit-emit-core" as v2.std.compilers.compilation_unit.CompilationUnitId
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
 
 type Stage0ModuleDagInterfaceGrounding
@@ -489,12 +489,12 @@ fn validate_partition_r4(
   units: List<v2.std.compilers.compilation_unit.CompilationUnit>
 ) -> v2.std.compilers.compilation_unit.PartitionR4ValidityVerdict {
   if assignment_has_scc_split(module_dag: module_dag, assignment: assignment) {
-    PartitionR4Refused {
-      cause: SccSplit { detail: "Rust R4: mutually dependent modules assigned to different compilation units" }
+    v2.std.compilers.compilation_unit.PartitionR4Refused {
+      cause: v2.std.compilers.compilation_unit.SccSplit { detail: "Rust R4: mutually dependent modules assigned to different compilation units" }
     }
   } else if unit_graph_has_cycle(units: units) {
-    PartitionR4Refused {
-      cause: UnitGraphCycle { detail: "Rust R4: compilation-unit dependency graph is cyclic" }
+    v2.std.compilers.compilation_unit.PartitionR4Refused {
+      cause: v2.std.compilers.compilation_unit.UnitGraphCycle { detail: "Rust R4: compilation-unit dependency graph is cyclic" }
     }
   } else {
     PartitionR4Valid

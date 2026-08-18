@@ -44,7 +44,7 @@ fn effect_io_host_write_outside_grant_diagnostic() -> v2.std.diagnostic.Diagnost
   v2.std.diagnostic.Diagnostic {
     reason: ^effect_io_host_write_outside_grant,
     at: node_locus(node: effect_io_pure_operation_node()),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -52,7 +52,7 @@ fn effect_io_host_read_outside_grant_diagnostic() -> v2.std.diagnostic.Diagnosti
   v2.std.diagnostic.Diagnostic {
     reason: ^effect_io_host_read_outside_grant,
     at: node_locus(node: effect_io_pure_operation_node()),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -60,7 +60,7 @@ fn effect_io_host_deferred_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diag
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: effect_io_pure_operation_node()),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

@@ -29,8 +29,8 @@ type PrimitiveFactBundle {
 fn primitive_fact_axis_unbound_diagnostic(axis: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^primitive_fact_axis_unbound_reason,
-    at: Textual { file: axis, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: axis, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -104,7 +104,7 @@ type ModelCoreBoolLawKey
 
 fn model_core_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -116,7 +116,7 @@ fn model_core_bool_fact_lookup(facts: v2.std.logic.BoolPrimitiveFacts, axis: v2.
   } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
     Holds { value: bool_encoding_fact_node(encoding: facts.encoding) }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
     }
   }
@@ -159,7 +159,7 @@ fn model_core_bool_inhabitance() -> AlgebraInhabitanceDecl {
 
 fn model_core_law_node(key: ModelCoreBoolLawKey) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^model_core_law_field_subject },
@@ -211,7 +211,7 @@ type PrimitiveBundleSubstrateHead
 
 fn model_core_empty_conj_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }

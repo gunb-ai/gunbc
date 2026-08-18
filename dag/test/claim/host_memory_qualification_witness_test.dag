@@ -50,12 +50,12 @@ data srv3_post_bios_310_standing: gunbc.host_memory_qualification.HostMemoryStan
   part_number: "M386A4G40DM0-CPB",
   population: ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"],
   class_support: ClassSupportedByBoard,
-  part_qualification: NotListedInVendorAvl {
+  part_qualification: gunbc.host_memory_qualification.NotListedInVendorAvl {
     avl_authority: ampere_altra_avl_authority,
     avl_issue: "1.15 (December 2025)",
   },
-  training: TrainingOperational { dimm_mask: "0x00005555" },
-  boot: RepeatingFirmwareReset { token: "E588", cycles: 6 },
+  training: gunbc.host_memory_qualification.TrainingOperational { dimm_mask: "0x00005555" },
+  boot: gunbc.host_memory_qualification.RepeatingFirmwareReset { token: "E588", cycles: 6 },
   observed_at: 1786580000000,
 }
 
@@ -71,11 +71,11 @@ test fn only_reached_operating_system_establishes_boot() -> Bool {
       part_number: "M386A4G40DM0-CPB",
       population: ["A1"],
       class_support: ClassSupportedByBoard,
-      part_qualification: NotListedInVendorAvl {
+      part_qualification: gunbc.host_memory_qualification.NotListedInVendorAvl {
         avl_authority: ampere_altra_avl_authority,
         avl_issue: "1.15 (December 2025)",
       },
-      training: TrainingOperational { dimm_mask: "0x00000001" },
+      training: gunbc.host_memory_qualification.TrainingOperational { dimm_mask: "0x00000001" },
       boot: BootReachedOperatingSystem,
       observed_at: 1786580000000,
     },

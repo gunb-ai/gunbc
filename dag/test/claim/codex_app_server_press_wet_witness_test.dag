@@ -40,10 +40,10 @@ test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started_h
           ) {
             CodexPressAccountReady { receipt } => {
               let status = codex_press_outcome_wire_status(
-                outcome: CodexPressAccountReady { receipt: receipt },
+                outcome: gunbc.codex_app_server_press.CodexPressAccountReady { receipt: receipt },
               )
               let caption = codex_press_outcome_operator_caption(
-                outcome: CodexPressAccountReady { receipt: receipt },
+                outcome: gunbc.codex_app_server_press.CodexPressAccountReady { receipt: receipt },
               )
               let projected = account_standing_projection(
                 classification: receipt.standing.evidence.classification,
@@ -61,7 +61,7 @@ test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started_h
             }
             CodexPressLoginRequired { reason, receipt } =>
               codex_press_outcome_wire_status(
-                outcome: CodexPressLoginRequired { reason: reason, receipt: receipt },
+                outcome: gunbc.codex_app_server_press.CodexPressLoginRequired { reason: reason, receipt: receipt },
               ) == "login_required"
                 && standing_is_redacted_projection(summary: receipt.standing)
                 && match receipt.standing.evidence.classification {
@@ -70,7 +70,7 @@ test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started_h
                 }
             CodexPressRefused { reason, receipt } =>
               codex_press_outcome_wire_status(
-                outcome: CodexPressRefused { reason: reason, receipt: receipt },
+                outcome: gunbc.codex_app_server_press.CodexPressRefused { reason: reason, receipt: receipt },
               ) == "press_refused"
                 && standing_is_redacted_projection(summary: receipt.standing)
                 && match receipt.standing.evidence.classification {

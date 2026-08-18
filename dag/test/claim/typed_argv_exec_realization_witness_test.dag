@@ -64,7 +64,7 @@ test fn witness_sudo_grant_list_prefix_collision_refuses() -> Bool {
 
 test fn witness_read_principal_host_effect_apply_typed_argv_holds() -> Bool {
   match host_effect_apply(
-    target: HostOs { node: srv1_host },
+    target: gunbc.host_effect.HostOs { node: srv1_host },
     effect: deploy_access_read_principal_effect(),
     evidence: host_effect_read_evidence,
     transport: LocalShell,
@@ -78,7 +78,7 @@ test fn witness_read_principal_host_effect_apply_typed_argv_holds() -> Bool {
 test fn witness_sudo_probe_host_effect_apply_typed_argv_holds() -> Bool {
   reconciliation_converged(
     r: host_effect_apply(
-      target: HostOs { node: srv1_host },
+      target: gunbc.host_effect.HostOs { node: srv1_host },
       effect: deploy_access_sudo_probe_effect(cmd: deploy_access_apt_get_privileged_command()),
       evidence: host_effect_read_evidence,
       transport: LocalShell,
@@ -89,7 +89,7 @@ test fn witness_sudo_probe_host_effect_apply_typed_argv_holds() -> Bool {
 test fn witness_tailscale_grant_list_host_effect_apply_typed_argv_holds() -> Bool {
   reconciliation_converged(
     r: host_effect_apply(
-      target: HostOs { node: srv1_host },
+      target: gunbc.host_effect.HostOs { node: srv1_host },
       effect: deploy_access_sudo_probe_effect(
         cmd: ci_deploy_srv1_access.privileged_commands.skip(n: 4).first()
       ),

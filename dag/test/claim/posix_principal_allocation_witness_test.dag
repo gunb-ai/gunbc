@@ -26,7 +26,7 @@ fn alloc(host: product.placement_supply.HostIdentity, name: extdeps.access.posix
     local_name: name,
     uid: uid,
     gid: uid,
-    domain: HostLocalIdentityDomain { host: host },
+    domain: gunbc.fleet_posix_accounts.HostLocalIdentityDomain { host: host },
     name_scheme: "arbitrary-word-v1" as gunbc.fleet_posix_accounts.NameSchemeIdentity,
     name_attempt: 0,
   }
@@ -104,12 +104,12 @@ test fn witness_one_principal_wears_different_local_names_and_uids() -> Bool {
   let a6 = alloc(host: spark6, name: "cobalt" as extdeps.access.posix.PosixLoginName, uid: 1732)
   let g5 = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
-    standing: AccountAllocated { allocation: a5 },
+    standing: gunbc.fleet_posix_accounts.AccountAllocated { allocation: a5 },
     observation: Present { value: observed(a: a5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500) },
   )
   let g6 = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
-    standing: AccountAllocated { allocation: a6 },
+    standing: gunbc.fleet_posix_accounts.AccountAllocated { allocation: a6 },
     observation: Present { value: observed(a: a6, name: "cobalt" as extdeps.access.posix.PosixLoginName, uid: 1732) },
   )
   let n5 = match grounded_name(o: g5) { Present { value: v } => v, Absent => "none" as std.types.NonEmptyStr }
@@ -145,7 +145,7 @@ test fn witness_allocated_but_unobserved_is_its_own_state() -> Bool {
   let a = alloc(host: spark5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
   match ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
-    standing: AccountAllocated { allocation: a },
+    standing: gunbc.fleet_posix_accounts.AccountAllocated { allocation: a },
     observation: none,
   ) {
     PrincipalUnobserved { allocation: _ } => true
@@ -164,12 +164,12 @@ test fn witness_observation_contradicting_allocation_is_drift() -> Bool {
   let a = alloc(host: spark5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
   let name_drift = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
-    standing: AccountAllocated { allocation: a },
+    standing: gunbc.fleet_posix_accounts.AccountAllocated { allocation: a },
     observation: Present { value: observed(a: a, name: "somethingelse" as extdeps.access.posix.PosixLoginName, uid: 1500) },
   )
   let uid_drift = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
-    standing: AccountAllocated { allocation: a },
+    standing: gunbc.fleet_posix_accounts.AccountAllocated { allocation: a },
     observation: Present { value: observed(a: a, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1999) },
   )
   outcome_is_drift(o: name_drift) && outcome_is_drift(o: uid_drift)
@@ -261,7 +261,7 @@ test fn witness_observation_from_another_host_is_drift() -> Bool {
   let a6 = alloc(host: spark6, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
   outcome_is_drift(o: ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
-    standing: AccountAllocated { allocation: a5 },
+    standing: gunbc.fleet_posix_accounts.AccountAllocated { allocation: a5 },
     observation: Present { value: observed(a: a6, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500) },
   ))
 }
@@ -302,7 +302,7 @@ fn access_obs(a: gunbc.fleet_posix_accounts.PosixAccountAllocation, pw_refused: 
 // outcome still refuses, twice, for two different reasons.
 test fn witness_account_grounded_does_not_imply_access_grounded() -> Bool {
   let a = alloc(host: spark5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
-  let standing = AccountAllocated { allocation: a }
+  let standing = gunbc.fleet_posix_accounts.AccountAllocated { allocation: a }
   let intent = fleet_principal_intent(key: FleetAccountAutomation)
   let still_passworded = ground_host_access(
     intent: intent, standing: standing, access: access_obs(a: a, pw_refused: false, priv_ok: true),

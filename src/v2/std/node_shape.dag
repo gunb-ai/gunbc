@@ -18,15 +18,15 @@ fn node_shape(kind: v2.std.node.NodeKind, children: List<v2.std.node.EdgeShape>)
 }
 
 fn type_shape(connective: v2.std.node.Connective, children: List<v2.std.node.EdgeShape>) -> v2.std.node.NodeShape {
-  node_shape(kind: TypeNode { connective: connective }, children: children)
+  node_shape(kind: v2.std.node.TypeNode { connective: connective }, children: children)
 }
 
 fn atom_shape(identity: v2.std.node.Symbol) -> v2.std.node.NodeShape {
-  type_shape(connective: Atom { identity: identity }, children: [])
+  type_shape(connective: v2.std.node.Atom { identity: identity }, children: [])
 }
 
 fn computation_shape(behavior: v2.std.node.Behavior, children: List<v2.std.node.EdgeShape>) -> v2.std.node.NodeShape {
-  node_shape(kind: ComputationNode { behavior: behavior }, children: children)
+  node_shape(kind: v2.std.node.ComputationNode { behavior: behavior }, children: children)
 }
 
 fn stamp_edge_shape(e: v2.std.node.EdgeShape) -> v2.std.node.Edge {

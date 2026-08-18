@@ -24,7 +24,7 @@ fn wave1_gate1_a1_match_spine_identity_absent_dispatch_holds() -> Bool {
 
 fn wave1_gate1_a1_wrapper_retained_red_control_holds() -> Bool {
   let shell = node_synthetic(
-    kind: TypeNode { connective: Atom { identity: ^wave1_gate1_a1_invalid_shell } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^wave1_gate1_a1_invalid_shell } },
     children: []
   )
   match body_lower_outcome_frontier_disposition(o: body_lower_fn_decl_to_arrow(shell: shell)) {

@@ -2,16 +2,16 @@ module v2.test.language_model.go_r3_external
 
 fn go_r3_external_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^go_r3_external_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^go_r3_external_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^go_r3_external_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^go_r3_external_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_go_r3_external_fixture_pair_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_go_r3_external_fixture_pair_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/go_r3_external: fixture pair references go_atom_realization_symbol",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_r3_external_claim_bool_atom(b: true),
@@ -28,8 +28,8 @@ data claim_go_r3_external_fixture_pair_wired: v2.std.verification.TestClaim = Eq
 fn go_r3_external_pending_verification_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^go_r3_external_pending_verification_reason,
-    at: Textual { file: ^go_r3_external_pending_verification_reason, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: ^go_r3_external_pending_verification_reason, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -43,7 +43,7 @@ data go_r3_external_verification_run_receipt_default: v2.std.leaf_model_verifica
   )
 }
 
-data claim_go_r3_external_verification_receipt_shape: v2.std.verification.TestClaim = EqualsClaim {
+data claim_go_r3_external_verification_receipt_shape: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/go_r3_external: verification receipt carriers happy + falsification verdict slots",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_r3_external_claim_bool_atom(
@@ -53,6 +53,6 @@ data claim_go_r3_external_verification_receipt_shape: v2.std.verification.TestCl
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data go_r3_external_modeled_falsification_expectation: v2.std.leaf_model_verification.TargetCompileVerdict = TargetCompileRejected {
+data go_r3_external_modeled_falsification_expectation: v2.std.leaf_model_verification.TargetCompileVerdict = v2.std.leaf_model_verification.TargetCompileRejected {
   diagnostic_code: ^target_diagnostic_go_invalid_conversion_arity
 }

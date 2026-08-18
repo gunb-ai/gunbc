@@ -59,7 +59,7 @@ test fn witness_sound_manifest_line_is_populated() -> Bool {
 }
 
 test fn witness_regime1_resolves_worst_case_slice() -> Bool {
-  match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: byte_size(10000000000), session_concurrency: 4 } }, oomd: OomdEnforced) {
+  match resolve_session_slice(mode: gunbc.ci_floor_measurement.Regime1WorstCase { point: gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: byte_size(10000000000), session_concurrency: 4 } }, oomd: OomdEnforced) {
     SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
       byte_size_count(b: b) == 40000000000 && byte_size_count(b: c) == 10000000000 && n == 4
     SessionSliceUnresolved { reason: _ } => false
@@ -74,10 +74,10 @@ test fn witness_mode_unset_is_unresolved() -> Bool {
 }
 
 test fn witness_regime2_oomd_unverified_is_unresolved() -> Bool {
-  match resolve_session_slice(mode: Regime2AggregateOomd {
+  match resolve_session_slice(mode: gunbc.ci_floor_measurement.Regime2AggregateOomd {
     oomd_eviction_ceiling: byte_size(8000000000),
     session_concurrency: 16,
-    aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(15000000000) },
+    aggregate_reservation: gunbc.ci_floor_measurement.SessionAggregateMeasured { bytes: byte_size(15000000000) },
   }, oomd: OomdUnverified) {
     SessionSliceUnresolved { reason: _ } => true
     SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
@@ -85,7 +85,7 @@ test fn witness_regime2_oomd_unverified_is_unresolved() -> Bool {
 }
 
 test fn witness_regime2_aggregate_unmeasured_is_unresolved() -> Bool {
-  match resolve_session_slice(mode: Regime2AggregateOomd {
+  match resolve_session_slice(mode: gunbc.ci_floor_measurement.Regime2AggregateOomd {
     oomd_eviction_ceiling: byte_size(8000000000),
     session_concurrency: 16,
     aggregate_reservation: SessionAggregateUnmeasured,
@@ -96,10 +96,10 @@ test fn witness_regime2_aggregate_unmeasured_is_unresolved() -> Bool {
 }
 
 test fn witness_regime2_reserves_aggregate_not_product() -> Bool {
-  match resolve_session_slice(mode: Regime2AggregateOomd {
+  match resolve_session_slice(mode: gunbc.ci_floor_measurement.Regime2AggregateOomd {
     oomd_eviction_ceiling: byte_size(8000000000),
     session_concurrency: 16,
-    aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(15000000000) },
+    aggregate_reservation: gunbc.ci_floor_measurement.SessionAggregateMeasured { bytes: byte_size(15000000000) },
   }, oomd: OomdEnforced) {
     SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
       byte_size_count(b: b) == 15000000000 && byte_size_count(b: c) == 8000000000 && n == 16

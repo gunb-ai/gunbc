@@ -4,14 +4,14 @@ module v2.test.manual.find_witness_identity
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 fn identity_source_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^identity_source_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^identity_source_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn identity_other_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^identity_other_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^identity_other_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -148,8 +148,8 @@ test data witness_find_witness_selected_invalid_rejects: Bool = rejected_for_no_
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_duplicate(),
     predicate: exact_identity_predicate(),
-    multiplicity_policy: TargetSelection {
-      policy: TargetDeclaredPriority { priority: identity_other_node() }
+    multiplicity_policy: v2.std.find_witness.TargetSelection {
+      policy: v2.std.find_witness.TargetDeclaredPriority { priority: identity_other_node() }
     }
   )
 )
@@ -158,8 +158,8 @@ test data witness_find_witness_user_selected_invalid_rejects: Bool = rejected_fo
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_duplicate(),
     predicate: exact_identity_predicate(),
-    multiplicity_policy: TargetSelection {
-      policy: UserSelected { selection: identity_other_node() }
+    multiplicity_policy: v2.std.find_witness.TargetSelection {
+      policy: v2.std.find_witness.UserSelected { selection: identity_other_node() }
     }
   )
 )
@@ -205,7 +205,7 @@ fn coercion_identity_candidates() -> v2.std.coercion.CoercionCandidateSet {
 test data witness_coercion_fold_identity_accepts: Bool = match coercion_fold(
   source: identity_grounding(),
   candidates: coercion_identity_candidates(),
-  policy: TargetDeclaredPriority { priority: identity_source_node() }
+  policy: v2.std.find_witness.TargetDeclaredPriority { priority: identity_source_node() }
 ) {
   Accepted { value: r, diagnostics: _ } =>
     (r.target == identity_source_node()) && quality_is_identity(q: r.quality)

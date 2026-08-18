@@ -16,7 +16,7 @@ fn structural_quadratic_wall_coverage_audit_body() -> List<std.markdown.Markdown
     ]),
     p(text: "Reading of the receipt: the whole-corpus mechanism that actually executes is a *syntactic* proxy (match-fanout, wildcard arms) standing in for cost until fn-body reflection grounds (blocked on `decl_facts(roots)` #5966 and compile-graph access gunbc#5364). Its 22 `syntactic_high_match_fanout` hits are a match-count heuristic, NOT an asymptotic-class verdict. The REAL asymptotic engine (`src/v2/lens/cost.dag`, next section) is floor-enrolled but roster-bound, so it never walks these 1132 files. That gap -- whole-corpus reach vs. real asymptotic verdict -- is the entire subject of the lane."),
     h2(text: "3. The inventory"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: gunbc.plans.md_helpers.row(cells: [cell(text: "Mechanism"), cell(text: "Carrier"), cell(text: "Measures"), cell(text: "Class"), cell(text: "Floor?"), cell(text: "Struct/Resource")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -57,6 +57,6 @@ data structural_quadratic_wall_coverage_audit_plan: gunbc.plan.Plan = gunbc.plan
   slug: "structural-quadratic-wall-coverage-audit",
   title: "Structural-quadratic wall -- coverage audit and execution receipt",
   body: structural_quadratic_wall_coverage_audit_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Dissolves when the whole-corpus asymptotic cost gate grounds (`decl_facts(roots)` #5966 + compile-graph gunbc#5364 land, flipping cost.dag from roster-bound to whole-corpus): at that point the region-(2) \"un-walled residue\" rows close, the emit-only `complexity_linearity_audit` bin is deleted, and this census is superseded by the live gate's own coverage report. Also re-run the section-2 receipt whenever a sibling lane lands a resolver-pathology quadratic fix, to confirm the reintroduction-fence candidate is still measured-live.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Dissolves when the whole-corpus asymptotic cost gate grounds (`decl_facts(roots)` #5966 + compile-graph gunbc#5364 land, flipping cost.dag from roster-bound to whole-corpus): at that point the region-(2) \"un-walled residue\" rows close, the emit-only `complexity_linearity_audit` bin is deleted, and this census is superseded by the live gate's own coverage report. Also re-run the section-2 receipt whenever a sibling lane lands a resolver-pathology quadratic fix, to confirm the reintroduction-fence candidate is still measured-live.")
   }
 }

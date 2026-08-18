@@ -25,20 +25,20 @@ fn project_subject() -> std.decl_ref.DeclarationRef {
 
 fn bash_registration() -> std.language_target_identity.LanguageTargetRegistration {
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: gnu_bash_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: gnu_bash_model_scope },
     disposition: TargetActive
   }
 }
 
 fn project_registration() -> std.language_target_identity.LanguageTargetRegistration {
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ProjectGrounding { authority: project_subject() },
+    grounding: std.language_target_identity.ProjectGrounding { authority: project_subject() },
     disposition: TargetActive
   }
 }
 
 fn bash_grammar_surface() -> std.language_target_identity.LanguageTargetSurfaceLocus {
-  SurfaceModule { module_path: "v2.extdeps.languages.bash" }
+  std.language_target_identity.SurfaceModule { module_path: "v2.extdeps.languages.bash" }
 }
 
 fn bash_grammar_row() -> std.language_target_identity.LanguageTargetSurfaceRow {
@@ -74,11 +74,11 @@ data neutral_key_note: String = "THE NEUTRAL-KEY CONTROL, and it is the discrimi
 test fn green_project_grounded_target_joins_through_the_same_key() -> Bool {
   let row = std.language_target_identity.LanguageTargetSurfaceRow {
     authority: TargetModelDeclaration,
-    surface: SurfaceModule { module_path: "extdeps.languages.dag.syntax" },
+    surface: std.language_target_identity.SurfaceModule { module_path: "extdeps.languages.dag.syntax" },
     target: Present { value: project_subject() }
   }
   match resolve_target_for_surface(
-    surface: SurfaceModule { module_path: "extdeps.languages.dag.syntax" },
+    surface: std.language_target_identity.SurfaceModule { module_path: "extdeps.languages.dag.syntax" },
     rows: [row],
     registry: [bash_registration(), project_registration()]
   ) {
@@ -98,7 +98,7 @@ test fn red_surface_without_identity_refuses() -> Bool {
   let rows = [
     std.language_target_identity.LanguageTargetSurfaceRow {
       authority: StdLanguageCatalogue,
-      surface: SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") },
+      surface: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") },
       target: none
     }
   ]
@@ -106,7 +106,7 @@ test fn red_surface_without_identity_refuses() -> Bool {
     init: false,
     f: fn(acc, v) {
       acc || match v {
-        SurfaceMissingTargetIdentity { authority: _, surface: s } => surface_locus_eq(a: s, b: SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") })
+        SurfaceMissingTargetIdentity { authority: _, surface: s } => surface_locus_eq(a: s, b: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") })
         SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
         DuplicateRegistryTarget { target: _ } => false
         SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
@@ -120,7 +120,7 @@ test fn red_surface_naming_unregistered_subject_refuses() -> Bool {
   let rows = [
     std.language_target_identity.LanguageTargetSurfaceRow {
       authority: TargetVocabulary,
-      surface: SurfaceModule { module_path: "v2.extdeps.languages.verilog" },
+      surface: std.language_target_identity.SurfaceModule { module_path: "v2.extdeps.languages.verilog" },
       target: Present { value: unregistered_subject() }
     }
   ]
@@ -175,7 +175,7 @@ test fn duplicate_registration_reported_once_not_per_row() -> Bool {
 }
 
 test fn red_unregistered_surface_reports_located_refusal_not_silence() -> Bool {
-  let unknown = SurfaceModule { module_path: "v2.extdeps.languages.spice" }
+  let unknown = std.language_target_identity.SurfaceModule { module_path: "v2.extdeps.languages.spice" }
   match resolve_target_for_surface(
     surface: unknown,
     rows: [bash_grammar_row()],
@@ -215,12 +215,12 @@ test fn red_surface_naming_subject_absent_from_registry_is_not_registered() -> B
   let rows = [
     std.language_target_identity.LanguageTargetSurfaceRow {
       authority: RuntimeChecker,
-      surface: SurfaceDeclaration { ref: ref_of(module_path: "tools.emit_host_gate", decl_name: "run_ts_smoke") },
+      surface: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "tools.emit_host_gate", decl_name: "run_ts_smoke") },
       target: Present { value: unregistered_subject() }
     }
   ]
   match resolve_target_for_surface(
-    surface: SurfaceDeclaration { ref: ref_of(module_path: "tools.emit_host_gate", decl_name: "run_ts_smoke") },
+    surface: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "tools.emit_host_gate", decl_name: "run_ts_smoke") },
     rows: rows,
     registry: [bash_registration()]
   ) {
@@ -260,7 +260,7 @@ test fn red_unidentified_vocabulary_surface_emits_its_own_class() -> Bool {
   let rows = [
     std.language_target_identity.LanguageTargetSurfaceRow {
       authority: TargetVocabulary,
-      surface: SurfaceModule { module_path: "extdeps.languages.typescript.program" },
+      surface: std.language_target_identity.SurfaceModule { module_path: "extdeps.languages.typescript.program" },
       target: none
     }
   ]
@@ -269,7 +269,7 @@ test fn red_unidentified_vocabulary_surface_emits_its_own_class() -> Bool {
     f: fn(acc, v) {
       acc || match v {
         TargetVocabularyHasNoRegistryTarget { surface: s } =>
-          surface_locus_eq(a: s, b: SurfaceModule { module_path: "extdeps.languages.typescript.program" })
+          surface_locus_eq(a: s, b: std.language_target_identity.SurfaceModule { module_path: "extdeps.languages.typescript.program" })
         SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
         SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
         SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
@@ -360,7 +360,7 @@ fn clean_population() -> List<std.language_target_identity.LanguageTargetSurface
     bash_grammar_row(),
     std.language_target_identity.LanguageTargetSurfaceRow {
       authority: StdLanguageCatalogue,
-      surface: SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") },
+      surface: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") },
       target: none
     }
   ]
@@ -371,7 +371,7 @@ fn population_with_unknown_target() -> List<std.language_target_identity.Languag
     bash_grammar_row(),
     std.language_target_identity.LanguageTargetSurfaceRow {
       authority: StdLanguageCatalogue,
-      surface: SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") },
+      surface: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") },
       target: Present { value: unregistered_subject() }
     }
   ]

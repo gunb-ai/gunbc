@@ -85,27 +85,27 @@ test fn w_mode_projection_classifies_each_path() -> Bool {
 test fn w_cited_path_capacities_match_the_datasheet_rows() -> Bool {
   list_contains_path(
     paths: ast2500_management_acquisition_paths,
-    wanted: GpioDigitalTripInput { gpio_pin_count: 228 },
+    wanted: extdeps.bmc.aspeed_ast2500.GpioDigitalTripInput { gpio_pin_count: 228 },
   )
     && list_contains_path(
       paths: ast2500_management_acquisition_paths,
-      wanted: SgpioShiftRegisterTripInput { sgpio_input_port_count: 80 },
+      wanted: extdeps.bmc.aspeed_ast2500.SgpioShiftRegisterTripInput { sgpio_input_port_count: 80 },
     )
     && list_contains_path(
       paths: ast2500_management_acquisition_paths,
-      wanted: I2cSmbusSensorBus { controller_count: 14 },
+      wanted: extdeps.bmc.aspeed_ast2500.I2cSmbusSensorBus { controller_count: 14 },
     )
     && list_contains_path(
       paths: ast2500_management_acquisition_paths,
-      wanted: AdcAnalogInput { channel_count: 16 },
+      wanted: extdeps.bmc.aspeed_ast2500.AdcAnalogInput { channel_count: 16 },
     )
     && list_contains_path(
       paths: ast2500_management_acquisition_paths,
-      wanted: PeciProcessorTelemetry { max_cpu_count: 8, max_domain_per_cpu: 2 },
+      wanted: extdeps.bmc.aspeed_ast2500.PeciProcessorTelemetry { max_cpu_count: 8, max_domain_per_cpu: 2 },
     )
     && list_contains_path(
       paths: ast2500_management_acquisition_paths,
-      wanted: FanTachPulseCounter { tach_input_count: 16 },
+      wanted: extdeps.bmc.aspeed_ast2500.FanTachPulseCounter { tach_input_count: 16 },
     )
 }
 

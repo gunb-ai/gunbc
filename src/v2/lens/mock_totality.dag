@@ -4,8 +4,8 @@ module v2.lens.mock_totality
 fn mock_unhandled_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^mock_totality_unhandled_member,
-    at: Textual { file: ^mock_totality_virtual_file, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: ^mock_totality_virtual_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -34,5 +34,5 @@ fn mock_totality_lens<C>(
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

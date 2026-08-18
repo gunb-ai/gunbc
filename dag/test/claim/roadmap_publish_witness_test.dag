@@ -59,11 +59,11 @@ fn adjudicate_with(
 }
 
 fn remotes_deliberately_unreadable() -> gunbc.roadmap_publish.RemoteBranchObservation {
-  RemoteBranchesUnreadable { cause: RefAdvertisementRefused { remote: "origin" as std.types.NonEmptyStr, exit_code: 128, stderr: "not consulted on this path" } }
+  gunbc.roadmap_publish.RemoteBranchesUnreadable { cause: gunbc.roadmap_publish.RefAdvertisementRefused { remote: "origin" as std.types.NonEmptyStr, exit_code: 128, stderr: "not consulted on this path" } }
 }
 
 fn one_pull(sha: std.types.CommitSha, draft: Bool) -> gunbc.roadmap_publish.PullRequestObservation {
-  PullRequestsRead {
+  gunbc.roadmap_publish.PullRequestsRead {
     pulls: [
       fixture_pull(
         number: 22,
@@ -112,7 +112,7 @@ data no_silent_pick_note: String = "THE CLAIM THAT KILLS first(). Two open pull 
 
 test fn two_pull_requests_for_one_target_are_ambiguous_not_a_pick() -> Bool {
   let outcome = adjudicate_with(
-    pulls: PullRequestsRead {
+    pulls: gunbc.roadmap_publish.PullRequestsRead {
       pulls: [
         fixture_pull(number: 22, branch: fixture_branch as String, base: fixture_base as String, sha: fixture_expected, draft: false),
         fixture_pull(number: 23, branch: fixture_branch as String, base: fixture_base as String, sha: fixture_older, draft: false),
@@ -139,12 +139,12 @@ test fn two_pull_requests_for_one_target_are_ambiguous_not_a_pick() -> Bool {
 // A pull request on the right branch against a DIFFERENT base is not this publication. Without the base in the key, such a pull request would bind — and it is a real shape, since a stacked or retargeted change carries the same head branch. Here it must fall through to the remote-ref path rather than be adopted.
 test fn a_pull_request_against_another_base_does_not_bind() -> Bool {
   let outcome = adjudicate_with(
-    pulls: PullRequestsRead {
+    pulls: gunbc.roadmap_publish.PullRequestsRead {
       pulls: [
         fixture_pull(number: 22, branch: fixture_branch as String, base: "release/1.x", sha: fixture_expected, draft: false),
       ],
     },
-    remotes: RemoteBranchesRead { branches: [] },
+    remotes: gunbc.roadmap_publish.RemoteBranchesRead { branches: [] },
   )
   match outcome {
     BranchNotPublished { branch: _, remote_branches_seen } => remote_branches_seen == 0
@@ -161,8 +161,8 @@ test fn a_pull_request_against_another_base_does_not_bind() -> Bool {
 // THE HOLE THE PREVIOUS CUT LEFT. With no pull request to compare against, an earlier version established only that a ref with the right NAME existed — abandoning the exact-head thesis on the one path where nothing else would reveal the mismatch. A stale branch from an earlier attempt satisfied it. Both directions are asserted: at the expected head is its own arm, and diverged names both shas.
 test fn a_remote_branch_at_the_expected_head_without_a_pull_request_is_its_own_arm() -> Bool {
   let outcome = adjudicate_with(
-    pulls: PullRequestsRead { pulls: [] },
-    remotes: RemoteBranchesRead {
+    pulls: gunbc.roadmap_publish.PullRequestsRead { pulls: [] },
+    remotes: gunbc.roadmap_publish.RemoteBranchesRead {
       branches: [
         fixture_ref(branch: "main", sha: fixture_older),
         fixture_ref(branch: fixture_branch as String, sha: fixture_expected),
@@ -185,8 +185,8 @@ test fn a_remote_branch_at_the_expected_head_without_a_pull_request_is_its_own_a
 
 test fn a_stale_remote_branch_diverges_rather_than_counting_as_published() -> Bool {
   let outcome = adjudicate_with(
-    pulls: PullRequestsRead { pulls: [] },
-    remotes: RemoteBranchesRead {
+    pulls: gunbc.roadmap_publish.PullRequestsRead { pulls: [] },
+    remotes: gunbc.roadmap_publish.RemoteBranchesRead {
       branches: [fixture_ref(branch: fixture_branch as String, sha: fixture_older)],
     },
   )
@@ -215,8 +215,8 @@ fn ambiguous_over_two_refs(outcome: gunbc.roadmap_publish.PublicationOutcome) ->
 
 test fn two_remote_refs_for_one_branch_are_ambiguous_not_a_pick() -> Bool {
   let expected_first = adjudicate_with(
-    pulls: PullRequestsRead { pulls: [] },
-    remotes: RemoteBranchesRead {
+    pulls: gunbc.roadmap_publish.PullRequestsRead { pulls: [] },
+    remotes: gunbc.roadmap_publish.RemoteBranchesRead {
       branches: [
         fixture_ref(branch: fixture_branch as String, sha: fixture_expected),
         fixture_ref(branch: fixture_branch as String, sha: fixture_older),
@@ -224,8 +224,8 @@ test fn two_remote_refs_for_one_branch_are_ambiguous_not_a_pick() -> Bool {
     },
   )
   let stale_first = adjudicate_with(
-    pulls: PullRequestsRead { pulls: [] },
-    remotes: RemoteBranchesRead {
+    pulls: gunbc.roadmap_publish.PullRequestsRead { pulls: [] },
+    remotes: gunbc.roadmap_publish.RemoteBranchesRead {
       branches: [
         fixture_ref(branch: fixture_branch as String, sha: fixture_older),
         fixture_ref(branch: fixture_branch as String, sha: fixture_expected),
@@ -239,8 +239,8 @@ test fn two_remote_refs_for_one_branch_are_ambiguous_not_a_pick() -> Bool {
 
 test fn one_remote_ref_still_binds_and_a_sibling_branch_does_not_count() -> Bool {
   let outcome = adjudicate_with(
-    pulls: PullRequestsRead { pulls: [] },
-    remotes: RemoteBranchesRead {
+    pulls: gunbc.roadmap_publish.PullRequestsRead { pulls: [] },
+    remotes: gunbc.roadmap_publish.RemoteBranchesRead {
       branches: [
         fixture_ref(branch: fixture_branch as String, sha: fixture_expected),
         fixture_ref(branch: "other", sha: fixture_older),
@@ -256,8 +256,8 @@ test fn one_remote_ref_still_binds_and_a_sibling_branch_does_not_count() -> Bool
 
 test fn an_unpushed_branch_reports_how_many_refs_it_read() -> Bool {
   let outcome = adjudicate_with(
-    pulls: PullRequestsRead { pulls: [] },
-    remotes: RemoteBranchesRead {
+    pulls: gunbc.roadmap_publish.PullRequestsRead { pulls: [] },
+    remotes: gunbc.roadmap_publish.RemoteBranchesRead {
       branches: [
         fixture_ref(branch: "main", sha: fixture_older),
         fixture_ref(branch: "other", sha: fixture_older),
@@ -280,14 +280,14 @@ test fn an_unpushed_branch_reports_how_many_refs_it_read() -> Bool {
 // AN UNREADABLE OBSERVATION MUST NOT READ AS 'NOT PUBLISHED'. Both are negative, so a claim asserting only 'it did not conclude bound' passes against the collapse — and the collapse points the operator at the wrong action entirely: pushing a branch that may already be pushed, because the truth is that nothing was learned.
 test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool {
   match adjudicate_with(
-    pulls: PullRequestsUnreadable {
-      cause: PullRequestStatusRefused {
+    pulls: gunbc.roadmap_publish.PullRequestsUnreadable {
+      cause: gunbc.roadmap_publish.PullRequestStatusRefused {
         repository: "gunb-ai/gunbc",
         status: 401,
         body: "Bad credentials",
       },
     },
-    remotes: RemoteBranchesRead { branches: [] },
+    remotes: gunbc.roadmap_publish.RemoteBranchesRead { branches: [] },
   ) {
     PublicationObservationRefused { detail } =>
       string_contains(s: detail, pattern: "401")
@@ -305,8 +305,8 @@ test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool
 
 test fn unreadable_remotes_with_no_pull_request_refuse_rather_than_report_unpublished() -> Bool {
   match adjudicate_with(
-    pulls: PullRequestsRead { pulls: [] },
-    remotes: RemoteBranchesUnreadable { cause: RefAdvertisementRefused { remote: "origin" as std.types.NonEmptyStr, exit_code: 124, stderr: "ls-remote timed out" } },
+    pulls: gunbc.roadmap_publish.PullRequestsRead { pulls: [] },
+    remotes: gunbc.roadmap_publish.RemoteBranchesUnreadable { cause: gunbc.roadmap_publish.RefAdvertisementRefused { remote: "origin" as std.types.NonEmptyStr, exit_code: 124, stderr: "ls-remote timed out" } },
   ) {
     PublicationObservationRefused { detail } =>
       string_contains(s: detail, pattern: "ls-remote timed out")
@@ -325,19 +325,19 @@ test fn only_a_bound_pull_request_offers_the_expected_head() -> Bool {
   let bound = adjudicate_with(pulls: one_pull(sha: fixture_expected, draft: false), remotes: remotes_deliberately_unreadable())
   let diverged = adjudicate_with(pulls: one_pull(sha: fixture_older, draft: false), remotes: remotes_deliberately_unreadable())
   let ref_only = adjudicate_with(
-    pulls: PullRequestsRead { pulls: [] },
-    remotes: RemoteBranchesRead {
+    pulls: gunbc.roadmap_publish.PullRequestsRead { pulls: [] },
+    remotes: gunbc.roadmap_publish.RemoteBranchesRead {
       branches: [fixture_ref(branch: fixture_branch as String, sha: fixture_expected)],
     },
   )
   let refused = adjudicate_with(
-    pulls: PullRequestsUnreadable {
-      cause: PullRequestCredentialUnavailable {
+    pulls: gunbc.roadmap_publish.PullRequestsUnreadable {
+      cause: gunbc.roadmap_publish.PullRequestCredentialUnavailable {
         repository: "gunb-ai/gunbc",
         reason: "GITHUB_TOKEN is not set in the belt's environment",
       },
     },
-    remotes: RemoteBranchesRead { branches: [] },
+    remotes: gunbc.roadmap_publish.RemoteBranchesRead { branches: [] },
   )
   publication_offers_the_expected_head(outcome: bound)
     && !publication_offers_the_expected_head(outcome: diverged)
@@ -534,7 +534,7 @@ test fn a_bound_receipt_binds_the_subject_head_and_no_other() -> Bool {
 test fn a_stray_head_cannot_make_a_receipt_evidence_for_the_head_it_names() -> Bool {
   match publication_evidence_for(
     expected: subject_for(head: fixture_older),
-    source: ReceiptSourcePresent { text: doctored_bound_receipt_carrying_a_stray_head() },
+    source: gunbc.roadmap_publish.ReceiptSourcePresent { text: doctored_bound_receipt_carrying_a_stray_head() },
   ) {
     EvidenceForSubject { receipt: _ } => false
     EvidenceAbsent => false
@@ -594,7 +594,7 @@ test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
       receipt: publication_receipt_of(
         subject: subject_for(head: fixture_expected),
         outcome: adjudicate_with(
-          pulls: PullRequestsRead {
+          pulls: gunbc.roadmap_publish.PullRequestsRead {
             pulls: [
               fixture_pull(
                 number: 11,
@@ -655,7 +655,7 @@ test fn a_subject_against_a_non_default_base_still_round_trips_its_repository() 
         && receipt.subject.repository.full_name == "gunb-ai/gunbc"
         && match publication_evidence_for(
              expected: subject,
-             source: ReceiptSourcePresent { text: text },
+             source: gunbc.roadmap_publish.ReceiptSourcePresent { text: text },
            ) {
              EvidenceForSubject { receipt: _ } => true
              EvidenceAbsent => false
@@ -687,7 +687,7 @@ data subject_check_witness_note: String = "THE NEGATIVE HALF IS THE POINT. A cla
 fn evidence_for_subject_of(expected: gunbc.roadmap_publish.RoadmapPublicationSubject, receipt: String) -> gunbc.roadmap_publish.PublicationEvidence {
   publication_evidence_for(
     expected: expected,
-    source: ReceiptSourcePresent { text: receipt },
+    source: gunbc.roadmap_publish.ReceiptSourcePresent { text: receipt },
   )
 }
 
@@ -823,15 +823,15 @@ test fn an_absent_receipt_is_absent_and_present_but_unusable_ones_refuse() -> Bo
   )
   let empty = publication_evidence_for(
     expected: subject_for(head: fixture_expected),
-    source: ReceiptSourcePresent { text: "   " },
+    source: gunbc.roadmap_publish.ReceiptSourcePresent { text: "   " },
   )
   let garbage = publication_evidence_for(
     expected: subject_for(head: fixture_expected),
-    source: ReceiptSourcePresent { text: "not a receipt" },
+    source: gunbc.roadmap_publish.ReceiptSourcePresent { text: "not a receipt" },
   )
   let faulted = publication_evidence_for(
     expected: subject_for(head: fixture_expected),
-    source: ReceiptSourceUnreadable { detail: "input/output error" },
+    source: gunbc.roadmap_publish.ReceiptSourceUnreadable { detail: "input/output error" },
   )
   evidence_key(e: absent) == "absent"
     && evidence_key(e: empty) == "unreadable"
@@ -863,20 +863,20 @@ fn fixture_repository_name() -> String { "gunb-ai/gunbc" }
 
 fn fixture_pull_request_failures() -> List<gunbc.roadmap_publish.PullRequestReadFailure> {
   [
-    PullRequestCredentialUnavailable {
+    gunbc.roadmap_publish.PullRequestCredentialUnavailable {
       repository: fixture_repository_name(),
       reason: "GITHUB_TOKEN is not set in the belt's environment",
     },
-    PullRequestStatusRefused {
+    gunbc.roadmap_publish.PullRequestStatusRefused {
       repository: fixture_repository_name(),
       status: 401,
       body: "Bad credentials",
     },
-    PullRequestTransportRefused {
+    gunbc.roadmap_publish.PullRequestTransportRefused {
       repository: fixture_repository_name(),
       cause: "connection refused" as std.types.NonEmptyStr,
     },
-    PullRequestBodyUndecodable {
+    gunbc.roadmap_publish.PullRequestBodyUndecodable {
       repository: fixture_repository_name(),
       status: 200,
       cause: "response body was not valid utf-8" as std.types.NonEmptyStr,
@@ -896,7 +896,7 @@ test fn four_pull_request_read_failures_stay_four_distinct_causes() -> Bool {
 // THE RENDERER NAMES github.Pulls.List THROUGH ITS OperationRef, following the discipline ls_remote_operation_ref_note derives for the sibling reader: a path-and-query spelling is ONE realization of an operation and changes when the invocation is derived, while the operation identity does not. So a refusal that quoted /repos/OWNER/REPO/pulls would carry a fact with a shorter shelf life than the failure it describes.\n\nEACH ARM MUST ALSO CARRY WHAT ITS OWN REMEDY NEEDS, which is why this asserts fields rather than just the operation label. A status refusal is actionable only with the status AND the body - the body is usually the only place the remote says why, and 401 alone does not distinguish a missing scope from a revoked token. A transport refusal has no status to carry, and asserting its absence is the point: a sentinel zero would be a plausible-looking value standing where the honest answer is that the question does not apply.
 test fn a_status_refusal_renders_operation_repository_status_and_body() -> Bool {
   let rendered = render_pull_request_read_failure(
-    cause: PullRequestStatusRefused {
+    cause: gunbc.roadmap_publish.PullRequestStatusRefused {
       repository: fixture_repository_name(),
       status: 401,
       body: "Bad credentials",
@@ -911,7 +911,7 @@ test fn a_status_refusal_renders_operation_repository_status_and_body() -> Bool 
 
 test fn a_transport_refusal_carries_no_status_at_all() -> Bool {
   let rendered = render_pull_request_read_failure(
-    cause: PullRequestTransportRefused {
+    cause: gunbc.roadmap_publish.PullRequestTransportRefused {
       repository: fixture_repository_name(),
       cause: "connection refused" as std.types.NonEmptyStr,
     },
@@ -928,8 +928,8 @@ test fn every_pull_request_read_failure_refuses_rather_than_reporting_unpublishe
   all(
     fixture_pull_request_failures(),
     c => match adjudicate_with(
-      pulls: PullRequestsUnreadable { cause: c },
-      remotes: RemoteBranchesRead { branches: [] },
+      pulls: gunbc.roadmap_publish.PullRequestsUnreadable { cause: c },
+      remotes: gunbc.roadmap_publish.RemoteBranchesRead { branches: [] },
     ) {
       PublicationObservationRefused { detail } =>
         string_contains(s: detail, pattern: "github.Pulls.List")

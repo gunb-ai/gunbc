@@ -5,8 +5,8 @@ data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6
 
 data witness_jetpack5_release_asset_digest_hex: String = "721af44a33380893cb35c2124832e64563e9abbd40b4c0280167110ff390dead"
 
-fn witness_runtime_release_asset_digest_present(hex: String) -> SparkServingReadbackPresent {
-  SparkServingReadbackPresent { value: hex }
+fn witness_runtime_release_asset_digest_present(hex: String) -> gunbc.spark_serving_readback_parse.SparkServingReadbackPresent {
+  gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: hex }
 }
 
 data witness_model_digest: String = "sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05"
@@ -23,8 +23,8 @@ data witness_nvidia_driver_too_old_wire: String = "549.12.01"
 
 data witness_runtime_receipt_json_positive: String = "{\"release_asset_digest_hex\":\"79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237\"}"
 
-fn witness_nvidia_driver_present(wire: String) -> SparkServingReadbackPresent {
-  SparkServingReadbackPresent { value: wire }
+fn witness_nvidia_driver_present(wire: String) -> gunbc.spark_serving_readback_parse.SparkServingReadbackPresent {
+  gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: wire }
 }
 
 fn readback_absent() -> gunbc.spark_serving_loaded_release.SparkServingReadback {
@@ -44,7 +44,7 @@ fn readback_absent() -> gunbc.spark_serving_loaded_release.SparkServingReadback 
 fn readback_unreachable() -> gunbc.spark_serving_loaded_release.SparkServingReadback {
   gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
-    unit_outcome: SparkServingUnitObservationRefused {
+    unit_outcome: gunbc.spark_serving_loaded_release.SparkServingUnitObservationRefused {
       cause: "unit LoadState probe leg did not run" as std.types.NonEmptyStr,
     },
     runtime_version: SparkServingReadbackAbsent,
@@ -61,7 +61,7 @@ fn readback_active_incomplete() -> gunbc.spark_serving_loaded_release.SparkServi
   gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
-    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
     runtime_release_asset_digest: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
@@ -75,11 +75,11 @@ fn readback_active_complete() -> gunbc.spark_serving_loaded_release.SparkServing
   gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
-    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
     runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
-    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
-    model_tag: SparkServingReadbackPresent { value: "20b" },
-    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
   }
@@ -205,11 +205,11 @@ test fn different_runtime_version_refuses_loaded_identity() -> Bool {
   match derive_loaded_spark_serving_release_identity(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv6",
     unit_outcome: SparkServingUnitActive,
-    runtime_version: SparkServingReadbackPresent { value: "0.11.0-rc1" },
+    runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "0.11.0-rc1" },
     runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
-    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
-    model_tag: SparkServingReadbackPresent { value: "20b" },
-    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
   }) {
@@ -222,11 +222,11 @@ test fn different_runtime_version_refuses_observation() -> Bool {
   match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv6",
     unit_outcome: SparkServingUnitActive,
-    runtime_version: SparkServingReadbackPresent { value: "10.11.0" },
+    runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "10.11.0" },
     runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
-    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
-    model_tag: SparkServingReadbackPresent { value: "20b" },
-    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
   }) {
@@ -274,13 +274,13 @@ test fn missing_runtime_receipt_probe_refuses_active_observation() -> Bool {
   match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
-    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: SparkServingReadbackRefused {
+    runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_release_asset_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackRefused {
       cause: "runtime install receipt probe failed exit=1 stderr=No such file" as std.types.NonEmptyStr,
     },
-    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
-    model_tag: SparkServingReadbackPresent { value: "20b" },
-    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
   }) {
@@ -336,7 +336,7 @@ test fn api_field_refusal_surfaces_before_fingerprint_refusal() -> Bool {
   match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
-    runtime_version: SparkServingReadbackRefused {
+    runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackRefused {
       cause: "ollama /api/version body is not parseable JSON" as std.types.NonEmptyStr,
     },
     runtime_release_asset_digest: SparkServingReadbackAbsent,
@@ -355,7 +355,7 @@ test fn api_field_refusal_surfaces_before_fingerprint_refusal() -> Bool {
 
 test fn observation_report_refused_is_not_success() -> Bool {
   !spark_serving_observation_report_succeeded(
-    report: SparkServingObservationReportRefused {
+    report: gunbc.spark_serving_observe.SparkServingObservationReportRefused {
       cause: "attempt identity is not a safe path segment" as std.types.NonEmptyStr,
     },
   )
@@ -365,10 +365,10 @@ test fn per_host_refusal_report_is_not_success() -> Bool {
   match derive_spark_serving_observation(readback: readback_active_complete()) {
     SparkServingObserved { host: _, loaded_release: loaded } =>
       !spark_serving_observation_report_succeeded(
-        report: SparkServingObservationsProduced {
-          first: SparkServingObserved { host: "srv5", loaded_release: loaded },
+        report: gunbc.spark_serving_observe.SparkServingObservationsProduced {
+          first: gunbc.spark_serving_release.SparkServingObserved { host: "srv5", loaded_release: loaded },
           more: [
-            SparkServingObservationRefused {
+            gunbc.spark_serving_release.SparkServingObservationRefused {
               host: "srv6",
               cause: "gunbc-spark-serving.service is inactive" as std.types.NonEmptyStr,
             },
@@ -384,11 +384,11 @@ test fn unobserved_nvidia_driver_refuses_active_observation() -> Bool {
   match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
-    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
     runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
-    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
-    model_tag: SparkServingReadbackPresent { value: "20b" },
-    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
   }) {
@@ -403,11 +403,11 @@ test fn driver_too_old_refuses_active_observation() -> Bool {
   match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
-    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
     runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
-    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
-    model_tag: SparkServingReadbackPresent { value: "20b" },
-    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_too_old_wire),
     bind_address: SparkServingReadbackAbsent,
   }) {
@@ -422,18 +422,18 @@ test fn driver_too_old_report_is_not_success() -> Bool {
   match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
-    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
     runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
-    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
-    model_tag: SparkServingReadbackPresent { value: "20b" },
-    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_too_old_wire),
     bind_address: SparkServingReadbackAbsent,
   }) {
     SparkServingObservationRefused { host: h, cause: c } =>
       !spark_serving_observation_report_succeeded(
-        report: SparkServingObservationsProduced {
-          first: SparkServingObservationRefused { host: h, cause: c },
+        report: gunbc.spark_serving_observe.SparkServingObservationsProduced {
+          first: gunbc.spark_serving_release.SparkServingObservationRefused { host: h, cause: c },
           more: [],
         },
       )
@@ -455,11 +455,11 @@ test fn version_only_without_asset_digest_refuses_loaded_identity() -> Bool {
   match derive_loaded_spark_serving_release_identity(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
-    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
     runtime_release_asset_digest: SparkServingReadbackAbsent,
-    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
-    model_tag: SparkServingReadbackPresent { value: "20b" },
-    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: witness_model_digest },
     nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
   }) {
@@ -487,7 +487,7 @@ test fn jetpack5_asset_digest_does_not_match_required_closure_digest() -> Bool {
 // treating absent as a probe failure would red the step on a correct reading of a bare host.
 test fn refused_observation_was_not_made() -> Bool {
   spark_serving_observation_was_made(
-    observation: SparkServingObservationRefused {
+    observation: gunbc.spark_serving_release.SparkServingObservationRefused {
       host: "srv5",
       cause: "ssh exec refused" as std.types.NonEmptyStr,
     },
@@ -495,17 +495,17 @@ test fn refused_observation_was_not_made() -> Bool {
 }
 
 test fn absent_observation_was_made_though_it_did_not_succeed() -> Bool {
-  let obs = SparkServingAbsent { host: "srv5" }
+  let obs = gunbc.spark_serving_release.SparkServingAbsent { host: "srv5" }
   spark_serving_observation_was_made(observation: obs)
     && spark_serving_observation_succeeded(observation: obs) == false
 }
 
 test fn report_with_a_refused_host_refuses_even_when_a_sibling_answered() -> Bool {
   spark_serving_report_observations_were_made(
-    report: SparkServingObservationsProduced {
-      first: SparkServingAbsent { host: "srv5" },
+    report: gunbc.spark_serving_observe.SparkServingObservationsProduced {
+      first: gunbc.spark_serving_release.SparkServingAbsent { host: "srv5" },
       more: [
-        SparkServingObservationRefused {
+        gunbc.spark_serving_release.SparkServingObservationRefused {
           host: "srv6",
           cause: "ssh exec refused" as std.types.NonEmptyStr,
         },
@@ -516,9 +516,9 @@ test fn report_with_a_refused_host_refuses_even_when_a_sibling_answered() -> Boo
 
 test fn report_of_two_bare_hosts_counts_as_observed() -> Bool {
   spark_serving_report_observations_were_made(
-    report: SparkServingObservationsProduced {
-      first: SparkServingAbsent { host: "srv5" },
-      more: [SparkServingAbsent { host: "srv6" }],
+    report: gunbc.spark_serving_observe.SparkServingObservationsProduced {
+      first: gunbc.spark_serving_release.SparkServingAbsent { host: "srv5" },
+      more: [gunbc.spark_serving_release.SparkServingAbsent { host: "srv6" }],
     },
   )
 }
@@ -532,7 +532,7 @@ test fn empty_observation_list_produces_no_report_rather_than_a_clean_one() -> B
 
 test fn a_refused_report_is_never_read_as_observed() -> Bool {
   spark_serving_report_observations_were_made(
-    report: SparkServingObservationReportRefused {
+    report: gunbc.spark_serving_observe.SparkServingObservationReportRefused {
       cause: "no host was probed" as std.types.NonEmptyStr,
     },
   ) == false

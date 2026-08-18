@@ -4,7 +4,7 @@ module v2.test.grounding_typescript.sg_claims
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 fn ts_g2_claim_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^ts_g2_claim_fail_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ts_g2_claim_fail_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -16,27 +16,27 @@ fn ts_g2_source_carrier_eq(a: Node, b: Node) -> Bool {
 }
 
 fn ts_g2_sg1_symbol_evidence() -> v2.std.grounding.GroundingEvidenceSchema {
-  Sg1Evidence { source_carrier: symbol_kernel_type_node() }
+  v2.std.grounding.Sg1Evidence { source_carrier: symbol_kernel_type_node() }
 }
 
 fn ts_g2_sg1_bool_evidence() -> v2.std.grounding.GroundingEvidenceSchema {
-  Sg1Evidence { source_carrier: bool_node() }
+  v2.std.grounding.Sg1Evidence { source_carrier: bool_node() }
 }
 
 fn ts_g2_sg1_text_string_evidence() -> v2.std.grounding.GroundingEvidenceSchema {
-  Sg1Evidence { source_carrier: ts_std_text_string_type_node() }
+  v2.std.grounding.Sg1Evidence { source_carrier: ts_std_text_string_type_node() }
 }
 
 fn ts_g2_sg2_evidence() -> v2.std.grounding.GroundingEvidenceSchema {
-  Sg2Evidence { source_carrier: symbol_kernel_type_node() }
+  v2.std.grounding.Sg2Evidence { source_carrier: symbol_kernel_type_node() }
 }
 
 fn ts_g2_sg5_set_absence_evidence() -> v2.std.grounding.GroundingEvidenceSchema {
-  Sg5Evidence { source_carrier: target_collection_set_carrier_node() }
+  v2.std.grounding.Sg5Evidence { source_carrier: target_collection_set_carrier_node() }
 }
 
 fn ts_g2_sg5_free_monoid_absence_evidence() -> v2.std.grounding.GroundingEvidenceSchema {
-  Sg5Evidence { source_carrier: target_carrier_free_monoid_node() }
+  v2.std.grounding.Sg5Evidence { source_carrier: target_carrier_free_monoid_node() }
 }
 
 fn ts_g2_sg1_symbol_evidence_targets_canonical_carrier() -> Bool {

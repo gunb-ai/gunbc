@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn c_run_probe_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^c_emit_host_run_probe } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^c_emit_host_run_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -30,20 +30,20 @@ fn c_fixed_source_row(source_text: String) -> v2.std.host_transport.EmitHostRunt
       workspace: [
         v2.std.host_transport.WorkspaceFile {
           path: "fixture.c",
-          content: FixedText { text: source_text }
+          content: v2.std.host_transport.FixedText { text: source_text }
         }
       ],
       build: [
         v2.std.host_transport.ProcessInvocation {
-          program: HostToolProgram { executable: "cc" },
-          args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
+          program: v2.std.host_transport.HostToolProgram { executable: "cc" },
+          args: [v2.std.host_transport.LiteralArg { text: "fixture.c" }, v2.std.host_transport.LiteralArg { text: "-o" }, v2.std.host_transport.LiteralArg { text: "fixture" }]
         }
       ],
       run: v2.std.host_transport.ProcessInvocation {
-        program: ProducedProgram { path: "fixture" },
+        program: v2.std.host_transport.ProducedProgram { path: "fixture" },
         args: []
       },
-      runtime_value_codec: FixedWidthBytes { width: 5 }
+      runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
     },
     runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
   }

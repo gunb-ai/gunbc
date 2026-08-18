@@ -27,11 +27,11 @@ data legacy_cli_tool_ingest_note: String = "The discriminating RED, and the migr
 fn admit_legacy_cli_tool(tool: CliTool) -> PinAdmission<CliTool> {
   match tool.min_version {
     Present { value: c } =>
-      PinRefused {
+      extdeps.pin.PinRefused {
         subject: tool,
-        cause: ConstraintIsNotIdentity { constraint: c }
+        cause: extdeps.pin.ConstraintIsNotIdentity { constraint: c }
       }
     Absent =>
-      PinRefused { subject: tool, cause: PinAbsent }
+      extdeps.pin.PinRefused { subject: tool, cause: PinAbsent }
   }
 }

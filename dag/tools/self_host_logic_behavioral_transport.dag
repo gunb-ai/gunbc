@@ -130,7 +130,7 @@ fn slb_comparison_observation() -> v2.compiler.self_host.promotion_admission.Beh
   let ran = staged && build.success
 
   let build_verdict = if !staged {
-    ObservationUnavailable { cause: ^slb_stage_incomplete }
+    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_stage_incomplete }
   } else if build.success {
     Observed { value: BuildGreen }
   } else {
@@ -142,29 +142,29 @@ fn slb_comparison_observation() -> v2.compiler.self_host.promotion_admission.Beh
     pattern: slb_cases_marker()
   )
   let equivalence_verdict = if !ran {
-    ObservationUnavailable { cause: ^slb_comparison_did_not_run }
+    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_comparison_did_not_run }
   } else if !compared_declared_corpus {
-    ObservationUnavailable { cause: ^slb_comparison_population_unreported }
+    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_comparison_population_unreported }
   } else if pass_run.success
     && string_contains(s: pass_run.stdout, pattern: slb_receipt_pass_marker) {
     Observed { value: BehaviorAgrees }
   } else if string_contains(s: pass_run.stdout, pattern: slb_receipt_fail_marker) {
-    Observed { value: BehaviorDiverges { at_case: pass_run.stdout } }
+    Observed { value: v2.compiler.self_host.promotion_admission.BehaviorDiverges { at_case: pass_run.stdout } }
   } else {
-    ObservationUnavailable { cause: ^slb_comparison_unreported }
+    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_comparison_unreported }
   }
 
   let fault_verdict = if !ran {
-    ObservationUnavailable { cause: ^slb_fault_run_did_not_run }
+    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_fault_run_did_not_run }
   } else if fault_run.success {
     Observed {
-      value: FaultNotCaught { at_case: "planted fault run exited zero" }
+      value: v2.compiler.self_host.promotion_admission.FaultNotCaught { at_case: "planted fault run exited zero" }
     }
   } else if string_contains(s: fault_run.stdout, pattern: slb_cases_marker())
     && string_contains(s: fault_run.stdout, pattern: slb_receipt_fail_marker) {
     Observed { value: FaultCaught }
   } else {
-    ObservationUnavailable { cause: ^slb_fault_run_unreported }
+    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_fault_run_unreported }
   }
 
   v2.compiler.self_host.promotion_admission.BehavioralComparisonObservation {

@@ -11,9 +11,9 @@ data green_by_vacancy_note: String = "The operator finding this file exists to a
 
 fn fixture_complete() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
-    item: SemanticCapabilityItem { capability: AsymptoticClassAndDominance },
+    item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: AsymptoticClassAndDominance },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "classify_complexity"),
-    disposition: CompleteInV2 {
+    disposition: gunbc.v1_complexity_capability_census.CompleteInV2 {
       carrier: decl_ref(module_path: "v2.lens.cost", decl_name: "asymptotic_class_of_cost"),
       note: "fixture" as std.types.NonEmptyStr
     }
@@ -22,9 +22,9 @@ fn fixture_complete() -> gunbc.v1_complexity_capability_census.V1ComplexityInven
 
 fn fixture_integration() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
-    item: SemanticCapabilityItem { capability: CallGraphAndScc },
+    item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: CallGraphAndScc },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "build_scc_index"),
-    disposition: IntegrationOwed {
+    disposition: gunbc.v1_complexity_capability_census.IntegrationOwed {
       substrate_carrier: decl_ref(module_path: "std.graph", decl_name: "graph_multi_node_scc_members"),
       phase: ParityC4Interprocedural,
       note: "fixture" as std.types.NonEmptyStr
@@ -34,9 +34,9 @@ fn fixture_integration() -> gunbc.v1_complexity_capability_census.V1ComplexityIn
 
 fn fixture_migration() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
-    item: LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo },
+    item: gunbc.v1_complexity_capability_census.LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "evict_summary"),
-    disposition: MigrationOwed {
+    disposition: gunbc.v1_complexity_capability_census.MigrationOwed {
       destination: MigrateToV2LensCost,
       producer: FactsFromCostLens,
       phase: ParityC1ExpressionAuthority,
@@ -47,9 +47,9 @@ fn fixture_migration() -> gunbc.v1_complexity_capability_census.V1ComplexityInve
 
 fn fixture_superseded() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
-    item: SemanticCapabilityItem { capability: ParserProgressFactProduction },
+    item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: ParserProgressFactProduction },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "collect_parser_progress_edges"),
-    disposition: SupersededByBetterModel {
+    disposition: gunbc.v1_complexity_capability_census.SupersededByBetterModel {
       superseded_by: decl_ref(module_path: "std.termination", decl_name: "DescentEvidence"),
       note: "fixture — uninhabited by the roster, proven here so the arm is not green-by-vacancy" as std.types.NonEmptyStr
     }
@@ -58,10 +58,10 @@ fn fixture_superseded() -> gunbc.v1_complexity_capability_census.V1ComplexityInv
 
 fn fixture_retirement_owed() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
-    item: LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
+    item: gunbc.v1_complexity_capability_census.LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
-    disposition: RetirementOwed {
-      trigger: RetiresWhenReplacementExecutes { replacement: ParserProgressFactProduction },
+    disposition: gunbc.v1_complexity_capability_census.RetirementOwed {
+      trigger: gunbc.v1_complexity_capability_census.RetiresWhenReplacementExecutes { replacement: ParserProgressFactProduction },
       note: "fixture" as std.types.NonEmptyStr
     }
   }
@@ -69,7 +69,7 @@ fn fixture_retirement_owed() -> gunbc.v1_complexity_capability_census.V1Complexi
 
 fn fixture_retired() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
-    item: LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
+    item: gunbc.v1_complexity_capability_census.LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
     disposition: Retired {
       reason: "fixture — uninhabited by the roster, proven here so the arm is not green-by-vacancy" as std.types.NonEmptyStr
@@ -218,18 +218,18 @@ test fn w_roster_identities_are_distinct() -> Bool {
 
 test fn w_distinctness_fold_reds_on_a_planted_duplicate() -> Bool {
   let planted = [
-    inventory_item_key(item: SemanticCapabilityItem { capability: CallGraphAndScc }),
-    inventory_item_key(item: SemanticCapabilityItem { capability: AsymptoticClassAndDominance }),
-    inventory_item_key(item: SemanticCapabilityItem { capability: CallGraphAndScc })
+    inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: CallGraphAndScc }),
+    inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: AsymptoticClassAndDominance }),
+    inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: CallGraphAndScc })
   ]
   let dup_free = [
-    inventory_item_key(item: SemanticCapabilityItem { capability: CallGraphAndScc }),
-    inventory_item_key(item: SemanticCapabilityItem { capability: AsymptoticClassAndDominance })
+    inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: CallGraphAndScc }),
+    inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: AsymptoticClassAndDominance })
   ]
   !keys_are_distinct(keys: planted) &&
   keys_are_distinct(keys: dup_free) &&
-  inventory_item_key(item: LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo }) !=
-    inventory_item_key(item: LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: CallGraphAndScc })
+  inventory_item_key(item: gunbc.v1_complexity_capability_census.LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo }) !=
+    inventory_item_key(item: gunbc.v1_complexity_capability_census.LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: CallGraphAndScc })
 }
 
 

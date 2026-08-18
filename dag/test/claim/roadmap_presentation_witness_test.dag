@@ -22,7 +22,7 @@ fn fx_specimen_activity() -> gunbc.roadmap_presentation.ActivityView {
   activity_view_from_parts(
     segments: fx_specimen_segments(),
     remaining: 4,
-    process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "" },
     current_activity: "Worked for 6m 34s",
   )
 }
@@ -68,7 +68,7 @@ test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
   match activity_view_from_parts(
     segments: segments,
     remaining: 5,
-    process: WorkerProcessRunning { command: "codex exec" },
+    process: gunbc.worker_lifecycle.WorkerProcessRunning { command: "codex exec" },
     current_activity: "",
   ) {
     ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } =>
@@ -90,7 +90,7 @@ test fn witness_refused_segment_projects_located_reason() -> Bool {
   match activity_view_from_parts(
     segments: segments,
     remaining: 6,
-    process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "" },
     current_activity: "",
   ) {
     ActiveWorkRefused { summary, located_reason, evidence: _ } =>
@@ -111,7 +111,7 @@ test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
   match activity_view_from_parts(
     segments: segments,
     remaining: 6,
-    process: WorkerProcessExited { exit_code: 1, last_command: "" },
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 1, last_command: "" },
     current_activity: "",
   ) {
     ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention, evidence: _ } =>
@@ -167,7 +167,7 @@ test fn witness_no_attempt_projects_zero_furniture() -> Bool {
 }
 
 test fn witness_unobservable_preserves_located_reason() -> Bool {
-  match activity_view_of(facts: AttemptUnobservable { reason: "attempt state file unreadable: permission denied" }) {
+  match activity_view_of(facts: gunbc.roadmap_presentation.AttemptUnobservable { reason: "attempt state file unreadable: permission denied" }) {
     ActivityUnobservable { reason } => reason == "attempt state file unreadable: permission denied"
     NoActiveWork => false
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
@@ -190,7 +190,7 @@ test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
   match activity_view_from_parts(
     segments: segments,
     remaining: 0,
-    process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "" },
     current_activity: "",
   ) {
     CompletedWork { outcome, evidence: _ } => outcome == "All obligations complete"
@@ -205,7 +205,7 @@ test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
 // The two-axis discrimination over the TYPED scheduling position: a SchedulingReady row's dispatch is Available AND Primary; an upcoming/unplanned row's dispatch is the preserved manual override — fully operable, but AvailableAsOverride and Secondary. The RED control is the conjunction: if availability implied priority (the A1 ten-equal-pills defect), the override arm would surface as primary and the second assertion fails; if the override were dropped entirely (losing the deliberate out-of-order path), the secondary list would be empty and it also fails.
 test fn witness_ready_dispatch_is_primary_override_is_secondary() -> Bool {
   let ready_view = action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle)
-  let blocked_view = action_view(scheduling: SchedulingUpcoming { blockers: ["a2-parent-1"] }, lifecycle: OpenLifecycle)
+  let blocked_view = action_view(scheduling: gunbc.roadmap_presentation.SchedulingUpcoming { blockers: ["a2-parent-1"] }, lifecycle: OpenLifecycle)
   let ready_ok = match ready_view.primary_action {
     Present { value: a } =>
       match a.kind { DispatchAction => true ClearSessionAction => false }
@@ -266,7 +266,7 @@ fn action_view_has_no_clear(v: gunbc.roadmap_presentation.ActionView) -> Bool {
 
 test fn witness_action_view_never_fabricates_cleanup() -> Bool {
   action_view_has_no_clear(v: action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle))
-    && action_view_has_no_clear(v: action_view(scheduling: SchedulingUpcoming { blockers: [] }, lifecycle: OpenLifecycle))
+    && action_view_has_no_clear(v: action_view(scheduling: gunbc.roadmap_presentation.SchedulingUpcoming { blockers: [] }, lifecycle: OpenLifecycle))
     && action_view_has_no_clear(v: action_view(scheduling: SchedulingReady, lifecycle: ReviewLifecycle))
 }
 
@@ -274,7 +274,7 @@ data session_facts_decided_note: String = "The decided session line and title de
 
 test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
   let v = session_facts_view(
-    process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
     process_detail: "exit=0 last-command=codex",
     provider: "codex",
     configured_provider: "codex",
@@ -284,7 +284,7 @@ test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
     cleanup_allowed: true,
     cleanup_detail: "only retained tmux session metadata will be removed")
   let bare = session_facts_view(
-    process: WorkerProcessRunning { command: "codex exec" },
+    process: gunbc.worker_lifecycle.WorkerProcessRunning { command: "codex exec" },
     process_detail: "",
     provider: "codex",
     configured_provider: "codex",
@@ -306,8 +306,8 @@ test fn witness_lifecycle_axes_discriminate() -> Bool {
   let done_line_node = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000004", id: "a2-review", done: true, content: "review work")
   let signed_node = gunbc.roadmap_authority.sign(rn: open_node, s: gunbc.roadmap_authority.signed(
     by: "operator",
-    works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_lifecycle_axes_discriminate", executed_on: "2026-08-01" },
-    scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
+    works: gunbc.roadmap_status.RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_lifecycle_axes_discriminate", executed_on: "2026-08-01" },
+    scope_equivalent: gunbc.roadmap_status.HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
     as_expected: true))
   let superseded_node = gunbc.roadmap_authority.superseded(identity: "rnfx_A2PRES0000000000000005", id: "a2-sup", by: "a2-open", content: "old shape")
   work_lifecycle_key(l: work_lifecycle(rn: open_node, merged: [])) == "open"
@@ -382,8 +382,8 @@ test fn witness_scheduling_projects_typed_positions() -> Bool {
 }
 
 test fn witness_dependency_line_only_for_multi_blocker_upcoming() -> Bool {
-  let two = scheduling_dependency_line(s: SchedulingUpcoming { blockers: ["a2-parent-1", "a2-parent-2"] })
-  let one = scheduling_dependency_line(s: SchedulingUpcoming { blockers: ["a2-parent-1"] })
+  let two = scheduling_dependency_line(s: gunbc.roadmap_presentation.SchedulingUpcoming { blockers: ["a2-parent-1", "a2-parent-2"] })
+  let one = scheduling_dependency_line(s: gunbc.roadmap_presentation.SchedulingUpcoming { blockers: ["a2-parent-1"] })
   let ready = scheduling_dependency_line(s: SchedulingReady)
   (match two { Present { value: line } => line == "requires all: a2-parent-1, a2-parent-2" Absent => false })
     && (match one { Absent => true Present { value: _ } => false })
@@ -530,7 +530,7 @@ test fn witness_workspace_impact_narrates_once() -> Bool {
         && located_reason == "GET /workflow.json refused: connection refused"
     ObservationsNominal => false
   }
-  let unobs = ActivityUnobservable { reason: "GET /workflow.json refused: connection refused" }
+  let unobs = gunbc.roadmap_presentation.ActivityUnobservable { reason: "GET /workflow.json refused: connection refused" }
   impact_ok
     && (match nominal { ObservationsNominal => true WorkspaceObservationImpact { summary: _, located_reason: _ } => false })
     && workspace_covers_row_activity(observation: impact, a: unobs)

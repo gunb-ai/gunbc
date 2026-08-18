@@ -382,12 +382,12 @@ fn run_host_process_admitted(
                   if code == 0 {
                     Holds { value: v2.std.host_run.ExitOk { code: code } }
                   } else {
-                    Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
+                    v2.std.witness.Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
                   }
                 ProcessSignaled { signal: _ } =>
-                  Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
+                  v2.std.witness.Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
                 ProcessTerminationUnobserved =>
-                  Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
+                  v2.std.witness.Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
               },
               diagnostics: None
             }
@@ -552,7 +552,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
           )
       }
     Rejected { diagnostics: ds } =>
-      Deferred {
+      v2.std.verdict.Deferred {
         actual: Rejected { diagnostics: ds },
         diagnostic: emit_host_emit_vs_eval_deferred_diagnostic(at: at)
       }

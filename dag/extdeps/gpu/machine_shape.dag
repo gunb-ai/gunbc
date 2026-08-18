@@ -76,7 +76,7 @@ fn gpu_shape_from_catalog(input: ShapeFromCatalogInput) -> std.machine_shape.Mac
       device_level: device_level,
       row: row,
     } =>
-      MachineShapeOk {
+      std.machine_shape.MachineShapeOk {
         shape: std.machine_shape.MachineShape {
           domains: [
             std.machine_shape.ExecutionDomain {

@@ -63,7 +63,7 @@ fn dimension_at(standing: product.spatial_dimension.RoomDimensionStanding) -> pr
 
 // Measured to +/- 10 mm: uncertainty interval spans 20 mm.
 fn measured_precise() -> product.spatial_dimension.RoomDimensionKnowledge {
-  dimension_at(standing: SpatialMeasured {
+  dimension_at(standing: std.spatial_knowledge.SpatialMeasured {
     value: millimeter(count: 3660),
     uncertainty: interval_or_degenerate(low: 3650, high: 3670),
     evidence: tape_anchor_evidence(),
@@ -73,7 +73,7 @@ fn measured_precise() -> product.spatial_dimension.RoomDimensionKnowledge {
 // Measured, but to +/- 250 mm: same STANDING, 500 mm span. The standing-only guard admitted this
 // exactly as readily as the specimen above; the precision budget is what separates them.
 fn measured_coarse() -> product.spatial_dimension.RoomDimensionKnowledge {
-  dimension_at(standing: SpatialMeasured {
+  dimension_at(standing: std.spatial_knowledge.SpatialMeasured {
     value: millimeter(count: 3660),
     uncertainty: interval_or_degenerate(low: 3410, high: 3910),
     evidence: tape_anchor_evidence(),
@@ -81,7 +81,7 @@ fn measured_coarse() -> product.spatial_dimension.RoomDimensionKnowledge {
 }
 
 fn estimate_narrow() -> product.spatial_dimension.RoomDimensionKnowledge {
-  dimension_at(standing: SpatialEstimated {
+  dimension_at(standing: std.spatial_knowledge.SpatialEstimated {
     region: interval_or_degenerate(low: 3600, high: 3700),
     method: "photo-reconstruction-scaled-on-in-frame-constant",
     evidence: photo_reconstruction_evidence(),
@@ -89,7 +89,7 @@ fn estimate_narrow() -> product.spatial_dimension.RoomDimensionKnowledge {
 }
 
 fn estimate_wide() -> product.spatial_dimension.RoomDimensionKnowledge {
-  dimension_at(standing: SpatialEstimated {
+  dimension_at(standing: std.spatial_knowledge.SpatialEstimated {
     region: interval_or_degenerate(low: 3300, high: 4000),
     method: "photo-reconstruction-scaled-on-in-frame-constant",
     evidence: photo_reconstruction_evidence(),
@@ -97,14 +97,14 @@ fn estimate_wide() -> product.spatial_dimension.RoomDimensionKnowledge {
 }
 
 fn hypothesis_25ft() -> product.spatial_dimension.RoomDimensionKnowledge {
-  dimension_at(standing: SpatialHypothesis {
+  dimension_at(standing: std.spatial_knowledge.SpatialHypothesis {
     value: millimeter(count: 7620),
     purpose: "H1 massing candidate: assumed 25 ft corner-lot width, refuted by parcel records",
   })
 }
 
 fn unknown_width() -> product.spatial_dimension.RoomDimensionKnowledge {
-  dimension_at(standing: SpatialUnknown { obligation: "srv-geometry-capture" })
+  dimension_at(standing: std.spatial_knowledge.SpatialUnknown { obligation: "srv-geometry-capture" })
 }
 
 // Furniture / rack layout: +/- 100 mm, i.e. a 200 mm budget span.

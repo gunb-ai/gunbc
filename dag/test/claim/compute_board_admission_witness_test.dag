@@ -12,7 +12,7 @@ data a_net: product.electrical.connectivity.NetIdentity = net_identity(design: f
 
 data b_net: product.electrical.connectivity.NetIdentity = net_identity(design: fixture_design, local_identity: "b")
 
-data r_one: product.compute_board.analog.ElectricalComponentInstance = ResistorInstance {
+data r_one: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.ResistorInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "r1"),
   part: "series resistor",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
@@ -20,7 +20,7 @@ data r_one: product.compute_board.analog.ElectricalComponentInstance = ResistorI
   resistance: std.measure.Measure { count: 10 },
 }
 
-data c_one: product.compute_board.analog.ElectricalComponentInstance = CapacitorInstance {
+data c_one: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.CapacitorInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "c1"),
   part: "filter capacitor",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
@@ -30,7 +30,7 @@ data c_one: product.compute_board.analog.ElectricalComponentInstance = Capacitor
 
 // A resistor sharing r1's identity. Nothing distinguishes it downstream: a model binding, a net
 // member or a receipt naming "r1" cannot say which of the two it means.
-data r_one_again: product.compute_board.analog.ElectricalComponentInstance = ResistorInstance {
+data r_one_again: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.ResistorInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "r1"),
   part: "second series resistor",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
@@ -70,7 +70,7 @@ data coherent_control: product.compute_board.digital_control.DigitalControlInten
     product.compute_board.digital_control.DigitalSignal { name: out_signal, direction: DigitalOutput },
   ],
   equations: [
-    product.compute_board.digital_control.DigitalEquation { driven: out_signal, expression: Negation { operand: SignalRef { signal: in_signal } } },
+    product.compute_board.digital_control.DigitalEquation { driven: out_signal, expression: product.compute_board.digital_control.Negation { operand: product.compute_board.digital_control.SignalRef { signal: in_signal } } },
   ],
 }
 
@@ -237,7 +237,7 @@ test fn w_a_bond_on_a_nonexistent_terminal_refuses() -> Bool {
       analog: coherent_analog,
       reference: b_net,
       control: coherent_control,
-      bonds: [PowerReturnConnection {
+      bonds: [product.compute_board.article.PowerReturnConnection {
         domain: b_net,
         terminal: terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r7"), terminal: "1" as product.electrical.connectivity.TerminalIdentity),
       }]
@@ -252,7 +252,7 @@ test fn w_a_bond_on_an_undeclared_net_refuses() -> Bool {
       analog: coherent_analog,
       reference: b_net,
       control: coherent_control,
-      bonds: [PowerReturnConnection {
+      bonds: [product.compute_board.article.PowerReturnConnection {
         domain: net_identity(design: fixture_design, local_identity: "nowhere"),
         terminal: terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "2" as product.electrical.connectivity.TerminalIdentity),
       }]
@@ -287,7 +287,7 @@ test fn w_driving_an_undeclared_signal_refuses() -> Bool {
         signals: coherent_control.signals,
         equations: concat(coherent_control.equations, [product.compute_board.digital_control.DigitalEquation {
           driven: "ghost" as product.compute_board.digital_control.SignalName,
-          expression: SignalRef { signal: in_signal },
+          expression: product.compute_board.digital_control.SignalRef { signal: in_signal },
         }]),
       },
       bonds: []
@@ -309,7 +309,7 @@ test fn w_driving_an_input_refuses_as_a_direction_conflict() -> Bool {
         signals: coherent_control.signals,
         equations: concat(coherent_control.equations, [product.compute_board.digital_control.DigitalEquation {
           driven: in_signal,
-          expression: SignalRef { signal: out_signal },
+          expression: product.compute_board.digital_control.SignalRef { signal: out_signal },
         }]),
       },
       bonds: []
@@ -328,9 +328,9 @@ test fn w_an_equation_over_an_undeclared_signal_refuses() -> Bool {
         signals: coherent_control.signals,
         equations: [product.compute_board.digital_control.DigitalEquation {
           driven: out_signal,
-          expression: Conjunction {
-            left: SignalRef { signal: in_signal },
-            right: SignalRef { signal: "phantom" as product.compute_board.digital_control.SignalName },
+          expression: product.compute_board.digital_control.Conjunction {
+            left: product.compute_board.digital_control.SignalRef { signal: in_signal },
+            right: product.compute_board.digital_control.SignalRef { signal: "phantom" as product.compute_board.digital_control.SignalName },
           },
         }],
       },
@@ -366,7 +366,7 @@ test fn w_an_output_two_equations_drive_refuses() -> Bool {
         signals: coherent_control.signals,
         equations: concat(coherent_control.equations, [product.compute_board.digital_control.DigitalEquation {
           driven: out_signal,
-          expression: SignalRef { signal: in_signal },
+          expression: product.compute_board.digital_control.SignalRef { signal: in_signal },
         }]),
       },
       bonds: []
@@ -427,7 +427,7 @@ test fn w_a_precondition_naming_no_signal_refuses() -> Bool {
   refuses_with_exactly(
     a: fixture_with_firmware(f: firmware_contract_with(p: product.compute_board.article.HostFirmwareStartPrecondition {
       kind: PowerPermitAsserted,
-      establishment: EstablishedByBoardSignal { signal: "no_such_wire" as product.compute_board.digital_control.SignalName },
+      establishment: product.compute_board.article.EstablishedByBoardSignal { signal: "no_such_wire" as product.compute_board.digital_control.SignalName },
     })),
     wanted: "PreconditionSignalUndeclared"
   )
@@ -440,7 +440,7 @@ test fn w_a_precondition_established_by_an_input_refuses() -> Bool {
   refuses_with_exactly(
     a: fixture_with_firmware(f: firmware_contract_with(p: product.compute_board.article.HostFirmwareStartPrecondition {
       kind: PowerPermitAsserted,
-      establishment: EstablishedByBoardSignal { signal: in_signal },
+      establishment: product.compute_board.article.EstablishedByBoardSignal { signal: in_signal },
     })),
     wanted: "PreconditionSignalIsNotAnOutput"
   )
@@ -449,7 +449,7 @@ test fn w_a_precondition_established_by_an_input_refuses() -> Bool {
 test fn w_a_precondition_on_a_declared_output_is_admitted() -> Bool {
   is_admitted(a: fixture_with_firmware(f: firmware_contract_with(p: product.compute_board.article.HostFirmwareStartPrecondition {
     kind: PowerPermitAsserted,
-    establishment: EstablishedByBoardSignal { signal: out_signal },
+    establishment: product.compute_board.article.EstablishedByBoardSignal { signal: out_signal },
   })))
 }
 

@@ -49,7 +49,7 @@ fn compiler_closure_cyclic_diagnostic(root: Node) -> v2.std.diagnostic.Diagnosti
   v2.std.diagnostic.Diagnostic {
     reason: ^compiler_import_closure_cyclic,
     at: node_locus(node: root),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

@@ -113,13 +113,13 @@ fn unit_modeling_diagnostic(carrier: Node, name: v2.std.node.Symbol) -> v2.std.d
     v2.std.diagnostic.Diagnostic {
       reason: ^unit_modeling_flat_scalar_unit_leaf_fixable,
       at: node_locus(node: carrier),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     }
   } else {
     v2.std.diagnostic.Diagnostic {
       reason: ^unit_modeling_flat_scalar_blocked_pending_carrier,
       at: node_locus(node: carrier),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     }
   }
 }

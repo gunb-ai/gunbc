@@ -6,7 +6,7 @@ fn post_normalize_not_well_formed_diagnostic(n: Node) -> v2.std.diagnostic.Diagn
   v2.std.diagnostic.Diagnostic {
     reason: ^normalize_reason_post_normalize_not_well_formed,
     at: node_locus(node: n),
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -41,11 +41,11 @@ fn normalize_fold_step(acc: Outcome<Node>, edge: v2.std.node.Edge, child: Outcom
 fn normalize_sugar_key_optional(folded: Node) -> v2.std.compilers.sugar.SugarKey? {
   match folded.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      optional_present(value: SurfaceAtomKey { atom: id })
+      optional_present(value: v2.std.compilers.sugar.SurfaceAtomKey { atom: id })
     TypeNode { connective: _ } =>
       match parse_production_emitted_identity_optional(node: folded) {
         Present { value: id } =>
-          optional_present(value: ProductionIdentityKey { identity: id })
+          optional_present(value: v2.std.compilers.sugar.ProductionIdentityKey { identity: id })
         Absent => optional_absent()
       }
     ComputationNode { behavior: _ } => optional_absent()

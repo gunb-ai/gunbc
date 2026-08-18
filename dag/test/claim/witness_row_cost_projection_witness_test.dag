@@ -574,7 +574,7 @@ fn eval_with_no_wall_clock_refuses_rather_than_projecting_holds() -> Bool {
     witness_cost_declaration_event(
       entry: entry,
       declaration: decl,
-      eval: [std.observation.TimedMeasurement { basis: CpuClock, elapsed: MeasuredValue { value: witness_wall_ms(count: 3) } }],
+      eval: [std.observation.TimedMeasurement { basis: CpuClock, elapsed: std.observation.MeasuredValue { value: witness_wall_ms(count: 3) } }],
       outcome: Done
     )
   ]
@@ -586,8 +586,8 @@ fn eval_with_no_wall_clock_refuses_rather_than_projecting_holds() -> Bool {
 
 fn two_readings_of_one_clock_refuse_rather_than_picking_holds() -> Bool {
   let ambiguous: List<std.observation.TimedMeasurement> = [
-    std.observation.TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: witness_wall_ms(count: 40) } },
-    std.observation.TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: witness_wall_ms(count: 90) } }
+    std.observation.TimedMeasurement { basis: WallClock, elapsed: std.observation.MeasuredValue { value: witness_wall_ms(count: 40) } },
+    std.observation.TimedMeasurement { basis: WallClock, elapsed: std.observation.MeasuredValue { value: witness_wall_ms(count: 90) } }
   ]
   match observation_duration_of(durations: ambiguous, basis: WallClock) {
     MeasuredValue { value: _ } => false

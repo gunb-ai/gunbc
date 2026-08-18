@@ -30,7 +30,7 @@ fn process_refinement_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_exit_code_256_rejects: v2.std.verification.TestClaim = EqualsClaim {
+data claim_exit_code_256_rejects: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/process: make_exit_code rejects 256",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: process_refinement_claim_input(ok: witness_exit_code_256_rejects()),
@@ -38,7 +38,7 @@ data claim_exit_code_256_rejects: v2.std.verification.TestClaim = EqualsClaim {
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_process_id_zero_rejects: v2.std.verification.TestClaim = EqualsClaim {
+data claim_process_id_zero_rejects: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/process: make_process_id rejects 0",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: process_refinement_claim_input(ok: witness_process_id_zero_rejects()),
@@ -46,7 +46,7 @@ data claim_process_id_zero_rejects: v2.std.verification.TestClaim = EqualsClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_signal_num_zero_rejects: v2.std.verification.TestClaim = EqualsClaim {
+data claim_signal_num_zero_rejects: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/process: make_signal_num rejects 0",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: process_refinement_claim_input(ok: witness_signal_num_zero_rejects()),

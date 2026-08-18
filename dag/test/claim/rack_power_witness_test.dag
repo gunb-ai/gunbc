@@ -71,7 +71,7 @@ test fn the_feed_capacity_is_the_product_of_the_two_cited_figures() -> Bool {
 test fn two_measured_hosts_inside_the_rating_produce_a_budget() -> Bool {
   match budget(
     rack: two_host_rack(),
-    loads: [ObservedRealPower { asset: host_a(), draw: watt(400) }, ObservedRealPower { asset: host_b(), draw: watt(400) }],
+    loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(400) }],
     percent: 95,
   ) {
     Absent => false
@@ -87,10 +87,10 @@ test fn two_measured_hosts_inside_the_rating_produce_a_budget() -> Bool {
 // watts at a factor of 100 is 1700 volt-amperes and fits; the SAME load at 90 needs about 1889 and
 // does not. A module that quietly assumed unity would admit both.
 test fn the_declared_power_factor_decides_a_marginal_load() -> Bool {
-  match budget(rack: two_host_rack(), loads: [ObservedRealPower { asset: host_a(), draw: watt(1700) }, ObservedRealPower { asset: host_b(), draw: watt(0) }], percent: 100) {
+  match budget(rack: two_host_rack(), loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(1700) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(0) }], percent: 100) {
     Absent => false
     Present { value: _ } =>
-      match refusal_of(rack: two_host_rack(), loads: [ObservedRealPower { asset: host_a(), draw: watt(1700) }, ObservedRealPower { asset: host_b(), draw: watt(0) }], percent: 90) {
+      match refusal_of(rack: two_host_rack(), loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(1700) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(0) }], percent: 90) {
         Absent => false
         Present { value: c } =>
           match c {
@@ -113,7 +113,7 @@ test fn the_declared_power_factor_decides_a_marginal_load() -> Bool {
 test fn a_nameplate_load_is_counted_as_apparent_power_unconverted() -> Bool {
   match budget(
     rack: two_host_rack(),
-    loads: [DeclaredApparentPower { asset: host_a(), draw: volt_ampere(1000) }, ObservedRealPower { asset: host_b(), draw: watt(400) }],
+    loads: [product.rack_power.DeclaredApparentPower { asset: host_a(), draw: volt_ampere(1000) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(400) }],
     percent: 50,
   ) {
     Absent => false
@@ -125,7 +125,7 @@ test fn a_nameplate_load_is_counted_as_apparent_power_unconverted() -> Bool {
 // An unmeasured machine is not a machine drawing nothing. This is the arm that keeps an unmeasured
 // rack from reporting comfortable headroom.
 test fn an_unobserved_load_refuses_rather_than_counting_as_zero() -> Bool {
-  match refusal_of(rack: two_host_rack(), loads: [ObservedRealPower { asset: host_a(), draw: watt(400) }, LoadUnobserved { asset: host_b() }], percent: 95) {
+  match refusal_of(rack: two_host_rack(), loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) }, product.rack_power.LoadUnobserved { asset: host_b() }], percent: 95) {
     Absent => false
     Present { value: c } =>
       match c {
@@ -146,7 +146,7 @@ test fn an_unobserved_load_refuses_rather_than_counting_as_zero() -> Bool {
 test fn two_rows_for_one_asset_do_not_stand_in_for_the_other() -> Bool {
   match refusal_of(
     rack: two_host_rack(),
-    loads: [ObservedRealPower { asset: host_a(), draw: watt(400) }, ObservedRealPower { asset: host_a(), draw: watt(400) }],
+    loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) }, product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) }],
     percent: 95,
   ) {
     Absent => false
@@ -169,9 +169,9 @@ test fn a_load_for_an_unmounted_asset_refuses() -> Bool {
   match refusal_of(
     rack: two_host_rack(),
     loads: [
-      ObservedRealPower { asset: host_a(), draw: watt(400) },
-      ObservedRealPower { asset: host_b(), draw: watt(400) },
-      ObservedRealPower { asset: absent_host(), draw: watt(400) },
+      product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) },
+      product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(400) },
+      product.rack_power.ObservedRealPower { asset: absent_host(), draw: watt(400) },
     ],
     percent: 95,
   ) {

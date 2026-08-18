@@ -14,7 +14,7 @@ type GitR0LiveFixtureOutcome
   | GitR0LiveFixtureExecutionRefused { diagnostic: String }
 
 fn observed_sha1_oid(stdout: String) -> extdeps.git.object_store.GitObjectId {
-  GitSha1ObjectId {
+  extdeps.git.object_store.GitSha1ObjectId {
     digest: std.content_hash.Sha1Digest { hex: trim(s: stdout) as std.content_hash.Sha1DigestHex },
   }
 }
@@ -518,46 +518,46 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
                           refs: [
                             extdeps.git.object_store.GitRefRecord {
                               name: "refs/heads/main",
-                              target: DirectTarget { oid: observed_main },
+                              target: extdeps.git.object_store.DirectTarget { oid: observed_main },
                             },
                             extdeps.git.object_store.GitRefRecord {
                               name: "HEAD",
-                              target: SymbolicTarget {
+                              target: extdeps.git.object_store.SymbolicTarget {
                                 ref_name: trim(s: head_read_back.stdout)
                               },
                             },
                           ],
                           index: observed_index_entries,
                           worktree: [
-                            GitWorktreeRegular {
+                            extdeps.git.object_store.GitWorktreeRegular {
                               path: path_regular,
                               executable: false,
                               content: utf8_encode_bytes(
                                 s: readme_read_back.content,
                               ),
                             },
-                            GitWorktreeRegular {
+                            extdeps.git.object_store.GitWorktreeRegular {
                               path: path_executable,
                               executable: executable_is_executable.executable,
                               content: utf8_encode_bytes(
                                 s: run_read_back.content,
                               ),
                             },
-                            GitWorktreeRegular {
+                            extdeps.git.object_store.GitWorktreeRegular {
                               path: path_non_ascii,
                               executable: false,
                               content: utf8_encode_bytes(
                                 s: raw_read_back.content,
                               ),
                             },
-                            GitWorktreeRegular {
+                            extdeps.git.object_store.GitWorktreeRegular {
                               path: path_subtree_member,
                               executable: false,
                               content: utf8_encode_bytes(
                                 s: src_keep_read_back.content,
                               ),
                             },
-                            GitWorktreeSymlink {
+                            extdeps.git.object_store.GitWorktreeSymlink {
                               path: path_symlink,
                               target: utf8_encode_bytes(
                                 s: trim(s: link_target.stdout),

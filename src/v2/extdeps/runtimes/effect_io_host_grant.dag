@@ -29,7 +29,7 @@ fn effect_io_host_backend_root(backend: v2.extdeps.runtimes.v2_effect_io_pure.Ef
       }
     StorageResourceBackend =>
       std.effect_grant.NamespacePosition {
-        tree: ServiceOpTree { service: effect_io_host_storage_service },
+        tree: std.effect_grant.ServiceOpTree { service: effect_io_host_storage_service },
         path: [effect_io_host_storage_service]
       }
   }
@@ -52,7 +52,7 @@ fn effect_io_host_locator_position(
       }
     StorageResourceBackend =>
       std.effect_grant.NamespacePosition {
-        tree: ServiceOpTree { service: effect_io_host_storage_service },
+        tree: std.effect_grant.ServiceOpTree { service: effect_io_host_storage_service },
         path: [effect_io_host_storage_service, locator.identity]
       }
   }
@@ -65,7 +65,7 @@ fn effect_io_host_hermetic_envelope(backend: v2.extdeps.runtimes.v2_effect_io_pu
       std.effect_grant.Grant {
         verb: Read,
         root: effect_io_host_backend_root(backend: backend),
-        binding: Replay { fixture_store: effect_io_host_replay_fixture },
+        binding: std.effect_grant.Replay { fixture_store: effect_io_host_replay_fixture },
         lifecycle: LifecycleByConvention
       },
     ]

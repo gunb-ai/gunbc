@@ -158,22 +158,22 @@ fn shoelace_term(e: std.orthogonal_geometry.LoopEdge) -> std.checked_arithmetic.
   let a = checked_int_multiply(a: point2_x(p: e.start), b: point2_y(p: e.end))
   let b = checked_int_multiply(a: point2_x(p: e.end), b: point2_y(p: e.start))
   match a {
-    CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+    CheckedIntOverflow { cause: c } => std.checked_arithmetic.CheckedIntOverflow { cause: c }
     CheckedIntReady { value: av } =>
       match b {
-        CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+        CheckedIntOverflow { cause: c } => std.checked_arithmetic.CheckedIntOverflow { cause: c }
         CheckedIntReady { value: bv } => checked_int_subtract(a: av, b: bv)
       }
   }
 }
 
 fn shoelace_double_area(l: std.orthogonal_geometry.OrthogonalLoop2) -> std.checked_arithmetic.CheckedInt {
-  fold(loop_edges(vertices: loop2_vertices(l: l)), init: CheckedIntReady { value: 0 }, f: (acc, e) =>
+  fold(loop_edges(vertices: loop2_vertices(l: l)), init: std.checked_arithmetic.CheckedIntReady { value: 0 }, f: (acc, e) =>
     match acc {
-      CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+      CheckedIntOverflow { cause: c } => std.checked_arithmetic.CheckedIntOverflow { cause: c }
       CheckedIntReady { value: sum } =>
         match shoelace_term(e: e) {
-          CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+          CheckedIntOverflow { cause: c } => std.checked_arithmetic.CheckedIntOverflow { cause: c }
           CheckedIntReady { value: t } => checked_int_add(a: sum, b: t)
         }
     })
@@ -191,14 +191,14 @@ fn metric_frame_is_millimetre(registry: std.spatial_frame.SpatialFrameRegistry, 
 
 fn loop2_area(registry: std.spatial_frame.SpatialFrameRegistry, l: std.orthogonal_geometry.OrthogonalLoop2) -> OrthogonalConstruction<std.measure.SquareMillimeter> {
   if !metric_frame_is_millimetre(registry: registry, identity: l.frame) {
-    OrthogonalRefused { cause: MillimetreFrameRequiredForMetric { frame: l.frame } }
+    std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.MillimetreFrameRequiredForMetric { frame: l.frame } }
   } else {
   match shoelace_double_area(l: l) {
-    CheckedIntOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
+    CheckedIntOverflow { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.ShellArithmeticRefused { cause: c } }
     CheckedIntReady { value: doubled } =>
       match checked_int_magnitude(a: doubled) {
-        CheckedNatOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
-        CheckedNatReady { value: magnitude } => OrthogonalReady { value: square_millimeter(count: magnitude / 2) }
+        CheckedNatOverflow { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.ShellArithmeticRefused { cause: c } }
+        CheckedNatReady { value: magnitude } => std.orthogonal_geometry.OrthogonalReady { value: square_millimeter(count: magnitude / 2) }
       }
   }
   }
@@ -232,29 +232,29 @@ fn space_floor_area(registry: std.spatial_frame.SpatialFrameRegistry, s: Enclose
 fn space_height_millimetres(registry: std.spatial_frame.SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalConstruction<std.measure.Millimeter> {
   match space_height(registry: registry, s: s) {
     ExtentFrameUnregistered { identity: f } =>
-      OrthogonalRefused { cause: MillimetreFrameRequiredForMetric { frame: f } }
+      std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.MillimetreFrameRequiredForMetric { frame: f } }
     ExtentInFrame { length: l } =>
       match frame_length_as_millimeter(l: l) {
-        LengthProjected { value: mm } => OrthogonalReady { value: mm }
+        LengthProjected { value: mm } => std.orthogonal_geometry.OrthogonalReady { value: mm }
         LengthProjectionRefused { cause: _ } =>
-          OrthogonalRefused { cause: MillimetreFrameRequiredForMetric { frame: space_frame(s: s) } }
+          std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.MillimetreFrameRequiredForMetric { frame: space_frame(s: s) } }
       }
   }
 }
 
 fn space_volume(registry: std.spatial_frame.SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalConstruction<std.measure.CubicMillimeter> {
   match space_floor_area(registry: registry, s: s) {
-    OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
+    OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
     OrthogonalReady { value: area } =>
       match space_height_millimetres(registry: registry, s: s) {
-        OrthogonalRefused { cause: hc } => OrthogonalRefused { cause: hc }
+        OrthogonalRefused { cause: hc } => std.orthogonal_geometry.OrthogonalRefused { cause: hc }
         OrthogonalReady { value: h } =>
       match checked_int_multiply(a: square_millimeter_count_as_int(m: area), b: millimeter_count_as_int(m: h)) {
-        CheckedIntOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
+        CheckedIntOverflow { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.ShellArithmeticRefused { cause: c } }
         CheckedIntReady { value: v } =>
           match checked_int_magnitude(a: v) {
-            CheckedNatOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
-            CheckedNatReady { value: n } => OrthogonalReady { value: cubic_millimeter(count: n) }
+            CheckedNatOverflow { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.ShellArithmeticRefused { cause: c } }
+            CheckedNatReady { value: n } => std.orthogonal_geometry.OrthogonalReady { value: cubic_millimeter(count: n) }
           }
       }
       }
@@ -349,7 +349,7 @@ type PointLocation3
 
 fn space_locate_point(s: EnclosedSpace, p: std.affine_space.Point3) -> OrthogonalConstruction<PointLocation3> {
   if !coordinate_frame_identity_eq(a: space_frame(s: s), b: p.frame) {
-    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: space_frame(s: s), observed: p.frame } }
+    std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.OrthogonalFrameMismatch { expected: space_frame(s: s), observed: p.frame } }
   } else {
     let z = signed_frame_component_count(c: p.z)
     let lo = signed_frame_component_count(c: prism3_low(p: s.shell.prism))
@@ -360,16 +360,16 @@ fn space_locate_point(s: EnclosedSpace, p: std.affine_space.Point3) -> Orthogona
       py: signed_frame_component_count(c: p.y),
     )
     if z < lo || z > hi {
-      OrthogonalReady { value: PointOutsideSpace }
+      std.orthogonal_geometry.OrthogonalReady { value: PointOutsideSpace }
     } else {
       match plan {
-        PointOutsideLoop => OrthogonalReady { value: PointOutsideSpace }
-        PointOnLoopBoundary => OrthogonalReady { value: PointOnSpaceBoundary }
+        PointOutsideLoop => std.orthogonal_geometry.OrthogonalReady { value: PointOutsideSpace }
+        PointOnLoopBoundary => std.orthogonal_geometry.OrthogonalReady { value: PointOnSpaceBoundary }
         PointInsideLoop =>
           if z == lo || z == hi {
-            OrthogonalReady { value: PointOnSpaceBoundary }
+            std.orthogonal_geometry.OrthogonalReady { value: PointOnSpaceBoundary }
           } else {
-            OrthogonalReady { value: PointInsideSpace }
+            std.orthogonal_geometry.OrthogonalReady { value: PointInsideSpace }
           }
       }
     }
@@ -461,9 +461,9 @@ fn vertical_ranges_overlap(a: EnclosedSpace, b: EnclosedSpace) -> Bool {
 
 fn spaces_interpenetrate(a: EnclosedSpace, b: EnclosedSpace) -> OrthogonalConstruction<Bool> {
   if !coordinate_frame_identity_eq(a: space_frame(s: a), b: space_frame(s: b)) {
-    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: space_frame(s: a), observed: space_frame(s: b) } }
+    std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.OrthogonalFrameMismatch { expected: space_frame(s: a), observed: space_frame(s: b) } }
   } else {
-    OrthogonalReady {
+    std.orthogonal_geometry.OrthogonalReady {
       value: vertical_ranges_overlap(a: a, b: b)
         && footprints_overlap(a: space_footprint(s: a), b: space_footprint(s: b))
     }
@@ -557,10 +557,10 @@ fn walls_are_shared(a: ShellWall, b: ShellWall) -> Bool {
 
 fn spaces_are_adjacent(a: EnclosedSpace, b: EnclosedSpace) -> OrthogonalConstruction<Bool> {
   if !coordinate_frame_identity_eq(a: space_frame(s: a), b: space_frame(s: b)) {
-    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: space_frame(s: a), observed: space_frame(s: b) } }
+    std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.OrthogonalFrameMismatch { expected: space_frame(s: a), observed: space_frame(s: b) } }
   } else {
     let b_walls = space_walls(s: b)
-    OrthogonalReady {
+    std.orthogonal_geometry.OrthogonalReady {
       value: fold(space_walls(s: a), init: false, f: (acc, wa) =>
         acc || fold(b_walls, init: false, f: (inner_acc, wb) => inner_acc || walls_are_shared(a: wa, b: wb)))
     }
@@ -606,8 +606,8 @@ fn admit_space(acc: ComplexAccum, s: EnclosedSpace) -> ComplexAccum {
 fn space_complex(spaces: List<EnclosedSpace>) -> OrthogonalConstruction<SpaceComplex> {
   let acc = fold(spaces, init: ComplexAccum { admitted: [], refusal: none }, f: (a, s) => admit_space(acc: a, s: s))
   match acc.refusal {
-    Present { value: r } => OrthogonalRefused { cause: r }
-    Absent => OrthogonalReady { value: SpaceComplex { spaces: spaces } }
+    Present { value: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
+    Absent => std.orthogonal_geometry.OrthogonalReady { value: SpaceComplex { spaces: spaces } }
   }
 }
 
@@ -619,19 +619,19 @@ fn complex_space_count(c: SpaceComplex) -> Int { length(c.spaces) }
 // proved they do not overlap. That is the payoff of the wall being at the mint rather than here:
 // this fold is a sum, not a sum plus an inclusion-exclusion correction nobody would get right.
 fn complex_total_volume(registry: std.spatial_frame.SpatialFrameRegistry, c: SpaceComplex) -> OrthogonalConstruction<std.measure.CubicMillimeter> {
-  fold(c.spaces, init: OrthogonalReady { value: cubic_millimeter(count: 0) }, f: (acc, s) =>
+  fold(c.spaces, init: std.orthogonal_geometry.OrthogonalReady { value: cubic_millimeter(count: 0) }, f: (acc, s) =>
     match acc {
-      OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
+      OrthogonalRefused { cause: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
       OrthogonalReady { value: total } =>
         match space_volume(registry: registry, s: s) {
-          OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
+          OrthogonalRefused { cause: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
           OrthogonalReady { value: v } =>
             match checked_int_add(a: cubic_millimeter_count_as_int(m: total), b: cubic_millimeter_count_as_int(m: v)) {
-              CheckedIntOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
+              CheckedIntOverflow { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.ShellArithmeticRefused { cause: c } }
               CheckedIntReady { value: sum } =>
                 match checked_int_magnitude(a: sum) {
-                  CheckedNatOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
-                  CheckedNatReady { value: n } => OrthogonalReady { value: cubic_millimeter(count: n) }
+                  CheckedNatOverflow { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.ShellArithmeticRefused { cause: c } }
+                  CheckedNatReady { value: n } => std.orthogonal_geometry.OrthogonalReady { value: cubic_millimeter(count: n) }
                 }
             }
         }

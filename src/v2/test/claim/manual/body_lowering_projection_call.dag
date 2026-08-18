@@ -6,12 +6,12 @@ data body_lowering_projection_source: String = "module proj\n\nfn f(acc: Int, x:
 fn body_lowering_bool_node(pass: Bool) -> Node {
   if pass {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_proj_pass } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_proj_pass } },
       children: []
     )
   } else {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_proj_fail } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_proj_fail } },
       children: []
     )
   }
@@ -133,7 +133,7 @@ fn body_lowering_normalize_accepts_projection_module() -> Bool {
   }
 }
 
-data claim_body_lowering_projection_lowers_to_transform: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_projection_lowers_to_transform: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-projection: helper.step(a,b) lowers to canonical Transform (Stage B cross-decl)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_bool_node(pass: body_lowering_projection_lowers_to_transform()),
@@ -141,7 +141,7 @@ data claim_body_lowering_projection_lowers_to_transform: v2.std.verification.Tes
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_projection_normalize_accepts: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_projection_normalize_accepts: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-projection: projection module normalizes without refusal",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_bool_node(pass: body_lowering_normalize_accepts_projection_module()),
@@ -149,7 +149,7 @@ data claim_body_lowering_projection_normalize_accepts: v2.std.verification.TestC
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_field_access_postfix_rejects: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_field_access_postfix_rejects: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-projection: bare x.field refuses (general-body-producer-design §3 residue #2)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_bool_node(pass: body_lowering_field_access_postfix_rejects()),

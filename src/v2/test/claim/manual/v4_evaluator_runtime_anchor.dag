@@ -43,7 +43,7 @@ data witness_v4_evaluator_semantics_fail_closed: Bool = match v2_eval_call_primi
 }
 
 data witness_v4_evaluator_transfer_fail_closed: Bool = match v2_eval_transfer(
-  control: Suspend { continuation: v2_eval_empty_frame() },
+  control: v2.std.runtime.Suspend { continuation: v2_eval_empty_frame() },
   frame: v2_eval_empty_frame()
 ) {
   Rejected { diagnostics: _ } => true
@@ -52,7 +52,7 @@ data witness_v4_evaluator_transfer_fail_closed: Bool = match v2_eval_transfer(
 
 fn v2_evaluator_witness_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^v2_evaluator_witness_fail_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_evaluator_witness_fail_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -66,7 +66,7 @@ fn v2_evaluator_witness_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_v4_evaluator_runtime_bundle: v2.std.verification.TestClaim = CompilesClaim {
+data claim_v4_evaluator_runtime_bundle: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "T-34 v2 evaluator concrete runtime bundle constructs and carriers wire",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: v2_evaluator_witness_claim_input(ok: witness_v4_evaluator_runtime_identity && witness_v4_evaluator_model_core_wired && witness_v4_evaluator_interpretation_reinstantiation_eq && witness_v4_evaluator_interpretation_fresh_call_eq),
@@ -74,7 +74,7 @@ data claim_v4_evaluator_runtime_bundle: v2.std.verification.TestClaim = Compiles
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_v4_evaluator_semantics_fail_closed: v2.std.verification.TestClaim = CompilesClaim {
+data claim_v4_evaluator_semantics_fail_closed: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "T-34 v2 evaluator call_primitive rejects deferred semantics",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: v2_evaluator_witness_claim_input(ok: witness_v4_evaluator_semantics_fail_closed),
@@ -82,7 +82,7 @@ data claim_v4_evaluator_semantics_fail_closed: v2.std.verification.TestClaim = C
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_v4_evaluator_transfer_fail_closed: v2.std.verification.TestClaim = CompilesClaim {
+data claim_v4_evaluator_transfer_fail_closed: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "T-34 v2 evaluator transfer rejects deferred control",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: v2_evaluator_witness_claim_input(ok: witness_v4_evaluator_transfer_fail_closed),

@@ -18,7 +18,7 @@ fn control_network_boot_axis(requirement: gunbc.os_install_mechanism.NetworkBoot
   }
 }
 
-data established_network_boot_for_control: gunbc.os_install_mechanism.NetworkBootDeliveryStanding = NetworkBootDeliveryEstablished {
+data established_network_boot_for_control: gunbc.os_install_mechanism.NetworkBootDeliveryStanding = gunbc.os_install_mechanism.NetworkBootDeliveryEstablished {
   evidence: gunbc.os_install_mechanism.NetworkBootDeliveryEstablishment {
     boot_source_override: control_network_boot_axis(requirement: NetworkBootBootSourceOverride),
     client_boot_mode: control_network_boot_axis(requirement: NetworkBootClientBootMode),
@@ -27,7 +27,7 @@ data established_network_boot_for_control: gunbc.os_install_mechanism.NetworkBoo
   },
 }
 
-data established_firmware_transition_for_control: gunbc.os_install_mechanism.FirmwareTransitionStanding = FirmwareTransitionEstablished {
+data established_firmware_transition_for_control: gunbc.os_install_mechanism.FirmwareTransitionStanding = gunbc.os_install_mechanism.FirmwareTransitionEstablished {
   from: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
   to: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
   artifact: std.decl_ref.DeclarationRef {
@@ -176,7 +176,7 @@ test fn srv1_srv2_are_attested_and_srv3_srv4_are_observed() -> Bool {
 // substitute the board's shipped roster.
 test fn unobserved_endpoint_refuses_rather_than_defaulting_to_pxe() -> Bool {
   match solve_install_mechanism_from_evidence(
-    evidence: BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
+    evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
     catalog: srv3_firmware_catalog,
     network_boot: established_network_boot_for_control,
     firmware_transition: fleet_firmware_transition_standing,
@@ -200,7 +200,7 @@ test fn unobserved_endpoint_refuses_rather_than_defaulting_to_pxe() -> Bool {
 // for 2.07.01 from that row would grant a capability nobody observed.
 test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
   match solve_install_mechanism_from_evidence(
-    evidence: BmcFirmwareEvidenceAttested {
+    evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceAttested {
       attestation: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareAttestation {
         endpoint: unknown_endpoint,
         firmware: uncatalogued_firmware,
@@ -258,7 +258,7 @@ test fn catalogued_3_22_00_row_carries_no_virtual_media_of_either_kind() -> Bool
 
 test fn unobserved_evidence_establishes_no_version() -> Bool {
   match bmc_firmware_evidence_version(
-    evidence: BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
+    evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
   ) {
     BmcFirmwareVersionUnestablished { endpoint: e } => e == unknown_endpoint
     BmcFirmwareVersionEstablished { firmware: _ } => false
@@ -267,7 +267,7 @@ test fn unobserved_evidence_establishes_no_version() -> Bool {
 
 test fn capability_standing_refuses_on_absent_evidence() -> Bool {
   match bmc_firmware_capability_standing(
-    evidence: BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
+    evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
     catalog: srv3_firmware_catalog,
   ) {
     BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } => e == unknown_endpoint
@@ -287,7 +287,7 @@ data duplicated_version_catalog: List<extdeps.bmc.capability.BmcFirmwareCapabili
   asrock_altrad8ud_openbmc_2_07_00_capabilities,
 ]
 
-data attested_2_07_00_evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidence = BmcFirmwareEvidenceAttested {
+data attested_2_07_00_evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidence = gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceAttested {
   attestation: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareAttestation {
     endpoint: unknown_endpoint,
     firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
@@ -305,7 +305,7 @@ test fn no_virtual_media_without_declared_network_boot_refuses_instead_of_inferr
   match solve_install_mechanism_from_evidence(
     evidence: srv4_bmc_firmware_evidence,
     catalog: srv3_firmware_catalog,
-    network_boot: NetworkBootDeliveryUnestablished { missing: [] },
+    network_boot: gunbc.os_install_mechanism.NetworkBootDeliveryUnestablished { missing: [] },
     firmware_transition: fleet_firmware_transition_standing,
   ) {
     OsInstallMechanismRefused { cause: c } =>

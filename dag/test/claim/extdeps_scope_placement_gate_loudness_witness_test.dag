@@ -39,7 +39,7 @@ test fn red_seed_runner_failure_detail_projects_located_receipt() -> Bool {
 test fn red_membership_fixture_names_change_and_path() -> Bool {
   reason_names_all(
     exit: scope_placement_membership_verdict(
-      observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+      observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
     ),
     markers: ["THIS CHANGE", "dag/extdeps/browser/opera.dag"]
   )
@@ -49,7 +49,7 @@ test fn red_freeze_fixture_names_manifest_smuggling() -> Bool {
   let probe = read_manifest_rows().first()
   reason_names_all(
     exit: scope_placement_freeze_verdict(
-      observation: AddedPathsObserved { paths: [probe] }
+      observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: [probe] }
     ),
     markers: ["frozen-manifest", "legacy_manifest_freeze_sha"]
   )
@@ -111,12 +111,12 @@ test fn red_manifest_diff_unreadable_fixture_refuses() -> Bool {
 test fn red_failure_reason_never_empty_on_refusal() -> Bool {
   exit_is_failure(
     e: scope_placement_membership_verdict(
-      observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+      observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
     )
   )
     && exit_reason_of(
          e: scope_placement_membership_verdict(
-           observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+           observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
          )
        ) != ""
 }

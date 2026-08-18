@@ -343,13 +343,13 @@ fn binding_identity_grade(b: RequestArtifactBinding) -> std.computation_identity
   match b {
     BindingOk => StructurallyIdentical
     BindingKindMismatch { requested: _, found: _ } =>
-      IdentityUnknown { cause: MissingEnforcement { detail: "artifact kind disagrees with the request kind" } }
+      IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "artifact kind disagrees with the request kind" } }
     BindingWrongArtifact { key: _, found_key: _ } =>
-      IdentityUnknown { cause: MissingEnforcement { detail: "artifact was keyed for a different request" } }
+      IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "artifact was keyed for a different request" } }
     BindingWrongContent { recorded: _, observed: _ } =>
-      IdentityUnknown { cause: MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } }
+      IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } }
     BindingIncomplete { missing: _ } =>
-      IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
+      IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
   }
 }
 
@@ -875,12 +875,12 @@ fn lookup_served_identity(l: ProviderLookup) -> std.computation_identity.Computa
   lookup_fold(
     l: l,
     hit: (a, i) => i,
-    miss: k => IdentityUnknown { cause: MissingEnforcement { detail: "no artifact was probed at this key" } },
-    kind_mismatch: (k, r, f) => IdentityUnknown { cause: MissingEnforcement { detail: "artifact kind disagrees with the request kind" } },
-    wrong_artifact: (k, fk) => IdentityUnknown { cause: MissingEnforcement { detail: "artifact was keyed for a different request" } },
-    wrong_content: (k, r, o) => IdentityUnknown { cause: MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } },
-    cross_family: (k, f) => IdentityUnknown { cause: MissingEnforcement { detail: "content hash family is incompatible with the fnv1a64 structural seam" } },
-    incomplete: (k, m) => IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
+    miss: k => IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "no artifact was probed at this key" } },
+    kind_mismatch: (k, r, f) => IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "artifact kind disagrees with the request kind" } },
+    wrong_artifact: (k, fk) => IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "artifact was keyed for a different request" } },
+    wrong_content: (k, r, o) => IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } },
+    cross_family: (k, f) => IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "content hash family is incompatible with the fnv1a64 structural seam" } },
+    incomplete: (k, m) => IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
   )
 }
 

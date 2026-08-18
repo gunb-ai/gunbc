@@ -670,7 +670,7 @@ fn validation_refusal_cause_decode(
   } else if cause_kind == "change-window-refused" {
     Present {
       value: ValidationChangeWindowRefused {
-        cause: ChangeWindowPersistenceRefused {
+        cause: gunbc.git_diff_change_window.ChangeWindowPersistenceRefused {
           path: "",
           cause: cause_detail,
         },

@@ -8,11 +8,11 @@ fn m4_universal_hermetic_corpus_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "**Problem:** Closure-scoped corpus resolution lets an entry **opt out** of governance by omitting the corpus import — the runtime and the M2 `mock_totality_lens` then read **different** models. §3 nicknaming trap: co-location is a transport workaround, not the authority fact."),
     ThematicBreak,
     h2(text: "0. Thesis — governance is universal, not opt-in"),
-    CodeBlock { code: "  dag/ whole-tree published mock corpora     ← SINGLE authority (same modules M2 lens imports)\n    → precompute operation-key set ONCE per batch (whole-tree compile of dag/ roots)\n      → InterpContext carries immutable published_mock_keys + governed_services (O(1))\n        → eval_service_call: corpus-governed service + unpublished op → §5 fail-closed\n          → fixture replay OR inline mock (corpus-free services only)\n" },
+    std.markdown.CodeBlock { code: "  dag/ whole-tree published mock corpora     ← SINGLE authority (same modules M2 lens imports)\n    → precompute operation-key set ONCE per batch (whole-tree compile of dag/ roots)\n      → InterpContext carries immutable published_mock_keys + governed_services (O(1))\n        → eval_service_call: corpus-governed service + unpublished op → §5 fail-closed\n          → fixture replay OR inline mock (corpus-free services only)\n" },
     p(text: "The entry import closure decides **which code runs**; it must NOT decide **which operations are hermetically realizable**. That fact is global over the dag/ tree."),
     ThematicBreak,
     h2(text: "Phase 1 — PLAN-FIRST (model + witnesses before runtime)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Artifact"), cell(text: "Role")]),
       alignments: [AlignNone, AlignNone],
       rows: [
@@ -52,7 +52,7 @@ fn m4_universal_hermetic_corpus_body() -> List<std.markdown.MarkdownBlock> {
     ]),
     ThematicBreak,
     h2(text: "Phase 3 — Dissolve M4.0 opt-in"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Mark"), cell(text: "Action")]),
       alignments: [AlignNone, AlignNone],
       rows: [
@@ -62,7 +62,7 @@ fn m4_universal_hermetic_corpus_body() -> List<std.markdown.MarkdownBlock> {
     },
     ThematicBreak,
     h2(text: "§5 proof obligations"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Witness"), cell(text: "GREEN"), cell(text: "RED (teeth)")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -85,6 +85,6 @@ data m4_universal_hermetic_corpus_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "m4-universal-hermetic-corpus",
   title: "Plan — M4.1: universal hermetic corpus governance",
   body: m4_universal_hermetic_corpus_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Dissolve this tracker when M4.1 universal governance has landed and M4.0 opt-in is gone — `precompute_whole_tree_published_mock_keys` is the single authority, `m4_universal_corpus_witness` is green-by-execution on the floor, and the Phase-3 marks (`feature:m4-universal-hermetic-corpus-load`, `feature:hermetic-published-mock-operation-ref`) have fired (corpus co-location import + `operation_key` deleted) — at which point governance is universal-by-construction and this doc is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Dissolve this tracker when M4.1 universal governance has landed and M4.0 opt-in is gone — `precompute_whole_tree_published_mock_keys` is the single authority, `m4_universal_corpus_witness` is green-by-execution on the floor, and the Phase-3 marks (`feature:m4-universal-hermetic-corpus-load`, `feature:hermetic-published-mock-operation-ref`) have fired (corpus co-location import + `operation_key` deleted) — at which point governance is universal-by-construction and this doc is redundant.")
   }
 }

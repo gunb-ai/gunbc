@@ -3,12 +3,12 @@ module gunbc.plans.axiom_syllogism_lens
 
 fn axiom_syllogism_lens_body() -> List<std.markdown.MarkdownBlock> {
   [
-    BlockquoteBlock { blocks: [p(text: "**SCOPE-ONLY design.** This doc partitions syllogism-enforcement into the [expressibility-frontier](expressibility-frontier.md)'s three regions (① wall · ② lens-residue · ③ undecidable-review) and designs how A1–A3 plus the §1–§7 consequence chain are modeled in `.dag`, with **DESIGN.md itself as the first target** (the §7 recursion). It builds nothing — it exists for the operator nod before any carrier or witness lands. DESIGN refs: §1 (axioms A1–A3; displaced cost), §3 (single authority — turned on the argument), §4 (acyclic substrate — *the acyclicity test turned on the argument itself*), §5 (fail-closed; the \"never\" trap; construction over validation), §6 (lens as residue), §7 (recursion — this document as the first target). Closes DESIGN open thread #1.")] },
+    std.markdown.BlockquoteBlock { blocks: [p(text: "**SCOPE-ONLY design.** This doc partitions syllogism-enforcement into the [expressibility-frontier](expressibility-frontier.md)'s three regions (① wall · ② lens-residue · ③ undecidable-review) and designs how A1–A3 plus the §1–§7 consequence chain are modeled in `.dag`, with **DESIGN.md itself as the first target** (the §7 recursion). It builds nothing — it exists for the operator nod before any carrier or witness lands. DESIGN refs: §1 (axioms A1–A3; displaced cost), §3 (single authority — turned on the argument), §4 (acyclic substrate — *the acyclicity test turned on the argument itself*), §5 (fail-closed; the \"never\" trap; construction over validation), §6 (lens as residue), §7 (recursion — this document as the first target). Closes DESIGN open thread #1.")] },
 
     h2(text: "1. The discipline (the lens schema, filled)"),
     p(text: "The open thread states the rule: *every claim is a consequence-chain back to an axiom — no orphan and no cycle.* DESIGN is reasoned **serially**: §1 fixes the axioms; each later section is a *consequence* of the ones before (or an independent peer), never a restatement. That serial structure is not prose convention — it is the §4 acyclicity test (intersubjective agreement holds only *across* time, so each claim must stay stable under it: a re-interrogable consequence-chain, never a cycle that could quietly redefine itself). The lens turns that test **on the argument itself**."),
     p(text: "Filling the [expressibility-frontier](expressibility-frontier.md) §1.1 intake schema:"),
-    BlockquoteBlock { blocks: [p(text: "⟨ **preferred form** · **deviation witness** · **which §1-cost the gap displaces** · **where on the frontier it is enforceable** · **the drag-to-preferred fix** ⟩")] },
+    std.markdown.BlockquoteBlock { blocks: [p(text: "⟨ **preferred form** · **deviation witness** · **which §1-cost the gap displaces** · **where on the frontier it is enforceable** · **the drag-to-preferred fix** ⟩")] },
     ul(items: [
       li(text: "**Preferred form** — the argument is a **rooted DAG**: a finite set of claims; the only roots are the axioms A1–A3; every non-axiom claim names the premises it follows from; the *follows-from* relation is acyclic."),
       li(text: "**Deviation witness** — a claim that (a) reaches no axiom (**orphan** — a smuggled premise dressed as a conclusion), or (b) participates in a **cycle** (a claim that derives itself — the §4 violation), or (c) is treated as a root but is **not in \{A1,A2,A3\}** (a fourth axiom snuck in without being assumed)."),
@@ -17,7 +17,7 @@ fn axiom_syllogism_lens_body() -> List<std.markdown.MarkdownBlock> {
       li(text: "**Drag-to-preferred fix** — model the argument as `.dag` nodes with explicit `because:` edges, run the reachability + acyclicity walk over it, and fail closed on any orphan/cycle/fake-axiom."),
     ]),
     p(text: "This is **not a new lens family.** It is the [inert-layer-lens](inert-layer-lens.md) §8 rule — *every declared node in a graph must be reachable from a root, or rostered, or deleted* — applied to a **fourth substrate**: the **argument** of a reasoned document. The table from that doc gains one row:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "substrate"), cell(text: "nodes"), cell(text: "edges"), cell(text: "roots"), cell(text: "orphan ="), cell(text: "cycle =")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -38,7 +38,7 @@ fn axiom_syllogism_lens_body() -> List<std.markdown.MarkdownBlock> {
       li(text: "`std/induction.dag` already grounds well-founded / acyclic structure (initial algebras, size-change)."),
     ]),
     p(text: "The new carrier is thin — it *names* the argument over the existing graph algebra, it does not re-implement a graph:"),
-    CodeBlock { code: "module std.argument            // homes beside logic / graph / induction\n\ntype ClaimId = String          // a stable §-anchor handle, e.g. \"A1\", \"s1.minimal-safe-efficient\"\n\n// An axiom is assumed, not derived: the closed root set. \{A1, A2, A3\} and nothing else.\ntype Axiom \{ id: ClaimId, statement: String, anchor: String \}\n\n// A derived claim names the premises it follows from. `because` non-empty ⟺ non-axiom.\ntype Claim \{ id: ClaimId, statement: String, anchor: String, because: List<ClaimId> \}\n\n// The whole argument: a finite claim set over one follows-from relation.\ntype Argument \{ axioms: List<Axiom>, claims: List<Claim> \}\n" },
+    std.markdown.CodeBlock { code: "module std.argument            // homes beside logic / graph / induction\n\ntype ClaimId = String          // a stable §-anchor handle, e.g. \"A1\", \"s1.minimal-safe-efficient\"\n\n// An axiom is assumed, not derived: the closed root set. \{A1, A2, A3\} and nothing else.\ntype Axiom \{ id: ClaimId, statement: String, anchor: String \}\n\n// A derived claim names the premises it follows from. `because` non-empty ⟺ non-axiom.\ntype Claim \{ id: ClaimId, statement: String, anchor: String, because: List<ClaimId> \}\n\n// The whole argument: a finite claim set over one follows-from relation.\ntype Argument \{ axioms: List<Axiom>, claims: List<Claim> \}\n" },
     p(text: "The three structural verdicts are **derived, not stored** (§3 single-authority: the edges are the fact, the verdicts are views) — each is a fold over `Argument` projected onto `std/graph.dag`'s `CallGraph` (`caller = claim`, `callee = each premise`):"),
     ul(items: [
       li(text: "`argument_has_no_orphan(a)` — every `Claim` reaches some `Axiom` over `because` edges (reachability — the inert-lens BFS, re-expressed over claim nodes). An orphan is `claims ∖ reachable(axioms)` over the reverse relation, exactly `inert = universe ∖ reachable(roots)`."),
@@ -46,7 +46,7 @@ fn axiom_syllogism_lens_body() -> List<std.markdown.MarkdownBlock> {
       li(text: "`argument_axiom_set_is_closed(a)` — every node with empty `because` is in `\{A1,A2,A3\}`; no fourth root."),
     ]),
     p(text: "**(b) The instance — the DESIGN rows.** The actual A1–A3 + §1–§7 content is a fact *about gunbc's own DESIGN.md*, not a universal framework — so, exactly as `doc_reachability_project` homes the doc-graph instance outside `std/`, the **DESIGN argument rows** home in a gunbc-layer module (proposed `dag/gunbc/design_argument.dag`) as data:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "node"), cell(text: "kind"), cell(text: "because")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -103,7 +103,7 @@ fn axiom_syllogism_lens_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "The witness homes at `dag/test/claim/design_argument_witness_test.dag`, floor-discovered by the `*_test.dag` + `test fn` marker convention (CLAUDE.md \"Building & checks\") — naming it enrolls it; no hand-wiring."),
 
     h2(text: "5. Reuse map (do not fork — §3)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "need"), cell(text: "reuse"), cell(text: "where")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -159,6 +159,6 @@ data axiom_syllogism_lens_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "axiom-syllogism-lens",
   title: "The axiom + syllogism lens — the argument as the fourth reachability substrate",
   body: axiom_syllogism_lens_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the axiom + syllogism lens is built and runs executably over DESIGN.md's own §1–§7 argument: std/argument.dag (the Axiom/Claim/Argument carriers plus the three fail-closed folds), dag/gunbc/design_argument.dag (the transcribed DESIGN rows), and a discovered design_argument_witness_test.dag are green-by-execution with the orphan/cycle/smuggled-axiom discriminators going RED — at which point this scope-only design is superseded by the running wall and DESIGN open thread #1 is closed.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the axiom + syllogism lens is built and runs executably over DESIGN.md's own §1–§7 argument: std/argument.dag (the Axiom/Claim/Argument carriers plus the three fail-closed folds), dag/gunbc/design_argument.dag (the transcribed DESIGN rows), and a discovered design_argument_witness_test.dag are green-by-execution with the orphan/cycle/smuggled-axiom discriminators going RED — at which point this scope-only design is superseded by the running wall and DESIGN open thread #1 is closed.")
   }
 }

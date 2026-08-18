@@ -129,7 +129,7 @@ fn body_lower_arrow_domain_named_bindings(root: Node) -> List<v2.std.node.Symbol
     TypeNode { connective: Conj } =>
       fold(root.children, init: Empty, f: fn(acc, e) {
         match e.label {
-          Named { name: sym } => Cons { head: sym, tail: acc }
+          Named { name: sym } => std.algebra.Cons { head: sym, tail: acc }
           Positional => acc
         }
       })
@@ -153,7 +153,7 @@ fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<v2
         init: Empty,
         f: fn(acc, e) {
           match e.label {
-            Named { name: sym } => Cons { head: sym, tail: acc }
+            Named { name: sym } => std.algebra.Cons { head: sym, tail: acc }
             Positional => acc
           }
         }
@@ -237,7 +237,7 @@ fn body_lower_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagnost
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -266,7 +266,7 @@ fn body_lower_resolved_type_binding(sym: v2.std.node.Symbol) -> v2.std.node.Symb
 
 fn body_lower_type_atom_node(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Atom { identity: body_lower_resolved_type_binding(sym: sym) } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: body_lower_resolved_type_binding(sym: sym) } },
     children: []
   )
 }
@@ -274,7 +274,7 @@ fn body_lower_type_atom_node(sym: v2.std.node.Symbol) -> Node {
 fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<Node> {
   Accepted {
     value: shell,
-    diagnostics: Some {
+    diagnostics: v2.std.diagnostic.Some {
       diagnostics: diagnostics_singleton(d: body_lower_wrapper_retained_diagnostic(n: shell))
     }
   }
@@ -351,7 +351,7 @@ fn body_lower_is_metadata_preserved_emitted(emitted: v2.std.node.Symbol) -> Bool
 
 fn body_lower_param_ref_atom(source: Node, identity: v2.std.node.Symbol) -> Node {
   node_with_occurrence_id(
-    kind: TypeNode { connective: Atom { identity: identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
     occurrence_id: source.occurrence_id
   )
@@ -377,7 +377,7 @@ fn body_lower_find_captured(root: Node, emitted: v2.std.node.Symbol) -> v2.extde
     Present { value: id } =>
       if id == emitted {
         match parse_production_captured_child_optional(node: root) {
-          Present { value: captured } => ParseSubtreeFound { captured: captured }
+          Present { value: captured } => v2.extdeps.languages.dag.ParseSubtreeFound { captured: captured }
           Absent => body_lower_find_captured_under_children(root: root, emitted: emitted)
         }
       } else if body_lower_find_captured_prunable(id: id) {
@@ -500,7 +500,7 @@ fn body_lower_operator_atom_optional(node: Node) -> Optional<Node> {
       if dag_lex_token_symbol(sym: id) {
         optional_present(
           value: node_synthetic(
-            kind: TypeNode { connective: Atom { identity: id } },
+            kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
             children: []
           )
         )
@@ -1031,12 +1031,12 @@ fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
       let edges = body_lower_collect_param_edges(sequence_capture: comma_spine)
       if count(edges) == 0 {
         Present {
-          value: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+          value: node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: [])
         }
       } else {
         Present {
           value: node_synthetic(
-            kind: TypeNode { connective: Conj },
+            kind: v2.std.node.TypeNode { connective: Conj },
             children: edges
           )
         }
@@ -1584,7 +1584,7 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
         Accepted { value: children, diagnostics: d } =>
           outcome_with_diagnostics(
             value: node_synthetic(
-              kind: ComputationNode { behavior: Transform },
+              kind: v2.std.node.ComputationNode { behavior: Transform },
               children: children
             ),
             diagnostics: d
@@ -1596,7 +1596,7 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
 
 fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: fn_name }, target: arrow }
     ]
@@ -1629,7 +1629,7 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
                                 Absent => body_lower_wrapper_retained_shell(shell: shell)
                                 Present { value: fn_name } =>
                                   let arrow = node_synthetic(
-                                    kind: TypeNode { connective: Arrow },
+                                    kind: v2.std.node.TypeNode { connective: Arrow },
                                     children: [
                                       v2.std.node.Edge { label: Positional, target: domain },
                                       v2.std.node.Edge { label: Positional, target: return_type },
@@ -1746,7 +1746,7 @@ fn body_lower_unwrap_pass_through(shell: Node) -> Outcome<Node> {
 
 fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
   node_synthetic(
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: list_append(
       left: [v2.std.node.Edge { label: Positional, target: operator }],
       right: fold(args, init: Empty, f: fn(acc, arg) {
@@ -1758,7 +1758,7 @@ fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
 
 fn body_lower_method_operator_atom(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Atom { identity: sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: []
   )
 }
@@ -2141,7 +2141,7 @@ fn body_lower_try_postfix_projection(node: Node) -> Outcome<Optional<Node>> {
 
 fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: match_arm_pattern }, target: pat_node },
       v2.std.node.Edge { label: Named { name: match_arm_body }, target: body }
@@ -2548,7 +2548,7 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
         Accepted { value: children, diagnostics: d } =>
           outcome_with_diagnostics(
             value: node_synthetic(
-              kind: ComputationNode { behavior: Branch },
+              kind: v2.std.node.ComputationNode { behavior: Branch },
               children: children
             ),
             diagnostics: d
@@ -3641,12 +3641,12 @@ fn body_lower_match_capture_heads_spine(spine: Node) -> Bool {
 
 fn body_lowering_match_spine_identity_absent_fixture_spine() -> Node {
   let match_kw = node_synthetic(
-    kind: TypeNode { connective: Atom { identity: ^dag_token_kw_match } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_kw_match } },
     children: []
   )
-  let tail = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  let tail = node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: [])
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^grammar_sequence_left_node_projection },

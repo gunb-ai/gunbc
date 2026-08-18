@@ -4,16 +4,16 @@ module test.claim.provider_standing_selection_witness_test
 test fn model_rejection_does_not_erase_account_eligibility() -> Bool {
   limit_observations_are_selection_eligible(
     observations: [
-      LimitRejected {
-        subject: ProviderModelLimit {
+      gunbc.provider_standing.LimitRejected {
+        subject: gunbc.provider_standing.ProviderModelLimit {
           credential: LimitCredentialUnspecified,
           model: "fable" as std.types.NonEmptyStr,
         },
         native_token: "model_rejected" as std.types.NonEmptyStr,
         reason: "model not entitled" as std.types.NonEmptyStr,
       },
-      LimitObservedAvailable {
-        subject: ProviderAccountLimit {
+      gunbc.provider_standing.LimitObservedAvailable {
+        subject: gunbc.provider_standing.ProviderAccountLimit {
           credential: LimitCredentialUnspecified,
         },
       },
@@ -24,8 +24,8 @@ test fn model_rejection_does_not_erase_account_eligibility() -> Bool {
 
 test fn model_rejection_blocks_dispatch_under_unspecified_draw() -> Bool {
   !limit_observation_blocks_dispatch(
-    observation: LimitRejected {
-      subject: ProviderModelLimit {
+    observation: gunbc.provider_standing.LimitRejected {
+      subject: gunbc.provider_standing.ProviderModelLimit {
         credential: LimitCredentialUnspecified,
         model: "fable" as std.types.NonEmptyStr,
       },

@@ -10,7 +10,7 @@ fn fail_closed_lockdown_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "The test for \"locked\": (a) wired into the floor (discovered + run), (b) fail-closed (RED on violation, never a warning), (c) green-by-execution with a **discriminating** input that goes RED when wrong."),
     p(text: "**The governing principle is CONSTRUCTION, not validation** — now an axiom in [DESIGN §5](../../DESIGN.md) (lenses are the residue mechanism, §6): make the bad state *unwritable* (single authority / realization derived from model), reserve lenses for the genuinely-unstructurable. #5423's spec-only key lens shipping a false-green is the proof. So §4 below is ordered **construction-first**; the lens items are the residue that survives it. (Construction does *not* evict the executable hygiene backstop — see §4 meta.)"),
     h2(text: "1. What IS enforced fail-closed today (the good baseline)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Gate"), cell(text: "Scope"), cell(text: "Evidence")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -20,7 +20,7 @@ fn fail_closed_lockdown_body() -> List<std.markdown.MarkdownBlock> {
     },
     p(text: "These are the **structural** gates. The gap is everything *analytical* and the *bootstrap purity* gate."),
     h2(text: "2. Coverage by illusion — authored but inert / vacuous (fail-open by inertia)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Lens / gate"), cell(text: "State"), cell(text: "Why it enforces nothing")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -35,7 +35,7 @@ fn fail_closed_lockdown_body() -> List<std.markdown.MarkdownBlock> {
       ],
     },
     h2(text: "3. Where the pipeline actually fails OPEN (wrong answer passes silently)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Site"), cell(text: "Class"), cell(text: "What it fabricates / masks")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -87,6 +87,6 @@ data fail_closed_lockdown_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "fail-closed-lockdown",
   title: "Plan — Fail-closed lock-down (make fail-open physically impossible to write)",
   body: fail_closed_lockdown_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the §4 checklist is green: every discipline has a discovered, fail-closed, discriminating CI witness, and the meta-invariant gate exists so a new inert lens cannot be added. At that point the floor *is* the lock-down and this audit is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the §4 checklist is green: every discipline has a discovered, fail-closed, discriminating CI witness, and the meta-invariant gate exists so a new inert lens cannot be added. At that point the floor *is* the lock-down and this audit is redundant.")
   }
 }

@@ -158,7 +158,7 @@ fn namespace_graft_body_dissolved(root: Node, body_edges: List<v2.std.node.Edge>
 
 fn namespace_graft_build_body_conj(edges: List<v2.std.node.Edge>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: edges,
     occurrence_id: SyntheticOccurrence
   }
@@ -166,7 +166,7 @@ fn namespace_graft_build_body_conj(edges: List<v2.std.node.Edge>) -> Node {
 
 fn namespace_graft_wrap_segment(segment: v2.std.node.Symbol, inner: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: segment },
@@ -189,7 +189,7 @@ fn namespace_graft_fold_spine(qn: v2.std.qualified_name.QualifiedName, body: Nod
 
 fn namespace_graft_atom_node(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -197,7 +197,7 @@ fn namespace_graft_atom_node(id: v2.std.node.Symbol) -> Node {
 
 fn namespace_graft_wrap_module_shell(captured: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^grammar_production_identity_node_projection,
@@ -263,7 +263,7 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
     outcome_rejected(v2.std.diagnostic.Diagnostic {
       reason: ^namespace_graft_dual_position_refused,
       at: node_locus(node: root),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     })
   } else if !namespace_graft_is_graft_candidate(root: root) {
     outcome_accepted(value: root)
@@ -276,7 +276,7 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
             outcome_rejected(v2.std.diagnostic.Diagnostic {
               reason: ^qualified_name_structure_invalid,
               at: node_locus(node: root),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             })
           Cons { head: _, tail: _ } => {
             let body_edges = namespace_graft_collect_body_edges(root: root)
@@ -284,7 +284,7 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
               outcome_rejected(v2.std.diagnostic.Diagnostic {
                 reason: ^namespace_graft_body_dissolved_refused,
                 at: node_locus(node: root),
-                correction: Unavailable { reason: ExternalContractUnknown }
+                correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
               })
             } else {
               let body = namespace_graft_build_body_conj(edges: body_edges)

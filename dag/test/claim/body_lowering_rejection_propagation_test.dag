@@ -4,12 +4,12 @@ module gunbc.test.claim.body_lowering_rejection_propagation_test
 data body_lowering_rejection_propagation_note: String = "THE DISCRIMINATING CONTROL for the deleted rejection catch. body_lower_finish_for_normalize used to match EVERY Rejected from body_lower_after_children and return a wrapper-retained Accepted instead, binding the rejection diagnostics to _ and discarding them — so a malformed form, a violated invariant and a genuinely unsupported one all left the seam looking like the same counted frontier state.\n\nThese two claims are the pair that separates them, and they are durable because both are invariants rather than observations of the present frontier: a form the lowering strategies REJECT must leave the seam Rejected carrying its own reason, and an emitted identity with no registered producer must STILL leave it Accepted carrying the retention reason. The first fails on the pre-repair implementation, which returned Accepted; the second fails on any over-correction that deletes the legitimate retention arm along with the catch. Neither claim mentions a specific std module, so neither inverts when the frontier moves.\n\nThe rejecting specimen is a pass-through production (^dag_surface_expr) carrying a production-identity child and NO captured child, which is exactly the shape body_lower_unwrap_pass_through refuses with ^body_lowering_reason_unsupported_form. The retaining specimen carries an identity no producer is registered for, which reaches the final arm of body_lower_production_emitted."
 
 fn atom_node(id: v2.std.node.Symbol) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } }, children: [])
 }
 
 fn emitted_shell(id: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^grammar_production_identity_node_projection },

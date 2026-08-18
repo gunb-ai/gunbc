@@ -65,8 +65,8 @@ test fn census_reports_advisory_severity_as_data() -> Bool {
 }
 
 test fn census_not_runnable_is_not_an_empty_observation() -> Bool {
-  let not_runnable = CensusNotRunnable { cause: "synthetic could-not-measure" as std.types.NonEmptyStr }
-  let empty_observed = CensusObserved { rows: [] }
+  let not_runnable = gunbc.compile_diagnostic_census.CensusNotRunnable { cause: "synthetic could-not-measure" as std.types.NonEmptyStr }
+  let empty_observed = gunbc.compile_diagnostic_census.CensusObserved { rows: [] }
   let cause_readable = match not_runnable {
     CensusNotRunnable { cause: c } => (c as String) != ""
     CensusObserved { rows: _ } => false

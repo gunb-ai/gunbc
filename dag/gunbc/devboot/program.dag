@@ -24,7 +24,7 @@ fn select_program(program: String) -> ProgramSelection {
   if program_is_offered(program: program) {
     ProgramSelected {
       package: devboot_program_package,
-      cargo_target: Bin { name: program },
+      cargo_target: extdeps.cargo.Bin { name: program },
       bin_name: program,
     }
   } else {

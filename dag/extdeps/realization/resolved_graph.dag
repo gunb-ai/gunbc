@@ -45,7 +45,7 @@ data resolved_graph_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts 
   placement: {
     value_shape: StructuredArtifact
     locality: PerHostFilesystem
-    retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: resolved_graph_cache_cap_bytes } }, at_capacity: ReplaceExisting { strategy: ProviderNativeReplacement } } }
+    retention: { release_policy: ReleasedNever, capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: resolved_graph_cache_cap_bytes } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: ProviderNativeReplacement } } }
     atomicity: WriteThenRename
     auth: FilesystemPerms
     read_latency: LocalDiskUs
@@ -54,14 +54,14 @@ data resolved_graph_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts 
   evidence: [
     {
       field: "atomicity"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "resolved_graph_cache.rs temp-file + rename write path (WriteOnce under race)"
         observed_at: 0
       }
     },
     {
       field: "lookup_semantics"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "subject_digest content-addresses the closure content AND the resolve transform via the ToolchainSpec input (content(toolchain)) — NOT hand-authored resolve-logic/intern-seed version strings (cache-key-by-construction)"
         observed_at: 0
       }

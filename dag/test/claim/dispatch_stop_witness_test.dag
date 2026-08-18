@@ -70,19 +70,19 @@ test fn cleanup_separates_running_process_from_retained_session() -> Bool {
   let owned = dispatch_session_cleanup(
     scope: scope(),
     session: live_with_process(
-      process: WorkerProcessRunning { command: "node" as std.types.NonEmptyStr },
+      process: gunbc.worker_lifecycle.WorkerProcessRunning { command: "node" as std.types.NonEmptyStr },
     ),
   )
   let retained = dispatch_session_cleanup(
     scope: scope(),
     session: live_with_process(
-      process: WorkerProcessExited { exit_code: 0, last_command: "env" },
+      process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "env" },
     ),
   )
   let foreign = dispatch_session_cleanup(
     scope: scope(),
     session: live_with_process(
-      process: WorkerProcessRunning { command: "sleep" as std.types.NonEmptyStr },
+      process: gunbc.worker_lifecycle.WorkerProcessRunning { command: "sleep" as std.types.NonEmptyStr },
     ),
   )
   match owned {
@@ -102,17 +102,17 @@ test fn cleanup_separates_running_process_from_retained_session() -> Bool {
 }
 
 test fn stop_wire_statuses_discriminate() -> Bool {
-  let stopped = StopProcessStopped { node_id: "n", session_name: "gunbc-dispatch-n" }
-  let cleared = StopRetainedSessionCleared {
+  let stopped = gunbc.roadmap_belt_actuate.StopProcessStopped { node_id: "n", session_name: "gunbc-dispatch-n" }
+  let cleared = gunbc.roadmap_belt_actuate.StopRetainedSessionCleared {
     node_id: "n",
     session_name: "gunbc-dispatch-n",
     exit_code: 0,
   }
-  let disabled = StopDisabled { node_id: "n", instance_id: "preview", reason: "observe-only" }
-  let foreign = StopRefusedResult { node_id: "n", reason: "a foreign process wears the dispatch session name — refusing to kill what we cannot prove ours" }
-  let missing = StopRefusedResult { node_id: "n", reason: "no session container for this node" }
-  let unknowable = StopObserveRefused { node_id: "n", reason: "tmux ls: permission denied" }
-  let failed = StopTeardownFailed { node_id: "n", session_name: "gunbc-dispatch-n", detail: "kill-session exited 1" }
+  let disabled = gunbc.roadmap_belt_actuate.StopDisabled { node_id: "n", instance_id: "preview", reason: "observe-only" }
+  let foreign = gunbc.roadmap_belt_actuate.StopRefusedResult { node_id: "n", reason: "a foreign process wears the dispatch session name — refusing to kill what we cannot prove ours" }
+  let missing = gunbc.roadmap_belt_actuate.StopRefusedResult { node_id: "n", reason: "no session container for this node" }
+  let unknowable = gunbc.roadmap_belt_actuate.StopObserveRefused { node_id: "n", reason: "tmux ls: permission denied" }
+  let failed = gunbc.roadmap_belt_actuate.StopTeardownFailed { node_id: "n", session_name: "gunbc-dispatch-n", detail: "kill-session exited 1" }
   return belt_stop_http_status(r: stopped) == 200
     && belt_stop_http_status(r: cleared) == 200
     && belt_stop_http_status(r: disabled) == 403

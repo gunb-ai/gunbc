@@ -194,7 +194,7 @@ test fn witness_tasks_outcome_routes_to_tasks_legacy_arm_preserving_applied() ->
       )
       host_converge_slice1_tasks_receipt_is_valid(receipt: receipt)
         && match host_converge_slice1_unit_outcome_to_legacy_result(
-             HostConvergeSlice1UnitTasksConverged { unit: host_converge_slice1_probe_unit, applied: true, receipt: receipt }
+             gunbc.host_converge_slice1.HostConvergeSlice1UnitTasksConverged { unit: host_converge_slice1_probe_unit, applied: true, receipt: receipt }
            ) {
           HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
             n == 1 && r.verdict == VerdictConverged

@@ -50,7 +50,7 @@ fn first_dead_wire(
 }
 
 fn dead_wire_reason(obligation: FrontierWiringObligation, dependence: List<v2.std.dependency.DependencyView>) -> v2.lens.affected_set.FailClosedReason {
-  ReasonDiagnostics {
+  v2.lens.affected_set.ReasonDiagnostics {
     diagnostics: diagnostics_singleton(
       d: graph_reach_unreachable_diagnostic(
         reason: ^wiring_liveness_dead_wire,
@@ -80,5 +80,5 @@ fn preflight_reexec_frontier(
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

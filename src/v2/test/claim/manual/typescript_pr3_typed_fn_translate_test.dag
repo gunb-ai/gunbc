@@ -46,11 +46,11 @@ fn typescript_pr3_canonical_grounding_for(node: Node) -> Witness<v2.std.constrai
       value: typescript_pr3_canonical_grounding(node: node, algebra: typescript_pr3_emitted_root)
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^typescript_pr3_grounding_miss,
         at: node_locus(node: node),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
@@ -93,7 +93,7 @@ fn anchor_typescript_pr3_compile_inferred_accepts() -> Outcome<v2.compiler.compi
     Holds { value: target } =>
       compile_inferred(
         inferred: typescript_pr3_inferred_tree,
-        mode: TranslateTo { target: target }
+        mode: v2.compiler.compile.TranslateTo { target: target }
       )
     Violates { diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }

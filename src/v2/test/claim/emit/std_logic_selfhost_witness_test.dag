@@ -8,7 +8,7 @@ data std_logic_bool_enum_golden: String = concat(rust_enum_derives_copy, "\nenum
 data std_logic_bool_wrong_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { False, True }")
 
 fn sl_conj(children: List<v2.std.node.Edge>) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
 }
 
 fn sl_pos(target: Node) -> v2.std.node.Edge { v2.std.node.Edge { label: Positional, target: target } }
@@ -39,7 +39,7 @@ fn sl_named_edge(name: String, target: Node) -> v2.std.node.Edge {
 
 fn sl_coproduct_enum(variant_edges: List<v2.std.node.Edge>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: Disj },
     children: variant_edges,
     occurrence_id: SyntheticOccurrence
   }
@@ -121,7 +121,7 @@ test fn std_logic_bool_type_decl_self_emits() -> Bool {
 fn sl_coproduct_derive_binding_rejects_non_disj() -> Bool {
   match rust_decl_enum_derive_binding_for_coproduct(
     coproduct: v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: ^sl_non_disj_atom } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sl_non_disj_atom } },
       children: [],
       occurrence_id: SyntheticOccurrence
     }

@@ -22,8 +22,8 @@ fn parallelism_relation_for_view(
 fn parallelism_witness_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^parallelism_reason_unresolved_projection,
-    at: Textual { file: ^parallelism_projection_virtual_file, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^parallelism_projection_virtual_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
@@ -35,14 +35,14 @@ fn parallelism_coupling_absent_diagnostic(facts: v2.compiler.infer.InferredFacts
   v2.std.diagnostic.Diagnostic {
     reason: ^parallelism_reason_coupling_carrier_absent,
     at: node_locus(node: inferred_facts_subject_node(facts: facts)),
-    correction: Unavailable { reason: AmbiguousIntent }
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
 fn parallelism_relation_from_admitted_facts(facts: v2.compiler.infer.InferredFacts) -> v2.lens.common.algebraic_composition.ParallelismRelation {
   match inferred_facts_descent(facts: facts) {
-    Violates { diagnostic: d } => UnresolvedCoupling { diagnostic: d }
-    Holds { value: _ } => UnresolvedCoupling { diagnostic: parallelism_coupling_absent_diagnostic(facts: facts) }
+    Violates { diagnostic: d } => v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: d }
+    Holds { value: _ } => v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: parallelism_coupling_absent_diagnostic(facts: facts) }
   }
 }
 
@@ -50,7 +50,7 @@ fn parallelism_relation_from_source_facts_witness(
   source_facts: Witness<v2.compiler.infer.InferredFacts>
 ) -> v2.lens.common.algebraic_composition.ParallelismRelation {
   match source_facts {
-    Violates { diagnostic: d } => UnresolvedCoupling { diagnostic: d }
+    Violates { diagnostic: d } => v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: d }
     Holds { value: facts } => parallelism_relation_from_admitted_facts(facts: facts)
   }
 }
@@ -125,10 +125,10 @@ fn parallelism_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<
   let unresolved_diagnostic = parallelism_first_unresolved_coupling_diagnostic(fact: fact)
   match optional_present_witness(opt: unresolved_diagnostic) {
     Holds { value: d } =>
-      Violates { diagnostic: d }
+      v2.std.witness.Violates { diagnostic: d }
     Violates { diagnostic: _ } =>
       if parallelism_fact_unresolved(fact: fact) {
-        Violates { diagnostic: parallelism_witness_diagnostic() }
+        v2.std.witness.Violates { diagnostic: parallelism_witness_diagnostic() }
       } else {
         Holds { value: fact }
       }
@@ -168,5 +168,5 @@ fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }

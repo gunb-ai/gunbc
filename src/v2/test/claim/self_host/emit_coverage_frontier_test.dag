@@ -63,7 +63,7 @@ fn synthetic_unbacked_native_row() -> v2.compiler.self_host.emit_coverage_fronti
     ),
     witness_entry: "src/v2/test/claim/execution/does_not_exist_test.dag",
     witness_function: "fabricated_all_holds",
-    disposition: SelfEmittedNative {
+    disposition: v2.compiler.self_host.emit_coverage_frontier.SelfEmittedNative {
       backing_entry: "src/v2/test/claim/execution/does_not_exist_test.dag",
       backing_function: "fabricated_all_holds"
     }

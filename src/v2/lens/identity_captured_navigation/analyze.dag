@@ -24,7 +24,7 @@ fn find_capture(root: Node, emitted: v2.std.node.Symbol) -> Optional<Node> {
 }
 
 fn capture_list_prepend(item: Node, xs: List<Node>) -> List<Node> {
-  Cons { head: item, tail: xs }
+  std.algebra.Cons { head: item, tail: xs }
 }
 
 // collect_direct_captures walks n.children only until it hits a node whose OWN production identity equals the target emitted symbol - it does not descend past a match, so it finds exactly the direct (non-nested) occurrences of a production, matching the technique v2.lens.complexity_accumulator_copy.analyze uses to read a call's own args (^dag_surface_arg) without wandering into a nested call's args.
@@ -68,7 +68,7 @@ fn sequence_left_symbol(cap: Node) -> Optional<v2.std.node.Symbol> {
 }
 
 fn symbol_list_prepend(item: v2.std.node.Symbol, xs: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
-  Cons { head: item, tail: xs }
+  std.algebra.Cons { head: item, tail: xs }
 }
 
 fn symbol_list_length(xs: List<v2.std.node.Symbol>) -> Int {
@@ -333,11 +333,11 @@ fn identity_navigation_findings_at(node: Node, span_index: v2.std.provenance.Spa
                           match_node: node,
                           mentions: collect_value_identifiers_into(n: arms, acc: std.algebra.Empty)
                         ) {
-                          Present { value: f } => Cons { head: f, tail: std.algebra.Empty }
+                          Present { value: f } => std.algebra.Cons { head: f, tail: std.algebra.Empty }
                           Absent => std.algebra.Empty
                         }
                       Absent =>
-                        Cons {
+                        std.algebra.Cons {
                           head: v2.lens.identity_captured_navigation.Unclassifiable {
                             at: node,
                             cause: ^identity_navigation_arms_unresolved

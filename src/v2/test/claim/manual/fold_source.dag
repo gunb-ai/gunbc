@@ -27,7 +27,7 @@ fn count_three_algebra() -> SourceFold<CountAcc> {
   }
 }
 
-data src_abc: String = Cons { head: 97, tail: Cons { head: 98, tail: Cons { head: 99, tail: Empty } } }
+data src_abc: String = std.algebra.Cons { head: 97, tail: std.algebra.Cons { head: 98, tail: std.algebra.Cons { head: 99, tail: Empty } } }
 
 fn witness_fold_source_stops_at_is_done() -> Bool {
   let result = fold_source(src: src_abc, algebra: count_three_algebra())
@@ -37,13 +37,13 @@ fn witness_fold_source_stops_at_is_done() -> Bool {
 fn fold_source_ok_node(ok: Bool) -> Node {
   if ok {
     v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: ^fold_source_ok_atom } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fold_source_ok_atom } },
       children: [],
       occurrence_id: SyntheticOccurrence
     }
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: ^fold_source_fail_atom } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fold_source_fail_atom } },
       children: [],
       occurrence_id: SyntheticOccurrence
     }
@@ -52,13 +52,13 @@ fn fold_source_ok_node(ok: Bool) -> Node {
 
 fn fold_source_expected() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^fold_source_ok_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fold_source_ok_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-data claim_fold_source_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_fold_source_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/fold_source: module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fold_source_ok_node(ok: true),
@@ -66,7 +66,7 @@ data claim_fold_source_compiles: v2.std.verification.TestClaim = CompilesClaim {
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_fold_source_is_done_short_circuits: v2.std.verification.TestClaim = CompilesClaim {
+data claim_fold_source_is_done_short_circuits: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/fold_source: is_done short-circuits before |src| bound",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fold_source_ok_node(ok: witness_fold_source_stops_at_is_done()),

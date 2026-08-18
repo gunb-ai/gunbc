@@ -28,7 +28,7 @@ fn span_index_occurrence_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^span_index_occurrence_absent,
     at: port_locus(port: ^span_index_lookup_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -59,7 +59,7 @@ fn span_index_origin_chain_exhausted_diagnostic() -> v2.std.diagnostic.Diagnosti
   v2.std.diagnostic.Diagnostic {
     reason: ^span_index_origin_chain_exhausted,
     at: port_locus(port: ^span_index_lookup_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -69,7 +69,7 @@ fn span_index_resolve_textual_locus_from_ids(
 ) -> Witness<v2.std.diagnostic.Locus> {
   fold_list(
     xs: ids,
-    empty: Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() },
+    empty: v2.std.witness.Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() },
     cons: fn(acc, id) {
       match acc {
         Holds { value: _ } => acc
@@ -87,14 +87,14 @@ fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identit
         FromSource { locus } =>
           match locus {
             Textual { file: _, extent: _ } => Holds { value: locus }
-            _ => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+            _ => v2.std.witness.Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
           }
         DerivedBy { producer: _, from: from } =>
           span_index_resolve_textual_locus_from_ids(index: index, ids: from)
         GeneratedBy { generator: _, from: from } =>
           span_index_resolve_textual_locus_from_ids(index: index, ids: from)
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 

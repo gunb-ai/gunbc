@@ -147,7 +147,7 @@ fn bmc_fan_reboot_activation_evidence(
     power_after: receipt.host_power_after,
   ) {
     RedfishHostPowerStateChanged { power_before: _, power_after: _ } =>
-      ActivationUnverified {
+      std.state_durability.ActivationUnverified {
         reason: "host ComputerSystem PowerState did not remain On across BMC restart",
       }
     RedfishHostPowerStateRemainedOn =>
@@ -161,7 +161,7 @@ fn bmc_fan_reboot_activation_evidence(
         && receipt.post_reboot_controller_active
         && !receipt.post_reboot_zone_failsafe_active
         && receipt.post_reboot_observer_exit_success {
-        ActivationVerified {
+        std.state_durability.ActivationVerified {
           receipt: std.state_durability.StateActivationReceipt {
             perturbation_receipt_id: receipt.perturbation_receipt_id,
             target: admission.target,
@@ -173,7 +173,7 @@ fn bmc_fan_reboot_activation_evidence(
           },
         }
       } else {
-        ActivationUnverified {
+        std.state_durability.ActivationUnverified {
           reason: "graceful BMC restart did not carry independent controller, content, and safety readbacks",
         }
       }
@@ -186,7 +186,7 @@ fn bmc_fan_reboot_preservation_outcome(
   timing: BmcFanRebootTimingBuilt,
 ) -> StatePreservationOutcome<HostIdentity, BmcFanConfigReadbackSubject> {
   if receipt.bmc_returned {
-    StatePreserved {
+    std.state_durability.StatePreserved {
       before: std.state_durability.StateBeforeReadbackReceipt {
         perturbation_receipt_id: receipt.perturbation_receipt_id,
         target: receipt.before.host,
@@ -211,7 +211,7 @@ fn bmc_fan_reboot_preservation_outcome(
       ),
     }
   } else {
-    StatePreservationObservationRefused {
+    std.state_durability.StatePreservationObservationRefused {
       reason: "BMC did not return for post-boundary content and activation readback",
     }
   }

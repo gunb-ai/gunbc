@@ -17,7 +17,7 @@ test fn witness_read_read_independent() -> Bool {
 
 test fn witness_create_unknown_not_independent() -> Bool {
   match independence_from_effect_shapes(
-    left: CreateEffect { cause: PostAlways },
+    left: std.effects.CreateEffect { cause: PostAlways },
     right: ReadEffect
   ) {
     Independent => false
@@ -28,15 +28,15 @@ test fn witness_create_unknown_not_independent() -> Bool {
 
 test fn witness_upsert_same_key_dependent() -> Bool {
   independence_from_effect_shapes(
-    left: UpsertEffect { key_source: std.effects.PathParam { param: "id" } },
-    right: UpsertEffect { key_source: std.effects.PathParam { param: "id" } }
+    left: std.effects.UpsertEffect { key_source: std.effects.PathParam { param: "id" } },
+    right: std.effects.UpsertEffect { key_source: std.effects.PathParam { param: "id" } }
   ) == Dependent
 }
 
 test fn witness_upsert_different_keys_independent() -> Bool {
   independence_from_effect_shapes(
-    left: UpsertEffect { key_source: std.effects.InputField { field: "a" } },
-    right: UpsertEffect { key_source: std.effects.InputField { field: "b" } }
+    left: std.effects.UpsertEffect { key_source: std.effects.InputField { field: "a" } },
+    right: std.effects.UpsertEffect { key_source: std.effects.InputField { field: "b" } }
   ) == Independent
 }
 

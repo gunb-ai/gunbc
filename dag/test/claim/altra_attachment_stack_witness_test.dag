@@ -129,7 +129,7 @@ fn undecided_carriage_blocker() -> String {
   let planted = product.altra_motherboard.attachment_stack.AttachmentLayerStanding {
     layer: board_land_pattern_standing.layer,
     fact: processor_package_standing.fact,
-    carriage: CarriageDecisionRequired { reason: "planted: carriage undecided for this subject" },
+    carriage: product.altra_motherboard.attachment_stack.CarriageDecisionRequired { reason: "planted: carriage undecided for this subject" },
   }
   match layer_blocker(row: planted) {
     Absent => "none"
@@ -205,7 +205,7 @@ test fn w_every_layer_standing_is_a_coherent_pair() -> Bool {
 test fn w_an_established_fact_cannot_have_inapplicable_carriage() -> Bool {
   match authority_standing_refusal(
     fact: processor_package_standing.fact,
-    carriage: CarriageNotApplicable { because: "planted: carriage moot for a fact that exists" }
+    carriage: product.altra_motherboard.attachment_stack.CarriageNotApplicable { because: "planted: carriage moot for a fact that exists" }
   ) {
     Present { value: EstablishedFactHasInapplicableCarriage } => true
     Present { value: _ } => false
@@ -215,7 +215,7 @@ test fn w_an_established_fact_cannot_have_inapplicable_carriage() -> Bool {
 
 test fn w_an_unestablished_fact_cannot_claim_carriage_permission() -> Bool {
   match authority_standing_refusal(
-    fact: FactUnresolved { what_is_missing: "planted: nobody has found this document" },
+    fact: product.altra_motherboard.attachment_stack.FactUnresolved { what_is_missing: "planted: nobody has found this document" },
     carriage: NormalizedFactsMayBeCarried
   ) {
     Present { value: UnestablishedFactClaimsNormalizedCarriage } => true
@@ -227,7 +227,7 @@ test fn w_an_unestablished_fact_cannot_claim_carriage_permission() -> Bool {
 test fn w_an_access_gated_fact_gets_no_independent_carriage_decision() -> Bool {
   match authority_standing_refusal(
     fact: reference_board_collateral_standing(),
-    carriage: CarriageDecisionRequired { reason: "planted: decided separately from the access terms" }
+    carriage: product.altra_motherboard.attachment_stack.CarriageDecisionRequired { reason: "planted: decided separately from the access terms" }
   ) {
     Present { value: AccessGatedFactHasIndependentCarriageDecision } => true
     Present { value: _ } => false
@@ -243,8 +243,8 @@ test fn w_the_coherent_pairs_are_admitted() -> Bool {
     carriage: NormalizedFactsMayBeCarried
   )
     && standing_pair_is_admitted(
-      fact: FactUnresolved { what_is_missing: "planted" },
-      carriage: CarriageNotApplicable { because: "planted" }
+      fact: product.altra_motherboard.attachment_stack.FactUnresolved { what_is_missing: "planted" },
+      carriage: product.altra_motherboard.attachment_stack.CarriageNotApplicable { because: "planted" }
     )
 }
 
@@ -259,7 +259,7 @@ fn incoherent_row() -> product.altra_motherboard.attachment_stack.AttachmentLaye
   product.altra_motherboard.attachment_stack.AttachmentLayerStanding {
     layer: BoardLandPatternLayer,
     fact: processor_package_standing.fact,
-    carriage: CarriageNotApplicable {
+    carriage: product.altra_motherboard.attachment_stack.CarriageNotApplicable {
       because: "planted: an established fact may not also declare carriage inapplicable",
     },
   }

@@ -3,7 +3,7 @@ module gunbc.plans.regime2_shared_emission_fold
 
 fn regime2_shared_emission_fold_body() -> List<std.markdown.MarkdownBlock> {
   [
-    BlockquoteBlock { blocks: [p(text: "Kills the boutique `*_emit.dag` proliferation by collapsing the **pure-projection** serializers (`serialize_yaml`, `serialize_gitignore`, `serialize_runner_deploy`) into **one** fold of a protocol over a shared emission model. DESIGN refs: §2 (no duplicated layout logic — one concept, every format), §3 (single authority — the layout primitive lives once in `std`), §4 (the destination is emission = ingestion⁻¹; this is the seed-layer, forward-only *subset* of it), §5 (emit-only formats have no round-trip oracle — be honest at the boundary), §6 (DFS the concept DAG before minting; price the work as the displaced boutique-duplication pain, not elegance).")] },
+    std.markdown.BlockquoteBlock { blocks: [p(text: "Kills the boutique `*_emit.dag` proliferation by collapsing the **pure-projection** serializers (`serialize_yaml`, `serialize_gitignore`, `serialize_runner_deploy`) into **one** fold of a protocol over a shared emission model. DESIGN refs: §2 (no duplicated layout logic — one concept, every format), §3 (single authority — the layout primitive lives once in `std`), §4 (the destination is emission = ingestion⁻¹; this is the seed-layer, forward-only *subset* of it), §5 (emit-only formats have no round-trip oracle — be honest at the boundary), §6 (DFS the concept DAG before minting; price the work as the displaced boutique-duplication pain, not elegance).")] },
     h2(text: "1. The two regimes (why this is a clean split, not a fork)"),
     p(text: "Emission has two regimes, and keeping them separate is correct:"),
     ul(items: [
@@ -11,7 +11,7 @@ fn regime2_shared_emission_fold_body() -> List<std.markdown.MarkdownBlock> {
       li(text: "**Regime 2 — pure projection** (forward-only, never parsed): `.gitignore`, the runner-deploy manifest, and `ci.yml`-as-config. We **emit** these from an authority and **never ingest** them, so there is no round-trip oracle — faithfulness rests on the authored projection (§5 honesty boundary; do **not** claim a round-trip these formats can't have)."),
     ]),
     p(text: "The boutique pain is entirely in **regime 2**: three hand-rolled serializers, each re-inventing indent / line-join / separator / comment layout, over three different-or-absent IRs:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "emitter"), cell(text: "file"), cell(text: "IR today"), cell(text: "serialize fn")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -23,7 +23,7 @@ fn regime2_shared_emission_fold_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "That's the §2 violation: layout logic duplicated three ways."),
     h2(text: "2. The target shape — protocol fold over an emission model"),
     p(text: "One fold replaces three:"),
-    CodeBlock { code: "expected_X = render( project_X_to_doc(authority) , X_protocol )\n" },
+    std.markdown.CodeBlock { code: "expected_X = render( project_X_to_doc(authority) , X_protocol )\n" },
     ul(items: [
       li(text: "**The emission model** = a generic **layout / document IR** in `std` (the standard pretty-printer `Doc`: `text` / `line` / `nest` / `concat` / `sep`, whatever the faithful minimal set turns out to be). This is the \"one concept, every format\" carrier. **DFS `std` first** (§6): confirm no existing layout primitive before minting. Note `std.markup.Fragment` (Element/FragmentText/RawNode) is a **markup** tree (HTML tags) — a *different* concern from line/indent layout, so it is **not** the shared IR here; confirm and move on. v2's `serialize_target` has layout entangled with grammar rows, so it is not seed-usable here either. A new `std.layout` (or similarly-named) module is therefore net-new concept, not re-invention — but **prove that** by the DFS, don't assume it."),
       li(text: "**The protocol** = a per-format record of the genuinely format-global spelling knobs (indent unit, comment prefix, newline style — whatever survives after structure moves into the `Doc`). Prefer encoding structure in the `Doc`; keep the protocol record as thin as the formats actually require. If it ends up near-empty because the `Doc` determines everything, that is a fine outcome — say so."),
@@ -60,6 +60,6 @@ data regime2_shared_emission_fold_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "regime2-shared-emission-fold",
   title: "Regime-2 emission: one shared fold for the pure-projection formats",
   body: regime2_shared_emission_fold_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the three regime-2 pure-projection serializers (serialize_yaml/serialize_gitignore/serialize_runner_deploy) are collapsed into one render fold over a shared std layout Doc IR — byte-identical-witnessed against the committed ci.yml/.gitignore/runner manifest with a format-agnostic-render witness — so the boutique *_emit.dag duplication is gone; the scaffold's own dissolution (the v2 TargetModel grammar-row inverse subsuming the shared fold at self-host) then carries the rest.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the three regime-2 pure-projection serializers (serialize_yaml/serialize_gitignore/serialize_runner_deploy) are collapsed into one render fold over a shared std layout Doc IR — byte-identical-witnessed against the committed ci.yml/.gitignore/runner manifest with a format-agnostic-render witness — so the boutique *_emit.dag duplication is gone; the scaffold's own dissolution (the v2 TargetModel grammar-row inverse subsuming the shared fold at self-host) then carries the rest.")
   }
 }

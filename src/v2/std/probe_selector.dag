@@ -253,7 +253,7 @@ fn probe_select_best_under_budget(
     cons: fn(best, entry) {
       match best {
         Empty =>
-          Cons { head: entry, tail: Empty }
+          std.algebra.Cons { head: entry, tail: Empty }
         Cons { head: current, tail: _ } =>
           match probe_discrimination_beats_with_coverage(
             challenger: entry,
@@ -261,7 +261,7 @@ fn probe_select_best_under_budget(
             incumbent: current,
             incumbent_coverage: probe_effective_coverage(entry: current, prior: prior)
           ) {
-            true => Cons { head: entry, tail: Empty }
+            true => std.algebra.Cons { head: entry, tail: Empty }
             false => best
           }
       }
@@ -343,7 +343,7 @@ fn ci_probe_catalog_entries_from_roster_with_prior(
     xs: roster,
     empty: Empty,
     snoc: fn(acc, claim) {
-      Cons {
+      std.algebra.Cons {
         head: ci_probe_catalog_entry_for_claim_with_prior(claim: claim, prior: prior),
         tail: acc
       }
@@ -512,9 +512,9 @@ fn diagnostic_capability_cloud_vm() -> DiagnosticCapabilityFacts {
 
 fn diagnostic_capability_ci_in_repo() -> DiagnosticCapabilityFacts {
   DiagnosticCapabilityFacts {
-    interfaces: Cons {
+    interfaces: std.algebra.Cons {
       head: DiagnosticSsh,
-      tail: Cons { head: DiagnosticDockerReachability, tail: Empty }
+      tail: std.algebra.Cons { head: DiagnosticDockerReachability, tail: Empty }
     }
   }
 }
@@ -523,23 +523,23 @@ data host_probe_docker_reachability: ProbeCatalogEntry = ProbeCatalogEntry {
   label: "docker-reachability",
   coverage: 10,
   cost: 1,
-  requires: Cons { head: DiagnosticDockerReachability, tail: Empty }
+  requires: std.algebra.Cons { head: DiagnosticDockerReachability, tail: Empty }
 }
 
 data host_probe_edac_summary: ProbeCatalogEntry = ProbeCatalogEntry {
   label: "edac-correctable-summary",
   coverage: 40,
   cost: 2,
-  requires: Cons { head: DiagnosticEdac, tail: Empty }
+  requires: std.algebra.Cons { head: DiagnosticEdac, tail: Empty }
 }
 
 data host_probe_ipmi_ecc_stress: ProbeCatalogEntry = ProbeCatalogEntry {
   label: "ecc-watched-stress",
   coverage: 101,
   cost: 5,
-  requires: Cons {
+  requires: std.algebra.Cons {
     head: DiagnosticIpmi,
-    tail: Cons { head: DiagnosticBmcSensors, tail: Cons { head: DiagnosticEdac, tail: Empty } }
+    tail: std.algebra.Cons { head: DiagnosticBmcSensors, tail: std.algebra.Cons { head: DiagnosticEdac, tail: Empty } }
   }
 }
 

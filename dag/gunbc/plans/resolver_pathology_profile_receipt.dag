@@ -10,7 +10,7 @@ fn resolver_pathology_profile_receipt_body() -> List<std.markdown.MarkdownBlock>
     p(text: "Cold resolve with `GUNBC_RESOLVED_GRAPH_CACHE_DIR` unset, per-entry resolve wall clock over the corpus, reported as top-N offenders plus an A/B on the `budget_roster_completeness_test` vs `fold_list_generic_instantiation` pair. Recorded here so the method survives the harness."),
     hr(),
     h2(text: "2. Measured top resolve offenders (warm typed_module_cache)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Rank"), cell(text: "ms"), cell(text: "items"), cell(text: "entry")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -32,6 +32,6 @@ data resolver_pathology_profile_receipt_plan: gunbc.plan.Plan = gunbc.plan.Plan 
   slug: "resolver-pathology-profile-receipt",
   title: "Resolver pathology — cold-resolve profile receipt",
   body: resolver_pathology_profile_receipt_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when resolve-phase timings are substrate-emitted and ROADMAP 1-resolver-pathology closes with a fix PR.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when resolve-phase timings are substrate-emitted and ROADMAP 1-resolver-pathology closes with a fix PR.")
   }
 }

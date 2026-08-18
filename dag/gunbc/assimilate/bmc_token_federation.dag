@@ -110,7 +110,7 @@ data bmc_assimilator_bindings: List<SecretAccessBinding> = [
 ]
 
 fn gcp_wif_auth_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Authenticate to GCP (keyless, Workload Identity Federation)" },
     id: Present { value: "gcp_auth" },
     uses: google_auth_action,
@@ -128,7 +128,7 @@ fn gcp_wif_auth_step() -> extdeps.github.actions.Step {
 }
 
 fn gcp_token_smoke_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Verify gcloud access token resolves (keyless)" },
     id: none,
     run: gcp_token_smoke_script(),
@@ -142,7 +142,7 @@ fn gcp_token_smoke_step() -> extdeps.github.actions.Step {
 }
 
 fn bmc_checkout_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Checkout" },
     id: none,
     uses: checkout_action,
@@ -174,7 +174,7 @@ fn bmc_token_smoke_job() -> extdeps.github.actions.Job {
 data bmc_token_smoke_workflow: extdeps.github.actions.Workflow = {
   name: "bmc-token-smoke",
   on: [
-    WorkflowDispatch { inputs: [] }
+    extdeps.github.actions.WorkflowDispatch { inputs: [] }
   ],
   concurrency: none,
   env: none,

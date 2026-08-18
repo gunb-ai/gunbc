@@ -30,7 +30,7 @@ fn admit_sccache_binary_artifact_pin_integrity(
         expected_identity: expected,
       )
     Absent =>
-      SubjectProjectedPinRefused {
+      extdeps.pin.SubjectProjectedPinRefused {
         subject: pin.subject,
         cause: CitedDigestIdentityUnprojectable,
       }

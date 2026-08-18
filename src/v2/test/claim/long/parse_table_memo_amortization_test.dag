@@ -39,17 +39,17 @@ data memo_amort_bisect_add_read: v2.compiler.source_authority.DagSourceReadWitne
   source_root: V2Tree
 }
 
-data memo_amort_ingest_one_file: v2.compiler.source_authority.SourceRootIngest = Cons {
+data memo_amort_ingest_one_file: v2.compiler.source_authority.SourceRootIngest = std.algebra.Cons {
   head: memo_amort_file_a_read,
   tail: Empty
 }
 
-data memo_amort_ingest_two_files: v2.compiler.source_authority.SourceRootIngest = Cons {
+data memo_amort_ingest_two_files: v2.compiler.source_authority.SourceRootIngest = std.algebra.Cons {
   head: memo_amort_file_a_read,
-  tail: Cons { head: memo_amort_file_b_read, tail: Empty }
+  tail: std.algebra.Cons { head: memo_amort_file_b_read, tail: Empty }
 }
 
-data memo_amort_ingest_bisect_add: v2.compiler.source_authority.SourceRootIngest = Cons {
+data memo_amort_ingest_bisect_add: v2.compiler.source_authority.SourceRootIngest = std.algebra.Cons {
   head: memo_amort_bisect_add_read,
   tail: Empty
 }

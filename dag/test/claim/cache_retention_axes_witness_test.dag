@@ -15,8 +15,8 @@ fn capacity_not_established() -> std.cache_interface.ProviderRetention {
 fn scope_exit_byte_bounded_refuse_new() -> std.cache_interface.ProviderRetention {
   std.cache_interface.ProviderRetention {
     release_policy: ReleasedAtProviderScopeExit,
-    capacity: CapacityBounded {
-      limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 268435456) } },
+    capacity: std.cache_interface.CapacityBounded {
+      limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: byte_size(count: 268435456) } },
       at_capacity: RefuseNewStore
     }
   }
@@ -25,9 +25,9 @@ fn scope_exit_byte_bounded_refuse_new() -> std.cache_interface.ProviderRetention
 fn scope_exit_runtime_derived_replace_existing() -> std.cache_interface.ProviderRetention {
   std.cache_interface.ProviderRetention {
     release_policy: ReleasedAtProviderScopeExit,
-    capacity: CapacityBounded {
-      limit: EntryCountCapacity {
-        limit: RuntimeDerivedLimit {
+    capacity: std.cache_interface.CapacityBounded {
+      limit: std.cache_interface.EntryCountCapacity {
+        limit: std.cache_interface.RuntimeDerivedLimit {
           authority: {
             module_path: "gunbc.host_budget_source",
             decl_name: "HostBudgetResolution",
@@ -35,7 +35,7 @@ fn scope_exit_runtime_derived_replace_existing() -> std.cache_interface.Provider
           }
         }
       },
-      at_capacity: ReplaceExisting { strategy: ProviderNativeReplacement }
+      at_capacity: std.cache_interface.ReplaceExisting { strategy: ProviderNativeReplacement }
     }
   }
 }
@@ -125,8 +125,8 @@ test fn scope_release_with_unobserved_capacity_bounds_growth_but_not_capacity() 
 test fn an_entry_count_ceiling_is_not_a_byte_budget() -> Bool {
   let r = std.cache_interface.ProviderRetention {
     release_policy: ReleasedAtProviderScopeExit,
-    capacity: CapacityBounded {
-      limit: EntryCountCapacity { limit: ExactLimit { value: 1000000 } },
+    capacity: std.cache_interface.CapacityBounded {
+      limit: std.cache_interface.EntryCountCapacity { limit: std.cache_interface.ExactLimit { value: 1000000 } },
       at_capacity: RefuseNewStore
     }
   }
@@ -136,9 +136,9 @@ test fn an_entry_count_ceiling_is_not_a_byte_budget() -> Bool {
 test fn an_unobserved_byte_ceiling_is_not_a_byte_budget() -> Bool {
   let r = std.cache_interface.ProviderRetention {
     release_policy: ReleasedNever,
-    capacity: CapacityBounded {
-      limit: ByteCapacity { limit: EffectiveLimitUnobserved },
-      at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }
+    capacity: std.cache_interface.CapacityBounded {
+      limit: std.cache_interface.ByteCapacity { limit: EffectiveLimitUnobserved },
+      at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed }
     }
   }
   retention_has_capacity_bound(r: r) && !retention_has_exact_byte_bound(r: r)

@@ -662,7 +662,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
                   let expected = extdeps.pijul.PijulChannelStateIdentity {
                     state: forward.head.state,
                     changes: forward.changes,
-                    producer: PijulLogStateObserved {
+                    producer: extdeps.pijul.PijulLogStateObserved {
                       pijul_version: pijul_upstream_version,
                     },
                   }

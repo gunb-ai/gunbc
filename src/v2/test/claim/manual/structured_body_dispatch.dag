@@ -4,12 +4,12 @@ module v2.test.manual.structured_body_dispatch
 fn structured_body_bool_node(pass: Bool) -> Node {
   if pass {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^structured_body_pass } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^structured_body_pass } },
       children: []
     )
   } else {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^structured_body_fail } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^structured_body_fail } },
       children: []
     )
   }
@@ -17,7 +17,7 @@ fn structured_body_bool_node(pass: Bool) -> Node {
 
 fn structured_body_non_behavior_node() -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Atom { identity: ^structured_body_residual } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^structured_body_residual } },
     children: []
   )
 }
@@ -63,7 +63,7 @@ fn structured_body_produce_subsumes_add_table() -> Bool {
   }
 }
 
-data claim_structured_body_dispatch_accepts_transform_call: v2.std.verification.TestClaim = EqualsClaim {
+data claim_structured_body_dispatch_accepts_transform_call: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/structured-body: dispatch accepts an add Transform call body, returns it",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: structured_body_bool_node(pass: structured_body_dispatch_accepts_transform_call()),
@@ -71,7 +71,7 @@ data claim_structured_body_dispatch_accepts_transform_call: v2.std.verification.
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_structured_body_dispatch_accepts_branch: v2.std.verification.TestClaim = EqualsClaim {
+data claim_structured_body_dispatch_accepts_branch: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/structured-body: dispatch accepts a pick Branch control-flow body (variant-general)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: structured_body_bool_node(pass: structured_body_dispatch_accepts_branch()),
@@ -79,7 +79,7 @@ data claim_structured_body_dispatch_accepts_branch: v2.std.verification.TestClai
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_structured_body_dispatch_rejects_non_behavior: v2.std.verification.TestClaim = EqualsClaim {
+data claim_structured_body_dispatch_rejects_non_behavior: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/structured-body: dispatch refuses a non-Behavior residual parse node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: structured_body_bool_node(pass: structured_body_dispatch_rejects_non_behavior()),
@@ -87,7 +87,7 @@ data claim_structured_body_dispatch_rejects_non_behavior: v2.std.verification.Te
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_structured_body_produce_subsumes_add_table: v2.std.verification.TestClaim = EqualsClaim {
+data claim_structured_body_produce_subsumes_add_table: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/structured-body: produce_arrow_with_structured_body subsumes the add flat-index table (byte-identical Arrow)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: structured_body_bool_node(pass: structured_body_produce_subsumes_add_table()),

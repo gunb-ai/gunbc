@@ -10,13 +10,13 @@ type LensComplexityClaim {
   falsification: v2.std.diagnostic.Diagnostic
 }
 data while_loop_body_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^while_loop_body_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^while_loop_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data while_external_condition_input: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Loop },
+  kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [
     v2.std.node.Edge { label: Positional, target: while_loop_body_leaf }
   ],
@@ -26,12 +26,12 @@ data while_external_condition_input: Node = v2.std.node.Node {
 data while_external_condition_loop_bound_diagnostic: v2.std.diagnostic.Diagnostic = v2.std.diagnostic.Diagnostic {
   reason: ^cardinality_loop_bound_undeclared,
   at: node_locus(node: while_external_condition_input),
-  correction: Unavailable { reason: ExternalContractUnknown }
+  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
 }
 
 data while_external_condition_claim: LensComplexityClaim = LensComplexityClaim {
   input: while_external_condition_input,
-  expected_cost: UnknownCost {
+  expected_cost: v2.lens.cost.UnknownCost {
     diagnostic: while_external_condition_loop_bound_diagnostic
   },
   expected_complexity: unknown_complexity_with_diagnostic(

@@ -170,9 +170,9 @@ data host_effect_converge_loop_reason: String = "converge to fixpoint — extern
 
 data host_effect_identity_evidence: std.effects.IdempotencyEvidence = IdentityEffect
 
-data host_effect_read_evidence: std.effects.IdempotencyEvidence = LatticeEffect { shape: ReadEffect }
+data host_effect_read_evidence: std.effects.IdempotencyEvidence = std.effects.LatticeEffect { shape: ReadEffect }
 
-data host_effect_converge_loop_evidence: std.effects.IdempotencyEvidence = NonIdempotent {
+data host_effect_converge_loop_evidence: std.effects.IdempotencyEvidence = std.effects.NonIdempotent {
   shape: AppendEffect,
   reason: host_effect_converge_loop_reason,
 }
@@ -182,5 +182,5 @@ fn host_effect_is_converge_loop_evidence(evidence: std.effects.IdempotencyEviden
 }
 
 fn host_effect_lattice_evidence(shape: EffectShape<std.effects.KeySource>) -> std.effects.IdempotencyEvidence {
-  LatticeEffect { shape: shape }
+  std.effects.LatticeEffect { shape: shape }
 }

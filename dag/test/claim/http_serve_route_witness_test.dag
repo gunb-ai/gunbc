@@ -15,15 +15,15 @@ fn tpl(raw: String) -> std.http_path.PathTemplate {
 fn probe_table() -> ServedRouteTable<ProbeHandler> {
   extdeps.http.server.ServedRouteTable {
     routes: [
-      DynamicRoute { method: GET, path_pattern: tpl(raw: "/"), handler: ProbePage },
-      StaticRoute { route: extdeps.http.server.ServedStaticRoute {
+      extdeps.http.server.DynamicRoute { method: GET, path_pattern: tpl(raw: "/"), handler: ProbePage },
+      extdeps.http.server.StaticRoute { route: extdeps.http.server.ServedStaticRoute {
         method: GET,
         path_pattern: tpl(raw: "/healthz"),
         body: "ok",
         content_type: text_html_utf8,
         status_on_hit: 200,
       } },
-      DynamicRoute { method: POST, path_pattern: tpl(raw: "/dispatch/\{node_id\}"), handler: ProbeDispatch },
+      extdeps.http.server.DynamicRoute { method: POST, path_pattern: tpl(raw: "/dispatch/\{node_id\}"), handler: ProbeDispatch },
     ]
   }
 }
@@ -92,8 +92,8 @@ test fn witness_unknown_path_folds_404() -> Bool {
 test fn witness_first_match_wins_on_overlap() -> Bool {
   let overlap = extdeps.http.server.ServedRouteTable {
     routes: [
-      DynamicRoute { method: GET, path_pattern: tpl(raw: "/a/\{x\}"), handler: ProbePage },
-      DynamicRoute { method: GET, path_pattern: tpl(raw: "/a/b"), handler: ProbeDispatch },
+      extdeps.http.server.DynamicRoute { method: GET, path_pattern: tpl(raw: "/a/\{x\}"), handler: ProbePage },
+      extdeps.http.server.DynamicRoute { method: GET, path_pattern: tpl(raw: "/a/b"), handler: ProbeDispatch },
     ]
   }
   selected_dynamic_is(sel: serve_select_route(table: overlap, method: GET, path: "/a/b"), want_dispatch: false)

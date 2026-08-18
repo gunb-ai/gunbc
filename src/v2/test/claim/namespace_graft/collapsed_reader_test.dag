@@ -5,7 +5,7 @@ data collapsed_reader_witness_note: String = "Additive-equivalence witness for t
 
 fn cr_sym_node(sym: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -30,7 +30,7 @@ fn cr_pre_graft_module_root(
   body_edges: List<v2.std.node.Edge>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: concat(
       [
         dag_named_edge(
@@ -61,7 +61,7 @@ data cr_grafted_root: Node = match module_header_containment_graft(root: cr_pre_
 }
 
 data cr_bare_conj_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -112,7 +112,7 @@ test fn collapsed_reader_pre_graft_header_agreement_holds() -> Bool {
   )
 }
 
-data claim_collapsed_reader_bare_conj_refused: v2.std.verification.TestClaim = EqualsClaim {
+data claim_collapsed_reader_bare_conj_refused: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "collapsed QN reader RED: bare Conj (neither grafted spine nor module header) refuses — graft-awareness widens acceptance to grafted trees only",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: cr_sym_node(sym: ^cr_bool_true),

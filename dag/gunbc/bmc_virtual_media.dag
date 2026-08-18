@@ -31,7 +31,7 @@ data srv4_configfs_params: extdeps.bmc.virtual_media.ConfigfsGadgetParams = extd
   udc: "1e6a0000.usb-vhub:p3",
 }
 
-data srv4_configfs_transport: extdeps.bmc.virtual_media.VirtualMediaTransport = ConfigfsGadgetTransport {
+data srv4_configfs_transport: extdeps.bmc.virtual_media.VirtualMediaTransport = extdeps.bmc.virtual_media.ConfigfsGadgetTransport {
   params: srv4_configfs_params,
 }
 

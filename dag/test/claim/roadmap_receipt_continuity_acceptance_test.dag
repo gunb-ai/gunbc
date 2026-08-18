@@ -32,7 +32,7 @@ fn history_without_namespace_occurrence_transport() -> List<gunbc.roadmap_model.
 }
 
 fn exact_revocation_for(receipt: gunbc.roadmap_model.RoadmapAcceptanceReceipt) -> gunbc.roadmap_model.RoadmapAcceptanceEvent {
-  AcceptanceRevoked {
+  gunbc.roadmap_model.AcceptanceRevoked {
     exact_prior_receipt: receipt,
     disposition: gunbc.roadmap_model.AcceptanceNodeReopensActiveFrontier {},
     reason: "fixture revocation witness" as std.types.NonEmptyStr,
@@ -54,7 +54,7 @@ fn history_with_mutated_first_event_accepted_on() -> List<gunbc.roadmap_model.Ro
       match event {
         AcceptanceRecorded { receipt: r } =>
           concat(
-            [AcceptanceRecorded {
+            [gunbc.roadmap_model.AcceptanceRecorded {
               receipt: gunbc.roadmap_model.RoadmapAcceptanceReceipt {
                 node: r.node,
                 criteria_digest: r.criteria_digest,
@@ -175,7 +175,7 @@ test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
         match e {
           AcceptanceRecorded { receipt: r } =>
             if r.node == receipt.node {
-              AcceptanceRecorded { receipt: planted }
+              gunbc.roadmap_model.AcceptanceRecorded { receipt: planted }
             } else {
               e
             }
@@ -214,7 +214,7 @@ test fn witness_git_show_exists_on_disk_but_not_in_ref_counts_as_path_absent() -
 
 test fn witness_git_refusal_observation_refuses_integrity() -> Bool {
   !acceptance_history_integrity_holds_from_prior_observation_with_prior(
-    observation: PriorHistoryGitObservationRefused {
+    observation: gunbc.roadmap_acceptance_history_observation.PriorHistoryGitObservationRefused {
       detail: "fixture planted git refusal",
     },
     history: fixture_history(),
@@ -235,7 +235,7 @@ test fn witness_changed_history_empty_prior_bypass_admits_deletion_observed_prio
     && acceptance_history_integrity_holds(history: current, prior_history: [])
     && !acceptance_history_integrity_holds(history: current, prior_history: prior)
     && !acceptance_history_integrity_holds_from_prior_observation_with_prior(
-      observation: PriorHistoryObserved { prior: prior },
+      observation: gunbc.roadmap_acceptance_history_observation.PriorHistoryObserved { prior: prior },
       history: current,
     )
 }
@@ -305,7 +305,7 @@ test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> 
 }
 
 test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() -> Bool {
-  let refused = RoadmapAuthorityProjectionRefused { detail: "fixture planted projection refusal" }
+  let refused = gunbc.roadmap_authority.RoadmapAuthorityProjectionRefused { detail: "fixture planted projection refusal" }
   let projected = roadmap_authority_projection_from_carrier_text(
     text: receipt_continuity_acceptance_carrier_fixture_text,
   )

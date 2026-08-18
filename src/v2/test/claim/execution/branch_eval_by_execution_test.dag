@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn branch_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     occurrence_id: SyntheticOccurrence,
     children: []
   }
@@ -24,7 +24,7 @@ fn branch_i64_node() -> Node {
 }
 
 fn branch_int_value(bytes: List<Byte>) -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: branch_i64_node(),
       bytes: bytes
@@ -34,14 +34,14 @@ fn branch_int_value(bytes: List<Byte>) -> v2.std.runtime.RuntimeValue {
 
 fn branch_bool_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
   if is_true {
-    RuntimePrimitive {
+    v2.std.runtime.RuntimePrimitive {
       value: v2.std.runtime.RuntimePrimitiveValue {
         primitive_type: branch_bool_type_node(),
         bytes: [branch_byte()]
       }
     }
   } else {
-    RuntimePrimitive {
+    v2.std.runtime.RuntimePrimitive {
       value: v2.std.runtime.RuntimePrimitiveValue {
         primitive_type: branch_bool_type_node(),
         bytes: Empty
@@ -70,7 +70,7 @@ fn branch_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^branch_runtime_rejected,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -227,7 +227,7 @@ fn branch_context() -> v2.compiler.eval.EvalContext {
 
 fn branch_pick_call(callee: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: callee }
@@ -237,7 +237,7 @@ fn branch_pick_call(callee: Node) -> Node {
 
 fn branch_tree_root(call: Node, expected: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Named { name: ^branch_actual }, target: call },
@@ -270,7 +270,7 @@ fn branch_inferred_run_tree(callee: Node, expected: Node) -> Outcome<v2.compiler
 }
 
 fn branch_claim(input: Node, expected: Node) -> v2.std.verification.TestClaim {
-  CompilesClaim {
+  v2.std.verification.CompilesClaim {
     label: "manual/branch: source-bridged if-then-else Branch.body executes through eval",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: input,

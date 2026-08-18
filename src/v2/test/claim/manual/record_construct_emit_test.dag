@@ -55,11 +55,11 @@ fn record_construct_canonical_grounding_for(node: Node) -> Witness<v2.std.constr
       )
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^record_construct_grounding_miss,
         at: node_locus(node: node),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }

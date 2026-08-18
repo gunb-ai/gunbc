@@ -168,7 +168,7 @@ fn translate_target_bundle_malformed_diagnostic(target: v2.std.compilers.target_
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_target_bundle_malformed,
     at: node_locus(node: target.bundle),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_target_bundle_duplicate_edge_diagnostic(
@@ -178,14 +178,14 @@ fn translate_target_bundle_duplicate_edge_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_target_bundle_duplicate_edge,
     at: node_locus(node: target.bundle),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_sg_rc_bundle_partial,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn target_bundle_child_lookup_step(
@@ -237,7 +237,7 @@ fn conj_named_child(parent: Node, edge_name: v2.std.node.Symbol) -> Outcome<Node
             v2.std.diagnostic.Diagnostic {
               reason: ^translate_target_bundle_duplicate_edge,
               at: node_locus(node: parent),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             }
           )
         BundleChildInvalidEdge =>
@@ -248,7 +248,7 @@ fn conj_named_child(parent: Node, edge_name: v2.std.node.Symbol) -> Outcome<Node
         v2.std.diagnostic.Diagnostic {
           reason: ^translate_grammar_inverse_not_realized,
           at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
   }
@@ -272,7 +272,7 @@ fn conj_optional_named_child(parent: Node, edge_name: v2.std.node.Symbol) -> Out
             v2.std.diagnostic.Diagnostic {
               reason: ^translate_target_bundle_duplicate_edge,
               at: node_locus(node: parent),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             }
           )
         BundleChildInvalidEdge =>
@@ -283,7 +283,7 @@ fn conj_optional_named_child(parent: Node, edge_name: v2.std.node.Symbol) -> Out
         v2.std.diagnostic.Diagnostic {
           reason: ^translate_grammar_inverse_not_realized,
           at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
   }
@@ -292,49 +292,49 @@ fn translate_grammar_inverse_not_realized_diagnostic(emitted: Node) -> v2.std.di
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_grammar_inverse_not_realized,
     at: node_locus(node: emitted),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_grammar_relation_row_not_found_diagnostic(emitted: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_grammar_relation_row_not_found,
     at: node_locus(node: emitted),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_conj_invalid_edge_diagnostic(parent: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_conj_invalid_edge,
     at: node_locus(node: parent),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_conj_named_child_missing_diagnostic(parent: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_conj_named_child_missing,
     at: node_locus(node: parent),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_concrete_token_class_missing_diagnostic(token: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_concrete_token_class_missing,
     at: node_locus(node: token),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_concrete_token_kind_invalid_diagnostic(token: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_concrete_token_kind_invalid,
     at: node_locus(node: token),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_serialize_recursion_limit_exhausted_diagnostic(emitted: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_serialize_recursion_limit_exhausted,
     at: node_locus(node: emitted),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn grammar_relation_row_emitted(row: Node) -> Outcome<Node> {
@@ -498,7 +498,7 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: v2.std.node
             v2.std.diagnostic.Diagnostic {
               reason: ^translate_target_bundle_duplicate_edge,
               at: node_locus(node: parent),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             }
           )
         BundleChildInvalidEdge =>
@@ -595,7 +595,7 @@ fn serialize_source_fold_list_targets(remaining: Int, node: Node) -> Outcome<Lis
                   bind_outcome(
                     o: serialize_source_fold_list_targets(remaining: remaining - 1, node: tail),
                     f: fn(rest) {
-                      v2.std.diagnostic.Accepted { value: Cons { head: head, tail: rest }, diagnostics: None }
+                      v2.std.diagnostic.Accepted { value: std.algebra.Cons { head: head, tail: rest }, diagnostics: None }
                     }
                   )
                 }
@@ -893,22 +893,22 @@ fn translate_lex_rule_literal_not_found_diagnostic(token_class: v2.std.node.Symb
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_lex_rule_literal_not_found,
     at: node_locus(node: v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: token_class } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: token_class } },
       children: [],
       occurrence_id: SyntheticOccurrence
 }),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_binding_spelling_not_found_diagnostic(binding: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_binding_spelling_not_found,
     at: node_locus(node: v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: binding } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
       children: [],
       occurrence_id: SyntheticOccurrence
 }),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn node_atom_identity(node: Node) -> Outcome<v2.std.node.Symbol> {
@@ -1178,14 +1178,14 @@ fn translate_type_expression_shape_missing_diagnostic(node: Node) -> v2.std.diag
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_type_expression_shape_missing,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_type_expr_kind_authority_invalid_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^translate_type_expr_kind_authority_invalid,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn target_collection_choice_from_node(node: Node) -> Outcome<v2.std.compilers.target_model.TargetRepresentationChoice> {
@@ -1412,7 +1412,7 @@ fn project_set_collection_type_node(
                         form: projection.atom_form,
                         identity: choice.form.apply.surface
                       ),
-                      args: Cons { head: elem_projected, tail: Empty }
+                      args: std.algebra.Cons { head: elem_projected, tail: Empty }
                     ),
                     diagnostics: None
                   }
@@ -1484,7 +1484,7 @@ fn project_free_monoid_via_vec_choice(
                     form: projection.atom_form,
                     identity: choice.form.apply.surface
                   ),
-                  args: Cons { head: elem_storage, tail: Empty }
+                  args: std.algebra.Cons { head: elem_storage, tail: Empty }
                 ),
                 diagnostics: None
               }
@@ -2967,7 +2967,7 @@ fn translate_outcome_is_signature_realization_miss(
 
 fn translate_boundary_source_carrier_node(binding: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: binding } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -3709,7 +3709,7 @@ fn translate_import_production_qn_node(import_node: Node) -> Outcome<Node> {
               xs: segments,
               item_node: fn(sym) {
                 v2.std.node.Node {
-                  kind: TypeNode { connective: Atom { identity: sym } },
+                  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
                   children: [],
                   occurrence_id: SyntheticOccurrence
                 }
@@ -3727,7 +3727,7 @@ fn translate_import_production_block_node(import_node: Node) -> Outcome<Node> {
     f: fn(idents) {
       outcome_accepted(
         value: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: fold_list(
             xs: idents,
             empty: Empty,
@@ -3738,7 +3738,7 @@ fn translate_import_production_block_node(import_node: Node) -> Outcome<Node> {
                   v2.std.node.Edge {
                     label: Positional,
                     target: v2.std.node.Node {
-                      kind: TypeNode { connective: Atom { identity: sym } },
+                      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
                       children: [],
                       occurrence_id: SyntheticOccurrence
                     }

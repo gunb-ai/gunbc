@@ -126,8 +126,8 @@ fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? 
       Present { value: compute_host } =>
         Present {
           value: match host_effect_apply(
-            target: HostOs { node: compute_host },
-            effect: ProvisionCodexRuntime {},
+            target: gunbc.host_effect.HostOs { node: compute_host },
+            effect: gunbc.host_effect.ProvisionCodexRuntime {},
             evidence: host_effect_identity_evidence,
             transport: LocalShell,
           ) {

@@ -25,7 +25,7 @@ fn replay_repo_read_envelope() -> std.effect_grant.Envelope {
       std.effect_grant.Grant {
         verb: Read,
         root: region_repo_root,
-        binding: Replay { fixture_store: "fx" },
+        binding: std.effect_grant.Replay { fixture_store: "fx" },
         lifecycle: LifecycleByConvention
       }
     ]

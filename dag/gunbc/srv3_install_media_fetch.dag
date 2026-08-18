@@ -13,7 +13,7 @@ data srv3_ubuntu_install_media_install_path: std.types.NonEmptyStr = ubuntu_inst
   artifact: srv3_ubuntu_install_media_artifact,
 )
 
-data install_media_fetch_effect_shape: EffectShape<std.effects.KeySource> = CreateEffect {
+data install_media_fetch_effect_shape: EffectShape<std.effects.KeySource> = std.effects.CreateEffect {
   cause: CreateIfAbsent { key_source: InputField { field: "content_sha256" } },
 }
 
@@ -94,7 +94,7 @@ fn srv3_install_media_fetch_actuator_host() -> gunbc.fleet_intent.ComputeHost {
 }
 
 func srv3_install_media_fetch() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   srv3_reconciliation_to_process_exit(
     r: srv3_install_media_fetch_apply(),

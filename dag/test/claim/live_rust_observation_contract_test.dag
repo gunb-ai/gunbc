@@ -15,7 +15,7 @@ fn observation_at(
   prior: List<String>,
   cargo: List<String>
 ) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
-  RustManifestObserved {
+  gunbc.stage0_rust_host_observation.RustManifestObserved {
     repository_revision: revision,
     manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "c0a750000000000d" },
     tracked_rust_repo_paths: tracked,
@@ -75,7 +75,7 @@ test fn control_2_absent_expectation_refuses_rather_than_passes() -> Bool {
 
 test fn control_missing_runner_sha_is_distinct_typed_refusal() -> Bool {
   match admit_current_actions_rust_observation(
-    actions: ActionsShaMissing { detail: "GITHUB_SHA was not set" },
+    actions: extdeps.github.actions_environment.ActionsShaMissing { detail: "GITHUB_SHA was not set" },
     observation: populated_observation(revision: test_revision)
   ) {
     LiveObservationRefused { cause: LiveExpectationMissing { detail: detail } } =>
@@ -86,7 +86,7 @@ test fn control_missing_runner_sha_is_distinct_typed_refusal() -> Bool {
 
 test fn control_empty_runner_sha_is_distinct_typed_refusal() -> Bool {
   match admit_current_actions_rust_observation(
-    actions: ActionsShaEmpty { detail: "GITHUB_SHA was present but empty" },
+    actions: extdeps.github.actions_environment.ActionsShaEmpty { detail: "GITHUB_SHA was present but empty" },
     observation: populated_observation(revision: test_revision)
   ) {
     LiveObservationRefused { cause: LiveExpectationEmpty { detail: detail } } =>
@@ -98,7 +98,7 @@ test fn control_empty_runner_sha_is_distinct_typed_refusal() -> Bool {
 test fn control_3_git_refusal_stays_typed_and_distinct() -> Bool {
   match admit_live_rust_observation(
     request: request_for(revision: test_revision),
-    observation: GitObservationRefused { detail: "git rev-parse refused" }
+    observation: gunbc.stage0_rust_host_observation.GitObservationRefused { detail: "git rev-parse refused" }
   ) {
     LiveObservationRefused { cause: LiveGitRefused { detail: detail } } => detail == "git rev-parse refused"
     _ => false
@@ -108,7 +108,7 @@ test fn control_3_git_refusal_stays_typed_and_distinct() -> Bool {
 test fn control_4_manifest_read_refusal_stays_typed_and_distinct() -> Bool {
   match admit_live_rust_observation(
     request: request_for(revision: test_revision),
-    observation: RustManifestReadRefused { detail: "manifest object unreadable" }
+    observation: gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: "manifest object unreadable" }
   ) {
     LiveObservationRefused { cause: LiveManifestReadRefused { detail: detail } } =>
       detail == "manifest object unreadable"
@@ -119,7 +119,7 @@ test fn control_4_manifest_read_refusal_stays_typed_and_distinct() -> Bool {
 test fn control_5_toml_parse_refusal_stays_typed_and_distinct() -> Bool {
   match admit_live_rust_observation(
     request: request_for(revision: test_revision),
-    observation: RustManifestParseRefused { detail: "not valid TOML" }
+    observation: gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: "not valid TOML" }
   ) {
     LiveObservationRefused { cause: LiveManifestParseRefused { detail: detail } } => detail == "not valid TOML"
     _ => false

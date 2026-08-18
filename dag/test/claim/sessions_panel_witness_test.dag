@@ -60,7 +60,7 @@ test fn retained_dead_process_projects_clear_without_erasing_session() -> Bool {
     lease_verdict: Converged,
     worker: worker_observation_without_provider_probe_for_process(
       instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
-      process: WorkerProcessExited { exit_code: 0, last_command: "env" },
+      process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "env" },
     ),
   }
   let j = belt_sessions_observed_json(o: Observed { live: [retained] })
@@ -76,7 +76,7 @@ test fn retained_dead_process_projects_clear_without_erasing_session() -> Bool {
 }
 
 test fn sessions_refusal_is_loud_on_the_wire() -> Bool {
-  let o = ObserveRefused { reason: "tmux ls: permission denied" }
+  let o = gunbc.roadmap_belt_actuate.ObserveRefused { reason: "tmux ls: permission denied" }
   let j = belt_sessions_observed_json(o: o)
   return string_contains(s: j, pattern: "\"observe_refused\": true")
     && string_contains(s: j, pattern: "tmux ls: permission denied")

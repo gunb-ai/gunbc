@@ -121,16 +121,16 @@ fn boot_install_commands(action: BootInstallAction) -> List<extdeps.firmware.uef
     BootFromMappedMedia { boot_file: f } =>
       Present {
         value: [
-          MapDevices { refresh: true },
-          BcfgAdd { target: BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as std.types.NonEmptyStr },
-          Reset { mode: ResetWarm },
+          extdeps.firmware.uefi_shell.MapDevices { refresh: true },
+          extdeps.firmware.uefi_shell.BcfgAdd { target: BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as std.types.NonEmptyStr },
+          extdeps.firmware.uefi_shell.Reset { mode: ResetWarm },
         ]
       }
     DhcpThenNetworkBoot { interface: i } =>
       Present {
         value: [
-          Ifconfig { action: IfconfigSetDhcp { interface: i } },
-          BcfgDump { target: BcfgBoot },
+          extdeps.firmware.uefi_shell.Ifconfig { action: extdeps.firmware.uefi_shell.IfconfigSetDhcp { interface: i } },
+          extdeps.firmware.uefi_shell.BcfgDump { target: BcfgBoot },
         ]
       }
     RefuseNoSource { reason: _ } => Absent

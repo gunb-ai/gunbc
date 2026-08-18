@@ -7,11 +7,11 @@ fn tsc_token(class: v2.std.node.Symbol, lexeme: String) -> v2.std.compilers.lexi
   v2.std.compilers.lexing.Token { class: class, lexeme: lexeme, file: ^tsc_file, start: 0, end: 1 }
 }
 
-data tsc_three_tokens: List<v2.std.compilers.lexing.Token> = Cons {
+data tsc_three_tokens: List<v2.std.compilers.lexing.Token> = std.algebra.Cons {
   head: tsc_token(class: ^tsc_a, lexeme: "a"),
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: tsc_token(class: ^tsc_b, lexeme: "b"),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: tsc_token(class: ^tsc_c, lexeme: "c"),
       tail: std.algebra.Empty
     }

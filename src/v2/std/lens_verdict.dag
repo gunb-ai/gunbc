@@ -17,7 +17,7 @@ fn lens_verdict_module_diagnostic(reason: v2.std.node.Symbol, module_name: Strin
   textual_whole_file_diagnostic(
     reason: reason,
     module_file: lens_verdict_module_file(module_name: module_name),
-    correction: Unavailable { reason: CorrectionNotModeled }
+    correction: v2.std.diagnostic.Unavailable { reason: CorrectionNotModeled }
   )
 }
 

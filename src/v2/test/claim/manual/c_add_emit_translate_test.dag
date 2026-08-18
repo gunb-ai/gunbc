@@ -8,7 +8,7 @@ data c_add_int_inhabitant: Node = c_int_inhabitant_node()
 data c_add_emitted_root: Node = c_emitted_add_fn_node()
 
 data c_add_wrong_emitted_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Arrow },
+  kind: v2.std.node.TypeNode { connective: Arrow },
   children: [
     v2.std.node.Edge { label: Positional, target: c_add_int_inhabitant },
     v2.std.node.Edge { label: Positional, target: c_add_int_inhabitant }
@@ -19,7 +19,7 @@ data c_add_wrong_emitted_root: Node = v2.std.node.Node {
 data c_add_target_model: v2.std.compilers.target_model.TargetModel = c_target_model()
 
 data c_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -58,11 +58,11 @@ fn c_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Canon
   } else if node == c_atom(id: ^c_inhabitant_int) {
     Holds { value: c_add_canonical_grounding(node: node, algebra: c_add_int_inhabitant) }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^c_add_grounding_miss,
         at: node_locus(node: node),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }

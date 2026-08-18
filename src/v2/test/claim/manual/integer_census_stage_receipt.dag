@@ -89,7 +89,7 @@ fn ics_stage_judge_full_holds() -> Bool {
 fn ics_stage_census_tree_holds() -> Bool {
   let receipt = cost_coverage_tree_census(
     tree_root: "src/v2",
-    paths: Cons { head: ics_path, tail: std.algebra.Empty }
+    paths: std.algebra.Cons { head: ics_path, tail: std.algebra.Empty }
   )
   (receipt.files_attempted == 1) && (receipt.files_parsed_clean == 1)
 }

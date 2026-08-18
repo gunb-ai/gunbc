@@ -8,9 +8,9 @@ data all_kernels: List<std.os.types.KernelFamily> = [Linux, Darwin, WindowsNt, L
 
 data all_sources: List<gunbc.host_budget_source.HostBudgetSource> = [
   BudgetSourceEnvOverride,
-  BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/system.slice" },
-  BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/system.slice" },
-  BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: byte_size(13958643712) },
+  gunbc.host_budget_source.BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/system.slice" },
+  gunbc.host_budget_source.BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/system.slice" },
+  gunbc.host_budget_source.BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: byte_size(13958643712) },
   BudgetSourceMemAvailable,
   BudgetSourceMemTotal,
   BudgetSourceDarwinPhysicalMemory,
@@ -43,11 +43,11 @@ data degraded_is_private_limit_note: String = "The degraded axis is asserted as 
 
 test fn degraded_is_exactly_the_non_private_sources() -> Bool {
   !host_budget_source_is_degraded(s: BudgetSourceEnvOverride)
-    && !host_budget_source_is_degraded(s: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup" })
-    && !host_budget_source_is_degraded(s: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" })
+    && !host_budget_source_is_degraded(s: gunbc.host_budget_source.BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup" })
+    && !host_budget_source_is_degraded(s: gunbc.host_budget_source.BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" })
     && host_budget_source_is_degraded(s: BudgetSourceMemAvailable)
     && host_budget_source_is_degraded(s: BudgetSourceMemTotal)
-    && host_budget_source_is_degraded(s: BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: byte_size(13958643712) })
+    && host_budget_source_is_degraded(s: gunbc.host_budget_source.BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: byte_size(13958643712) })
     && host_budget_source_is_degraded(s: BudgetSourceDarwinPhysicalMemory)
 }
 
@@ -113,7 +113,7 @@ test fn RED_unreadable_budget_yields_no_number_at_all() -> Bool {
 
 test fn a_resolved_budget_does_yield_its_bytes() -> Bool {
   match host_budget_resolution_bytes(
-    r: HostBudgetResolved { source: BudgetSourceDarwinPhysicalMemory, bytes: byte_size(17179869184) }
+    r: gunbc.host_budget_source.HostBudgetResolved { source: BudgetSourceDarwinPhysicalMemory, bytes: byte_size(17179869184) }
   ) {
     Present { value: b } => byte_size_count(b: b) == 17179869184
     Absent => false

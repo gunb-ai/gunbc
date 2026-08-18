@@ -37,7 +37,7 @@ data bool_boolean_algebra: BooleanAlgebra<Bool> = std.algebra.BooleanAlgebra {
 
 fn bool_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^bool_node_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bool_node_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -45,7 +45,7 @@ fn bool_node() -> Node {
 
 fn bool_fact_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -67,7 +67,7 @@ fn bool_encoding_fact_node(encoding: BoolEncodingFact) -> Node {
 
 fn bool_primitive_facts_node(facts: BoolPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       bool_named_edge(
         name: ^bool_facts_field_width,

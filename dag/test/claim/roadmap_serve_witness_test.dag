@@ -118,20 +118,20 @@ test fn witness_405_response_carries_allowed() -> Bool {
 data status_map_red_note: String = "The 404/409/503/502 rows are the REDs a lazy 200-or-500 collapse would fail (parent review 2026-07-20): each refusal variant must map to ITS status, so a collapse of any arm reds exactly one witness row below.\n\nTHIS PIN WENT STALE WHILE THE PROTECTION IT DESCRIBES READ AS INTACT (review artifact 51368). Five arms were added with explicit status mappings — stale session, revision drift, multiplicity conflict, liveness unobserved, revision unobserved — and this witness still pinned the original eight, so a regression mapping any new arm to 200 would have stayed green. The note claimed a total protection the assertion no longer provided, which is worse than an absent pin: a reader checking whether the mapping is guarded finds a sentence saying yes.\n\nThe label, band, exemplar and button rosters were all swept when those arms landed. This one was missed because it lives in a different witness module and is keyed by CONSTRUCTED variants rather than by a roster the compiler counts — nothing here goes non-exhaustive when an arm appears. That asymmetry is the actual defect; until belt_dispatch_status_total is derived from the exemplar roster the way the label set is, this assertion has to be swept by hand alongside it."
 
 test fn witness_dispatch_status_total() -> Bool {
-  belt_dispatch_status(r: DispatchSpawned { node_id: "n", session_name: "s", provider: "codex" }) == 200
-    && belt_dispatch_status(r: DispatchAlreadyLive { node_id: "n", session_name: "s" }) == 200
-    && belt_dispatch_status(r: DispatchDisabled { node_id: "n", instance_id: "i", reason: "r" }) == 403
-    && belt_dispatch_status(r: DispatchNodeNotFound { node_id: "n" }) == 404
-    && belt_dispatch_status(r: DispatchNodeAlreadyDone { node_id: "n" }) == 409
-    && belt_dispatch_status(r: DispatchObserveRefused { node_id: "n", reason: "r" }) == 503
-    && belt_dispatch_status(r: DispatchAuthorityRefused { node_id: "n", detail: "d" }) == 503
-    && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex" }) == 502
-    && belt_dispatch_status(r: DispatchStaleSession { node_id: "n", session_name: "s", detail: "d" }) == 409
-    && belt_dispatch_status(r: DispatchRevisionDrifted { node_id: "n", desired: "a", local: "b" }) == 409
+  belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchSpawned { node_id: "n", session_name: "s", provider: "codex" }) == 200
+    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchAlreadyLive { node_id: "n", session_name: "s" }) == 200
+    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchDisabled { node_id: "n", instance_id: "i", reason: "r" }) == 403
+    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchNodeNotFound { node_id: "n" }) == 404
+    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchNodeAlreadyDone { node_id: "n" }) == 409
+    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchObserveRefused { node_id: "n", reason: "r" }) == 503
+    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchAuthorityRefused { node_id: "n", detail: "d" }) == 503
+    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchSpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex" }) == 502
+    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchStaleSession { node_id: "n", session_name: "s", detail: "d" }) == 409
+    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchRevisionDrifted { node_id: "n", desired: "a", local: "b" }) == 409
     && belt_dispatch_status(
-      r: DispatchSessionMultiplicityConflict { node_id: "n", session_names: "s1, s2", session_count: 2 }) == 409
-    && belt_dispatch_status(r: DispatchSessionLivenessUnobserved { node_id: "n", session_name: "s", reason: "r" }) == 503
-    && belt_dispatch_status(r: DispatchRevisionUnobserved { node_id: "n", cause: "c" }) == 503
+      r: gunbc.roadmap_belt_actuate.DispatchSessionMultiplicityConflict { node_id: "n", session_names: "s1, s2", session_count: 2 }) == 409
+    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchSessionLivenessUnobserved { node_id: "n", session_name: "s", reason: "r" }) == 503
+    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchRevisionUnobserved { node_id: "n", cause: "c" }) == 503
 }
 
 test fn witness_preview_dispatch_refuses_before_effects() -> Bool {

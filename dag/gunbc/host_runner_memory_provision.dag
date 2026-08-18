@@ -91,13 +91,13 @@ fn provision_runner_memory_caps_routes_through_host_effect_apply() -> Bool {
 
 fn runner_memory_converge_effect(host: product.placement_supply.HostIdentity) -> gunbc.host_effect.HostEffect? {
   match runner_memory_host_converge(host: host) {
-    Present { value: host_converge } => Present { value: ConvergePlan { policy: host_converge } }
+    Present { value: host_converge } => Present { value: gunbc.host_effect.ConvergePlan { policy: host_converge } }
     Absent => none
   }
 }
 
 func provision_runner_memory_caps(host: product.placement_supply.HostIdentity) -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   match host_toolchain_direct_access(host: host) {
     Present { value: access } =>
@@ -107,7 +107,7 @@ func provision_runner_memory_caps(host: product.placement_supply.HostIdentity) -
             Present { value: effect } =>
               match host_effect_apply_gated(
                 access: access,
-                target: HostOs { node: compute_host },
+                target: gunbc.host_effect.HostOs { node: compute_host },
                 effect: effect,
                 evidence: host_effect_converge_loop_evidence,
                 transport: access.transport,

@@ -254,7 +254,7 @@ fn impact_normalize_edge(
     Present { value: dependent } =>
       if impact_pool_declares_module_indexed(index: index, module_name: edge.target_module) {
         ImpactNormalizationAcc {
-          edges: Cons {
+          edges: std.algebra.Cons {
             head: ImpactEdge {
               dependent_module: dependent,
               dependency_module: ModuleIdentity { name: edge.target_module },
@@ -270,7 +270,7 @@ fn impact_normalize_edge(
       } else {
         ImpactNormalizationAcc {
           edges: acc.edges,
-          causes: Cons {
+          causes: std.algebra.Cons {
             head: impact_cause_for_absent_target(dependent: dependent, edge: edge),
             tail: acc.causes
           }
@@ -490,7 +490,7 @@ fn impact_bfs_absorb(state: ImpactBfsState, module_id: ModuleIdentity) -> Impact
     state
   } else {
     ImpactBfsState {
-      reached: Cons { head: module_id, tail: state.reached },
+      reached: std.algebra.Cons { head: module_id, tail: state.reached },
       seen: map_insert(m: state.seen, key: module_id.name, value: module_id.name),
       queue: list_snoc_item(xs: state.queue, item: module_id)
     }
@@ -608,7 +608,7 @@ fn impact_prepend_module(
   acc: List<ModuleIdentity>,
   module_id: ModuleIdentity
 ) -> List<ModuleIdentity> {
-  Cons { head: module_id, tail: acc }
+  std.algebra.Cons { head: module_id, tail: acc }
 }
 
 fn impact_peel_round(
@@ -937,14 +937,14 @@ fn impact_prepend_unresolved(
   acc: List<UnresolvedSubject>,
   item: UnresolvedSubject
 ) -> List<UnresolvedSubject> {
-  Cons { head: item, tail: acc }
+  std.algebra.Cons { head: item, tail: acc }
 }
 
 fn impact_prepend_changed_subject(
   acc: List<ChangedSubject>,
   item: ChangedSubject
 ) -> List<ChangedSubject> {
-  Cons { head: item, tail: acc }
+  std.algebra.Cons { head: item, tail: acc }
 }
 
 fn impact_subject_needs_base(subject: ChangedSubject) -> Bool {
@@ -1034,7 +1034,7 @@ fn impact_resolve_changed_subjects(
     xs: subjects,
     empty: impact_no_changed_path_seeds,
     cons: fn(acc, subject) {
-      Cons {
+      std.algebra.Cons {
         head: ChangedPathSeeds {
           path: subject.path,
           seeds: impact_resolve_subject_seeds(nodes: nodes, subject: subject)
@@ -1149,5 +1149,5 @@ fn changed_surface_skip_authority(outcome: ChangedSurfaceImpactOutcome) -> SkipA
 data module_impact_construction_justification_note: String = "The bad-state class is a consumer reading a pool-relative, per-component answer as if it were exact and whole-subgraph. Most of that class is unwritable by construction rather than validated after the fact: ImpactStanding makes ExactForGraphSubject reachable only when the admission carrier reports pool independence Established AND no cause was observed, so a pool-relative answer cannot present as exact; ModuleIdentity is a record, so a path cannot be passed where a semantic identity is required; the declared flag and pool membership are independent observations landing as distinct cause arms, so an inconsistent pool cannot silently answer complete; and cycle verdicts are per strongly connected component, so a per-cycle law cannot be answered at union grain. What is NOT yet walled, and is what the grounding supplies: edge provenance is derived at query time rather than carried, so a dual-backed edge classifies reference-derived and a change to the edge population could reclassify a cycle with no consumer edit. That dissolves to one authority - provenance stamped at the single construction site import_fact_to_dependency_edge - hence WallAfterGrounding rather than WallNow, and not RatchetForever, because it is decidable."
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }

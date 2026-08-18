@@ -38,7 +38,7 @@ type OptionalDiffId
 
 fn subsumption_symbol_node(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -66,7 +66,7 @@ fn subsumption_receipt_node(row: v2.lens.subsumption.DissolutionSubsumption) -> 
   match row.verification {
     MechanicalReverification { test_claim: claim } =>
       v2.std.node.Node {
-        kind: ComputationNode { behavior: Value },
+        kind: v2.std.node.ComputationNode { behavior: Value },
         children: [
           v2.std.node.Edge {
             label: Named { name: ^subsumption_root_fix_edge },
@@ -94,7 +94,7 @@ fn subsumption_receipt_node(row: v2.lens.subsumption.DissolutionSubsumption) -> 
 
 fn expected_rust_language_model_emit_receipt_node() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Value },
+    kind: v2.std.node.ComputationNode { behavior: Value },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^subsumption_root_fix_edge },
@@ -212,7 +212,7 @@ fn mechanical_reverification_verdict_node(v: MechanicalReverificationVerdict) ->
 }
 
 fn subsumption_runtime_unit(node: Node) -> v2.std.runtime.RuntimeValue {
-  RuntimeUnit {
+  v2.std.runtime.RuntimeUnit {
     value: v2.std.runtime.RuntimeUnitValue { unit_type: node }
   }
 }
@@ -331,7 +331,7 @@ fn subsumption_context() -> v2.compiler.eval.EvalContext {
   )
 }
 
-data claim_rust_language_model_emit_mechanical_reverification: v2.std.verification.TestClaim = StructuralEqualsClaim {
+data claim_rust_language_model_emit_mechanical_reverification: v2.std.verification.TestClaim = v2.std.verification.StructuralEqualsClaim {
   label: "dissolution subsumption rust LanguageModel emit row receipt",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: subsumption_receipt_node(row: rust_language_model_emit_subsumption),
@@ -388,7 +388,7 @@ data verdict_rust_language_model_emit_subsumption: MechanicalReverificationVerdi
   run: rust_language_model_emit_lens_ci_report
 )
 
-data claim_rust_language_model_emit_subsumption_reverifies: v2.std.verification.TestClaim = StructuralEqualsClaim {
+data claim_rust_language_model_emit_subsumption_reverifies: v2.std.verification.TestClaim = v2.std.verification.StructuralEqualsClaim {
   label: "dissolution subsumption rust LanguageModel emit row verifies Lens-CI verdict",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: mechanical_reverification_verdict_node(v: verdict_rust_language_model_emit_subsumption),

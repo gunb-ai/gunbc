@@ -21,24 +21,24 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
         QnFoldError { diag: v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: n),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }}
       }
     TypeNode { connective: Atom { identity: sym } } =>
       if count(n.children) == 0 {
-        QnFoldDone { qn: Cons { head: sym, tail: Empty } }
+        QnFoldDone { qn: std.algebra.Cons { head: sym, tail: Empty } }
       } else {
         QnFoldError { diag: v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: n),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }}
       }
     _ =>
       QnFoldError { diag: v2.std.diagnostic.Diagnostic {
         reason: ^qualified_name_structure_invalid,
         at: node_locus(node: n),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }}
   }
 }
@@ -61,29 +61,29 @@ fn qn_fold_step(acc: QnFoldStatus, edge: v2.std.node.Edge, child: QnFoldStatus) 
                           HeadAbsent =>
                             match acc {
                               QnFoldInit => QnFoldHeadSeen { sym: sym }
-                              QnFoldTailSeen { tail: tail_qn } => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
+                              QnFoldTailSeen { tail: tail_qn } => QnFoldDone { qn: std.algebra.Cons { head: sym, tail: tail_qn } }
                               _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                                 reason: ^qualified_name_structure_invalid,
                                 at: node_locus(node: edge.target),
-                                correction: Unavailable { reason: ExternalContractUnknown }
+                                correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                               }}
                             }
                           HeadFound { value: _ } => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                             reason: ^qualified_name_structure_invalid,
                             at: node_locus(node: edge.target),
-                            correction: Unavailable { reason: ExternalContractUnknown }
+                            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                           }}
                         }
                       _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                         reason: ^qualified_name_structure_invalid,
                         at: node_locus(node: edge.target),
-                        correction: Unavailable { reason: ExternalContractUnknown }
+                        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                       }}
                     }
                   _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                     reason: ^qualified_name_structure_invalid,
                     at: node_locus(node: edge.target),
-                    correction: Unavailable { reason: ExternalContractUnknown }
+                    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                   }}
                 }
               } else if ename == ^fold_list_node_tail {
@@ -91,36 +91,36 @@ fn qn_fold_step(acc: QnFoldStatus, edge: v2.std.node.Edge, child: QnFoldStatus) 
                   TypeNode { connective: Conj } =>
                     match acc {
                       QnFoldInit => QnFoldTailSeen { tail: child_qn }
-                      QnFoldHeadSeen { sym: sym } => QnFoldDone { qn: Cons { head: sym, tail: child_qn } }
+                      QnFoldHeadSeen { sym: sym } => QnFoldDone { qn: std.algebra.Cons { head: sym, tail: child_qn } }
                       _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                         reason: ^qualified_name_structure_invalid,
                         at: node_locus(node: edge.target),
-                        correction: Unavailable { reason: ExternalContractUnknown }
+                        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                       }}
                     }
                   _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                     reason: ^qualified_name_structure_invalid,
                     at: node_locus(node: edge.target),
-                    correction: Unavailable { reason: ExternalContractUnknown }
+                    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                   }}
                 }
               } else {
                 QnFoldError { diag: v2.std.diagnostic.Diagnostic {
                   reason: ^qualified_name_structure_invalid,
                   at: node_locus(node: edge.target),
-                  correction: Unavailable { reason: ExternalContractUnknown }
+                  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                 }}
               }
             _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
               reason: ^qualified_name_structure_invalid,
               at: node_locus(node: edge.target),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             }}
           }
         _ => QnFoldError { diag: v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: edge.target),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }}
       }
   }
@@ -131,7 +131,7 @@ fn qualified_name_from_string_segments(segments: List<String>) -> FreeMonoid<v2.
     xs: segments,
     empty: Empty,
     snoc: fn(tail, segment) {
-      Cons { head: symbol_intern_lexeme(lexeme: segment), tail: tail }
+      std.algebra.Cons { head: symbol_intern_lexeme(lexeme: segment), tail: tail }
     }
   )
 }
@@ -196,13 +196,13 @@ fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
         _ => outcome_rejected(d: v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: root),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         })
       }
     _ => outcome_rejected(d: v2.std.diagnostic.Diagnostic {
       reason: ^qualified_name_structure_invalid,
       at: node_locus(node: root),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     })
   }
 }

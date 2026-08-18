@@ -5,14 +5,14 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn dummy_site() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^accumulator_copy_dummy } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^accumulator_copy_dummy } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn bare(s: v2.std.node.Symbol) -> v2.lens.complexity_accumulator_copy.PortReading {
-  PortBareName { name: s }
+  v2.lens.complexity_accumulator_copy.PortBareName { name: s }
 }
 
 fn classify(combiner: v2.std.node.Symbol, ports: List<v2.lens.complexity_accumulator_copy.PortReading>, carriers: List<v2.std.node.Symbol>) -> Optional<v2.lens.complexity_accumulator_copy.Finding> {
@@ -114,7 +114,7 @@ test fn computed_copied_port_refuses() -> Bool {
   refuses_with(
     o: classify(
       combiner: ^list_append,
-      ports: [PortComputedExpression { mentions: [] }, bare(s: ^item)],
+      ports: [v2.lens.complexity_accumulator_copy.PortComputedExpression { mentions: [] }, bare(s: ^item)],
       carriers: [^acc]
     ),
     cause: ^copied_port_computed_argument
@@ -125,7 +125,7 @@ test fn computed_mention_of_carrier_reaching_unregistered_combiner_refuses() -> 
   refuses_with(
     o: classify(
       combiner: ^mystery,
-      ports: [PortComputedExpression { mentions: [^wrapped, ^acc] }],
+      ports: [v2.lens.complexity_accumulator_copy.PortComputedExpression { mentions: [^wrapped, ^acc] }],
       carriers: [^acc]
     ),
     cause: ^combiner_unregistered_carrier_reaches
@@ -135,7 +135,7 @@ test fn computed_mention_of_carrier_reaching_unregistered_combiner_refuses() -> 
 test fn computed_without_carrier_mention_at_unregistered_combiner_is_clean() -> Bool {
   match classify(
     combiner: ^mystery,
-    ports: [PortComputedExpression { mentions: [^wrapped, ^item] }],
+    ports: [v2.lens.complexity_accumulator_copy.PortComputedExpression { mentions: [^wrapped, ^item] }],
     carriers: [^acc]
   ) {
     Absent => true

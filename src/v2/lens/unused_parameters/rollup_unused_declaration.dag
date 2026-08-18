@@ -3,7 +3,7 @@ module v2.test.lens_unused_parameters.rollup_unused_declaration
 data rollup_parameter: Node = claim_atom_node(s: ^rollup_parameter_symbol)
 
 data rollup_function: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^rollup_function_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^rollup_function_symbol } },
   children: [
     v2.std.node.Edge { label: Named { name: ^rollup_edge_symbol }, target: rollup_parameter }
   ],

@@ -61,7 +61,7 @@ test fn witness_unclassified_probe_is_treated_as_tainted() -> Bool {
   let unaudited = gunbc.readback_independence.ReadBackProbe {
     label: "hypothetical unaudited transport",
     subject: "some subject",
-    effect_on_subject: ProbeEffectUnknown { reason: "nobody has audited this transport yet" },
+    effect_on_subject: gunbc.readback_independence.ProbeEffectUnknown { reason: "nobody has audited this transport yet" },
   }
   !readback_probe_is_independent(p: unaudited)
     && observation_verdict_eq(
@@ -118,7 +118,7 @@ test fn witness_answers_without_subject_still_corrects_a_positive() -> Bool {
   let probe = gunbc.readback_independence.ReadBackProbe {
     label: "answers-without-subject probe",
     subject: "subject that the probe cannot establish",
-    effect_on_subject: ProbeAnswersWithoutSubject {
+    effect_on_subject: gunbc.readback_independence.ProbeAnswersWithoutSubject {
       mechanism: "returns a well-formed positive answer whether or not the subject exists" as std.types.NonEmptyStr,
     },
   }
@@ -140,10 +140,10 @@ fn probe_effect_arm_tag(effect: gunbc.readback_independence.ProbeEffectOnSubject
 
 test fn witness_the_two_non_independent_arms_stay_distinguishable() -> Bool {
   let creates = probe_effect_arm_tag(
-    effect: ProbeMayEstablish { mechanism: "starts the daemon it reports on" as std.types.NonEmptyStr },
+    effect: gunbc.readback_independence.ProbeMayEstablish { mechanism: "starts the daemon it reports on" as std.types.NonEmptyStr },
   )
   let answers = probe_effect_arm_tag(
-    effect: ProbeAnswersWithoutSubject { mechanism: "answers positively with no subject" as std.types.NonEmptyStr },
+    effect: gunbc.readback_independence.ProbeAnswersWithoutSubject { mechanism: "answers positively with no subject" as std.types.NonEmptyStr },
   )
   creates == "creates" && answers == "answers" && (creates == answers) == false
 }

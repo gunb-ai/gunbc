@@ -121,7 +121,7 @@ test fn emit_ingest_python_perturbed_frontier_fails_closed() -> Bool {
 
 test fn ingest_python_forward_fails_closed_off_frontier_holds() -> Bool {
   match grammar_relation_row_forward_selection(
-    frontier: Cons { head: ^emit_ingest_python_perturb_bogus_tok, tail: std.algebra.Empty },
+    frontier: std.algebra.Cons { head: ^emit_ingest_python_perturb_bogus_tok, tail: std.algebra.Empty },
     rules: emit_ingest_python_shared_rules()
   ) {
     Accepted { value: _, diagnostics: _ } => false

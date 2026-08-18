@@ -24,9 +24,9 @@ fn atlas_page_snapshot_changed() -> gunbc.repo_atlas_projection.RepoAtlasSnapsho
   repo_atlas_snapshot(
     subject: AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
-    observation: AtlasComparisonObserved {
+    observation: gunbc.repo_atlas_projection.AtlasComparisonObserved {
       comparison: gunbc.repo_atlas_projection.AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot },
-      diff: GitDiffNameStatusComplete { entries: [
+      diff: extdeps.git.GitDiffNameStatusComplete { entries: [
         extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       ] }
     },
@@ -37,9 +37,9 @@ fn atlas_page_snapshot_refused() -> gunbc.repo_atlas_projection.RepoAtlasSnapsho
   repo_atlas_snapshot(
     subject: AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
-    observation: AtlasComparisonObserved {
+    observation: gunbc.repo_atlas_projection.AtlasComparisonObserved {
       comparison: gunbc.repo_atlas_projection.AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot },
-      diff: GitDiffNameStatusComplete { entries: [
+      diff: extdeps.git.GitDiffNameStatusComplete { entries: [
         extdeps.git.GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       ] }
     },

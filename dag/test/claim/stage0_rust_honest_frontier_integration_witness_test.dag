@@ -29,7 +29,7 @@ test fn honest_frontier_integration_joins_c1_and_c2() -> Bool {
 
 test fn honest_frontier_integration_refusal_does_not_project_empty_hand_paths() -> Bool {
   match honest_frontier_integration_receipt(
-    observation: RustManifestObserved {
+    observation: gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: "",
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: derived_hand_maintained_stage0_repo_paths(),

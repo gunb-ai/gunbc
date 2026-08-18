@@ -4,22 +4,22 @@ module v2.test.claim.body_lowering.frontier_three_state
 data frontier_three_state_note: String = "The frontier observer over the three states its producer can reach. It carried two arms, and the missing one failed OPEN: a Rejected outcome fell to the else branch and reported BodyLoweringLowered — the instrument that measures the body-lowering gap counting failures as successes, so every population read through it undercounted by exactly the refusals. Recognition also read the diagnostic HEAD alone, while retention travels through diagnostics_merge and rejected_with_pending, which put OUTER diagnostics first — so a retained body behind any pending diagnostic was also reported lowered. Both routes are asserted here, and both are the executed RED: on the previous classifier the rejection claim and the behind-a-pending-diagnostic claim return Lowered. The negative controls matter as much: an unrelated diagnostic must NOT manufacture retention, and a clean accept must stay lowered — a classifier that answered retained more often would satisfy the positive claims while destroying the count."
 
 fn probe_shell() -> Node {
-  node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: [])
 }
 
 fn unrelated_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^frontier_three_state_unrelated_reason,
-    at: Textual { file: ^frontier_three_state_probe_file, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: ^frontier_three_state_probe_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
 fn retained_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^body_lowering_reason_wrapper_retained_emitted,
-    at: Textual { file: ^frontier_three_state_probe_file, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: ^frontier_three_state_probe_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -36,17 +36,17 @@ fn clean_accept() -> Outcome<Node> {
 fn accept_with_unrelated_diagnostic() -> Outcome<Node> {
   Accepted {
     value: probe_shell(),
-    diagnostics: Some { diagnostics: diagnostics_singleton(d: unrelated_diagnostic()) }
+    diagnostics: v2.std.diagnostic.Some { diagnostics: diagnostics_singleton(d: unrelated_diagnostic()) }
   }
 }
 
 fn retention_behind_a_pending_diagnostic() -> Outcome<Node> {
   Accepted {
     value: probe_shell(),
-    diagnostics: Some {
+    diagnostics: v2.std.diagnostic.Some {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics {
         head: unrelated_diagnostic(),
-        tail: Cons { head: retained_diagnostic(), tail: Empty }
+        tail: std.algebra.Cons { head: retained_diagnostic(), tail: Empty }
       }
     }
   }

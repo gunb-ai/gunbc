@@ -29,7 +29,7 @@ fn infer_wall_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbe
     Absent =>
       v2_infer_eval_harness_revision(
         probe: probe,
-        expectation: ExpectAcceptedCounted { diagnostic_class: "infer-harness-row-absent" as std.types.NonEmptyStr },
+        expectation: gunbc.guarantee_probe_corpus.ExpectAcceptedCounted { diagnostic_class: "infer-harness-row-absent" as std.types.NonEmptyStr },
         harness_source: harness_source,
       )
   }
@@ -37,7 +37,7 @@ fn infer_wall_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbe
 
 fn wall_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -45,7 +45,7 @@ fn wall_atom(s: v2.std.node.Symbol) -> Node {
 
 fn wall_conj_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -53,7 +53,7 @@ fn wall_conj_node() -> Node {
 
 fn wall_disj_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: Disj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -61,7 +61,7 @@ fn wall_disj_node() -> Node {
 
 fn wall_value_node() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Value },
+    kind: v2.std.node.ComputationNode { behavior: Value },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -69,7 +69,7 @@ fn wall_value_node() -> Node {
 
 fn wall_malformed_bool_with_payload() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^dag_token_kw_true } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_kw_true } },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^wall_malformed_bool_payload_field },

@@ -64,12 +64,12 @@ data rust_ws_review_event_screaming_golden: String = rust_ws_review_event_golden
 data rust_ws_review_event_snake_golden: String = rust_ws_review_event_golden(naming: SnakeCase)
 
 data rust_wire_serde_review_event_emitted: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Arrow },
+  kind: v2.std.node.TypeNode { connective: Arrow },
   children: [
     v2.std.node.Edge {
       label: Positional,
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: ^rust_ws_emitted_review_event } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^rust_ws_emitted_review_event } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
@@ -80,15 +80,15 @@ data rust_wire_serde_review_event_emitted: Node = v2.std.node.Node {
 
 fn rust_ws_review_event_tokens(naming: std.serialization.VariantNaming) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: rust_wire_serde_attr_token_class(naming: naming) },
-    FixedToken { token_class: ^rust_ws_token_enum_review_event_body }
+    v2.std.compilers.target_model.FixedToken { token_class: rust_wire_serde_attr_token_class(naming: naming) },
+    v2.std.compilers.target_model.FixedToken { token_class: ^rust_ws_token_enum_review_event_body }
   ]
 }
 
 fn rust_ws_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: v2.std.compilers.lexing.LiteralPattern { text: text }
   }
 }
 
@@ -113,7 +113,7 @@ fn rust_ws_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn rust_ws_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: rust_ws_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: rust_ws_lex_rules() }
 }
 
 type RustWireSerdeGrammarRow {
@@ -144,7 +144,7 @@ fn rust_ws_grammar_sequence_from_tokens(tokens: List<v2.std.compilers.target_mod
           }
         RustWireSerdeGramBuildReady { expr: acc } =>
           RustWireSerdeGramBuildReady {
-            expr: Sequence {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: rust_ws_grammar_terminal(
                 token_class: concrete_syntax_token_class(token: token)
@@ -179,7 +179,7 @@ fn rust_ws_grammar_relation_row(naming: std.serialization.VariantNaming) -> Rust
 
 fn rust_ws_grammar_relation_row_node(row: RustWireSerdeGrammarRow) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.extdeps.languages.rust.rust_named_edge(
         name: ^grammar_relation_field_production,
@@ -200,7 +200,7 @@ fn rust_ws_grammar_relation_row_node(row: RustWireSerdeGrammarRow) -> Node {
 
 fn rust_ws_translation_rules_node(naming: std.serialization.VariantNaming) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.extdeps.languages.rust.rust_named_edge(
         name: ^rust_ws_relation_rule_review_event,
@@ -233,7 +233,7 @@ fn rust_ws_serialize_source_prefix_edges(naming: std.serialization.VariantNaming
 
 fn rust_ws_serialize_source_node(naming: std.serialization.VariantNaming) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: rust_ws_serialize_source_prefix_edges(naming: naming),
     occurrence_id: SyntheticOccurrence
   }
@@ -258,7 +258,7 @@ fn rust_ws_target_model_core_edges(naming: std.serialization.VariantNaming) -> L
 
 fn rust_ws_target_model_bundle(naming: std.serialization.VariantNaming) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: rust_ws_target_model_core_edges(naming: naming),
     occurrence_id: SyntheticOccurrence
   }

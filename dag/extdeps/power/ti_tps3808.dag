@@ -33,7 +33,7 @@ data tps3808_dbv0006a_body: extdeps.land_pattern.types.PackageBodyDimensions = e
 data tps3808_dbv0006a_land_pattern: extdeps.land_pattern.types.VendorRecommendedLandPattern = extdeps.land_pattern.types.VendorRecommendedLandPattern {
   package_designator: "DBV0006A",
   drawing: tps3808_dbv0006a_drawing,
-  geometry: DualRowLandGeometry {
+  geometry: extdeps.land_pattern.types.DualRowLandGeometry {
     lands_per_row: 3,
     pitch: micrometer(count: 950),
     row_span_centre_to_centre: micrometer(count: 2600),

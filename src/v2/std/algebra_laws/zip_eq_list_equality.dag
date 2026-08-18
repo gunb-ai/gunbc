@@ -2,17 +2,17 @@ module v2.test.algebra_laws.zip_eq_list_equality
 
 fn zip_sym_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> Bool { a == b }
 fn sym_list_empty() -> FreeMonoid<v2.std.node.Symbol> { Empty }
-fn sym_list_a() -> FreeMonoid<v2.std.node.Symbol> { Cons { head: ^zip_eq_sym_a, tail: Empty } }
-fn sym_list_b() -> FreeMonoid<v2.std.node.Symbol> { Cons { head: ^zip_eq_sym_b, tail: Empty } }
-fn sym_list_ab() -> FreeMonoid<v2.std.node.Symbol> { Cons { head: ^zip_eq_sym_a, tail: Cons { head: ^zip_eq_sym_b, tail: Empty } } }
+fn sym_list_a() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^zip_eq_sym_a, tail: Empty } }
+fn sym_list_b() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^zip_eq_sym_b, tail: Empty } }
+fn sym_list_ab() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^zip_eq_sym_a, tail: std.algebra.Cons { head: ^zip_eq_sym_b, tail: Empty } } }
 
 fn zip_eq_pass_node() -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^zip_eq_pass_sym } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^zip_eq_pass_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 fn zip_eq_fail_node() -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^zip_eq_fail_sym } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^zip_eq_fail_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
@@ -39,7 +39,7 @@ data witness_zip_eq_right_longer: Bool = match zip_eq(a: sym_list_a(), b: sym_li
   false => true
 }
 
-data claim_zip_eq_empty_empty_true: v2.std.verification.TestClaim = CompilesClaim {
+data claim_zip_eq_empty_empty_true: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "algebra/zip_eq: empty/empty lists are equal",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: zip_eq_claim_input(ok: witness_zip_eq_empty_empty),
@@ -47,7 +47,7 @@ data claim_zip_eq_empty_empty_true: v2.std.verification.TestClaim = CompilesClai
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_zip_eq_same_single_true: v2.std.verification.TestClaim = CompilesClaim {
+data claim_zip_eq_same_single_true: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "algebra/zip_eq: identical single-element lists are equal",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: zip_eq_claim_input(ok: witness_zip_eq_same_single),
@@ -55,7 +55,7 @@ data claim_zip_eq_same_single_true: v2.std.verification.TestClaim = CompilesClai
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_zip_eq_different_single_false: v2.std.verification.TestClaim = CompilesClaim {
+data claim_zip_eq_different_single_false: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "algebra/zip_eq: distinct single-element lists are not equal",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: zip_eq_claim_input(ok: witness_zip_eq_different_single),
@@ -63,7 +63,7 @@ data claim_zip_eq_different_single_false: v2.std.verification.TestClaim = Compil
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_zip_eq_left_longer_false: v2.std.verification.TestClaim = CompilesClaim {
+data claim_zip_eq_left_longer_false: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "algebra/zip_eq: left-longer list is not equal to shorter right",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: zip_eq_claim_input(ok: witness_zip_eq_left_longer),
@@ -71,7 +71,7 @@ data claim_zip_eq_left_longer_false: v2.std.verification.TestClaim = CompilesCla
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_zip_eq_right_longer_false: v2.std.verification.TestClaim = CompilesClaim {
+data claim_zip_eq_right_longer_false: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "algebra/zip_eq: right-longer list is not equal to shorter left",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: zip_eq_claim_input(ok: witness_zip_eq_right_longer),

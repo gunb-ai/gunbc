@@ -4,7 +4,7 @@ fn idempotent_operation_missing_semantics_diagnostic(node: Node) -> v2.std.diagn
   v2.std.diagnostic.Diagnostic {
     reason: ^idempotent_operation_eval_missing_semantics,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

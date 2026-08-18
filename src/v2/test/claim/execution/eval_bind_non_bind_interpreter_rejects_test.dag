@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
   let node = v2.std.node.Node {
-    kind: ComputationNode { behavior: Bind },
+    kind: v2.std.node.ComputationNode { behavior: Bind },
     occurrence_id: SyntheticOccurrence,
     children: []
   }
@@ -21,7 +21,7 @@ test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
     node: node,
     tree: tree,
     interpretation: eval_default_interpretation(),
-    interpreter: ValueRuntimeInterpreter {
+    interpreter: v2.std.runtime.ValueRuntimeInterpreter {
       interpreter: v2.std.runtime.ValueInterpreter {
         allocate_literal: v2_eval_allocate_literal
       }

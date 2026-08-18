@@ -93,7 +93,7 @@ type GoogleAdsAuctionTimeSignal
   | GoogleSignalOperatingSystem
 
 // Coarse-grain targeting dimensions exactly as the anchor page enumerates them, quoted: Smart Bidding 'factors in a wide range of auction-time signals such as device, location, time of day, language, and operating system to capture the unique context of every search.' The page says 'such as' -- this enum models the five signals the vendor names, and is deliberately NOT claimed closed over everything the auction reads.
-data google_ads_media_rate: extdeps.advertising.types.AdPriceDetermination = AuctionDetermined {
+data google_ads_media_rate: extdeps.advertising.types.AdPriceDetermination = extdeps.advertising.types.AuctionDetermined {
   mechanism_citation: "support.google.com/google-ads/answer/142918",
 }
 

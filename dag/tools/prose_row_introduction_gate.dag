@@ -24,7 +24,7 @@ fn prose_row_gate_observation() -> gunbc.prose_row_frontier.ProseRowDiffObservat
   if diff.success {
     prose_row_diff_observation(diff_text: diff.diff)
   } else {
-    ProseRowDiffUnreadable {
+    gunbc.prose_row_frontier.ProseRowDiffUnreadable {
       reason: "git.Core.DiffUnified0(origin/main...HEAD) failed"
     }
   }

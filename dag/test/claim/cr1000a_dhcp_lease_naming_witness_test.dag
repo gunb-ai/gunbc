@@ -11,7 +11,7 @@ data srv1_option12_host_name: extdeps.dns.domain_name.HostName = extdeps.dns.dom
 data sample_dynamic_srv1_lease: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow = extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow {
   mac_address: "48:21:0B:81:C6:EA" as extdeps.dhcp.v4.MacAddress,
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 185),
-  lease: DynamicDhcpLease {
+  lease: extdeps.dhcp.v4.DynamicDhcpLease {
     client_hostname: Present { value: srv1_option12_host_name },
     lease_time_remaining: dhcp_lease_remaining_from_cited_minutes(minutes: 120),
     status: extdeps.dhcp.v4.Active,
@@ -21,7 +21,7 @@ data sample_dynamic_srv1_lease: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseR
 data sample_static_srv3_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow = extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow {
   mac_address: "48:21:0B:81:C5:14" as extdeps.dhcp.v4.MacAddress,
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 192),
-  lease: StaticDhcpReservation {
+  lease: extdeps.dhcp.v4.StaticDhcpReservation {
     reservation_label: "bmc-altrad8ud-1l2t-3" as std.types.NonEmptyStr,
     status: extdeps.dhcp.v4.Active,
   },

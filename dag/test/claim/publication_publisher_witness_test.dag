@@ -324,7 +324,7 @@ test fn sole_publisher_refuses_enumerated_audience_receipt() -> Bool {
   let narrow_receipt = gunbc.publication_decision.PublicationDecisionReceipt {
     subject_identity: subject.subject_identity,
     content_identity: subject.content_identity,
-    audience: EnumeratedPublicationAudience { label: "private-team" },
+    audience: gunbc.publication_decision.EnumeratedPublicationAudience { label: "private-team" },
     policy_version: synthetic_policy_version,
     authority: sole_publication_authority_id,
   }

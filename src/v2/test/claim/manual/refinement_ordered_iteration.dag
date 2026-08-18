@@ -10,7 +10,7 @@ fn unordered_classifier_for_list_int() -> IterationClassifier<List<Int>> {
 }
 
 fn test_locus() -> v2.std.diagnostic.Locus {
-  Textual { file: ^refinement_ordered_iteration_test_file, extent: WholeFile }
+  v2.std.diagnostic.Textual { file: ^refinement_ordered_iteration_test_file, extent: WholeFile }
 }
 
 fn witness_ordered_classifier_accepts() -> Bool {
@@ -28,7 +28,7 @@ fn claim_ordered_classifier_accepts_input(ok: Bool) -> Node {
   if ok { stub_empty_conj } else { stub_empty_disj }
 }
 
-data claim_refine_ordered_iteration_accepts_on_ordered_classifier: v2.std.verification.TestClaim = EqualsClaim {
+data claim_refine_ordered_iteration_accepts_on_ordered_classifier: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/refinement: refine_ordered_iteration accepts when the classifier reports StructurallyOrdered",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_ordered_classifier_accepts_input(ok: witness_ordered_classifier_accepts()),
@@ -51,7 +51,7 @@ fn claim_unordered_classifier_rejects_input(ok: Bool) -> Node {
   if ok { stub_empty_conj } else { stub_empty_disj }
 }
 
-data claim_refine_ordered_iteration_rejects_unordered_with_naming_the_leak: v2.std.verification.TestClaim = EqualsClaim {
+data claim_refine_ordered_iteration_rejects_unordered_with_naming_the_leak: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/refinement: refine_ordered_iteration rejects with naming_the_leak when the classifier reports StructurallyUnordered",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_unordered_classifier_rejects_input(ok: witness_unordered_classifier_rejects_with_naming_the_leak()),

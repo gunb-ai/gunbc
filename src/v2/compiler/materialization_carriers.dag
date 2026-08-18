@@ -129,7 +129,7 @@ fn cached_stage_governed<A, B>(
   }
 }
 
-fn parse_table_realized_step() -> RealizedStep<Nano> {
+fn parse_table_realized_step() -> RealizedStep<std.measure.Nano> {
   std.realization.RealizedStep {
     shape: ReadEffect,
     placement: LocalInProcess,
@@ -138,7 +138,7 @@ fn parse_table_realized_step() -> RealizedStep<Nano> {
   }
 }
 
-fn compile_stage_realized_step() -> RealizedStep<Nano> {
+fn compile_stage_realized_step() -> RealizedStep<std.measure.Nano> {
   std.realization.RealizedStep {
     shape: ReadEffect,
     placement: LocalInProcess,

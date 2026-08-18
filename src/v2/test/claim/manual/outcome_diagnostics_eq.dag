@@ -5,14 +5,14 @@ fn diag_eq_x() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^diag_eq_reason_x,
     at: node_locus(node: stub_empty_conj),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn diag_eq_y() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^diag_eq_reason_y,
     at: node_locus(node: stub_empty_conj),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -42,8 +42,8 @@ fn witness_rejected_mult_not_equal() -> Bool {
 }
 
 data witness_diagnostics_merge_some: Bool = match diagnostics_merge(
-  outer: Some { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: diag_eq_x(), tail: [] } },
-  inner: Some { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: diag_eq_y(), tail: [] } }
+  outer: v2.std.diagnostic.Some { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: diag_eq_x(), tail: [] } },
+  inner: v2.std.diagnostic.Some { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: diag_eq_y(), tail: [] } }
 ) {
   Some { diagnostics: _ } => true
   None => false

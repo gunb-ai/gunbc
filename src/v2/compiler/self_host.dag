@@ -78,7 +78,7 @@ fn self_host_runner_not_realized_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^self_host_runner_not_realized,
     at: port_locus(port: ^self_host_runner_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -89,7 +89,7 @@ fn self_host_fixpoint_digest_mismatch_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: ^self_host_fixpoint_digest_mismatch,
     at: node_locus(node: stage2.node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -142,7 +142,7 @@ fn self_host_fixpoint_witness(
       value: self_host_fixpoint_equal(stage1: stage1, stage2: stage2)
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: self_host_fixpoint_digest_mismatch_diagnostic(
         stage1: stage1,
         stage2: stage2
@@ -171,7 +171,7 @@ fn bootstrap_roundtrip_check(
           expected_stage: eq.left
         }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -258,7 +258,7 @@ fn stage_emission_equality(
         }
       }
     Rejected { diagnostics: d } =>
-      Violates { diagnostic: d.head }
+      v2.std.witness.Violates { diagnostic: d.head }
   }
 }
 

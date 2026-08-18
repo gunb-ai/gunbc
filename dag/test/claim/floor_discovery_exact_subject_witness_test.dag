@@ -3,18 +3,18 @@ module test.claim.floor_discovery_exact_subject_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data tested_commit: extdeps.git.object_store.GitObjectId = GitSha1ObjectId {
+data tested_commit: extdeps.git.object_store.GitObjectId = extdeps.git.object_store.GitSha1ObjectId {
   digest: std.content_hash.Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
 }
-data other_commit: extdeps.git.object_store.GitObjectId = GitSha1ObjectId {
+data other_commit: extdeps.git.object_store.GitObjectId = extdeps.git.object_store.GitSha1ObjectId {
   digest: std.content_hash.Sha1Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
 }
 
-data tested_tree: extdeps.git.object_store.GitObjectId = GitSha1ObjectId {
+data tested_tree: extdeps.git.object_store.GitObjectId = extdeps.git.object_store.GitSha1ObjectId {
   digest: std.content_hash.Sha1Digest { hex: "1111111111111111111111111111111111111111" }
 }
 
-data other_tree: extdeps.git.object_store.GitObjectId = GitSha1ObjectId {
+data other_tree: extdeps.git.object_store.GitObjectId = extdeps.git.object_store.GitSha1ObjectId {
   digest: std.content_hash.Sha1Digest { hex: "2222222222222222222222222222222222222222" }
 }
 
@@ -187,15 +187,15 @@ test fn transport_preserves_exact_subject_and_refuses_dirty_worktree() -> Bool {
   let request = canonical_request()
   let after_commit = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: v2.workflow.floor_discovery_transport.floor_discovery_transport_initialize(request: request),
-    observation: CommitObserved { commit: v2.workflow.floor_discovery.floor_discovery_commit_id(object_id: tested_commit) },
+    observation: v2.workflow.floor_discovery_transport.CommitObserved { commit: v2.workflow.floor_discovery.floor_discovery_commit_id(object_id: tested_commit) },
   )
   let after_tree = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: after_commit,
-    observation: TreeObserved { tree: v2.workflow.floor_discovery.floor_discovery_tree_id(object_id: tested_tree) },
+    observation: v2.workflow.floor_discovery_transport.TreeObserved { tree: v2.workflow.floor_discovery.floor_discovery_tree_id(object_id: tested_tree) },
   )
   match v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: after_tree,
-    observation: TrackedWorktreeObserved { modified_paths: ["src/v1/stage0/src/cli_run/floor_discovery_snapshot.rs"] },
+    observation: v2.workflow.floor_discovery_transport.TrackedWorktreeObserved { modified_paths: ["src/v1/stage0/src/cli_run/floor_discovery_snapshot.rs"] },
   ) {
     TransportRefused { cause: _ } => true
     _ => false
@@ -207,23 +207,23 @@ test fn transport_requires_clean_worktree_before_publication() -> Bool {
   let s0 = v2.workflow.floor_discovery_transport.floor_discovery_transport_initialize(request: request)
   let s1 = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: s0,
-    observation: CommitObserved { commit: v2.workflow.floor_discovery.floor_discovery_commit_id(object_id: tested_commit) },
+    observation: v2.workflow.floor_discovery_transport.CommitObserved { commit: v2.workflow.floor_discovery.floor_discovery_commit_id(object_id: tested_commit) },
   )
   let s2 = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: s1,
-    observation: TreeObserved { tree: v2.workflow.floor_discovery.floor_discovery_tree_id(object_id: tested_tree) },
+    observation: v2.workflow.floor_discovery_transport.TreeObserved { tree: v2.workflow.floor_discovery.floor_discovery_tree_id(object_id: tested_tree) },
   )
   let s3 = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: s2,
-    observation: TrackedWorktreeObserved { modified_paths: [] },
+    observation: v2.workflow.floor_discovery_transport.TrackedWorktreeObserved { modified_paths: [] },
   )
   let s4 = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: s3,
-    observation: UntrackedWorktreeObserved { paths: [] },
+    observation: v2.workflow.floor_discovery_transport.UntrackedWorktreeObserved { paths: [] },
   )
   let s5 = v2.workflow.floor_discovery_transport.floor_discovery_transport_observe(
     state: s4,
-    observation: SnapshotPublished {
+    observation: v2.workflow.floor_discovery_transport.SnapshotPublished {
       receipt: v2.workflow.floor_discovery_transport.FloorDiscoverySnapshotWriteReceipt {
         artifact: v2.workflow.floor_discovery_transport.FloorDiscoverySnapshotArtifact {
           request_identity_digest: v2.workflow.floor_discovery.floor_discovery_request_identity(request: request),

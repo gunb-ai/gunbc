@@ -39,141 +39,141 @@ type DagBodiedFnFamilySpec {
 
 fn dag_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^dag_token_kw_fn },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_add },
-    FixedToken { token_class: ^dag_token_lparen },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_x },
-    FixedToken { token_class: ^dag_token_colon },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
-    FixedToken { token_class: ^dag_token_comma },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_y },
-    FixedToken { token_class: ^dag_token_colon },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
-    FixedToken { token_class: ^dag_token_rparen },
-    FixedToken { token_class: ^dag_token_arrow },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
-    FixedToken { token_class: ^dag_token_lbrace },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_x },
-    FixedToken { token_class: ^dag_token_plus },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_y },
-    FixedToken { token_class: ^dag_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_add },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_comma },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_plus },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rbrace }
   ]
 }
 
 fn dag_pick_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^dag_token_kw_fn },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one_or_two },
-    FixedToken { token_class: ^dag_token_lparen },
-    FixedToken { token_class: ^dag_token_rparen },
-    FixedToken { token_class: ^dag_token_arrow },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
-    FixedToken { token_class: ^dag_token_lbrace },
-    FixedToken { token_class: ^dag_token_kw_if },
-    FixedToken { token_class: ^dag_token_kw_true },
-    FixedToken { token_class: ^dag_token_kw_then },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_pick_lit_one },
-    FixedToken { token_class: ^dag_token_kw_else },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_pick_lit_two },
-    FixedToken { token_class: ^dag_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one_or_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_if },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_true },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_then },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_pick_lit_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_else },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_pick_lit_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rbrace }
   ]
 }
 
 fn dag_loop_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^dag_token_kw_fn },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one },
-    FixedToken { token_class: ^dag_token_lparen },
-    FixedToken { token_class: ^dag_token_rparen },
-    FixedToken { token_class: ^dag_token_arrow },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
-    FixedToken { token_class: ^dag_token_lbrace },
-    FixedToken { token_class: ^dag_token_kw_loop },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_pick_lit_one },
-    FixedToken { token_class: ^dag_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_loop },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_pick_lit_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rbrace }
   ]
 }
 
 fn dag_bind_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^dag_token_kw_fn },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one },
-    FixedToken { token_class: ^dag_token_lparen },
-    FixedToken { token_class: ^dag_token_rparen },
-    FixedToken { token_class: ^dag_token_arrow },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
-    FixedToken { token_class: ^dag_token_lbrace },
-    FixedToken { token_class: ^dag_token_kw_let },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_bind_x },
-    FixedToken { token_class: ^dag_token_eq },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_pick_lit_one },
-    FixedToken { token_class: ^dag_token_kw_in },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_bind_x },
-    FixedToken { token_class: ^dag_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_let },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_bind_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_eq },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_pick_lit_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_in },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_bind_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rbrace }
   ]
 }
 
 fn dag_match_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^dag_token_kw_fn },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one_or_two },
-    FixedToken { token_class: ^dag_token_lparen },
-    FixedToken { token_class: ^dag_token_rparen },
-    FixedToken { token_class: ^dag_token_arrow },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
-    FixedToken { token_class: ^dag_token_lbrace },
-    FixedToken { token_class: ^dag_token_kw_match },
-    FixedToken { token_class: ^dag_token_match_scrutinee_nop },
-    FixedToken { token_class: ^dag_token_kw_true },
-    FixedToken { token_class: ^dag_token_match_scrutinee_nop },
-    FixedToken { token_class: ^dag_token_lbrace },
-    FixedToken { token_class: ^dag_token_kw_true },
-    FixedToken { token_class: ^dag_token_fat_arrow },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_pick_lit_one },
-    FixedToken { token_class: ^dag_token_comma },
-    FixedToken { token_class: ^dag_token_kw_false },
-    FixedToken { token_class: ^dag_token_fat_arrow },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_pick_lit_two },
-    FixedToken { token_class: ^dag_token_rbrace },
-    FixedToken { token_class: ^dag_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_one_or_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_match },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_match_scrutinee_nop },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_true },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_match_scrutinee_nop },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_true },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_fat_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_pick_lit_one },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_comma },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_false },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_fat_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_pick_lit_two },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rbrace }
   ]
 }
 
 fn dag_rec_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^dag_token_kw_fn },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_mk },
-    FixedToken { token_class: ^dag_token_lparen },
-    FixedToken { token_class: ^dag_token_rparen },
-    FixedToken { token_class: ^dag_token_arrow },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_rec },
-    FixedToken { token_class: ^dag_token_lbrace },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_rec },
-    FixedToken { token_class: ^dag_token_lbrace },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_rec_v },
-    FixedToken { token_class: ^dag_token_colon },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_rec_lit_nine },
-    FixedToken { token_class: ^dag_token_rbrace },
-    FixedToken { token_class: ^dag_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_mk },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_rec },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_rec },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_rec_v },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_rec_lit_nine },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rbrace }
   ]
 }
 
 fn dag_field_access_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^dag_token_kw_fn },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_get },
-    FixedToken { token_class: ^dag_token_lparen },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_r },
-    FixedToken { token_class: ^dag_token_colon },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_rec },
-    FixedToken { token_class: ^dag_token_rparen },
-    FixedToken { token_class: ^dag_token_arrow },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
-    FixedToken { token_class: ^dag_token_lbrace },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_r },
-    FixedToken { token_class: ^dag_token_dot },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_rec_v },
-    FixedToken { token_class: ^dag_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_get },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_r },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_rec },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lbrace },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_r },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_dot },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_rec_v },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rbrace }
   ]
 }
 
@@ -181,7 +181,7 @@ fn dag_surface_operator_canonicalization_miss_diagnostic(surface_token: v2.std.n
   v2.std.diagnostic.Diagnostic {
     reason: ^dag_surface_operator_canonicalization_miss,
     at: port_locus(port: ^dag_surface_operator_canonicalization_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -225,52 +225,52 @@ fn dag_surface_operator_canonicalization_lookup(
 }
 
 fn dag_keyword_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
-    pattern: KeywordPattern { text: text }
+    pattern: v2.std.compilers.lexing.KeywordPattern { text: text }
   }
 }
 
 fn dag_literal_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: v2.std.compilers.lexing.LiteralPattern { text: text }
   }
 }
 
 fn dag_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: CharClassPattern { class: IdentStartChar },
-    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
   }
 }
 
 fn dag_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^dag_token_ident,
     pattern: dag_ident_lex_pattern()
   }
 }
 
 fn dag_int_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^dag_token_int_literal,
-    pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+    pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: DigitChar } }
   }
 }
 
 fn dag_string_escape_char_pattern() -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern {
-    left: CharPattern { char: 34 },
-    right: ChoicePattern {
-      left: CharPattern { char: 92 },
-      right: ChoicePattern {
-        left: CharPattern { char: 110 },
-        right: ChoicePattern {
-          left: CharPattern { char: 116 },
-          right: ChoicePattern {
-            left: CharPattern { char: 123 },
-            right: CharPattern { char: 125 }
+  v2.std.compilers.lexing.ChoicePattern {
+    left: v2.std.compilers.lexing.CharPattern { char: 34 },
+    right: v2.std.compilers.lexing.ChoicePattern {
+      left: v2.std.compilers.lexing.CharPattern { char: 92 },
+      right: v2.std.compilers.lexing.ChoicePattern {
+        left: v2.std.compilers.lexing.CharPattern { char: 110 },
+        right: v2.std.compilers.lexing.ChoicePattern {
+          left: v2.std.compilers.lexing.CharPattern { char: 116 },
+          right: v2.std.compilers.lexing.ChoicePattern {
+            left: v2.std.compilers.lexing.CharPattern { char: 123 },
+            right: v2.std.compilers.lexing.CharPattern { char: 125 }
           }
         }
       }
@@ -279,42 +279,42 @@ fn dag_string_escape_char_pattern() -> v2.std.compilers.lexing.LexPattern {
 }
 
 fn dag_string_escape_sequence_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: CharPattern { char: 92 },
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.CharPattern { char: 92 },
     right: dag_string_escape_char_pattern()
   }
 }
 
 fn dag_string_body_element_pattern() -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern {
+  v2.std.compilers.lexing.ChoicePattern {
     left: dag_string_escape_sequence_pattern(),
-    right: CharClassPattern { class: StringTextChar }
+    right: v2.std.compilers.lexing.CharClassPattern { class: StringTextChar }
   }
 }
 
 fn dag_string_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^dag_token_string_literal,
-    pattern: DelimitedPattern {
-      open: CharPattern { char: 34 },
-      body: RepeatPattern { element: dag_string_body_element_pattern() },
-      close: CharPattern { char: 34 }
+    pattern: v2.std.compilers.lexing.DelimitedPattern {
+      open: v2.std.compilers.lexing.CharPattern { char: 34 },
+      body: v2.std.compilers.lexing.RepeatPattern { element: dag_string_body_element_pattern() },
+      close: v2.std.compilers.lexing.CharPattern { char: 34 }
     }
   }
 }
 
 fn dag_whitespace_trivia_rule() -> v2.std.compilers.lexing.LexRule {
-  TriviaRule {
-    pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
+  v2.std.compilers.lexing.TriviaRule {
+    pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } }
   }
 }
 
 fn dag_line_comment_annotation_rule() -> v2.std.compilers.lexing.LexRule {
-  AnnotationRule {
+  v2.std.compilers.lexing.AnnotationRule {
     annotation_class: ^line_comment,
-    pattern: SequencePattern {
-      left: LiteralPattern { text: "//" },
-      right: RepeatPattern { element: CharClassPattern { class: LineCommentTextChar } }
+    pattern: v2.std.compilers.lexing.SequencePattern {
+      left: v2.std.compilers.lexing.LiteralPattern { text: "//" },
+      right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: LineCommentTextChar } }
     }
   }
 }
@@ -379,13 +379,13 @@ fn dag_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn dag_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: dag_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: dag_lex_rules() }
 }
 
 fn dag_grammar_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
-      connective: Atom { identity: id }
+    kind: v2.std.node.TypeNode {
+      connective: v2.std.node.Atom { identity: id }
     },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -407,12 +407,12 @@ fn dag_positional_edge(target: Node) -> v2.std.node.Edge {
 }
 
 fn emit_fixed_token(token_class: v2.std.node.Symbol) -> Node {
-  concrete_syntax_token_to_node(token: FixedToken { token_class: token_class })
+  concrete_syntax_token_to_node(token: v2.std.compilers.target_model.FixedToken { token_class: token_class })
 }
 
 fn emit_bound_token(token_class: v2.std.node.Symbol, binding: v2.std.node.Symbol) -> Node {
   concrete_syntax_token_to_node(
-    token: BoundToken { token_class: token_class, binding: binding }
+    token: v2.std.compilers.target_model.BoundToken { token_class: token_class, binding: binding }
   )
 }
 
@@ -422,7 +422,7 @@ fn emit_grammar_relation_row(
   tokens: List<Node>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^grammar_relation_field_production,
@@ -1798,15 +1798,15 @@ fn dag_grammar_terminal_lexeme(token_class: v2.std.node.Symbol) -> v2.std.gramma
 }
 
 fn dag_grammar_nonterminal(production: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  Nonterminal { production: production }
+  v2.std.grammar.Nonterminal { production: production }
 }
 
 fn dag_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  Sequence { left: left, right: right }
+  v2.std.grammar.Sequence { left: left, right: right }
 }
 
 fn dag_grammar_choice(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  Choice { left: left, right: right }
+  v2.std.grammar.Choice { left: left, right: right }
 }
 
 fn dag_grammar_optional(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
@@ -2763,7 +2763,7 @@ fn dag_grammar_module_production() -> v2.std.grammar.GrammarProduction {
 
 fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -2808,7 +2808,7 @@ fn emit_import_decl_emitted_node(
     )
   ]
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: match import_block {
       Present { value: block } =>
         list_append(
@@ -2850,7 +2850,7 @@ fn emit_row_import_decl(
 
 fn emit_alias_decl_emitted_node(binding: Node, target: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_alias_decl,
@@ -2892,7 +2892,7 @@ fn emit_data_decl_emitted_node(
   expr: Node
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_data_decl,
@@ -3180,7 +3180,7 @@ fn dag_g0_void_grammar() -> v2.std.grammar.ParseGrammar {
 }
 
 fn dag_grammar() -> v2.std.grammar.ParseGrammar {
-  ModeledGrammar { root: dag_grammar_root() }
+  v2.std.grammar.ModeledGrammar { root: dag_grammar_root() }
 }
 
 fn dag_language_model_surface_prelude_atoms() -> Set<v2.std.node.Symbol> {
@@ -3289,7 +3289,7 @@ type DagTriviaNormalization
   | DagBlockCommentFailClosed
 
 fn dag_whitespace_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
-  DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized }
+  v2.extdeps.languages.fidelity.DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized }
 }
 
 fn dag_line_comment_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
@@ -3319,7 +3319,7 @@ fn dag_fidelity_disposition_node(
       dag_grammar_atom(id: ^dag_fidelity_disposition_kind_modeled)
     DeclaredNormalized { feature: feature } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           dag_named_edge(
             name: ^dag_fidelity_disposition_kind_declared_normalized,
@@ -3334,7 +3334,7 @@ fn dag_fidelity_disposition_node(
       }
     FailClosed { feature: feature } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           dag_named_edge(
             name: ^dag_fidelity_disposition_kind_fail_closed,
@@ -3352,7 +3352,7 @@ fn dag_fidelity_disposition_node(
 
 fn dag_fidelity_quotient_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_fidelity_quotient_field_whitespace,
@@ -3373,7 +3373,7 @@ fn dag_fidelity_quotient_node() -> Node {
 
 fn dag_fidelity_quotient_all_modeled_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_fidelity_quotient_field_whitespace,
@@ -3394,7 +3394,7 @@ fn dag_fidelity_quotient_all_modeled_node() -> Node {
 
 fn dag_target_model_bundle_with_fidelity_quotient(quotient: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^target_model_edge_selection_policy,
@@ -3479,7 +3479,7 @@ fn dag_node_is_module_root_conj(n: Node) -> Bool {
 
 fn dag_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -3487,7 +3487,7 @@ fn dag_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
 
 fn dag_int_inhabitant_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(name: ^dag_inhabitant_field_atom, target: dag_inhabitant_atom(id: ^dag_inhabitant_int)),
       dag_named_edge(
@@ -3501,7 +3501,7 @@ fn dag_int_inhabitant_node() -> Node {
 
 fn dag_declared_inhabitants_core() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node())
     ],
@@ -3512,7 +3512,7 @@ fn dag_declared_inhabitants_core() -> Node {
 data dag_fixture_int_inhabitant: Node = dag_int_inhabitant_node()
 
 data dag_fixture_emitted_add_fn: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Arrow },
+  kind: v2.std.node.TypeNode { connective: Arrow },
   children: [
     v2.std.node.Edge { label: Positional, target: dag_fixture_int_inhabitant },
     v2.std.node.Edge { label: Positional, target: dag_fixture_int_inhabitant },
@@ -3594,7 +3594,7 @@ fn dag_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
 
 fn dag_declared_inhabitants_root() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: dag_declared_inhabitants_core().children,
       right: dag_zip_fold_closure_edges()
@@ -3765,7 +3765,7 @@ fn dag_type_decl_structural_formal_productions() -> List<v2.std.grammar.FormalPr
 
 fn dag_type_decl_productions_only_translation_rules() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^grammar_relation_rules_formal_productions,
@@ -3796,14 +3796,14 @@ fn dag_type_decl_structural_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn dag_type_decl_structural_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: dag_type_decl_structural_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: dag_type_decl_structural_lex_rules() }
 }
 
 fn dag_type_decl_structural_target_model() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         dag_named_edge(
           name: ^target_model_edge_translation_rules,
@@ -3832,7 +3832,7 @@ fn dag_add_grammar_relation_row_node() -> Node {
 
 fn dag_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_relation_rule_fn_add,
@@ -3845,7 +3845,7 @@ fn dag_translation_rules_node() -> Node {
 
 fn dag_target_model_bundle_core() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^target_model_edge_selection_policy,
@@ -3921,7 +3921,7 @@ fn dag_loop_measure_node() -> Node {
 
 fn dag_loop_body_from_literal(lit: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -4024,7 +4024,7 @@ fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
 
 fn dag_int_literal_node_from_magnitude(magnitude: v2.std.integer.DecimalMagnitude, occurrence_id: std.occurrence_identity.OccurrenceId) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_int_literal } },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^integer_literal_magnitude_field },
@@ -4141,7 +4141,7 @@ fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
 
 fn dag_type_atom_node(identity: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -4153,7 +4153,7 @@ fn dag_arrow_with_body_node(
   body: Node
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: domain },
       v2.std.node.Edge {
@@ -4189,7 +4189,7 @@ fn dag_arrow_domain_conj_node() -> Node {
     }
   )
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: children,
     occurrence_id: SyntheticOccurrence
   }
@@ -4197,7 +4197,7 @@ fn dag_arrow_domain_conj_node() -> Node {
 
 fn dag_binary_body_node(operator: Node, left_binding: v2.std.node.Symbol, right_binding: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
       v2.std.node.Edge { label: Positional, target: operator },
       v2.std.node.Edge {
@@ -4215,7 +4215,7 @@ fn dag_binary_body_node(operator: Node, left_binding: v2.std.node.Symbol, right_
 
 fn dag_add_arrow_signature_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -4274,7 +4274,7 @@ data dag_add_arrow_with_body_swapped_operands_fixture: Node = dag_add_arrow_with
 
 fn dag_pick_arrow_domain_conj_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -4286,7 +4286,7 @@ fn dag_pick_if_body_from_arms(
   else_arm: Node
 ) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Branch },
+    kind: v2.std.node.ComputationNode { behavior: Branch },
     children: [
       v2.std.node.Edge { label: Positional, target: condition },
       v2.std.node.Edge { label: Positional, target: then_arm },
@@ -4298,7 +4298,7 @@ fn dag_pick_if_body_from_arms(
 
 fn dag_int_literal_fixture_one() -> Node {
   dag_int_literal_node_from_magnitude(
-    magnitude: DecimalNonZero {
+    magnitude: v2.std.integer.DecimalNonZero {
       magnitude: v2.std.integer.DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }
     },
     occurrence_id: SyntheticOccurrence
@@ -4307,7 +4307,7 @@ fn dag_int_literal_fixture_one() -> Node {
 
 fn dag_int_literal_fixture_two() -> Node {
   dag_int_literal_node_from_magnitude(
-    magnitude: DecimalNonZero {
+    magnitude: v2.std.integer.DecimalNonZero {
       magnitude: v2.std.integer.DecimalNonZeroMagnitude { lead: NonZeroD2, tail: Empty }
     },
     occurrence_id: SyntheticOccurrence
@@ -4376,7 +4376,7 @@ data dag_fixture_emitted_pick_fn: Node = dag_pick_arrow_with_body_fixture
 
 fn dag_match_arm_node(pattern_lit: v2.std.node.Symbol, body_lit: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^match_arm_pattern,
@@ -4397,7 +4397,7 @@ fn dag_match_body_from_arms(
   false_arm: Node
 ) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Match },
+    kind: v2.std.node.ComputationNode { behavior: Match },
     children: [
       v2.std.node.Edge { label: Positional, target: scrutinee },
       v2.std.node.Edge { label: Positional, target: true_arm },
@@ -4459,7 +4459,7 @@ data dag_fixture_emitted_match_fn: Node = dag_match_arrow_with_body_fixture
 
 fn dag_rec_construct_body_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_binding_type_rec,
@@ -4488,7 +4488,7 @@ data dag_fixture_emitted_rec_fn: Node = dag_rec_arrow_with_body_fixture
 
 fn dag_variant_holds_construct_node(value_lit: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_binding_type_variant_holds,
@@ -4509,7 +4509,7 @@ fn dag_variant_holds_pattern_node() -> Node {
 
 fn dag_variant_match_arm_node(pattern_target: Node, body_lit: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(name: ^match_arm_pattern, target: pattern_target),
       dag_named_edge(
@@ -4589,7 +4589,7 @@ fn dag_complement_param_scrutinee_node() -> Node {
 
 fn dag_complement_arrow_domain_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^dag_binding_param_a },
@@ -4647,7 +4647,7 @@ data dag_complement_eval_subgraph_fixture: Node = dag_complement_eval_subgraph_n
 
 fn dag_bool_binop_arrow_domain_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^dag_binding_param_a },
@@ -4727,7 +4727,7 @@ data dag_join_eval_subgraph_fixture: Node = dag_join_eval_subgraph_node()
 
 fn dag_field_access_body_node() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -4748,7 +4748,7 @@ fn dag_field_access_body_node() -> Node {
 
 fn dag_field_access_arrow_domain_conj_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^dag_binding_param_r },
@@ -4777,7 +4777,7 @@ fn dag_bind_let_body_from_parts(
   body_binding: v2.std.node.Symbol
 ) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Bind },
+    kind: v2.std.node.ComputationNode { behavior: Bind },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -4941,7 +4941,7 @@ fn dag_family_serialize_source_node(
 ) -> Node {
   let _authority = authority_source_text
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: [
         dag_named_edge(
@@ -4978,7 +4978,7 @@ fn dag_bodied_fn_zip_fold_closure_edges(spec: DagBodiedFnFamilySpec) -> List<v2.
 
 fn dag_bodied_fn_declared_inhabitants_root(spec: DagBodiedFnFamilySpec) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: list_append(
         left: dag_declared_inhabitants_core().children,
@@ -4996,7 +4996,7 @@ fn dag_bodied_fn_grammar_relation_row_node(spec: DagBodiedFnFamilySpec) -> Node 
 
 fn dag_bodied_fn_translation_rules_node(spec: DagBodiedFnFamilySpec) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: spec.relation_rule,
@@ -5021,7 +5021,7 @@ fn dag_bodied_fn_serialize_source_node(spec: DagBodiedFnFamilySpec) -> Node {
 
 fn dag_bodied_fn_target_model_bundle_node(spec: DagBodiedFnFamilySpec) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^target_model_edge_selection_policy,
@@ -5091,13 +5091,13 @@ fn dag_nullary_fn_statement_prefix_tokens(
   return_type_binding: v2.std.node.Symbol
 ) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^dag_token_kw_fn },
-    BoundToken { token_class: ^dag_token_ident, binding: fn_name_binding },
-    FixedToken { token_class: ^dag_token_lparen },
-    FixedToken { token_class: ^dag_token_rparen },
-    FixedToken { token_class: ^dag_token_arrow },
-    BoundToken { token_class: ^dag_token_ident, binding: return_type_binding },
-    FixedToken { token_class: ^dag_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: fn_name_binding },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: return_type_binding },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lbrace }
   ]
 }
 
@@ -5109,7 +5109,7 @@ fn dag_pick_statement_prefix_tokens() -> List<v2.std.compilers.target_model.Conc
 }
 
 fn dag_pick_statement_suffix_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
-  [FixedToken { token_class: ^dag_token_rbrace }]
+  [v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rbrace }]
 }
 
 fn dag_pick_bodied_arrow_statement_scaffold() -> v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold {
@@ -5367,16 +5367,16 @@ fn dag_rec_target_model() -> v2.std.compilers.target_model.TargetModel {
 
 fn dag_field_access_statement_prefix_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^dag_token_kw_fn },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_get },
-    FixedToken { token_class: ^dag_token_lparen },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_r },
-    FixedToken { token_class: ^dag_token_colon },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_rec },
-    FixedToken { token_class: ^dag_token_rparen },
-    FixedToken { token_class: ^dag_token_arrow },
-    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
-    FixedToken { token_class: ^dag_token_lbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_kw_fn },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_fn_get },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_param_r },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_rec },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_arrow },
+    v2.std.compilers.target_model.BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^dag_token_lbrace }
   ]
 }
 
@@ -5441,7 +5441,7 @@ fn dag_target_model() -> v2.std.compilers.target_model.TargetModel {
 }
 
 fn dag_round_trip_atom(s: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
@@ -5485,7 +5485,7 @@ fn dag_round_trip_grammar_ready(lm: v2.std.language_model.LanguageModel) -> Bool
 }
 
 fn dag_round_trip_trivia_fidelity_resolved() -> Bool {
-  dag_whitespace_fidelity() == DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized } &&
+  dag_whitespace_fidelity() == v2.extdeps.languages.fidelity.DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized } &&
   dag_line_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagLineCommentFailClosed } &&
   dag_block_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagBlockCommentFailClosed }
 }
@@ -5563,13 +5563,13 @@ fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<v2.std.node.Sy
         outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_projection_gated,
           at: node_locus(node: root),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         })
       } else if id == ^dag_token_dot {
         outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: root),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         })
       } else {
         outcome_accepted(value: id)
@@ -5578,7 +5578,7 @@ fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<v2.std.node.Sy
       outcome_rejected(v2.std.diagnostic.Diagnostic {
         reason: ^qualified_name_structure_invalid,
         at: node_locus(node: root),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       })
   }
 }
@@ -5619,7 +5619,7 @@ fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<v2
                   Accepted { value: suffixes, diagnostics: tail_diag } =>
                     outcome_with_diagnostics(
                       value: list_append(
-                        left: Cons { head: sym, tail: Empty },
+                        left: std.algebra.Cons { head: sym, tail: Empty },
                         right: suffixes
                       ),
                       diagnostics: tail_diag
@@ -5649,7 +5649,7 @@ fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> O
                 Accepted { value: suffixes, diagnostics: tail_diag } =>
                   outcome_with_diagnostics(
                     value: list_append(
-                      left: Cons { head: head_sym, tail: Empty },
+                      left: std.algebra.Cons { head: head_sym, tail: Empty },
                       right: suffixes
                     ),
                     diagnostics: tail_diag
@@ -5687,7 +5687,7 @@ fn parse_comma_ident_list_items(
                     Accepted { value: suffixes, diagnostics: tail_diag } =>
                       outcome_with_diagnostics(
                         value: list_append(
-                          left: Cons { head: head_sym, tail: Empty },
+                          left: std.algebra.Cons { head: head_sym, tail: Empty },
                           right: suffixes
                         ),
                         diagnostics: tail_diag
@@ -5780,7 +5780,7 @@ fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<v2
         outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^alias_binding_row_not_alias_decl,
           at: node_locus(node: decl),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         })
       } else {
         match alias_binding_row_binding_from_decl(decl: decl, module_root: module_root) {
@@ -5815,7 +5815,7 @@ fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<v2
           outcome_rejected(v2.std.diagnostic.Diagnostic {
             reason: ^alias_binding_row_not_alias_decl,
             at: node_locus(node: decl),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           })
       }
   }
@@ -5823,9 +5823,9 @@ fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<v2
 
 fn qualified_name_append_segment(qn: v2.std.qualified_name.QualifiedName, sym: v2.std.node.Symbol) -> v2.std.qualified_name.QualifiedName {
   match qn {
-    Empty => Cons { head: sym, tail: Empty }
+    Empty => std.algebra.Cons { head: sym, tail: Empty }
     Cons { head: h, tail: t } =>
-      Cons { head: h, tail: qualified_name_append_segment(qn: t, sym: sym) }
+      std.algebra.Cons { head: h, tail: qualified_name_append_segment(qn: t, sym: sym) }
   }
 }
 
@@ -5842,7 +5842,7 @@ fn qualified_name_from_symbol_segments(segments: List<v2.std.node.Symbol>, root:
       outcome_rejected(v2.std.diagnostic.Diagnostic {
         reason: ^qualified_name_structure_invalid,
         at: node_locus(node: root),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       })
     Cons { head: _, tail: _ } =>
       if for_all(xs: qn, predicate: fn(sym) { sym != ^dag_token_ident }) {
@@ -5851,7 +5851,7 @@ fn qualified_name_from_symbol_segments(segments: List<v2.std.node.Symbol>, root:
         outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_projection_gated,
           at: node_locus(node: root),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         })
       }
   }
@@ -5872,7 +5872,7 @@ fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<v2.std.qua
                   outcome_rejected(v2.std.diagnostic.Diagnostic {
                     reason: ^qualified_name_structure_invalid,
                     at: node_locus(node: root),
-                    correction: Unavailable { reason: ExternalContractUnknown }
+                    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                   })
                 Cons { head: _, tail: _ } =>
                   if for_all(xs: qn, predicate: fn(sym) { sym != ^dag_token_ident }) {
@@ -5881,7 +5881,7 @@ fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<v2.std.qua
                     outcome_rejected(v2.std.diagnostic.Diagnostic {
                       reason: ^qualified_name_projection_gated,
                       at: node_locus(node: root),
-                      correction: Unavailable { reason: ExternalContractUnknown }
+                      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                     })
                   }
               }
@@ -5896,7 +5896,7 @@ fn qualified_name_from_parsed_module_root(root: Node) -> Outcome<v2.std.qualifie
       outcome_rejected(v2.std.diagnostic.Diagnostic {
         reason: ^named_child_missing,
         at: node_locus(node: root),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       })
     ParseSubtreeFound { captured: qn_capture } =>
       match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: root) {
@@ -5975,7 +5975,7 @@ fn qualified_name_from_graft_spine(root: Node) -> Outcome<v2.std.qualified_name.
       outcome_rejected(v2.std.diagnostic.Diagnostic {
         reason: ^qualified_name_structure_invalid,
         at: node_locus(node: root),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       })
     Present { value: captured } =>
       namespace_graft_qualified_name_from_spine_node(node: captured, acc: Empty)
@@ -5995,7 +5995,7 @@ fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: v2.std.qualif
           outcome_rejected(v2.std.diagnostic.Diagnostic {
             reason: ^qualified_name_structure_invalid,
             at: node_locus(node: node),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           })
       }
     Absent =>
@@ -6003,7 +6003,7 @@ fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: v2.std.qualif
         outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         })
       } else {
         outcome_accepted(value: acc)

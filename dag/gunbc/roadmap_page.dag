@@ -686,7 +686,7 @@ fn daily_attempt_progress_for(node_id: String, attempts: List<gunbc.roadmap_work
 
 fn daily_row_activity(node_id: String, attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>, attempts_refused: String?) -> gunbc.roadmap_presentation.ActivityView {
   match attempts_refused {
-    Present { value: reason } => ActivityUnobservable { reason: reason }
+    Present { value: reason } => gunbc.roadmap_presentation.ActivityUnobservable { reason: reason }
     Absent =>
       match daily_attempt_progress_for(node_id: node_id, attempts: attempts) {
         Present { value: p } => activity_view_from_progress(progress: p)

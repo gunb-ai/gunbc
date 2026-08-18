@@ -29,7 +29,7 @@ data tracked_pin: Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: jq_tool,
   version: "1.7.1" as extdeps.version.VersionIdentity,
   expected_identity: cargo_identity,
-  selection: TrackedChannel {
+  selection: extdeps.pin.TrackedChannel {
     channel: "latest",
     refresh_window_days: 30,
   },
@@ -94,13 +94,13 @@ test fn tracked_pin_refuses_even_when_identity_matches() -> Bool {
 data legacy_ranged_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "curl",
   min_version: Present { value: ">= 7.68" as extdeps.version.VersionConstraint },
-  installable_via: [SourceApt { package: "curl" }],
+  installable_via: [extdeps.tools.SourceApt { package: "curl" }],
 }
 
 data legacy_unversioned_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "jq",
   min_version: Absent,
-  installable_via: [SourceApt { package: "jq" }],
+  installable_via: [extdeps.tools.SourceApt { package: "jq" }],
 }
 
 data legacy_ingest_family_note: String = "Migration-frontier family, and the load-bearing RED for P1: EVERY CliTool row in the corpus today refuses conversion, which is the correct answer rather than a gap. ranged_legacy_tool_refuses_as_not_an_identity fails if a range is silently promoted to an identity — two hosts satisfying '>= 7.68' run different binaries, exactly the variance a pin removes, so widening here would be the absorbing fallback DESIGN section 5 forbids. unversioned_legacy_tool_refuses_as_absent keeps 'no version stated' a DISTINCT cause from 'a range stated'; collapsing the two would be a state-space conflation and would hide which deficit a given row actually has."
@@ -164,7 +164,7 @@ test fn value_eq_detects_exact_to_tracked_flip() -> Bool {
     subject: cargo_tool,
     version: "1.93.0" as extdeps.version.VersionIdentity,
     expected_identity: cargo_identity,
-    selection: TrackedChannel { channel: "stable", refresh_window_days: 30 },
+    selection: extdeps.pin.TrackedChannel { channel: "stable", refresh_window_days: 30 },
   }
   !pin_value_eq(a: authored_pin, b: flipped)
 }
@@ -174,7 +174,7 @@ test fn value_eq_detects_channel_change() -> Bool {
     subject: jq_tool,
     version: "1.7.1" as extdeps.version.VersionIdentity,
     expected_identity: cargo_identity,
-    selection: TrackedChannel { channel: "beta", refresh_window_days: 30 },
+    selection: extdeps.pin.TrackedChannel { channel: "beta", refresh_window_days: 30 },
   }
   !pin_value_eq(a: tracked_pin, b: other_channel)
 }
@@ -184,7 +184,7 @@ test fn value_eq_detects_refresh_window_change() -> Bool {
     subject: jq_tool,
     version: "1.7.1" as extdeps.version.VersionIdentity,
     expected_identity: cargo_identity,
-    selection: TrackedChannel { channel: "latest", refresh_window_days: 90 },
+    selection: extdeps.pin.TrackedChannel { channel: "latest", refresh_window_days: 90 },
   }
   !pin_value_eq(a: tracked_pin, b: wider_window)
 }
@@ -194,7 +194,7 @@ test fn value_eq_still_holds_for_identical_pins() -> Bool {
     subject: jq_tool,
     version: "1.7.1" as extdeps.version.VersionIdentity,
     expected_identity: cargo_identity,
-    selection: TrackedChannel { channel: "latest", refresh_window_days: 30 },
+    selection: extdeps.pin.TrackedChannel { channel: "latest", refresh_window_days: 30 },
   }
   pin_value_eq(a: tracked_pin, b: same)
     && (tracked_pin.selection == same.selection)

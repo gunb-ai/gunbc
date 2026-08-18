@@ -32,6 +32,6 @@ data input_envelope_roadmap_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "input-envelope-roadmap",
   title: "InputEnvelope: bounded input declaration for WorkDemand + CI corpus instance",
   body: input_envelope_roadmap_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when P2 ceiling derivation lands and gunbc_ci_corpus_envelope carries derived values, input_admitted is wired as a runtime gate, and all WorkDemand instances carry either a real BoundedInput or an explicit escalation comment explaining why they are EnvelopeUnknown.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when P2 ceiling derivation lands and gunbc_ci_corpus_envelope carries derived values, input_admitted is wired as a runtime gate, and all WorkDemand instances carry either a real BoundedInput or an explicit escalation comment explaining why they are EnvelopeUnknown.")
   }
 }

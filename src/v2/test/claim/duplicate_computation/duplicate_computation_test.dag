@@ -38,21 +38,21 @@ data synthetic_oracle_a: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "synthetic.site_a",
   computation_key: synthetic_compile_key,
   guard: UnguardedDemand,
-  replication: ReplicatedOracle { runs: 2 }
+  replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }
 }
 
 data synthetic_oracle_b: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "synthetic.site_b",
   computation_key: synthetic_compile_key,
   guard: UnguardedDemand,
-  replication: ReplicatedOracle { runs: 2 }
+  replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }
 }
 
 data synthetic_oracle_c: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "synthetic.site_c",
   computation_key: synthetic_compile_key,
   guard: UnguardedDemand,
-  replication: ReplicatedOracle { runs: 2 }
+  replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }
 }
 
 test fn duplicate_unguarded_demands_are_violations() -> Bool {
@@ -103,7 +103,7 @@ test fn typed_argv_compile_pair_without_declaration_reds() -> Bool {
 }
 
 test fn typed_argv_compile_pair_declared_oracle_is_admissible() -> Bool {
-  duplicate_computation_clean_holds(facts: synthetic_typed_pair_facts(replication: ReplicatedOracle { runs: 2 }))
+  duplicate_computation_clean_holds(facts: synthetic_typed_pair_facts(replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }))
 }
 
 test fn typed_argv_non_compile_invocation_projects_no_demand() -> Bool {

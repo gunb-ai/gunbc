@@ -316,7 +316,7 @@ fn e0599_classify_tuple_line(line: String) -> Result<String, E0599CensusParseErr
   let parts = line |> split(delimiter: "\t")
   let field_count = list_length(items: parts)
   if field_count != 2 {
-    Err { value: MalformedCensusLine { line: line, field_count: field_count } }
+    std.error_primitives.Err { value: MalformedCensusLine { line: line, field_count: field_count } }
   } else {
     let method = match parts |> first {
       Present { value: v } => v
@@ -326,23 +326,23 @@ fn e0599_classify_tuple_line(line: String) -> Result<String, E0599CensusParseErr
       Present { value: v } => v
       Absent => ""
     }
-    Ok { value: e0599_classification_line(method: method, receiver_expr: receiver_expr) }
+    std.error_primitives.Ok { value: e0599_classification_line(method: method, receiver_expr: receiver_expr) }
   }
 }
 
 fn e0599_classify_from_blob(blob: String) -> Result<String, E0599CensusParseError> {
   let lines = if blob == "" { [] } else { blob |> split(delimiter: "\n") }
-  fold(lines, init: Ok { value: "" }, f: fn(acc, line) {
+  fold(lines, init: std.error_primitives.Ok { value: "" }, f: fn(acc, line) {
     match acc {
-      Err { value: e } => Err { value: e }
+      Err { value: e } => std.error_primitives.Err { value: e }
       Ok { value: prior } =>
         match e0599_classify_tuple_line(line: line) {
-          Err { value: e } => Err { value: e }
+          Err { value: e } => std.error_primitives.Err { value: e }
           Ok { value: out } =>
             if prior == "" {
-              Ok { value: out }
+              std.error_primitives.Ok { value: out }
             } else {
-              Ok { value: concat(prior, concat("\n", out)) }
+              std.error_primitives.Ok { value: concat(prior, concat("\n", out)) }
             }
         }
     }

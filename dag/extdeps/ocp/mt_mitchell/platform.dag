@@ -26,7 +26,7 @@ data mt_mitchell_ingestion_note: String = "READ, NOT RECALLED — AND READ FROM 
 // of status from the Ampere specification's public-but-marked — same permission
 // today, different provenance, and kept distinct so the mapping can diverge in
 // one place rather than being reconstructed from prose.
-data mt_mitchell_publication_status: extdeps.publication.DocumentPublicationStatus = PubliclyPublishedUnderOpenLicense {
+data mt_mitchell_publication_status: extdeps.publication.DocumentPublicationStatus = extdeps.publication.PubliclyPublishedUnderOpenLicense {
   license: "Open Web Foundation Modified Final Specification Agreement (OWFa 1.0)",
 }
 

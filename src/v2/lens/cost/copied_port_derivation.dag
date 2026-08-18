@@ -35,7 +35,7 @@ fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
               TypeNode { connective: Conj } =>
                 fold(e.target.children, init: acc, f: fn(a, de) {
                   match de.label {
-                    Named { name: _ } => Cons { head: de.target, tail: a }
+                    Named { name: _ } => std.algebra.Cons { head: de.target, tail: a }
                     Positional => a
                   }
                 })
@@ -49,11 +49,11 @@ fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
 }
 
 fn param_list_reverse_to_forward(xs: List<Node>) -> List<Node> {
-  fold(xs, init: Empty, f: fn(acc, n) { Cons { head: n, tail: acc } })
+  fold(xs, init: Empty, f: fn(acc, n) { std.algebra.Cons { head: n, tail: acc } })
 }
 
 fn int_list_prepend(item: Int, xs: List<Int>) -> List<Int> {
-  Cons { head: item, tail: xs }
+  std.algebra.Cons { head: item, tail: xs }
 }
 
 fn linear_param_indices(cost: SymbolicCost, params: List<Node>, idx: Int, acc: List<Int>) -> List<Int> {

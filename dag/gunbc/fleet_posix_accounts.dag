@@ -129,7 +129,7 @@ fn fleet_posix_operator_sudo_grants() -> List<PosixSudoGrant> {
   [
     PosixSudoGrant {
       command_path: fleet_hostnamectl_command_path,
-      probe: NopasswdExecuteCheck { check_argv: "--version" },
+      probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--version" },
     },
   ]
 }
@@ -163,12 +163,12 @@ data gunbc_deploy_privileged_helper_check_argv: std.types.NonEmptyStr = "probe"
 
 fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
   [
-    PosixSudoGrant { command_path: fleet_apt_get_binary_path, probe: NopasswdExecuteCheck { check_argv: "--help" } },
-    PosixSudoGrant { command_path: "/usr/bin/install", probe: NopasswdExecuteCheck { check_argv: "--version" } },
-    PosixSudoGrant { command_path: fleet_visudo_binary_path, probe: NopasswdExecuteCheck { check_argv: "-V" } },
-    PosixSudoGrant { command_path: "/usr/bin/systemctl", probe: NopasswdExecuteCheck { check_argv: "--version" } },
+    PosixSudoGrant { command_path: fleet_apt_get_binary_path, probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--help" } },
+    PosixSudoGrant { command_path: "/usr/bin/install", probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--version" } },
+    PosixSudoGrant { command_path: fleet_visudo_binary_path, probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "-V" } },
+    PosixSudoGrant { command_path: "/usr/bin/systemctl", probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--version" } },
     PosixSudoGrant { command_path: "/usr/bin/tailscale", probe: NopasswdGrantListCheck },
-    PosixSudoGrant { command_path: "/usr/bin/rm", probe: NopasswdExecuteCheck { check_argv: "--version" } },
+    PosixSudoGrant { command_path: "/usr/bin/rm", probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--version" } },
   ]
 }
 
@@ -829,7 +829,7 @@ fn fleet_ci_runner_reported_contradiction() -> ReportedAccountContradiction {
     modeled_gid: 1001,
     reported_uid: 999,
     reported_gid: 987,
-    reported_shell: LoginShellObserved { path: "/usr/sbin/nologin" },
+    reported_shell: extdeps.access.posix.LoginShellObserved { path: "/usr/sbin/nologin" },
     hosts: ["srv1", "srv2"],
     source: "witty-raven-412 msg_051d4971; live getent on srv1 and srv2; not verified by this session"
   }
@@ -875,7 +875,7 @@ fn fleet_automation_user_on(host: product.placement_supply.HostIdentity) -> extd
     name: "gunbc-fleet",
     uid: 1001,
     gid: 1001,
-    shell: LoginShellObserved { path: "/bin/bash" },
+    shell: extdeps.access.posix.LoginShellObserved { path: "/bin/bash" },
   }
 }
 

@@ -4,7 +4,7 @@ module v2.test.lens_application.empty_required_lenses_skip_gate
 data empty_lenses_target_model_stub: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
 },
@@ -16,7 +16,7 @@ data empty_lenses_target_model_stub: v2.std.compilers.target_model.TargetModel =
 }
 
 data empty_lenses_authority_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^empty_lenses_claim_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^empty_lenses_claim_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -35,7 +35,7 @@ fn empty_required_lenses_skip_gate_claim_holds() -> Bool {
   match validate_then_compile(
     source: fixture_add_resolved_tree(),
     lenses: [],
-    mode: TranslateTo { target: empty_lenses_target_model_stub }
+    mode: v2.compiler.compile.TranslateTo { target: empty_lenses_target_model_stub }
   ) {
     Rejected { diagnostics: r } =>
       !non_empty_diagnostics_contain_reason(d: r, reason: ^compile_lens_gate_rejected)
@@ -52,14 +52,14 @@ fn empty_required_lenses_skip_gate_claim_rhs() -> Node {
     empty_lenses_authority_node
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_empty_required_lenses_skip_gate: v2.std.verification.TestClaim = EqualsClaim {
+data claim_empty_required_lenses_skip_gate: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_application/empty_required_lenses_skip_gate: empty lens list skips gate reject",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: empty_lenses_authority_node,

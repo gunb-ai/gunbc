@@ -47,7 +47,7 @@ test fn match_infer_fail_open_audit_rejects_holds() -> Bool {
 
 fn match_infer_fail_open_audit_non_exhaustive_body() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Match },
+    kind: v2.std.node.ComputationNode { behavior: Match },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -74,7 +74,7 @@ test fn match_infer_fail_open_audit_non_exhaustive_rejects_holds() -> Bool {
 
 fn match_infer_fail_open_audit_extra_arm_body() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Match },
+    kind: v2.std.node.ComputationNode { behavior: Match },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -118,7 +118,7 @@ data match_infer_fail_open_audit_literal_arm_note: String = "literal_arm_accepts
 fn classical_not_int_match_arrow_fixture() -> Node {
   dag_arrow_with_body_node(
     domain: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge {
           label: Named { name: ^dag_binding_param_x },
@@ -163,7 +163,7 @@ test fn classical_not_int_match_arrow_real_infer_holds() -> Bool {
 fn classical_not_int_match_non_octet_arm_fixture() -> Node {
   dag_arrow_with_body_node(
     domain: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge {
           label: Named { name: ^dag_binding_param_x },

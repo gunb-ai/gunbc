@@ -172,7 +172,7 @@ test fn no_observations_owes_every_probe_and_refuses_nothing() -> Bool {
 // that could not hold both at once is how "no modeled install path" came to read
 // as "not installed".
 test fn a_running_host_can_have_an_unestablished_reinstall_path() -> Bool {
-  installed_os_is_running(standing: InstalledOsRunning { observed_at: 1786629600000 })
+  installed_os_is_running(standing: gunbc.install_transport_qualification.InstalledOsRunning { observed_at: 1786629600000 })
     && match srv3_configfs_reinstall_path_standing {
       ReinstallPathUnestablished { missing_probes: _ } => true
       _ => false

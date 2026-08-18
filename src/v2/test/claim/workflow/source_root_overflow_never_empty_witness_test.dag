@@ -8,10 +8,10 @@ test fn source_root_overflow_empty_population_old_defect_refused_holds() -> Bool
   let bad_receipt = v2.compiler.source_authority.SourceRootProvenanceCoverageReceipt {
     ingest_read_count: 165,
     produced_row_count: 0,
-    discovered_source_refs_digest: DiscoveredSourceRefsDigestUnavailable {
-      cause: DiscoveredSourceRefsDigestNoRefList { reason: "substrate-red-control" }
+    discovered_source_refs_digest: v2.compiler.source_authority.DiscoveredSourceRefsDigestUnavailable {
+      cause: v2.compiler.source_authority.DiscoveredSourceRefsDigestNoRefList { reason: "substrate-red-control" }
     },
-    coverage: SourceRootManifestElided { read_count: 165, cap: manifest_inline_list_max }
+    coverage: v2.compiler.source_authority.SourceRootManifestElided { read_count: 165, cap: manifest_inline_list_max }
   }
   !source_root_overflow_never_empty_population_holds(
     receipt: bad_receipt,

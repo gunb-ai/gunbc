@@ -8,9 +8,9 @@ data witness_note: String = "End-to-end replay of the captured crawl window of r
 fn crawl_entry() -> std.observation.ObservationSubject {
   std.observation.ObservationSubject {
     segments: [
-      RunSegment { id: "30044816605" as std.types.NonEmptyStr },
-      BatchSegment { index: 3, label: "witness discovery" as std.types.NonEmptyStr },
-      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as std.types.NonEmptyStr }
+      std.observation.RunSegment { id: "30044816605" as std.types.NonEmptyStr },
+      std.observation.BatchSegment { index: 3, label: "witness discovery" as std.types.NonEmptyStr },
+      std.observation.EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as std.types.NonEmptyStr }
     ]
   }
 }
@@ -18,11 +18,11 @@ fn crawl_entry() -> std.observation.ObservationSubject {
 fn crawl_leaf() -> std.observation.ObservationSubject {
   std.observation.ObservationSubject {
     segments: [
-      RunSegment { id: "30044816605" as std.types.NonEmptyStr },
-      BatchSegment { index: 3, label: "witness discovery" as std.types.NonEmptyStr },
-      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as std.types.NonEmptyStr },
-      ModuleSegment { module_path: "v2.compiler.normalized_tree" as std.types.NonEmptyStr },
-      PhaseSegment { name: "typecheck" as std.types.NonEmptyStr }
+      std.observation.RunSegment { id: "30044816605" as std.types.NonEmptyStr },
+      std.observation.BatchSegment { index: 3, label: "witness discovery" as std.types.NonEmptyStr },
+      std.observation.EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as std.types.NonEmptyStr },
+      std.observation.ModuleSegment { module_path: "v2.compiler.normalized_tree" as std.types.NonEmptyStr },
+      std.observation.PhaseSegment { name: "typecheck" as std.types.NonEmptyStr }
     ]
   }
 }
@@ -37,9 +37,9 @@ fn crawl_heartbeat_at(minute: Int, rss: Int, swap: Int, psi: Int) -> gunbc.obser
     active: crawl_leaf(),
     entry_index: 214,
     entry_total: 602,
-    rss: MeasuredValue { value: byte_size(rss) },
-    swap: MeasuredValue { value: byte_size(swap) },
-    pressure: MeasuredValue { value: basis_point(count: psi) }
+    rss: std.observation.MeasuredValue { value: byte_size(rss) },
+    swap: std.observation.MeasuredValue { value: byte_size(swap) },
+    pressure: std.observation.MeasuredValue { value: basis_point(count: psi) }
   })
 }
 
@@ -48,15 +48,15 @@ fn observation_crawl_after_block() -> String {
     ci_group_open(title: "witness discovery — batch 3 (602 entries)"),
     ci_render_line(line: ci_event_line(event: std.observation.ObservationEvent {
       subject: crawl_entry(),
-      transition: Concluded { outcome: Done },
+      transition: std.observation.Concluded { outcome: Done },
       durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 230))),
-      rss: MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
+      rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
     }, basis: crawl_basis()), tier: Emoji),
     ci_collapsed_summary(green_count: 213),
     ci_render_line(line: crawl_heartbeat_at(minute: 29, rss: 16106717184, swap: 34359738368, psi: 533), tier: Emoji),
     ci_render_line(line: crawl_heartbeat_at(minute: 33, rss: 16107200512, swap: 34359738368, psi: 901), tier: Emoji),
     ci_render_line(line: ci_escalation_line(quiet_subject: crawl_entry(), active_leaf: crawl_leaf(), quiet: millisecond(count: 120000), t: observation_dwell_threshold), tier: Emoji),
-    ci_render_line(line: ci_escalation_blocked_line(quiet_subject: crawl_entry(), active_leaf: crawl_leaf(), quiet: millisecond(count: 240000), t: observation_dwell_threshold, hold: PsiPressure { avg10: basis_point(count: 901) }), tier: Emoji),
+    ci_render_line(line: ci_escalation_blocked_line(quiet_subject: crawl_entry(), active_leaf: crawl_leaf(), quiet: millisecond(count: 240000), t: observation_dwell_threshold, hold: std.observation.PsiPressure { avg10: basis_point(count: 901) }), tier: Emoji),
     ci_render_line(line: ci_refusal_restate_line(subject: crawl_entry(), diagnostic: "FLOOR-BATCH-OVER-BUDGET wall=41m12s budget=22m" as std.types.NonEmptyStr), tier: Emoji),
     ci_group_close(),
     ci_render_line(line: ci_run_summary_line(summary: gunbc.observation_ci_render.FloorRunSummary {

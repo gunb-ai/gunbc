@@ -206,7 +206,7 @@ fn dashboard_instance_health_identity_prefix(instance_id: String) -> String {
 }
 
 fn dashboard_named_tmux_server(instance_id: std.types.NonEmptyStr) -> extdeps.tmux.TmuxServerScope {
-  NamedTmuxServer { socket_name: instance_id }
+  extdeps.tmux.NamedTmuxServer { socket_name: instance_id }
 }
 
 fn dashboard_execution_environment(

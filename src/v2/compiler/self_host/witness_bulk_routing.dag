@@ -33,21 +33,21 @@ fn partition_witness_entry_routing_roster(
       match row.disposition {
         NativeRouted =>
           WitnessEntryRoutingPartition {
-            native_routed: Cons { head: row, tail: part.native_routed },
+            native_routed: std.algebra.Cons { head: row, tail: part.native_routed },
             interpreted_retained: part.interpreted_retained,
             emit_ineligible: part.emit_ineligible
           }
         InterpretedRetained { reason: _, dissolution: _ } =>
           WitnessEntryRoutingPartition {
             native_routed: part.native_routed,
-            interpreted_retained: Cons { head: row, tail: part.interpreted_retained },
+            interpreted_retained: std.algebra.Cons { head: row, tail: part.interpreted_retained },
             emit_ineligible: part.emit_ineligible
           }
         EmitIneligible { cause: _, detail: _ } =>
           WitnessEntryRoutingPartition {
             native_routed: part.native_routed,
             interpreted_retained: part.interpreted_retained,
-            emit_ineligible: Cons { head: row, tail: part.emit_ineligible }
+            emit_ineligible: std.algebra.Cons { head: row, tail: part.emit_ineligible }
           }
       }
     }
@@ -99,14 +99,14 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag",
-    disposition: EmitIneligible {
+    disposition: v2.std.witness_execution_routing.EmitIneligible {
       cause: LongLaneScheduled,
       detail: "exceeds per-PR 5s fast-lane eval budget; scheduled falsifier/long-lane consumer only"
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag",
-    disposition: EmitIneligible {
+    disposition: v2.std.witness_execution_routing.EmitIneligible {
       cause: OfflineLocalRecipe,
       detail: "operator-ruled offline; explicit local claim_batch recipe is the executing consumer"
     }

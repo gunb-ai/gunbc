@@ -4,12 +4,12 @@ module v2.test.lens_cost.arrow_body_cost_domain_excluded
 data arrow_body_cost_domain_excluded_note: String = "Discriminating RED for Wave 1 Gate 1 C1: Arrow domain Cardinality children must NOT inflate the cost fold — only ^arrow_body_edge is priced. If edge_contributes_to_cost_fold regresses to include Arrow positional children, this witness goes red (domain linear cost would dominate)."
 
 data arrow_body_cost_domain_param: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [
     v2.std.node.Edge {
       label: Positional,
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: ^arrow_body_cost_domain_param_atom } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^arrow_body_cost_domain_param_atom } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
@@ -19,19 +19,19 @@ data arrow_body_cost_domain_param: Node = v2.std.node.Node {
 }
 
 data arrow_body_cost_body: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: Transform },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data arrow_body_cost_arrow: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Arrow },
+  kind: v2.std.node.TypeNode { connective: Arrow },
   children: [
     v2.std.node.Edge { label: Positional, target: arrow_body_cost_domain_param },
     v2.std.node.Edge {
       label: Positional,
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: ^arrow_body_cost_return_type } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^arrow_body_cost_return_type } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
@@ -44,7 +44,7 @@ data arrow_body_cost_arrow: Node = v2.std.node.Node {
 fn arrow_body_cost_domain_excluded_holds() -> Bool {
   match cost_lens(n: arrow_body_cost_arrow) {
     Holds { value: actual } =>
-      actual == SumCost {
+      actual == v2.lens.cost.SumCost {
         lhs: unit_cost(),
         rhs: unit_cost()
       }

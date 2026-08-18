@@ -66,22 +66,22 @@ fn unit_has_perturbation(unit: List<v2.std.verification.TestClaim>) -> Bool {
 fn discrimination_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: Textual { file: ^discrimination_virtual_file, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: ^discrimination_virtual_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
 fn discrimination_lens(unit: List<v2.std.verification.TestClaim>) -> Witness<DiscriminatingWitness> {
   if is_empty(xs: unit_greens(unit: unit)) {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_no_positive)
     }
   } else if is_empty(xs: unit_reds(unit: unit)) {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_no_discriminating_negative)
     }
   } else if !unit_has_perturbation(unit: unit) {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_negative_not_perturbed)
     }
   } else {
@@ -97,5 +97,5 @@ fn unit_is_discriminating(unit: List<v2.std.verification.TestClaim>) -> Bool {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

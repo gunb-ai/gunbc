@@ -23,7 +23,7 @@ data conditional_closed_golden: String = "if x { y } else { x }"
 data conditional_self_delimiting_golden: String = "if x { y } else { x"
 
 fn cld_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules {
+  v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: list_append(
         left: rust_fn_add_lex_rules().rules,
@@ -76,7 +76,7 @@ fn cld_projection_with(conditional_form: v2.std.compilers.target_model.TargetCon
 
 fn cld_delimiting_for(delimiting_closed: Bool) -> v2.std.compilers.target_model.ConditionalDelimiting {
   if delimiting_closed {
-    ConditionalClosedByToken { close_token: ^rust_token_rbrace }
+    v2.std.compilers.target_model.ConditionalClosedByToken { close_token: ^rust_token_rbrace }
   } else {
     ConditionalSelfDelimiting
   }

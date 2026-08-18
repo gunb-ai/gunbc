@@ -195,7 +195,7 @@ fn constraint_statements(
         match pin_for_signal(assignments: assignments, name: s.name) {
           Absent => acc
           Present { value: p } =>
-            concat(acc, [SetIo { port: sp as v2.extdeps.formats.icestorm_pcf.PcfPortName, pin: (p as String) as v2.extdeps.formats.icestorm_pcf.PcfPin }])
+            concat(acc, [v2.extdeps.formats.icestorm_pcf.SetIo { port: sp as v2.extdeps.formats.icestorm_pcf.PcfPortName, pin: (p as String) as v2.extdeps.formats.icestorm_pcf.PcfPin }])
         }
     }
   })
@@ -281,7 +281,7 @@ fn realization_population_comparison(realization: ProgrammableDeviceRealization)
     parts: [vendor_general_purpose_population(realization: realization), configuration_population(realization: realization)]
   ) {
     Absent =>
-      PopulationsNotComparable { left: VendorGeneralPurposeIo, right: PlaceableLogicPins }
+      product.compute_board.contact_population.PopulationsNotComparable { left: VendorGeneralPurposeIo, right: PlaceableLogicPins }
     Present { value: projected } =>
       compare_populations(a: projected, b: toolchain_placeable_population(realization: realization))
   }

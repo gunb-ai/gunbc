@@ -117,7 +117,7 @@ test fn witness_interim_module_bearing_unit_count_holds() -> Bool {
 test fn witness_policy_partition_refuses_holds() -> Bool {
   let dag = stage0_module_dag()
   match resolve_partition_outcome(
-    parameter: PolicyPartitionParam {
+    parameter: v2.workflow.rust_crate_partition.PolicyPartitionParam {
       policy: v2.workflow.rust_crate_partition.PartitionPolicy { target_crate_count: rust_crate_partition_declared_core_target }
     },
     module_dag: dag

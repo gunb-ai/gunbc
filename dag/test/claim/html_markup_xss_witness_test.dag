@@ -70,7 +70,7 @@ fn javascript_link_node() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "a",
     attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
-    children: [ FragmentText { content: "x" } ],
+    children: [ std.markup.FragmentText { content: "x" } ],
   }
 }
 

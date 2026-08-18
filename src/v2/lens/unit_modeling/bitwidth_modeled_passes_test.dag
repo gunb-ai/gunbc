@@ -4,13 +4,13 @@ module v2.test.lens_unit_modeling.bitwidth_modeled_passes
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data bitwidth_carrier_target: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^BitWidth } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^BitWidth } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data bitwidth_modeled_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^pointer_width },

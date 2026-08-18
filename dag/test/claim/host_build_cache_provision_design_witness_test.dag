@@ -26,9 +26,9 @@ test fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
 test fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: gha_actions_cache_id,
-    observed: DaemonStatsOk {
+    observed: gunbc.host_build_cache_provision.DaemonStatsOk {
       stats_line: "compile_requests=1",
-      placement: ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
+      placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
     },
   ) {
     ProvisionRefused { cause: RefusalCatalogUnknown, reason: reason } =>
@@ -77,9 +77,9 @@ test fn design_witness_cited_fatal_error_fragment() -> Bool {
 test fn design_witness_converged_not_refused_on_ok_stats() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
-    observed: DaemonStatsOk {
+    observed: gunbc.host_build_cache_provision.DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
+      placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
     },
   ) {
     ProvisionConverged { catalog_id: id, stats_line: _ } => id == sccache_local_id
@@ -94,9 +94,9 @@ test fn design_witness_stats_ok_lazy_spawned_refuses() -> Bool {
 test fn design_witness_stats_ok_active_slot_runner_owned_refuses() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
-    observed: DaemonStatsOk {
+    observed: gunbc.host_build_cache_provision.DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: ServerRunnerOwned {
+      placement: gunbc.build_cache_instance.ServerRunnerOwned {
         slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 2 },
         lifecycle: DesiredRunnerSlot,
       },
@@ -119,9 +119,9 @@ test fn design_witness_stats_ok_unit_owned_converges() -> Bool {
 fn witness_widen_sketch_fabricates_converged_on_lazy_spawned() -> Bool {
   match provision_build_cache_absorbing_fallback_widen_sketch(
     catalog_id: sccache_local_id,
-    observed: DaemonStatsOk {
+    observed: gunbc.host_build_cache_provision.DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
+      placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
     },
   ) {
     ProvisionConverged { catalog_id: _, stats_line: _ } => true
@@ -135,28 +135,28 @@ test fn witness_red_control_widen_on_lazy_spawned_rejected_by_gate() -> Bool {
       catalog_id: sccache_local_id,
       verdict: provision_build_cache_absorbing_fallback_widen_sketch(
         catalog_id: sccache_local_id,
-        observed: DaemonStatsOk {
+        observed: gunbc.host_build_cache_provision.DaemonStatsOk {
           stats_line: "compile_requests=42",
-          placement: ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
+          placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
         },
       ),
-      observed: DaemonStatsOk {
+      observed: gunbc.host_build_cache_provision.DaemonStatsOk {
         stats_line: "compile_requests=42",
-        placement: ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
+        placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
       },
     )
     && build_cache_provision_gate_accepts(
       catalog_id: sccache_local_id,
       verdict: provision_build_cache_verdict(
         catalog_id: sccache_local_id,
-        observed: DaemonStatsOk {
+        observed: gunbc.host_build_cache_provision.DaemonStatsOk {
           stats_line: "compile_requests=42",
-          placement: ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
+          placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
         },
       ),
-      observed: DaemonStatsOk {
+      observed: gunbc.host_build_cache_provision.DaemonStatsOk {
         stats_line: "compile_requests=42",
-        placement: ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
+        placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
       },
     )
 }
@@ -185,7 +185,7 @@ test fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
 }
 
 fn path_shadow_observation_fixture() -> gunbc.host_build_cache_provision.BuildCacheDaemonObservation {
-  DaemonPathShadowed { resolved: "/usr/bin/sccache", expected: "/usr/local/bin/sccache" }
+  gunbc.host_build_cache_provision.DaemonPathShadowed { resolved: "/usr/bin/sccache", expected: "/usr/local/bin/sccache" }
 }
 
 test fn design_witness_path_shadow_refuses_fail_closed() -> Bool {
@@ -283,7 +283,7 @@ test fn design_witness_unit_daemon_runs_until_stopped() -> Bool {
 }
 
 fn unsupervised_observation_fixture() -> gunbc.host_build_cache_provision.BuildCacheDaemonObservation {
-  DaemonUnsupervised { unit: "sccache.service", unit_state: "inactive (dead)" }
+  gunbc.host_build_cache_provision.DaemonUnsupervised { unit: "sccache.service", unit_state: "inactive (dead)" }
 }
 
 test fn design_witness_unsupervised_refuses_fail_closed() -> Bool {

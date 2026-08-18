@@ -2,25 +2,25 @@ module v2.test.lens_cost.loop_illegal_named
 
 
 data loop_illegal_named_body_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_body_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^loop_illegal_named_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data loop_illegal_named_measure_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_measure_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^loop_illegal_named_measure_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data loop_illegal_named_extra_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_extra_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^loop_illegal_named_extra_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data loop_illegal_named_input: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Loop },
+  kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_illegal_named_body_leaf },
     v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: loop_illegal_named_measure_leaf },
@@ -41,14 +41,14 @@ fn loop_illegal_named_claim_rhs() -> Node {
     loop_illegal_named_input
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_loop_illegal_named: v2.std.verification.TestClaim = EqualsClaim {
+data claim_loop_illegal_named: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_cost/loop_illegal_named: illegal Loop Named edge fails closed with edge-discipline reason",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: loop_illegal_named_input,

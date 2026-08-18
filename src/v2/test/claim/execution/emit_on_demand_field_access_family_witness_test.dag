@@ -11,8 +11,8 @@ data field_access_family_provider: std.materialization_ladder.CacheProvider = pr
   id: "emit-on-demand-field-access",
   scope: [],
   coverage: CoversAllComputations,
-  tier: ArtifactTier { keying: ContentKeyed },
-  retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 1000000) } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
+  tier: std.materialization_ladder.ArtifactTier { keying: ContentKeyed },
+  retention: persistent_retention(capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: byte_size(count: 1000000) } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
 fn field_access_family_native_key_for(tree: v2.compiler.infer.InferredTree) -> std.content_hash.ContentHash {

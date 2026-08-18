@@ -3,7 +3,7 @@ module v2.extdeps.formats.sql_target
 
 fn sql_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -11,7 +11,7 @@ fn sql_atom(id: v2.std.node.Symbol) -> Node {
 
 fn sql_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: fold_list(
       xs: tokens,
       empty: Empty,
@@ -64,7 +64,7 @@ fn sql_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxTo
 
 fn sql_empty_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -88,7 +88,7 @@ fn sql_lhs_exact_relation_row_witness(
         productions: productions,
         emitted: emitted
       )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -106,14 +106,14 @@ fn sql_relation_translation_rules_witness(
     Holds { value: row } =>
       Holds {
         value: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             dag_named_edge(name: rule_name, target: row)
           ],
           occurrence_id: SyntheticOccurrence
         }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -152,7 +152,7 @@ fn sql_serialize_source_node(
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^serialize_source_field_source_text,
@@ -176,7 +176,7 @@ fn sql_serialize_source_node(
 
 fn sql_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^target_model_edge_translation_rules,
@@ -218,12 +218,12 @@ fn sql_make_bound_tokens_target_model(
 }
 
 fn sql_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: v2.std.compilers.lexing.LiteralPattern { text: text }
   }
 }
 
 fn sql_lex_rules_for_tokens(rules: List<v2.std.compilers.lexing.LexRule>) -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: rules } }
+  v2.std.compilers.lexing.ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: rules } }
 }

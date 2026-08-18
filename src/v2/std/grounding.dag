@@ -27,7 +27,7 @@ fn per_language_fact_bundle_duplicate_key_diagnostic() -> v2.std.diagnostic.Diag
   v2.std.diagnostic.Diagnostic {
     reason: ^per_language_fact_bundle_duplicate_key_reason,
     at: port_locus(port: ^per_language_fact_bundle_duplicate_key_reason),
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -35,7 +35,7 @@ fn per_language_fact_bundle_ungrounded_subject_diagnostic(subject_carrier: Node)
   v2.std.diagnostic.Diagnostic {
     reason: ^per_language_fact_bundle_ungrounded_subject_reason,
     at: node_locus(node: subject_carrier),
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -138,42 +138,42 @@ fn per_language_fact_bundle_spec_facts_state_for_subject(
     },
     subject_carrier: subject_carrier,
     target: target,
-    fact_axis: ModelCoreFactAxisWidth {}
+    fact_axis: v2.std.model_core.ModelCoreFactAxisWidth {}
   )
   let signedness = per_language_fact_bundle_spec_facts_after_axis(
     acc: width,
     registry: registry,
     subject_carrier: subject_carrier,
     target: target,
-    fact_axis: ModelCoreFactAxisSignedness {}
+    fact_axis: v2.std.model_core.ModelCoreFactAxisSignedness {}
   )
   let range = per_language_fact_bundle_spec_facts_after_axis(
     acc: signedness,
     registry: registry,
     subject_carrier: subject_carrier,
     target: target,
-    fact_axis: ModelCoreFactAxisRange {}
+    fact_axis: v2.std.model_core.ModelCoreFactAxisRange {}
   )
   let encoding = per_language_fact_bundle_spec_facts_after_axis(
     acc: range,
     registry: registry,
     subject_carrier: subject_carrier,
     target: target,
-    fact_axis: ModelCoreFactAxisEncoding {}
+    fact_axis: v2.std.model_core.ModelCoreFactAxisEncoding {}
   )
   let surface = per_language_fact_bundle_spec_facts_after_axis(
     acc: encoding,
     registry: registry,
     subject_carrier: subject_carrier,
     target: target,
-    fact_axis: ModelCoreFactAxisSurfaceSpelling {}
+    fact_axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}
   )
   per_language_fact_bundle_spec_facts_after_axis(
     acc: surface,
     registry: registry,
     subject_carrier: subject_carrier,
     target: target,
-    fact_axis: ModelCoreFactAxisOverflowDisposition {}
+    fact_axis: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}
   )
 }
 

@@ -9,7 +9,7 @@ fn ptfes_token(class: v2.std.node.Symbol, lexeme: String) -> v2.std.compilers.le
 
 data ptfes_empty: List<v2.std.compilers.lexing.Token> = std.algebra.Empty
 
-data ptfes_one: List<v2.std.compilers.lexing.Token> = Cons {
+data ptfes_one: List<v2.std.compilers.lexing.Token> = std.algebra.Cons {
   head: ptfes_token(class: ^ptfes_a, lexeme: "a"),
   tail: std.algebra.Empty
 }

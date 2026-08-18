@@ -199,7 +199,7 @@ data meta_optimization_goal_wire_values: List<std.types.NonEmptyStr> = [
   "MESSAGING_APPOINTMENT_CONVERSION",
 ]
 
-data meta_ads_media_rate: extdeps.advertising.types.AdPriceDetermination = AuctionDetermined {
+data meta_ads_media_rate: extdeps.advertising.types.AdPriceDetermination = extdeps.advertising.types.AuctionDetermined {
   mechanism_citation: "developers.facebook.com/docs/marketing-api/bidding",
 }
 

@@ -5,11 +5,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn oidc_evidence() -> extdeps.auth.oidc.OidcIdTokenClaims {
   extdeps.auth.oidc.OidcIdTokenClaims {
-    issuer: JwtUriString { value: "https://issuer.example" as std.types.NonEmptyStr, scheme: "https" as std.types.NonEmptyStr },
-    subject: JwtBareString { value: "external-subject" as std.types.NonEmptyStr },
-    audience: JwtAudienceSingle { value: JwtBareString { value: "client" as std.types.NonEmptyStr } },
-    expires_at: NumericDateWholeSeconds { seconds: 2000 },
-    issued_at: NumericDateWholeSeconds { seconds: 1000 },
+    issuer: extdeps.auth.jwt.JwtUriString { value: "https://issuer.example" as std.types.NonEmptyStr, scheme: "https" as std.types.NonEmptyStr },
+    subject: extdeps.auth.jwt.JwtBareString { value: "external-subject" as std.types.NonEmptyStr },
+    audience: extdeps.auth.jwt.JwtAudienceSingle { value: extdeps.auth.jwt.JwtBareString { value: "client" as std.types.NonEmptyStr } },
+    expires_at: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 2000 },
+    issued_at: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1000 },
     auth_time: none, nonce: none, acr: none, amr: none, azp: none, session_id: none,
     standard: extdeps.auth.oidc.OidcStandardClaims { email: none, email_verified: none, name: none },
   }

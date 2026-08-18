@@ -14,7 +14,7 @@ fn a_host(container: gunbc.host_realization.ApplicationContainerKind, renderer: 
         field: WholeDeclaration
       }
     },
-    platform_revision: RefReducedByPolicy { reported: "Mac OS X 10_15_7" },
+    platform_revision: gunbc.host_realization.RefReducedByPolicy { reported: "Mac OS X 10_15_7" },
     device_identity: RefNotProbed,
     role: PrimaryInstrument,
     container_kind: container,
@@ -23,7 +23,7 @@ fn a_host(container: gunbc.host_realization.ApplicationContainerKind, renderer: 
       decl_name: "google_chrome",
       field: WholeDeclaration
     },
-    container_product_build: RefReducedByPolicy { reported: "150.0.0.0" },
+    container_product_build: gunbc.host_realization.RefReducedByPolicy { reported: "150.0.0.0" },
     runtime_engine: RefResolved {
       declaration: std.decl_ref.DeclarationRef {
         module_path: "extdeps.browser.chromium",
@@ -92,23 +92,23 @@ fn witness_unresolved_identity_keeps_its_cause() -> Bool {
   ref_is_resolved(r: RefResolved {
       declaration: std.decl_ref.DeclarationRef { module_path: "extdeps.os.macos", decl_name: "sequoia_15_catalog", field: WholeDeclaration }
     })
-    && !ref_is_resolved(r: RefReducedByPolicy { reported: "Mac OS X 10_15_7" })
+    && !ref_is_resolved(r: gunbc.host_realization.RefReducedByPolicy { reported: "Mac OS X 10_15_7" })
     && !ref_is_resolved(r: RefNotProbed)
     && !ref_is_resolved(r: RefUnpublishedByPlatform)
-    && resolved_ref_key(r: RefReducedByPolicy { reported: "x" }) != resolved_ref_key(r: RefNotProbed)
+    && resolved_ref_key(r: gunbc.host_realization.RefReducedByPolicy { reported: "x" }) != resolved_ref_key(r: RefNotProbed)
     && resolved_ref_key(r: RefNotProbed) != resolved_ref_key(r: RefUnpublishedByPlatform)
 }
 
 fn a_receipt(peak: std.nat.Nat, latency: std.types.Milliseconds) -> gunbc.capability_binding.SampleReceipt {
   gunbc.capability_binding.SampleReceipt {
     count: 240,
-    frequency: FrequencyObserved { hz: 60 },
-    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
-    observed_axes: AxisCountObserved { n: 3 },
+    frequency: gunbc.capability_binding.FrequencyObserved { hz: 60 },
+    noise_floor: gunbc.capability_binding.NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: gunbc.capability_binding.AxisCountObserved { n: 3 },
     gravity: GravityNormalized,
     peak_magnitude_milli: peak,
-    detection_latency_ms: LatencyObserved { ms: latency },
-    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+    detection_latency_ms: gunbc.capability_binding.LatencyObserved { ms: latency },
+    negative_control: gunbc.capability_binding.NegativeControlObserved { idle_peak_milli: 300 },
   }
 }
 
@@ -207,13 +207,13 @@ data all_five_dimensions_note: String = "The three dimensions the earlier helper
 fn witness_red_too_few_axes_cannot_qualify() -> Bool {
   let flat = gunbc.capability_binding.SampleReceipt {
     count: 240,
-    frequency: FrequencyObserved { hz: 60 },
-    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
-    observed_axes: AxisCountObserved { n: 1 },
+    frequency: gunbc.capability_binding.FrequencyObserved { hz: 60 },
+    noise_floor: gunbc.capability_binding.NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: gunbc.capability_binding.AxisCountObserved { n: 1 },
     gravity: GravityNormalized,
     peak_magnitude_milli: 3100,
-    detection_latency_ms: LatencyObserved { ms: 40 },
-    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+    detection_latency_ms: gunbc.capability_binding.LatencyObserved { ms: 40 },
+    negative_control: gunbc.capability_binding.NegativeControlObserved { idle_peak_milli: 300 },
   }
   !qualifies(r: flat) && causes_contain(cs: rejection_causes(r: flat), c: InsufficientAxes)
 }
@@ -221,13 +221,13 @@ fn witness_red_too_few_axes_cannot_qualify() -> Bool {
 fn witness_red_a_slow_stream_cannot_qualify() -> Bool {
   let slow = gunbc.capability_binding.SampleReceipt {
     count: 240,
-    frequency: FrequencyObserved { hz: 10 },
-    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
-    observed_axes: AxisCountObserved { n: 3 },
+    frequency: gunbc.capability_binding.FrequencyObserved { hz: 10 },
+    noise_floor: gunbc.capability_binding.NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: gunbc.capability_binding.AxisCountObserved { n: 3 },
     gravity: GravityNormalized,
     peak_magnitude_milli: 3100,
-    detection_latency_ms: LatencyObserved { ms: 40 },
-    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+    detection_latency_ms: gunbc.capability_binding.LatencyObserved { ms: 40 },
+    negative_control: gunbc.capability_binding.NegativeControlObserved { idle_peak_milli: 300 },
   }
   !qualifies(r: slow) && causes_contain(cs: rejection_causes(r: slow), c: SampleRateBelowMinimum)
 }
@@ -235,13 +235,13 @@ fn witness_red_a_slow_stream_cannot_qualify() -> Bool {
 fn witness_red_gravity_left_in_cannot_qualify() -> Bool {
   let heavy = gunbc.capability_binding.SampleReceipt {
     count: 240,
-    frequency: FrequencyObserved { hz: 60 },
-    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
-    observed_axes: AxisCountObserved { n: 3 },
+    frequency: gunbc.capability_binding.FrequencyObserved { hz: 60 },
+    noise_floor: gunbc.capability_binding.NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: gunbc.capability_binding.AxisCountObserved { n: 3 },
     gravity: GravityNotNormalized,
     peak_magnitude_milli: 3100,
-    detection_latency_ms: LatencyObserved { ms: 40 },
-    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+    detection_latency_ms: gunbc.capability_binding.LatencyObserved { ms: 40 },
+    negative_control: gunbc.capability_binding.NegativeControlObserved { idle_peak_milli: 300 },
   }
   !qualifies(r: heavy) && causes_contain(cs: rejection_causes(r: heavy), c: GravityNotHandledAsRequired)
 }
@@ -256,8 +256,8 @@ fn witness_red_an_unobserved_dimension_refuses_rather_than_passing() -> Bool {
     observed_axes: AxisCountUnobserved,
     gravity: GravityNormalizationUnobserved,
     peak_magnitude_milli: 9000,
-    detection_latency_ms: LatencyObserved { ms: 10 },
-    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+    detection_latency_ms: gunbc.capability_binding.LatencyObserved { ms: 10 },
+    negative_control: gunbc.capability_binding.NegativeControlObserved { idle_peak_milli: 300 },
   }
   !qualifies(r: partial)
     && causes_contain(cs: rejection_causes(r: partial), c: RequirementDimensionUnobserved)
@@ -268,23 +268,23 @@ data negative_control_witness_note: String = "A threshold with no negative contr
 fn witness_red_a_missing_negative_control_refuses() -> Bool {
   let unrun = gunbc.capability_binding.SampleReceipt {
     count: 240,
-    frequency: FrequencyObserved { hz: 60 },
-    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
-    observed_axes: AxisCountObserved { n: 3 },
+    frequency: gunbc.capability_binding.FrequencyObserved { hz: 60 },
+    noise_floor: gunbc.capability_binding.NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: gunbc.capability_binding.AxisCountObserved { n: 3 },
     gravity: GravityNormalized,
     peak_magnitude_milli: 3100,
-    detection_latency_ms: LatencyObserved { ms: 40 },
+    detection_latency_ms: gunbc.capability_binding.LatencyObserved { ms: 40 },
     negative_control: NegativeControlNotRun,
   }
   let failed = gunbc.capability_binding.SampleReceipt {
     count: 240,
-    frequency: FrequencyObserved { hz: 60 },
-    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
-    observed_axes: AxisCountObserved { n: 3 },
+    frequency: gunbc.capability_binding.FrequencyObserved { hz: 60 },
+    noise_floor: gunbc.capability_binding.NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: gunbc.capability_binding.AxisCountObserved { n: 3 },
     gravity: GravityNormalized,
     peak_magnitude_milli: 3100,
-    detection_latency_ms: LatencyObserved { ms: 40 },
-    negative_control: NegativeControlObserved { idle_peak_milli: 2500 },
+    detection_latency_ms: gunbc.capability_binding.LatencyObserved { ms: 40 },
+    negative_control: gunbc.capability_binding.NegativeControlObserved { idle_peak_milli: 2500 },
   }
   !qualifies(r: unrun)
     && causes_contain(cs: rejection_causes(r: unrun), c: NegativeControlNotSatisfied)
@@ -299,7 +299,7 @@ data a_signed_requirement: gunbc.capability_binding.PhysicalImpulseRequirement =
   maximum_detection_latency_ms: 120,
   gravity_handling: GravityExcluded,
   minimum_discriminating_magnitude_milli_m_per_s2: 2000,
-  standing: RequirementSigned {
+  standing: gunbc.capability_binding.RequirementSigned {
     audition_receipt: std.decl_ref.DeclarationRef {
       module_path: "test.claim.capability_binding_witness",
       decl_name: "a_signed_requirement",
@@ -311,15 +311,15 @@ data a_signed_requirement: gunbc.capability_binding.PhysicalImpulseRequirement =
 data supported_needs_a_receipt_note: String = "The seam claim, and it is now a claim about DERIVATION rather than about routing: the stream hands the verdict a raw requirement and a raw receipt, the verdict qualifies them itself, and there is no qualified value anyone could have authored instead. A rejected measurement degrades with its typed causes carried through rather than flattened to a sentence."
 
 fn witness_only_a_derived_qualification_reaches_supported() -> Bool {
-  signed_verdict_of(s: TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }) == "supported"
-    && signed_verdict_of(s: TapOutcome { receipt: a_receipt(peak: 1900, latency: 40) }) == "degraded"
-    && verdict_of(s: SamplesObserved { receipt: a_receipt(peak: 2600, latency: 40) }) == "degraded"
-    && verdict_of(s: HollowSamplesObserved { count: 12 }) == "degraded"
-    && verdict_of(s: NoSamplesObserved { lifecycle: LifecycleActivated }) == "degraded"
+  signed_verdict_of(s: gunbc.capability_binding.TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }) == "supported"
+    && signed_verdict_of(s: gunbc.capability_binding.TapOutcome { receipt: a_receipt(peak: 1900, latency: 40) }) == "degraded"
+    && verdict_of(s: gunbc.capability_binding.SamplesObserved { receipt: a_receipt(peak: 2600, latency: 40) }) == "degraded"
+    && verdict_of(s: gunbc.capability_binding.HollowSamplesObserved { count: 12 }) == "degraded"
+    && verdict_of(s: gunbc.capability_binding.NoSamplesObserved { lifecycle: LifecycleActivated }) == "degraded"
 }
 
 fn witness_a_rejected_tap_carries_its_typed_causes() -> Bool {
-  match derive_capability_verdict(o: a_signed_observation(s: TapOutcome {
+  match derive_capability_verdict(o: a_signed_observation(s: gunbc.capability_binding.TapOutcome {
       receipt: a_receipt(peak: 1900, latency: 400)
     })) {
     CapabilityDegraded { missing, alternative } => match missing {
@@ -342,13 +342,13 @@ data provisional_cannot_authorize_note: String = "The two blocking bypasses this
 fn witness_red_a_negative_control_above_the_floor_rejects() -> Bool {
   let noisy = gunbc.capability_binding.SampleReceipt {
     count: 240,
-    frequency: FrequencyObserved { hz: 60 },
-    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
-    observed_axes: AxisCountObserved { n: 3 },
+    frequency: gunbc.capability_binding.FrequencyObserved { hz: 60 },
+    noise_floor: gunbc.capability_binding.NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: gunbc.capability_binding.AxisCountObserved { n: 3 },
     gravity: GravityNormalized,
     peak_magnitude_milli: 3100,
-    detection_latency_ms: LatencyObserved { ms: 40 },
-    negative_control: NegativeControlObserved { idle_peak_milli: 9000 },
+    detection_latency_ms: gunbc.capability_binding.LatencyObserved { ms: 40 },
+    negative_control: gunbc.capability_binding.NegativeControlObserved { idle_peak_milli: 9000 },
   }
   !qualifies(r: noisy)
     && causes_contain(cs: rejection_causes(r: noisy), c: NegativeControlNotSatisfied)
@@ -357,11 +357,11 @@ fn witness_red_a_negative_control_above_the_floor_rejects() -> Bool {
 
 fn witness_red_provisional_thresholds_cannot_authorize_support() -> Bool {
   let good = a_receipt(peak: 3100, latency: 40)
-  verdict_of(s: TapOutcome { receipt: good }) == "qualified-against-provisional-requirement"
-    && signed_verdict_of(s: TapOutcome { receipt: good }) == "supported"
+  verdict_of(s: gunbc.capability_binding.TapOutcome { receipt: good }) == "qualified-against-provisional-requirement"
+    && signed_verdict_of(s: gunbc.capability_binding.TapOutcome { receipt: good }) == "supported"
     && !row_supports_a_durable_claim(r: gunbc.capability_binding.CapabilityVerdictRow {
-         binding: an_observation(s: TapOutcome { receipt: good }).binding,
-         verdict: derive_capability_verdict(o: an_observation(s: TapOutcome { receipt: good })),
+         binding: an_observation(s: gunbc.capability_binding.TapOutcome { receipt: good }).binding,
+         verdict: derive_capability_verdict(o: an_observation(s: gunbc.capability_binding.TapOutcome { receipt: good })),
        })
 }
 
@@ -374,25 +374,25 @@ fn witness_red_the_snapshot_decides_and_the_identity_does_not() -> Bool {
   capability_verdict_key(v: derive_capability_verdict(o: an_observation_bound_to(
       identity: signed_requirement_ref,
       snapshot: bob_impulse_requirement_candidate,
-      s: TapOutcome { receipt: good }))) == "qualified-against-provisional-requirement"
+      s: gunbc.capability_binding.TapOutcome { receipt: good }))) == "qualified-against-provisional-requirement"
     && capability_verdict_key(v: derive_capability_verdict(o: an_observation_bound_to(
          identity: candidate_requirement_ref,
          snapshot: a_signed_requirement,
-         s: TapOutcome { receipt: good }))) == "supported"
-    && an_observation(s: TapOutcome { receipt: good }).binding.requirement.identity.decl_name ==
+         s: gunbc.capability_binding.TapOutcome { receipt: good }))) == "supported"
+    && an_observation(s: gunbc.capability_binding.TapOutcome { receipt: good }).binding.requirement.identity.decl_name ==
          "bob_impulse_requirement_candidate"
 }
 
 fn witness_red_an_unobserved_latency_refuses_rather_than_passing() -> Bool {
   let no_latency = gunbc.capability_binding.SampleReceipt {
     count: 240,
-    frequency: FrequencyObserved { hz: 60 },
-    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
-    observed_axes: AxisCountObserved { n: 3 },
+    frequency: gunbc.capability_binding.FrequencyObserved { hz: 60 },
+    noise_floor: gunbc.capability_binding.NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: gunbc.capability_binding.AxisCountObserved { n: 3 },
     gravity: GravityNormalized,
     peak_magnitude_milli: 3100,
     detection_latency_ms: LatencyUnobserved,
-    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+    negative_control: gunbc.capability_binding.NegativeControlObserved { idle_peak_milli: 300 },
   }
   !qualifies(r: no_latency)
 }
@@ -402,7 +402,7 @@ fn witness_every_obstacle_reaches_unavailable_with_its_own_typed_cause() -> Bool
     && verdict_of(s: PolicyRefused) == "unavailable"
     && verdict_of(s: PermissionRefused) == "unavailable"
     && verdict_of(s: HardwareUnavailable) == "unavailable"
-    && match derive_capability_verdict(o: an_observation(s: BackendConnectionRefused { error_name: "NotReadableError" })) {
+    && match derive_capability_verdict(o: an_observation(s: gunbc.capability_binding.BackendConnectionRefused { error_name: "NotReadableError" })) {
          CapabilityUnavailable { obstacle } => obstacle_key(o: obstacle) == "backend-connection-refused"
          CapabilitySupported { receipt } => false
          CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => false
@@ -415,14 +415,14 @@ fn witness_red_an_unexercised_binding_is_not_a_failure() -> Bool {
   verdict_of(s: BindingStreamUnobserved) == "unobserved"
     && verdict_of(s: BindingStreamUnobserved) != verdict_of(s: HardwareUnavailable)
     && verdict_of(s: BindingStreamUnobserved) !=
-         verdict_of(s: NoSamplesObserved { lifecycle: LifecycleActivationUnobserved })
+         verdict_of(s: gunbc.capability_binding.NoSamplesObserved { lifecycle: LifecycleActivationUnobserved })
 }
 
 data lifecycle_carried_note: String = "The two silences stay distinguishable in the neutral layer: an activated sensor that never read is a different key from a stream whose activation was never observed."
 
 fn witness_silence_carries_its_lifecycle() -> Bool {
-  binding_stream_key(s: NoSamplesObserved { lifecycle: LifecycleActivated }) !=
-      binding_stream_key(s: NoSamplesObserved { lifecycle: LifecycleActivationUnobserved })
+  binding_stream_key(s: gunbc.capability_binding.NoSamplesObserved { lifecycle: LifecycleActivated }) !=
+      binding_stream_key(s: gunbc.capability_binding.NoSamplesObserved { lifecycle: LifecycleActivationUnobserved })
     && sample_lifecycle_key(l: LifecycleActivated) == "activated"
 }
 
@@ -439,11 +439,11 @@ fn degraded_alternative_module(s: gunbc.capability_binding.BindingStreamState) -
 }
 
 fn witness_every_degradation_points_at_the_synthetic_binding() -> Bool {
-  degraded_alternative_module(s: SamplesObserved { receipt: a_receipt(peak: 2600, latency: 40) }) ==
+  degraded_alternative_module(s: gunbc.capability_binding.SamplesObserved { receipt: a_receipt(peak: 2600, latency: 40) }) ==
       synthetic_tap_provider.decl_name
-    && degraded_alternative_module(s: HollowSamplesObserved { count: 12 }) ==
+    && degraded_alternative_module(s: gunbc.capability_binding.HollowSamplesObserved { count: 12 }) ==
       synthetic_tap_provider.decl_name
-    && degraded_alternative_module(s: NoSamplesObserved { lifecycle: LifecycleActivated }) ==
+    && degraded_alternative_module(s: gunbc.capability_binding.NoSamplesObserved { lifecycle: LifecycleActivated }) ==
       synthetic_tap_provider.decl_name
     && synthetic_tap_provider.decl_name == "synthetic_tap_impulse"
 }
@@ -452,7 +452,7 @@ data verdict_row_note: String = "A verdict keeps its binding, so one supported r
 
 fn witness_verdict_rows_retain_their_binding_identity() -> Bool {
   let rows = verdict_rows(rows: [
-    a_signed_observation(s: TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }),
+    a_signed_observation(s: gunbc.capability_binding.TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }),
     an_observation(s: InterfaceUnavailable),
   ])
   rows.length() == 2
@@ -463,7 +463,7 @@ fn witness_verdict_rows_retain_their_binding_identity() -> Bool {
 
 fn witness_red_a_reduced_host_cannot_carry_a_durable_support_claim() -> Bool {
   let rows = verdict_rows(rows: [
-    a_signed_observation(s: TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }),
+    a_signed_observation(s: gunbc.capability_binding.TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }),
   ])
   fold(rows, init: true, f: (acc, r) => acc && !row_supports_a_durable_claim(r: r))
     && fold(rows, init: false, f: (acc, r) => acc || capability_verdict_key(v: r.verdict) == "supported")
@@ -473,7 +473,7 @@ data provisional_note: String = "The thresholds are audition candidates and say 
 
 fn witness_the_bob_requirement_is_still_provisional() -> Bool {
   !requirement_is_signed(s: bob_impulse_requirement_candidate.standing)
-    && requirement_is_signed(s: RequirementSigned {
+    && requirement_is_signed(s: gunbc.capability_binding.RequirementSigned {
          audition_receipt: std.decl_ref.DeclarationRef {
            module_path: "gunbc.capability_binding", decl_name: "x", field: WholeDeclaration
          }
@@ -520,13 +520,13 @@ fn a_ref(name: String) -> std.decl_ref.DeclarationRef {
 }
 
 fn witness_no_coverage_state_is_a_support_claim() -> Bool {
-  !implementation_state_is_a_support_claim(s: Implemented { implementation: a_ref(name: "synthetic_tap_impulse") })
+  !implementation_state_is_a_support_claim(s: gunbc.capability_binding.Implemented { implementation: a_ref(name: "synthetic_tap_impulse") })
     && !implementation_state_is_a_support_claim(s: NotImplemented)
     && !implementation_state_is_a_support_claim(s: NotModelled)
     && !probe_state_is_a_support_claim(s: ProbeRequired)
-    && !probe_state_is_a_support_claim(s: ProbeObserved { receipt: a_ref(name: "qualify_tap") })
-    && !probe_state_is_a_support_claim(s: ProbeBlocked { cause: "no windows host" })
-    && !probe_state_is_a_support_claim(s: ProbeDeferred { trigger: "mobile instrument work begins" })
+    && !probe_state_is_a_support_claim(s: gunbc.capability_binding.ProbeObserved { receipt: a_ref(name: "qualify_tap") })
+    && !probe_state_is_a_support_claim(s: gunbc.capability_binding.ProbeBlocked { cause: "no windows host" })
+    && !probe_state_is_a_support_claim(s: gunbc.capability_binding.ProbeDeferred { trigger: "mobile instrument work begins" })
     && witness_the_two_coverage_axes_vary_independently()
     && witness_the_coverage_roster_claims_nothing_it_has_not_earned()
 }
@@ -537,8 +537,8 @@ fn witness_the_coverage_roster_claims_nothing_it_has_not_earned() -> Bool {
   coverage_targets_asserting_support() == 0
     && deferred_targets_all_name_a_trigger()
     && every_probe_receipt_names_a_witness()
-    && !probe_receipt_names_a_witness(s: ProbeObserved { receipt: a_ref(name: "synthetic_tap_impulse") })
-    && probe_receipt_names_a_witness(s: ProbeObserved {
+    && !probe_receipt_names_a_witness(s: gunbc.capability_binding.ProbeObserved { receipt: a_ref(name: "synthetic_tap_impulse") })
+    && probe_receipt_names_a_witness(s: gunbc.capability_binding.ProbeObserved {
          receipt: std.decl_ref.DeclarationRef {
            module_path: "test.claim.instrument_bob_witness",
            decl_name: "instrument_bob_keystone_holds",
@@ -548,14 +548,14 @@ fn witness_the_coverage_roster_claims_nothing_it_has_not_earned() -> Bool {
 }
 
 fn witness_the_two_coverage_axes_vary_independently() -> Bool {
-  let written = Implemented { implementation: a_ref(name: "synthetic_tap_impulse") }
+  let written = gunbc.capability_binding.Implemented { implementation: a_ref(name: "synthetic_tap_impulse") }
   coverage_state_key(implementation: written, probe: ProbeRequired) !=
       coverage_state_key(implementation: NotImplemented, probe: ProbeRequired)
     && coverage_state_key(implementation: written, probe: ProbeRequired) !=
-         coverage_state_key(implementation: written, probe: ProbeBlocked { cause: "no windows host" })
+         coverage_state_key(implementation: written, probe: gunbc.capability_binding.ProbeBlocked { cause: "no windows host" })
     && coverage_state_key(implementation: NotImplemented, probe: ProbeRequired) !=
          coverage_state_key(implementation: NotModelled, probe: ProbeRequired)
-    && probe_state_key(s: ProbeRequired) != probe_state_key(s: ProbeDeferred { trigger: "t" })
+    && probe_state_key(s: ProbeRequired) != probe_state_key(s: gunbc.capability_binding.ProbeDeferred { trigger: "t" })
 }
 
 test fn capability_binding_keystone_holds() -> Bool {

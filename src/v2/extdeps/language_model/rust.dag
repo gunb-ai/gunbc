@@ -22,18 +22,18 @@ fn rust_leaf_r2b_invocation(build_profile: v2.std.node.Symbol, overflow_disposit
 }
 
 fn rust_leaf_rustc_accepts() -> v2.std.rust_leaf_model_claim.RustClaimExpectation {
-  RustcAcceptsExpectation { invocation_form: rust_leaf_rustc_invocation() }
+  v2.std.rust_leaf_model_claim.RustcAcceptsExpectation { invocation_form: rust_leaf_rustc_invocation() }
 }
 
 fn rust_leaf_rustc_rejects(code: v2.std.rust_leaf_model_claim.Rustc_ErrorCode_Phase1) -> v2.std.rust_leaf_model_claim.RustClaimExpectation {
-  RustcRejectsExpectation {
+  v2.std.rust_leaf_model_claim.RustcRejectsExpectation {
     invocation_form: rust_leaf_rustc_invocation(),
     expected_error_code: code
   }
 }
 
 fn rust_leaf_algebra_inhabitance_i32_subject() -> v2.std.rust_leaf_model_claim.RustClaimSubject {
-  RustAlgebraInhabitanceSubject {
+  v2.std.rust_leaf_model_claim.RustAlgebraInhabitanceSubject {
     inhabitance_decl: rust_integer_algebra_inhabitance_rust_facts_i32
   }
 }
@@ -41,10 +41,10 @@ fn rust_leaf_algebra_inhabitance_i32_subject() -> v2.std.rust_leaf_model_claim.R
 data claim_rust_leaf_r1_i32_type: RustLeafModelClaim = v2.std.leaf_model_verification.LeafModelClaim {
   model: rust_fn_add_language_model(),
   fact_id: rust_leaf_model_fact_id_node_rust_facts_i32(),
-  subject: RustPrimitiveTypeSubject { primitive: rust_leaf_phase1_primitive_i32 },
+  subject: v2.std.rust_leaf_model_claim.RustPrimitiveTypeSubject { primitive: rust_leaf_phase1_primitive_i32 },
   expectation: rust_leaf_rustc_accepts(),
   falsification_case: v2.std.leaf_model_verification.FalsificationCase {
-    subject_variant: RustPrimitiveTypeSubject { primitive: rust_leaf_phase1_primitive_i32 },
+    subject_variant: v2.std.rust_leaf_model_claim.RustPrimitiveTypeSubject { primitive: rust_leaf_phase1_primitive_i32 },
     expected_failure_mode: rust_leaf_rustc_rejects(code: rust_leaf_phase1_err_e0308)
   }
 }
@@ -64,16 +64,16 @@ data claim_rust_leaf_r2b_debug_default_overflow: RustLeafModelClaim = v2.std.lea
   model: rust_fn_add_language_model(),
   fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
   subject: rust_leaf_algebra_inhabitance_i32_subject(),
-  expectation: RustRuntimeBehaviorExpectation {
+  expectation: v2.std.rust_leaf_model_claim.RustRuntimeBehaviorExpectation {
     invocation_form: rust_leaf_r2b_invocation(
       build_profile: ^rust_leaf_rustc_build_debug,
       overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_debug_default
     ),
-    expected_outcome: Panic { panic_classification: ^rust_leaf_arithmetic_overflow_panic }
+    expected_outcome: v2.std.runtime.Panic { panic_classification: ^rust_leaf_arithmetic_overflow_panic }
   },
   falsification_case: v2.std.leaf_model_verification.FalsificationCase {
     subject_variant: rust_leaf_algebra_inhabitance_i32_subject(),
-    expected_failure_mode: RustRuntimeBehaviorExpectation {
+    expected_failure_mode: v2.std.rust_leaf_model_claim.RustRuntimeBehaviorExpectation {
       invocation_form: rust_leaf_r2b_invocation(
       build_profile: ^rust_leaf_rustc_build_debug,
       overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_debug_default
@@ -87,7 +87,7 @@ data claim_rust_leaf_r2b_release_default_overflow: RustLeafModelClaim = v2.std.l
   model: rust_fn_add_language_model(),
   fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
   subject: rust_leaf_algebra_inhabitance_i32_subject(),
-  expectation: RustRuntimeBehaviorExpectation {
+  expectation: v2.std.rust_leaf_model_claim.RustRuntimeBehaviorExpectation {
     invocation_form: rust_leaf_r2b_invocation(
       build_profile: ^rust_leaf_rustc_build_release,
       overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_release_default
@@ -96,12 +96,12 @@ data claim_rust_leaf_r2b_release_default_overflow: RustLeafModelClaim = v2.std.l
   },
   falsification_case: v2.std.leaf_model_verification.FalsificationCase {
     subject_variant: rust_leaf_algebra_inhabitance_i32_subject(),
-    expected_failure_mode: RustRuntimeBehaviorExpectation {
+    expected_failure_mode: v2.std.rust_leaf_model_claim.RustRuntimeBehaviorExpectation {
       invocation_form: rust_leaf_r2b_invocation(
       build_profile: ^rust_leaf_rustc_build_release,
       overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_release_default
     ),
-      expected_outcome: Panic { panic_classification: ^rust_leaf_arithmetic_overflow_panic }
+      expected_outcome: v2.std.runtime.Panic { panic_classification: ^rust_leaf_arithmetic_overflow_panic }
     }
   }
 }
@@ -110,16 +110,16 @@ data claim_rust_leaf_r2b_overflow_checks_enabled_overflow: RustLeafModelClaim = 
   model: rust_fn_add_language_model(),
   fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
   subject: rust_leaf_algebra_inhabitance_i32_subject(),
-  expectation: RustRuntimeBehaviorExpectation {
+  expectation: v2.std.rust_leaf_model_claim.RustRuntimeBehaviorExpectation {
     invocation_form: rust_leaf_r2b_invocation(
       build_profile: ^rust_leaf_rustc_build_debug,
       overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_checks_enabled
     ),
-    expected_outcome: Panic { panic_classification: ^rust_leaf_arithmetic_overflow_panic }
+    expected_outcome: v2.std.runtime.Panic { panic_classification: ^rust_leaf_arithmetic_overflow_panic }
   },
   falsification_case: v2.std.leaf_model_verification.FalsificationCase {
     subject_variant: rust_leaf_algebra_inhabitance_i32_subject(),
-    expected_failure_mode: RustRuntimeBehaviorExpectation {
+    expected_failure_mode: v2.std.rust_leaf_model_claim.RustRuntimeBehaviorExpectation {
       invocation_form: rust_leaf_r2b_invocation(
         build_profile: ^rust_leaf_rustc_build_debug,
         overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_checks_enabled
@@ -133,7 +133,7 @@ data claim_rust_leaf_r2b_overflow_checks_disabled_overflow: RustLeafModelClaim =
   model: rust_fn_add_language_model(),
   fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
   subject: rust_leaf_algebra_inhabitance_i32_subject(),
-  expectation: RustRuntimeBehaviorExpectation {
+  expectation: v2.std.rust_leaf_model_claim.RustRuntimeBehaviorExpectation {
     invocation_form: rust_leaf_r2b_invocation(
       build_profile: ^rust_leaf_rustc_build_release,
       overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_checks_disabled
@@ -142,12 +142,12 @@ data claim_rust_leaf_r2b_overflow_checks_disabled_overflow: RustLeafModelClaim =
   },
   falsification_case: v2.std.leaf_model_verification.FalsificationCase {
     subject_variant: rust_leaf_algebra_inhabitance_i32_subject(),
-    expected_failure_mode: RustRuntimeBehaviorExpectation {
+    expected_failure_mode: v2.std.rust_leaf_model_claim.RustRuntimeBehaviorExpectation {
       invocation_form: rust_leaf_r2b_invocation(
         build_profile: ^rust_leaf_rustc_build_release,
         overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_checks_disabled
       ),
-      expected_outcome: Panic { panic_classification: ^rust_leaf_arithmetic_overflow_panic }
+      expected_outcome: v2.std.runtime.Panic { panic_classification: ^rust_leaf_arithmetic_overflow_panic }
     }
   }
 }
@@ -155,10 +155,10 @@ data claim_rust_leaf_r2b_overflow_checks_disabled_overflow: RustLeafModelClaim =
 data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = v2.std.leaf_model_verification.LeafModelClaim {
   model: rust_fn_add_language_model(),
   fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
-  subject: RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
+  subject: v2.std.rust_leaf_model_claim.RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
   expectation: rust_leaf_rustc_accepts(),
   falsification_case: v2.std.leaf_model_verification.FalsificationCase {
-    subject_variant: RustAtomRealizationProjectionMismatchSubject {
+    subject_variant: v2.std.rust_leaf_model_claim.RustAtomRealizationProjectionMismatchSubject {
       atom: rust_atom_realization_symbol_node,
       declared_type_form: ^rust_leaf_falsify_atom_type_string_alias,
       exercised_value_form: ^rust_leaf_falsify_atom_value_constructor_on_atom
@@ -170,15 +170,15 @@ data claim_rust_leaf_r3_external_symbol_projection: RustLeafModelClaim = v2.std.
 data claim_rust_leaf_r3_internal_symbol_coupling: RustLeafModelClaim = v2.std.leaf_model_verification.LeafModelClaim {
   model: rust_fn_add_language_model(),
   fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
-  subject: RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
-  expectation: RustEmitProjectionEqualityExpectation {
+  subject: v2.std.rust_leaf_model_claim.RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
+  expectation: v2.std.rust_leaf_model_claim.RustEmitProjectionEqualityExpectation {
     atom_realization_row: rust_atom_realization_symbol_node,
     type_emit_must_change: true,
     value_emit_must_change: true
   },
   falsification_case: v2.std.leaf_model_verification.FalsificationCase {
-    subject_variant: RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
-    expected_failure_mode: RustEmitProjectionEqualityExpectation {
+    subject_variant: v2.std.rust_leaf_model_claim.RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
+    expected_failure_mode: v2.std.rust_leaf_model_claim.RustEmitProjectionEqualityExpectation {
       atom_realization_row: rust_atom_realization_symbol_node,
       type_emit_must_change: false,
       value_emit_must_change: false
@@ -189,15 +189,15 @@ data claim_rust_leaf_r3_internal_symbol_coupling: RustLeafModelClaim = v2.std.le
 data claim_rust_leaf_sg1b_signature_boundary_coupling: RustLeafModelClaim = v2.std.leaf_model_verification.LeafModelClaim {
   model: rust_fn_add_language_model(),
   fact_id: rust_leaf_model_fact_id_node_atom_realization_symbol(),
-  subject: RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
-  expectation: RustEmitProjectionEqualityExpectation {
+  subject: v2.std.rust_leaf_model_claim.RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
+  expectation: v2.std.rust_leaf_model_claim.RustEmitProjectionEqualityExpectation {
     atom_realization_row: rust_atom_realization_symbol_node,
     type_emit_must_change: true,
     value_emit_must_change: true
   },
   falsification_case: v2.std.leaf_model_verification.FalsificationCase {
-    subject_variant: RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
-    expected_failure_mode: RustEmitProjectionEqualityExpectation {
+    subject_variant: v2.std.rust_leaf_model_claim.RustAtomRealizationSubject { atom: rust_atom_realization_symbol_node },
+    expected_failure_mode: v2.std.rust_leaf_model_claim.RustEmitProjectionEqualityExpectation {
       atom_realization_row: rust_atom_realization_symbol_node,
       type_emit_must_change: false,
       value_emit_must_change: false

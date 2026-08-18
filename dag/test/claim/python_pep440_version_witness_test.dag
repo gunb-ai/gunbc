@@ -95,8 +95,8 @@ fn v_local_1_0_abc_5() -> extdeps.version.pep440.Pep440Version {
       dev_release: none
     },
     local: [
-      Pep440LocalLexicographic { label: "abc" },
-      Pep440LocalNumeric { value: 5 }
+      extdeps.version.pep440.Pep440LocalLexicographic { label: "abc" },
+      extdeps.version.pep440.Pep440LocalNumeric { value: 5 }
     ]
   }
 }

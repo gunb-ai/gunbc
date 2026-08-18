@@ -22,8 +22,8 @@ fn approach_triggers() -> List<gunbc.design.material.MotionTrigger> {
 
 fn star_brighten_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(approach_triggers(), t =>
-    ResponseRule {
-      subject: ClassSelector { name: "star" },
+    gunbc.design.material.ResponseRule {
+      subject: extdeps.languages.css.selectors.ClassSelector { name: "star" },
       shape: SelfResponse,
       trigger: t,
       transition_props: "fill",
@@ -36,9 +36,9 @@ fn star_brighten_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.
 fn star_legend_reveal_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   fold(layer_stars, init: [], f: (acc, s) =>
     concat(acc, map(approach_triggers(), t =>
-      ResponseRule {
-        subject: RawSelector { text: concat(".star-", s.key) },
-        shape: ContainerHas { container: ".hero", target: concat(".legend-", s.key) },
+      gunbc.design.material.ResponseRule {
+        subject: extdeps.languages.css.selectors.RawSelector { text: concat(".star-", s.key) },
+        shape: gunbc.design.material.ContainerHas { container: ".hero", target: concat(".legend-", s.key) },
         trigger: t,
         transition_props: "opacity",
         timing: timing,
@@ -49,9 +49,9 @@ fn star_legend_reveal_rules(timing: gunbc.design.material.TimingToken) -> List<g
 
 fn hash_reveal_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(approach_triggers(), t =>
-    ResponseRule {
-      subject: ClassSelector { name: "hash" },
-      shape: WithinSubject { target: ".hash-full" },
+    gunbc.design.material.ResponseRule {
+      subject: extdeps.languages.css.selectors.ClassSelector { name: "hash" },
+      shape: gunbc.design.material.WithinSubject { target: ".hash-full" },
       trigger: t,
       transition_props: "opacity",
       timing: timing,
@@ -62,8 +62,8 @@ fn hash_reveal_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.de
 
 fn swatch_brighten_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(approach_triggers(), t =>
-    ResponseRule {
-      subject: ClassSelector { name: "swatch" },
+    gunbc.design.material.ResponseRule {
+      subject: extdeps.languages.css.selectors.ClassSelector { name: "swatch" },
       shape: SelfResponse,
       trigger: t,
       transition_props: "border-color",
@@ -110,87 +110,87 @@ fn behavior_rules(rows: List<gunbc.design.interaction.BehaviorRow>) -> List<gunb
 
 fn figure_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    StaticRule { selector: ClassSelector { name: "mark-point" }, decls: [ role_decl(prop: Fill, r: FigureRole) ] },
-    StaticRule { selector: ClassSelector { name: "mark-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
-    StaticRule { selector: ClassSelector { name: "mark-halo" }, decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Opacity, value: "0.16") ] },
-    StaticRule { selector: ClassSelector { name: "mark-halo-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
-    StaticRule { selector: ClassSelector { name: "mark-edge" }, decls: [ role_decl(prop: Stroke, r: FigureEdgeRole) ] },
-    StaticRule { selector: ClassSelector { name: "sky-edge" }, decls: [ role_decl(prop: Stroke, r: FigureEdgeRole) ] },
-    StaticRule { selector: ClassSelector { name: "star-halo" }, decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Opacity, value: "0.1") ] },
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mark-point" }, decls: [ role_decl(prop: Fill, r: FigureRole) ] },
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mark-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mark-halo" }, decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Opacity, value: "0.16") ] },
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mark-halo-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mark-edge" }, decls: [ role_decl(prop: Stroke, r: FigureEdgeRole) ] },
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "sky-edge" }, decls: [ role_decl(prop: Stroke, r: FigureEdgeRole) ] },
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "star-halo" }, decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Opacity, value: "0.1") ] },
   ]
 }
 
 fn static_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    StaticRule { selector: ElementSelector { tag: "body" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "body" }, decls: [
       role_decl(prop: Background, r: CanvasRole),
       role_decl(prop: Color, r: TextRole),
       decl(prop: FontFamily, value: "'Noto Sans', system-ui, sans-serif"),
       decl(prop: Margin, value: "0"),
       decl(prop: LineHeight, value: "1.55"),
     ] },
-    StaticRule { selector: ElementSelector { tag: "main" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "main" }, decls: [
       decl(prop: MaxWidth, value: "54rem"),
       decl(prop: Margin, value: "0 auto"),
       decl(prop: Padding, value: "3rem 1.5rem 4rem"),
     ] },
-    StaticRule { selector: ClassSelector { name: "wordmark" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "wordmark" }, decls: [
       decl(prop: FontSize, value: "1.4rem"),
       decl(prop: FontWeight, value: "500"),
       decl(prop: LetterSpacing, value: "0.01em"),
     ] },
-    StaticRule { selector: ClassSelector { name: "thesis" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "thesis" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: Margin, value: "0.25rem 0 0"),
     ] },
-    StaticRule { selector: ElementSelector { tag: "section" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "section" }, decls: [
       decl(prop: MarginTop, value: "3rem"),
     ] },
-    StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "h2" }, decls: [
       decl(prop: FontSize, value: "0.85rem"),
       decl(prop: FontWeight, value: "500"),
       decl(prop: LetterSpacing, value: "0.08em"),
       decl(prop: TextTransform, value: "lowercase"),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "panel" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "panel" }, decls: [
       role_decl(prop: Background, r: SurfaceRole),
       decl(prop: Border, value: "1px solid var(--border)"),
       decl(prop: BorderRadius, value: "3px"),
       decl(prop: Padding, value: "1.1rem 1.25rem"),
     ] },
-    StaticRule { selector: ClassSelector { name: "mono" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mono" }, decls: [
       decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
       decl(prop: FontSize, value: "0.82em"),
     ] },
-    StaticRule { selector: ClassSelector { name: "mark" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mark" }, decls: [
       decl(prop: Height, value: "3rem"),
       decl(prop: MarginRight, value: "1.5rem"),
     ] },
-    StaticRule { selector: ClassSelector { name: "constellation" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "constellation" }, decls: [
       decl(prop: Width, value: "100%"),
       decl(prop: Height, value: "auto"),
     ] },
-    StaticRule { selector: ClassSelector { name: "hero" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "hero" }, decls: [
       decl(prop: Margin, value: "0"),
     ] },
-    StaticRule { selector: ClassSelector { name: "legend" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "legend" }, decls: [
       decl(prop: ListStyle, value: "none"),
       decl(prop: Padding, value: "0"),
       decl(prop: FontSize, value: "0.85rem"),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "legend-key" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "legend-key" }, decls: [
       decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
       role_decl(prop: Color, r: TextRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "swatch" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "swatch" }, decls: [
       decl(prop: Display, value: "inline-block"),
       decl(prop: BorderRadius, value: "3px"),
       decl(prop: Padding, value: "0.3rem"),
       decl(prop: Margin, value: "0 0.5rem 0.25rem 0"),
     ] },
-    StaticRule { selector: ClassSelector { name: "chip-inline" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "chip-inline" }, decls: [
       decl(prop: Display, value: "inline-block"),
       decl(prop: Width, value: "2.4rem"),
       decl(prop: Height, value: "1.2rem"),
@@ -199,21 +199,21 @@ fn static_rules() -> List<gunbc.design.material.BuildRule> {
       decl(prop: VerticalAlign, value: "middle"),
       decl(prop: MarginRight, value: "0.5rem"),
     ] },
-    StaticRule { selector: ClassSelector { name: "ledger" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "ledger" }, decls: [
       decl(prop: Width, value: "100%"),
       decl(prop: BorderCollapse, value: "collapse"),
       decl(prop: FontSize, value: "0.85rem"),
     ] },
-    StaticRule { selector: RawSelector { text: ".ledger td" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".ledger td" }, decls: [
       decl(prop: Padding, value: "0.45rem 0.75rem 0.45rem 0"),
       decl(prop: BorderBottom, value: "1px solid var(--border)"),
       decl(prop: VerticalAlign, value: "top"),
     ] },
-    StaticRule { selector: ClassSelector { name: "boundary" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "boundary" }, decls: [
       decl(prop: BorderLeft, value: "2px solid var(--boundary)"),
       decl(prop: PaddingLeft, value: "1rem"),
     ] },
-    StaticRule { selector: ClassSelector { name: "foot" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "foot" }, decls: [
       decl(prop: MarginTop, value: "4rem"),
       decl(prop: FontSize, value: "0.78rem"),
       role_decl(prop: Color, r: TextDimRole),

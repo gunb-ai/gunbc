@@ -9,7 +9,7 @@ fn srv4_instance() -> gunbc.build_cache_instance.BuildCacheInstance {
 }
 
 fn current() -> gunbc.build_cache_endpoint_path.ObservationCurrency {
-  ObservationCurrent { observed_at_boot: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr }
+  gunbc.build_cache_endpoint_path.ObservationCurrent { observed_at_boot: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr }
 }
 
 fn live_owner() -> gunbc.build_cache_instance.ProcessIdentity {
@@ -31,7 +31,7 @@ fn unlinks(observed: gunbc.build_cache_endpoint_path.EndpointPathState, currency
 }
 
 fn srv4_stale() -> gunbc.build_cache_endpoint_path.EndpointPathState {
-  EndpointStaleSocket {
+  gunbc.build_cache_endpoint_path.EndpointStaleSocket {
     detail: "server.sock present, no listening entry in /proc/net/unix, no fd owner; sccache error log reads 'Address in use (os error 98)'" as std.types.NonEmptyStr,
   }
 }
@@ -41,13 +41,13 @@ test fn witness_the_srv4_stale_socket_is_the_one_state_that_unlinks() -> Bool {
 }
 
 test fn witness_a_live_listener_is_never_unlinked() -> Bool {
-  let refused = unlinks(observed: EndpointListening { owner: live_owner() }, currency: current())
-  let naive = unconditional_unlink_sketch(observed: EndpointListening { owner: live_owner() })
+  let refused = unlinks(observed: gunbc.build_cache_endpoint_path.EndpointListening { owner: live_owner() }, currency: current())
+  let naive = unconditional_unlink_sketch(observed: gunbc.build_cache_endpoint_path.EndpointListening { owner: live_owner() })
   (refused == false) && naive
 }
 
 test fn witness_a_non_socket_path_is_never_unlinked() -> Bool {
-  let conflict = EndpointPathConflict {
+  let conflict = gunbc.build_cache_endpoint_path.EndpointPathConflict {
     detail: "path exists and stat reports a regular file, not a socket" as std.types.NonEmptyStr,
   }
   let refused = unlinks(observed: conflict, currency: current())
@@ -61,8 +61,8 @@ test fn witness_an_absent_path_refuses_rather_than_no_ops() -> Bool {
 
 test fn witness_an_unreadable_path_does_not_default_to_stale() -> Bool {
   unlinks(
-    observed: EndpointPathObservationUnavailable {
-      reason: EndpointPathUnreadable { detail: "permission denied reading /proc/net/unix" as std.types.NonEmptyStr },
+    observed: gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable {
+      reason: gunbc.build_cache_instance.EndpointPathUnreadable { detail: "permission denied reading /proc/net/unix" as std.types.NonEmptyStr },
     },
     currency: current(),
   ) == false
@@ -75,7 +75,7 @@ test fn witness_a_stale_read_cannot_license_an_unlink() -> Bool {
   )
   let unknown_currency = unlinks(
     observed: srv4_stale(),
-    currency: ObservationCurrencyUnknown { detail: "boot id could not be read" as std.types.NonEmptyStr },
+    currency: gunbc.build_cache_endpoint_path.ObservationCurrencyUnknown { detail: "boot id could not be read" as std.types.NonEmptyStr },
   )
   (stale_read == false) && (unknown_currency == false)
 }
@@ -86,7 +86,7 @@ test fn witness_a_tcp_endpoint_has_no_stale_socket_state() -> Bool {
   let tcp = gunbc.build_cache_instance.BuildCacheInstance {
     identity: srv4_instance().identity,
     implementation: srv4_instance().implementation,
-    endpoint: SccacheServerTcpPort { port: 4226 },
+    endpoint: extdeps.cache.sccache.SccacheServerTcpPort { port: 4226 },
     intended_unit: srv4_instance().intended_unit,
     intended_principal: srv4_instance().intended_principal,
     intended_storage: srv4_instance().intended_storage,
@@ -106,8 +106,8 @@ data red_control_doc: String = "The RED control asserted as a whole rather than 
 
 test fn witness_the_unconditional_sketch_differs_where_it_is_destructive() -> Bool {
   let states = [
-    EndpointListening { owner: live_owner() },
-    EndpointPathConflict { detail: "regular file" as std.types.NonEmptyStr },
+    gunbc.build_cache_endpoint_path.EndpointListening { owner: live_owner() },
+    gunbc.build_cache_endpoint_path.EndpointPathConflict { detail: "regular file" as std.types.NonEmptyStr },
   ]
   states |> all(s => unconditional_unlink_sketch(observed: s) && (unlinks(observed: s, currency: current()) == false))
 }

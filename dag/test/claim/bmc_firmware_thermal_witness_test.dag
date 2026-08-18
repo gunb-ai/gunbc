@@ -15,7 +15,7 @@ data fixture_approved_openbmc_3_22_artifact: gunbc.bmc_converge.ApprovedBmcFirmw
   ),
 }
 
-data fixture_pinned_track3_intent: extdeps.bmc.capability.BmcFirmwareIntent = BmcFirmwareTrackRequired {
+data fixture_pinned_track3_intent: extdeps.bmc.capability.BmcFirmwareIntent = extdeps.bmc.capability.BmcFirmwareTrackRequired {
   track: extdeps.bmc.capability.BmcFirmwareTrack {
     family: OpenBmc,
     major_version: 3,
@@ -395,7 +395,7 @@ fn srv4_fan_policy_with_curve(curve: extdeps.bmc.types.BmcFanCurve) -> extdeps.b
     board_config_path: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.board_config_path,
     controller_service: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_service,
     controller_binary: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_binary,
-    controller_shape: FanPidAggregatedEntry {
+    controller_shape: extdeps.bmc.types.FanPidAggregatedEntry {
       entry_name: srv4_bmc_fan_projection_capability.aggregate_fan_pid_entry,
       tach_inputs: srv4_bmc_fan_projection_capability.required_tach_inputs,
     },
@@ -511,8 +511,8 @@ test fn srv4_converged_observation_matches_projection_derived_digest() -> Bool {
 
 test fn bmc_fan_durability_refusal_reason_surfaces_generation_mismatch() -> Bool {
   let reason = bmc_fan_durability_refusal_reason(
-    verdict: StateDurabilityRefused {
-      cause: DurabilityPerturbationGenerationMismatch {
+    verdict: std.state_durability.StateDurabilityRefused {
+      cause: std.state_durability.DurabilityPerturbationGenerationMismatch {
         expected: 1,
         observed: 2,
       },
@@ -900,7 +900,7 @@ test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_dig
       realization: srv4_bmc_fan_projection_capability.realization,
       durability_capability_version: std.state_durability.StateDurabilityCapabilityVersion {
         version: "relabelled-capability",
-        definition_linkage: CallerAssertedDefinitionLinkage {
+        definition_linkage: std.state_durability.CallerAssertedDefinitionLinkage {
           reason: "relabelled-capability-linkage" as std.types.NonEmptyStr,
     dissolution: symbol_index_subtree_digest_dissolution,
         },
@@ -1125,7 +1125,7 @@ test fn linux_synchronized_publication_admits_commit_barrier() -> Bool {
 }
 
 test fn linux_unsynchronized_publication_refuses_commit_barrier() -> Bool {
-  let protocol = LinuxFilePublicationProtocolUnsynchronized {
+  let protocol = extdeps.filesystem.linux.LinuxFilePublicationProtocolUnsynchronized {
     stage_in_target_directory: true,
     staged_content_validated: true,
     replacement: ReplacementAtomicityUnspecified,

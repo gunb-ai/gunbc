@@ -154,7 +154,7 @@ fn acceptance_history_integrity_verdict_from_prior_observation(
 ) -> gunbc.roadmap_model.AcceptanceHistoryIntegrityVerdict {
   match observation {
     PriorHistoryGitObservationRefused { detail: detail } =>
-      AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: detail }
+      gunbc.roadmap_model.AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: detail }
     PriorHistoryObserved { prior: prior } =>
       acceptance_history_integrity_verdict(
         history: history,

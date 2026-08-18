@@ -17,7 +17,7 @@ fn floor_executor_process_frame() -> std.materialization_ladder.Frame {
 data floor_index_build_share_provider: std.materialization_ladder.CacheProvider = provider_row(
   id: floor_index_build_share_provider_id,
   scope: [floor_executor_process_frame()],
-  coverage: CoversIdentities { identities: [floor_index_build_identity] },
+  coverage: std.materialization_ladder.CoversIdentities { identities: [floor_index_build_identity] },
   tier: ReferenceTier,
   retention: scope_released_retention(capacity: CapacityUnbounded)
 )
@@ -99,7 +99,7 @@ data floor_typecheck_store_identity: String = "union-typecheck-store(dag,src/v2)
 data floor_typecheck_store_share_provider: std.materialization_ladder.CacheProvider = provider_row(
   id: floor_typecheck_store_share_provider_id,
   scope: [floor_executor_process_frame()],
-  coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
+  coverage: std.materialization_ladder.CoversIdentities { identities: [floor_typecheck_store_identity] },
   tier: ReferenceTier,
   retention: scope_released_retention(capacity: CapacityUnbounded)
 )

@@ -133,13 +133,13 @@ test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Boo
     obligations: [
       gunbc.host_standup.AssimilationObligation {
         input: NodeRegistered,
-        witness: InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" },
+        witness: gunbc.host_standup.InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" },
       },
       gunbc.host_standup.AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
       gunbc.host_standup.AssimilationObligation {
         input: GreenPlacePinCoherent,
         witness: assimilation_input_witness_from_green_place(
-          w: GreenPlacePinGap { interim_realization: "ctrl:pending" }
+          w: gunbc.host_standup.GreenPlacePinGap { interim_realization: "ctrl:pending" }
         ),
       },
       gunbc.host_standup.AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
@@ -155,7 +155,7 @@ test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Boo
         gunbc.host_standup.AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
         gunbc.host_standup.AssimilationObligation {
           input: ResourcesPresent,
-          witness: InputRefused { input: ResourcesPresent, reason: "missing cgroup slice" },
+          witness: gunbc.host_standup.InputRefused { input: ResourcesPresent, reason: "missing cgroup slice" },
         },
         gunbc.host_standup.AssimilationObligation {
           input: GreenPlacePinCoherent,
@@ -180,7 +180,7 @@ test fn assimilation_complete_passes_only_when_all_four_inputs_satisfied() -> Bo
       gunbc.host_standup.AssimilationObligation {
         input: GreenPlacePinCoherent,
         witness: assimilation_input_witness_from_green_place(
-          w: GreenPlaceFromGunbcGate {
+          w: gunbc.host_standup.GreenPlaceFromGunbcGate {
             noop_satisfied_authority: host_standup_p5_green_place_noop_gate_authority,
             marker_satisfied_authority: host_standup_p5_green_place_marker_gate_authority,
             desired_pin_authority: host_standup_p5_desired_pin_authority,

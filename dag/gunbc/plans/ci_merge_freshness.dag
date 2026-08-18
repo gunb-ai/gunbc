@@ -15,7 +15,7 @@ fn ci_merge_freshness_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "2. Why the forward gate doesn't catch this"),
     p(text: "The forward completeness checks already exist, are non-vacuous, and are floor-enrolled (`realization_vocab` `clean_tree_test.dag`; `external_authority` `live_anchored_modules_clean_test.dag`). They validate a PR's tree against an independent live scan — **but only at the PR's base**. A gate that lands *after* a PR's last CI run is invisible to that PR's green. The hole is **freshness**, not coverage: nothing requires the green to be against *current* `main` at merge time. This is the same shape for all 3× reds (#5445/#5453, #5429/#5465) — the one-time cost of a gate and a module crossing `main` in overlapping, never-jointly-validated PRs."),
     h2(text: "3. Options (operator decision)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [
         cell(text: ""),
         cell(text: "Option 1 — **merge-queue** (preferred)"),
@@ -66,6 +66,6 @@ data ci_merge_freshness_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "ci-merge-freshness",
   title: "CI merge-freshness — decision record (the stale-green root of the 3× fleet-red)",
   body: ci_merge_freshness_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the merge-time freshness requirement of §3 is in force as a witnessed property — a merge-queue (Option 1) or require-up-to-date required-check (Option 2) is wired so that no PR can merge while last-validated against a base that pre-dates current `main` — at which point stale-green is unwritable by construction and this decision record is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the merge-time freshness requirement of §3 is in force as a witnessed property — a merge-queue (Option 1) or require-up-to-date required-check (Option 2) is wired so that no PR can merge while last-validated against a base that pre-dates current `main` — at which point stale-green is unwritable by construction and this decision record is redundant.")
   }
 }

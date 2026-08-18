@@ -12,19 +12,19 @@ fn build_cache_ci_endpoint_observed_producer(host: product.placement_supply.Host
   let instance = ci_cache_instance(host: host)
   match fleet_shell_transport_observation(host: host) {
     ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
-      EndpointObservationUnavailable {
+      gunbc.build_cache_instance.EndpointObservationUnavailable {
         instance: instance,
-        reason: ProcTableUnreadable {
+        reason: gunbc.build_cache_instance.ProcTableUnreadable {
           detail: "shell transport available but /proc endpoint-owner walk has no host_effect producer yet" as std.types.NonEmptyStr,
         },
       }
     ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
-      EndpointObservationUnavailable {
+      gunbc.build_cache_instance.EndpointObservationUnavailable {
         instance: instance,
         reason: ReachRefused { detail: d },
       }
     ShellTransportUnobserved { reason: r } =>
-      EndpointObservationUnavailable {
+      gunbc.build_cache_instance.EndpointObservationUnavailable {
         instance: instance,
         reason: ReachRefused {
           detail: concat("shell transport unobserved: ", r) as std.types.NonEmptyStr,

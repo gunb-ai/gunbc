@@ -4,13 +4,13 @@ module v2.test.lens_unit_modeling.flat_scalar_unit_leaf_flagged
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data int_leaf_target: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data flat_scalar_unit_leaf_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^ram_bytes },

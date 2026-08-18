@@ -58,8 +58,8 @@ fn wishlist_type_construction_generator() -> Generator<v2.lens.testgen.TestgenCo
     kind: TestClaimCompilesClaimVariant,
     classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    slot: TypeConstruction {
-      subject: ConnectiveKernel { connective: Conj },
+    slot: v2.lens.testgen.TypeConstruction {
+      subject: v2.lens.testgen.ConnectiveKernel { connective: Conj },
     },
     provenance: generator_provenance(id: ^wishlist_gen_id_type_construction),
     profile_metadata: default_generator_profile(),
@@ -71,7 +71,7 @@ fn dispatched_algebra_law_generator() -> Generator<v2.lens.testgen.TestgenConcep
     kind: TestClaimEqualsClaimVariant,
     classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     anchor: manual_claim_anchor(anchor: ManualNatAddAssociativity),
-    slot: AlgebraLaw {
+    slot: v2.lens.testgen.AlgebraLaw {
       subject: v2.lens.testgen.AlgebraLawSubject {
         algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
         inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
@@ -88,12 +88,12 @@ fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<v2.lens.testgen
     kind: TestClaimDiagnosticClaimVariant,
     classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     anchor: generated_claim_anchor(
-      anchor: GeneratedCoproductExhaustiveness {
+      anchor: v2.std.verification.GeneratedCoproductExhaustiveness {
         coproduct_type: ^TestClaim,
         omitted_variant: ^DiagnosticClaim,
       }
     ),
-    slot: DiagnosticExhaustiveness {
+    slot: v2.lens.testgen.DiagnosticExhaustiveness {
       coproduct_type: ^TestClaim,
       omitted_variant: ^DiagnosticClaim,
     },
@@ -107,7 +107,7 @@ fn wishlist_lens_applicability_generator() -> Generator<v2.lens.testgen.TestgenC
     kind: TestClaimCompilesClaimVariant,
     classification: v2.std.verification.TestClassification { tier: Tier2, layer: Integration },
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    slot: LensApplicability {
+    slot: v2.lens.testgen.LensApplicability {
       subject: v2.lens.testgen.LensApplicabilitySubject {
         lens: ^t19_generator_wishlist_lens_structural_resolution,
         program: stub_empty_conj,
@@ -123,7 +123,7 @@ fn wishlist_bidirectional_roundtrip_generator() -> Generator<v2.lens.testgen.Tes
     kind: TestClaimRoundTripClaimVariant,
     classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration },
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    slot: BidirectionalRoundtrip {
+    slot: v2.lens.testgen.BidirectionalRoundtrip {
       subject: v2.lens.testgen.BidirectionalRoundtripSubject {
         language: ^dag_language_model_surface_id,
         production: ^t19_generator_wishlist_dag_surface_production,
@@ -139,7 +139,7 @@ fn dispatched_language_behavior_equivalence_generator() -> Generator<v2.lens.tes
     kind: TestClaimCompilesClaimVariant,
     classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     anchor: manual_claim_anchor(anchor: ManualLbeConjDagSurface),
-    slot: LanguageBehaviorEquivalence {
+    slot: v2.lens.testgen.LanguageBehaviorEquivalence {
       subject: lbe_subject_conj_dag_surface(),
       mock: lbe_io_mock_conj_dag_surface(),
     },
@@ -153,7 +153,7 @@ fn dispatched_refinement_preservation_generator() -> Generator<v2.lens.testgen.T
     kind: TestClaimEqualsClaimVariant,
     classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase),
-    slot: RefinementPreservation {
+    slot: v2.lens.testgen.RefinementPreservation {
       subject: v2.lens.testgen.RefinementPreservationSubject {
         refined: refinement_preservation_stub_generator_refined(),
         original: [stub_empty_conj],
@@ -219,7 +219,7 @@ fn dispatched_non_tautological_generator_count_is_four() -> Bool {
 
 fn testgen_wishlist_count_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^t19_generator_wishlist_count_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^t19_generator_wishlist_count_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -230,14 +230,14 @@ fn testgen_wishlist_count_claim_rhs() -> Node {
     testgen_wishlist_count_node()
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_testgen_wishlist_formalized: v2.std.verification.TestClaim = EqualsClaim {
+data claim_testgen_wishlist_formalized: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "generated/testgen_category_wishlist: three pending non-tautological generator categories and four dispatched categories",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: testgen_wishlist_count_node(),

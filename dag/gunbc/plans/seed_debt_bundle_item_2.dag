@@ -6,7 +6,7 @@ fn seed_debt_bundle_item_2_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "**Status:** design-first (2026-06-28). Parent `stern-moth-225` phase-0 metrics bundle, **item 2**. **#5894 scope:** lands `gunbc.compile_source_model` + pure `.dag` floor witness only — no emitter flip, no exemption retirement, no `regen --verify` flip. Parse-cursor grounding deferred to emit-migration (jolly-cat / #5873 sequencing). Work-item `adhoc-8521769b-288`."),
     h2(text: "0. Verdict — HAND_MAINTAINED exemptions vs authority models"),
     p(text: "Both `main.rs` and `v1_compiler_parse.rs` are **`HAND_MAINTAINED_STAGE0_FILES`** on `origin/main` (`regen_stage0.rs:141`, `:148`) with explicit dissolution comments. Full dissolution = model + emit-wiring + move-to-`GENERATED` + `regen --verify` byte-identical (operator superset-diff playbook). **#5894 grounds fork B only; it does not retire either exemption.**"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "seed file"), cell(text: "committed behavior"), cell(text: "#5894"), cell(text: "exemption retirement (follow-up)")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -47,6 +47,6 @@ data seed_debt_bundle_item_2_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "seed-debt-bundle-item-2",
   title: "Seed-only debt bundle item 2 — CLI dep-pool authority model (#5894)",
   body: seed_debt_bundle_item_2_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "`main.rs` exemption retired by construction: `05_emit_rust` emits from `gunbc.compile_source_model`, file moves to `GENERATED_STAGE0_FILES`, and `regen --verify` is byte-identical. Parse cursor / drift 4 is a separate emit-migration track.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "`main.rs` exemption retired by construction: `05_emit_rust` emits from `gunbc.compile_source_model`, file moves to `GENERATED_STAGE0_FILES`, and `regen --verify` is byte-identical. Parse cursor / drift 4 is a separate emit-migration track.")
   }
 }

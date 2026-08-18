@@ -15,7 +15,7 @@ fn all_absent_gate() -> v2.std.execution_surface.RuntimeAvailabilityGate {
 
 test fn foreign_executor_authorizes_regardless_of_window() -> Bool {
   let auth = authorize_shell_emission(
-    capability: ShellPayloadRequired { foreign: GitHubActionsRunStep },
+    capability: v2.std.execution_surface.ShellPayloadRequired { foreign: GitHubActionsRunStep },
     window: SteadyState,
     site: ^ci_bootstrap_shim,
     roster: empty_roster()
@@ -30,7 +30,7 @@ test fn foreign_executor_authorizes_regardless_of_window() -> Bool {
 test fn bootstrap_window_with_absent_gate_authorizes() -> Bool {
   let auth = authorize_shell_emission(
     capability: TypedArgv,
-    window: BootstrapBeforeRuntime { until: all_absent_gate() },
+    window: v2.std.execution_surface.BootstrapBeforeRuntime { until: all_absent_gate() },
     site: ^fresh_standup_shim,
     roster: empty_roster()
   )
@@ -49,7 +49,7 @@ test fn bootstrap_window_with_unknown_availability_refuses() -> Bool {
   }
   let auth = authorize_shell_emission(
     capability: TypedArgv,
-    window: BootstrapBeforeRuntime { until: gate },
+    window: v2.std.execution_surface.BootstrapBeforeRuntime { until: gate },
     site: ^fresh_standup_shim,
     roster: empty_roster()
   )
@@ -129,8 +129,8 @@ test fn typed_plan_interpretation_at_steady_state_still_needs_roster() -> Bool {
 
 test fn authorization_predicate_is_bool_summarizable() -> Bool {
   let authorized = authorize_shell_emission(
-    capability: ShellPayloadRequired { foreign: AutoinstallLateCommand },
-    window: BootstrapBeforeRuntime { until: all_absent_gate() },
+    capability: v2.std.execution_surface.ShellPayloadRequired { foreign: AutoinstallLateCommand },
+    window: v2.std.execution_surface.BootstrapBeforeRuntime { until: all_absent_gate() },
     site: ^autoinstall_late_command,
     roster: empty_roster()
   )

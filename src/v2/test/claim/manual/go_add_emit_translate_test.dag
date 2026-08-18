@@ -31,7 +31,7 @@ data go_add_poisoned_authority_target_model: v2.std.compilers.target_model.Targe
 }
 
 data go_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -175,11 +175,11 @@ fn go_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Cano
       )
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^go_add_grounding_miss,
         at: node_locus(node: node),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
@@ -218,7 +218,7 @@ fn anchor_go_add_emit_accepts() -> Outcome<Medium<String>> {
 fn anchor_go_add_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
   compile_inferred(
     inferred: go_add_inferred_tree,
-    mode: TranslateTo { target: go_add_poisoned_authority_target_model }
+    mode: v2.compiler.compile.TranslateTo { target: go_add_poisoned_authority_target_model }
   )
 }
 

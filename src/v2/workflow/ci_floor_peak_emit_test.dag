@@ -33,7 +33,7 @@ fn ci_floor_peak_pre_perturbed_pipeline() -> v2.std.orchestration.Pipeline {
 
 fn ci_floor_peak_pre_reset_perturbed_if() -> v2.std.orchestration.PipelineStep {
   If {
-    cond: ExitZero {
+    cond: v2.std.orchestration.ExitZero {
       run: v2.std.orchestration.Run {
         command: concat(ci_floor_peak_echo_reset_redirect_command, " # perturbed"),
         env: [],

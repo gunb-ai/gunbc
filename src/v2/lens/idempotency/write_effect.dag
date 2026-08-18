@@ -4,7 +4,7 @@ module v2.test.lens_idempotency.write_effect
 data idempotency_child: Node = claim_atom_node(s: ^idempotency_child_symbol)
 
 data idempotency_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^idempotency_root_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^idempotency_root_symbol } },
   children: [
     v2.std.node.Edge { label: Named { name: ^idempotency_edge_symbol }, target: idempotency_child }
   ],
@@ -67,7 +67,7 @@ data idempotency_write_effect_claim_passes: Bool = idempotency_write_effect_clai
 
 fn idempotency_claim_pass_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^idempotency_claim_pass_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^idempotency_claim_pass_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -75,7 +75,7 @@ fn idempotency_claim_pass_node() -> Node {
 
 fn idempotency_claim_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^idempotency_claim_fail_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^idempotency_claim_fail_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -89,7 +89,7 @@ fn idempotency_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_idempotency_write_effect_receipt: v2.std.verification.TestClaim = EqualsClaim {
+data claim_idempotency_write_effect_receipt: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_idempotency write effect witness classifies EffectDependsOn as RequiresAlgebraWitness",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: idempotency_claim_input(ok: idempotency_write_effect_claim_passes),
@@ -114,7 +114,7 @@ fn idempotency_executable_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_idempotency_write_effect_run_test_claim_receipt: v2.std.verification.TestClaim = EqualsClaim {
+data claim_idempotency_write_effect_run_test_claim_receipt: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_idempotency write effect witness gates run_test_claim executable receipt",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: idempotency_executable_claim_input(ok: idempotency_write_effect_claim_passes),

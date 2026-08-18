@@ -7,7 +7,7 @@ data float_add_associativity_observation_note: String = "Observing-layer executi
 
 data float_add_operation_identity_grounding_gap_note: String = "GROUNDING GAP (honest prerequisite, not a string nickname): Float addition is not structurally referenceable as a DeclarationRef today. This slice binds associativity evidence to AssociativityOperationSubject.AssociativityFloatAdd — the closed coproduct variant naming kernel Float plus BinOp.Add — until primitive_identity supplies a joinable operation DeclarationRef."
 
-data float_add_associativity_subject: std.algebra_law.AssociativityOperationSubject = AssociativityFloatAdd {}
+data float_add_associativity_subject: std.algebra_law.AssociativityOperationSubject = std.algebra_law.AssociativityFloatAdd {}
 
 fn observe_float_add_associativity_triple(a: Float, b: Float, c: Float) -> AssociativityCounterexampleWitness<Float> {
   let left = (a + b) + c

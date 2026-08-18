@@ -56,12 +56,12 @@ test fn witness_parse_preserves_non_converged_verdicts() -> Bool {
 // widened into a fabricated receipt.
 test fn witness_only_collected_rows_enter_the_fold_registry() -> Bool {
   let collected = [
-    ReceiptCollected {
+    gunbc.fleet_receipt_collector.ReceiptCollected {
       host: "srv1",
       receipt: gunbc.fleet_converge_cli.ConvergeCliReceipt { host: "srv1", applied: 1, drifted: 0, verdict: VerdictConverged, reason: none },
     },
     gunbc.fleet_receipt_collector.ReceiptAbsent { host: "srv2", cause: "No such file or directory" },
-    ReceiptUnparseable { host: "srv3", line: "converge-receipt host=srv3 verdict=???" },
+    gunbc.fleet_receipt_collector.ReceiptUnparseable { host: "srv3", line: "converge-receipt host=srv3 verdict=???" },
   ]
   let rows = collected_receipts_only(collected: collected)
   length(rows) == 1
@@ -71,7 +71,7 @@ test fn witness_only_collected_rows_enter_the_fold_registry() -> Bool {
     }
     && string_contains(s: collected_line(c: gunbc.fleet_receipt_collector.ReceiptAbsent { host: "srv2", cause: "x" }), pattern: "outcome=absent")
     && string_contains(
-      s: collected_line(c: ReceiptUnparseable { host: "srv3", line: "y" }),
+      s: collected_line(c: gunbc.fleet_receipt_collector.ReceiptUnparseable { host: "srv3", line: "y" }),
       pattern: "outcome=unparseable"
     )
 }
@@ -118,7 +118,7 @@ test fn witness_converged_receipt_refused_unless_backed_by_observed_revision() -
 // collection — the leg-f hermetic RED at the collector seam.
 test fn witness_partial_collection_never_yields_fleet_converged() -> Bool {
   let rows = collected_receipts_only(collected: [
-    ReceiptCollected {
+    gunbc.fleet_receipt_collector.ReceiptCollected {
       host: "srv1",
       receipt: gunbc.fleet_converge_cli.ConvergeCliReceipt { host: "srv1", applied: 1, drifted: 0, verdict: VerdictConverged, reason: none },
     },

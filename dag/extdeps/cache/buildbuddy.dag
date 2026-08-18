@@ -41,21 +41,21 @@ data buildbuddy_cas_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   evidence: [
     {
       field: "lookup_semantics"
-      evidence: VendorCitation {
+      evidence: std.cache_interface.VendorCitation {
         source: "BuildBuddy remote cache content-addressed artifacts"
         url: "https://www.buildbuddy.io/docs/remote-cache"
       }
     },
     {
       field: "write_semantics"
-      evidence: VendorCitation {
+      evidence: std.cache_interface.VendorCitation {
         source: "BuildBuddy CAS blobs are content-addressed and not overwritten in place"
         url: "https://www.buildbuddy.io/docs/remote-cache"
       }
     },
     {
       field: "atomicity"
-      evidence: VendorCitation {
+      evidence: std.cache_interface.VendorCitation {
         source: "CAS upload commit visibility (orthogonal to write-once key semantics)"
         url: "https://www.buildbuddy.io/docs/remote-cache"
       }

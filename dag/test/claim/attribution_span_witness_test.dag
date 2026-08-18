@@ -3,7 +3,7 @@ module test.claim.attribution_span_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn worker_domain() -> std.measure.ClockDomain { ProcessMonotonic { process: "ordinary-worker" as std.types.NonEmptyStr } }
+fn worker_domain() -> std.measure.ClockDomain { std.measure.ProcessMonotonic { process: "ordinary-worker" as std.types.NonEmptyStr } }
 
 fn occ(id: std.types.NonEmptyStr) -> std.occurrence_identity.OccurrenceId {
   std.occurrence_identity.OccurrenceId { attempt: "attempt-1" as std.types.NonEmptyStr, id: id }

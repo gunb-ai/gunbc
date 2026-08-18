@@ -45,7 +45,7 @@ data observation_does_not_promote_note: String = "THE PROMOTION THIS CLAIM EXIST
 fn admission_for(count: Int) -> gunbc.provider_account.AccountBindingAdmission {
   match session_concurrency_of_count(raw: count) {
     ConcurrencyRefused { raw: _, reason: _ } =>
-      BindingRefusedUnknownDiscipline {
+      gunbc.provider_account.BindingRefusedUnknownDiscipline {
         selection: CodexDefaultAccount,
         concurrency: SingleSession,
       }
@@ -107,7 +107,7 @@ test fn exclusive_credential_admits_one_and_refuses_two() -> Bool {
   }
   let two = match admit_account_binding(
     selection: CodexDefaultAccount,
-    concurrency: ManySessions { total: 2 },
+    concurrency: gunbc.provider_account.ManySessions { total: 2 },
     discipline: exclusive,
   ) {
     BindingRefusedExclusiveOverbound { selection: _, concurrency: _ } => true
@@ -163,7 +163,7 @@ test fn single_session_path_is_total_over_evidenced_disciplines() -> Bool {
   )
   let observed = admitted_single_session_binding(
     selection: CodexDefaultAccount,
-    evidence: EvidencedObservedUpTo { ceiling: ManySessions { total: 17 } },
+    evidence: gunbc.provider_account.EvidencedObservedUpTo { ceiling: gunbc.provider_account.ManySessions { total: 17 } },
   )
   let safe = admitted_single_session_binding(
     selection: CodexDefaultAccount,

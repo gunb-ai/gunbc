@@ -21,7 +21,7 @@ test fn witness_live_resolved_graph_derives_toolchain() -> Bool {
 
 fn sound_cited_facts() -> extdeps.cache.types.CatalogKeyDerivationFacts {
   extdeps.cache.types.CatalogKeyDerivationFacts {
-    key_inputs: NativeInternal { cited_inputs: [RustcInvocation, ToolchainSpec] },
+    key_inputs: extdeps.cache.types.NativeInternal { cited_inputs: [RustcInvocation, ToolchainSpec] },
     overwritable: false,
     prefix_fallback_allowed: false,
     content_verified_on_read: true,
@@ -32,7 +32,7 @@ fn sound_cited_facts() -> extdeps.cache.types.CatalogKeyDerivationFacts {
 
 fn undercited_native_facts() -> extdeps.cache.types.CatalogKeyDerivationFacts {
   extdeps.cache.types.CatalogKeyDerivationFacts {
-    key_inputs: NativeInternal { cited_inputs: [UpsertSubject] },
+    key_inputs: extdeps.cache.types.NativeInternal { cited_inputs: [UpsertSubject] },
     overwritable: false,
     prefix_fallback_allowed: false,
     content_verified_on_read: true,
@@ -43,7 +43,7 @@ fn undercited_native_facts() -> extdeps.cache.types.CatalogKeyDerivationFacts {
 
 fn hand_authored_facts() -> extdeps.cache.types.CatalogKeyDerivationFacts {
   extdeps.cache.types.CatalogKeyDerivationFacts {
-    key_inputs: HandAuthored { cited_inputs: [UpsertSubject] },
+    key_inputs: extdeps.cache.types.HandAuthored { cited_inputs: [UpsertSubject] },
     overwritable: false,
     prefix_fallback_allowed: false,
     content_verified_on_read: true,
@@ -54,7 +54,7 @@ fn hand_authored_facts() -> extdeps.cache.types.CatalogKeyDerivationFacts {
 
 fn no_promise_native_facts() -> extdeps.cache.types.CatalogKeyDerivationFacts {
   extdeps.cache.types.CatalogKeyDerivationFacts {
-    key_inputs: NativeInternal { cited_inputs: [UpsertSubject] },
+    key_inputs: extdeps.cache.types.NativeInternal { cited_inputs: [UpsertSubject] },
     overwritable: false,
     prefix_fallback_allowed: false,
     content_verified_on_read: true,

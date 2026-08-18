@@ -22,7 +22,7 @@ test fn w_synthetic_equal_counts_do_not_resolve_refutation_receipt() -> Bool {
     right: 10,
     both: 20,
     band: FirstMinimumBand,
-    exposure: SyntheticMatchedExposureOne {},
+    exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   ) {
     RefutationReceiptResolved { receipt: fabricated_receipt } => false
     RefutationNotEstablished { reason: AdditivityHeld { band: held_band, exposure: held_exposure } } => true
@@ -32,9 +32,9 @@ test fn w_synthetic_equal_counts_do_not_resolve_refutation_receipt() -> Bool {
 
 test fn w_synthetic_held_verdict_does_not_resolve_refutation_receipt() -> Bool {
   match refutation_receipt_resolution_from_band_verdict(
-    verdict: PathAdditivityHeldAtBand {
+    verdict: gunbc.physics.bach_double_slit_path_additivity.PathAdditivityHeldAtBand {
       band: FirstMinimumBand,
-      exposure: SyntheticMatchedExposureOne {},
+      exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
     },
   ) {
     RefutationReceiptResolved { receipt: fabricated_receipt } => false
@@ -70,7 +70,7 @@ test fn w_synthetic_path_additivity_rejects_fabricated_both_open_count() -> Bool
       !synthetic_path_additivity_receipt_matches_fold_kernel(
         receipt: bad_receipt,
         band: FirstMinimumBand,
-        exposure: SyntheticMatchedExposureOne {},
+        exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
       )
     }
     PathAdditivityHeldAtBand { band: held_band, exposure: held_exposure } => false
@@ -95,7 +95,7 @@ test fn w_synthetic_path_additivity_rejects_corrupted_left_count() -> Bool {
       !synthetic_path_additivity_receipt_matches_fold_kernel(
         receipt: bad_receipt,
         band: FirstMinimumBand,
-        exposure: SyntheticMatchedExposureOne {},
+        exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
       )
     }
     PathAdditivityHeldAtBand { band: held_band, exposure: held_exposure } => false
@@ -119,7 +119,7 @@ test fn w_synthetic_path_additivity_rejects_additive_equal_observed() -> Bool {
       !synthetic_path_additivity_receipt_matches_fold_kernel(
         receipt: bad_receipt,
         band: FirstMinimumBand,
-        exposure: SyntheticMatchedExposureOne {},
+        exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
       )
     }
     PathAdditivityHeldAtBand { band: held_band, exposure: held_exposure } => false
@@ -162,7 +162,7 @@ test fn w_synthetic_missing_row_yields_incomplete_inputs() -> Bool {
 }
 
 test fn w_synthetic_path_additivity_subject_is_synthetic_fixture_coproduct() -> Bool {
-  path_additivity_subject == PathAdditivitySyntheticFixture {}
+  path_additivity_subject == gunbc.physics.bach_double_slit_path_additivity.PathAdditivitySyntheticFixture {}
 }
 
 test fn w_synthetic_compare_orientation_first_arg_is_observed() -> Bool {

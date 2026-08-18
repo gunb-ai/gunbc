@@ -30,7 +30,7 @@ data m2_ngff_minicard_67_position: M2ConnectorCatalogRow = M2ConnectorCatalogRow
   position_count: 67,
   contact_pitch: micrometer(count: 500),
   attachment: SurfaceMountTerminals,
-  board_pattern: SurfaceMountPatternNotEstablished {
+  board_pattern: extdeps.land_pattern.types.SurfaceMountPatternNotEstablished {
     what_is_missing: "the recommended PCB layout that application specification 114-115006 publishes as Figures 2 and 3, and which the per-part customer drawing governs where the two conflict. An orderable M-keyed part number is owed with it, since the key is a per-part fact this specification does not carry",
   },
 }

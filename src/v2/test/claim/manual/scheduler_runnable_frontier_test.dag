@@ -5,31 +5,31 @@ module v2.test.manual.scheduler_runnable_frontier
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data scheduler_build_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^scheduler_build_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^scheduler_build_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data scheduler_test_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^scheduler_test_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^scheduler_test_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data scheduler_emit_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^scheduler_emit_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^scheduler_emit_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data scheduler_missing_source_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^scheduler_missing_source_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^scheduler_missing_source_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data scheduler_fixture_graph: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge { label: Named { name: ^scheduler_build_symbol }, target: scheduler_build_node },
     v2.std.node.Edge { label: Named { name: ^scheduler_test_symbol }, target: scheduler_test_node },

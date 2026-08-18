@@ -14,7 +14,7 @@ fn add_body_ts_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node
 fn add_body_ts_add_operator_row_minus() -> Node {
   target_operator_realization_node(
     operation: canonical_operation_op_add(),
-    shape: InfixToken { token: ^ts_token_minus }
+    shape: v2.std.compilers.target_model.InfixToken { token: ^ts_token_minus }
   )
 }
 
@@ -28,7 +28,7 @@ fn add_body_ts_operator_catalog_empty() -> Node {
 
 fn add_body_ts_target_model_bundle(operator_catalog: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       add_body_ts_named_edge(
         name: ^target_model_edge_selection_policy,
@@ -62,11 +62,11 @@ fn add_body_ts_target_model_bundle(operator_catalog: Node) -> Node {
 
 fn add_body_ts_lex_with_minus() -> v2.std.compilers.lexing.LexRules {
   let base = ts_fn_add_lex_rules()
-  ModeledLexRules {
+  v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: list_append(
         left: base.rules,
-        right: Cons {
+        right: std.algebra.Cons {
           head: ts_lex_rule(token_class: ^ts_token_minus, text: " - "),
           tail: Empty
         }
@@ -257,20 +257,20 @@ fn add_body_ts_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints
             value: add_body_ts_canonical_grounding(node: node, algebra: node)
           }
         } else {
-          Violates {
+          v2.std.witness.Violates {
             diagnostic: v2.std.diagnostic.Diagnostic {
               reason: ^add_body_ts_body_grounding_miss,
               at: node_locus(node: node),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             }
           }
         }
       _ =>
-        Violates {
+        v2.std.witness.Violates {
           diagnostic: v2.std.diagnostic.Diagnostic {
             reason: ^add_body_ts_body_grounding_miss,
             at: node_locus(node: node),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           }
         }
     }

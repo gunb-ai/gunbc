@@ -302,7 +302,7 @@ fn spark_serving_converge_slice_wet_host_report(
 }
 
 func spark_serving_converge_slice_wet() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   match fleet_ssh_attempt_raw_from_env() {
     Absent =>

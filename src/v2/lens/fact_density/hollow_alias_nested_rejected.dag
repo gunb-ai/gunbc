@@ -3,13 +3,13 @@ module v2.test.lens_fact_density.hollow_alias_nested_rejected
 
 
 data hollow_alias_nested_child: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^hollow_alias_nested_el_subject } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^hollow_alias_nested_el_subject } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data hollow_alias_nested_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^hollow_alias_nested_child_edge },
@@ -25,7 +25,7 @@ fn hollow_alias_nested_rejected_holds() -> Bool {
   match validate_then_compile(
     source: hollow_alias_nested_root,
     lenses: [],
-    mode: Eval { runtime: hollow_alias_nested_root }
+    mode: v2.compiler.compile.Eval { runtime: hollow_alias_nested_root }
   ) {
     Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
     Accepted { value: _, diagnostics: _ } => false
@@ -37,14 +37,14 @@ fn hollow_alias_nested_rejected_rhs() -> Node {
     hollow_alias_nested_authority
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_hollow_alias_nested_rejected: v2.std.verification.TestClaim = EqualsClaim {
+data claim_hollow_alias_nested_rejected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_fact_density/hollow_alias_nested_rejected: hollow alias nested under child edge is rejected by validate_then_compile",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: hollow_alias_nested_authority,

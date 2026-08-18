@@ -29,7 +29,7 @@ fn admits(coverage: gunbc.merge_admission.CheckCoverage) -> Bool {
 }
 
 test fn complete_exact_head_roster_and_population_admits() -> Bool {
-  admits(coverage: CheckCoverageComplete {
+  admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
     head: required_head,
     roster: required_roster,
     conclusions: [passed(gate: gate_a), passed(gate: gate_b)]
@@ -37,14 +37,14 @@ test fn complete_exact_head_roster_and_population_admits() -> Bool {
 }
 
 test fn absent_coverage_refuses_instead_of_vacuously_passing() -> Bool {
-  !admits(coverage: CheckCoverageAbsent {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageAbsent {
     required_head: required_head,
     required_roster: required_roster
   })
 }
 
 test fn running_coverage_refuses() -> Bool {
-  !admits(coverage: CheckCoverageRunning {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageRunning {
     head: required_head,
     roster: required_roster,
     run: "run-123"
@@ -53,7 +53,7 @@ test fn running_coverage_refuses() -> Bool {
 
 test fn stopped_coverage_preserves_unexecuted_population_and_cause() -> Bool {
   match classify_check_coverage_admission(
-    coverage: CheckCoverageStopped {
+    coverage: gunbc.merge_admission.CheckCoverageStopped {
       head: required_head,
       roster: required_roster,
       completed: [failed(gate: gate_a)],
@@ -86,7 +86,7 @@ test fn stopped_coverage_preserves_unexecuted_population_and_cause() -> Bool {
 }
 
 test fn stale_coverage_refuses() -> Bool {
-  !admits(coverage: CheckCoverageStale {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageStale {
     observed_head: prior_head,
     required_head: required_head,
     observed_roster: prior_roster,
@@ -95,7 +95,7 @@ test fn stale_coverage_refuses() -> Bool {
 }
 
 test fn complete_old_head_refuses() -> Bool {
-  !admits(coverage: CheckCoverageComplete {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
     head: prior_head,
     roster: required_roster,
     conclusions: [passed(gate: gate_a), passed(gate: gate_b)]
@@ -103,7 +103,7 @@ test fn complete_old_head_refuses() -> Bool {
 }
 
 test fn complete_old_roster_refuses() -> Bool {
-  !admits(coverage: CheckCoverageComplete {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
     head: required_head,
     roster: prior_roster,
     conclusions: [passed(gate: gate_a), passed(gate: gate_b)]
@@ -112,7 +112,7 @@ test fn complete_old_roster_refuses() -> Bool {
 
 test fn empty_required_population_refuses() -> Bool {
   !check_coverage_admits(
-    coverage: CheckCoverageComplete {
+    coverage: gunbc.merge_admission.CheckCoverageComplete {
       head: required_head,
       roster: required_roster,
       conclusions: []
@@ -124,7 +124,7 @@ test fn empty_required_population_refuses() -> Bool {
 }
 
 test fn missing_required_gate_refuses() -> Bool {
-  !admits(coverage: CheckCoverageComplete {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
     head: required_head,
     roster: required_roster,
     conclusions: [passed(gate: gate_a)]
@@ -133,7 +133,7 @@ test fn missing_required_gate_refuses() -> Bool {
 
 test fn duplicate_required_population_refuses() -> Bool {
   !check_coverage_admits(
-    coverage: CheckCoverageComplete {
+    coverage: gunbc.merge_admission.CheckCoverageComplete {
       head: required_head,
       roster: required_roster,
       conclusions: [passed(gate: gate_a), passed(gate: gate_b)]
@@ -145,7 +145,7 @@ test fn duplicate_required_population_refuses() -> Bool {
 }
 
 test fn duplicate_required_gate_refuses() -> Bool {
-  !admits(coverage: CheckCoverageComplete {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
     head: required_head,
     roster: required_roster,
     conclusions: [passed(gate: gate_a), passed(gate: gate_a), passed(gate: gate_b)]
@@ -153,7 +153,7 @@ test fn duplicate_required_gate_refuses() -> Bool {
 }
 
 test fn required_gate_failure_refuses() -> Bool {
-  !admits(coverage: CheckCoverageComplete {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
     head: required_head,
     roster: required_roster,
     conclusions: [passed(gate: gate_a), failed(gate: gate_b)]

@@ -72,11 +72,11 @@ fn match_bool_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.
       value: match_bool_canonical_grounding(node: node, algebra: node)
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^match_bool_grounding_miss,
         at: node_locus(node: node),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }

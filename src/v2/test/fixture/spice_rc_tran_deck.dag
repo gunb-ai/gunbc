@@ -3,36 +3,36 @@ module v2.test.fixture.spice_rc_tran_deck
 
 data spice_rc_tran_deck: v2.extdeps.formats.spice.SpiceNetlist = v2.extdeps.formats.spice.SpiceNetlist {
   title: "* rc tran witness",
-  body: Cons {
-    head: DeckComponent {
-      component: VoltageSource {
+  body: std.algebra.Cons {
+    head: v2.extdeps.formats.spice.DeckComponent {
+      component: v2.extdeps.formats.spice.VoltageSource {
         name: "1",
         n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n1" } },
         n_minus: Ground,
         value: v2.extdeps.formats.spice.SpiceValue { lexeme: "DC 5" }
       }
     },
-    tail: Cons {
-      head: DeckComponent {
-        component: Resistor {
+    tail: std.algebra.Cons {
+      head: v2.extdeps.formats.spice.DeckComponent {
+        component: v2.extdeps.formats.spice.Resistor {
           name: "1",
           n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n1" } },
           n_minus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n2" } },
           value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1000" }
         }
       },
-      tail: Cons {
-        head: DeckComponent {
-          component: Capacitor {
+      tail: std.algebra.Cons {
+        head: v2.extdeps.formats.spice.DeckComponent {
+          component: v2.extdeps.formats.spice.Capacitor {
             name: "1",
             n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n2" } },
             n_minus: Ground,
             value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1e-6" }
           }
         },
-        tail: Cons {
-          head: DeckDirective {
-            directive: InitialCondition {
+        tail: std.algebra.Cons {
+          head: v2.extdeps.formats.spice.DeckDirective {
+            directive: v2.extdeps.formats.spice.InitialCondition {
               assignments: v2.extdeps.formats.spice.NodeVoltageBindings {
                 first: v2.extdeps.formats.spice.NodeVoltageBinding {
                   node: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n2" } },
@@ -42,9 +42,9 @@ data spice_rc_tran_deck: v2.extdeps.formats.spice.SpiceNetlist = v2.extdeps.form
               }
             }
           },
-          tail: Cons {
-            head: DeckDirective {
-              directive: Tran {
+          tail: std.algebra.Cons {
+            head: v2.extdeps.formats.spice.DeckDirective {
+              directive: v2.extdeps.formats.spice.Tran {
                 tstep: v2.extdeps.formats.spice.SpiceValue { lexeme: "1us" },
                 tstop: v2.extdeps.formats.spice.SpiceValue { lexeme: "10ms" }
               }

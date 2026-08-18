@@ -221,20 +221,20 @@ fn dispatch_provider_instance_for(
 ) -> extdeps.llm.cli_lifecycle.ProviderInstance {
   extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: dispatch_cli_to_provider_kind(provider: provider),
-    host: ProviderInstanceFieldUnobserved {
+    host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "session observation does not read host identity" as std.types.NonEmptyStr,
     },
     executable: dispatch_provider_executable(provider: provider),
-    observed_version: ProviderInstanceFieldUnobserved {
+    observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "session observation does not execute the provider version probe" as std.types.NonEmptyStr,
     },
-    state_directory: ProviderInstanceFieldUnobserved {
+    state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "session observation does not inspect provider state" as std.types.NonEmptyStr,
     },
-    credential_storage_method: ProviderInstanceFieldUnobserved {
+    credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "session observation does not inspect credential storage" as std.types.NonEmptyStr,
     },
-    service_identity: ProviderInstanceFieldUnobserved {
+    service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "session observation does not read process ownership" as std.types.NonEmptyStr,
     },
   }
@@ -1859,19 +1859,19 @@ fn dispatch_attempt_evidence(attempt: DispatchAttemptRef) -> gunbc.worker_lifecy
     node_id: attempt.node_id,
     attempt_key: attempt.attempt_key,
     branch: attempt.branch,
-    worktree: WorktreeUnobserved {
+    worktree: gunbc.worker_lifecycle.WorktreeUnobserved {
       reason: "branch observation does not inspect the attempt worktree" as std.types.NonEmptyStr,
     },
-    provider_instance: ProviderEvidenceUnobserved {
+    provider_instance: gunbc.worker_lifecycle.ProviderEvidenceUnobserved {
       reason: "branch observation does not identify the provider instance" as std.types.NonEmptyStr,
     },
-    process_identity: ProcessIdentityUnobserved {
+    process_identity: gunbc.worker_lifecycle.ProcessIdentityUnobserved {
       reason: "branch observation does not inspect PID, start time, or ownership" as std.types.NonEmptyStr,
     },
-    transcript: TranscriptUnobserved {
+    transcript: gunbc.worker_lifecycle.TranscriptUnobserved {
       reason: "branch observation does not locate a provider transcript" as std.types.NonEmptyStr,
     },
-    terminal_outcome: TerminalOutcomeUnobserved {
+    terminal_outcome: gunbc.worker_lifecycle.TerminalOutcomeUnobserved {
       reason: "branch existence does not imply a terminal outcome" as std.types.NonEmptyStr,
     },
   }
@@ -2035,21 +2035,21 @@ fn worker_process_from_attempt_pane(
   if pane.dead {
     match pane.exit_code {
       Present { value: code } =>
-        WorkerProcessExited {
+        gunbc.worker_lifecycle.WorkerProcessExited {
           exit_code: code,
           last_command: pane.command,
         }
       Absent =>
-        WorkerProcessUnobserved {
+        gunbc.worker_lifecycle.WorkerProcessUnobserved {
           reason: "dead pane did not carry an exit status" as std.types.NonEmptyStr,
         }
     }
   } else if pane.command == "" {
-    WorkerProcessUnobserved {
+    gunbc.worker_lifecycle.WorkerProcessUnobserved {
       reason: "running pane did not expose pane_current_command" as std.types.NonEmptyStr,
     }
   } else {
-    WorkerProcessRunning { command: pane.command as std.types.NonEmptyStr }
+    gunbc.worker_lifecycle.WorkerProcessRunning { command: pane.command as std.types.NonEmptyStr }
   }
 }
 
@@ -2059,7 +2059,7 @@ fn worker_process_for_session(
   pane_observation_refusal: String,
 ) -> gunbc.worker_lifecycle.WorkerProcessEvidence {
   if pane_observation_refusal != "" {
-    WorkerProcessUnobserved {
+    gunbc.worker_lifecycle.WorkerProcessUnobserved {
       reason: pane_observation_refusal as std.types.NonEmptyStr,
     }
   } else {
@@ -2069,7 +2069,7 @@ fn worker_process_for_session(
       Present { value: pane } =>
         worker_process_from_attempt_pane(pane: pane)
       Absent =>
-        WorkerProcessUnobserved {
+        gunbc.worker_lifecycle.WorkerProcessUnobserved {
           reason: "session was observed but no pane row was returned" as std.types.NonEmptyStr,
         }
     }

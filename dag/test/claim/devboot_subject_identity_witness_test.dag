@@ -54,7 +54,7 @@ fn witness_subject_full(
         linker: none,
         sysroot: none,
         cargo_config: [],
-        platform_c_library: GnuLibc { version: "2.36" as std.types.NonEmptyStr },
+        platform_c_library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
         SubjectRefused { cause } => none
         SubjectAdmitted { subject } => Present { value: subject }
@@ -68,7 +68,7 @@ fn witness_subject(tree_hex: String, gnu_abi: Bool, features: List<String>) -> g
     gnu_abi: gnu_abi,
     features: features,
     package: "gunbc",
-    cargo_target: Bin { name: "gunbc" },
+    cargo_target: extdeps.cargo.Bin { name: "gunbc" },
     profile: "release",
     rustflags: [],
   )
@@ -172,7 +172,7 @@ test fn the_product_being_built_participates_in_identity() -> Bool {
     gnu_abi: true,
     features: [],
     package: "gunbc",
-    cargo_target: Bin { name: "gunbc" },
+    cargo_target: extdeps.cargo.Bin { name: "gunbc" },
     profile: "release",
     rustflags: [],
   )
@@ -181,7 +181,7 @@ test fn the_product_being_built_participates_in_identity() -> Bool {
     gnu_abi: true,
     features: [],
     package: "gunbc",
-    cargo_target: Bin { name: "claim_executor" },
+    cargo_target: extdeps.cargo.Bin { name: "claim_executor" },
     profile: "release",
     rustflags: [],
   )
@@ -219,7 +219,7 @@ test fn build_environment_participates_in_identity() -> Bool {
     gnu_abi: true,
     features: [],
     package: "gunbc",
-    cargo_target: Bin { name: "gunbc" },
+    cargo_target: extdeps.cargo.Bin { name: "gunbc" },
     profile: "release",
     rustflags: [],
   )
@@ -228,7 +228,7 @@ test fn build_environment_participates_in_identity() -> Bool {
     gnu_abi: true,
     features: [],
     package: "gunbc",
-    cargo_target: Bin { name: "gunbc" },
+    cargo_target: extdeps.cargo.Bin { name: "gunbc" },
     profile: "release",
     rustflags: ["-Copt-level=3"],
   )
@@ -237,7 +237,7 @@ test fn build_environment_participates_in_identity() -> Bool {
     gnu_abi: true,
     features: [],
     package: "gunbc",
-    cargo_target: Bin { name: "gunbc" },
+    cargo_target: extdeps.cargo.Bin { name: "gunbc" },
     profile: "release",
     rustflags: ["-Cdebuginfo=2", "-Copt-level=3"],
   )
@@ -246,7 +246,7 @@ test fn build_environment_participates_in_identity() -> Bool {
     gnu_abi: true,
     features: [],
     package: "gunbc",
-    cargo_target: Bin { name: "gunbc" },
+    cargo_target: extdeps.cargo.Bin { name: "gunbc" },
     profile: "release",
     rustflags: ["-Copt-level=3", "-Cdebuginfo=2"],
   )
@@ -264,7 +264,7 @@ test fn duplicate_feature_refuses() -> Bool {
       match admit_build_subject(
         tree_oid: oid,
         package: "gunbc",
-        cargo_target: Bin { name: "gunbc" },
+        cargo_target: extdeps.cargo.Bin { name: "gunbc" },
         toolchain: witness_toolchain(),
         target: witness_target(gnu_abi: true),
         profile: "release",
@@ -273,7 +273,7 @@ test fn duplicate_feature_refuses() -> Bool {
         linker: none,
         sysroot: none,
         cargo_config: [],
-        platform_c_library: GnuLibc { version: "2.36" as std.types.NonEmptyStr },
+        platform_c_library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
         SubjectAdmitted { subject } => false
         SubjectRefused { cause } =>
@@ -292,7 +292,7 @@ test fn empty_feature_name_refuses() -> Bool {
       match admit_build_subject(
         tree_oid: oid,
         package: "gunbc",
-        cargo_target: Bin { name: "gunbc" },
+        cargo_target: extdeps.cargo.Bin { name: "gunbc" },
         toolchain: witness_toolchain(),
         target: witness_target(gnu_abi: true),
         profile: "release",
@@ -301,7 +301,7 @@ test fn empty_feature_name_refuses() -> Bool {
         linker: none,
         sysroot: none,
         cargo_config: [],
-        platform_c_library: GnuLibc { version: "2.36" as std.types.NonEmptyStr },
+        platform_c_library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
         SubjectAdmitted { subject } => false
         SubjectRefused { cause } =>
@@ -326,7 +326,7 @@ fn empty_profile_refuses() -> Bool {
       match admit_build_subject(
         tree_oid: oid,
         package: "gunbc",
-        cargo_target: Bin { name: "gunbc" },
+        cargo_target: extdeps.cargo.Bin { name: "gunbc" },
         toolchain: witness_toolchain(),
         target: witness_target(gnu_abi: true),
         profile: "",
@@ -335,7 +335,7 @@ fn empty_profile_refuses() -> Bool {
         linker: none,
         sysroot: none,
         cargo_config: [],
-        platform_c_library: GnuLibc { version: "2.36" as std.types.NonEmptyStr },
+        platform_c_library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
         SubjectAdmitted { subject } => false
         SubjectRefused { cause } =>
@@ -354,7 +354,7 @@ fn empty_rustflag_refuses() -> Bool {
       match admit_build_subject(
         tree_oid: oid,
         package: "gunbc",
-        cargo_target: Bin { name: "gunbc" },
+        cargo_target: extdeps.cargo.Bin { name: "gunbc" },
         toolchain: witness_toolchain(),
         target: witness_target(gnu_abi: true),
         profile: "release",
@@ -363,7 +363,7 @@ fn empty_rustflag_refuses() -> Bool {
         linker: none,
         sysroot: none,
         cargo_config: [],
-        platform_c_library: GnuLibc { version: "2.36" as std.types.NonEmptyStr },
+        platform_c_library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
         SubjectAdmitted { subject } => false
         SubjectRefused { cause } =>
@@ -421,7 +421,7 @@ test fn a_record_built_for_another_subject_is_refused_even_when_bytes_are_availa
                     decision: reuse_decision(
                       candidate: Present { value: record },
                       requested: requested,
-                      availability: ArtifactAvailable { artifact: record.artifact },
+                      availability: gunbc.devboot.outcome.ArtifactAvailable { artifact: record.artifact },
                     ),
                   )
               }
@@ -441,7 +441,7 @@ test fn a_record_built_for_the_request_reuses_when_bytes_are_available() -> Bool
             decision: reuse_decision(
               candidate: Present { value: record },
               requested: subject,
-              availability: ArtifactAvailable { artifact: record.artifact },
+              availability: gunbc.devboot.outcome.ArtifactAvailable { artifact: record.artifact },
             ),
           )
       }
@@ -468,7 +468,7 @@ test fn a_matching_record_without_bytes_does_not_reuse() -> Bool {
               decision: reuse_decision(
                 candidate: none,
                 requested: subject,
-                availability: ArtifactAvailable { artifact: record.artifact },
+                availability: gunbc.devboot.outcome.ArtifactAvailable { artifact: record.artifact },
               ),
             )
       }
@@ -522,14 +522,14 @@ test fn only_observed_available_bytes_permit_retrieval() -> Bool {
             Absent => false
             Present { value: digest } =>
               availability_permits_retrieval(
-                availability: ArtifactAvailable { artifact: artifact },
+                availability: gunbc.devboot.outcome.ArtifactAvailable { artifact: artifact },
               )
                 && !availability_permits_retrieval(availability: ArtifactMissing)
                 && !availability_permits_retrieval(
-                  availability: ArtifactCorrupt { expected: digest, observed: digest },
+                  availability: gunbc.devboot.outcome.ArtifactCorrupt { expected: digest, observed: digest },
                 )
                 && !availability_permits_retrieval(
-                  availability: ArtifactUnreadable { detail: "store unreadable" },
+                  availability: gunbc.devboot.outcome.ArtifactUnreadable { detail: "store unreadable" },
                 )
           }
       }
@@ -540,7 +540,7 @@ fn failed_build_status_holds(subject: gunbc.devboot.subject.BuildSubject) -> Boo
   let status = witness_status(
     subject: subject,
     id: "w-2",
-    execution: ExecutionFailed { cause: CompilationFailed { detail: "type error" } },
+    execution: gunbc.devboot.outcome.ExecutionFailed { cause: gunbc.devboot.outcome.CompilationFailed { detail: "type error" } },
     availability: ArtifactMissing,
   )
   !status_reports_retrievable_artifact(status: status)
@@ -555,7 +555,7 @@ test fn a_failed_build_never_reports_retrievable() -> Bool {
 }
 
 test fn an_interrupted_build_is_not_settled() -> Bool {
-  !execution_is_settled(execution: ExecutionInterrupted { detail: "producer died" })
+  !execution_is_settled(execution: gunbc.devboot.outcome.ExecutionInterrupted { detail: "producer died" })
 }
 
 data devboot_membership_witness_doc: String = "THE STORE ROOT IS ENSURED, AND THESE ROWS SAY WHAT THAT BUYS. It projects the gunbc.host_layout authority rather than respelling the path; it reaches the apply order, so a deploy converges it; and its teardown REFUSES, so no retract can remove it.\\n\\nThe third row is the one the incident earned. Wiring this root into the OWNED roster made a lab twin's retract remove the production artifact store -- caught by the twin disjointness claims, which is why those claims were left exactly as they were. A hazard caught once by a claim about something else deserves a control of its own, so the refusal is asserted directly here rather than left to depend on two tests that are really about twins."

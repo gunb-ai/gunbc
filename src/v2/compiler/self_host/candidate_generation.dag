@@ -146,7 +146,7 @@ fn mint_artifact_from_rust_emission_candidate(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^direct_rust_door_producer_receipt_refused,
           at: port_locus(port: ^candidate_generation),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
   }

@@ -35,12 +35,12 @@ fn frames_wire(frames: List<gunbc.design.instrument_bob.BobFrame>) -> String {
 }
 
 fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
-  ClassSelector { name: name }
+  extdeps.languages.css.selectors.ClassSelector { name: name }
 }
 
 fn motion_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: motion_plate_class),
       decls: [
         decl(prop: Display, value: "block"),
@@ -51,7 +51,7 @@ fn motion_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: motion_tap_btn_class),
       decls: [
         decl(prop: Padding, value: scale_var(t: space_2)),
@@ -64,7 +64,7 @@ fn motion_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: FontSize, value: scale_var(t: text_12)),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: motion_receipt_class),
       decls: [
         decl(prop: Display, value: "grid"),

@@ -8,7 +8,7 @@ fn finding_as_fidelity_discrepancy(f: Finding) -> List<v2.lens.dependency_fideli
     Suspect { violation: v } =>
       match v {
         IdentityNodeEscapesAsValue { source: s, at: a, reduction_count: _, extraneous_mentions: _ } =>
-          list_snoc_item(xs: Empty, item: UnderClaimedEdge { source: s, dependent: a })
+          list_snoc_item(xs: Empty, item: v2.lens.dependency_fidelity.UnderClaimedEdge { source: s, dependent: a })
       }
     Unclassifiable { at: _, cause: _ } => std.algebra.Empty
   }

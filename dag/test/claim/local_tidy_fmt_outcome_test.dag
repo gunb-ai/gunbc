@@ -94,7 +94,7 @@ test fn witness_hooks_end_the_unavailable_message_at_the_remedy() -> Bool {
 
 test fn witness_unavailable_recipe_is_reachable_for_the_pre_commit_surface_too() -> Bool {
   let recipe = local_tidy_fmt_outcome_recipe(
-    outcome: FmtToolUnavailable { program: "cargo", cause: "exit status 127" },
+    outcome: gunbc.local_tidy_spec.FmtToolUnavailable { program: "cargo", cause: "exit status 127" },
     drift_recipe: local_tidy_fmt_pre_commit_drift_recipe
   )
   !has(s: recipe, p: "drift")

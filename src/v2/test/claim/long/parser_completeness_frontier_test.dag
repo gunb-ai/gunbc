@@ -9,7 +9,7 @@ data parser_frontier_module_artifact: v2.std.artifact.Artifact = v2.std.artifact
 }
 
 fn parser_frontier_ingest_for(src: String) -> v2.compiler.source_authority.SourceRootIngest {
-  Cons {
+  std.algebra.Cons {
     head: v2.compiler.source_authority.DagSourceReadWitness {
       source: extdeps.communication.medium.Medium { carried: src, fidelity: Lossless },
       artifact: parser_frontier_module_artifact,
@@ -23,7 +23,7 @@ fn parser_frontier_ingest_for(src: String) -> v2.compiler.source_authority.Sourc
 fn parser_frontier_admission() -> v2.compiler.name_resolve.Admission {
   v2.compiler.name_resolve.Admission {
     subject: v2.compiler.name_resolve.ResolutionSubject {
-      name: Cons { head: ^parser_frontier_pilot, tail: std.algebra.Empty }
+      name: std.algebra.Cons { head: ^parser_frontier_pilot, tail: std.algebra.Empty }
     },
     imports: Empty
   }

@@ -322,8 +322,8 @@ data gunbc_runner_slot_allocation_live_cap_dissolve_on: std.disposition.Disposit
   }
 }
 
-data gunbc_floor_armed_budget_doomed_exit_137_outcome: gunbc.ci_failure_class.FloorOutcome = FloorFailed {
-  class: Structural { reason: "Process completed with exit code 137." }
+data gunbc_floor_armed_budget_doomed_exit_137_outcome: gunbc.ci_failure_class.FloorOutcome = gunbc.ci_failure_class.FloorFailed {
+  class: gunbc.ci_failure_class.Structural { reason: "Process completed with exit code 137." }
 }
 
 type FloorArmedBudgetDoomedWitness

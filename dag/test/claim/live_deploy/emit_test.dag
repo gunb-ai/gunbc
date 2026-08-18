@@ -6,7 +6,7 @@ data witness_script_producers_note: String = "THE COMMITTED SCRIPT ARTIFACTS ARE
 fn witness_apply_script() -> String {
   live_deploy_apply_script_for(
     spec: deployment_spec_srv1(),
-    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
 }
 
@@ -138,10 +138,10 @@ test fn witness_tailnet_url_absent_not_fabricated() -> Bool {
 
 test fn witness_dependency_ensure_is_idempotent() -> Bool {
   let tailscale = deployment_ensure_dependency_script(
-    dep: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } }
+    dep: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TailscalePackage, subject: gunbc.live_deploy.spec.EnsuredPackage { package: package_tailscale } }
   )
   let tmux = deployment_ensure_dependency_script(
-    dep: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } }
+    dep: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TmuxPackage, subject: gunbc.live_deploy.spec.EnsuredPackage { package: package_tmux } }
   )
   string_contains(s: tailscale, pattern: "dpkg -s tailscale")
     && string_contains(s: tailscale, pattern: "apt-get install --yes tailscale")
@@ -302,7 +302,7 @@ data execstart_pinned_exactly_note: String = "THE FULL ExecStart LINE, PINNED, W
 test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
-    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
   let expected = join([
     "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2",
@@ -321,7 +321,7 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
 test fn witness_execstart_omitting_the_revision_is_not_the_emitted_line() -> Bool {
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
-    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
   !string_contains(s: unit, pattern: "--port 8080\nRestart=")
     && !string_contains(s: unit, pattern: "--release-revision \n")
@@ -331,11 +331,11 @@ test fn witness_execstart_omitting_the_revision_is_not_the_emitted_line() -> Boo
 test fn witness_execstart_at_another_candidate_differs() -> Bool {
   let a = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
-    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
   let b = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
-    revision: RevisionBoundAtEmission { revision: deploy_witness_other_release_revision },
+    revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_other_release_revision },
   )
   a != b
     && string_contains(s: b, pattern: deploy_witness_other_release_revision as String)
@@ -343,7 +343,7 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
 }
 
 test fn witness_systemd_unit_emitted() -> Bool {
-  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle --host 0.0.0.0 --port 8080")
     && string_contains(s: unit, pattern: "User=briansrls")
     && string_contains(s: unit, pattern: "Group=briansrls")
@@ -386,7 +386,7 @@ test fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Boo
 data emit_poison_backstop_witness_note: String = "GOLDEN-INDEPENDENT backstop (calm-ferret pass-2 flag 2): the emit-level poison markers (teardown-dependency-unreachable, wholesale-refused) are the defense-in-depth backstop to the PRIMARY typed refusal (the EffectsOrRefusal SUM, proven golden-independent by w_effects_refuses_wholesale_on_any_refusal in the spine test). But the poison backstops are golden-DEPENDENT — a regen while a refusal was buggily active could commit a poisoned golden and the drift gate would then pass. These two witnesses call the refusal producers directly and assert the marker is present, golden-INDEPENDENT, so a golden-absorption can never hide that the arm still refuses loudly."
 
 test fn witness_teardown_dependency_arm_refuses_golden_independent() -> Bool {
-  let steps = emit_deploy_teardown_dependency_refusal(dep: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } })
+  let steps = emit_deploy_teardown_dependency_refusal(dep: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TmuxPackage, subject: gunbc.live_deploy.spec.EnsuredPackage { package: package_tmux } })
   count(steps) == 1
     && any(steps, s => match s {
          Do { run: r } => string_contains(s: r.command, pattern: "__GUNBC_DEPLOY_UNREACHABLE__")
@@ -474,8 +474,8 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
 data emitted_effect_twin_note: String = "THE PATH-LIST TWIN CLAIM WAS COVERAGE BY ILLUSION AND THIS IS ITS REPLACEMENT. The previous claim compared five declared artifact paths and pinned count == 5, so its proof was bounded by the symbolic footprint — and three destructive effects lived outside it: the systemd unit hardcoded --function roadmap_serve_handle so a twin would IDENTIFY as production, tree-sync installed and deleted one host-wide unit and env file, and teardown ran a node-global `tailscale serve reset`. Every one of those passes a declared-member comparison while the emitted script is unsafe (review, 2026-07-30).\\n\\nSo this reads the SCRIPTS. It asserts over the actual apply and retract text that production's identifying strings — its handler, its unit, its tree-sync files — appear in production's emission and are ABSENT from the twin's, and that the twin's own names are absent from production's. A string a reviewer can see in the emitted output is exactly the grain the previous claim could not reach.\\n\\nThe negative direction is the load-bearing half. Asserting the twin contains its own names would pass even if it ALSO contained production's; only absence proves it cannot touch them. The tailscale conjunct asserts the refusal marker rather than a scoped command, because the CLI offers no per-port removal and the honest emission is a refusal — a claim expecting a scoped teardown would demand a widen that cannot be written safely."
 
 test fn emitted_twin_scripts_touch_none_of_productions_effects() -> Bool {
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   string_contains(s: live, pattern: "--function roadmap_serve_handle ")
     && string_contains(s: twin, pattern: "--function roadmap_serve_handle_srv1_lab ")
     && !string_contains(s: twin, pattern: "--function roadmap_serve_handle ")
@@ -489,8 +489,8 @@ data belt_spawn_root_witness_note: String = "THE CLAIM THE BELT-TIMER MEMBER MOS
 test fn twin_belt_timer_actuates_its_own_tree_not_productions() -> Bool {
   let live_instance = srv1_live_dashboard_instance()
   let lab_instance = srv1_lab_dashboard_instance()
-  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   let env = concat(belt_spawn_workdir_env_var as String, "=")
   string_contains(s: twin, pattern: concat(env, lab_instance.repo_root as String))
     && !string_contains(s: twin, pattern: concat(env, live_instance.repo_root as String))
@@ -519,8 +519,8 @@ test fn shell_quote_escapes_an_embedded_apostrophe() -> Bool {
 data twin_creates_its_own_bin_dir_note: String = "THE PARENT DIRECTORY WAS THE LAST srv1 LITERAL IN THE APPLY (review 45197). serve_binary became instance-derived while the step that creates its containing directory kept production's `/opt/gunbc/bin`, and `install` does not create missing parents — so a twin apply would reach the copy with nowhere to copy to and fail on what reads as a permissions problem.\\n\\nThe claim is stated in BOTH directions because only the negative half proves it. Asserting the twin creates its own bin directory passes even if the emission ALSO still creates production's; asserting production's literal is absent from the twin script is what closes it. The production conjunct pins that the derivation did not move production — /opt/gunbc/bin/gunbc has parent /opt/gunbc/bin, so its emitted command is unchanged, which the committed golden independently confirms."
 
 test fn twin_apply_creates_its_own_binary_parent_directory() -> Bool {
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   string_contains(s: live, pattern: "install -d -m 0755 /opt/gunbc/bin")
     && !string_contains(s: twin, pattern: "install -d -m 0755 /opt/gunbc/bin")
     && string_contains(
@@ -541,8 +541,8 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
     TeardownRefuses { cause: _ } => false
   }
   let package = match deployment_step_teardown_disposition(
-    step: Dependency {
-      step: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } },
+    step: gunbc.live_deploy.spec.Dependency {
+      step: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TailscalePackage, subject: gunbc.live_deploy.spec.EnsuredPackage { package: package_tailscale } },
     },
   ) {
     TeardownActs => false
@@ -557,8 +557,8 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
 data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint — because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half — the twin carries its own --set-path — would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently — an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value."
 
 test fn twin_and_production_configure_disjoint_tailscale_endpoints() -> Bool {
-  let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let live_apply = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let twin_apply = live_deploy_apply_script_for(spec: srv1_twin_spec(), revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   let live_retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
   let twin_retract = live_deploy_retract_script_for(spec: srv1_twin_spec())
   string_contains(s: live_apply, pattern: "sudo -n tailscale serve --bg --https=443 8080")
@@ -580,7 +580,7 @@ fn unmeasured_client_target() -> gunbc.live_deploy.spec.DeploymentHostTarget {
     tailscale_endpoint: t.tailscale_endpoint,
     tailnet_domain: t.tailnet_domain,
     os_package_manager: t.os_package_manager,
-    tailscale_client: ScopedRemovalUnobserved { reason: "host never probed for a tailscale client version" },
+    tailscale_client: extdeps.tailscale.serve.ScopedRemovalUnobserved { reason: "host never probed for a tailscale client version" },
   }
 }
 
@@ -626,7 +626,7 @@ test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
 // is emitted via fleet-converge.yml instead of a deploy-installed timer.
 test fn fleet_converge_timer_not_installed_by_deploy_apply() -> Bool {
   let spec = deployment_spec_srv1()
-  let live = live_deploy_apply_script_for(spec: spec, revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let live = live_deploy_apply_script_for(spec: spec, revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   !any(
     deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names),
     s => match s.kind { FleetConvergeTimerUnit => true  _ => false }

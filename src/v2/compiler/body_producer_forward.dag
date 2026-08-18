@@ -31,17 +31,17 @@ data body_producer_forward_row_loop_expr: BodyProducerForwardRow = BodyProducerF
 }
 
 fn body_producer_forward_rows() -> List<BodyProducerForwardRow> {
-  Cons {
+  std.algebra.Cons {
     head: body_producer_forward_row_fn_decl,
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: body_producer_forward_row_fn_body,
-      tail: Cons {
+      tail: std.algebra.Cons {
         head: body_producer_forward_row_match_expr,
-        tail: Cons {
+        tail: std.algebra.Cons {
           head: body_producer_forward_row_if_expr,
-          tail: Cons {
+          tail: std.algebra.Cons {
             head: body_producer_forward_row_let_expr,
-            tail: Cons {
+            tail: std.algebra.Cons {
               head: body_producer_forward_row_loop_expr,
               tail: std.algebra.Empty
             }
@@ -99,7 +99,7 @@ fn body_producer_forward_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.s
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -124,7 +124,7 @@ fn body_producer_forward_row_selected_optional(shell: Node) -> Optional<Node> {
 
 fn body_producer_forward_row_obligation_witness_shell(surface_identity: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Atom { identity: surface_identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: surface_identity } },
     children: []
   )
 }

@@ -939,7 +939,7 @@ fn belt_actuate_spawn_for_instance(
         node_id: node.node as String,
         step: "environment-admission",
         detail: dispatch_environment_admission_json(
-          admission: EnvironmentRefused {
+          admission: gunbc.roadmap_dispatch_environment.EnvironmentRefused {
             receipts: receipts,
             validation_summary: validation_summary,
             reason: reason,
@@ -974,7 +974,7 @@ fn belt_actuate_spawn_for_instance(
                 node: node,
                 probed_at: probed_at,
                 admission_receipt: dispatch_environment_admission_json(
-                  admission: EnvironmentAdmitted {
+                  admission: gunbc.roadmap_dispatch_environment.EnvironmentAdmitted {
                     receipts: receipts,
                     validation_summary: validation_summary,
                   },
@@ -1175,7 +1175,7 @@ fn belt_actuate_spawn(node: gunbc.roadmap_model.RoadmapNode, probed_at: String, 
         node_id: node.node as String,
         step: "environment-admission",
         detail: dispatch_environment_admission_json(
-          admission: EnvironmentRefused {
+          admission: gunbc.roadmap_dispatch_environment.EnvironmentRefused {
             receipts: receipts,
             validation_summary: validation_summary,
             reason: reason,
@@ -1207,7 +1207,7 @@ fn belt_actuate_spawn(node: gunbc.roadmap_model.RoadmapNode, probed_at: String, 
                 probed_at: probed_at,
                 workdir: workdir,
                 admission_receipt: dispatch_environment_admission_json(
-                  admission: EnvironmentAdmitted {
+                  admission: gunbc.roadmap_dispatch_environment.EnvironmentAdmitted {
                     receipts: receipts,
                     validation_summary: validation_summary,
                   },
@@ -1857,7 +1857,7 @@ fn belt_tick_for_instance(
       let admitted_spawns = filter(r.spawns, m =>
         !any(deferred_ids, id => id == dispatch_member_key(m: m)))
       let spawn_outcomes = admitted_spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir))
-      let stale_teardowns = map(classified.stale, s => ObservedMember { node_id: s.node_id, session: s })
+      let stale_teardowns = map(classified.stale, s => gunbc.roadmap_belt.ObservedMember { node_id: s.node_id, session: s })
       let teardown_outcomes =
         concat(r.teardowns, stale_teardowns) |> map(m => belt_actuate_teardown_member(m: m))
       BeltTickResult {
@@ -2316,7 +2316,7 @@ fn attempt_process_for_node(
 ) -> gunbc.worker_lifecycle.WorkerProcessEvidence {
   match panes {
     BeltAttemptPanesRefused { reason } =>
-      WorkerProcessUnobserved { reason: reason as std.types.NonEmptyStr }
+      gunbc.worker_lifecycle.WorkerProcessUnobserved { reason: reason as std.types.NonEmptyStr }
     BeltAttemptPanesObserved { panes: observed } => {
       let session_name = dispatch_tmux_session_name(
         node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
@@ -2455,7 +2455,7 @@ fn belt_publication_receipt_source(
       )
       let attempt_listing = Filesystem.List(path: attempt_dir)
       if !attempt_listing.success {
-        ReceiptSourceUnreadable {
+        gunbc.roadmap_publish.ReceiptSourceUnreadable {
           detail: join([
             "the attempt state directory could not be listed, so whether a publication receipt exists was not established: ",
             attempt_dir,
@@ -2477,7 +2477,7 @@ fn belt_publication_receipt_source(
         )
         let publication_listing = Filesystem.List(path: publication_dir)
         if !publication_listing.success {
-          ReceiptSourceUnreadable {
+          gunbc.roadmap_publish.ReceiptSourceUnreadable {
             detail: join([
               "the publication receipt directory was named by the attempt listing but could not itself be listed: ",
               publication_dir,
@@ -2500,9 +2500,9 @@ fn belt_publication_receipt_source(
           )
           let read = Filesystem.Read(path: path)
           if read.success {
-            ReceiptSourcePresent { text: read.content }
+            gunbc.roadmap_publish.ReceiptSourcePresent { text: read.content }
           } else {
-            ReceiptSourceUnreadable {
+            gunbc.roadmap_publish.ReceiptSourceUnreadable {
               detail: join([
                 "a publication receipt for this head was listed and then could not be read, so it exists and its content is unavailable: ",
                 path,
@@ -2540,9 +2540,9 @@ fn belt_publish_current_verification_selection(
     ),
   )
   if write.success {
-    VerificationSelectionPublished { path: path }
+    gunbc.roadmap_verification_receipt.VerificationSelectionPublished { path: path }
   } else {
-    VerificationSelectionPublishRefused {
+    gunbc.roadmap_verification_receipt.VerificationSelectionPublishRefused {
       path: path,
       cause: join([
         "the belt could not publish the current verification selection: ",
@@ -2582,18 +2582,18 @@ fn belt_verification_subject_from_selection(
 ) -> gunbc.roadmap_verification_receipt.VerificationSubjectObservation {
   match selection {
     SelectionUnaddressable { cause } =>
-      VerificationSubjectUnobserved { reason: cause }
+      gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved { reason: cause }
     SelectionAbsent =>
-      VerificationSubjectUnobserved {
+      gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved {
         reason: "the belt has not selected a verification window for this head yet",
       }
     SelectionUnreadable { cause } =>
-      VerificationSubjectUnobserved { reason: cause }
+      gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved { reason: cause }
     SelectionMalformed { cause } =>
-      VerificationSubjectUnobserved { reason: cause }
+      gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved { reason: cause }
     SelectionObserved { head: selected_head, window_identity } =>
       if (selected_head as String) != (head as String) {
-        VerificationSubjectUnobserved {
+        gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved {
           reason: join([
             "the current verification selection names head ",
             selected_head as String,
@@ -2604,11 +2604,11 @@ fn belt_verification_subject_from_selection(
       } else {
         match node_criteria_digest(rn: node) {
           Absent =>
-            VerificationSubjectUnobserved {
+            gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved {
               reason: "this roadmap node has no criteria digest, so the verification subject cannot be constructed",
             }
           Present { value: criteria_digest } =>
-            VerificationSubjectObserved {
+            gunbc.roadmap_verification_receipt.VerificationSubjectObserved {
               subject: gunbc.roadmap_verification_receipt.VerificationSubject {
                 node_identity: node.identity,
                 criteria_digest: criteria_digest,
@@ -2661,7 +2661,7 @@ fn belt_verification_receipt_source(
 ) -> gunbc.roadmap_verification_receipt.VerificationReceiptFileSource {
   match selection {
     SelectionUnaddressable { cause } =>
-      VerificationReceiptUnreadable {
+      gunbc.roadmap_verification_receipt.VerificationReceiptUnreadable {
         detail: join([
           "the worktree head could not be observed, so the exact receipt path was not established: ",
           cause,
@@ -2669,14 +2669,14 @@ fn belt_verification_receipt_source(
       }
     SelectionAbsent => VerificationReceiptAbsent
     SelectionUnreadable { cause } =>
-      VerificationReceiptUnreadable {
+      gunbc.roadmap_verification_receipt.VerificationReceiptUnreadable {
         detail: join([
           "the current verification selection could not be read, so the exact receipt path was not established: ",
           cause,
         ], ""),
       }
     SelectionMalformed { cause } =>
-      VerificationReceiptUnreadable {
+      gunbc.roadmap_verification_receipt.VerificationReceiptUnreadable {
         detail: join([
           "the current verification selection is malformed, so the exact receipt path was not established: ",
           cause,
@@ -2725,12 +2725,12 @@ fn belt_workflow_progress_for_attempt_ref(
         instance: instance,
         node_id: attempt.node_id,
       ),
-      verification_subject: VerificationSubjectUnobserved {
+      verification_subject: gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved {
         reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
       },
       verification_selection: SelectionAbsent,
       verification_source: VerificationReceiptAbsent,
-      publication_subject: PublicationSubjectUnobserved {
+      publication_subject: gunbc.roadmap_publish.PublicationSubjectUnobserved {
         reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
       },
       publication_source: ReceiptSourceAbsent,
@@ -2775,7 +2775,7 @@ fn belt_workflow_progress_for_attempt_ref(
     )
     let verification_selection = match head {
       WorktreeHeadUnobserved { reason } =>
-        SelectionUnaddressable { cause: reason }
+        gunbc.roadmap_verification_receipt.SelectionUnaddressable { cause: reason }
       WorktreeHeadObserved { revision: revision } =>
         belt_verification_selection_observe(
           instance: instance,
@@ -2786,20 +2786,20 @@ fn belt_workflow_progress_for_attempt_ref(
     }
     let verification_subject = match belt_lookup_node(node_id: attempt.node_id) {
       AuthorityProjectionRefused { detail: detail } =>
-        VerificationSubjectUnobserved {
+        gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved {
           reason: concat("roadmap authority projection refused: ", detail),
         }
       NodeMissing =>
-        VerificationSubjectUnobserved {
+        gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved {
           reason: "the roadmap authority declares no node with this id, so there is no verification subject",
         }
       NodeFound { node } =>
         match head {
           WorktreeHeadUnobserved { reason } =>
-            VerificationSubjectUnobserved { reason: reason }
+            gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved { reason: reason }
           WorktreeHeadObserved { revision: revision } =>
             if trim(branch) == "" {
-              VerificationSubjectUnobserved {
+              gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved {
                 reason: "the attempt has no branch name, so there is no verification subject to construct",
               }
             } else {
@@ -2896,19 +2896,19 @@ fn git_target_generation_observation_of(outcome: BeltExecOutcome) -> gunbc.git_d
     ExecOk { stdout } =>
       match git_object_id_from_untagged_hex(hex: trim(stdout)) {
         Absent =>
-          GitTargetGenerationOutputMalformed { stdout: trim(stdout) }
+          gunbc.git_diff_change_window.GitTargetGenerationOutputMalformed { stdout: trim(stdout) }
         Present { value: generation } =>
-          GitTargetGenerationObserved { generation: generation }
+          gunbc.git_diff_change_window.GitTargetGenerationObserved { generation: generation }
       }
     ExecFailed { program, exit_code, stderr } =>
-      GitTargetGenerationExecutionFailed {
+      gunbc.git_diff_change_window.GitTargetGenerationExecutionFailed {
         program: program,
         exit_code: exit_code,
         stdout: "",
         stderr: stderr,
       }
     ExecRefused { program, reason } =>
-      GitTargetGenerationProgramUnavailable { program: program, reason: reason }
+      gunbc.git_diff_change_window.GitTargetGenerationProgramUnavailable { program: program, reason: reason }
   }
 }
 
@@ -2922,9 +2922,9 @@ fn git_merge_base_observation_of(
     ExecOk { stdout } =>
       match git_object_id_from_untagged_hex(hex: trim(stdout)) {
         Absent =>
-          GitMergeBaseOutputMalformed { stdout: trim(stdout) }
+          gunbc.git_diff_change_window.GitMergeBaseOutputMalformed { stdout: trim(stdout) }
         Present { value: base } =>
-          GitMergeBaseObserved {
+          gunbc.git_diff_change_window.GitMergeBaseObserved {
             target: target,
             target_generation: target_generation,
             base: base,
@@ -2932,14 +2932,14 @@ fn git_merge_base_observation_of(
           }
       }
     ExecFailed { program, exit_code, stderr } =>
-      GitMergeBaseExecutionFailed {
+      gunbc.git_diff_change_window.GitMergeBaseExecutionFailed {
         program: program,
         exit_code: exit_code,
         stdout: "",
         stderr: stderr,
       }
     ExecRefused { program, reason } =>
-      GitMergeBaseProgramUnavailable { program: program, reason: reason }
+      gunbc.git_diff_change_window.GitMergeBaseProgramUnavailable { program: program, reason: reason }
   }
 }
 
@@ -2991,8 +2991,8 @@ fn belt_prepare_diff_window_for_verification(
   let target = instance.dispatch_base_ref
   match git_object_id_from_untagged_hex(hex: head_sha) {
     Absent =>
-      GitDiffWindowPrepareRefused {
-        cause: ChangeWindowHeadObjectIdRefused { head_hex: head_sha },
+      gunbc.git_diff_change_window.GitDiffWindowPrepareRefused {
+        cause: gunbc.git_diff_change_window.ChangeWindowHeadObjectIdRefused { head_hex: head_sha },
       }
     Present { value: head } =>
       match belt_observe_target_generation(
@@ -3039,25 +3039,25 @@ fn belt_prepare_diff_window_for_verification(
                 content: git_diff_window_json(window: window),
               )
               if write.success {
-                GitDiffWindowPrepared { path: path, window: window }
+                gunbc.git_diff_change_window.GitDiffWindowPrepared { path: path, window: window }
               } else {
-                GitDiffWindowPrepareRefused {
-                  cause: ChangeWindowPersistenceRefused {
+                gunbc.git_diff_change_window.GitDiffWindowPrepareRefused {
+                  cause: gunbc.git_diff_change_window.ChangeWindowPersistenceRefused {
                     path: path,
                     cause: write.error,
                   },
                 }
               }
             GitMergeBaseProgramUnavailable { program: program, reason: reason } =>
-              GitDiffWindowPrepareRefused {
-                cause: ChangeWindowMergeBaseRefused {
-                  observation: GitMergeBaseProgramUnavailable { program: program, reason: reason },
+              gunbc.git_diff_change_window.GitDiffWindowPrepareRefused {
+                cause: gunbc.git_diff_change_window.ChangeWindowMergeBaseRefused {
+                  observation: gunbc.git_diff_change_window.GitMergeBaseProgramUnavailable { program: program, reason: reason },
                 },
               }
             GitMergeBaseExecutionFailed { program: program, exit_code: exit_code, stdout: stdout, stderr: stderr } =>
-              GitDiffWindowPrepareRefused {
-                cause: ChangeWindowMergeBaseRefused {
-                  observation: GitMergeBaseExecutionFailed {
+              gunbc.git_diff_change_window.GitDiffWindowPrepareRefused {
+                cause: gunbc.git_diff_change_window.ChangeWindowMergeBaseRefused {
+                  observation: gunbc.git_diff_change_window.GitMergeBaseExecutionFailed {
                     program: program,
                     exit_code: exit_code,
                     stdout: stdout,
@@ -3066,22 +3066,22 @@ fn belt_prepare_diff_window_for_verification(
                 },
               }
             GitMergeBaseOutputMalformed { stdout: stdout } =>
-              GitDiffWindowPrepareRefused {
-                cause: ChangeWindowMergeBaseRefused {
-                  observation: GitMergeBaseOutputMalformed { stdout: stdout },
+              gunbc.git_diff_change_window.GitDiffWindowPrepareRefused {
+                cause: gunbc.git_diff_change_window.ChangeWindowMergeBaseRefused {
+                  observation: gunbc.git_diff_change_window.GitMergeBaseOutputMalformed { stdout: stdout },
                 },
               }
           }
         GitTargetGenerationProgramUnavailable { program: program, reason: reason } =>
-          GitDiffWindowPrepareRefused {
-            cause: ChangeWindowTargetGenerationRefused {
-              observation: GitTargetGenerationProgramUnavailable { program: program, reason: reason },
+          gunbc.git_diff_change_window.GitDiffWindowPrepareRefused {
+            cause: gunbc.git_diff_change_window.ChangeWindowTargetGenerationRefused {
+              observation: gunbc.git_diff_change_window.GitTargetGenerationProgramUnavailable { program: program, reason: reason },
             },
           }
         GitTargetGenerationExecutionFailed { program: program, exit_code: exit_code, stdout: stdout, stderr: stderr } =>
-          GitDiffWindowPrepareRefused {
-            cause: ChangeWindowTargetGenerationRefused {
-              observation: GitTargetGenerationExecutionFailed {
+          gunbc.git_diff_change_window.GitDiffWindowPrepareRefused {
+            cause: gunbc.git_diff_change_window.ChangeWindowTargetGenerationRefused {
+              observation: gunbc.git_diff_change_window.GitTargetGenerationExecutionFailed {
                 program: program,
                 exit_code: exit_code,
                 stdout: stdout,
@@ -3090,9 +3090,9 @@ fn belt_prepare_diff_window_for_verification(
             },
           }
         GitTargetGenerationOutputMalformed { stdout: stdout } =>
-          GitDiffWindowPrepareRefused {
-            cause: ChangeWindowTargetGenerationRefused {
-              observation: GitTargetGenerationOutputMalformed { stdout: stdout },
+          gunbc.git_diff_change_window.GitDiffWindowPrepareRefused {
+            cause: gunbc.git_diff_change_window.ChangeWindowTargetGenerationRefused {
+              observation: gunbc.git_diff_change_window.GitTargetGenerationOutputMalformed { stdout: stdout },
             },
           }
       }
@@ -3145,7 +3145,7 @@ fn belt_run_validation_operations(
     validations,
     init: BeltValidationRun {
       executions: [],
-      verdict: ValidationPassed {
+      verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
         command: "",
         oracle_identity: oracle_identity,
       },
@@ -3163,7 +3163,7 @@ fn belt_run_validation_operations(
             Absent =>
               BeltValidationRun {
                 executions: acc.executions,
-                verdict: ValidationRefused { cause: ValidationCommandUnrealized },
+                verdict: gunbc.roadmap_validation_oracle.ValidationRefused { cause: ValidationCommandUnrealized },
               }
             Present { value: command } => {
               let wire = modeled_validation_command_wire(command: command)
@@ -3213,7 +3213,7 @@ fn belt_run_validation_operations(
                       stdout: stdout,
                       stderr: "",
                     }),
-                    verdict: ValidationPassed {
+                    verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
                       command: if prior == "" {
                         wire
                       } else {
@@ -3231,7 +3231,7 @@ fn belt_run_validation_operations(
                       stdout: "",
                       stderr: stderr,
                     }),
-                    verdict: ValidationFailed {
+                    verdict: gunbc.roadmap_validation_oracle.ValidationFailed {
                       command: wire,
                       exit_code: exit_code,
                       detail: stderr,
@@ -3240,16 +3240,16 @@ fn belt_run_validation_operations(
                 ExecRefused { program, reason } =>
                   BeltValidationRun {
                     executions: acc.executions,
-                    verdict: ValidationRefused {
+                    verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
                       cause: if program == "gunbc-diff-window" {
-                        ValidationChangeWindowRefused {
-                          cause: ChangeWindowPersistenceRefused {
+                        gunbc.roadmap_validation_oracle.ValidationChangeWindowRefused {
+                          cause: gunbc.git_diff_change_window.ChangeWindowPersistenceRefused {
                             path: "",
                             cause: reason,
                           },
                         }
                       } else {
-                        ValidationCommandRefused {
+                        gunbc.roadmap_validation_oracle.ValidationCommandRefused {
                           program: program,
                           reason: reason,
                         }
@@ -3510,8 +3510,8 @@ fn belt_verify_run_and_persist(
   if worktree == "" {
     let run = BeltValidationRun {
       executions: [],
-      verdict: ValidationRefused {
-        cause: ValidationCommandRefused {
+      verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
+        cause: gunbc.roadmap_validation_oracle.ValidationCommandRefused {
           program: "git",
           reason: belt_verify_detached_worktree_refusal(
             instance: instance,
@@ -3555,8 +3555,8 @@ fn belt_verify_run_and_persist(
       Present { value: cause } => {
         let run = BeltValidationRun {
           executions: [],
-          verdict: ValidationRefused {
-            cause: ValidationChangeWindowRefused { cause: cause },
+          verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
+            cause: gunbc.roadmap_validation_oracle.ValidationChangeWindowRefused { cause: cause },
           },
         }
         let receipt = gunbc.roadmap_verification_receipt.VerificationReceipt {
@@ -3617,14 +3617,14 @@ fn belt_verify_run_and_persist(
       ValidationOracleGateRefused { cause } =>
         BeltValidationRun {
           executions: [],
-          verdict: ValidationRefused { cause: cause },
+          verdict: gunbc.roadmap_validation_oracle.ValidationRefused { cause: cause },
         }
       ValidationOracleAdmitted { identity } =>
         match node.execution {
           ExecutionContractUnspecified =>
             BeltValidationRun {
               executions: [],
-              verdict: ValidationRefused {
+              verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
                 cause: ValidationContractUnspecified,
               },
             }
@@ -4734,7 +4734,7 @@ fn belt_publication_subject_for(
 ) -> gunbc.roadmap_publish.PublicationSubjectObservation {
   match head {
     WorktreeHeadUnobserved { reason } =>
-      PublicationSubjectUnobserved {
+      gunbc.roadmap_publish.PublicationSubjectUnobserved {
         reason: join([
           "publication is adjudicated against an exact head and this attempt has none: ",
           reason,
@@ -4742,11 +4742,11 @@ fn belt_publication_subject_for(
       }
     WorktreeHeadObserved { revision } =>
       if trim(branch) == "" {
-        PublicationSubjectUnobserved {
+        gunbc.roadmap_publish.PublicationSubjectUnobserved {
           reason: "the attempt has no branch name, so there is nothing to look for on the remote",
         }
       } else {
-        PublicationSubjectObserved {
+        gunbc.roadmap_publish.PublicationSubjectObserved {
           subject: gunbc.roadmap_publish.RoadmapPublicationSubject {
             node_id: node_id,
             attempt_key: attempt_key,
@@ -4892,7 +4892,7 @@ fn belt_publish_attempt_for_instance(
               instance: instance,
               node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
               attempt_key: attempt_key,
-              subject: PublicationSubjectObserved { subject: subject },
+              subject: gunbc.roadmap_publish.PublicationSubjectObserved { subject: subject },
             ),
           ) {
             PublishHalted { outcome } => outcome
@@ -4931,14 +4931,14 @@ fn belt_publication_credential() -> gunbc.roadmap_publish_observe.PublicationCre
   match shell.Env.Get(name: "GITHUB_TOKEN" as std.types.NonEmptyStr, expect: OutcomeIsData).value {
     Present { value } =>
       if trim(value) == "" {
-        CredentialSourceAbsent {
+        gunbc.roadmap_publish_observe.CredentialSourceAbsent {
           reason: "GITHUB_TOKEN is set to an empty value in the belt's environment",
         }
       } else {
-        CredentialSourceConfigured { source: belt_publication_credential_source }
+        gunbc.roadmap_publish_observe.CredentialSourceConfigured { source: belt_publication_credential_source }
       }
     Absent =>
-      CredentialSourceAbsent {
+      gunbc.roadmap_publish_observe.CredentialSourceAbsent {
         reason: "GITHUB_TOKEN is not set in the belt's environment",
       }
   }

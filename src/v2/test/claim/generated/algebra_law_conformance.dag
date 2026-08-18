@@ -2,7 +2,7 @@ module v2.test.generated.algebra_law_conformance
 
 
 fn algebra_law_generated_atom(s: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
@@ -12,7 +12,7 @@ fn algebra_law_generated_nat_value(value: v2.std.nat.Nat) -> Node {
     Zero => algebra_law_generated_atom(s: ^algebra_law_generated_nat_zero_constructor)
     Succ { prev: p } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           v2.std.node.Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: ^algebra_law_generated_nat_succ_constructor) },
           v2.std.node.Edge { label: Named { name: ^algebra_law_generated_nat_prev_field }, target: algebra_law_generated_nat_value(value: p) },
@@ -24,7 +24,7 @@ fn algebra_law_generated_nat_value(value: v2.std.nat.Nat) -> Node {
 
 fn algebra_law_generated_binary(operation: v2.std.node.Symbol, left: Node, right: Node, result: v2.std.nat.Nat) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: operation) },
       v2.std.node.Edge { label: Named { name: ^algebra_law_generated_left_field }, target: left },
@@ -40,15 +40,15 @@ fn t19_generated_nat_zero_value() -> v2.std.nat.Nat {
 }
 
 fn t19_generated_nat_one_value() -> v2.std.nat.Nat {
-  Succ { prev: t19_generated_nat_zero_value() }
+  v2.std.nat.Succ { prev: t19_generated_nat_zero_value() }
 }
 
 fn t19_generated_nat_two_value() -> v2.std.nat.Nat {
-  Succ { prev: t19_generated_nat_one_value() }
+  v2.std.nat.Succ { prev: t19_generated_nat_one_value() }
 }
 
 fn t19_generated_nat_three_value() -> v2.std.nat.Nat {
-  Succ { prev: t19_generated_nat_two_value() }
+  v2.std.nat.Succ { prev: t19_generated_nat_two_value() }
 }
 
 fn t19_generated_nat_zero() -> Node {

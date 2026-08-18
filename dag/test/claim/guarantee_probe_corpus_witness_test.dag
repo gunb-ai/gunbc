@@ -39,7 +39,7 @@ fn witness_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbeId)
     Absent =>
       v1_compile_harness_revision(
         probe: probe,
-        expectation: ExpectBlockingRefusal { diagnostic_class: "witness-harness-row-absent" as std.types.NonEmptyStr },
+        expectation: gunbc.guarantee_probe_corpus.ExpectBlockingRefusal { diagnostic_class: "witness-harness-row-absent" as std.types.NonEmptyStr },
         harness_source: harness_source,
       )
   }
@@ -383,7 +383,7 @@ test fn green_control_observation_is_accepted_clean() -> Bool {
 }
 
 test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> Bool {
-  let advisory_only = CensusObserved {
+  let advisory_only = gunbc.compile_diagnostic_census.CensusObserved {
     rows: [{
       diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr,
       subject_name: "probe" as String,
@@ -393,7 +393,7 @@ test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> Bool {
   }
   !probe_expectation_holds(
     census: advisory_only,
-    expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr },
+    expectation: gunbc.guarantee_probe_corpus.ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr },
   )
     && match census_any_count_for_class(census: advisory_only, wanted: "CallArgumentNameUnknown") {
       Present { value: n } => n >= 1
@@ -402,11 +402,11 @@ test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> Bool {
 }
 
 test fn not_runnable_never_satisfies_expectation() -> Bool {
-  let not_runnable = CensusNotRunnable { cause: "harness error" as std.types.NonEmptyStr }
+  let not_runnable = gunbc.compile_diagnostic_census.CensusNotRunnable { cause: "harness error" as std.types.NonEmptyStr }
   !probe_expectation_holds(census: not_runnable, expectation: ExpectZeroDiagnostics)
     && !probe_expectation_holds(
       census: not_runnable,
-      expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as std.types.NonEmptyStr },
+      expectation: gunbc.guarantee_probe_corpus.ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as std.types.NonEmptyStr },
     )
 }
 

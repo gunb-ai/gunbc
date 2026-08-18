@@ -18,7 +18,7 @@ fn ci_process_end_to_end_body() -> List<std.markdown.MarkdownBlock> {
     hr(),
     h2(text: "2. The causal chain — what's on `.dag` today vs not"),
     p(text: "**Legend:** 🟢 **DERIVED** (`.dag` is the authority; artifact generated + drift-gated) · 🔵 **EXECUTING `.dag`** (the `.dag` is literally interpreted at runtime — the strongest sense) · 🟡 **MODELED-INERT** (`.dag` *describes* it but doesn't operate/enforce it) · 🔴 **OFF-FABRIC** (GitHub-native or hand/host; no `.dag`)."),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "#"), cell(text: "Link (push → execute)"), cell(text: "Verdict"), cell(text: "Wall (#5427 run)"), cell(text: "Authority today / gap")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -54,7 +54,7 @@ fn ci_process_end_to_end_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "**The one-line gap:** the *description* (A) and the *work* (§4) are on `.dag`; the *operation of the fabric* (B — placement + runner deployment + caps) is entirely off it. Close B as one unit and \"on `.dag`\" becomes true of the whole chain except GitHub's irreducible engine."),
     hr(),
     h2(text: "4. Which substrate layers CI flexes — and do they work?"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Layer"), cell(text: "State"), cell(text: "Evidence")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -69,7 +69,7 @@ fn ci_process_end_to_end_body() -> List<std.markdown.MarkdownBlock> {
     hr(),
     h2(text: "5. Why it runs poorly — one root, several faces"),
     p(text: "**Root: the model is on fabric, but the decisions that govern utilization — which host a run lands on, runners-per-host, per-runner caps — are NOT derived from it. They're demand-blind hand/host knobs.** The symptom is a fleet with **no operating point** — two 128-core hosts either oversubscribed/crashing or at ~1%, never the middle ([compute-envelope-model.md](compute-envelope-model.md) §1). Headline: a 128-core box runs CI at **width ~4 [confirm]** while the other host idles."),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Face"), cell(text: "Mechanism"), cell(text: "Link")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -84,7 +84,7 @@ fn ci_process_end_to_end_body() -> List<std.markdown.MarkdownBlock> {
     hr(),
     h2(text: "6. Where the 50 minutes goes (measured — #5427 run 27924855136, srv2, width 8)"),
     p(text: "The whole 50 min is one step (`gunbc ci`, 49m58s). By phase, then one level deeper into what each runs:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Phase"), cell(text: "Wall"), cell(text: "What it runs (one level down)")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -97,7 +97,7 @@ fn ci_process_end_to_end_body() -> List<std.markdown.MarkdownBlock> {
       ],
     },
     p(text: "**Batch 2, one level down.** The 7 nodes run width-8 parallel but are wildly unbalanced — one *atomic* node holds the batch open for 43 min while the rest finish in the first ~7:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Batch-2 node"), cell(text: "Wall"), cell(text: "What it runs")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -160,6 +160,6 @@ data ci_process_end_to_end_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "ci-process-end-to-end",
   title: "CI, end to end — what's on `.dag` today, what isn't, and the lane that closes the gap",
   body: ci_process_end_to_end_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when §3-B (the fabric operation — placement, runner deployment, per-runner caps) is on `.dag` and drift-gated (steps 1 + 3 landed), the resolve cache is enabled in CI (step 2), and the rust tentpole no longer dominates a CI run — at which point the push→execute chain is on fabric except GitHub's irreducible engine, the §4 scheduling/caching gaps are closed by a real non-test consumer, and this charter's gap-map is a witnessed property rather than an audit.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when §3-B (the fabric operation — placement, runner deployment, per-runner caps) is on `.dag` and drift-gated (steps 1 + 3 landed), the resolve cache is enabled in CI (step 2), and the rust tentpole no longer dominates a CI run — at which point the push→execute chain is on fabric except GitHub's irreducible engine, the §4 scheduling/caching gaps are closed by a real non-test consumer, and this charter's gap-map is a witnessed property rather than an audit.")
   }
 }

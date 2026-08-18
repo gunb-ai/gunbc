@@ -5,7 +5,7 @@ data witness_entry: std.evaluation_budget.EvaluationEntryIdentity = std.evaluati
   entry: "roadmap_serve_handle" as std.types.NonEmptyStr,
 }
 
-data limit_10ms: std.evaluation_budget.EvaluationLimit = LimitSet {
+data limit_10ms: std.evaluation_budget.EvaluationLimit = std.evaluation_budget.LimitSet {
   limit: positive_millisecond(count: positive_measure_count(predecessor: 9)),
 }
 

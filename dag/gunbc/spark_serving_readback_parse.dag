@@ -31,7 +31,7 @@ fn spark_serving_readback_field_from_member_lookup(
 ) -> SparkServingReadbackField {
   match lookup {
     JsonMemberFound { value: v } =>
-      match spark_serving_json_member_string(lookup: JsonMemberFound { value: v }) {
+      match spark_serving_json_member_string(lookup: extdeps.languages.json.parse.JsonMemberFound { value: v }) {
         Present { value: s } => SparkServingReadbackPresent { value: s }
         Absent =>
           SparkServingReadbackRefused {

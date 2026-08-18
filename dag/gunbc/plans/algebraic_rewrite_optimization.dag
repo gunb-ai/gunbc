@@ -35,7 +35,7 @@ fn algebraic_rewrite_optimization_body() -> List<std.markdown.MarkdownBlock> {
       ]),
     ]),
     p(text: "**The three nested sets:**"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "set"), cell(text: "definition"), cell(text: "bound")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -83,7 +83,7 @@ fn algebraic_rewrite_optimization_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "3. The catalog — the common cases, by transition"),
     p(text: "Tiered by how cleanly the precondition is structural (this is also the build order):"),
     p(text: "**Tier 1 — precondition is a pure-effect query (build first):**"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "pattern"), cell(text: "transition"), cell(text: "precondition (structural)")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -94,7 +94,7 @@ fn algebraic_rewrite_optimization_body() -> List<std.markdown.MarkdownBlock> {
       ],
     },
     p(text: "**Tier 2 — precondition needs a refinement type or provenance (later):**"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "pattern"), cell(text: "transition"), cell(text: "precondition")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -110,11 +110,11 @@ fn algebraic_rewrite_optimization_body() -> List<std.markdown.MarkdownBlock> {
     ul(items: [
       li_blocks(blocks: [
         p(text: "**INPUT (slow form it fires on):**"),
-        CodeBlock { code: "out = []\nfor x in a:                 // |a| = n\n  if contains(b, x):        // linear scan of b = O(|b|) → whole loop O(n·m)\n    out.append(x)\n" },
+        std.markdown.CodeBlock { code: "out = []\nfor x in a:                 // |a| = n\n  if contains(b, x):        // linear scan of b = O(|b|) → whole loop O(n·m)\n    out.append(x)\n" },
       ]),
       li_blocks(blocks: [
         p(text: "**OUTPUT (rewritten):**"),
-        CodeBlock { code: "bset = set(b)               // O(|b|)\nout = []\nfor x in a:\n  if bset.contains(x):      // O(1) amortized → whole loop O(n + m)\n    out.append(x)\n" },
+        std.markdown.CodeBlock { code: "bset = set(b)               // O(|b|)\nout = []\nfor x in a:\n  if bset.contains(x):      // O(1) amortized → whole loop O(n + m)\n    out.append(x)\n" },
       ]),
       li(text: "**precondition (structural):** the membership test is pure (`EffectShape` pure) **and** `b` is not mutated anywhere in the loop body."),
       li(text: "**non-firing control (witness d):** the same shape where `b` *is* mutated in the loop (e.g. `b.append(...)`) — the precomputed set would go stale, so the rule **must not fire**; code untouched."),
@@ -125,7 +125,7 @@ fn algebraic_rewrite_optimization_body() -> List<std.markdown.MarkdownBlock> {
     ul(items: [
       li_blocks(blocks: [
         p(text: "**INPUT (slow form):**"),
-        CodeBlock { code: "fn f(n):\n  if n < 2: return n\n  return f(n-1) + f(n-2)    // overlapping subproblems → O(2ⁿ)\n" },
+        std.markdown.CodeBlock { code: "fn f(n):\n  if n < 2: return n\n  return f(n-1) + f(n-2)    // overlapping subproblems → O(2ⁿ)\n" },
       ]),
       li(text: "**OUTPUT (rewritten):** `f` memoized on its argument — each `f(k)` computed once → O(n)."),
       li(text: "**precondition (structural):** `f` is a **pure function of its arguments** (`EffectShape` pure — a *different precondition shape* from Rule 1, which is why D2 seeds with both: it proves the framework on both \"no-mutation\" and \"pure-fn\" preconditions)."),
@@ -152,7 +152,7 @@ fn algebraic_rewrite_optimization_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "Before the lane is declared useful: **run the catalog over a real corpus** (this project's own seed, or a sampled real codebase) and report **% of files with ≥1 finding**. Two honest outcomes, both useful: high hit-rate ⇒ as useful as hoped, *measured*; low hit-rate ⇒ either add catalog rows or the true finding is \"well-factored code has few of these\" — worth knowing, and it prevents shipping a toy that never fires. The gut target becomes a number; no silent caps (DESIGN §6 — `log` what was dropped)."),
     h2(text: "7. Honesty surface (the anti-oversell, in the developer's face)"),
     p(text: "Because D1 rewrites silently, emit a **transparency report** of what was canonicalized:"),
-    BlockquoteBlock { blocks: [p(text: "rewrote N patterns; classes dropped `X→Y`; **this pass verifies the rewrites it made are correct; it does NOT verify your code is globally optimal.**")] },
+    std.markdown.BlockquoteBlock { blocks: [p(text: "rewrote N patterns; classes dropped `X→Y`; **this pass verifies the rewrites it made are correct; it does NOT verify your code is globally optimal.**")] },
     p(text: "The diff *is* the detection; that last sentence is the calibration, every run. The published catalog (§3) is the other half: the developer can read exactly what is and is not looked for."),
     h2(text: "8. The undecidable residue (stays advisory, never gates)"),
     p(text: "`src/v2/lens/synthesis.dag` already surfaces the lower-bound *gap* (realization cost vs a declared relation's structural lower bound) — but it is `AdvisoryLens`, not a fail-closed `Diagnostic`, by design (its header: \"algorithm choice is design-tier — programmer decides\"). It is the honest home for \"you may be above the theoretical floor but I have no sound rewrite\" — the *ratchet forever* half of the trichotomy (DESIGN §5). This lane never promotes that to a gate."),
@@ -170,6 +170,6 @@ data algebraic_rewrite_optimization_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "algebraic-rewrite-optimization",
   title: "Plan — algorithmic-cost reduction by construction (rewrite suboptimal patterns)",
   body: algebraic_rewrite_optimization_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the rewrite framework + the seed rules have landed (each carrying its four-witness test), the catalog lives as discoverable rule-rows, and the corpus hit-rate gate runs in CI. At that point the rule carriers + their witnesses tell the whole story and this design doc is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the rewrite framework + the seed rules have landed (each carrying its four-witness test), the catalog lives as discoverable rule-rows, and the corpus hit-rate gate runs in CI. At that point the rule carriers + their witnesses tell the whole story and this design doc is redundant.")
   }
 }

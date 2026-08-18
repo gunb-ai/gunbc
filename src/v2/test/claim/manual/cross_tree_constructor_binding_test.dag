@@ -10,5 +10,5 @@ fn build_reversed() -> List<Int> {
 }
 
 test fn witness_bare_imported_empty_binds_across_trees() -> Bool {
-  build_reversed() == Cons { head: 2, tail: Cons { head: 1, tail: std.algebra.Empty } }
+  build_reversed() == std.algebra.Cons { head: 2, tail: std.algebra.Cons { head: 1, tail: std.algebra.Empty } }
 }

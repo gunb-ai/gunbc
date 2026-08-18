@@ -132,7 +132,7 @@ test fn witness_readback_verdict_drifts_RED_when_live_mismatch() -> Bool {
       slice: RunnerSlice,
       name: srv3_memory_max_knob_name(),
       desired: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)),
-      target: PerSlotMemoryCap {
+      target: gunbc.host_converge.PerSlotMemoryCap {
         dropin_path: gunbc_runner_per_slot_dropin_path,
         instance_glob: runner_instance_glob(host: operator_host_srv3),
         property: systemd_memory_max_property,

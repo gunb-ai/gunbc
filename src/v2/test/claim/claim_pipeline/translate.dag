@@ -2,7 +2,7 @@ module v2.test.claim_pipeline.translate
 
 
 data spine_translate_module_subject: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^spine_translate_module } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^spine_translate_module } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -17,20 +17,20 @@ fn spine_translate_bool_atom(b: Bool) -> Node {
   match b {
     true =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: ^spine_translate_pass } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^spine_translate_pass } },
         children: [],
         occurrence_id: SyntheticOccurrence
 }
     false =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: ^spine_translate_fail } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^spine_translate_fail } },
         children: [],
         occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_pipeline_translate_module_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_pipeline_translate_module_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "claim_pipeline/translate: v2.compiler.translate stage module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: spine_translate_module_subject,
@@ -38,7 +38,7 @@ data claim_pipeline_translate_module_compiles: v2.std.verification.TestClaim = C
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_pipeline_translate_accepts_rust_add_inferred_tree: v2.std.verification.TestClaim = EqualsClaim {
+data claim_pipeline_translate_accepts_rust_add_inferred_tree: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "claim_pipeline/translate: translate accepts rust add-fn InferredTree on rust_target_model",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: spine_translate_bool_atom(b: spine_translate_accepts_rust_add_inferred_tree()),

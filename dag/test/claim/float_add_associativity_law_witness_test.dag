@@ -37,5 +37,5 @@ test fn w_float_kernel_type_in_std_types_roster() -> Bool {
 }
 
 test fn w_float_add_associativity_subject_is_float_add_coproduct() -> Bool {
-  float_add_associativity_subject == AssociativityFloatAdd {}
+  float_add_associativity_subject == std.algebra_law.AssociativityFloatAdd {}
 }

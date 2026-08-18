@@ -22,7 +22,7 @@ fn rust_bind_let_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn rust_bind_let_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: rust_bind_let_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: rust_bind_let_lex_rules() }
 }
 
 fn rust_bind_let_binding_spellings() -> Map<v2.std.node.Symbol, String> {

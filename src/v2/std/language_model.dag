@@ -40,7 +40,7 @@ fn language_model_canonical_symbols_to_node(symbols: Set<v2.std.node.Symbol>) ->
 
 fn language_model_to_node(lm: LanguageModel) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       language_model_named_edge(
         name: ^language_model_field_lex,

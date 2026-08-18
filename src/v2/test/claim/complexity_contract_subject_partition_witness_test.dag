@@ -18,22 +18,22 @@ test fn complexity_contract_subjects_partition_legacy_mixed_row_holds() -> Bool 
 
 test fn derived_claim_rejects_optimality_subject_red() -> Bool {
   !complexity_mixed_row_claim_belongs_to_subject(
-    claim: DerivedClaim { claim: AsymptoticCostProjection },
+    claim: v2.lens.enforcement.complexity_contract_subject.DerivedClaim { claim: AsymptoticCostProjection },
     subject: OptimalityResidue
   )
     && complexity_mixed_row_claim_belongs_to_subject(
-      claim: DerivedClaim { claim: AsymptoticCostProjection },
+      claim: v2.lens.enforcement.complexity_contract_subject.DerivedClaim { claim: AsymptoticCostProjection },
       subject: DerivedKernel
     )
 }
 
 test fn optimality_claim_rejects_derived_kernel_subject_red() -> Bool {
   !complexity_mixed_row_claim_belongs_to_subject(
-    claim: OptimalityClaim { claim: GlobalOptimality },
+    claim: v2.lens.enforcement.complexity_contract_subject.OptimalityClaim { claim: GlobalOptimality },
     subject: DerivedKernel
   )
     && complexity_mixed_row_claim_belongs_to_subject(
-      claim: OptimalityClaim { claim: GlobalOptimality },
+      claim: v2.lens.enforcement.complexity_contract_subject.OptimalityClaim { claim: GlobalOptimality },
       subject: OptimalityResidue
     )
 }

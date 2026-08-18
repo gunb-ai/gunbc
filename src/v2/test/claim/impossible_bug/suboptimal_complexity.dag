@@ -2,14 +2,14 @@ module v2.test.impossible_bug.suboptimal_complexity
 
 
 fn atom_node(s: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
 fn complexity_contract(body: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: ^complexity_bound_field }, target: atom_node(s: ^complexity_contract_symbol) },
       v2.std.node.Edge { label: Named { name: ^complexity_body_field }, target: body },
@@ -23,7 +23,7 @@ fn expected_complexity_rejection(input: Node, reason: v2.std.node.Symbol, correc
     d: v2.std.diagnostic.Diagnostic {
       reason: reason,
       at: node_locus(node: input),
-      correction: Suggested { node: correction }
+      correction: v2.std.diagnostic.Suggested { node: correction }
     }
   )
 }
@@ -32,7 +32,7 @@ data within_bound_input: Node = complexity_contract(body: atom_node(s: ^complexi
 
 data falsification_overcost_against_structural_bound: Node = complexity_contract(body: atom_node(s: ^complexity_body_quadratic_symbol))
 
-data claim_within_structural_bound_passes: v2.std.verification.TestClaim = CompilesClaim {
+data claim_within_structural_bound_passes: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "complexity bound accepts lens-derived in-bound body",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: within_bound_input,
@@ -40,7 +40,7 @@ data claim_within_structural_bound_passes: v2.std.verification.TestClaim = Compi
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_overcost_against_structural_bound_violates: v2.std.verification.TestClaim = DiagnosticClaim {
+data claim_overcost_against_structural_bound_violates: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "complexity bound rejects lens-derived over-cost body",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_overcost_against_structural_bound,
@@ -54,7 +54,7 @@ data claim_overcost_against_structural_bound_violates: v2.std.verification.TestC
 
 data falsification_cost_contradicts_inhabitance: Node = complexity_contract(body: atom_node(s: ^complexity_body_contradictory_inhabitant_symbol))
 
-data claim_cost_contradicts_inhabitance_caught: v2.std.verification.TestClaim = DiagnosticClaim {
+data claim_cost_contradicts_inhabitance_caught: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "complexity inhabitance rejects contradictory body cost",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_cost_contradicts_inhabitance,

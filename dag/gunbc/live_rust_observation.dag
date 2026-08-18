@@ -92,11 +92,11 @@ fn current_actions_sha_observation() -> extdeps.github.actions_environment.Actio
   match reading.value {
     Present { value: value } =>
       if value == "" {
-        ActionsShaEmpty { detail: "GITHUB_SHA was present but empty" }
+        extdeps.github.actions_environment.ActionsShaEmpty { detail: "GITHUB_SHA was present but empty" }
       } else {
-        ActionsShaObserved { sha: value as std.types.CommitSha }
+        extdeps.github.actions_environment.ActionsShaObserved { sha: value as std.types.CommitSha }
       }
-    Absent => ActionsShaMissing { detail: "GITHUB_SHA was not set" }
+    Absent => extdeps.github.actions_environment.ActionsShaMissing { detail: "GITHUB_SHA was not set" }
   }
 }
 

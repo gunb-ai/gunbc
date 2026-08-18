@@ -159,16 +159,16 @@ fn op_lattice_read(name: String) -> std.effects.OperationEffect {
   std.effects.OperationEffect {
     operation_name: name,
     shape: ReadEffect,
-    evidence: LatticeEffect { shape: ReadEffect }
+    evidence: std.effects.LatticeEffect { shape: ReadEffect }
   }
 }
 
 fn op_non_idempotent(name: String) -> std.effects.OperationEffect {
   std.effects.OperationEffect {
     operation_name: name,
-    shape: CreateEffect { cause: PostAlways },
-    evidence: NonIdempotent {
-      shape: CreateEffect { cause: PostAlways },
+    shape: std.effects.CreateEffect { cause: PostAlways },
+    evidence: std.effects.NonIdempotent {
+      shape: std.effects.CreateEffect { cause: PostAlways },
       reason: "test"
     }
   }
@@ -365,10 +365,10 @@ test fn effects_post_parent_path_witnesses() -> Bool {
 
 test fn effects_create_if_absent_dedup_witnesses() -> Bool {
   let key = InputField { field: "id" }
-  let shape = CreateEffect { cause: CreateIfAbsent { key_source: key } }
+  let shape = std.effects.CreateEffect { cause: CreateIfAbsent { key_source: key } }
   let key_b = InputField { field: "b" }
-  let shape_b = CreateEffect { cause: CreateIfAbsent { key_source: key_b } }
-  let always = CreateEffect { cause: PostAlways }
+  let shape_b = std.effects.CreateEffect { cause: CreateIfAbsent { key_source: key_b } }
+  let always = std.effects.CreateEffect { cause: PostAlways }
 
   is_idempotent_effect(shape: shape)
     && create_effect_is_dedupable(shape: shape)
@@ -382,7 +382,7 @@ test fn effects_create_if_absent_dedup_witnesses() -> Bool {
 
 test fn effects_create_if_absent_modifier_witnesses() -> Bool {
   let key = InputField { field: "id" }
-  let shape = CreateEffect { cause: CreateIfAbsent { key_source: key } }
+  let shape = std.effects.CreateEffect { cause: CreateIfAbsent { key_source: key } }
   match parse_path_template(raw: "/secrets") {
     ParsedPathTemplate { template: secrets_path } =>
       match parse_path_template(raw: "/versions") {
@@ -399,7 +399,7 @@ test fn effects_create_if_absent_modifier_witnesses() -> Bool {
             operation_name: "add_version",
             method: POST,
             path_template: versions_path,
-            shape: CreateEffect { cause: PostAlways }
+            shape: std.effects.CreateEffect { cause: PostAlways }
           }
           let unknown = check_modifier_vs_derivation(op: always_op, declared_idempotent: true, declared_readonly: false)
           match agrees.agreement { Agrees => true _ => false }

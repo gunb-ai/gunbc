@@ -154,7 +154,7 @@ data witness_observed_at_midnight_utc: std.types.EpochMs = 1785801600000
 
 data witness_observed_at_noon_utc: std.types.EpochMs = 1785844800000
 
-data witness_upstream_unreachable_observation: std.citation.CitationRetrievalObservation = CitationUnreachable {
+data witness_upstream_unreachable_observation: std.citation.CitationRetrievalObservation = std.citation.CitationUnreachable {
   request: std.citation.CitationRetrievalRequest {
     locator: witness_authority.uri,
   },
@@ -162,15 +162,15 @@ data witness_upstream_unreachable_observation: std.citation.CitationRetrievalObs
   cause: DnsResolutionFailed,
 }
 
-data witness_access_refused_observation: std.citation.CitationRetrievalObservation = CitationAccessRefused {
+data witness_access_refused_observation: std.citation.CitationRetrievalObservation = std.citation.CitationAccessRefused {
   request: std.citation.CitationRetrievalRequest {
     locator: witness_authority.uri,
   },
   observed_at: witness_observed_at_midnight_utc,
-  cause: HttpAccessRefused { status: 403 },
+  cause: std.citation.HttpAccessRefused { status: 403 },
 }
 
-data witness_representation_retrieved_observation: std.citation.CitationRetrievalObservation = RepresentationRetrieved {
+data witness_representation_retrieved_observation: std.citation.CitationRetrievalObservation = std.citation.RepresentationRetrieved {
   request: std.citation.CitationRetrievalRequest {
     locator: witness_authority.uri,
   },
@@ -241,7 +241,7 @@ test fn verification_receipt_binds_request_locator_to_target_access_route() -> B
 }
 
 test fn verification_refuses_request_locator_mismatch() -> Bool {
-  let wrong_route_observation = RepresentationRetrieved {
+  let wrong_route_observation = std.citation.RepresentationRetrieved {
     request: std.citation.CitationRetrievalRequest {
       locator: witness_mirror_access_route,
     },
@@ -263,7 +263,7 @@ test fn verification_refuses_request_locator_mismatch() -> Bool {
 }
 
 test fn verification_refuses_scheme_mismatch_on_same_locator() -> Bool {
-  let http_observation = RepresentationRetrieved {
+  let http_observation = std.citation.RepresentationRetrieved {
     request: std.citation.CitationRetrievalRequest {
       locator: witness_http_access_route,
     },
@@ -284,7 +284,7 @@ test fn verification_refuses_scheme_mismatch_on_same_locator() -> Bool {
 }
 
 test fn verification_refuses_non_success_http_status() -> Bool {
-  let not_found_observation = RepresentationRetrieved {
+  let not_found_observation = std.citation.RepresentationRetrieved {
     request: std.citation.CitationRetrievalRequest {
       locator: witness_authority.uri,
     },
@@ -304,7 +304,7 @@ test fn verification_refuses_non_success_http_status() -> Bool {
 test fn verification_mismatch_is_not_named_verified() -> Bool {
   match verify_citation_representation(
     target: witness_citation_target,
-    observation: RepresentationRetrieved {
+    observation: std.citation.RepresentationRetrieved {
       request: std.citation.CitationRetrievalRequest { locator: witness_authority.uri },
       observed_at: witness_observed_at_noon_utc,
       http_status: 200,
@@ -343,7 +343,7 @@ test fn retrieval_observation_admitted_in_observing_layer() -> Bool {
 
 test fn retrieval_observation_refused_in_upstream_module_layer() -> Bool {
   match admit_citation_retrieval_observation(
-    layer: UpstreamModuleLayer {
+    layer: std.citation.UpstreamModuleLayer {
       module_path: "extdeps.router.verizon_cr1000a" as std.types.NonEmptyStr,
     },
     observation: witness_upstream_unreachable_observation,
@@ -417,7 +417,7 @@ test fn representation_retrieved_requires_http_status_and_observed_representatio
 }
 
 test fn response_observed_without_representation_is_separate_arm() -> Bool {
-  match ResponseObservedWithoutRepresentation {
+  match std.citation.ResponseObservedWithoutRepresentation {
     request: std.citation.CitationRetrievalRequest { locator: witness_authority.uri },
     observed_at: witness_observed_at_noon_utc,
     http_status: 204,

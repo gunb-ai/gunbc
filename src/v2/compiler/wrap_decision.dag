@@ -64,7 +64,7 @@ fn wrap_decision_bundle_optional_child(
             v2.std.diagnostic.Diagnostic {
               reason: ^wrap_decision_bundle_duplicate_edge,
               at: node_locus(node: target.bundle),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             }
           )
         WrapDecisionBundleChildInvalidEdge =>
@@ -72,7 +72,7 @@ fn wrap_decision_bundle_optional_child(
             v2.std.diagnostic.Diagnostic {
               reason: ^wrap_decision_bundle_malformed,
               at: node_locus(node: target.bundle),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             }
           )
       }
@@ -81,7 +81,7 @@ fn wrap_decision_bundle_optional_child(
         v2.std.diagnostic.Diagnostic {
           reason: ^wrap_decision_bundle_malformed,
           at: node_locus(node: target.bundle),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
   }
@@ -105,7 +105,7 @@ fn wrap_decision_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> v2.std
   v2.std.diagnostic.Diagnostic {
     reason: ^wrap_decision_sg_rc_bundle_partial,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -114,7 +114,7 @@ fn wrap_decision_position_disagreement_diagnostic(source_carrier: Node) -> v2.st
   v2.std.diagnostic.Diagnostic {
     reason: ^wrap_decision_position_disagreement,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -304,7 +304,7 @@ fn wrap_decision_gate(
                     ),
                     f: fn(decision) {
                       outcome_accepted(
-                        WrapGateDecided { decision: decision }
+                        v2.std.compilers.target_model.WrapGateDecided { decision: decision }
                       )
                     }
                   )

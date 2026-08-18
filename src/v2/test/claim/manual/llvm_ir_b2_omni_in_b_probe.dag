@@ -2,20 +2,20 @@ module v2.test.manual.llvm_ir_b2_omni_in_b_probe
 
 
 fn llvm_probe_atom(s: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-data llvm_probe_type: v2.extdeps.languages.llvm_ir.LlvmType = IntegerType { bits: v2.std.cardinality.NonZeroNat { prev: Zero } }
+data llvm_probe_type: v2.extdeps.languages.llvm_ir.LlvmType = v2.extdeps.languages.llvm_ir.IntegerType { bits: v2.std.cardinality.NonZeroNat { prev: Zero } }
 
 data llvm_probe_left_incoming: v2.extdeps.languages.llvm_ir.PhiIncoming = v2.extdeps.languages.llvm_ir.PhiIncoming {
-  value: ConstantOperand { constant: IntConstant { ty: llvm_probe_type, value: 0 } },
+  value: v2.extdeps.languages.llvm_ir.ConstantOperand { constant: v2.extdeps.languages.llvm_ir.IntConstant { ty: llvm_probe_type, value: 0 } },
   block: ^llvm_probe_left_symbol
 }
 
 data llvm_probe_right_incoming: v2.extdeps.languages.llvm_ir.PhiIncoming = v2.extdeps.languages.llvm_ir.PhiIncoming {
-  value: ConstantOperand { constant: IntConstant { ty: llvm_probe_type, value: 1 } },
+  value: v2.extdeps.languages.llvm_ir.ConstantOperand { constant: v2.extdeps.languages.llvm_ir.IntConstant { ty: llvm_probe_type, value: 1 } },
   block: ^llvm_probe_right_symbol
 }
 
@@ -29,8 +29,8 @@ data llvm_probe_entry_block: v2.extdeps.languages.llvm_ir.BasicBlock = v2.extdep
   label: ^llvm_probe_cond_symbol,
   phis: [],
   body: [],
-  terminator: ConditionalBr {
-    condition: ConstantOperand { constant: IntConstant { ty: llvm_probe_type, value: 1 } },
+  terminator: v2.extdeps.languages.llvm_ir.ConditionalBr {
+    condition: v2.extdeps.languages.llvm_ir.ConstantOperand { constant: v2.extdeps.languages.llvm_ir.IntConstant { ty: llvm_probe_type, value: 1 } },
     if_true: ^llvm_probe_left_symbol,
     if_false: ^llvm_probe_right_symbol
   }
@@ -40,24 +40,24 @@ data llvm_probe_left_block: v2.extdeps.languages.llvm_ir.BasicBlock = v2.extdeps
   label: ^llvm_probe_left_symbol,
   phis: [],
   body: [],
-  terminator: UnconditionalBr { target: ^llvm_probe_merge_symbol }
+  terminator: v2.extdeps.languages.llvm_ir.UnconditionalBr { target: ^llvm_probe_merge_symbol }
 }
 
 data llvm_probe_right_block: v2.extdeps.languages.llvm_ir.BasicBlock = v2.extdeps.languages.llvm_ir.BasicBlock {
   label: ^llvm_probe_right_symbol,
   phis: [],
   body: [],
-  terminator: UnconditionalBr { target: ^llvm_probe_merge_symbol }
+  terminator: v2.extdeps.languages.llvm_ir.UnconditionalBr { target: ^llvm_probe_merge_symbol }
 }
 
 data llvm_probe_merge_block: v2.extdeps.languages.llvm_ir.BasicBlock = v2.extdeps.languages.llvm_ir.BasicBlock {
   label: ^llvm_probe_merge_symbol,
   phis: [llvm_probe_phi],
   body: [],
-  terminator: RetValue { value: LocalRef { name: ^llvm_probe_phi_result_symbol } }
+  terminator: v2.extdeps.languages.llvm_ir.RetValue { value: v2.extdeps.languages.llvm_ir.LocalRef { name: ^llvm_probe_phi_result_symbol } }
 }
 
-data llvm_probe_function_body: v2.extdeps.languages.llvm_ir.FunctionBody = Defined {
+data llvm_probe_function_body: v2.extdeps.languages.llvm_ir.FunctionBody = v2.extdeps.languages.llvm_ir.Defined {
   entry: llvm_probe_entry_block,
   rest: [llvm_probe_left_block, llvm_probe_right_block, llvm_probe_merge_block]
 }
@@ -75,7 +75,7 @@ fn llvm_probe_receipt_holds() -> Bool {
 
 fn llvm_probe_pass_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: ^llvm_probe_result_symbol }, target: llvm_probe_atom(s: ^llvm_probe_pass_symbol) },
       v2.std.node.Edge { label: Named { name: ^llvm_probe_ssa_axis_symbol }, target: llvm_probe_atom(s: ^llvm_probe_phi_result_symbol) },
@@ -96,7 +96,7 @@ fn llvm_probe_receipt_node() -> Node {
 
 data llvm_probe_expected_node: Node = llvm_probe_pass_node()
 
-data claim_llvm_ir_b2_omni_in_b_probe: v2.std.verification.TestClaim = EqualsClaim {
+data claim_llvm_ir_b2_omni_in_b_probe: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "T-4.12 llvm_ir B2-OMNI IN-B probe: SSA, phi, CFG successors present",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: llvm_probe_expected_node,

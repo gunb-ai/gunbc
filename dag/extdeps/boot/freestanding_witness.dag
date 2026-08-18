@@ -139,7 +139,7 @@ fn witness_boot_image_accepts_emitted_init() -> Bool {
       match accept_linux_x86_boot_image(extdeps.boot.linux_x86_boot.LinuxX86BootImage {
         kernel_digest: slice_05_kernel_digest_placeholder,
         cmdline: [],
-        init: EmittedPayload { digest: d, entry: e },
+        init: extdeps.boot.freestanding_payload.EmittedPayload { digest: d, entry: e },
       }) {
         BootImageAccepted { value: _ } => true
         BootImageRejected { reason: _ } => false

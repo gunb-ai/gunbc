@@ -12,7 +12,7 @@ test fn witness_add_sequence_caps_before_start() -> Bool {
 test fn witness_disk_preflight_sufficient_at_apply_width() -> Bool {
   let required = runner_width_disk_required(requested_width: 6)
   let free = byte_size(byte_size_count(b: required) + 1)
-  match runner_width_disk_preflight(requested_width: 6, disk: DiskObserved { free_bytes: free, observed_on: "srv4" as std.types.NonEmptyStr }) {
+  match runner_width_disk_preflight(requested_width: 6, disk: gunbc.host_disk_observation.DiskObserved { free_bytes: free, observed_on: "srv4" as std.types.NonEmptyStr }) {
     DiskHeadroomSufficient { requested_width: w, required: r, observed_free: o } =>
       w == 6 && byte_size_count(b: r) == byte_size_count(b: required) && byte_size_count(b: o) > byte_size_count(b: r)
     DiskHeadroomInsufficient { requested_width: _, required: _, observed_free: _ } => false
@@ -23,7 +23,7 @@ test fn witness_disk_preflight_sufficient_at_apply_width() -> Bool {
 test fn witness_disk_preflight_insufficient_refuses_not_fallback() -> Bool {
   let required = runner_width_disk_required(requested_width: 6)
   let free = byte_size(byte_size_count(b: required) - 1)
-  match runner_width_disk_preflight(requested_width: 6, disk: DiskObserved { free_bytes: free, observed_on: "srv4" as std.types.NonEmptyStr }) {
+  match runner_width_disk_preflight(requested_width: 6, disk: gunbc.host_disk_observation.DiskObserved { free_bytes: free, observed_on: "srv4" as std.types.NonEmptyStr }) {
     DiskHeadroomInsufficient { requested_width: w, required: r, observed_free: o } =>
       w == 6 && byte_size_count(b: o) < byte_size_count(b: r)
     DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => false
@@ -34,7 +34,7 @@ test fn witness_disk_preflight_insufficient_refuses_not_fallback() -> Bool {
 test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
   match runner_width_disk_preflight(
     requested_width: 6,
-    disk: DiskUnobserved { reason: "df producer scaffold" },
+    disk: gunbc.host_disk_observation.DiskUnobserved { reason: "df producer scaffold" },
   ) {
     DiskHeadroomUnobserved { requested_width: w, reason: _ } => w == 6
     DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => false
@@ -42,7 +42,7 @@ test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
   }
     && match runner_width_disk_preflight(
       requested_width: 6,
-      disk: DiskObservationRefused { detail: "reach refused" as std.types.NonEmptyStr },
+      disk: gunbc.host_disk_observation.DiskObservationRefused { detail: "reach refused" as std.types.NonEmptyStr },
     ) {
       DiskHeadroomUnobserved { requested_width: w, reason: r } => w == 6 && string_contains(s: r, pattern: "reach refused")
       DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => false

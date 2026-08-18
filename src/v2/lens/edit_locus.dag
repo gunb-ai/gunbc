@@ -21,11 +21,11 @@ fn edit_locus_no_match_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^edit_locus_reason_no_match,
     at: node_locus(node: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -33,11 +33,11 @@ fn edit_locus_ambiguous_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^edit_locus_reason_ambiguous,
     at: node_locus(node: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -47,7 +47,7 @@ fn node_eq(left: Node, right: Node) -> Bool {
 
 fn push_locus_if_absent(acc: FreeMonoid<Node>, locus: Node) -> FreeMonoid<Node> {
   if count_equal(xs: acc, item: locus, eq: node_eq) == 0 {
-    list_append(left: acc, right: Cons { head: locus, tail: Empty })
+    list_append(left: acc, right: std.algebra.Cons { head: locus, tail: Empty })
   } else {
     acc
   }
@@ -163,16 +163,16 @@ fn collect_edit_loci_from_provenance_on_paths(
 fn resolve_edit_locus_from_loci(loci: FreeMonoid<Node>) -> Witness<Node> {
   match length(xs: loci) {
     0 =>
-      Violates { diagnostic: edit_locus_no_match_diagnostic() }
+      v2.std.witness.Violates { diagnostic: edit_locus_no_match_diagnostic() }
     1 =>
       match loci {
         Cons { head: head, tail: _ } =>
           Holds { value: head }
         Empty =>
-          Violates { diagnostic: edit_locus_no_match_diagnostic() }
+          v2.std.witness.Violates { diagnostic: edit_locus_no_match_diagnostic() }
       }
     _ =>
-      Violates { diagnostic: edit_locus_ambiguous_diagnostic() }
+      v2.std.witness.Violates { diagnostic: edit_locus_ambiguous_diagnostic() }
   }
 }
 
@@ -216,7 +216,7 @@ fn affected_set_reading_from_git_diff(
     Holds { value: locus } =>
       Holds { value: affected_set_reading(graph: graph, edit_locus: locus) }
     Violates { diagnostic: d } =>
-      Violates { diagnostic: d }
+      v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -232,10 +232,10 @@ fn affected_set_reading_from_git_diff_provenance(
     Holds { value: locus } =>
       Holds { value: affected_set_reading(graph: graph, edit_locus: locus) }
     Violates { diagnostic: d } =>
-      Violates { diagnostic: d }
+      v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }

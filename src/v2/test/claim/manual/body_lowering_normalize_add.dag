@@ -6,12 +6,12 @@ data body_lowering_add_module_source: String = "module add_probe\n\nfn add(x: In
 fn body_lowering_bool_node(pass: Bool) -> Node {
   if pass {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_norm_pass } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_norm_pass } },
       children: []
     )
   } else {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_norm_fail } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_norm_fail } },
       children: []
     )
   }
@@ -132,7 +132,7 @@ fn body_lowering_arrow_token_holds() -> Bool {
 
 fn body_lower_collect_atoms(root: Node, acc: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   let acc1 = match node_atom_identity_optional(node: root) {
-    Present { value: id } => Cons { head: id, tail: acc }
+    Present { value: id } => std.algebra.Cons { head: id, tail: acc }
     Absent => acc
   }
   fold(root.children, init: acc1, f: fn(a, e) {
@@ -732,7 +732,7 @@ fn body_lowering_normalize_yields_arrow() -> Bool {
   }
 }
 
-data claim_body_lowering_normalize_add_resolves: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_normalize_add_resolves: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-normalize: census add module normalizes then resolves",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_bool_node(pass: body_lowering_normalized_resolves()),
@@ -740,7 +740,7 @@ data claim_body_lowering_normalize_add_resolves: v2.std.verification.TestClaim =
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_normalize_add_yields_arrow: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_normalize_add_yields_arrow: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-normalize: census add module normalizes fn_decl to Arrow with Transform body",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_bool_node(pass: body_lowering_normalize_yields_arrow()),

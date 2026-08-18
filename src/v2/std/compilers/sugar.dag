@@ -83,13 +83,13 @@ fn sugar_malformed_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^sugar_reason_malformed,
     at: node_locus(node: n),
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
 fn sugar_type_node(connective: v2.std.node.Connective, children: List<v2.std.node.Edge>, n: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: connective },
+    kind: v2.std.node.TypeNode { connective: connective },
     children: children,
     occurrence_id: n.occurrence_id
   }
@@ -166,7 +166,7 @@ fn sugar_all_coproduct_variants(captured: Node) -> FreeMonoid<Node> {
     Absent => std.algebra.Empty
     Present { value: pair } =>
       list_append(
-        left: Cons { head: pair.left, tail: std.algebra.Empty },
+        left: std.algebra.Cons { head: pair.left, tail: std.algebra.Empty },
         right: sugar_collect_pipe_chain_variants(spine: pair.right)
       )
   }

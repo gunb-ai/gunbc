@@ -109,7 +109,7 @@ test fn w_an_inert_probe_of_durable_state_is_evidence() -> Bool {
 test fn w_an_absence_survives_a_self_establishing_probe() -> Bool {
   match admitted_capability_outcome(observation: observation(
     host: "srv5", principal: "gunbc-automation", capability: ManagedExecutorReachable,
-    outcome: CapabilityAbsent { evidence: "no such account" as std.types.NonEmptyStr },
+    outcome: gunbc.spark_capability_observation.CapabilityAbsent { evidence: "no such account" as std.types.NonEmptyStr },
     effect: user_manager_over_ssh_probe_effect,
   )) {
     CapabilityAbsent { evidence: _ } => true
@@ -125,7 +125,7 @@ test fn red_control_unclassified_probe_effect_refuses() -> Bool {
   match admitted_capability_outcome(observation: observation(
     host: "srv5", principal: "gunbc-automation", capability: AcceleratorAccessible,
     outcome: CapabilityPresent { evidence: "looked fine" as std.types.NonEmptyStr },
-    effect: ProbeEffectUnknown { reason: "nobody classified this probe" as std.types.NonEmptyStr },
+    effect: gunbc.readback_independence.ProbeEffectUnknown { reason: "nobody classified this probe" as std.types.NonEmptyStr },
   )) {
     CapabilityObservationRefused { first: _, more: _ } => true
     CapabilityPresent { evidence: _ } => false

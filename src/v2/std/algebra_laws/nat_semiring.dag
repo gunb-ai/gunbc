@@ -2,14 +2,14 @@ module v2.test.algebra_laws.nat_semiring
 
 
 fn atom_node(s: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
 fn algebra_law_subject(algebra: v2.std.node.Symbol, inhabitant: v2.std.node.Symbol, law: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: ^algebra_law_subject_algebra_field }, target: atom_node(s: algebra) },
       v2.std.node.Edge { label: Named { name: ^algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
@@ -45,7 +45,7 @@ data nat_mul_associativity_input: Node = nat_mul_law(law: ^law_nat_mul_associati
 data falsification_nat_add_wrong_identity: Node = nat_add_law(law: ^nat_law_wrong_identity_symbol)
 
 fn accepted_claim(label: String, anchor: v2.std.verification.ManualAnchorKey, input: Node) -> v2.std.verification.TestClaim {
-  EqualsClaim { label: label, anchor: manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit  }
+  v2.std.verification.EqualsClaim { label: label, anchor: manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit  }
   }
 }
 
@@ -85,7 +85,7 @@ data claim_nat_mul_associativity: v2.std.verification.TestClaim = accepted_claim
   input: nat_mul_associativity_input
 )
 
-data claim_nat_add_wrong_identity_falsifies_law: v2.std.verification.TestClaim = DiagnosticClaim {
+data claim_nat_add_wrong_identity_falsifies_law: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "v2.std.nat.Nat addition wrong identity falsifies law claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_nat_add_wrong_identity,
@@ -93,7 +93,7 @@ data claim_nat_add_wrong_identity_falsifies_law: v2.std.verification.TestClaim =
       d: v2.std.diagnostic.Diagnostic {
         reason: ^algebra_law_violation_reason,
         at: node_locus(node: falsification_nat_add_wrong_identity),
-        correction: Suggested { node: nat_add_left_identity_input }
+        correction: v2.std.diagnostic.Suggested { node: nat_add_left_identity_input }
       }
     ),
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }

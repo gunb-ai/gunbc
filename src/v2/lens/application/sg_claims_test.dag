@@ -16,9 +16,9 @@ test fn lens_application_introspect_advisory_holds() -> Bool {
 fn lens_application_synthesis_gap_enforce_rejects() -> Bool {
   match apply_advisory_lens(
     lens: decision_tree_synthesis_advisory_lens,
-    section: DeclarationScope { declaration: lens_application_synthesis_root_declaration },
+    section: v2.lens.application.DeclarationScope { declaration: lens_application_synthesis_root_declaration },
     root: synthesis_gap_poly_input,
-    config: LensEnforce {
+    config: v2.lens.application.LensEnforce {
       budget: v2.std.report.Report {
         reason: SynthesisGapDecisionTree,
         at: node_locus(node: synthesis_gap_poly_input)

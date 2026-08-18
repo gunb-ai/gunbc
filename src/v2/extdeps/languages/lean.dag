@@ -143,7 +143,7 @@ type LeanOverflowSemanticsAdmission
 
 data lean_overflow_parse_continuation_note: String = "DECLARED SCAFFOLD parser continuation defect (review calm-badger-682 msg_e83789a9, msg_4683ea0a): authority src/v1/02_parse.dag parse_let — both arms omit skip_newlines before parse_expr after ExpectEq (typed EatConsumed and untyped EatUnchanged), so any let initializer continued on the next line begins with Newline and fails parse_expr prefix with expected expression, found Newline; parse_return is a suspected sibling (same parse_expr-after-keyword shape, not yet executed). skip_newlines is the pervasive idiom in 02_parse.dag; absence here is omission not grammar. CI reproduced on lean_overflow_semantics_witness_note and lean_catalog_fixed_width_overflow. Multiline generic record data is ordinary corpus-wide; multiline-ness alone and variant-vs-record RHS are refuted discriminators. Single-line initializers until v1 lane lands the parser fix. Dissolve-on: v1 parse_let and parse_return skip newlines after = / keyword, then restore multi-line witnesses."
 
-data lean_catalog_fixed_width_overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowReturns { value_rule: lean_upstream_fixed_width_overflow_returns_rule }
+data lean_catalog_fixed_width_overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = std.integer.OverflowReturns { value_rule: lean_upstream_fixed_width_overflow_returns_rule }
 
 fn lean_admit_fixed_width_overflow_semantics(
   semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
@@ -363,7 +363,7 @@ data lean_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn lean_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -434,7 +434,7 @@ fn lean_overflow_semantics_node(
 ) -> Node {
   match semantics {
     OverflowReturns { value_rule: rule } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         lean_named_edge(
           name: ^lean_overflow_field_classifier,
@@ -448,7 +448,7 @@ fn lean_overflow_semantics_node(
       occurrence_id: SyntheticOccurrence
 }
     OverflowRaises { effect: effect } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         lean_named_edge(
           name: ^lean_overflow_field_classifier,
@@ -469,7 +469,7 @@ fn lean_overflow_semantics_node(
 fn lean_scalar_node(scalar: LeanScalar) -> Node {
   match scalar {
     LeanIntegerScalar { signedness, width, overflow } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         lean_named_edge(
           name: ^lean_scalar_field_classifier,
@@ -500,7 +500,7 @@ fn lean_scalar_node(scalar: LeanScalar) -> Node {
 
 fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       lean_named_edge(
         name: ^lean_facts_field_surface_spelling,
@@ -521,7 +521,7 @@ fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> Node {
 
 fn lean_primitive_inhabitant_node(id: v2.std.node.Symbol, facts: LeanPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       lean_named_edge(name: ^lean_inhabitant_field_atom, target: lean_inhabitant_atom(id: id)),
       lean_named_edge(
@@ -545,15 +545,15 @@ fn lean_fixed_int_spec_facts(
 ) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
           v2.std.optional.Present { value: lean_integer_width_node(width: width) }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}) {
           v2.std.optional.Present { value: lean_signedness_node(signedness: signedness) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
-      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}) {
           v2.std.optional.Present { value: lean_overflow_semantics_node(semantics: overflow.semantics) }
       } else {
           v2.std.optional.Absent
@@ -565,9 +565,9 @@ fn lean_fixed_int_spec_facts(
 fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
           v2.std.optional.Absent
@@ -579,9 +579,9 @@ fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.std.node.Symbol, No
 fn lean_width_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
           v2.std.optional.Absent
@@ -593,9 +593,9 @@ fn lean_width_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.
 fn lean_overflow_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
           v2.std.optional.Absent
@@ -674,7 +674,7 @@ fn lean_token_class_tail() -> List<v2.std.node.Symbol> {
 }
 
 fn lean_formal_token_classes() -> List<v2.std.node.Symbol> {
-  Cons {
+  std.algebra.Cons {
     head: ^lean_token_kw_def,
     tail: lean_token_class_tail()
   }
@@ -703,7 +703,7 @@ fn lean_grammar_sequence_from_nonempty(
     xs: tail,
     empty: lean_grammar_terminal(token_class: head),
     cons: fn(acc, token_class) {
-      Sequence {
+      v2.std.grammar.Sequence {
         left: acc,
         right: lean_grammar_terminal(token_class: token_class)
       }
@@ -719,16 +719,16 @@ fn lean_def_dec_parse_expr() -> v2.std.grammar.GrammarExpr {
 }
 
 fn lean_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: v2.std.compilers.lexing.LiteralPattern { text: text }
   }
 }
 
 fn lean_numeric_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^lean_token_numeric_literal,
-    pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+    pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: DigitChar } }
   }
 }
 
@@ -751,7 +751,7 @@ fn lean_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn lean_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: lean_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: lean_lex_rules() }
 }
 
 fn lean_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
@@ -775,7 +775,7 @@ fn lean_grammar_root() -> v2.std.grammar.GrammarRoot {
 }
 
 fn lean_grammar() -> v2.std.grammar.ParseGrammar {
-  ModeledGrammar { root: lean_grammar_root() }
+  v2.std.grammar.ModeledGrammar { root: lean_grammar_root() }
 }
 
 fn lean_ingest_grammar_schema() -> v2.std.grammar.GrammarSchema {
@@ -815,7 +815,7 @@ fn lean_integer_algebra_witness_node(
   width: LeanIntegerWidth
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       lean_named_edge(
         name: ^lean_witness_integer_commutative_ring,
@@ -840,7 +840,7 @@ fn lean_integer_algebra_witness_node(
 
 fn lean_bool_algebra_witness_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       lean_named_edge(
         name: ^lean_witness_bool_boolean_algebra,

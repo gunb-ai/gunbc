@@ -159,7 +159,7 @@ fn ingested_classical_not_diagnostic(reason: v2.std.node.Symbol, node: Node) -> 
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -203,7 +203,7 @@ fn ingested_classical_not_composed_facts(key: Node) -> v2.compiler.infer.Inferre
 }
 
 fn ingested_classical_not_octet_value(n: Int) -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: rust_emit_host_runtime_primitive_type_node(),
       bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
@@ -350,7 +350,7 @@ fn ingested_classical_not_context() -> v2.compiler.eval.EvalContext {
 }
 
 fn ingested_classical_not_claim(rhs_result_node: Node) -> v2.std.verification.TestClaim {
-  EqualsClaim {
+  v2.std.verification.EqualsClaim {
     label: "Wave1 exit: ingested classical_not emit-host == eval (true scrutinee → false)",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     lhs: rhs_result_node,
@@ -543,7 +543,7 @@ fn ingested_classical_not_match_only_param_body_fixture() -> Node {
 fn ingested_classical_not_arrow_empty_domain_fixture() -> Node {
   dag_arrow_with_body_node(
     domain: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
     },

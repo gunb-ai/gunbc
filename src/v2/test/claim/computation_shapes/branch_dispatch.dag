@@ -2,14 +2,14 @@ module v2.test.computation_shapes.branch_dispatch
 
 
 fn branch_dispatch_leaf(s: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
 fn branch_dispatch_arm(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
       v2.std.node.Edge { label: Positional, target: branch_dispatch_leaf(s: s) }
     ],
@@ -21,7 +21,7 @@ data branch_dispatch_arm_then: Node = branch_dispatch_arm(s: ^branch_dispatch_ar
 data branch_dispatch_arm_else: Node = branch_dispatch_arm(s: ^branch_dispatch_arm_else_sym)
 
 data branch_dispatch_subject: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Branch },
+  kind: v2.std.node.ComputationNode { behavior: Branch },
   children: [
     v2.std.node.Edge { label: Positional, target: branch_dispatch_arm_then },
     v2.std.node.Edge { label: Positional, target: branch_dispatch_arm_else }
@@ -43,7 +43,7 @@ fn branch_dispatch_bool_node(ok: Bool) -> Node {
 
 data witness_branch_dispatch_well_formed: Bool = well_formed(n: branch_dispatch_subject)
 
-data claim_branch_dispatch_well_formed: v2.std.verification.TestClaim = CompilesClaim {
+data claim_branch_dispatch_well_formed: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "computation_shapes/branch_dispatch: Branch with two Transform arms is well-formed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: branch_dispatch_bool_node(ok: witness_branch_dispatch_well_formed),
@@ -51,7 +51,7 @@ data claim_branch_dispatch_well_formed: v2.std.verification.TestClaim = Compiles
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_branch_dispatch_equals_refl: v2.std.verification.TestClaim = EqualsClaim {
+data claim_branch_dispatch_equals_refl: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "computation_shapes/branch_dispatch: Equals reflexivity on Branch dispatch subject",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: branch_dispatch_subject,
@@ -60,7 +60,7 @@ data claim_branch_dispatch_equals_refl: v2.std.verification.TestClaim = EqualsCl
 }
 
 data branch_dispatch_subject_rebuilt: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Branch },
+  kind: v2.std.node.ComputationNode { behavior: Branch },
   children: [
     v2.std.node.Edge { label: Positional, target: branch_dispatch_arm_then },
     v2.std.node.Edge { label: Positional, target: branch_dispatch_arm_else }
@@ -69,7 +69,7 @@ data branch_dispatch_subject_rebuilt: Node = v2.std.node.Node {
 }
 
 data branch_dispatch_subject_arms_swapped: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Branch },
+  kind: v2.std.node.ComputationNode { behavior: Branch },
   children: [
     v2.std.node.Edge { label: Positional, target: branch_dispatch_arm_else },
     v2.std.node.Edge { label: Positional, target: branch_dispatch_arm_then }
@@ -79,7 +79,7 @@ data branch_dispatch_subject_arms_swapped: Node = v2.std.node.Node {
 
 data witness_branch_dispatch_content_hash_stable: Bool = (content_hash(n: branch_dispatch_subject) == content_hash(n: branch_dispatch_subject_rebuilt)) && (content_hash(n: branch_dispatch_subject) != content_hash(n: branch_dispatch_subject_arms_swapped))
 
-data claim_branch_dispatch_content_hash_stable: v2.std.verification.TestClaim = CompilesClaim {
+data claim_branch_dispatch_content_hash_stable: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "computation_shapes/branch_dispatch: content_hash is stable on Branch dispatch subject",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: branch_dispatch_bool_node(ok: witness_branch_dispatch_content_hash_stable),

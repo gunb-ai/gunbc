@@ -18,13 +18,13 @@ data fixture_witness: gunbc.legacy_test_behavior_disposition.TestBehaviorWitness
   test_fn: "replacement_catches_regression" as std.types.NonEmptyStr,
 }
 
-data fixture_covered_disposition: gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorDisposition = CoveredByWitness {
+data fixture_covered_disposition: gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorDisposition = gunbc.legacy_test_behavior_disposition.CoveredByWitness {
   behavior: fixture_covered_behavior,
   witness: fixture_witness,
   distinguishing_failure: "planted regression changes the replacement verdict from true to false" as std.types.NonEmptyStr,
 }
 
-data fixture_retained_disposition: gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorDisposition = RetainedNonMigratableBehavior {
+data fixture_retained_disposition: gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorDisposition = gunbc.legacy_test_behavior_disposition.RetainedNonMigratableBehavior {
   behavior: fixture_retained_behavior,
   reason: "fixture host-only behavior cannot yet execute through the substrate" as std.types.NonEmptyStr,
   dissolution: unbound_dissolution(description: "the fixture host surface becomes a modeled effect"),

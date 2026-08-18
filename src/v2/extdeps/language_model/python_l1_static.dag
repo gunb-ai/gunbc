@@ -2,10 +2,10 @@ module v2.test.language_model.python_l1_static
 
 fn python_l1_static_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^python_l1_static_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^python_l1_static_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^python_l1_static_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^python_l1_static_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
@@ -26,7 +26,7 @@ fn python_l1_static_fixture_pair_wired() -> Bool {
     && leaf_model_python_static_falsification_invocation(c: python_l1_static_fixture().falsification).tool_profile_ref == ^pyright_profile_l1_id
 }
 
-data claim_python_l1_static_fixture_pair_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_python_l1_static_fixture_pair_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/python_l1_static: fixture pair binds L1 static claim id + int surface-spelling fact, both cases BlockingForRung",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l1_static_claim_bool_atom(b: python_l1_static_fixture_pair_wired()),
@@ -48,7 +48,7 @@ fn python_l1_static_expected_verdicts_wired() -> Bool {
      }
 }
 
-data claim_python_l1_static_expected_verdicts_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_python_l1_static_expected_verdicts_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/python_l1_static: happy=Accepted, falsification=Rejected(pyright, reportReturnType)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l1_static_claim_bool_atom(b: python_l1_static_expected_verdicts_wired()),
@@ -91,7 +91,7 @@ fn python_l1_static_roster_pair_verdicts_wired(
      }
 }
 
-data claim_python_l1_static_undefined_variable_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_python_l1_static_undefined_variable_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/python_l1_static: reportUndefinedVariable pair binds claim id + int surface anchor, both cases BlockingForRung",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l1_static_claim_bool_atom(b: python_l1_static_roster_pair_wired(
@@ -102,7 +102,7 @@ data claim_python_l1_static_undefined_variable_wired: v2.std.verification.TestCl
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data claim_python_l1_static_undefined_variable_verdicts_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_python_l1_static_undefined_variable_verdicts_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/python_l1_static: undefined-variable happy=Accepted, falsification=Rejected(pyright, reportUndefinedVariable)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l1_static_claim_bool_atom(b: python_l1_static_roster_pair_verdicts_wired(
@@ -113,7 +113,7 @@ data claim_python_l1_static_undefined_variable_verdicts_wired: v2.std.verificati
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data claim_python_l1_static_missing_import_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_python_l1_static_missing_import_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/python_l1_static: reportMissingImports pair binds claim id + int surface anchor, both cases BlockingForRung",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l1_static_claim_bool_atom(b: python_l1_static_roster_pair_wired(
@@ -124,7 +124,7 @@ data claim_python_l1_static_missing_import_wired: v2.std.verification.TestClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data claim_python_l1_static_missing_import_verdicts_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_python_l1_static_missing_import_verdicts_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/python_l1_static: missing-import happy=Accepted, falsification=Rejected(pyright, reportMissingImports)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l1_static_claim_bool_atom(b: python_l1_static_roster_pair_verdicts_wired(
@@ -150,7 +150,7 @@ fn python_l1_static_mypy_fixture_pair_wired() -> Bool {
     && leaf_model_python_static_falsification_invocation(c: python_l1_static_mypy_fixture().falsification).tool_profile_ref == ^mypy_profile_l1_id
 }
 
-data claim_python_l1_static_mypy_fixture_pair_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_python_l1_static_mypy_fixture_pair_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/python_l1_static: mypy fixture pair binds L1 static claim id + BlockingForRung",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l1_static_claim_bool_atom(b: python_l1_static_mypy_fixture_pair_wired()),
@@ -172,7 +172,7 @@ fn python_l1_static_mypy_expected_verdicts_wired() -> Bool {
      }
 }
 
-data claim_python_l1_static_mypy_expected_verdicts_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_python_l1_static_mypy_expected_verdicts_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/python_l1_static: mypy happy=Accepted, falsification=Rejected(mypy, return-value)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l1_static_claim_bool_atom(b: python_l1_static_mypy_expected_verdicts_wired()),

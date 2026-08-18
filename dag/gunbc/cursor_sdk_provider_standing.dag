@@ -21,25 +21,25 @@ fn cursor_sdk_authentication_standing_from_probe(
       } else {
         match code {
           CursorSdkErrorCodeOther { raw: raw } =>
-            AuthenticationStandingUnobserved {
+            gunbc.provider_standing.AuthenticationStandingUnobserved {
               reason: concat(
                 "unrecognised terminal error code: ",
                 raw,
               ) as std.types.NonEmptyStr,
             }
           _ =>
-            AuthenticationStandingUnobserved {
+            gunbc.provider_standing.AuthenticationStandingUnobserved {
               reason: "unrecognised terminal error code" as std.types.NonEmptyStr,
             }
         }
       }
     CursorSdkAuthProbeUnclassified { reason } =>
-      AuthenticationStandingUnobserved { reason: reason }
+      gunbc.provider_standing.AuthenticationStandingUnobserved { reason: reason }
   }
 }
 
 fn cursor_sdk_local_limit_observation() -> gunbc.provider_standing.ProviderLimitObservation {
-  LimitCapabilityGapUnobservable {
+  gunbc.provider_standing.LimitCapabilityGapUnobservable {
     reason: cursor_sdk_local_limit_standing_reason,
   }
 }
@@ -48,16 +48,16 @@ fn cursor_sdk_local_provider_standing_from_auth_probe(
   probe: gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeResult,
 ) -> gunbc.provider_standing.ProviderStandingBundle {
   gunbc.provider_standing.ProviderStandingBundle {
-    installation: InstallationStandingUnobserved {
+    installation: gunbc.provider_standing.InstallationStandingUnobserved {
       reason: cursor_sdk_installation_unobserved_reason,
     },
     authentication: cursor_sdk_authentication_standing_from_probe(probe: probe),
-    entitlement: EntitlementObservationUnobserved {
+    entitlement: gunbc.provider_standing.EntitlementObservationUnobserved {
       reason: cursor_sdk_entitlement_unobserved_reason,
     },
     limits: [cursor_sdk_local_limit_observation()],
     turn: TurnNotStarted,
-    tool_environment: ToolEnvironmentStandingUnobserved {
+    tool_environment: gunbc.provider_standing.ToolEnvironmentStandingUnobserved {
       reason: cursor_sdk_tool_environment_unobserved_reason,
     },
   }

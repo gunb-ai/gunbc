@@ -5,7 +5,7 @@ fn sample_html_page() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "p",
     attributes: [],
-    children: [ FragmentText { content: "gunbhub" } ],
+    children: [ std.markup.FragmentText { content: "gunbhub" } ],
   }
 }
 

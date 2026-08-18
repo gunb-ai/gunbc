@@ -153,7 +153,7 @@ data asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation: extdeps.bmc.types.
   board_config_path: "/usr/share/swampd/config-asrr.json",
   controller_service: "phosphor-pid-control.service",
   controller_binary: "/usr/bin/swampd",
-  controller_shape: FanPidIndependentEntries {
+  controller_shape: extdeps.bmc.types.FanPidIndependentEntries {
     entry_names: [
       "FAN1",
       "FAN1_2",
@@ -179,7 +179,7 @@ data asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation: extdeps.bmc.types.
   board_config_path: "/usr/share/swampd/config-asrr.json",
   controller_service: "phosphor-pid-control.service",
   controller_binary: "/usr/bin/swampd",
-  controller_shape: FanPidAggregatedEntry {
+  controller_shape: extdeps.bmc.types.FanPidAggregatedEntry {
     entry_name: "FAN1",
     tach_inputs: ["FAN1", "FAN2", "FAN3", "FAN4", "FAN5"],
   },
@@ -336,7 +336,7 @@ data asrock_altrad8ud_bios_3_10_openbmc_release: extdeps.firmware.types.Firmware
     ),
   },
   release_notes: "1. Updated RC to 0ACRB_021  2. Enhanced system compatibility",
-  prerequisite: RequiresMinimumTargetFirmware {
+  prerequisite: extdeps.firmware.types.RequiresMinimumTargetFirmware {
     target: BmcController,
     minimum: firmware_semantic_version(major: 3, minor: 22, patch: 0),
   },
@@ -395,7 +395,7 @@ data asrock_altrad8ud_bios_310_push_refused_at_bmc_207: extdeps.firmware.types.F
   image_kind: OpenBmcWebUiTar,
   gating_target: BmcController,
   gating_version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
-  outcome: PushRefusedByTarget {
+  outcome: extdeps.firmware.types.PushRefusedByTarget {
     diagnostic: "Invalid ExtendedVersion: primary-all. Please check MANIFEST file!",
   },
   observed_at: 1786579200000,

@@ -12,7 +12,7 @@ fn fixture_cfg() -> extdeps.jobserver.JobserverConfig {
 }
 
 fn fixture_citation() -> extdeps.jobserver.JobserverCitation {
-  JobserverCited { config: fixture_cfg(), provenance: "fixture: parent-supplied installer knobs" }
+  extdeps.jobserver.JobserverCited { config: fixture_cfg(), provenance: "fixture: parent-supplied installer knobs" }
 }
 
 fn runner_idle_bytes() -> std.measure.ByteSize {
@@ -20,11 +20,11 @@ fn runner_idle_bytes() -> std.measure.ByteSize {
 }
 
 fn fixture_runner_measured() -> gunbc.fleet_container.FleetContainerType {
-  GhaRunnerContainer { baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: runner_idle_bytes()) } }
+  gunbc.fleet_container.GhaRunnerContainer { baseline: gunbc.fleet_container.ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: runner_idle_bytes()) } }
 }
 
 fn fixture_runner_unmeasured() -> gunbc.fleet_container.FleetContainerType {
-  GhaRunnerContainer { baseline: ContainerBaselineUnmeasured }
+  gunbc.fleet_container.GhaRunnerContainer { baseline: ContainerBaselineUnmeasured }
 }
 
 fn host_125gib() -> std.measure.ByteSize {
@@ -40,7 +40,7 @@ fn session_slice_fixture() -> std.measure.ByteSize {
 }
 
 fn fitting_headroom() -> gunbc.fleet_host_budget.HeadroomPolicy {
-  HeadroomSet { bytes: byte_size(16106127360) }
+  gunbc.fleet_host_budget.HeadroomSet { bytes: byte_size(16106127360) }
 }
 
 fn fitting_headroom_bytes() -> std.measure.ByteSize {
@@ -100,7 +100,7 @@ test fn witness_oomd_unverified_unsound() -> Bool {
 
 test fn witness_headroom_below_floor_unsound() -> Bool {
   let floor = oomd_actuation_floor(host: host_125gib())
-  match resolve_headroom(policy: HeadroomSet { bytes: byte_size(1073741824) }, floor: floor) {
+  match resolve_headroom(policy: gunbc.fleet_host_budget.HeadroomSet { bytes: byte_size(1073741824) }, floor: floor) {
     HeadroomUnsound { reason: _ } => true
     HeadroomResolved { bytes: _ } => false
   }
@@ -108,7 +108,7 @@ test fn witness_headroom_below_floor_unsound() -> Bool {
 
 test fn witness_headroom_at_or_above_floor_resolved() -> Bool {
   let floor = oomd_actuation_floor(host: host_125gib())
-  match resolve_headroom(policy: HeadroomSet { bytes: floor }, floor: floor) {
+  match resolve_headroom(policy: gunbc.fleet_host_budget.HeadroomSet { bytes: floor }, floor: floor) {
     HeadroomResolved { bytes: b } => byte_size_count(b: b) == byte_size_count(b: floor)
     HeadroomUnsound { reason: _ } => false
   }
@@ -188,7 +188,7 @@ test fn witness_overcommit_tree_refused() -> Bool {
 test fn witness_runner_slice_cap_drift_red_receipt() -> Bool {
   let disk = byte_size(70391285350)
   runner_slice_cap_drifted(disk_cap: disk, effective: CapUnbounded)
-    && !runner_slice_cap_drifted(disk_cap: disk, effective: CapEffective { bytes: disk })
-    && runner_slice_cap_drifted(disk_cap: disk, effective: CapEffective { bytes: byte_size(55307438489) })
+    && !runner_slice_cap_drifted(disk_cap: disk, effective: gunbc.ci_floor_measurement.CapEffective { bytes: disk })
+    && runner_slice_cap_drifted(disk_cap: disk, effective: gunbc.ci_floor_measurement.CapEffective { bytes: byte_size(55307438489) })
 }
 

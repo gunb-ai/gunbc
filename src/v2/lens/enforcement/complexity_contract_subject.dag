@@ -148,7 +148,7 @@ data complexity_legacy_mixed_row_scope: List<ComplexityMixedRowClaim> = [
 ]
 
 data complexity_derived_kernel_boundary: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
 data complexity_optimality_boundary: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {

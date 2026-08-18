@@ -4,7 +4,7 @@ module v2.test.extdeps.formats.spice_passive_projection
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn spice_resistor_projects_resistor_passive_topology_holds() -> Bool {
-  let component = Resistor {
+  let component = v2.extdeps.formats.spice.Resistor {
     name: "1",
     n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n1" } },
     n_minus: Ground,
@@ -17,7 +17,7 @@ test fn spice_resistor_projects_resistor_passive_topology_holds() -> Bool {
 }
 
 test fn spice_capacitor_projects_capacitor_passive_arm_holds() -> Bool {
-  let component = Capacitor {
+  let component = v2.extdeps.formats.spice.Capacitor {
     name: "1",
     n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n2" } },
     n_minus: Ground,
@@ -30,7 +30,7 @@ test fn spice_capacitor_projects_capacitor_passive_arm_holds() -> Bool {
 }
 
 test fn spice_inductor_projects_inductor_passive_arm_holds() -> Bool {
-  let component = Inductor {
+  let component = v2.extdeps.formats.spice.Inductor {
     name: "l1",
     n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n3" } },
     n_minus: Ground,
@@ -43,7 +43,7 @@ test fn spice_inductor_projects_inductor_passive_arm_holds() -> Bool {
 }
 
 test fn passive_topology_preserves_component_name_holds() -> Bool {
-  let component = Resistor {
+  let component = v2.extdeps.formats.spice.Resistor {
     name: "r9",
     n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n9" } },
     n_minus: Ground,

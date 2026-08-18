@@ -18,7 +18,7 @@ fn orch_pipeline_step2() -> v2.std.orchestration.PipelineStep {
   Do {
     run: v2.std.orchestration.Run {
       command: "cargo test --workspace",
-      env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
+      env: [v2.std.orchestration.EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
       redirect: Absent,
       capture: Absent
     }
@@ -86,7 +86,7 @@ test fn orch_run_env_prefixed_structured_holds() -> Bool {
   match orch_emit_run(
     r: v2.std.orchestration.Run {
       command: "cargo test --workspace",
-      env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
+      env: [v2.std.orchestration.EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
       redirect: Absent,
       capture: Absent
     },
@@ -99,7 +99,7 @@ test fn orch_run_env_prefixed_structured_holds() -> Bool {
 }
 
 fn orch_if_cond() -> v2.std.orchestration.Predicate {
-  ExitZero {
+  v2.std.orchestration.ExitZero {
     run: v2.std.orchestration.Run { command: "[ -z \"$1\" ]", env: [], redirect: Absent, capture: Absent }
   }
 }
@@ -245,8 +245,8 @@ test fn orch_run_env_unset_multi_binding_structured_holds() -> Bool {
     r: v2.std.orchestration.Run {
       command: "cargo test --workspace",
       env: [
-        EnvUnset { name: "RUSTC_WRAPPER" },
-        EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }
+        v2.std.orchestration.EnvUnset { name: "RUSTC_WRAPPER" },
+        v2.std.orchestration.EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }
       ],
       redirect: Absent,
       capture: Absent

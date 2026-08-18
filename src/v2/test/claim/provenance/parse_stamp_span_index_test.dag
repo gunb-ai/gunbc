@@ -6,11 +6,11 @@ fn parse_stamp_list_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^parse_stamp_list_absent,
     at: node_locus(node: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
     }),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -27,7 +27,7 @@ fn parse_stamp_token(start: Int, end: Int) -> v2.std.compilers.lexing.Token {
 fn parse_stamp_terminal_root() -> v2.std.grammar.GrammarRoot {
   v2.std.grammar.GrammarRoot {
     start: ^parse_stamp_start,
-    productions: Cons {
+    productions: std.algebra.Cons {
       head: v2.std.grammar.GrammarProduction {
         name: ^parse_stamp_start,
         expression: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
@@ -42,10 +42,10 @@ fn parse_stamp_terminal_root() -> v2.std.grammar.GrammarRoot {
 fn parse_stamp_sequence_root() -> v2.std.grammar.GrammarRoot {
   v2.std.grammar.GrammarRoot {
     start: ^parse_stamp_start,
-    productions: Cons {
+    productions: std.algebra.Cons {
       head: v2.std.grammar.GrammarProduction {
         name: ^parse_stamp_start,
-        expression: Sequence {
+        expression: v2.std.grammar.Sequence {
           left: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
           right: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass }
         },
@@ -126,7 +126,7 @@ test fn parse_stamp_terminal_from_source_holds() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: validated, diagnostics: _ } =>
       match parse_production(
-        tokens: Cons {
+        tokens: std.algebra.Cons {
           head: parse_stamp_token(start: 3, end: 8),
           tail: std.algebra.Empty
         },
@@ -162,9 +162,9 @@ test fn parse_stamp_sequence_derived_by_holds() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: validated, diagnostics: _ } =>
       match parse_production(
-        tokens: Cons {
+        tokens: std.algebra.Cons {
           head: parse_stamp_token(start: 0, end: 5),
-          tail: Cons { head: parse_stamp_token(start: 5, end: 10), tail: std.algebra.Empty }
+          tail: std.algebra.Cons { head: parse_stamp_token(start: 5, end: 10), tail: std.algebra.Empty }
         },
         validated: validated,
         production_name: ^parse_stamp_start

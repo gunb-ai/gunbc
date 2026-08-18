@@ -23,7 +23,7 @@ data hermetic_fixture_file_facts: extdeps.cache.types.CacheInterfaceCatalogFacts
     prefix_fallback_allowed: false
     content_verified_on_read: true
     visibility_scope: Repo
-    invalidation_triggers: [TtlExpiry { window: second(count: 2592000) }, ManualPurge]
+    invalidation_triggers: [std.cache_interface.TtlExpiry { window: second(count: 2592000) }, ManualPurge]
   }
   io: {
     lookup_semantics: ContentAddressLookup
@@ -42,14 +42,14 @@ data hermetic_fixture_file_facts: extdeps.cache.types.CacheInterfaceCatalogFacts
   evidence: [
     {
       field: "key_derivation"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "input_hash = content_hash_service_inputs(op, bound inputs); stored inputs verified on lookup (collision safety) — recorded_fixture.rs RecordedFixtureStore::lookup"
         observed_at: 0
       }
     },
     {
       field: "write_semantics"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "WriteOnce: re-record with a different response for the same input_hash => FixtureError::ResponseDrift (cache-purity oracle). The freshness window is carried typed on this row's TtlExpiry trigger, cited to recorded_fixture.rs FIXTURE_FRESHNESS_SECS"
         observed_at: 0
       }
@@ -87,14 +87,14 @@ data hermetic_fixture_in_process_facts: extdeps.cache.types.CacheInterfaceCatalo
   evidence: [
     {
       field: "key_derivation"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "locator identity = content_hash(runtime_value_node_projection(arg)) — v2_effect_io_pure.dag effect_io_pure_locator_identity; the same content digest the v1 on-disk handler keys on (converged node://adhoc-7e32be31-47c); RuntimeValue with no faithful reification fails closed"
         observed_at: 0
       }
     },
     {
       field: "miss_semantics"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "Absent entry => ^effect_io_pure_resource_absent rejected (fail-closed) — effect_io_pure_store_lookup"
         observed_at: 0
       }

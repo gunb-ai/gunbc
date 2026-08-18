@@ -32,7 +32,7 @@ fn pre_push_fmt_outcome_blocks(status: Int) -> Bool {
 
 fn pre_push_fmt_spawn_refusal_recipe(cause: String) -> String {
   local_tidy_fmt_outcome_recipe(
-    outcome: FmtToolUnavailable { program: "cargo", cause: cause },
+    outcome: gunbc.local_tidy_spec.FmtToolUnavailable { program: "cargo", cause: cause },
     drift_recipe: local_tidy_fmt_pre_push_drift_recipe
   )
 }

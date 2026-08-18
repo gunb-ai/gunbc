@@ -7,22 +7,22 @@ data typed_module_cache_capacity_witness_note: String = "Executes the modelled c
 
 // 300 entries exactly: 300 * 3 MiB = 943718400 bytes, comfortably inside the band.
 fn ordinary_budget() -> gunbc.host_budget_source.HostBudgetResolution {
-  HostBudgetResolved {
-    source: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" },
+  gunbc.host_budget_source.HostBudgetResolved {
+    source: gunbc.host_budget_source.BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" },
     bytes: byte_size(count: 943718400)
   }
 }
 
 fn tiny_budget() -> gunbc.host_budget_source.HostBudgetResolution {
-  HostBudgetResolved { source: BudgetSourceMemTotal, bytes: byte_size(count: 1048576) }
+  gunbc.host_budget_source.HostBudgetResolved { source: BudgetSourceMemTotal, bytes: byte_size(count: 1048576) }
 }
 
 fn huge_budget() -> gunbc.host_budget_source.HostBudgetResolution {
-  HostBudgetResolved { source: BudgetSourceMemTotal, bytes: byte_size(count: 107374182400) }
+  gunbc.host_budget_source.HostBudgetResolved { source: BudgetSourceMemTotal, bytes: byte_size(count: 107374182400) }
 }
 
 fn unreadable_budget() -> gunbc.host_budget_source.HostBudgetResolution {
-  HostBudgetUnreadable { reason: "no modelled source answered on this platform" }
+  gunbc.host_budget_source.HostBudgetUnreadable { reason: "no modelled source answered on this platform" }
 }
 
 fn cap_entries_or(c: gunbc.typed_module_cache_capacity.TypedModuleCacheCap, fallback: Int) -> Int {

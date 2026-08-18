@@ -362,13 +362,13 @@ fn atom_body_discriminator_batched_receipt_holds() -> Bool {
         && atom_body_discriminator_arrow_row_holds(
           arrow: rows.add,
           expected_param_count: 2,
-          expected_form: ComputationBody { behavior: Transform },
+          expected_form: v2.std.node.ComputationBody { behavior: Transform },
           mirror: AtomBodyDiscriminatorProduction
         )
         && atom_body_discriminator_arrow_row_holds(
           arrow: rows.zero_binary,
           expected_param_count: 0,
-          expected_form: ComputationBody { behavior: Transform },
+          expected_form: v2.std.node.ComputationBody { behavior: Transform },
           mirror: AtomBodyDiscriminatorProduction
         )
         && match atom_body_discriminator_arrow_classifies(

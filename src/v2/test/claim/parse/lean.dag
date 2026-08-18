@@ -2,10 +2,10 @@ module v2.test.parse.lean
 
 fn lean_parse_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^lean_parse_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lean_parse_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^lean_parse_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lean_parse_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
@@ -30,7 +30,7 @@ fn lean_tokenize_and_parse() -> Outcome<v2.std.grammar.ParseTree> {
   }
 }
 
-data claim_lean_source_parses: v2.std.verification.TestClaim = EqualsClaim {
+data claim_lean_source_parses: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "Lean lex/grammar accepts the PROOF-1 def+termination_by fixture via tokenize+parse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: lean_parse_bool_atom(

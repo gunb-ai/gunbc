@@ -16,9 +16,9 @@ fn cited_operating_system_surface(product: std.os.types.OperatingSystemProduct) 
   }
 }
 
-data ubuntu_24_04: std.os.types.OperatingSystemSurface = cited_operating_system_surface(UbuntuOs { distro: NobleNumbat2404Lts })
-data windows_11: std.os.types.OperatingSystemSurface = cited_operating_system_surface(WindowsOs { distro: Windows1124H2Build26100 })
-data macos_15_sequoia: std.os.types.OperatingSystemSurface = cited_operating_system_surface(MacosOs { distro: Sequoia15 })
+data ubuntu_24_04: std.os.types.OperatingSystemSurface = cited_operating_system_surface(std.os.types.UbuntuOs { distro: NobleNumbat2404Lts })
+data windows_11: std.os.types.OperatingSystemSurface = cited_operating_system_surface(std.os.types.WindowsOs { distro: Windows1124H2Build26100 })
+data macos_15_sequoia: std.os.types.OperatingSystemSurface = cited_operating_system_surface(std.os.types.MacosOs { distro: Sequoia15 })
 
 data os_catalog: List<std.os.types.OperatingSystemSurface> = [
   ubuntu_24_04,

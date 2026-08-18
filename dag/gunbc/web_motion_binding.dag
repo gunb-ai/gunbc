@@ -373,7 +373,7 @@ data frequency_is_derived_not_invented_note: String = "Sample rate is DERIVED fr
 
 fn frequency_from_interval(sample_interval_ms: std.types.Milliseconds) -> gunbc.capability_binding.FrequencyObservation {
   if sample_interval_ms > 0 {
-    FrequencyObserved { hz: 1000 / sample_interval_ms }
+    gunbc.capability_binding.FrequencyObserved { hz: 1000 / sample_interval_ms }
   } else {
     FrequencyUnobserved
   }
@@ -402,15 +402,15 @@ fn project_binding_stream(o: WebMotionObservation) -> gunbc.capability_binding.B
     StreamInterfaceNotExposed => InterfaceUnavailable
     StreamPolicyBlocked => PolicyRefused
     StreamPermissionDenied => PermissionRefused
-    StreamConnectionRefused { error_name } => BackendConnectionRefused { error_name: error_name }
+    StreamConnectionRefused { error_name } => gunbc.capability_binding.BackendConnectionRefused { error_name: error_name }
     StreamActivatedNoReading =>
-      NoSamplesObserved { lifecycle: LifecycleActivated }
+      gunbc.capability_binding.NoSamplesObserved { lifecycle: LifecycleActivated }
     StreamNoEventsObserved =>
-      NoSamplesObserved { lifecycle: LifecycleActivationUnobserved }
+      gunbc.capability_binding.NoSamplesObserved { lifecycle: LifecycleActivationUnobserved }
     StreamHollowEventsObserved { count } =>
-      HollowSamplesObserved { count: count }
+      gunbc.capability_binding.HollowSamplesObserved { count: count }
     StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } =>
-      SamplesObserved {
+      gunbc.capability_binding.SamplesObserved {
         receipt: web_sample_receipt(
           count: count,
           peak_milli: peak_milli_m_per_s2,

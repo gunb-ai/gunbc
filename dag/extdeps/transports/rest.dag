@@ -176,7 +176,7 @@ fn rest_method_verb(method: std.types.HttpMethod) -> std.effect_grant.Verb {
 
 fn rest_operation_position(at: v2.std.operation_argv.OperationRef) -> std.effect_grant.NamespacePosition {
   std.effect_grant.NamespacePosition {
-    tree: ServiceOpTree { service: at.service },
+    tree: std.effect_grant.ServiceOpTree { service: at.service },
     path: [at.operation],
   }
 }

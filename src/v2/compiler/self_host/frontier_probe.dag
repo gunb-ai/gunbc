@@ -46,7 +46,7 @@ fn frontier_probe_subject_digest_mismatch_diagnostic() -> v2.std.diagnostic.Diag
   v2.std.diagnostic.Diagnostic {
     reason: frontier_probe_subject_digest_mismatch_reason,
     at: port_locus(port: frontier_probe_subject_digest_mismatch_reason),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -145,9 +145,9 @@ fn frontier_probe_detail_from_read_result(result: v2.compiler.source_authority.S
   match result {
     SourceRefReadAccepted { witness: _, observed_hash: _ } => FrontierProbeDetailAbsent
     SourceRefFilesystemReadRefused { ref: ref, error: error } =>
-      SourceRefReadRefused { source_ref: ref, error: error }
+      v2.compiler.self_host.frontier_probe_types.SourceRefReadRefused { source_ref: ref, error: error }
     SourceRefReadHashMismatch { ref: ref, expected: expected, observed: observed } =>
-      SourceRefContentHashMismatch {
+      v2.compiler.self_host.frontier_probe_types.SourceRefContentHashMismatch {
         source_ref: ref,
         expected: expected,
         observed: observed
@@ -222,7 +222,7 @@ fn frontier_probe_detail_from_diagnostic(
       d: d,
       reason: reason
     ) {
-      Present { value: qn } => MissingModule { requested: qn }
+      Present { value: qn } => v2.compiler.self_host.frontier_probe_types.MissingModule { requested: qn }
       Absent => FrontierProbeDetailAbsent
     }
   } else {
@@ -268,10 +268,10 @@ fn frontier_probe_receipt_from_population_refused(
 ) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
   v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
     module_path: module_path,
-    blocker_class: UnknownProbeCause { reason: cause },
+    blocker_class: v2.compiler.self_host.frontier_probe_types.UnknownProbeCause { reason: cause },
     located_stage: ProbeStageAssemble,
     located_reason: cause,
-    detail: FrontierProbeClosurePopulationRefused { cause: cause },
+    detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeClosurePopulationRefused { cause: cause },
     assemble_detail: NoFrontierProbeDetail
   }
 }
@@ -282,10 +282,10 @@ fn frontier_probe_receipt_from_coverage_refused(
 ) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
   v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
     module_path: module_path,
-    blocker_class: UnknownProbeCause { reason: frontier_probe_coverage_refused_reason },
+    blocker_class: v2.compiler.self_host.frontier_probe_types.UnknownProbeCause { reason: frontier_probe_coverage_refused_reason },
     located_stage: ProbeStageAssemble,
     located_reason: frontier_probe_coverage_refused_reason,
-    detail: FrontierProbeCoverageRefused { coverage: coverage },
+    detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeCoverageRefused { coverage: coverage },
     assemble_detail: NoFrontierProbeDetail
   }
 }
@@ -594,7 +594,7 @@ fn frontier_probe_emit_from_populated_ingest(
         Accepted { value: _, diagnostics: _ } =>
           v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
             module_path: module_path,
-            blocker_class: UnknownProbeCause {
+            blocker_class: v2.compiler.self_host.frontier_probe_types.UnknownProbeCause {
               reason: ^probe_emit_accept_self_host_bar_unbound
             },
             located_stage: ProbeStageEmit,

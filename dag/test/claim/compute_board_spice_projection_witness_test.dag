@@ -12,7 +12,7 @@ data rail_net: product.electrical.connectivity.NetIdentity = net_identity(design
 
 data return_net: product.electrical.connectivity.NetIdentity = net_identity(design: fixture_design, local_identity: "rtn")
 
-data sense_resistor: product.compute_board.analog.ElectricalComponentInstance = ResistorInstance {
+data sense_resistor: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.ResistorInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "sense"),
   part: "series sense resistor",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
@@ -20,7 +20,7 @@ data sense_resistor: product.compute_board.analog.ElectricalComponentInstance = 
   resistance: std.measure.Measure { count: 10 },
 }
 
-data decoupling_capacitor: product.compute_board.analog.ElectricalComponentInstance = CapacitorInstance {
+data decoupling_capacitor: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.CapacitorInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "decap"),
   part: "bulk decoupling capacitor",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
@@ -28,7 +28,7 @@ data decoupling_capacitor: product.compute_board.analog.ElectricalComponentInsta
   capacitance: std.measure.Measure { count: 100 },
 }
 
-data rail_supply: product.compute_board.analog.ElectricalComponentInstance = IndependentVoltageSourceInstance {
+data rail_supply: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.IndependentVoltageSourceInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "rail_src"),
   part: "standby rail source",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
@@ -64,7 +64,7 @@ fn circuit_with(components: List<product.compute_board.analog.ElectricalComponen
 fn ideal_binding(c: product.compute_board.analog.ElectricalComponentInstance) -> product.compute_board.analog.ComponentModelBinding {
   product.compute_board.analog.ComponentModelBinding {
     component: c.identity,
-    standing: ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
+    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
   }
 }
 
@@ -75,7 +75,7 @@ fn absent_binding(c: product.compute_board.analog.ElectricalComponentInstance) -
 fn subcircuit_binding(c: product.compute_board.analog.ElectricalComponentInstance) -> product.compute_board.analog.ComponentModelBinding {
   product.compute_board.analog.ComponentModelBinding {
     component: c.identity,
-    standing: ElectricalModelCited { model_card: "vendor ESR/ESL subcircuit", fidelity: VendorSubcircuit },
+    standing: product.compute_board.analog.ElectricalModelCited { model_card: "vendor ESR/ESL subcircuit", fidelity: VendorSubcircuit },
   }
 }
 
@@ -115,7 +115,7 @@ test fn w_modelled_circuit_emits_expected_deck_bytes() -> Bool {
 
 // PERTURB EXACTLY ONE TYPED VALUE and the deck must change. This is what makes the byte equality
 // above an oracle rather than a pinned constant: the emission is a function of the model.
-data perturbed_resistor: product.compute_board.analog.ElectricalComponentInstance = ResistorInstance {
+data perturbed_resistor: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.ResistorInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "sense"),
   part: "series sense resistor",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,

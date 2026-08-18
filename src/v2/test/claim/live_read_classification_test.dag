@@ -253,7 +253,7 @@ The three controls below separate the states the single union test conflated: ev
 
 fn selection_atom_node(lexeme: String) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -261,7 +261,7 @@ fn selection_atom_node(lexeme: String) -> Node {
 
 fn selection_body_node(callee: String) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [ v2.std.node.Edge { label: Positional, target: selection_atom_node(lexeme: callee) } ],
     occurrence_id: SyntheticOccurrence
   }

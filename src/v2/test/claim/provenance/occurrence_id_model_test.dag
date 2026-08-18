@@ -17,9 +17,9 @@ test fn span_index_from_source_round_trip_holds() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let minted = alloc_occurrence_id(alloc: alloc0)
   let id = minted.id
-  let locus = Textual {
+  let locus = v2.std.diagnostic.Textual {
     file: ^occurrence_model_file,
-    extent: ByteRange { start: 0, end: 12 }
+    extent: v2.std.diagnostic.ByteRange { start: 0, end: 12 }
   }
   let event = origin_event_from_source(locus: locus)
   let index = span_index_record(
@@ -68,13 +68,13 @@ test fn span_index_merge_disjoint_entries_holds() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let r0 = alloc_occurrence_id(alloc: alloc0)
   let r1 = alloc_occurrence_id(alloc: r0.alloc)
-  let locus0 = Textual {
+  let locus0 = v2.std.diagnostic.Textual {
     file: ^occurrence_model_file,
-    extent: ByteRange { start: 0, end: 4 }
+    extent: v2.std.diagnostic.ByteRange { start: 0, end: 4 }
   }
-  let locus1 = Textual {
+  let locus1 = v2.std.diagnostic.Textual {
     file: ^occurrence_model_file,
-    extent: ByteRange { start: 4, end: 8 }
+    extent: v2.std.diagnostic.ByteRange { start: 4, end: 8 }
   }
   let left = span_index_record(
     index: span_index_empty(),
@@ -95,9 +95,9 @@ test fn span_index_resolve_derived_chain_holds() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let r0 = alloc_occurrence_id(alloc: alloc0)
   let r1 = alloc_occurrence_id(alloc: r0.alloc)
-  let locus0 = Textual {
+  let locus0 = v2.std.diagnostic.Textual {
     file: ^occurrence_model_file,
-    extent: ByteRange { start: 0, end: 12 }
+    extent: v2.std.diagnostic.ByteRange { start: 0, end: 12 }
   }
   let index0 = span_index_record(
     index: span_index_empty(),
@@ -107,7 +107,7 @@ test fn span_index_resolve_derived_chain_holds() -> Bool {
   let index1 = span_index_record(
     index: index0,
     id: r1.id,
-    event: DerivedBy { producer: ^occurrence_model_derive_producer, from: [r0.id] }
+    event: v2.std.provenance.DerivedBy { producer: ^occurrence_model_derive_producer, from: [r0.id] }
   )
   match span_index_resolve_textual_locus(index: index1, id: r1.id) {
     Holds { value: locus } =>
@@ -125,16 +125,16 @@ test fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
   let m0 = alloc_occurrence_id(alloc: alloc0)
   let m1 = alloc_occurrence_id(alloc: m0.alloc)
   let child = node_synthetic(
-    kind: TypeNode { connective: Atom { identity: ^occurrence_eq_child } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^occurrence_eq_child } },
     children: []
   )
   let left = node_with_occurrence_id(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [v2.std.node.Edge { label: Positional, target: child }],
     occurrence_id: node_occurrence_minted(id: m0.id)
   )
   let right = node_with_occurrence_id(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [v2.std.node.Edge { label: Positional, target: child }],
     occurrence_id: node_occurrence_minted(id: m1.id)
   )
@@ -148,21 +148,21 @@ test fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
   let m0 = alloc_occurrence_id(alloc: alloc0)
   let m1 = alloc_occurrence_id(alloc: m0.alloc)
   let child_left = node_with_occurrence_id(
-    kind: TypeNode { connective: Atom { identity: ^occurrence_eq_child } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^occurrence_eq_child } },
     children: [],
     occurrence_id: node_occurrence_minted(id: m0.id)
   )
   let child_right = node_with_occurrence_id(
-    kind: TypeNode { connective: Atom { identity: ^occurrence_eq_child } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^occurrence_eq_child } },
     children: [],
     occurrence_id: node_occurrence_minted(id: m1.id)
   )
   let left = node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [v2.std.node.Edge { label: Positional, target: child_left }]
   )
   let right = node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [v2.std.node.Edge { label: Positional, target: child_right }]
   )
   !occurrence_id_eq(left: m0.id, right: m1.id)

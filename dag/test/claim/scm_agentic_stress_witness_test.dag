@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data stress_note: String = "Stressing the profile toward agent-driven development, because the human-authored numbers load the wrong axis. Human baseline: 200 object reads and 20 writes per user-month. Agent-autonomous baseline below: 2,000,000 logical NODE reads and 200,000 node writes per user-month -- four orders of magnitude, which is roughly one agent working continuously at a few thousand node reads an hour, and still conservative for a fleet of agents. Storage and egress are also raised (500 MB held, 2 GB moved) but only by single-digit multiples, because dedup flattens what agents store far more than it flattens what they touch. The finding this witness pins: at these rates operations stop being a rounding error and become the entire bill on request-metered vendors, which INVERTS the provider ranking computed on the human profile."
 
-data stress_basis_assumption: gunbc.econ.scm_serving_model.ByteBasisAssumption = BasisAssumed {
+data stress_basis_assumption: gunbc.econ.scm_serving_model.ByteBasisAssumption = gunbc.econ.scm_serving_model.BasisAssumed {
   basis: DecimalGigabyte,
   rationale: "Same declared basis as the human-profile matrix so the two are comparable; none of these vendors states one.",
 }
@@ -41,7 +41,7 @@ data agentic_packed_10k: gunbc.econ.scm_serving_model.ScmWorkloadProfile = profi
   base: agentic_base_10k,
   logical_node_reads_per_user: agentic_logical_node_reads_per_user,
   logical_node_writes_per_user: agentic_logical_node_writes_per_user,
-  policy: PackedObjects { nodes_per_object: 1000 },
+  policy: gunbc.econ.scm_serving_model.PackedObjects { nodes_per_object: 1000 },
 )
 
 data aws_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_serving_model.ProviderQuote {
@@ -49,7 +49,7 @@ data aws_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_serv
   quote_label: "AWS S3 Standard, us-east-1",
   storage_rows: [s3_standard_first_50tb, s3_standard_next_450tb, s3_standard_over_500tb],
   egress_rows: [s3_egress_first_10tb, s3_egress_next_40tb, s3_egress_next_100tb, s3_egress_over_150tb],
-  requests: RequestsBilled { read_row: s3_tier2_requests, write_row: s3_tier1_requests },
+  requests: gunbc.econ.scm_serving_model.RequestsBilled { read_row: s3_tier2_requests, write_row: s3_tier1_requests },
   quoted_basis: ByteBasisUnstated,
 }
 
@@ -58,7 +58,7 @@ data r2_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_servi
   quote_label: "Cloudflare R2 Standard",
   storage_rows: [r2_standard],
   egress_rows: [r2_egress_free],
-  requests: RequestsBilled { read_row: r2_class_b_operations, write_row: r2_class_a_operations },
+  requests: gunbc.econ.scm_serving_model.RequestsBilled { read_row: r2_class_b_operations, write_row: r2_class_a_operations },
   quoted_basis: ByteBasisUnstated,
 }
 
@@ -67,7 +67,7 @@ data wasabi_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_s
   quote_label: "Wasabi Hot Cloud Storage (pay as you go)",
   storage_rows: [wasabi_hot_storage],
   egress_rows: [wasabi_egress_free],
-  requests: RequestsIncludedAtNoCharge { terms: "No fees for egress or API requests." },
+  requests: gunbc.econ.scm_serving_model.RequestsIncludedAtNoCharge { terms: "No fees for egress or API requests." },
   quoted_basis: ByteBasisUnstated,
 }
 
@@ -76,7 +76,7 @@ data storj_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_se
   quote_label: "Storj Standard (distributed)",
   storage_rows: [storj_standard_storage],
   egress_rows: [storj_egress],
-  requests: RequestsIncludedAtNoCharge { terms: "No API fees." },
+  requests: gunbc.econ.scm_serving_model.RequestsIncludedAtNoCharge { terms: "No API fees." },
   quoted_basis: ByteBasisUnstated,
 }
 
@@ -101,8 +101,8 @@ fn w_total_equals(quote: gunbc.econ.scm_serving_model.ProviderQuote, profile: gu
 
 test fn w_packing_divides_the_operation_count() -> Bool {
   (packed_object_count(logical_node_ops: 2000000, policy: UnpackedNodeGrain) == 2000000)
-    && (packed_object_count(logical_node_ops: 2000000, policy: PackedObjects { nodes_per_object: 1000 }) == 2000)
-    && (packed_object_count(logical_node_ops: 1, policy: PackedObjects { nodes_per_object: 1000 }) == 1)
+    && (packed_object_count(logical_node_ops: 2000000, policy: gunbc.econ.scm_serving_model.PackedObjects { nodes_per_object: 1000 }) == 2000)
+    && (packed_object_count(logical_node_ops: 1, policy: gunbc.econ.scm_serving_model.PackedObjects { nodes_per_object: 1000 }) == 1)
     && (agentic_unpacked_10k.monthly_object_reads_per_user == 2000000)
     && (agentic_packed_10k.monthly_object_reads_per_user == 2000)
 }
@@ -203,7 +203,7 @@ test fn w_agentic_at_one_million_users_is_a_seven_figure_bill_unpacked() -> Bool
 }
 
 test fn w_red_packing_by_one_is_the_unpacked_count() -> Bool {
-  packed_object_count(logical_node_ops: 2000000, policy: PackedObjects { nodes_per_object: 1 }) == 2000000
+  packed_object_count(logical_node_ops: 2000000, policy: gunbc.econ.scm_serving_model.PackedObjects { nodes_per_object: 1 }) == 2000000
 }
 
 test fn w_red_agentic_profile_is_not_the_human_profile() -> Bool {

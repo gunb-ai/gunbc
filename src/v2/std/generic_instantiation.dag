@@ -12,7 +12,7 @@ fn generic_substitution_bind_conflict_diagnostic() -> v2.std.diagnostic.Diagnost
   v2.std.diagnostic.Diagnostic {
     reason: ^generic_substitution_bind_conflict,
     at: port_locus(port: ^generic_substitution_bind_once_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

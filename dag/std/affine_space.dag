@@ -398,10 +398,10 @@ fn rotate_quarter_turns_about_z(v: Vector3, turns: QuarterTurns) -> SpatialResul
   let y = signed_frame_component_count(c: v.y)
   let z = signed_frame_component_count(c: v.z)
   match turns {
-    NoTurn => vector3_from_checked(frame: v.frame, x: CheckedIntReady { value: x }, y: CheckedIntReady { value: y }, z: CheckedIntReady { value: z })
-    OneQuarter => vector3_from_checked(frame: v.frame, x: checked_int_negate(a: y), y: CheckedIntReady { value: x }, z: CheckedIntReady { value: z })
-    TwoQuarters => vector3_from_checked(frame: v.frame, x: checked_int_negate(a: x), y: checked_int_negate(a: y), z: CheckedIntReady { value: z })
-    ThreeQuarters => vector3_from_checked(frame: v.frame, x: CheckedIntReady { value: y }, y: checked_int_negate(a: x), z: CheckedIntReady { value: z })
+    NoTurn => vector3_from_checked(frame: v.frame, x: std.checked_arithmetic.CheckedIntReady { value: x }, y: std.checked_arithmetic.CheckedIntReady { value: y }, z: std.checked_arithmetic.CheckedIntReady { value: z })
+    OneQuarter => vector3_from_checked(frame: v.frame, x: checked_int_negate(a: y), y: std.checked_arithmetic.CheckedIntReady { value: x }, z: std.checked_arithmetic.CheckedIntReady { value: z })
+    TwoQuarters => vector3_from_checked(frame: v.frame, x: checked_int_negate(a: x), y: checked_int_negate(a: y), z: std.checked_arithmetic.CheckedIntReady { value: z })
+    ThreeQuarters => vector3_from_checked(frame: v.frame, x: std.checked_arithmetic.CheckedIntReady { value: y }, y: checked_int_negate(a: x), z: std.checked_arithmetic.CheckedIntReady { value: z })
   }
 }
 

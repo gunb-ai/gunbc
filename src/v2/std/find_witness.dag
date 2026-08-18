@@ -40,28 +40,28 @@ fn find_witness_no_candidate_diagnostic(source_facts: Node) -> v2.std.diagnostic
   v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_no_candidate,
     at: node_locus(node: source_facts),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_ambiguous_candidate_diagnostic(source_facts: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_ambiguous_candidate,
     at: node_locus(node: source_facts),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_not_realized_diagnostic(source_facts: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_not_realized,
     at: node_locus(node: source_facts),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_invalid_witness,
     at: node_locus(node: source_facts),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -134,7 +134,7 @@ fn only_passing_candidate(
       predicate: predicate
     ) {
       match acc {
-        NoPassingCandidate => OnePassingCandidate { candidate: candidate }
+        NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
         OnePassingCandidate { candidate: _ } => ManyPassingCandidates
         ManyPassingCandidates => ManyPassingCandidates
       }

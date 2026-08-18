@@ -33,24 +33,24 @@ type WasmGrammarRelationRow {
 }
 fn wasm_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^wasm_token_lparen },
-    FixedToken { token_class: ^wasm_token_kw_func },
-    BoundToken { token_class: ^wasm_token_ident, binding: ^wasm_binding_fn_add },
-    FixedToken { token_class: ^wasm_token_lparen },
-    FixedToken { token_class: ^wasm_token_kw_param },
-    FixedToken { token_class: ^wasm_token_type_i32 },
-    FixedToken { token_class: ^wasm_token_type_i32 },
-    FixedToken { token_class: ^wasm_token_rparen },
-    FixedToken { token_class: ^wasm_token_lparen },
-    FixedToken { token_class: ^wasm_token_kw_result },
-    FixedToken { token_class: ^wasm_token_type_i32 },
-    FixedToken { token_class: ^wasm_token_rparen },
-    FixedToken { token_class: ^wasm_token_local_get },
-    BoundToken { token_class: ^wasm_token_localidx_literal, binding: ^wasm_binding_localidx_0 },
-    FixedToken { token_class: ^wasm_token_local_get },
-    BoundToken { token_class: ^wasm_token_localidx_literal, binding: ^wasm_binding_localidx_1 },
-    FixedToken { token_class: ^wasm_token_i32_add },
-    FixedToken { token_class: ^wasm_token_rparen }
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_kw_func },
+    v2.std.compilers.target_model.BoundToken { token_class: ^wasm_token_ident, binding: ^wasm_binding_fn_add },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_kw_param },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_type_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_type_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_kw_result },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_type_i32 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_local_get },
+    v2.std.compilers.target_model.BoundToken { token_class: ^wasm_token_localidx_literal, binding: ^wasm_binding_localidx_0 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_local_get },
+    v2.std.compilers.target_model.BoundToken { token_class: ^wasm_token_localidx_literal, binding: ^wasm_binding_localidx_1 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_i32_add },
+    v2.std.compilers.target_model.FixedToken { token_class: ^wasm_token_rparen }
   ]
 }
 data wasm_source_text: String = "(func $add (param i32 i32) (result i32) local.get 0 local.get 1 i32.add)"
@@ -93,7 +93,7 @@ data wasm_float_facts_catalog: List<WasmFloatPrimitiveFacts> = [
 
 fn wasm_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -116,7 +116,7 @@ fn wasm_float_width_node(width: WasmFloatWidth) -> Node {
 fn wasm_scalar_node(scalar: WasmScalar) -> Node {
   match scalar {
     IntScalar { width } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         wasm_named_edge(
           name: ^wasm_scalar_field_classifier,
@@ -127,7 +127,7 @@ fn wasm_scalar_node(scalar: WasmScalar) -> Node {
       occurrence_id: SyntheticOccurrence
 }
     FloatScalar { width } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         wasm_named_edge(
           name: ^wasm_scalar_field_classifier,
@@ -142,7 +142,7 @@ fn wasm_scalar_node(scalar: WasmScalar) -> Node {
 
 fn wasm_integer_facts_node(facts: WasmIntegerPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       wasm_named_edge(
         name: ^wasm_facts_field_surface_spelling,
@@ -167,7 +167,7 @@ fn wasm_integer_facts_node(facts: WasmIntegerPrimitiveFacts) -> Node {
 
 fn wasm_float_facts_node(facts: WasmFloatPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       wasm_named_edge(
         name: ^wasm_facts_field_surface_spelling,
@@ -193,7 +193,7 @@ fn wasm_float_facts_node(facts: WasmFloatPrimitiveFacts) -> Node {
 
 fn wasm_inhabitant_node(id: v2.std.node.Symbol, facts: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       wasm_named_edge(name: ^wasm_inhabitant_field_atom, target: wasm_inhabitant_atom(id: id)),
       wasm_named_edge(name: ^wasm_inhabitant_field_facts, target: facts)
@@ -247,7 +247,7 @@ fn wasm_int_numeric_immediate_node(
   validation: v2.std.node.Symbol
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: surface } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: surface } },
     children: [
       wasm_named_edge(
         name: ^wasm_numeric_immediate_field_token_class,
@@ -273,7 +273,7 @@ fn wasm_float_numeric_immediate_node(
   validation: v2.std.node.Symbol
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: surface } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: surface } },
     children: [
       wasm_named_edge(
         name: ^wasm_numeric_immediate_field_token_class,
@@ -294,7 +294,7 @@ fn wasm_float_numeric_immediate_node(
 
 fn wasm_localidx_node(token_class: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^wasm_surface_localidx } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^wasm_surface_localidx } },
     children: [
       wasm_named_edge(
         name: ^wasm_numeric_immediate_field_token_class,
@@ -319,7 +319,7 @@ fn wasm_localidx_operand_node() -> Node {
 
 fn wasm_declared_inhabitants_root() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       wasm_named_edge(name: ^wasm_inhabitant_field_i32, target: wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i32, facts: wasm_facts_i32)),
       wasm_named_edge(name: ^wasm_inhabitant_field_i64, target: wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i64, facts: wasm_facts_i64)),
@@ -336,7 +336,7 @@ fn wasm_selection_policy_node() -> Node {
 
 fn wasm_emitted_add_fn_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: wasm_inhabitant_i32_node() },
       v2.std.node.Edge { label: Positional, target: wasm_inhabitant_i32_node() },
@@ -356,12 +356,12 @@ fn wasm_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxT
 }
 
 fn wasm_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
-  Cons {
+  std.algebra.Cons {
     head: wasm_named_edge(
       name: ^serialize_source_field_source_text,
       target: wasm_inhabitant_atom(id: ^wasm_source_literal)
     ),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: wasm_named_edge(
         name: ^serialize_source_field_source_grammar,
         target: wasm_inhabitant_atom(id: ^wasm_production_fn_add)
@@ -389,7 +389,7 @@ fn wasm_serialize_source_children() -> List<v2.std.node.Edge> {
 fn wasm_serialize_source_node() -> Node {
   let _authority = wasm_source_text_authority()
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: wasm_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
@@ -400,7 +400,7 @@ fn wasm_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.Gram
 }
 
 fn wasm_grammar_choice(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  Choice { left: left, right: right }
+  v2.std.grammar.Choice { left: left, right: right }
 }
 
 fn wasm_grammar_optional(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
@@ -429,7 +429,7 @@ fn wasm_grammar_choice_from_token_classes(token_classes: List<v2.std.node.Symbol
 }
 
 fn wasm_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  Sequence { left: left, right: right }
+  v2.std.grammar.Sequence { left: left, right: right }
 }
 
 fn wasm_grammar_sequence_fold_step(acc: v2.std.grammar.GrammarExpr, token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.grammar.GrammarExpr {
@@ -437,7 +437,7 @@ fn wasm_grammar_sequence_fold_step(acc: v2.std.grammar.GrammarExpr, token: v2.st
   if token_class == ^wasm_token_lparen {
     acc
   } else {
-    Sequence {
+    v2.std.grammar.Sequence {
       left: wasm_grammar_terminal(token_class: token_class),
       right: acc
     }
@@ -464,7 +464,7 @@ fn wasm_grammar_relation_row() -> WasmGrammarRelationRow {
 
 fn wasm_grammar_relation_row_node(row: WasmGrammarRelationRow) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       wasm_named_edge(
         name: ^grammar_relation_field_production,
@@ -485,7 +485,7 @@ fn wasm_grammar_relation_row_node(row: WasmGrammarRelationRow) -> Node {
 
 fn wasm_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       wasm_named_edge(
         name: ^wasm_relation_rule_fn_add,
@@ -498,7 +498,7 @@ fn wasm_translation_rules_node() -> Node {
 
 fn wasm_target_model_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       wasm_named_edge(
         name: ^target_model_edge_selection_policy,
@@ -546,55 +546,55 @@ fn wasm_target_model() -> v2.std.compilers.target_model.TargetModel {
 }
 
 fn wasm_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: v2.std.compilers.lexing.LiteralPattern { text: text }
   }
 }
 
 fn wasm_dollar_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: LiteralPattern { text: "$" },
-    right: SequencePattern {
-      left: CharClassPattern { class: IdentStartChar },
-      right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.LiteralPattern { text: "$" },
+    right: v2.std.compilers.lexing.SequencePattern {
+      left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
+      right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
     }
   }
 }
 
 fn wasm_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^wasm_token_ident,
     pattern: wasm_dollar_ident_lex_pattern()
   }
 }
 
 fn wasm_lex_choice(left: v2.std.compilers.lexing.LexPattern, right: v2.std.compilers.lexing.LexPattern) -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern { left: left, right: right }
+  v2.std.compilers.lexing.ChoicePattern { left: left, right: right }
 }
 
 fn wasm_lex_sequence(left: v2.std.compilers.lexing.LexPattern, right: v2.std.compilers.lexing.LexPattern) -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern { left: left, right: right }
+  v2.std.compilers.lexing.SequencePattern { left: left, right: right }
 }
 
 fn wasm_optional_sign_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
-  OptionalPattern {
+  v2.std.compilers.lexing.OptionalPattern {
     element: wasm_lex_choice(
-      left: LiteralPattern { text: "+" },
-      right: LiteralPattern { text: "-" }
+      left: v2.std.compilers.lexing.LiteralPattern { text: "+" },
+      right: v2.std.compilers.lexing.LiteralPattern { text: "-" }
     )
   }
 }
 
 fn wasm_digit_run_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   wasm_lex_sequence(
-    left: CharClassPattern { class: DigitChar },
-    right: RepeatPattern {
+    left: v2.std.compilers.lexing.CharClassPattern { class: DigitChar },
+    right: v2.std.compilers.lexing.RepeatPattern {
       element: wasm_lex_choice(
-        left: CharClassPattern { class: DigitChar },
+        left: v2.std.compilers.lexing.CharClassPattern { class: DigitChar },
         right: wasm_lex_sequence(
-          left: LiteralPattern { text: "_" },
-          right: CharClassPattern { class: DigitChar }
+          left: v2.std.compilers.lexing.LiteralPattern { text: "_" },
+          right: v2.std.compilers.lexing.CharClassPattern { class: DigitChar }
         )
       )
     }
@@ -603,13 +603,13 @@ fn wasm_digit_run_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
 
 fn wasm_hex_digit_run_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   wasm_lex_sequence(
-    left: CharClassPattern { class: HexDigitChar },
-    right: RepeatPattern {
+    left: v2.std.compilers.lexing.CharClassPattern { class: HexDigitChar },
+    right: v2.std.compilers.lexing.RepeatPattern {
       element: wasm_lex_choice(
-        left: CharClassPattern { class: HexDigitChar },
+        left: v2.std.compilers.lexing.CharClassPattern { class: HexDigitChar },
         right: wasm_lex_sequence(
-          left: LiteralPattern { text: "_" },
-          right: CharClassPattern { class: HexDigitChar }
+          left: v2.std.compilers.lexing.LiteralPattern { text: "_" },
+          right: v2.std.compilers.lexing.CharClassPattern { class: HexDigitChar }
         )
       )
     }
@@ -619,8 +619,8 @@ fn wasm_hex_digit_run_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
 fn wasm_decimal_exponent_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   wasm_lex_sequence(
     left: wasm_lex_choice(
-      left: LiteralPattern { text: "e" },
-      right: LiteralPattern { text: "E" }
+      left: v2.std.compilers.lexing.LiteralPattern { text: "e" },
+      right: v2.std.compilers.lexing.LiteralPattern { text: "E" }
     ),
     right: wasm_lex_sequence(
       left: wasm_optional_sign_lex_pattern(),
@@ -632,8 +632,8 @@ fn wasm_decimal_exponent_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
 fn wasm_hex_exponent_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   wasm_lex_sequence(
     left: wasm_lex_choice(
-      left: LiteralPattern { text: "p" },
-      right: LiteralPattern { text: "P" }
+      left: v2.std.compilers.lexing.LiteralPattern { text: "p" },
+      right: v2.std.compilers.lexing.LiteralPattern { text: "P" }
     ),
     right: wasm_lex_sequence(
       left: wasm_optional_sign_lex_pattern(),
@@ -653,7 +653,7 @@ fn wasm_hex_integer_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   wasm_lex_sequence(
     left: wasm_optional_sign_lex_pattern(),
     right: wasm_lex_sequence(
-      left: LiteralPattern { text: "0x" },
+      left: v2.std.compilers.lexing.LiteralPattern { text: "0x" },
       right: wasm_hex_digit_run_lex_pattern()
     )
   )
@@ -666,9 +666,9 @@ fn wasm_decimal_float_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
       left: wasm_lex_sequence(
         left: wasm_digit_run_lex_pattern(),
         right: wasm_lex_sequence(
-          left: LiteralPattern { text: "." },
+          left: v2.std.compilers.lexing.LiteralPattern { text: "." },
           right: wasm_lex_sequence(
-            left: OptionalPattern { element: wasm_digit_run_lex_pattern() },
+            left: v2.std.compilers.lexing.OptionalPattern { element: wasm_digit_run_lex_pattern() },
             right: wasm_decimal_exponent_lex_pattern()
           )
         )
@@ -685,14 +685,14 @@ fn wasm_hex_float_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   wasm_lex_sequence(
     left: wasm_optional_sign_lex_pattern(),
     right: wasm_lex_sequence(
-      left: LiteralPattern { text: "0x" },
+      left: v2.std.compilers.lexing.LiteralPattern { text: "0x" },
       right: wasm_lex_sequence(
         left: wasm_hex_digit_run_lex_pattern(),
         right: wasm_lex_sequence(
-          left: OptionalPattern {
+          left: v2.std.compilers.lexing.OptionalPattern {
             element: wasm_lex_sequence(
-              left: LiteralPattern { text: "." },
-              right: OptionalPattern { element: wasm_hex_digit_run_lex_pattern() }
+              left: v2.std.compilers.lexing.LiteralPattern { text: "." },
+              right: v2.std.compilers.lexing.OptionalPattern { element: wasm_hex_digit_run_lex_pattern() }
             )
           },
           right: wasm_hex_exponent_lex_pattern()
@@ -704,7 +704,7 @@ fn wasm_hex_float_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
 
 fn wasm_nan_payload_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   wasm_lex_sequence(
-    left: LiteralPattern { text: "nan:0x" },
+    left: v2.std.compilers.lexing.LiteralPattern { text: "nan:0x" },
     right: wasm_hex_digit_run_lex_pattern()
   )
 }
@@ -713,10 +713,10 @@ fn wasm_float_special_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   wasm_lex_sequence(
     left: wasm_optional_sign_lex_pattern(),
     right: wasm_lex_choice(
-      left: LiteralPattern { text: "inf" },
+      left: v2.std.compilers.lexing.LiteralPattern { text: "inf" },
       right: wasm_lex_choice(
         left: wasm_nan_payload_lex_pattern(),
-        right: LiteralPattern { text: "nan" }
+        right: v2.std.compilers.lexing.LiteralPattern { text: "nan" }
       )
     )
   )
@@ -744,7 +744,7 @@ fn wasm_wat_float_literal_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
 }
 
 fn wasm_numeric_literal_lex_rule(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.lexing.LexPattern) -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
     pattern: pattern
   }
@@ -776,28 +776,28 @@ fn wasm_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
     rules: [
       wasm_lex_rule(token_class: ^wasm_token_lparen, text: "("),
       wasm_lex_rule(token_class: ^wasm_token_rparen, text: ")"),
-      TriviaRule {
-        pattern: SequencePattern {
-          left: CharClassPattern { class: WhitespaceChar },
-          right: RepeatPattern { element: CharClassPattern { class: WhitespaceChar } }
+      v2.std.compilers.lexing.TriviaRule {
+        pattern: v2.std.compilers.lexing.SequencePattern {
+          left: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar },
+          right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } }
         }
       },
-      TokenRule {
+      v2.std.compilers.lexing.TokenRule {
         token_class: ^wasm_token_kw_module,
-        pattern: KeywordPattern { text: "module" }
+        pattern: v2.std.compilers.lexing.KeywordPattern { text: "module" }
       },
-      TokenRule {
+      v2.std.compilers.lexing.TokenRule {
         token_class: ^wasm_token_kw_func,
-        pattern: KeywordPattern { text: "func" }
+        pattern: v2.std.compilers.lexing.KeywordPattern { text: "func" }
       },
       wasm_ident_lex_rule(),
-      TokenRule {
+      v2.std.compilers.lexing.TokenRule {
         token_class: ^wasm_token_kw_param,
-        pattern: KeywordPattern { text: "param" }
+        pattern: v2.std.compilers.lexing.KeywordPattern { text: "param" }
       },
-      TokenRule {
+      v2.std.compilers.lexing.TokenRule {
         token_class: ^wasm_token_kw_result,
-        pattern: KeywordPattern { text: "result" }
+        pattern: v2.std.compilers.lexing.KeywordPattern { text: "result" }
       },
       wasm_lex_rule(token_class: ^wasm_token_local_get, text: "local.get"),
       wasm_lex_rule(token_class: ^wasm_token_type_i32, text: "i32"),
@@ -876,7 +876,7 @@ fn wasm_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn wasm_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: wasm_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: wasm_lex_rules() }
 }
 
 fn wasm_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
@@ -1090,11 +1090,11 @@ fn wasm_grammar_fn_add_expr() -> v2.std.grammar.GrammarExpr {
                           right: wasm_grammar_sequence(
                             left: wasm_grammar_terminal(token_class: ^wasm_token_local_get),
                             right: wasm_grammar_sequence(
-                              left: Nonterminal { production: ^wasm_production_localidx },
+                              left: v2.std.grammar.Nonterminal { production: ^wasm_production_localidx },
                               right: wasm_grammar_sequence(
                                 left: wasm_grammar_terminal(token_class: ^wasm_token_local_get),
                                 right: wasm_grammar_sequence(
-                                  left: Nonterminal { production: ^wasm_production_localidx },
+                                  left: v2.std.grammar.Nonterminal { production: ^wasm_production_localidx },
                                   right: wasm_grammar_sequence(
                                     left: wasm_grammar_terminal(token_class: ^wasm_token_i32_add),
                                     right: wasm_grammar_terminal(token_class: ^wasm_token_rparen)
@@ -1149,21 +1149,21 @@ fn wasm_grammar_numeric_const_instr_expr() -> v2.std.grammar.GrammarExpr {
   wasm_grammar_choice(
     left: wasm_grammar_sequence(
       left: wasm_grammar_terminal(token_class: ^wasm_token_i32_const),
-      right: Nonterminal { production: ^wasm_production_i32_numeric_literal }
+      right: v2.std.grammar.Nonterminal { production: ^wasm_production_i32_numeric_literal }
     ),
     right: wasm_grammar_choice(
       left: wasm_grammar_sequence(
         left: wasm_grammar_terminal(token_class: ^wasm_token_i64_const),
-        right: Nonterminal { production: ^wasm_production_i64_numeric_literal }
+        right: v2.std.grammar.Nonterminal { production: ^wasm_production_i64_numeric_literal }
       ),
       right: wasm_grammar_choice(
         left: wasm_grammar_sequence(
           left: wasm_grammar_terminal(token_class: ^wasm_token_f32_const),
-          right: Nonterminal { production: ^wasm_production_f32_numeric_literal }
+          right: v2.std.grammar.Nonterminal { production: ^wasm_production_f32_numeric_literal }
         ),
         right: wasm_grammar_sequence(
           left: wasm_grammar_terminal(token_class: ^wasm_token_f64_const),
-          right: Nonterminal { production: ^wasm_production_f64_numeric_literal }
+          right: v2.std.grammar.Nonterminal { production: ^wasm_production_f64_numeric_literal }
         )
       )
     )
@@ -1232,7 +1232,7 @@ fn wasm_grammar_module_expr() -> v2.std.grammar.GrammarExpr {
         ),
         right: wasm_grammar_sequence(
           left: wasm_grammar_repeat(
-            element: Nonterminal { production: ^wasm_production_fn_add }
+            element: v2.std.grammar.Nonterminal { production: ^wasm_production_fn_add }
           ),
           right: wasm_grammar_terminal(token_class: ^wasm_token_rparen)
         )
@@ -1243,16 +1243,16 @@ fn wasm_grammar_module_expr() -> v2.std.grammar.GrammarExpr {
 
 fn wasm_grammar_text_fragment_expr() -> v2.std.grammar.GrammarExpr {
   wasm_grammar_choice(
-    left: Nonterminal { production: ^wasm_production_fn_add },
+    left: v2.std.grammar.Nonterminal { production: ^wasm_production_fn_add },
     right: wasm_grammar_choice(
-      left: Nonterminal { production: ^wasm_production_module },
+      left: v2.std.grammar.Nonterminal { production: ^wasm_production_module },
       right: wasm_grammar_choice(
-        left: Nonterminal { production: ^wasm_production_value_type },
+        left: v2.std.grammar.Nonterminal { production: ^wasm_production_value_type },
         right: wasm_grammar_choice(
-          left: Nonterminal { production: ^wasm_production_localidx },
+          left: v2.std.grammar.Nonterminal { production: ^wasm_production_localidx },
           right: wasm_grammar_choice(
-            left: Nonterminal { production: ^wasm_production_numeric_const_instr },
-            right: Nonterminal { production: ^wasm_production_numeric_binop_instr }
+            left: v2.std.grammar.Nonterminal { production: ^wasm_production_numeric_const_instr },
+            right: v2.std.grammar.Nonterminal { production: ^wasm_production_numeric_binop_instr }
           )
         )
       )
@@ -1404,7 +1404,7 @@ fn wasm_grammar_root() -> v2.std.grammar.GrammarRoot {
 }
 
 fn wasm_grammar() -> v2.std.grammar.ParseGrammar {
-  ModeledGrammar { root: wasm_grammar_root() }
+  v2.std.grammar.ModeledGrammar { root: wasm_grammar_root() }
 }
 
 fn wasm_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
@@ -1500,15 +1500,15 @@ fn wasm_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
 fn wasm_integer_spec_facts(facts: WasmIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
           v2.std.optional.Present { value: wasm_int_width_node(width: facts.width) }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}) {
           v2.std.optional.Present { value: wasm_inhabitant_atom(id: ^wasm_tag_sign_agnostic_modular) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: wasm_inhabitant_atom(id: ^wasm_repr_sign_agnostic_modular) }
-      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}) {
           v2.std.optional.Present { value: wasm_inhabitant_atom(id: ^wasm_tag_modular_wrap) }
       } else {
           v2.std.optional.Absent
@@ -1520,11 +1520,11 @@ fn wasm_integer_spec_facts(facts: WasmIntegerPrimitiveFacts) -> Map<v2.std.node.
 fn wasm_float_spec_facts(facts: WasmFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
           v2.std.optional.Present { value: wasm_float_width_node(width: facts.width) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: wasm_inhabitant_atom(id: facts.ieee754_binary) }
       } else {
           v2.std.optional.Absent
@@ -1591,7 +1591,7 @@ type WasmModelCoreLawKey
   | WasmLawFloatNanInfCarriedByIeee754
 fn wasm_integer_algebra_witness_node(facts: WasmIntegerPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       wasm_named_edge(
         name: ^wasm_witness_integer_commutative_semiring_modular,
@@ -1610,11 +1610,11 @@ fn wasm_integer_algebra_witness_node(facts: WasmIntegerPrimitiveFacts) -> Node {
         target: wasm_inhabitant_atom(id: facts.std_projection)
       ),
       wasm_named_edge(
-        name: discriminant(v: ModelCoreFactAxisSignedness {}),
+        name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}),
         target: wasm_inhabitant_atom(id: ^wasm_tag_sign_agnostic_modular)
       ),
       wasm_named_edge(
-        name: discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
+        name: discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}),
         target: wasm_inhabitant_atom(id: ^wasm_tag_modular_wrap)
       )
     ],
@@ -1624,7 +1624,7 @@ fn wasm_integer_algebra_witness_node(facts: WasmIntegerPrimitiveFacts) -> Node {
 
 fn wasm_float_algebra_witness_node(facts: WasmFloatPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       wasm_named_edge(
         name: ^wasm_witness_float_approximate_field,
@@ -1690,7 +1690,7 @@ fn wasm_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabita
 
 fn wasm_model_core_law_node(witness: Node, algebra: Node, key: WasmModelCoreLawKey) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       wasm_named_edge(name: ^model_core_law_field_subject, target: witness),
       wasm_named_edge(name: ^model_core_law_field_algebra, target: algebra),
@@ -1863,7 +1863,7 @@ fn wasm_fail_closed_partial_operation(
   v2.std.model_core.PartialOperationDecl {
     operation: wasm_inhabitant_atom(id: operation),
     precondition: wasm_inhabitant_atom(id: precondition),
-    discharge: FailClosedAtBoundary { reason: reason }
+    discharge: v2.std.model_core.FailClosedAtBoundary { reason: reason }
   }
 }
 

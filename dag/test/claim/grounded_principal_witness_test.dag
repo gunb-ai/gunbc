@@ -156,7 +156,7 @@ test fn witness_deploy_grant_refuses_outside_envelope() -> Bool {
     cmd: gunbc.ci_deploy_access.PrivilegedCommand {
       grant: gunbc.fleet_posix_accounts.PosixSudoGrant {
         command_path: "/usr/bin/bash" as std.types.NonEmptyStr,
-        probe: NopasswdExecuteCheck { check_argv: "--version" as std.types.NonEmptyStr },
+        probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--version" as std.types.NonEmptyStr },
       }
     }
   ) {
@@ -219,7 +219,7 @@ test fn witness_unknown_sudo_grant_command_lint_red() -> Bool {
   !posix_sudo_grant_generic_mover_lint_ok(
     g: gunbc.fleet_posix_accounts.PosixSudoGrant {
       command_path: "/usr/bin/bash" as std.types.NonEmptyStr,
-      probe: NopasswdExecuteCheck { check_argv: "--version" },
+      probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--version" },
     }
   )
 }
@@ -228,7 +228,7 @@ test fn witness_posix_sudo_grant_materializes_execute_grant() -> Bool {
   let projected = posix_sudo_grant_to_effect_grant(
     g: gunbc.fleet_posix_accounts.PosixSudoGrant {
       command_path: fleet_apt_get_binary_path,
-      probe: NopasswdExecuteCheck { check_argv: "--help" },
+      probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--help" },
     }
   )
   let expected = filesystem_position(path: ["usr", "bin", "apt-get"])

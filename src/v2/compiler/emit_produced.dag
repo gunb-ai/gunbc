@@ -5,7 +5,7 @@ fn emit_produced_decl_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.s
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

@@ -1,73 +1,73 @@
 module v2.lens.extdeps_shape_transport_policy.module_refs
 
 
-data extdeps_cargo_build_module: v2.std.qualified_name.QualifiedName = Cons {
+data extdeps_cargo_build_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons { head: ^cargo_build, tail: Empty }
+  tail: std.algebra.Cons { head: ^cargo_build, tail: Empty }
 }
 
-data extdeps_git_module: v2.std.qualified_name.QualifiedName = Cons {
+data extdeps_git_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons { head: ^git, tail: Empty }
+  tail: std.algebra.Cons { head: ^git, tail: Empty }
 }
 
-data extdeps_gcp_module: v2.std.qualified_name.QualifiedName = Cons {
+data extdeps_gcp_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: ^cloud,
-    tail: Cons { head: ^gcp, tail: Cons { head: ^gcp, tail: Empty } }
+    tail: std.algebra.Cons { head: ^gcp, tail: std.algebra.Cons { head: ^gcp, tail: Empty } }
   }
 }
 
-data extdeps_github_gists_module: v2.std.qualified_name.QualifiedName = Cons {
+data extdeps_github_gists_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons { head: ^github, tail: Cons { head: ^gists, tail: Empty } }
+  tail: std.algebra.Cons { head: ^github, tail: std.algebra.Cons { head: ^gists, tail: Empty } }
 }
 
-data extdeps_runtime_local_module: v2.std.qualified_name.QualifiedName = Cons {
+data extdeps_runtime_local_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons { head: ^runtime, tail: Cons { head: ^local, tail: Empty } }
+  tail: std.algebra.Cons { head: ^runtime, tail: std.algebra.Cons { head: ^local, tail: Empty } }
 }
 
-data bogus_extdeps_module: v2.std.qualified_name.QualifiedName = Cons {
+data bogus_extdeps_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons { head: ^bogus_unknown_module_xyz, tail: Empty }
+  tail: std.algebra.Cons { head: ^bogus_unknown_module_xyz, tail: Empty }
 }
 
-data coverage_domain_equivalence_module: v2.std.qualified_name.QualifiedName = Cons {
+data coverage_domain_equivalence_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^v2,
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: ^test,
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: ^extdeps_shape_transport_policy,
-      tail: Cons { head: ^coverage_domain_equivalence, tail: Empty }
+      tail: std.algebra.Cons { head: ^coverage_domain_equivalence, tail: Empty }
     }
   }
 }
 
-data module_source_nickname_literal_green_module: v2.std.qualified_name.QualifiedName = Cons {
+data module_source_nickname_literal_green_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^v2,
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: ^test,
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: ^extdeps_shape_transport_policy,
-      tail: Cons {
+      tail: std.algebra.Cons {
         head: ^lens_unit,
-        tail: Cons { head: ^module_source_nickname_literal_green, tail: Empty }
+        tail: std.algebra.Cons { head: ^module_source_nickname_literal_green, tail: Empty }
       }
     }
   }
 }
 
-data module_source_nickname_literal_local_red_module: v2.std.qualified_name.QualifiedName = Cons {
+data module_source_nickname_literal_local_red_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^v2,
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: ^test,
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: ^extdeps_shape_transport_policy,
-      tail: Cons {
+      tail: std.algebra.Cons {
         head: ^lens_unit,
-        tail: Cons { head: ^module_source_nickname_literal_local_red, tail: Empty }
+        tail: std.algebra.Cons { head: ^module_source_nickname_literal_local_red, tail: Empty }
       }
     }
   }

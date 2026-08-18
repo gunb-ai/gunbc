@@ -4,15 +4,15 @@ module v2.test.lens_mutation_adequacy.mutation_adequacy_test
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn node_a() -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: ^a } }, children: Empty)
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^a } }, children: Empty)
 }
 
 fn node_b() -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: ^b } }, children: Empty)
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^b } }, children: Empty)
 }
 
 fn green_claim() -> v2.std.verification.TestClaim {
-  CompilesClaim {
+  v2.std.verification.CompilesClaim {
     label: "green: R compiles on the real input",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: node_a(),
@@ -22,15 +22,15 @@ fn green_claim() -> v2.std.verification.TestClaim {
 }
 
 fn red_claim() -> v2.std.verification.TestClaim {
-  DiagnosticClaim {
+  v2.std.verification.DiagnosticClaim {
     label: "red: rejects the one-step mutant (perturbed input)",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: node_b(),
     expected_rejection: diagnostics_singleton(
       d: v2.std.diagnostic.Diagnostic {
         reason: ^mutation_adequacy_test_mutant_rejected,
-        at: Textual { file: ^mutation_adequacy_virtual_file, extent: WholeFile },
-        correction: Unavailable { reason: UserInputBoundary }
+        at: v2.std.diagnostic.Textual { file: ^mutation_adequacy_virtual_file, extent: WholeFile },
+        correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
       }
     ),
     classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }

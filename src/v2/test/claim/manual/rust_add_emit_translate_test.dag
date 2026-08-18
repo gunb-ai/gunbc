@@ -20,7 +20,7 @@ data rust_add_poisoned_authority_target_model: v2.std.compilers.target_model.Tar
 }
 
 data rust_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -196,11 +196,11 @@ fn rust_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Ca
       )
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^rust_add_grounding_miss,
         at: node_locus(node: node),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
@@ -239,7 +239,7 @@ fn anchor_rust_add_emit_accepts() -> Outcome<Medium<String>> {
 fn anchor_rust_add_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
   compile_inferred(
     inferred: rust_add_inferred_tree,
-    mode: TranslateTo { target: rust_add_poisoned_authority_target_model }
+    mode: v2.compiler.compile.TranslateTo { target: rust_add_poisoned_authority_target_model }
   )
 }
 

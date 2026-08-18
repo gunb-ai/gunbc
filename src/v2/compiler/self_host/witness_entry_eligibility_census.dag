@@ -66,14 +66,14 @@ fn census_reads_live_tree_carrier_retained(entry: String) -> v2.std.witness_exec
 }
 
 fn census_long_lane_ineligible(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
-  EmitIneligible {
+  v2.std.witness_execution_routing.EmitIneligible {
     cause: LongLaneScheduled,
     detail: "exceeds per-PR 5s fast-lane eval budget; scheduled falsifier/long-lane consumer only"
   }
 }
 
 fn census_offline_recipe_ineligible(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
-  EmitIneligible {
+  v2.std.witness_execution_routing.EmitIneligible {
     cause: OfflineLocalRecipe,
     detail: "operator-ruled offline; explicit local claim_batch recipe is the executing consumer"
   }

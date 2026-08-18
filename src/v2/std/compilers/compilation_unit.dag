@@ -71,7 +71,7 @@ data partition_r4_validity_interface_note: String = "R4 validity interface (lock
 data partition_fold_outcome_note: String = "partition_fold_outcome is the fail-closed entry for derived interface/deps: map lookup Rejected and interface-closure saturation without fixpoint return PartitionFoldRefused with a typed cause — never a partial interface. partition_fold(module_dag, assignment) -> List<CompilationUnit> remains the locked signature for well-formed inputs; it unwraps PartitionFoldOk only and returns [] on Refused (callers requiring refusal receipts MUST use partition_fold_outcome)."
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallNow {
+  class: v2.lens.common.construction_justification.WallNow {
     mechanism: SingleAuthority,
     authority: std.decl_ref.DeclarationRef {
       module_path: "v2.std.compilers.compilation_unit",

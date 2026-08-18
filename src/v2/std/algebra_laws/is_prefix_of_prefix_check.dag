@@ -2,17 +2,17 @@ module v2.test.algebra_laws.is_prefix_of_prefix_check
 
 fn prefix_sym_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> Bool { a == b }
 fn sym_empty() -> FreeMonoid<v2.std.node.Symbol> { Empty }
-fn sym_a() -> FreeMonoid<v2.std.node.Symbol> { Cons { head: ^prefix_sym_a, tail: Empty } }
-fn sym_b() -> FreeMonoid<v2.std.node.Symbol> { Cons { head: ^prefix_sym_b, tail: Empty } }
-fn sym_ab() -> FreeMonoid<v2.std.node.Symbol> { Cons { head: ^prefix_sym_a, tail: Cons { head: ^prefix_sym_b, tail: Empty } } }
+fn sym_a() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^prefix_sym_a, tail: Empty } }
+fn sym_b() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^prefix_sym_b, tail: Empty } }
+fn sym_ab() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^prefix_sym_a, tail: std.algebra.Cons { head: ^prefix_sym_b, tail: Empty } } }
 
 fn prefix_pass_node() -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^prefix_pass_sym } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^prefix_pass_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 fn prefix_fail_node() -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^prefix_fail_sym } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^prefix_fail_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
@@ -36,7 +36,7 @@ data witness_prefix_longer_than_xs: Bool = match is_prefix_of(prefix: sym_ab(), 
   false => true
 }
 
-data claim_is_prefix_of_empty_prefix_true: v2.std.verification.TestClaim = CompilesClaim {
+data claim_is_prefix_of_empty_prefix_true: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "algebra/is_prefix_of: empty prefix is a prefix of any list",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: prefix_claim_input(ok: witness_prefix_empty_of_any),
@@ -44,7 +44,7 @@ data claim_is_prefix_of_empty_prefix_true: v2.std.verification.TestClaim = Compi
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_is_prefix_of_equal_lists_true: v2.std.verification.TestClaim = CompilesClaim {
+data claim_is_prefix_of_equal_lists_true: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "algebra/is_prefix_of: equal list is a prefix of itself",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: prefix_claim_input(ok: witness_prefix_equal_lists),
@@ -52,7 +52,7 @@ data claim_is_prefix_of_equal_lists_true: v2.std.verification.TestClaim = Compil
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_is_prefix_of_proper_prefix_true: v2.std.verification.TestClaim = CompilesClaim {
+data claim_is_prefix_of_proper_prefix_true: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "algebra/is_prefix_of: proper prefix matches shorter prefix against longer list",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: prefix_claim_input(ok: witness_prefix_proper_prefix),
@@ -60,7 +60,7 @@ data claim_is_prefix_of_proper_prefix_true: v2.std.verification.TestClaim = Comp
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_is_prefix_of_non_matching_false: v2.std.verification.TestClaim = CompilesClaim {
+data claim_is_prefix_of_non_matching_false: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "algebra/is_prefix_of: non-matching head element is not a prefix",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: prefix_claim_input(ok: witness_prefix_non_matching),
@@ -68,7 +68,7 @@ data claim_is_prefix_of_non_matching_false: v2.std.verification.TestClaim = Comp
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_is_prefix_of_longer_than_xs_false: v2.std.verification.TestClaim = CompilesClaim {
+data claim_is_prefix_of_longer_than_xs_false: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "algebra/is_prefix_of: prefix longer than list is not a prefix",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: prefix_claim_input(ok: witness_prefix_longer_than_xs),

@@ -127,7 +127,7 @@ fn dedup_strings(xs: List<String>) -> List<String> {
       match v2.std.collection.map_get(a.seen, x) {
         Accepted { value: Present { value: _ }, diagnostics: _ } => a
         Accepted { value: Absent, diagnostics: _ } =>
-          DedupAcc { seen: map_insert(a.seen, x, true), ordered: Cons { head: x, tail: a.ordered } }
+          DedupAcc { seen: map_insert(a.seen, x, true), ordered: std.algebra.Cons { head: x, tail: a.ordered } }
         Rejected { diagnostics: _ } => a
       }
     })
@@ -180,9 +180,9 @@ fn module_target_index_from(
         Present { value: importer } =>
           match v2.std.collection.map_get(idx, importer) {
             Accepted { value: Present { value: existing }, diagnostics: _ } =>
-              map_insert(idx, importer, Cons { head: edge.target_module, tail: existing })
+              map_insert(idx, importer, std.algebra.Cons { head: edge.target_module, tail: existing })
             Accepted { value: Absent, diagnostics: _ } =>
-              map_insert(idx, importer, Cons { head: edge.target_module, tail: [] })
+              map_insert(idx, importer, std.algebra.Cons { head: edge.target_module, tail: [] })
             Rejected { diagnostics: _ } => idx
           }
         Absent => idx

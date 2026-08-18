@@ -4,7 +4,7 @@ module v2.test.lens_dependency_fidelity.dependency_fidelity_test
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn a_synthetic_param() -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: ^p } }, children: std.algebra.Empty)
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^p } }, children: std.algebra.Empty)
 }
 
 test fn clean_input_surface_is_faithful() -> Bool {

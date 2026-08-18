@@ -68,7 +68,7 @@ fn runner_unit_usage_exceeds_bytes(read: RunnerUnitMemoryLiveRead, target_bytes:
 fn memory_limit_to_cap_effectiveness(lim: extdeps.systemd.SystemdCgroupMemoryLimit) -> gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness? {
   match lim {
     MemoryLimitUnbounded => Present { value: CapUnbounded }
-    MemoryLimitBytes { bytes: b } => Present { value: CapEffective { bytes: b } }
+    MemoryLimitBytes { bytes: b } => Present { value: gunbc.ci_floor_measurement.CapEffective { bytes: b } }
     MemoryLimitAbsent => none
   }
 }

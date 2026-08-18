@@ -17,7 +17,7 @@ test fn witness_empty_registry_yields_no_expectation_and_line_shape_is_exact() -
       key_type: "ssh-ed25519",
       public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE",
       sha256_fingerprint: "SHA256:fakefake",
-      provenance: ScannedFirstContact { scanned_from: "192.168.1.222 fixture" as std.types.NonEmptyStr },
+      provenance: gunbc.fleet_host_key_enrollment.ScannedFirstContact { scanned_from: "192.168.1.222 fixture" as std.types.NonEmptyStr },
     }) == "192.168.1.222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE"
 }
 

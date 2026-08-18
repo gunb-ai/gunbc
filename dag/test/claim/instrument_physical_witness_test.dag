@@ -9,10 +9,10 @@ data instrument_physical_witness_note: String = "The physical-character amendmen
 
 fn preference_over_budget() -> gunbc.design.instrument_physical.InstrumentPreference {
   gunbc.design.instrument_physical.InstrumentPreference {
-    optical_jitter: ChannelAmplitudePx { px: 6 },
-    vertical_shift: ChannelAmplitudePx { px: 6 },
-    buoyant_drift: ChannelAmplitudePx { px: 6 },
-    impulse_glitch: ChannelAmplitudePx { px: 6 },
+    optical_jitter: gunbc.design.instrument_physical.ChannelAmplitudePx { px: 6 },
+    vertical_shift: gunbc.design.instrument_physical.ChannelAmplitudePx { px: 6 },
+    buoyant_drift: gunbc.design.instrument_physical.ChannelAmplitudePx { px: 6 },
+    impulse_glitch: gunbc.design.instrument_physical.ChannelAmplitudePx { px: 6 },
     glitch_duration: ImpulseLong,
   }
 }

@@ -38,9 +38,9 @@ data ct_real_v2_to_dag_target_read: v2.compiler.source_authority.DagSourceReadWi
   source_root: DagTree
 }
 
-data ct_real_v2_to_dag_ingest: v2.compiler.source_authority.SourceRootIngest = Cons {
+data ct_real_v2_to_dag_ingest: v2.compiler.source_authority.SourceRootIngest = std.algebra.Cons {
   head: ct_real_v2_to_dag_subject_read,
-  tail: Cons { head: ct_real_v2_to_dag_target_read, tail: Empty }
+  tail: std.algebra.Cons { head: ct_real_v2_to_dag_target_read, tail: Empty }
 }
 
 data ct_real_dag_to_v2_subject_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
@@ -57,17 +57,17 @@ data ct_real_dag_to_v2_target_read: v2.compiler.source_authority.DagSourceReadWi
   source_root: V2Tree
 }
 
-data ct_real_dag_to_v2_ingest: v2.compiler.source_authority.SourceRootIngest = Cons {
+data ct_real_dag_to_v2_ingest: v2.compiler.source_authority.SourceRootIngest = std.algebra.Cons {
   head: ct_real_dag_to_v2_subject_read,
-  tail: Cons { head: ct_real_dag_to_v2_target_read, tail: Empty }
+  tail: std.algebra.Cons { head: ct_real_dag_to_v2_target_read, tail: Empty }
 }
 
 fn ct_real_subject_qn() -> v2.std.qualified_name.QualifiedName {
-  Cons { head: ^v2, tail: Cons { head: ^ct_real_subject, tail: Empty } }
+  std.algebra.Cons { head: ^v2, tail: std.algebra.Cons { head: ^ct_real_subject, tail: Empty } }
 }
 
 fn ct_real_target_qn() -> v2.std.qualified_name.QualifiedName {
-  Cons { head: ^ct_real_target, tail: Empty }
+  std.algebra.Cons { head: ^ct_real_target, tail: Empty }
 }
 
 fn ct_real_edge_decision(ingest: v2.compiler.source_authority.SourceRootIngest) -> v2.std.cross_tree.resolution.CrossTreeEdgeDecision {

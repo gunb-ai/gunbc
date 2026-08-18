@@ -69,14 +69,14 @@ fn apply_lens_introspect_rejection_is_advisory_claim_rhs() -> Node {
     apply_lens_mode_root
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_apply_lens_introspect_rejection_is_advisory: v2.std.verification.TestClaim = EqualsClaim {
+data claim_apply_lens_introspect_rejection_is_advisory: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_application/apply_lens_introspect_rejection_is_advisory: Introspect accepts gate rejection as advisory; head reason forwarded from original rejection",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: apply_lens_mode_root,

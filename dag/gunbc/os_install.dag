@@ -68,7 +68,7 @@ fn srv3_os_install_plan_for(
   autoinstall: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload,
 ) -> Srv3OsInstallPlan {
   Srv3OsInstallPlan {
-    os_target: UbuntuOs { distro: NobleNumbat2404Lts },
+    os_target: std.os.types.UbuntuOs { distro: NobleNumbat2404Lts },
     host_architecture: Aarch64,
     lan_survey: srv3_lan_install_survey,
     delivery: os_install_delivery_for(
@@ -121,7 +121,7 @@ data srv3_autoinstall_identity: extdeps.os.ubuntu_autoinstall.AutoinstallIdentit
 
 data srv3_ubuntu_autoinstall: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
   autoinstall_version: 1,
-  delivery: NoCloudNet {
+  delivery: extdeps.os.ubuntu_autoinstall.NoCloudNet {
     seed_url: extdeps.uri.Uri {
       scheme: Https,
       locator: "install.srv3.lan/ubuntu-24.04/autoinstall/",
@@ -186,7 +186,7 @@ data srv3_seeded_os_install_plan_standing: Srv3OsInstallPlanStanding = srv3_os_i
 )
 
 data srv3_pxe_os_install_plan: Srv3OsInstallPlan = Srv3OsInstallPlan {
-  os_target: UbuntuOs { distro: NobleNumbat2404Lts },
+  os_target: std.os.types.UbuntuOs { distro: NobleNumbat2404Lts },
   host_architecture: Aarch64,
   lan_survey: srv3_lan_install_survey,
   delivery: os_install_delivery_for(

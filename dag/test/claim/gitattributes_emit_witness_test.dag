@@ -53,8 +53,8 @@ test fn witness_duplicate_projection_path_refuses_before_emission() -> Bool {
 }
 
 test fn witness_unavailable_live_plan_refuses_merge_policy_population() -> Bool {
-  match deterministic_generated_projection_paths_from_stage0_plan(outcome: Stage0EmissionPlanRefused {
-    cause: SourceIdentitySupplyUnavailableRefusal { cause: "synthetic unavailable live plan" }
+  match deterministic_generated_projection_paths_from_stage0_plan(outcome: gunbc.stage0_emit_plan.Stage0EmissionPlanRefused {
+    cause: gunbc.stage0_emit_plan.SourceIdentitySupplyUnavailableRefusal { cause: "synthetic unavailable live plan" }
   }) {
     GeneratedProjectionPathsRefused {
       cause: GeneratedProjectionStage0PlanRefused {

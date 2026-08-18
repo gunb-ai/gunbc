@@ -287,7 +287,7 @@ fn c_decl_coproduct_formal_productions() -> List<v2.std.grammar.FormalProduction
 
 fn c_decl_productions_only_translation_rules(productions: List<v2.std.grammar.FormalProduction>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       c_decl_named_edge(
         name: ^grammar_relation_rules_formal_productions,
@@ -350,7 +350,7 @@ fn c_semantic_decl_surface_projection() -> v2.std.compilers.semantic_decl_emissi
     struct_typedef_name_after_fields: true,
     enum_name_after_variants: true,
     field_type_permit_only_int: true,
-    coproduct_layout: TargetSemanticDeclCoproductTaggedUnionSurface {
+    coproduct_layout: v2.std.compilers.semantic_decl_emission.TargetSemanticDeclCoproductTaggedUnionSurface {
       tag_field: ^c_token_tag_field,
       union_field: ^c_token_union_field
     },

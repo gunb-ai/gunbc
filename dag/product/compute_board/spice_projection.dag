@@ -68,11 +68,11 @@ fn spice_component(
   let name = component_local_label(c: component_identity(c: c)) as String
   match c {
     ResistorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, resistance: m } =>
-      Resistor { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceKilo) }
+      v2.extdeps.formats.spice.Resistor { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceKilo) }
     CapacitorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, capacitance: m } =>
-      Capacitor { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceNano) }
+      v2.extdeps.formats.spice.Capacitor { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceNano) }
     IndependentVoltageSourceInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, potential_difference: m } =>
-      VoltageSource { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceUnitScale) }
+      v2.extdeps.formats.spice.VoltageSource { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceUnitScale) }
   }
 }
 
@@ -80,7 +80,7 @@ fn spice_netlist(intent: product.compute_board.analog.AnalogCircuitIntent, refer
   v2.extdeps.formats.spice.SpiceNetlist {
     title: intent.title as String,
     body: fold(intent.components, init: Empty, f: fn(acc, c) {
-      list_snoc_item(xs: acc, item: DeckComponent { component: spice_component(intent: intent, reference: reference, c: c) })
+      list_snoc_item(xs: acc, item: v2.extdeps.formats.spice.DeckComponent { component: spice_component(intent: intent, reference: reference, c: c) })
     }),
   }
 }
@@ -276,7 +276,7 @@ fn project_article_to_ngspice_run(admitted: product.compute_board.admission.Admi
             title: spice_netlist(intent: intent, reference: reference).title,
             body: list_snoc_item(
               xs: spice_netlist(intent: intent, reference: reference).body,
-              item: DeckDirective { directive: Op }
+              item: v2.extdeps.formats.spice.DeckDirective { directive: Op }
             ),
           }),
         },

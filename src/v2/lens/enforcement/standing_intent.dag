@@ -108,7 +108,7 @@ data standing_intent_model_anemia_repo_wide: StandingIntent = {
   default_mode: AuditOnly,
   required_consumer: AnyLiveConsumer,
   self_application_required: false,
-  allowed_narrowing: [BootstrapBlocked { blocker: "" }, TypeReflectionUnavailable { blocker: "" }],
+  allowed_narrowing: [v2.lens.enforcement.vocab.BootstrapBlocked { blocker: "" }, v2.lens.enforcement.vocab.TypeReflectionUnavailable { blocker: "" }],
   fallback_when_unavailable: AuditOnlyWithReason { reason: "object anemia lens is task E; declared now so the intent cannot be silently lost" }
 }
 
@@ -124,7 +124,7 @@ data standing_intent_single_authority_consolidation: StandingIntent = {
   default_mode: AuditOnly,
   required_consumer: AnyLiveConsumer,
   self_application_required: false,
-  allowed_narrowing: [BootstrapBlocked { blocker: "" }, TypeReflectionUnavailable { blocker: "" }],
+  allowed_narrowing: [v2.lens.enforcement.vocab.BootstrapBlocked { blocker: "" }, v2.lens.enforcement.vocab.TypeReflectionUnavailable { blocker: "" }],
   fallback_when_unavailable: AuditOnlyWithReason { reason: "object consolidation lens is task E; declared now so the intent cannot be silently lost" }
 }
 

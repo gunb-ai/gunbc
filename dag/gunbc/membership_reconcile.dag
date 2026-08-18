@@ -30,7 +30,7 @@ type MemberRefusal<M> {
 
 type EffectsOrRefusal<M>
   = EffectsReady { effects: std.types.List<MemberEffect<M>> }
-  | ApplyRefused { refusals: std.types.List<MemberRefusal<M>> }
+  | ApplyRefused { refusals: std.types.List<MemberRefusal<std.types.M>> }
 
 type MembershipRosterSide = MembershipDesiredRoster | MembershipObservedRoster
 
@@ -48,8 +48,8 @@ type MembershipReconcileScopedOutcome<M, Relation, Scope, K>
   | MembershipReconcileDuplicateScopedKey {
       roster: MembershipRosterSide,
       key: std.key_relation.ScopedKey<Relation, Scope, K>,
-      first: std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, v2.compiler.resolve.Scope, K>, M>,
-      duplicate: std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, v2.compiler.resolve.Scope, K>, M>,
+      first: std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, v2.compiler.resolve.Scope, K>, std.types.M>,
+      duplicate: std.keyed_row.KeyedRow<std.key_relation.ScopedKey<Relation, v2.compiler.resolve.Scope, K>, std.types.M>,
     }
 
 data membership_reconcile_authority_note: String = "THE grain-agnostic membership-diff reconcile (R2/R3/R5/R9). Desired set vs observed set keyed by member identity: Added -> add, Modified -> change, Removed -> remove (owned-only) or refuse, Unchanged -> noop (absence of a hunk). Add and change are DISTINCT arms and are NOT collapsed into one 'upsert'. Only REMOVAL consults ownership (gunbc.ownership Ensured constrains teardown only). Generic over member type M and key K — consumers pass (key_of, key_eq, value_eq, ownership_of) to membership_reconcile, they NEVER copy-adapt this fn. MemberAction carries `at` = the reconcile key so effect realization does not re-derive identity from mutable value. FUNCTIONAL-KEY ADMISSION: each population is built through keyed_roster_build BEFORE diffing — KeyedRosterBuildDuplicateKey refuses with typed evidence; no diff, no pick-one, no widen. R5 removal-owned-only is a CONSTRUCTION WALL on MemberRemovalRefused. membership_reconcile_scoped is the KeyRelation/KeyedResourceRelation path for relations with grounded scope (Tailscale vertical only until scope lands elsewhere)."

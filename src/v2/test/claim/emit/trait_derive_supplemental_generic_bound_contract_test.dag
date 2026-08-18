@@ -16,7 +16,7 @@ data sgb_phantom_source: v2.std.node.Symbol = ^sgb_phantom_source
 
 fn sgb_left_param_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^sgb_type_param } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sgb_type_param } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -24,7 +24,7 @@ fn sgb_left_param_node() -> Node {
 
 fn sgb_right_param_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^sgb_type_param } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sgb_type_param } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -32,7 +32,7 @@ fn sgb_right_param_node() -> Node {
 
 fn sgb_nested_source_carrier_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Instantiation },
+    kind: v2.std.node.TypeNode { connective: Instantiation },
     children: [
       v2.std.node.Edge { label: Positional, target: target_carrier_free_monoid_node() },
       v2.std.node.Edge { label: Positional, target: sgb_left_param_node() },
@@ -44,7 +44,7 @@ fn sgb_nested_source_carrier_node() -> Node {
 
 fn sgb_concrete_source_carrier_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Instantiation },
+    kind: v2.std.node.TypeNode { connective: Instantiation },
     children: [
       v2.std.node.Edge { label: Positional, target: target_carrier_free_monoid_node() },
       v2.std.node.Edge { label: Positional, target: char_kernel_type_node() }
@@ -55,8 +55,8 @@ fn sgb_concrete_source_carrier_node() -> Node {
 
 fn sgb_collection_eligible_elem_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
-      connective: Atom { identity: ^target_collection_kernel_string }
+    kind: v2.std.node.TypeNode {
+      connective: v2.std.node.Atom { identity: ^target_collection_kernel_string }
     },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -65,7 +65,7 @@ fn sgb_collection_eligible_elem_node() -> Node {
 
 fn sgb_atom_source_carrier_node(identity: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -268,7 +268,7 @@ fn sgb_wrong_choice_realization() -> v2.std.compilers.target_model.TargetCollect
   sgb_realization(
     source_carrier: sgb_nested_source_carrier_node(),
     primary: sgb_empty_choice(),
-    alternatives: Cons {
+    alternatives: std.algebra.Cons {
       head: sgb_nested_choice(),
       tail: Empty
     }
@@ -408,19 +408,19 @@ fn sgb_hash_set_coverage_blocker_matches(
     && blocker.coverage == rust_hash_set_supplemental_generic_bound_contract_coverage_disposition
     && sgb_hash_set_coverage_disposition_matches(coverage: blocker.coverage)
     && blocker.requirements.member(
-      TargetCollectionWitnessEq { type_param: ^target_collection_type_param_t }
+      v2.std.compilers.target_model.TargetCollectionWitnessEq { type_param: ^target_collection_type_param_t }
     )
     && blocker.requirements.member(
-      TargetCollectionWitnessHash { type_param: ^target_collection_type_param_t }
+      v2.std.compilers.target_model.TargetCollectionWitnessHash { type_param: ^target_collection_type_param_t }
     )
     && !blocker.requirements.member(
-      TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
+      v2.std.compilers.target_model.TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
     )
     && !blocker.requirements.member(
-      TargetCollectionWitnessEq { type_param: ^sgb_unrelated_slot }
+      v2.std.compilers.target_model.TargetCollectionWitnessEq { type_param: ^sgb_unrelated_slot }
     )
     && !blocker.requirements.member(
-      TargetCollectionWitnessHash { type_param: ^sgb_unrelated_slot }
+      v2.std.compilers.target_model.TargetCollectionWitnessHash { type_param: ^sgb_unrelated_slot }
     )
 }
 
@@ -594,7 +594,7 @@ fn sgb_choice_bundle_with_parameter_nodes(
 
 fn sgb_atom_node(identity: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -653,7 +653,7 @@ fn sgb_choice_bundle_duplicate_contract_edge_node() -> Node {
 
 fn sgb_malformed_contract_row_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,

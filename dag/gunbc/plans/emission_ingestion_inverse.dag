@@ -18,7 +18,7 @@ fn emission_ingestion_inverse_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "**The lens's enforcement roster is a FROZEN grandfather set, deliberately NOT derived.** The predicate is `leak = non-edge importer AND NOT in roster`; if the roster were a live grep of current importers it would always contain every importer, `leak_count` would always be 0, and the guard would **never fire** — a vacuous lens (DESIGN §5/§6 coverage-by-illusion). The frozen list is load-bearing precisely so a *new* unrostered importer goes RED, forcing intent-migration or a conscious roster add. Do not conflate the informational prose count above (where a frozen number rots for readers) with this enforcement roster (which must be frozen to have teeth). Steady-state hardening against an *introduction race* (a sidecar importer landing while the guard's branch is cut, as #5418 did vs #5445): a **roster-completeness assertion** — the frozen roster must cover every current importer at merge time — which catches the race **without** deriving the roster (optional follow-up; #5453 already closed the one live instance)."),
     p(text: "(Two `*_test` importers — `bash_serializer_witness_test`, `build_artifact_verification_witness_test` — are intentionally **not** walled: the guard scans consumer-source roots only, so test harnesses that exercise the serializer are excluded by construction, not a roster gap.)"),
     p(text: "The intent primitives **already exist** but are not wired to a realization path, so consumers reach past them and hand-author shell:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Intent (exists)"), cell(text: "Where"), cell(text: "Its realization (exists, **unconnected**)")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -32,10 +32,10 @@ fn emission_ingestion_inverse_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "**Cross-language conclusion:** `grep` for `serialize_rust|serialize_go|RustProgram|GoProgram` in consumers is empty. Every Rust/Go/Kotlin/TS use is a legitimate language-model / grammar-claim / emit-fold / fixture. The anemia is **bash-only**, for a structural reason: bash is the only language we use for *orchestration*; the others are only ever single emit *targets*. So it will not spread to hand-authored Rust — it will keep forcing *more bash* until orchestration is modeled as intent (gap B)."),
     h2(text: "3. The architecture: emission = ingestion⁻¹"),
     p(text: "`emit = serialize_target ∘ translate` is **already the realized architecture for language emit.** `src/v2/compiler/06_translate.dag` does grammar-inverse serialize over the **same** `v2.std.grammar` `FormalProduction` / `derive_grammar_relation_row_node` rows that ingest folds *forward*:"),
-    CodeBlock { code: "ingest:  source ──tokenize→parse→normalize──▶ Node      (select production forward)\nemit:    Node   ──translate→serialize_target──▶ source   (select the SAME row backward)\n" },
+    std.markdown.CodeBlock { code: "ingest:  source ──tokenize→parse→normalize──▶ Node      (select production forward)\nemit:    Node   ──translate→serialize_target──▶ source   (select the SAME row backward)\n" },
     p(text: "One authority (the grammar rows), read in two directions ⇒ a new target is *rows*, never a new emitter (N+M, not N×M). Realized for rust/python/go/cpp/typescript. `v2.extdeps.languages.bash` is migrating bash onto this (slices 1–5d landed), dissolving the hand-rolled `serialize_bash` sidecar."),
     p(text: "Three-state picture in these terms:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Layer"), cell(text: "emit = ingest⁻¹?"), cell(text: "Evidence")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -77,7 +77,7 @@ fn emission_ingestion_inverse_body() -> List<std.markdown.MarkdownBlock> {
       li(text: "*check-side* — string ops over an emitted-medium value (`string_contains(expected_ci_yml(), …)`, ~30 of them in `dag/test/claim/ci_yaml_serializer_witness_test.dag`, incl. the operator's `witness_no_runner_env_vars_accessed_via_env_context`)."),
     ]),
     p(text: "**The audit census (worst → best — the spectrum is the finding):**"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "medium"), cell(text: "state"), cell(text: "tell")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -115,6 +115,6 @@ data emission_ingestion_inverse_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "emission-ingestion-inverse",
   title: "Emission = Ingestion⁻¹ — extending the row-driven inverse past syntax to the intent layer",
   body: emission_ingestion_inverse_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when both arcs it tracks are witnessed-complete: (1) the §5 containment guard's frozen exception roster has emptied — every bash-sidecar importer migrated to `emit(intent, Bash)`, the guard flipped from ratchet to pure wall, and `program.dag` deleted — and the §5.1 `MediumStructureLeak` rosters (GHA-expr first) likewise empty as each medium becomes a `Medium<R>` `Node` emitted via grammar rows; (2) the §6/(A)+(B) intent layer is real — `Diagnostic`/orchestration intent emits via realization rows under a green round-trip law (the §5.2 oracle), so emission=ingestion⁻¹ is a witnessed property of the intent layer and not just the syntax layer. At that point the rule lives in the executable guard and the round-trip oracle (single authority, fail-closed by construction per DESIGN §5/§6), and this prose tracker is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when both arcs it tracks are witnessed-complete: (1) the §5 containment guard's frozen exception roster has emptied — every bash-sidecar importer migrated to `emit(intent, Bash)`, the guard flipped from ratchet to pure wall, and `program.dag` deleted — and the §5.1 `MediumStructureLeak` rosters (GHA-expr first) likewise empty as each medium becomes a `Medium<R>` `Node` emitted via grammar rows; (2) the §6/(A)+(B) intent layer is real — `Diagnostic`/orchestration intent emits via realization rows under a green round-trip law (the §5.2 oracle), so emission=ingestion⁻¹ is a witnessed property of the intent layer and not just the syntax layer. At that point the rule lives in the executable guard and the round-trip oracle (single authority, fail-closed by construction per DESIGN §5/§6), and this prose tracker is redundant.")
   }
 }

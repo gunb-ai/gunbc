@@ -123,7 +123,7 @@ fn fixture_view() -> gunbc.roadmap_program_view.V1DeletionProgramView {
 }
 
 fn focused_camera(m: gunbc.design.instrument_camera.ProgramMode, d: gunbc.design.instrument_camera.ProgramDepth) -> gunbc.design.instrument_camera.ProgramCamera {
-  gunbc.design.instrument_camera.ProgramCamera { depth: d, mode: m, focus: FinishLineFocused { line_key: "compiler-fixed-point" } }
+  gunbc.design.instrument_camera.ProgramCamera { depth: d, mode: m, focus: gunbc.design.instrument_camera.FinishLineFocused { line_key: "compiler-fixed-point" } }
 }
 
 data program_grain_witness_note: String = "The claim review 48719 found missing. With a subject FOCUSED, the program detent must still read the whole program's shape — before the fix read_camera_at routed a focused DepthProgram into read_line_view, whose DepthProgram arm was byte-identical to its DepthOutcome one, so the page rendered outcome-grain numbers under a program label. This reds on that exact behaviour: it demands the program's own remaining (open_fronts 7), which the collapsed reader could not produce because it only ever saw the line's 1."

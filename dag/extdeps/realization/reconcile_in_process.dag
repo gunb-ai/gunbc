@@ -18,7 +18,7 @@ data parse_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   transport_encoding: CatalogOpaqueStringEncoding
   key_derivation: {
 
-    key_inputs: HandAuthored { cited_inputs: [FilePaths] }
+    key_inputs: extdeps.cache.types.HandAuthored { cited_inputs: [FilePaths] }
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: false
@@ -42,14 +42,14 @@ data parse_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   evidence: [
     {
       field: "key_derivation"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "cli_run.rs MultiEntryIndex.parse_cache keys on source.path (file path string), not content digest — cache-impurity witness; converge in Phase 2c"
         observed_at: 0
       }
     },
     {
       field: "locality"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "scoped to MultiEntryIndex; shared across entry resolves in one batch; drops when index is dropped"
         observed_at: 0
       }
@@ -63,7 +63,7 @@ data typed_module_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = 
   transport_encoding: CatalogOpaqueStringEncoding
   key_derivation: {
 
-    key_inputs: NativeInternal { cited_inputs: [UpsertSubject, ToolchainSpec] }
+    key_inputs: extdeps.cache.types.NativeInternal { cited_inputs: [UpsertSubject, ToolchainSpec] }
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: false
@@ -78,7 +78,7 @@ data typed_module_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = 
   placement: {
     value_shape: StructuredArtifact
     locality: InProcess
-    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityBounded { limit: EntryCountCapacity { limit: RuntimeDerivedLimit { authority: { module_path: "gunbc.typed_module_cache_capacity", decl_name: "typed_module_cache_entry_cap", field: WholeDeclaration } } }, at_capacity: ReplaceExisting { strategy: ProviderNativeReplacement } } }
+    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.EntryCountCapacity { limit: std.cache_interface.RuntimeDerivedLimit { authority: { module_path: "gunbc.typed_module_cache_capacity", decl_name: "typed_module_cache_entry_cap", field: WholeDeclaration } } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: ProviderNativeReplacement } } }
     atomicity: PerFile
     auth: std.cache_interface.None
     read_latency: InProcessNs
@@ -87,14 +87,14 @@ data typed_module_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = 
   evidence: [
     {
       field: "key_derivation"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "cli_run.rs reconcile_with_typed_cache keys on std.interface_summary.typed_module_key — module source hash + direct-import interface hashes (UpsertSubject) + compiler-binary identity via resolved_graph_cache::transform_content_digest (ToolchainSpec); the former authored-name key (the Phase-2c cache-impurity witness) is dissolved (cross-entry-typed-module-memo-sketch.md stage PR-alpha)"
         observed_at: 0
       }
     },
     {
       field: "locality"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "scoped to MultiEntryIndex.typed_module_cache; warms across batch entry resolves; drops when index is dropped"
         observed_at: 0
       }

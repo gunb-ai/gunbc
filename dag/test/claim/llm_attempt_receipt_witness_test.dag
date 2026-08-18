@@ -37,7 +37,7 @@ fn review_receipt(
     serving_runtime_identity: "vllm-arm64-cuda" as std.types.NonEmptyStr,
     machine_opportunity_identity: "dgx-spark-01" as std.types.NonEmptyStr,
     concurrency: fixture_concurrency,
-    prefix_cache: PrefixCacheHit { reused: token_count(count: 30000) },
+    prefix_cache: gunbc.econ.llm_attempt_receipt.PrefixCacheHit { reused: token_count(count: 30000) },
     usage: usage,
     durations: durations,
     wall_energy: none,
@@ -65,42 +65,42 @@ data zero_decode: gunbc.econ.llm_attempt_receipt.AttemptPhaseDurations = gunbc.e
 
 data accepted_attempt: gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt = review_receipt(
   identity: "attempt-accepted" as std.types.NonEmptyStr,
-  usage: LlmUsageObserved { usage: fixture_usage },
+  usage: gunbc.econ.llm_attempt_receipt.LlmUsageObserved { usage: fixture_usage },
   durations: one_second_decode,
   disposition: ReviewAccepted,
 )
 
 data rejected_attempt: gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt = review_receipt(
   identity: "attempt-rejected" as std.types.NonEmptyStr,
-  usage: LlmUsageObserved { usage: fixture_usage },
+  usage: gunbc.econ.llm_attempt_receipt.LlmUsageObserved { usage: fixture_usage },
   durations: one_second_decode,
-  disposition: ReviewRejected { reason: "false positive finding" as std.types.NonEmptyStr },
+  disposition: gunbc.econ.llm_attempt_receipt.ReviewRejected { reason: "false positive finding" as std.types.NonEmptyStr },
 )
 
 data escalated_attempt: gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt = review_receipt(
   identity: "attempt-escalated" as std.types.NonEmptyStr,
-  usage: LlmUsageObserved { usage: fixture_usage },
+  usage: gunbc.econ.llm_attempt_receipt.LlmUsageObserved { usage: fixture_usage },
   durations: one_second_decode,
-  disposition: ReviewEscalated { reason: "architectural judgment required" as std.types.NonEmptyStr },
+  disposition: gunbc.econ.llm_attempt_receipt.ReviewEscalated { reason: "architectural judgment required" as std.types.NonEmptyStr },
 )
 
 data usage_unobserved_attempt: gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt = review_receipt(
   identity: "attempt-usage-unobserved" as std.types.NonEmptyStr,
-  usage: LlmUsageUnobserved { reason: "provider reported no usage block" as std.types.NonEmptyStr },
+  usage: gunbc.econ.llm_attempt_receipt.LlmUsageUnobserved { reason: "provider reported no usage block" as std.types.NonEmptyStr },
   durations: one_second_decode,
   disposition: ReviewAccepted,
 )
 
 data decode_unobserved_attempt: gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt = review_receipt(
   identity: "attempt-decode-unobserved" as std.types.NonEmptyStr,
-  usage: LlmUsageObserved { usage: fixture_usage },
+  usage: gunbc.econ.llm_attempt_receipt.LlmUsageObserved { usage: fixture_usage },
   durations: decode_unobserved,
   disposition: ReviewAccepted,
 )
 
 data zero_decode_attempt: gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt = review_receipt(
   identity: "attempt-zero-decode" as std.types.NonEmptyStr,
-  usage: LlmUsageObserved { usage: fixture_usage },
+  usage: gunbc.econ.llm_attempt_receipt.LlmUsageObserved { usage: fixture_usage },
   durations: zero_decode,
   disposition: ReviewAccepted,
 )

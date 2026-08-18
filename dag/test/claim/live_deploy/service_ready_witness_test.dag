@@ -17,7 +17,7 @@ test fn witness_service_not_ready_reason_is_located() -> Bool {
     endpoint: roadmap_site_health_path,
     waited: second(count: 1),
     last_probe: "connection refused",
-    unit_diagnosis: UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code)" },
+    unit_diagnosis: gunbc.live_deploy.service_ready.UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code)" },
   })
   string_contains(s: reason, pattern: "ServiceNotReady")
     && string_contains(s: reason, pattern: "gunbc-roadmap.service")
@@ -74,7 +74,7 @@ test fn witness_scaffold_carries_named_dissolution_trigger() -> Bool {
 test fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
   let refusal = service_not_ready_refusal_at_poll_bound(
     last_probe: "health probe never succeeded",
-    unit_diagnosis: UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code) Main PID: 4242 (code=exited, status=1/FAILURE)" }
+    unit_diagnosis: gunbc.live_deploy.service_ready.UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code) Main PID: 4242 (code=exited, status=1/FAILURE)" }
   )
   let reason = service_not_ready_reason(refusal: refusal)
   string_contains(s: reason, pattern: "ServiceNotReady")
@@ -92,7 +92,7 @@ test fn witness_refusal_locates_unit_state_distinctly_from_probe() -> Bool {
   )
   let located = service_not_ready_refusal_at_poll_bound(
     last_probe: "connection refused",
-    unit_diagnosis: UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code) error: failed to bind 0.0.0.0:8080: Address already in use" }
+    unit_diagnosis: gunbc.live_deploy.service_ready.UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code) error: failed to bind 0.0.0.0:8080: Address already in use" }
   )
   let probe_only_reason = service_not_ready_reason(refusal: probe_only)
   let located_reason = service_not_ready_reason(refusal: located)

@@ -1,11 +1,11 @@
 module test.claim.floor_preparation_witness
 
 
-data tested_commit: extdeps.git.object_store.GitObjectId = GitSha1ObjectId {
+data tested_commit: extdeps.git.object_store.GitObjectId = extdeps.git.object_store.GitSha1ObjectId {
   digest: std.content_hash.Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
 }
 
-data tested_tree: extdeps.git.object_store.GitObjectId = GitSha1ObjectId {
+data tested_tree: extdeps.git.object_store.GitObjectId = extdeps.git.object_store.GitSha1ObjectId {
   digest: std.content_hash.Sha1Digest { hex: "1111111111111111111111111111111111111111" }
 }
 
@@ -69,7 +69,7 @@ fn request_with(selected: List<v2.workflow.floor_preparation.PreparedFloorEntryR
   v2.workflow.floor_preparation.PreparedFloorSubjectRequest {
     discovery: discovery_request(),
     selected: selected,
-    policy: ResolveSelectedClosuresV1 {},
+    policy: v2.workflow.floor_preparation.ResolveSelectedClosuresV1 {},
   }
 }
 
@@ -85,7 +85,7 @@ fn artifact_part(label: String) -> std.materialization_provider.ArtifactPart {
 }
 
 fn artifact_for(entry: v2.workflow.floor_preparation.PreparedFloorEntryRequest) -> std.materialization_provider.MaterializedArtifact {
-  ResolvedGraphArtifact {
+  std.materialization_provider.ResolvedGraphArtifact {
     request_key: request_key(
       req: v2.workflow.floor_preparation.prepared_floor_entry_artifact_request(
         discovery: discovery_request(),
@@ -102,7 +102,7 @@ fn probe_for(entry: v2.workflow.floor_preparation.PreparedFloorEntryRequest) -> 
   let artifact = artifact_for(entry: entry)
   v2.workflow.floor_preparation.PreparedFloorEntryProbe {
     witness: entry.witness,
-    probe: ProbeFound {
+    probe: std.materialization_provider.ProbeFound {
       artifact: artifact,
       observed_digest: artifact_content_digest(artifact: artifact),
     }
@@ -156,7 +156,7 @@ test fn wrong_artifact_key_refuses() -> Bool {
     request: request_with(selected: [entry_a()]),
     probes: [v2.workflow.floor_preparation.PreparedFloorEntryProbe {
       witness: witness_a(),
-      probe: ProbeFound {
+      probe: std.materialization_provider.ProbeFound {
         artifact: wrong,
         observed_digest: artifact_content_digest(artifact: wrong),
       }

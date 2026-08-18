@@ -57,6 +57,6 @@ data cardinality_refinement_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "cardinality-refinement",
   title: "Plan — Cardinality refinement (the decidable fold-propagated refinement axis)",
   body: cardinality_refinement_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when `Byte = \{ bits: List<Bit> \} where Length<8>` is authored, its construction is compiler-enforced, and a 7-bit byte is a typed `Rejected` green-by-execution — at which point `bit.dag`'s \"length not checked\", `bits_per_byte`'s centralized `8`, and the `MachineWidth` phantom gap all dissolve into the carriers, and this scoping is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when `Byte = \{ bits: List<Bit> \} where Length<8>` is authored, its construction is compiler-enforced, and a 7-bit byte is a typed `Rejected` green-by-execution — at which point `bit.dag`'s \"length not checked\", `bits_per_byte`'s centralized `8`, and the `MachineWidth` phantom gap all dissolve into the carriers, and this scoping is redundant.")
   }
 }

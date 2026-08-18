@@ -103,7 +103,7 @@ test fn witness_RED_srv2_slice_cap_would_drift_against_the_superseded_70_gib_cap
 
 test fn witness_srv1_01_per_slot_infinity_drifts() -> Bool {
   let read = runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture)
-  let target = PerSlotMemoryCap {
+  let target = gunbc.host_converge.PerSlotMemoryCap {
     dropin_path: gunbc_runner_per_slot_dropin_path,
     instance_glob: runner_instance_glob(host: operator_host_srv1),
     property: systemd_memory_max_property,

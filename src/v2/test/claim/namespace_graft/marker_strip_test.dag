@@ -5,7 +5,7 @@ data marker_strip_note: String = "Discriminating witness (operator ruling msg_0f
 
 fn ms_sym_node(sym: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -23,7 +23,7 @@ fn ms_pre_graft_module_root(
   body_edges: List<v2.std.node.Edge>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: concat(
       [
         dag_named_edge(
@@ -51,7 +51,7 @@ data ms_pre_graft_root: Node = ms_pre_graft_module_root(
     v2.std.node.Edge {
       label: Named { name: ^MsPilotType },
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Disj },
+        kind: v2.std.node.TypeNode { connective: Disj },
         children: [
           v2.std.node.Edge {
             label: Named { name: ^MsYes },
@@ -123,7 +123,7 @@ test fn namespace_graft_marker_strip_fill_equivalent_holds() -> Bool {
   ms_marker_strip_fill_equivalent_holds()
 }
 
-data claim_namespace_graft_marker_strip_fill_equivalent: v2.std.verification.TestClaim = EqualsClaim {
+data claim_namespace_graft_marker_strip_fill_equivalent: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "namespace_graft: stripping provenance marker leaves symbol_index fill unchanged",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ms_sym_node(sym: ^ms_bool_true),

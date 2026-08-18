@@ -3,7 +3,7 @@ module gunbc.plans.invert_hand_maintained
 
 fn invert_hand_maintained_body() -> List<std.markdown.MarkdownBlock> {
   [
-    BlockquoteBlock { blocks: [p(text: "The §7 self-hosting recursion applied **beyond the compiler**: every hand-maintained artifact (`ROADMAP.md`, doc indexes, eventually more) is a *second representation* of an authority that already lives in the substrate — so it drifts. Invert it: the `.dag` model is the authority, the artifact is an **emitted projection**, drift-gated (`generated == committed`) exactly as `ci.yml` already is. Flagship: the ROADMAP. DESIGN refs: §2 (no dual representation), §3 (single authority), §5 (construction over validation — the projection makes the defect class *unwritable*), §6 (emission = ingestion⁻¹; the doc medium), §7 (the recursion — the repo emits its own scaffolding).")] },
+    std.markdown.BlockquoteBlock { blocks: [p(text: "The §7 self-hosting recursion applied **beyond the compiler**: every hand-maintained artifact (`ROADMAP.md`, doc indexes, eventually more) is a *second representation* of an authority that already lives in the substrate — so it drifts. Invert it: the `.dag` model is the authority, the artifact is an **emitted projection**, drift-gated (`generated == committed`) exactly as `ci.yml` already is. Flagship: the ROADMAP. DESIGN refs: §2 (no dual representation), §3 (single authority), §5 (construction over validation — the projection makes the defect class *unwritable*), §6 (emission = ingestion⁻¹; the doc medium), §7 (the recursion — the repo emits its own scaffolding).")] },
     h2(text: "1. Why — a hand-maintained artifact is a dual representation that drifts"),
     p(text: "The ROADMAP *says it itself*: \"checkboxes are authoritative for progress … a task's real state is its branch/PR + the carrier marks.\" So the real authority is the work-DAG + the substrate; the markdown is a **hand-kept copy** of it — a §2/§3 dual representation. And it drifts, *provably*: in the last day alone this repo hit a **stale checkbox** (the realization-vocab guard sat `[ ]` while done on main), a **dangling link** (a cause-table doc referenced but never written), and **orphan docs** (added with no inbound link). Each is a hand-maintenance defect that **cannot exist in a projection**."),
     h2(text: "2. The flagship — the ROADMAP, emitted"),
@@ -32,7 +32,7 @@ fn invert_hand_maintained_body() -> List<std.markdown.MarkdownBlock> {
       li(text: "**Why this is a *slice* of the real thing, not a fork.** It is `emit(status)` with the structure still hand-authored — the authority is still partial (the binding, not the full DAG). It dissolves *into* the full project: when `emit(work_model, Markdown)` lands, status is just one emitted field and the Action retires. So build the Action as the **§2-status-derivation seam first** (kills the manual-reconcile pain now), then widen the authority leftward to the whole line. Caveat (§5 `DecodeFidelity`): a milestone with *no* `(#NNNN)` anchor (pure-analysis work, no PR) has no derivable status — those stay hand-checked and must be marked so the check doesn't false-positive; that honest residue is the boundary, not a gap."),
     ]),
     h2(text: "4. The census — what's hand-maintained, and how invertible"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "artifact"), cell(text: "authority"), cell(text: "status")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -86,6 +86,6 @@ data invert_hand_maintained_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "invert-hand-maintained",
   title: "Inverting hand-maintained artifacts — generate from `.dag`, drift-gate the projection",
   body: invert_hand_maintained_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when every invertible hand-maintained artifact in the §4 census is emitted and drift-gated from its .dag authority (ROADMAP/.gitignore/ci.yml already inverted; the remaining .githooks/pre-push and the plan-doc frames land), so 'invert everything hand-maintained' is a witnessed property rather than a tracked spectrum — at which point the §5 fidelity boundary is the only residue and this tracker is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when every invertible hand-maintained artifact in the §4 census is emitted and drift-gated from its .dag authority (ROADMAP/.gitignore/ci.yml already inverted; the remaining .githooks/pre-push and the plan-doc frames land), so 'invert everything hand-maintained' is a witnessed property rather than a tracked spectrum — at which point the §5 fidelity boundary is the only residue and this tracker is redundant.")
   }
 }

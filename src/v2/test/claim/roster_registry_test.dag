@@ -78,7 +78,7 @@ test fn roster_registry_green_control_standard_forms_pass() -> Bool {
     registrations: [
       synthetic_registration(membership: ByContainment),
       synthetic_registration(
-        membership: ByDerivation {
+        membership: gunbc.roster_registry.ByDerivation {
           predicate: roster_decl(module_path: "v2.test.synthetic", decl_name: "derivation_fn")
         }
       ),

@@ -74,6 +74,6 @@ data typescript_gap_census_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "typescript-gap-census",
   title: "TypeScript first-class gap census — discriminating construct audit (Lane C / Track T)",
   body: typescript_gap_census_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this census once every FAIL-OPEN row (#13–#20) is closed with execution-grounded witnesses and bar (c) tsc-green holds on the default TargetModel — the audit record is superseded by the substrate facts it enumerated.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this census once every FAIL-OPEN row (#13–#20) is closed with execution-grounded witnesses and bar (c) tsc-green holds on the default TargetModel — the audit record is superseded by the substrate facts it enumerated.")
   }
 }

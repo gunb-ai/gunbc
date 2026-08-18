@@ -42,7 +42,7 @@ fn validate_grammar_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: port_locus(port: ^validate_grammar_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -105,15 +105,15 @@ fn validate_grammar_all_rhs_in_alphabet(g: FormalGrammar) -> Bool {
 
 fn validate_grammar(g: FormalGrammar) -> Witness<WellFormedFormalGrammar> {
   if !g.nonterminals.member(g.start) {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: validate_grammar_diagnostic(reason: ^validate_grammar_start_not_in_nonterminals)
     }
   } else if !validate_grammar_all_lhs_in_nonterminals(g: g) {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: validate_grammar_diagnostic(reason: ^validate_grammar_lhs_not_in_nonterminals)
     }
   } else if !validate_grammar_all_rhs_in_alphabet(g: g) {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: validate_grammar_diagnostic(reason: ^validate_grammar_rhs_symbol_not_in_alphabet)
     }
   } else {
@@ -278,8 +278,8 @@ type GrammarSymbolFoldState {
 
 fn grammar_atom(identity: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
-      connective: Atom { identity: identity }
+    kind: v2.std.node.TypeNode {
+      connective: v2.std.node.Atom { identity: identity }
     },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -359,7 +359,7 @@ fn grammar_formal_production(lhs: v2.std.node.Symbol, rhs: List<FormalGrammarSym
 
 fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
+    kind: v2.std.node.TypeNode {
       connective: Conj
     },
     children: [
@@ -373,7 +373,7 @@ fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optiona
   match binding {
     Present { value: binding } =>
       v2.std.node.Node {
-        kind: TypeNode {
+        kind: v2.std.node.TypeNode {
           connective: Conj
         },
         children: [
@@ -394,7 +394,7 @@ fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optiona
 
 fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
+    kind: v2.std.node.TypeNode {
       connective: Conj
     },
     children: [
@@ -408,7 +408,7 @@ fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
   match symbol {
     FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
       v2.std.node.Node {
-        kind: TypeNode {
+        kind: v2.std.node.TypeNode {
           connective: Conj
         },
         children: [
@@ -421,7 +421,7 @@ fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
 }
     FormalNonterminalOccurrence { nonterminal: nonterminal } =>
       v2.std.node.Node {
-        kind: TypeNode {
+        kind: v2.std.node.TypeNode {
           connective: Conj
         },
         children: [
@@ -447,7 +447,7 @@ fn formal_rhs_to_edges(symbols: List<FormalGrammarSymbol>) -> List<v2.std.node.E
 
 fn formal_production_to_node(production: FormalProduction) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
+    kind: v2.std.node.TypeNode {
       connective: Conj
     },
     children: [
@@ -455,7 +455,7 @@ fn formal_production_to_node(production: FormalProduction) -> Node {
       grammar_named_edge(
         name: ^formal_production_rhs_node_projection,
         target: v2.std.node.Node {
-          kind: TypeNode {
+          kind: v2.std.node.TypeNode {
             connective: Conj
           },
           children: formal_rhs_to_edges(symbols: production.rhs),
@@ -471,11 +471,11 @@ fn grammar_atom_identity_from_node(node: Node) -> Witness<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => Holds { value: id }
   _ =>
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^grammar_relation_production_not_found,
         at: node_locus(node: node),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
@@ -489,23 +489,23 @@ fn formal_nonterminal_from_node(node: Node) -> Witness<FormalNonterminal> {
           match grammar_atom_identity_from_node(node: identity_node) {
             Holds { value: id } =>
               Holds { value: FormalNonterminal { identity: id } }
-            Violates { diagnostic: d } => Violates { diagnostic: d }
+            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
         Rejected { diagnostics: nd } =>
-          Violates {
+          v2.std.witness.Violates {
             diagnostic: v2.std.diagnostic.Diagnostic {
               reason: ^grammar_relation_production_not_found,
               at: node_locus(node: node),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             }
           }
       }
     _ =>
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_production_not_found,
           at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       }
   }
@@ -519,23 +519,23 @@ fn formal_terminal_from_node(node: Node) -> Witness<FormalTerminal> {
           match grammar_atom_identity_from_node(node: identity_node) {
             Holds { value: id } =>
               Holds { value: FormalTerminal { identity: id } }
-            Violates { diagnostic: d } => Violates { diagnostic: d }
+            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
         Rejected { diagnostics: _ } =>
-          Violates {
+          v2.std.witness.Violates {
             diagnostic: v2.std.diagnostic.Diagnostic {
               reason: ^grammar_relation_production_not_found,
               at: node_locus(node: node),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             }
           }
       }
     _ =>
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_production_not_found,
           at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       }
   }
@@ -554,7 +554,7 @@ fn formal_terminal_occurrence_from_node(node: Node) -> Witness<FormalGrammarSymb
                   binding: optional_present(value: binding)
                 }
               }
-            Violates { diagnostic: d } => Violates { diagnostic: d }
+            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
         Rejected { diagnostics: _ } =>
           Holds {
@@ -564,7 +564,7 @@ fn formal_terminal_occurrence_from_node(node: Node) -> Witness<FormalGrammarSymb
             }
           }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -582,24 +582,24 @@ fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
                   Holds {
                     value: FormalNonterminalOccurrence { nonterminal: nonterminal }
                   }
-                Violates { diagnostic: d } => Violates { diagnostic: d }
+                Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
               }
             Rejected { diagnostics: _ } =>
-              Violates {
+              v2.std.witness.Violates {
                 diagnostic: v2.std.diagnostic.Diagnostic {
                   reason: ^grammar_relation_production_not_found,
                   at: node_locus(node: node),
-                  correction: Unavailable { reason: ExternalContractUnknown }
+                  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                 }
               }
           }
       }
     _ =>
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_production_not_found,
           at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       }
   }
@@ -613,7 +613,7 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
         init: v2.std.witness.Holds { value: Empty },
         f: fn(acc, edge) {
           match acc {
-            Violates { diagnostic: d } => Violates { diagnostic: d }
+            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
             Holds { value: symbols } =>
               match edge.label {
                 Positional =>
@@ -622,7 +622,7 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
                       v2.std.witness.Holds {
                         value: list_snoc_item(xs: symbols, item: symbol)
                       }
-                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
                   }
                 Named { name: _ } => acc
               }
@@ -630,14 +630,14 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
         }
       ) {
         Holds { value: symbols } => Holds { value: symbols }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
     _ =>
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_production_not_found,
           at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       }
   }
@@ -657,34 +657,34 @@ fn formal_production_from_node(node: Node) -> Witness<FormalProduction> {
                       Holds {
                         value: FormalProduction { lhs: lhs, rhs: rhs }
                       }
-                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
                   }
-                Violates { diagnostic: d } => Violates { diagnostic: d }
+                Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
               }
             Rejected { diagnostics: _ } =>
-              Violates {
+              v2.std.witness.Violates {
                 diagnostic: v2.std.diagnostic.Diagnostic {
                   reason: ^grammar_relation_production_not_found,
                   at: node_locus(node: node),
-                  correction: Unavailable { reason: ExternalContractUnknown }
+                  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                 }
               }
           }
         Rejected { diagnostics: _ } =>
-          Violates {
+          v2.std.witness.Violates {
             diagnostic: v2.std.diagnostic.Diagnostic {
               reason: ^grammar_relation_production_not_found,
               at: node_locus(node: node),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             }
           }
       }
     _ =>
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_production_not_found,
           at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       }
   }
@@ -695,11 +695,11 @@ fn grammar_relation_row_production_from_node(row: Node) -> Witness<FormalProduct
     Accepted { value: production_node, diagnostics: _ } =>
       formal_production_from_node(node: production_node)
     Rejected { diagnostics: nd } =>
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_production_not_found,
           at: node_locus(node: row),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       }
   }
@@ -748,7 +748,7 @@ fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<L
         v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_production_not_found,
           at: node_locus(node: rules),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
   }
@@ -756,7 +756,7 @@ fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<L
 
 fn formal_productions_catalog_to_node(productions: List<FormalProduction>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
+    kind: v2.std.node.TypeNode {
       connective: Conj
     },
     children: fold_list(
@@ -806,7 +806,7 @@ fn formal_productions_from_catalog_node(node: Node) -> Outcome<List<FormalProduc
         v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_production_not_found,
           at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
   }
@@ -830,7 +830,7 @@ fn derive_grammar_relation_row(production: FormalProduction, emitted: Node) -> G
 
 fn grammar_relation_row_to_node(row: GrammarRelationRow, tokens: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
+    kind: v2.std.node.TypeNode {
       connective: Conj
     },
     children: [
@@ -853,12 +853,12 @@ fn grammar_relation_tokens_node<T>(
 }
 
 fn grammar_concrete_fixed_token_node(token_class: v2.std.node.Symbol) -> Node {
-  concrete_syntax_token_to_node(token: FixedToken { token_class: token_class })
+  concrete_syntax_token_to_node(token: v2.std.compilers.target_model.FixedToken { token_class: token_class })
 }
 
 fn grammar_concrete_bound_token_node(token_class: v2.std.node.Symbol, binding: v2.std.node.Symbol) -> Node {
   concrete_syntax_token_to_node(
-    token: BoundToken { token_class: token_class, binding: binding }
+    token: v2.std.compilers.target_model.BoundToken { token_class: token_class, binding: binding }
   )
 }
 
@@ -1078,7 +1078,7 @@ fn grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: Node) -> v2.st
   v2.std.diagnostic.Diagnostic {
     reason: ^grammar_relation_emitted_conj_slot_missing,
     at: node_locus(node: emitted),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -1096,11 +1096,11 @@ fn formal_conj_child_atom_at_index(
       match node_atom_identity_optional(node: slot_child) {
         Present { value: _ } => Holds { value: slot_child }
         Absent =>
-          Violates {
+          v2.std.witness.Violates {
             diagnostic: grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: emitted)
           }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -1161,7 +1161,7 @@ fn formal_production_rhs_matches_emitted_conj_step(
             absent: v2.std.diagnostic.Diagnostic {
               reason: ^grammar_relation_emitted_conj_slot_missing,
               at: node_locus(node: emitted),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             }
           ) {
             Holds { value: slot_child } =>
@@ -1269,11 +1269,11 @@ fn formal_production_for_lhs_exact(
       child: child
     )
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^grammar_relation_emitted_not_conj,
         at: node_locus(node: child),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
@@ -1313,7 +1313,7 @@ fn derive_grammar_relation_token_edges_recursive_step(
   symbol: FormalGrammarSymbol
 ) -> Witness<DeriveGrammarRelationTokensProgress> {
   match progress {
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
     Holds { value: DeriveGrammarRelationTokensProgress { edges: edges, conj_index: conj_index, conj_children: conj_children } } =>
       match symbol {
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
@@ -1343,13 +1343,13 @@ fn derive_grammar_relation_token_edges_recursive_step(
                             }
                           }
                         Absent =>
-                          Violates {
+                          v2.std.witness.Violates {
                             diagnostic: grammar_relation_emitted_conj_slot_missing_diagnostic(
                               emitted: emitted
                             )
                           }
                       }
-                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
                   }
                 FormalBindingConjSlotExactBinding =>
                   Holds {
@@ -1385,7 +1385,7 @@ fn derive_grammar_relation_token_edges_recursive_step(
             absent: v2.std.diagnostic.Diagnostic {
               reason: ^grammar_relation_emitted_conj_slot_missing,
               at: node_locus(node: emitted),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             }
           ) {
             Holds { value: child } =>
@@ -1408,11 +1408,11 @@ fn derive_grammar_relation_token_edges_recursive_step(
                           conj_children: conj_children
                         }
                       }
-                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
                   }
-                Violates { diagnostic: d } => Violates { diagnostic: d }
+                Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
               }
-            Violates { diagnostic: d } => Violates { diagnostic: d }
+            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
       }
   }
@@ -1446,15 +1446,15 @@ fn derive_grammar_relation_token_edges_recursive(
       if conj_index == conj_positional_child_count(children: conj_children) {
         Holds { value: result }
       } else {
-        Violates {
+        v2.std.witness.Violates {
           diagnostic: v2.std.diagnostic.Diagnostic {
             reason: ^grammar_relation_emitted_conj_slot_surplus,
             at: node_locus(node: emitted),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           }
         }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -1490,14 +1490,14 @@ fn derive_grammar_relation_row_node(
               )
             )
           }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
     _ =>
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_emitted_not_conj,
           at: node_locus(node: emitted),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       }
   }
@@ -1505,7 +1505,7 @@ fn derive_grammar_relation_row_node(
 
 fn grammar_expr_node(children: List<v2.std.node.Edge>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
+    kind: v2.std.node.TypeNode {
       connective: Conj
     },
     children: children,
@@ -1568,7 +1568,7 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
 
 fn grammar_production_to_node(production: GrammarProduction) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
+    kind: v2.std.node.TypeNode {
       connective: Conj
     },
     children: [
@@ -1592,7 +1592,7 @@ fn grammar_production_to_list_step(acc: List<v2.std.node.Edge>, production: Gram
 
 fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
+    kind: v2.std.node.TypeNode {
       connective: Conj
     },
     children: fold_list(
@@ -1608,7 +1608,7 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
 
 fn grammar_root_to_node(root: GrammarRoot) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
+    kind: v2.std.node.TypeNode {
       connective: Conj
     },
     children: [
@@ -1769,30 +1769,30 @@ fn formal_production_unique_emitted_match(
       }
     ) {
       LhsExactProductionMatchNone =>
-        Violates {
+        v2.std.witness.Violates {
           diagnostic: v2.std.diagnostic.Diagnostic {
             reason: ^grammar_relation_production_not_found,
             at: node_locus(node: child),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           }
         }
       LhsExactProductionMatchMany =>
-        Violates {
+        v2.std.witness.Violates {
           diagnostic: v2.std.diagnostic.Diagnostic {
             reason: ^grammar_relation_row_backward_selection_ambiguous,
             at: node_locus(node: child),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           }
         }
       LhsExactProductionMatchOne { production: production } =>
         Holds { value: production }
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^grammar_relation_emitted_not_conj,
         at: node_locus(node: child),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
@@ -1813,7 +1813,7 @@ type RebuildProductionMatchFold
 
 fn rebuild_emitted_atom_node(identity: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -1821,7 +1821,7 @@ fn rebuild_emitted_atom_node(identity: v2.std.node.Symbol) -> Node {
 
 fn rebuild_emitted_conj_node(children: List<Node>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: fold_list(
       xs: children,
       empty: Empty,
@@ -1865,7 +1865,7 @@ fn rebuild_emitted_rhs_walk_step(
                 absent: v2.std.diagnostic.Diagnostic {
                   reason: ^grammar_relation_emitted_conj_slot_missing,
                   at: node_locus(node: rebuild_emitted_conj_node(children: children)),
-                  correction: Unavailable { reason: ExternalContractUnknown }
+                  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                 }
               ) {
                 Holds { value: token } =>
@@ -1886,7 +1886,7 @@ fn rebuild_emitted_rhs_walk_step(
                 absent: v2.std.diagnostic.Diagnostic {
                   reason: ^grammar_relation_emitted_conj_slot_missing,
                   at: node_locus(node: rebuild_emitted_conj_node(children: children)),
-                  correction: Unavailable { reason: ExternalContractUnknown }
+                  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                 }
               ) {
                 Holds { value: token } =>
@@ -1956,11 +1956,11 @@ fn rebuild_emitted_from_production(
         }
       }
     RebuildRhsWalkFail =>
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_production_not_found,
           at: node_locus(node: rebuild_emitted_conj_node(children: Empty)),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       }
   }
@@ -2011,19 +2011,19 @@ fn grammar_relation_emitted_rebuild_for_lhs(
     }
   ) {
     RebuildProductionMatchNone =>
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_production_not_found,
           at: node_locus(node: rebuild_emitted_conj_node(children: Empty)),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       }
     RebuildProductionMatchMany =>
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: v2.std.diagnostic.Diagnostic {
           reason: ^grammar_relation_row_backward_selection_ambiguous,
           at: node_locus(node: rebuild_emitted_conj_node(children: Empty)),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       }
     RebuildProductionMatchOne { emitted: emitted, token_index: end_index } =>
@@ -2056,15 +2056,15 @@ fn grammar_relation_emitted_rebuild_from_token_spine(
       if end_index == token_count {
         Holds { value: emitted }
       } else {
-        Violates {
+        v2.std.witness.Violates {
           diagnostic: v2.std.diagnostic.Diagnostic {
             reason: ^grammar_relation_emitted_conj_slot_surplus,
             at: node_locus(node: emitted),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           }
         }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -2107,30 +2107,30 @@ fn formal_production_unique_lhs_exact_match(
       }
     ) {
       LhsExactProductionMatchNone =>
-        Violates {
+        v2.std.witness.Violates {
           diagnostic: v2.std.diagnostic.Diagnostic {
             reason: ^grammar_relation_production_not_found,
             at: node_locus(node: child),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           }
         }
       LhsExactProductionMatchMany =>
-        Violates {
+        v2.std.witness.Violates {
           diagnostic: v2.std.diagnostic.Diagnostic {
             reason: ^grammar_relation_row_backward_selection_ambiguous,
             at: node_locus(node: child),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           }
         }
       LhsExactProductionMatchOne { production: production } =>
         Holds { value: production }
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^grammar_relation_emitted_not_conj,
         at: node_locus(node: child),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
@@ -2149,15 +2149,15 @@ fn grammar_relation_row_backward_selection(
       if selected == row.production {
         Holds { value: selected }
       } else {
-        Violates {
+        v2.std.witness.Violates {
           diagnostic: v2.std.diagnostic.Diagnostic {
             reason: ^grammar_relation_row_backward_selection_mismatch,
             at: node_locus(node: row.emitted),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           }
         }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -2215,7 +2215,7 @@ fn grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: No
   v2.std.diagnostic.Diagnostic {
     reason: ^grammar_relation_production_not_found,
     at: node_locus(node: emitted),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -2251,7 +2251,7 @@ fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> O
                 v2.std.diagnostic.Diagnostic {
                   reason: ^grammar_relation_row_backward_selection_ambiguous,
                   at: node_locus(node: emitted),
-                  correction: Unavailable { reason: ExternalContractUnknown }
+                  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
                 }
               )
             BackwardRowNone =>
@@ -2336,7 +2336,7 @@ fn grammar_relation_forward_row_selection_outcome_row(
         v2.std.diagnostic.Diagnostic {
           reason: many_reason,
           at: node_locus(node: rules),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
     GrammarRelationForwardRowNone =>
@@ -2344,7 +2344,7 @@ fn grammar_relation_forward_row_selection_outcome_row(
         v2.std.diagnostic.Diagnostic {
           reason: none_reason,
           at: node_locus(node: rules),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
   }
@@ -2362,7 +2362,7 @@ fn grammar_relation_forward_row_selection_outcome_emitted(
         v2.std.diagnostic.Diagnostic {
           reason: ^parse_tree_to_emitted_node_ambiguous_row,
           at: node_locus(node: rules),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
     GrammarRelationForwardRowNone =>
@@ -2370,7 +2370,7 @@ fn grammar_relation_forward_row_selection_outcome_emitted(
         v2.std.diagnostic.Diagnostic {
           reason: ^parse_tree_to_emitted_node_no_matching_row,
           at: node_locus(node: rules),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
   }
@@ -2421,7 +2421,7 @@ fn grammar_relation_row_forward_token_spine_selection(
         v2.std.diagnostic.Diagnostic {
           reason: ^parse_tree_to_emitted_node_no_matching_row,
           at: node_locus(node: rules),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
   }
@@ -2469,12 +2469,12 @@ fn grammar_relation_row_forward_production_selection_not_found_diagnostic(
     reason: ^grammar_relation_row_forward_production_not_found,
     at: node_locus(
       node: v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: surface_identity } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: surface_identity } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
     ),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

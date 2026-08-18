@@ -10,5 +10,5 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data systemd_unit_active_state_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.systemd", decl_name: "SystemdUnitActiveState", field: WholeDeclaration },
-  encoding: StringVariant { naming: SnakeCase }
+  encoding: std.serialization.StringVariant { naming: SnakeCase }
 }

@@ -62,7 +62,7 @@ test fn dag_module_paths_keeps_only_dag_modules() -> Bool {
 // Both arms of affected_ledger_from_diff proven by execution over synthetic diff data (no shell, no interpreted door): a diff-observation FAILURE refuses fail-closed carrying the observation's reason and NEVER reaches door_ledger (no whole-corpus widen — the §5 absorbing-fallback guard); a diff OK with only non-.dag changes filters to zero modules and ledgers empty. The live git-observation half is floor_diff_observe's own tested code; this pins the ledger's wiring logic, which is all the affected-set entry adds over the door_ledger histogram.
 test fn affected_set_diff_failure_refuses_fail_closed() -> Bool {
   match affected_ledger_from_diff(
-    diff: NameStatusDiffFail { reason: "invalid ref or not a git repository" },
+    diff: v2.workflow.floor_diff_observe.NameStatusDiffFail { reason: "invalid ref or not a git repository" },
     pool_roots: []
   ) {
     AffectedDiffRefused { reason: r } => string_eq(a: r, b: "invalid ref or not a git repository")
@@ -72,7 +72,7 @@ test fn affected_set_diff_failure_refuses_fail_closed() -> Bool {
 
 test fn affected_set_non_dag_changes_ledger_empty() -> Bool {
   match affected_ledger_from_diff(
-    diff: NameStatusDiffOk {
+    diff: v2.workflow.floor_diff_observe.NameStatusDiffOk {
       changed_paths: ["src/v1/stage0/src/cli_run.rs", "docs/plans/x.md"],
       departed_paths: ["dag/std/gone.dag"]
     },

@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn det_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -17,7 +17,7 @@ fn det_positional(target: Node) -> v2.std.node.Edge {
 
 fn det_call(callee: v2.std.node.Symbol, arg: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [det_positional(target: det_atom(id: callee)), det_positional(target: arg)],
     occurrence_id: SyntheticOccurrence
   }

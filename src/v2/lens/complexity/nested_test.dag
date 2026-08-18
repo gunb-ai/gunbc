@@ -9,13 +9,13 @@ type LensComplexityClaim {
   falsification: v2.std.diagnostic.Diagnostic
 }
 data nested_body_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^nested_body_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^nested_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data nested_body: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: Transform },
   children: [
     v2.std.node.Edge { label: Positional, target: nested_body_leaf }
   ],
@@ -23,7 +23,7 @@ data nested_body: Node = v2.std.node.Node {
 }
 
 data nested_inner: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: nested_body }
   ],
@@ -31,7 +31,7 @@ data nested_inner: Node = v2.std.node.Node {
 }
 
 data nested_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: nested_inner }
   ],
@@ -40,9 +40,9 @@ data nested_input: Node = v2.std.node.Node {
 
 data nested_claim: LensComplexityClaim = LensComplexityClaim {
   input: nested_input,
-  expected_cost: ProductCost {
-    lhs: LinearCost { variable: v2.lens.cost.SizeVariable { source: nested_input } },
-    rhs: LinearCost { variable: v2.lens.cost.SizeVariable { source: nested_inner } }
+  expected_cost: v2.lens.cost.ProductCost {
+    lhs: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: nested_input } },
+    rhs: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: nested_inner } }
   },
   expected_complexity: multidimensional_polynomial_complexity(
     variables: composite_complexity_variables(
@@ -53,8 +53,8 @@ data nested_claim: LensComplexityClaim = LensComplexityClaim {
   ),
   falsification: v2.std.diagnostic.Diagnostic {
     reason: ^nested_claim_reason,
-    at: Textual { file: ^nested_claim_file, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^nested_claim_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 

@@ -177,9 +177,9 @@ fn fixture_roadmap_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx-recut-a" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: fixture_node_id(),
-    line: DerivableLine { prs: [1], title: "recut-a", description: "" },
+    line: gunbc.roadmap_status.DerivableLine { prs: [1], title: "recut-a", description: "" },
     carriers: [],
-    sizing: Sized {
+    sizing: gunbc.roadmap_model.Sized {
       intricacy: IntricacyHigh,
       volume: VolumeMedium,
       repo: "gunbc",
@@ -222,12 +222,12 @@ fn fixture_evidence(
     provider_events_readable: true,
     provider_events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
     provider_events_error: "",
-    process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
     validation_summary: "gunbc run --claim-run",
     verification_subject: subject,
     verification_selection: selection,
     verification_source: source,
-    publication_subject: PublicationSubjectObserved {
+    publication_subject: gunbc.roadmap_publish.PublicationSubjectObserved {
       subject: gunbc.roadmap_publish.RoadmapPublicationSubject {
         node_id: "recut-a",
         attempt_key: "feedfacefeedface",
@@ -282,7 +282,7 @@ fn live_verify_progress_state(
 test fn unreadable_exact_receipt_is_evidence_unreadable_not_refuse() -> Bool {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
-    source: ExactVerificationReceiptUnreadable {
+    source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptUnreadable {
       detail: "the exact verification receipt was listed and then could not be read",
     },
   ) {
@@ -338,7 +338,7 @@ test fn no_current_selection_projects_verify_pending() -> Bool {
   verify_segment_state(
     evidence: fixture_evidence(
       selection: SelectionAbsent,
-      subject: VerificationSubjectUnobserved {
+      subject: gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved {
         reason: "the belt has not selected a verification window for this head yet",
       },
       source: VerificationReceiptAbsent,
@@ -349,7 +349,7 @@ test fn no_current_selection_projects_verify_pending() -> Bool {
 
 test fn unobservable_worktree_head_projects_verify_refused() -> Bool {
   live_verify_progress_state(
-    selection: SelectionUnaddressable {
+    selection: gunbc.roadmap_verification_receipt.SelectionUnaddressable {
       cause: "the attempt worktree head could not be observed",
     },
   ) == "refused"
@@ -424,7 +424,7 @@ test fn mismatched_selection_cannot_address_the_other_heads_receipt() -> Bool {
 
 test fn unreadable_current_selection_projects_verify_refused() -> Bool {
   let state = live_verify_progress_state(
-    selection: SelectionUnreadable {
+    selection: gunbc.roadmap_verification_receipt.SelectionUnreadable {
       cause: "permission denied",
     },
   )
@@ -433,7 +433,7 @@ test fn unreadable_current_selection_projects_verify_refused() -> Bool {
 
 test fn listing_failure_with_not_found_text_is_unreadable_not_absent() -> Bool {
   let state = live_verify_progress_state(
-    selection: SelectionUnreadable {
+    selection: gunbc.roadmap_verification_receipt.SelectionUnreadable {
       cause: join([
         "the verification directory was named by the attempt listing but could not itself be listed: ",
         "/srv/dispatch/recut-a/attempt/verification (No such file or directory)",
@@ -448,7 +448,7 @@ test fn live_assembly_unreadable_selection_never_addresses_receipt_as_absent() -
     instance: srv1_live_dashboard_instance(),
     node_id: fixture_node_id(),
     attempt_key: "feedfacefeedface",
-    selection: SelectionUnreadable {
+    selection: gunbc.roadmap_verification_receipt.SelectionUnreadable {
       cause: "the current verification selection was listed and then could not be read",
     },
   ) {
@@ -461,7 +461,7 @@ test fn live_assembly_unreadable_selection_never_addresses_receipt_as_absent() -
 test fn v1_at_exact_path_refuses_v2_subject() -> Bool {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
-    source: ExactVerificationReceiptPresent {
+    source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptPresent {
       text: v1_legacy_receipt_text(),
     },
   ) {
@@ -479,11 +479,11 @@ test fn v1_at_exact_path_refuses_v2_subject() -> Bool {
 test fn selected_v2_receipt_is_read_exactly() -> Bool {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w2),
-    source: ExactVerificationReceiptPresent {
+    source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptPresent {
       text: verification_receipt_json(
         receipt: fixture_receipt(
           window: fixture_window_w2,
-          verdict: ValidationPassed {
+          verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
             command: "fixture-command",
             oracle_identity: content_hash_of_value(value: "oracle-fixture"),
           },
@@ -520,11 +520,11 @@ test fn exact_verification_address_coheres_basename_and_path() -> Bool {
 test fn new_window_identity_does_not_match_old_passed_receipt() -> Bool {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w2),
-    source: ExactVerificationReceiptPresent {
+    source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptPresent {
       text: verification_receipt_json(
         receipt: fixture_receipt(
           window: fixture_window_w1,
-          verdict: ValidationPassed {
+          verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
             command: "fixture-command",
             oracle_identity: content_hash_of_value(value: "oracle-fixture"),
           },
@@ -542,11 +542,11 @@ test fn new_window_identity_does_not_match_old_passed_receipt() -> Bool {
 test fn final_exact_receipt_defers_without_rerun() -> Bool {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
-    source: ExactVerificationReceiptPresent {
+    source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptPresent {
       text: verification_receipt_json(
         receipt: fixture_receipt(
           window: fixture_window_w1,
-          verdict: ValidationPassed {
+          verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
             command: "fixture-command",
             oracle_identity: content_hash_of_value(value: "oracle-fixture"),
           },
@@ -558,7 +558,7 @@ test fn final_exact_receipt_defers_without_rerun() -> Bool {
       string_contains(
         s: reason,
         pattern: validation_verdict_key(
-          verdict: ValidationPassed {
+          verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
             command: "fixture-command",
             oracle_identity: content_hash_of_value(value: "oracle-fixture"),
           },
@@ -581,7 +581,7 @@ test fn wrong_subject_document_at_exact_path_refuses() -> Bool {
   }
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
-    source: ExactVerificationReceiptPresent {
+    source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptPresent {
       text: verification_receipt_json(
         receipt: gunbc.roadmap_verification_receipt.VerificationReceipt {
           subject: wrong_branch,
@@ -589,7 +589,7 @@ test fn wrong_subject_document_at_exact_path_refuses() -> Bool {
             structural: content_hash_atom(value: "oracle-fixture"),
           ),
           executions: [],
-          verdict: ValidationPassed {
+          verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
             command: "fixture-command",
             oracle_identity: content_hash_of_value(value: "oracle-fixture"),
           },
@@ -608,7 +608,7 @@ test fn wrong_subject_document_at_exact_path_refuses() -> Bool {
 test fn not_run_migration_receipt_runs() -> Bool {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
-    source: ExactVerificationReceiptPresent {
+    source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptPresent {
       text: verification_receipt_json(
         receipt: fixture_receipt(
           window: fixture_window_w1,
@@ -633,7 +633,7 @@ test fn v1_decode_preserves_execution_rows() -> Bool {
 
 test fn belt_verification_refuse_projects_belt_pass_refused() -> Bool {
   match belt_verify_pass_outcome_from(outcomes: [
-    VerifyRefused {
+    gunbc.roadmap_belt_actuate.VerifyRefused {
       node_id: "recut-a",
       cause: "a v1 exact-head receipt at this path lacks change_window_identity",
     },
@@ -647,7 +647,7 @@ test fn belt_verification_refuse_projects_belt_pass_refused() -> Bool {
 
 test fn belt_verification_evidence_unreadable_projects_belt_pass_failed() -> Bool {
   match belt_verify_pass_outcome_from(outcomes: [
-    VerifyEvidenceUnreadable {
+    gunbc.roadmap_belt_actuate.VerifyEvidenceUnreadable {
       node_id: "recut-a",
       detail: "the exact verification receipt was listed and then could not be read",
     },

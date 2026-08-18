@@ -60,7 +60,7 @@ fn zero_cost() -> SymbolicCost {
 }
 
 fn unit_cost() -> SymbolicCost {
-  constant_cost(value: Succ { prev: Zero })
+  constant_cost(value: v2.std.nat.Succ { prev: Zero })
 }
 
 fn nonzero_one() -> v2.std.cardinality.NonZeroNat {
@@ -85,8 +85,8 @@ fn linear_in_node(n: Node) -> SymbolicCost {
 
 data cost_lattice_top_diagnostic: v2.std.diagnostic.Diagnostic = v2.std.diagnostic.Diagnostic {
   reason: ^cost_reason_unmodeled_symbolic_cost,
-  at: Textual { file: ^cost_lattice_top_virtual_file, extent: WholeFile },
-  correction: Unavailable { reason: AmbiguousIntent }
+  at: v2.std.diagnostic.Textual { file: ^cost_lattice_top_virtual_file, extent: WholeFile },
+  correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
 }
 
 fn unknown_cost(diagnostic: v2.std.diagnostic.Diagnostic) -> SymbolicCost {
@@ -96,7 +96,7 @@ fn unknown_cost(diagnostic: v2.std.diagnostic.Diagnostic) -> SymbolicCost {
 fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
   match c {
     UnknownCost { diagnostic: d } =>
-      Violates { diagnostic: d }
+      v2.std.witness.Violates { diagnostic: d }
     _ =>
       Holds { value: c }
   }
@@ -255,8 +255,8 @@ fn nat_dominates(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
 fn add_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> PolynomialDegree {
   PolynomialDegree {
     predecessor_after_linear: v2.std.cardinality.NonZeroNat {
-      prev: Succ {
-        prev: Succ {
+      prev: v2.std.nat.Succ {
+        prev: v2.std.nat.Succ {
           prev: nat_add(a: a.predecessor_after_linear.prev, b: b.predecessor_after_linear.prev)
         }
       }
@@ -266,21 +266,21 @@ fn add_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> Polynomial
 
 fn increment_polynomial_degree(d: PolynomialDegree) -> PolynomialDegree {
   PolynomialDegree {
-    predecessor_after_linear: v2.std.cardinality.NonZeroNat { prev: Succ { prev: d.predecessor_after_linear.prev } }
+    predecessor_after_linear: v2.std.cardinality.NonZeroNat { prev: v2.std.nat.Succ { prev: d.predecessor_after_linear.prev } }
   }
 }
 
 fn increment_polylog_exponent(e: PolyLogExponent) -> PolyLogExponent {
   PolyLogExponent {
-    predecessor_after_log: v2.std.cardinality.NonZeroNat { prev: Succ { prev: e.predecessor_after_log.prev } }
+    predecessor_after_log: v2.std.cardinality.NonZeroNat { prev: v2.std.nat.Succ { prev: e.predecessor_after_log.prev } }
   }
 }
 
 fn add_polylog_exponent(a: PolyLogExponent, b: PolyLogExponent) -> PolyLogExponent {
   PolyLogExponent {
     predecessor_after_log: v2.std.cardinality.NonZeroNat {
-      prev: Succ {
-        prev: Succ {
+      prev: v2.std.nat.Succ {
+        prev: v2.std.nat.Succ {
           prev: nat_add(a: a.predecessor_after_log.prev, b: b.predecessor_after_log.prev)
         }
       }
@@ -623,7 +623,7 @@ fn llvm_instruction_cost(i: v2.extdeps.languages.llvm_ir.LlvmInstruction) -> Int
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallNow {
+  class: v2.lens.common.construction_justification.WallNow {
     mechanism: SubstrateMandatoryTag,
     authority: std.decl_ref.DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: WholeDeclaration }
   }

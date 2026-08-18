@@ -7,7 +7,7 @@ fn witness_lit_git_sha1(hex: String) -> extdeps.git.object_store.GitObjectId {
   match git_sha1_object_id(hex: hex) {
     Present { value: oid } => oid
     Absent =>
-      GitSha1ObjectId {
+      extdeps.git.object_store.GitSha1ObjectId {
         digest: std.content_hash.Sha1Digest {
           hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" as std.content_hash.Sha1DigestHex,
         },
@@ -19,7 +19,7 @@ fn witness_lit_git_sha256(hex: String) -> extdeps.git.object_store.GitObjectId {
   match git_sha256_object_id(hex: hex) {
     Present { value: oid } => oid
     Absent =>
-      GitSha256ObjectId {
+      extdeps.git.object_store.GitSha256ObjectId {
         digest: std.content_hash.Sha256Digest {
           hex: "cd12b0326b0ea9f272a6dc91e21e490f4cee87b47e6bffa03801420cf81f6bab" as std.content_hash.Sha256DigestHex,
         },
@@ -81,13 +81,13 @@ data fixture_author: extdeps.git.GitAuthor = extdeps.git.GitAuthor {
 fn git_tree_name_before_slash(
   value: extdeps.git.object_store.GitTreeEntryNameBeforeSlashValue,
 ) -> extdeps.git.object_store.GitTreeEntryNameOctet {
-  GitTreeEntryNameOctetBeforeSlash { value: value }
+  extdeps.git.object_store.GitTreeEntryNameOctetBeforeSlash { value: value }
 }
 
 fn git_tree_name_after_slash(
   value: extdeps.git.object_store.GitTreeEntryNameAfterSlashValue,
 ) -> extdeps.git.object_store.GitTreeEntryNameOctet {
-  GitTreeEntryNameOctetAfterSlash { value: value }
+  extdeps.git.object_store.GitTreeEntryNameOctetAfterSlash { value: value }
 }
 
 fn git_tree_name(
@@ -213,12 +213,12 @@ fn fixture_wire_entries() -> List<extdeps.git.object_store.GitTreeWireEntry> {
 fn git_r0_fixture_tree() -> extdeps.git.object_store.Tree {
   extdeps.git.object_store.Tree {
     entries: [
-      SymlinkEntry { name: name_symlink, oid: sha1_blob_symlink },
-      RegularBlobEntry { name: name_regular, oid: sha1_blob_regular },
-      ExecutableBlobEntry { name: name_executable, oid: sha1_blob_executable },
-      SubtreeEntry { name: name_subtree, oid: sha1_subtree },
-      GitlinkEntry { name: name_gitlink, oid: sha1_gitlink },
-      RegularBlobEntry { name: name_non_ascii, oid: sha1_blob_regular },
+      extdeps.git.object_store.SymlinkEntry { name: name_symlink, oid: sha1_blob_symlink },
+      extdeps.git.object_store.RegularBlobEntry { name: name_regular, oid: sha1_blob_regular },
+      extdeps.git.object_store.ExecutableBlobEntry { name: name_executable, oid: sha1_blob_executable },
+      extdeps.git.object_store.SubtreeEntry { name: name_subtree, oid: sha1_subtree },
+      extdeps.git.object_store.GitlinkEntry { name: name_gitlink, oid: sha1_gitlink },
+      extdeps.git.object_store.RegularBlobEntry { name: name_non_ascii, oid: sha1_blob_regular },
     ],
   }
 }
@@ -233,19 +233,19 @@ fn fixture_content_address(
 ) -> extdeps.git.object_store.GitContentAddressReceipt {
   match git_store_object_canonical_hash_input(object: object) {
     GitCanonicalHashInputReady { bytes } =>
-      GitHashObjectObserved {
+      extdeps.git.object_store.GitHashObjectObserved {
         git_version: "git version 2.39.5",
         object_format: GitObjectFormatSha1,
         canonical_input: bytes,
         observed_oid: oid,
-        producer: GitHashObjectCliExecuted {
+        producer: extdeps.git.object_store.GitHashObjectCliExecuted {
           attempt: "fixture-git-hash-object",
           exit_code: 0,
           stdout_oid: oid,
         },
       }
     GitCanonicalHashInputRefused { cause } =>
-      GitHashObjectObservationUnavailable { cause: cause }
+      extdeps.git.object_store.GitHashObjectObservationUnavailable { cause: cause }
   }
 }
 
@@ -264,7 +264,7 @@ fn fixture_objects() -> List<extdeps.git.object_store.StoredObject> {
   [
     fixture_stored_object(
       oid: sha1_blob_regular,
-      object: ObjectBlob {
+      object: extdeps.git.object_store.ObjectBlob {
         blob: extdeps.git.object_store.Blob {
           content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
         }
@@ -272,7 +272,7 @@ fn fixture_objects() -> List<extdeps.git.object_store.StoredObject> {
     ),
     fixture_stored_object(
       oid: sha1_blob_executable,
-      object: ObjectBlob {
+      object: extdeps.git.object_store.ObjectBlob {
         blob: extdeps.git.object_store.Blob {
           content: octets_bytes(o: [114, 117, 110]),
         }
@@ -280,7 +280,7 @@ fn fixture_objects() -> List<extdeps.git.object_store.StoredObject> {
     ),
     fixture_stored_object(
       oid: sha1_blob_symlink,
-      object: ObjectBlob {
+      object: extdeps.git.object_store.ObjectBlob {
         blob: extdeps.git.object_store.Blob {
           content: octets_bytes(o: [114, 101, 97, 100, 109, 101]),
         }
@@ -288,10 +288,10 @@ fn fixture_objects() -> List<extdeps.git.object_store.StoredObject> {
     ),
     fixture_stored_object(
       oid: sha1_subtree,
-      object: ObjectTree {
+      object: extdeps.git.object_store.ObjectTree {
         tree: extdeps.git.object_store.Tree {
           entries: [
-            RegularBlobEntry {
+            extdeps.git.object_store.RegularBlobEntry {
               name: name_subtree_member,
               oid: sha1_empty_blob,
             },
@@ -301,7 +301,7 @@ fn fixture_objects() -> List<extdeps.git.object_store.StoredObject> {
     ),
     fixture_stored_object(
       oid: sha1_empty_blob,
-      object: ObjectBlob {
+      object: extdeps.git.object_store.ObjectBlob {
         blob: extdeps.git.object_store.Blob {
           content: octets_bytes(o: []),
         }
@@ -309,11 +309,11 @@ fn fixture_objects() -> List<extdeps.git.object_store.StoredObject> {
     ),
     fixture_stored_object(
       oid: sha1_empty_tree,
-      object: ObjectTree { tree: extdeps.git.object_store.Tree { entries: [] } },
+      object: extdeps.git.object_store.ObjectTree { tree: extdeps.git.object_store.Tree { entries: [] } },
     ),
     fixture_stored_object(
       oid: sha1_gitlink,
-      object: ObjectCommit {
+      object: extdeps.git.object_store.ObjectCommit {
         commit: extdeps.git.object_store.Commit {
           tree: sha1_empty_tree,
           parents: [],
@@ -325,11 +325,11 @@ fn fixture_objects() -> List<extdeps.git.object_store.StoredObject> {
     ),
     fixture_stored_object(
       oid: sha1_root_tree,
-      object: ObjectTree { tree: git_r0_fixture_tree() },
+      object: extdeps.git.object_store.ObjectTree { tree: git_r0_fixture_tree() },
     ),
     fixture_stored_object(
       oid: sha1_parent_commit,
-      object: ObjectCommit {
+      object: extdeps.git.object_store.ObjectCommit {
         commit: extdeps.git.object_store.Commit {
           tree: sha1_root_tree,
           parents: [],
@@ -341,7 +341,7 @@ fn fixture_objects() -> List<extdeps.git.object_store.StoredObject> {
     ),
     fixture_stored_object(
       oid: sha1_next_commit,
-      object: ObjectCommit {
+      object: extdeps.git.object_store.ObjectCommit {
         commit: extdeps.git.object_store.Commit {
           tree: sha1_root_tree,
           parents: [sha1_parent_commit],
@@ -353,7 +353,7 @@ fn fixture_objects() -> List<extdeps.git.object_store.StoredObject> {
     ),
     fixture_stored_object(
       oid: sha1_tag,
-      object: ObjectTag {
+      object: extdeps.git.object_store.ObjectTag {
         tag: extdeps.git.object_store.AnnotatedTag {
           target: sha1_parent_commit,
           target_type: CommitObj,
@@ -372,7 +372,7 @@ fn git_r0_fixture_repository() -> extdeps.git.object_store.GitRepositoryState {
     object_format: GitObjectFormatSha1,
     objects: fixture_objects(),
     unavailable: [
-      GitPromisorObjectUnavailable {
+      extdeps.git.object_store.GitPromisorObjectUnavailable {
         oid: sha1_promisor_missing,
         promisor: "origin",
       },
@@ -380,11 +380,11 @@ fn git_r0_fixture_repository() -> extdeps.git.object_store.GitRepositoryState {
     refs: [
       extdeps.git.object_store.GitRefRecord {
         name: "refs/heads/main",
-        target: DirectTarget { oid: sha1_parent_commit },
+        target: extdeps.git.object_store.DirectTarget { oid: sha1_parent_commit },
       },
       extdeps.git.object_store.GitRefRecord {
         name: "HEAD",
-        target: SymbolicTarget { ref_name: "refs/heads/main" },
+        target: extdeps.git.object_store.SymbolicTarget { ref_name: "refs/heads/main" },
       },
     ],
     index: [
@@ -426,27 +426,27 @@ fn git_r0_fixture_repository() -> extdeps.git.object_store.GitRepositoryState {
       },
     ],
     worktree: [
-      GitWorktreeRegular {
+      extdeps.git.object_store.GitWorktreeRegular {
         path: path_regular,
         executable: false,
         content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
       },
-      GitWorktreeRegular {
+      extdeps.git.object_store.GitWorktreeRegular {
         path: path_executable,
         executable: true,
         content: octets_bytes(o: [114, 117, 110]),
       },
-      GitWorktreeRegular {
+      extdeps.git.object_store.GitWorktreeRegular {
         path: path_non_ascii,
         executable: false,
         content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
       },
-      GitWorktreeRegular {
+      extdeps.git.object_store.GitWorktreeRegular {
         path: path_subtree_member,
         executable: false,
         content: octets_bytes(o: []),
       },
-      GitWorktreeSymlink {
+      extdeps.git.object_store.GitWorktreeSymlink {
         path: path_symlink,
         target: octets_bytes(o: [114, 101, 97, 100, 109, 101]),
       },
@@ -798,7 +798,7 @@ fn fixture_read_back_observation() -> extdeps.git.object_store.GitR0ReadBackObse
 
 test fn witness_git_empty_commit_and_tag_messages_are_representable() -> Bool {
   let empty = octets_bytes(o: [])
-  let commit = ObjectCommit {
+  let commit = extdeps.git.object_store.ObjectCommit {
     commit: extdeps.git.object_store.Commit {
       tree: sha1_empty_tree,
       parents: [],
@@ -807,7 +807,7 @@ test fn witness_git_empty_commit_and_tag_messages_are_representable() -> Bool {
       message: empty,
     }
   }
-  let tag = ObjectTag {
+  let tag = extdeps.git.object_store.ObjectTag {
     tag: extdeps.git.object_store.AnnotatedTag {
       target: sha1_parent_commit,
       target_type: CommitObj,
@@ -890,7 +890,7 @@ test fn witness_git_promisor_missing_never_decodes_as_empty_object() -> Bool {
 
 test fn witness_git_content_address_kind_mismatch_refuses_repository_decode() -> Bool {
   let repo = git_fixture_repository()
-  let observed_object = ObjectBlob {
+  let observed_object = extdeps.git.object_store.ObjectBlob {
     blob: extdeps.git.object_store.Blob {
       content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
     }
@@ -902,7 +902,7 @@ test fn witness_git_content_address_kind_mismatch_refuses_repository_decode() ->
   let forged = extdeps.git.object_store.StoredObject {
     oid: sha1_blob_regular,
     content_address: observed,
-    object: ObjectTag {
+    object: extdeps.git.object_store.ObjectTag {
       tag: extdeps.git.object_store.AnnotatedTag {
         target: sha1_parent_commit,
         target_type: CommitObj,
@@ -935,7 +935,7 @@ test fn witness_git_content_address_kind_mismatch_refuses_repository_decode() ->
 
 test fn witness_git_content_address_binds_observed_oid_and_exact_hash_input() -> Bool {
   let repo = git_fixture_repository()
-  let observed_subject = ObjectBlob {
+  let observed_subject = extdeps.git.object_store.ObjectBlob {
     blob: extdeps.git.object_store.Blob {
       content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
     }
@@ -969,7 +969,7 @@ test fn witness_git_content_address_binds_observed_oid_and_exact_hash_input() ->
         ]
     GitHashObjectObservationUnavailable { cause: _ } => false
   }
-  let different_object = ObjectBlob {
+  let different_object = extdeps.git.object_store.ObjectBlob {
     blob: extdeps.git.object_store.Blob {
       content: octets_bytes(o: [114, 101, 97, 100, 109, 101]),
     }
@@ -1036,13 +1036,13 @@ test fn witness_git_duplicate_stored_identity_refuses_without_list_order() -> Bo
     oid: sha1_blob_regular,
     content_address: fixture_content_address(
       oid: sha1_blob_regular,
-      object: ObjectBlob {
+      object: extdeps.git.object_store.ObjectBlob {
         blob: extdeps.git.object_store.Blob {
           content: octets_bytes(o: [100, 105, 102, 102, 101, 114, 101, 110, 116]),
         }
       },
     ),
-    object: ObjectBlob {
+    object: extdeps.git.object_store.ObjectBlob {
       blob: extdeps.git.object_store.Blob {
         content: octets_bytes(o: [100, 105, 102, 102, 101, 114, 101, 110, 116]),
       }
@@ -1072,7 +1072,7 @@ test fn witness_git_duplicate_unavailability_refuses_without_list_order() -> Boo
     unavailable: append(
       repo.unavailable,
       items: [
-        GitPromisorObjectUnavailable {
+        extdeps.git.object_store.GitPromisorObjectUnavailable {
           oid: sha1_promisor_missing,
           promisor: "mirror",
         },
@@ -1098,7 +1098,7 @@ test fn witness_git_present_object_cannot_also_be_unavailable() -> Bool {
     unavailable: append(
       repo.unavailable,
       items: [
-        GitPromisorObjectUnavailable {
+        extdeps.git.object_store.GitPromisorObjectUnavailable {
           oid: sha1_blob_regular,
           promisor: "origin",
         },
@@ -1118,7 +1118,7 @@ test fn witness_git_present_object_cannot_also_be_unavailable() -> Bool {
 
 test fn witness_git_caller_asserted_well_formed_wrong_oid_never_admits() -> Bool {
   let repo = git_fixture_repository()
-  let subject = ObjectBlob {
+  let subject = extdeps.git.object_store.ObjectBlob {
     blob: extdeps.git.object_store.Blob {
       content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
     }
@@ -1128,7 +1128,7 @@ test fn witness_git_caller_asserted_well_formed_wrong_oid_never_admits() -> Bool
     GitCanonicalHashInputReady { bytes } =>
       let asserted = extdeps.git.object_store.StoredObject {
         oid: sha1_blob_executable,
-        content_address: GitHashObjectObserved {
+        content_address: extdeps.git.object_store.GitHashObjectObserved {
           git_version: "caller-authored",
           object_format: GitObjectFormatSha1,
           canonical_input: bytes,
@@ -1169,7 +1169,7 @@ test fn witness_git_tree_reference_must_be_present_or_promisor_declared() -> Boo
     unavailable: append(
       repo.unavailable,
       items: [
-        GitUnexpectedObjectMissing { oid: sha1_subtree },
+        extdeps.git.object_store.GitUnexpectedObjectMissing { oid: sha1_subtree },
       ],
     ),
     refs: repo.refs,
@@ -1197,7 +1197,7 @@ test fn witness_git_promisor_declared_tree_reference_stays_partial() -> Bool {
     unavailable: append(
       repo.unavailable,
       items: [
-        GitPromisorObjectUnavailable {
+        extdeps.git.object_store.GitPromisorObjectUnavailable {
           oid: sha1_subtree,
           promisor: "origin",
         },
@@ -1221,7 +1221,7 @@ test fn witness_git_branch_ref_to_corrupt_object_refuses_repository() -> Bool {
     unavailable: append(
       repo.unavailable,
       items: [
-        GitCorruptObject {
+        extdeps.git.object_store.GitCorruptObject {
           oid: sha1_absent_commit,
           reason: "fixture-corrupt-object",
         },
@@ -1231,7 +1231,7 @@ test fn witness_git_branch_ref_to_corrupt_object_refuses_repository() -> Bool {
       if record.name == "refs/heads/main" {
         extdeps.git.object_store.GitRefRecord {
           name: record.name,
-          target: DirectTarget { oid: sha1_absent_commit },
+          target: extdeps.git.object_store.DirectTarget { oid: sha1_absent_commit },
         }
       } else {
         record
@@ -1285,7 +1285,7 @@ test fn witness_git_duplicate_ref_names_refuse_exact_transition() -> Bool {
       items: [
         extdeps.git.object_store.GitRefRecord {
           name: "refs/heads/main",
-          target: DirectTarget { oid: sha1_next_commit },
+          target: extdeps.git.object_store.DirectTarget { oid: sha1_next_commit },
         },
       ],
     ),
@@ -1385,11 +1385,11 @@ test fn witness_git_symbolic_ref_dereferences_without_losing_symbolic_identity()
         && repository.refs == [
           extdeps.git.object_store.GitRefRecord {
             name: "refs/heads/main",
-            target: DirectTarget { oid: sha1_next_commit },
+            target: extdeps.git.object_store.DirectTarget { oid: sha1_next_commit },
           },
           extdeps.git.object_store.GitRefRecord {
             name: "HEAD",
-            target: SymbolicTarget { ref_name: "refs/heads/main" },
+            target: extdeps.git.object_store.SymbolicTarget { ref_name: "refs/heads/main" },
           },
         ]
     _ => false
@@ -1405,11 +1405,11 @@ test fn witness_git_symbolic_ref_cycle_refuses_without_mutation() -> Bool {
     refs: [
       extdeps.git.object_store.GitRefRecord {
         name: "HEAD",
-        target: SymbolicTarget { ref_name: "refs/meta/loop" },
+        target: extdeps.git.object_store.SymbolicTarget { ref_name: "refs/meta/loop" },
       },
       extdeps.git.object_store.GitRefRecord {
         name: "refs/meta/loop",
-        target: SymbolicTarget { ref_name: "HEAD" },
+        target: extdeps.git.object_store.SymbolicTarget { ref_name: "HEAD" },
       },
     ],
     index: repo.index,

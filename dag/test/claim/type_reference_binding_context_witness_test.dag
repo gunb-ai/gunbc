@@ -260,7 +260,7 @@ test fn module_exposure_override_refuses_cross_module_pool_coincidence_holds() -
       if row.occurrence.value == 10 {
         concat(acc, [std.occurrence_binding_candidates.DeclarationExposureRow {
           occurrence: row.occurrence,
-          exposure: ModuleExposure { module: trbc_module_path(dotted: "std.content_hash") },
+          exposure: std.occurrence_binding_candidates.ModuleExposure { module: trbc_module_path(dotted: "std.content_hash") },
         }])
       } else {
         concat(acc, [row])

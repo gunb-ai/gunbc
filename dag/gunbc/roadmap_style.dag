@@ -63,9 +63,9 @@ data band_var_grammar_note: String = "The band var NAMES route through gunbc.des
 
 fn band_var_decls(rows: List<BandPaint>) -> List<gunbc.design.material.CssDecl> {
   fold(rows, init: [], f: (acc, r) => concat(acc, [
-    decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: FillVar) }, value: swatch_paint(sw: r.fill)),
-    decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: InkVar) }, value: swatch_paint(sw: r.ink)),
-    decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: PressedVar) }, value: band_pressed_paint(r: r)),
+    decl(prop: extdeps.languages.css.properties.CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: FillVar) }, value: swatch_paint(sw: r.fill)),
+    decl(prop: extdeps.languages.css.properties.CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: InkVar) }, value: swatch_paint(sw: r.ink)),
+    decl(prop: extdeps.languages.css.properties.CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: PressedVar) }, value: band_pressed_paint(r: r)),
   ]))
 }
 
@@ -242,24 +242,24 @@ fn dispatch_rest_band_key() -> String {
 
 fn action_prominence_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    StaticRule {
-      selector: RawSelector { text: ".dispatch-btn.action-primary, .dispatch-btn.action-secondary" },
+    gunbc.design.material.StaticRule {
+      selector: extdeps.languages.css.selectors.RawSelector { text: ".dispatch-btn.action-primary, .dispatch-btn.action-secondary" },
       decls: [
         decl(prop: Color, value: "var(--text-dim)"),
         decl(prop: Background, value: "var(--surface)"),
         decl(prop: BorderColor, value: "var(--border)"),
       ],
     },
-    StaticRule {
-      selector: RawSelector { text: ".dispatch-btn.action-focal" },
+    gunbc.design.material.StaticRule {
+      selector: extdeps.languages.css.selectors.RawSelector { text: ".dispatch-btn.action-focal" },
       decls: [
         decl(prop: Color, value: state_var_ref(prefix: dispatch_state_family.var_prefix, key: dispatch_rest_band_key(), role: InkVar)),
         decl(prop: Background, value: state_var_ref(prefix: dispatch_state_family.var_prefix, key: dispatch_rest_band_key(), role: FillVar)),
         decl(prop: BorderColor, value: state_var_ref(prefix: dispatch_state_family.var_prefix, key: dispatch_rest_band_key(), role: FillVar)),
       ],
     },
-    StaticRule {
-      selector: RawSelector { text: "li.node:focus-visible" },
+    gunbc.design.material.StaticRule {
+      selector: extdeps.languages.css.selectors.RawSelector { text: "li.node:focus-visible" },
       decls: [
         decl(prop: Outline, value: scale_border(w: border_2, color_var: "var(--focus)")),
       ],
@@ -276,24 +276,24 @@ fn roadmap_instance_rules() -> List<gunbc.design.material.BuildRule> {
 
 fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
   [
-    StaticRule { selector: RawSelector { text: "*" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: "*" }, decls: [
       decl(prop: BoxSizing, value: "border-box"),
       decl(prop: Margin, value: scale_var(t: space_0)),
       decl(prop: Padding, value: scale_var(t: space_0)),
     ] },
-    StaticRule { selector: ElementSelector { tag: "body" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "body" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_sans)),
       decl(prop: FontSize, value: scale_var(t: text_14)),
       decl(prop: LineHeight, value: "1.5"),
       role_decl(prop: Color, r: TextRole),
       role_decl(prop: Background, r: CanvasRole),
     ] },
-    StaticRule { selector: ElementSelector { tag: "header" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "header" }, decls: [
       decl(prop: Padding, value: scale_pair(a: space_12, b: space_24)),
       decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--border)")),
       role_decl(prop: Background, r: SurfaceRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "header-inner" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "header-inner" }, decls: [
       decl(prop: MaxWidth, value: scale_var(t: measure_page)),
       decl(prop: MarginLeft, value: "auto"),
       decl(prop: MarginRight, value: "auto"),
@@ -301,44 +301,44 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: space_12)),
     ] },
-    StaticRule { selector: ClassSelector { name: "wordmark" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "wordmark" }, decls: [
       decl(prop: FontWeight, value: "600"),
       decl(prop: FontSize, value: scale_var(t: text_15)),
       decl(prop: LetterSpacing, value: "0.02em"),
       role_decl(prop: Color, r: TextRole),
     ] },
-    StaticRule { selector: ElementSelector { tag: "h1" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "h1" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_18)),
       decl(prop: FontWeight, value: "500"),
     ] },
-    StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "h2" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_15)),
       decl(prop: FontWeight, value: "500"),
       decl(prop: Margin, value: scale_triple(a: space_16, b: space_0, c: space_8)),
     ] },
-    StaticRule { selector: RawSelector { text: "h3.group-label" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: "h3.group-label" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_13)),
       decl(prop: FontWeight, value: "500"),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: Margin, value: scale_triple(a: space_12, b: space_0, c: space_4)),
     ] },
-    StaticRule { selector: ClassSelector { name: "roadmap" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "roadmap" }, decls: [
       decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
       decl(prop: MaxWidth, value: scale_var(t: measure_page)),
       decl(prop: MarginLeft, value: "auto"),
       decl(prop: MarginRight, value: "auto"),
     ] },
-    StaticRule { selector: RawSelector { text: ".daily-workspace > * + *, .roadmap > * + *" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".daily-workspace > * + *, .roadmap > * + *" }, decls: [
       decl(prop: MarginTop, value: scale_var(t: space_20)),
     ] },
-    StaticRule { selector: RawSelector { text: "details.section-fold > summary" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: "details.section-fold > summary" }, decls: [
       decl(prop: Cursor, value: "pointer"),
       decl(prop: ListStyle, value: "none"),
     ] },
-    StaticRule { selector: RawSelector { text: "details.section-fold > summary::-webkit-details-marker" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: "details.section-fold > summary::-webkit-details-marker" }, decls: [
       decl(prop: Display, value: "none"),
     ] },
-    StaticRule { selector: ClassSelector { name: "section-band" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "section-band" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "baseline"),
       decl(prop: Gap, value: scale_var(t: space_8)),
@@ -346,23 +346,23 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       role_decl(prop: Background, r: SurfaceRole),
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),
     ] },
-    StaticRule { selector: RawSelector { text: ".section-band h2" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".section-band h2" }, decls: [
       decl(prop: Margin, value: scale_var(t: space_0)),
     ] },
-    StaticRule { selector: ClassSelector { name: "section-counts" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "section-counts" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontVariantNumeric, value: "tabular-nums"),
     ] },
-    StaticRule { selector: ElementSelector { tag: "ul" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "ul" }, decls: [
       decl(prop: ListStyle, value: "none"),
       decl(prop: PaddingLeft, value: scale_var(t: space_16)),
     ] },
-    StaticRule { selector: RawSelector { text: "li.node" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: "li.node" }, decls: [
       decl(prop: Padding, value: scale_pair(a: space_2, b: space_0)),
     ] },
-    StaticRule { selector: ClassSelector { name: "status" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "status" }, decls: [
       decl(prop: Display, value: "inline-block"),
       decl(prop: MinWidth, value: scale_var(t: width_status)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
@@ -373,52 +373,52 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: TextAlign, value: "center"),
       decl(prop: MarginRight, value: scale_var(t: space_6)),
     ] },
-    StaticRule { selector: ClassSelector { name: "status-open" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "status-open" }, decls: [
       role_decl(prop: Color, r: TextRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "status-review" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "status-review" }, decls: [
       role_decl(prop: Color, r: TextRole),
       decl(prop: BorderColor, value: "var(--focus)"),
     ] },
-    StaticRule { selector: ClassSelector { name: "status-done" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "status-done" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "status-superseded" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "status-superseded" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: BorderStyle, value: "dashed"),
     ] },
-    StaticRule { selector: RawSelector { text: ".node-superseded .title" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".node-superseded .title" }, decls: [
       decl(prop: TextDecoration, value: "line-through"),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "superseded-by" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "superseded-by" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: MarginLeft, value: scale_var(t: space_6)),
     ] },
-    StaticRule { selector: ClassSelector { name: "title" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "title" }, decls: [
       decl(prop: MarginRight, value: scale_var(t: space_8)),
     ] },
-    StaticRule { selector: ClassSelector { name: "owner" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "owner" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: MarginRight, value: scale_var(t: space_6)),
     ] },
-    StaticRule { selector: ClassSelector { name: "sizing" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "sizing" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: MarginRight, value: scale_var(t: space_6)),
       decl(prop: FontStyle, value: "italic"),
     ] },
-    StaticRule { selector: ElementSelector { tag: "a" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "a" }, decls: [
       role_decl(prop: Color, r: FigureRole),
       decl(prop: TextDecoration, value: "none"),
     ] },
-    StaticRule { selector: PseudoSuffix { base: "a", pseudo: "hover" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.PseudoSuffix { base: "a", pseudo: "hover" }, decls: [
       decl(prop: TextDecoration, value: "underline"),
     ] },
-    StaticRule { selector: ElementSelector { tag: "code" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "code" }, decls: [
       role_decl(prop: Background, r: SurfaceRole),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
@@ -426,34 +426,34 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: FontSize, value: scale_var(t: text_12)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
     ] },
-    StaticRule { selector: ClassSelector { name: "prose" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "prose" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontSize, value: scale_var(t: text_13)),
       decl(prop: MarginBottom, value: scale_var(t: space_8)),
     ] },
-    StaticRule { selector: ClassSelector { name: "depth-limit" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "depth-limit" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontStyle, value: "italic"),
       decl(prop: FontSize, value: scale_var(t: text_12)),
     ] },
-    StaticRule { selector: ClassSelector { name: "daily-workspace" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "daily-workspace" }, decls: [
       decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
       decl(prop: MaxWidth, value: scale_var(t: measure_page)),
       decl(prop: MarginLeft, value: "auto"),
       decl(prop: MarginRight, value: "auto"),
     ] },
-    StaticRule { selector: ClassSelector { name: "roadmap-frontier" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "roadmap-frontier" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
       decl(prop: Gap, value: scale_var(t: space_20)),
     ] },
-    StaticRule { selector: ClassSelector { name: "frontier-bucket" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "frontier-bucket" }, decls: [
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),
       decl(prop: Padding, value: scale_pair(a: space_12, b: space_16)),
       role_decl(prop: Background, r: SurfaceRole),
     ] },
-    StaticRule { selector: RawSelector { text: ".frontier-bucket h2" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".frontier-bucket h2" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_14)),
       decl(prop: FontWeight, value: "500"),
       decl(prop: Margin, value: scale_triple(a: space_0, b: space_0, c: space_8)),
@@ -461,19 +461,19 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: LetterSpacing, value: "0.04em"),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "frontier-ready" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "frontier-ready" }, decls: [
       decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--focus)")),
     ] },
-    StaticRule { selector: RawSelector { text: ".frontier-ready h2" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".frontier-ready h2" }, decls: [
       role_decl(prop: Color, r: TextRole),
     ] },
-    StaticRule { selector: RawSelector { text: ".frontier-upcoming h2" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".frontier-upcoming h2" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: RawSelector { text: ".frontier-done h2" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".frontier-done h2" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: dashboard_instance_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: dashboard_instance_class }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
@@ -482,41 +482,41 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--focus)")),
       decl(prop: PaddingLeft, value: scale_var(t: space_6)),
     ] },
-    StaticRule { selector: ClassSelector { name: "program-progress" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "program-progress" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "baseline"),
       decl(prop: Gap, value: scale_var(t: space_8)),
     ] },
-    StaticRule { selector: ClassSelector { name: "program-progress-name" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "program-progress-name" }, decls: [
       decl(prop: FontWeight, value: "500"),
       decl(prop: FontSize, value: scale_var(t: text_14)),
     ] },
-    StaticRule { selector: ClassSelector { name: "program-progress-count" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "program-progress-count" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_12)),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontVariantNumeric, value: "tabular-nums"),
     ] },
-    StaticRule { selector: ClassSelector { name: "finish-line-counts" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "finish-line-counts" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_12)),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontVariantNumeric, value: "tabular-nums"),
       decl(prop: MarginBottom, value: scale_var(t: space_8)),
     ] },
-    StaticRule { selector: ClassSelector { name: "finish-lines" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "finish-lines" }, decls: [
       decl(prop: PaddingLeft, value: scale_var(t: space_0)),
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
       decl(prop: Gap, value: scale_var(t: space_8)),
     ] },
-    StaticRule { selector: ClassSelector { name: "finish-line" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "finish-line" }, decls: [
       decl(prop: Display, value: "grid"),
       decl(prop: GridTemplateColumns, value: "auto auto 1fr"),
       decl(prop: Gap, value: scale_pair(a: space_2, b: space_8)),
       decl(prop: AlignItems, value: "baseline"),
     ] },
-    StaticRule { selector: ClassSelector { name: "finish-line-state" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "finish-line-state" }, decls: [
       decl(prop: Display, value: "inline-block"),
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
@@ -526,38 +526,38 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: TextAlign, value: "center"),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: RawSelector { text: ".finish-line-accepted .finish-line-state" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".finish-line-accepted .finish-line-state" }, decls: [
       role_decl(prop: BorderColor, r: FigureRole),
       role_decl(prop: Color, r: TextRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "finish-line-name" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "finish-line-name" }, decls: [
       decl(prop: FontWeight, value: "500"),
     ] },
-    StaticRule { selector: ClassSelector { name: "finish-line-node" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "finish-line-node" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "finish-line-claim" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "finish-line-claim" }, decls: [
       decl(prop: GridColumn, value: "1 / -1"),
       decl(prop: FontSize, value: scale_var(t: text_13)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "dependencies" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "dependencies" }, decls: [
       decl(prop: Width, value: "100%"),
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "item-facts" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "item-facts" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "baseline"),
       decl(prop: Gap, value: scale_var(t: space_6)),
       decl(prop: FlexWrap, value: "wrap"),
       decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
     ] },
-    StaticRule { selector: ClassSelector { name: "dispatch-btn" }, decls: dispatch_btn_base_decls() },
-    StaticRule { selector: ClassSelector { name: sound_toggle_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "dispatch-btn" }, decls: dispatch_btn_base_decls() },
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: sound_toggle_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),
@@ -572,17 +572,17 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: TextTransform, value: "lowercase"),
       decl(prop: LetterSpacing, value: "0.03em"),
     ] },
-    StaticRule { selector: ClassSelector { name: "node-head" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "node-head" }, decls: [
       decl(prop: Display, value: "grid"),
       decl(prop: GridTemplateColumns, value: roadmap_row_grid_template()),
       decl(prop: Gap, value: scale_var(t: roadmap_row_column_gutter)),
       decl(prop: AlignItems, value: "center"),
       decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
     ] },
-    StaticRule { selector: RawSelector { text: ".node-head > .status" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".node-head > .status" }, decls: [
       decl(prop: GridColumn, value: to_string(roadmap_row_head_column(region_key: row_region_key(r: StatusChipRegion)))),
     ] },
-    StaticRule { selector: ClassSelector { name: node_mid_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: node_mid_class }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: roadmap_row_gutter)),
@@ -590,7 +590,7 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: MinWidth, value: scale_var(t: space_0)),
       decl(prop: GridColumn, value: to_string(roadmap_row_head_column(region_key: row_region_key(r: TitleRegion)))),
     ] },
-    StaticRule { selector: ClassSelector { name: workflow_controls_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: workflow_controls_class }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: JustifyContent, value: "flex-end"),
@@ -599,74 +599,74 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: MinWidth, value: scale_var(t: space_0)),
       decl(prop: GridColumn, value: to_string(roadmap_row_head_column(region_key: row_region_key(r: ActuatorRegion)))),
     ] },
-    StaticRule { selector: ClassSelector { name: node_activity_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: node_activity_class }, decls: [
       decl(prop: MarginTop, value: scale_var(t: space_4)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
     ] },
-    StaticRule { selector: RawSelector { text: join([
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: join([
       ".", node_activity_class, "[data-arm=\"refused\"], .",
       node_activity_class, "[data-attention=\"anomalous\"]",
     ], "") }, decls: [
       decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
       decl(prop: PaddingLeft, value: scale_var(t: space_4)),
     ] },
-    StaticRule { selector: ClassSelector { name: activity_summary_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: activity_summary_class }, decls: [
       decl(prop: Display, value: "block"),
       role_decl(prop: Color, r: TextRole),
     ] },
-    StaticRule { selector: RawSelector { text: join([
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: join([
       "details.", activity_detail_class, " > summary",
     ], "") }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: Cursor, value: "pointer"),
     ] },
-    StaticRule { selector: ClassSelector { name: activity_obligation_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: activity_obligation_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: RawSelector { text: join([
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: join([
       ".", activity_obligation_class, "[data-state=\"pending\"]",
     ], "") }, decls: [
       decl(prop: Opacity, value: "0.72"),
     ] },
-    StaticRule { selector: RawSelector { text: join([
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: join([
       ".", activity_obligation_class, "[data-state=\"active\"]",
     ], "") }, decls: [
       decl(prop: Color, value: "var(--band-in-progress)"),
       decl(prop: FontWeight, value: "600"),
     ] },
-    StaticRule { selector: RawSelector { text: join([
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: join([
       ".", activity_obligation_class, "[data-state=\"complete\"]",
     ], "") }, decls: [
       role_decl(prop: Color, r: TextRole),
     ] },
-    StaticRule { selector: RawSelector { text: join([
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: join([
       ".", activity_obligation_class, "[data-state=\"failed\"]",
     ], "") }, decls: [
       decl(prop: Color, value: "var(--band-fail)"),
       decl(prop: FontWeight, value: "600"),
     ] },
-    StaticRule { selector: RawSelector { text: join([
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: join([
       ".", activity_obligation_class, "[data-state=\"refused\"]",
     ], "") }, decls: [
       decl(prop: Color, value: "var(--band-loud)"),
       decl(prop: FontWeight, value: "600"),
     ] },
-    StaticRule { selector: ClassSelector { name: activity_evidence_row_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: activity_evidence_row_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: activity_located_reason_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: activity_located_reason_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextRole),
       decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
       decl(prop: PaddingLeft, value: scale_var(t: space_4)),
     ] },
-    StaticRule { selector: ClassSelector { name: session_facts_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: session_facts_class }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: space_4)),
@@ -674,7 +674,7 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "workspace-observation" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "workspace-observation" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "baseline"),
       decl(prop: Gap, value: scale_var(t: space_8)),
@@ -684,37 +684,37 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: PaddingLeft, value: scale_var(t: space_8)),
       decl(prop: MarginBottom, value: scale_var(t: space_8)),
     ] },
-    StaticRule { selector: ClassSelector { name: "workspace-observation-summary" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "workspace-observation-summary" }, decls: [
       role_decl(prop: Color, r: TextRole),
       decl(prop: FontWeight, value: "600"),
     ] },
-    StaticRule { selector: ClassSelector { name: "workspace-observation-reason" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "workspace-observation-reason" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: RawSelector { text: ".frontier-active > h2" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".frontier-active > h2" }, decls: [
       decl(prop: Color, value: "var(--band-in-progress)"),
     ] },
-    StaticRule { selector: ClassSelector { name: "family-group" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "family-group" }, decls: [
       decl(prop: Margin, value: scale_pair(a: space_4, b: space_0)),
     ] },
-    StaticRule { selector: ClassSelector { name: "family-head" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "family-head" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "baseline"),
       decl(prop: Gap, value: scale_var(t: space_8)),
       decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
     ] },
-    StaticRule { selector: ClassSelector { name: "family-claim" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "family-claim" }, decls: [
       role_decl(prop: Color, r: TextRole),
       decl(prop: FontWeight, value: "600"),
       decl(prop: FontSize, value: scale_var(t: text_12)),
     ] },
-    StaticRule { selector: ClassSelector { name: "family-count" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "family-count" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: FontVariantNumeric, value: "tabular-nums"),
     ] },
-    StaticRule { selector: RawSelector { text: ".node-head .dispatch-btn" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".node-head .dispatch-btn" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
       decl(prop: Padding, value: scale_pair(a: space_0, b: space_8)),
@@ -723,30 +723,30 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: Overflow, value: "hidden"),
       decl(prop: WhiteSpace, value: "nowrap"),
     ] },
-    StaticRule { selector: RawSelector { text: "details.item-detail" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: "details.item-detail" }, decls: [
       decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_3)),
       decl(prop: MarginLeft, value: scale_var(t: space_12)),
     ] },
-    StaticRule { selector: RawSelector { text: "details.item-detail > summary" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: "details.item-detail > summary" }, decls: [
       decl(prop: Cursor, value: "pointer"),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: ListStyle, value: "none"),
     ] },
-    StaticRule { selector: RawSelector { text: "details.item-detail > summary::-webkit-details-marker" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: "details.item-detail > summary::-webkit-details-marker" }, decls: [
       decl(prop: Display, value: "none"),
     ] },
-    StaticRule { selector: RawSelector { text: "details.ticket-row > summary" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: "details.ticket-row > summary" }, decls: [
       role_decl(prop: Color, r: FigureRole),
     ] },
-    StaticRule { selector: ClassSelector { name: disclosure_mark_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: disclosure_mark_class }, decls: [
       decl(prop: Display, value: "inline-block"),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: MarginRight, value: scale_var(t: space_2)),
     ] },
-    StaticRule { selector: ClassSelector { name: "cleanup-chip" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "cleanup-chip" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),
@@ -759,17 +759,17 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: TextTransform, value: "lowercase"),
       decl(prop: LetterSpacing, value: "0.03em"),
     ] },
-    StaticRule { selector: RawSelector { text: ".cleanup-chip:disabled" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".cleanup-chip:disabled" }, decls: [
       decl(prop: Cursor, value: "default"),
       decl(prop: Opacity, value: "0.64"),
     ] },
-    StaticRule { selector: ClassSelector { name: "dispatch-attempts" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "dispatch-attempts" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: Margin, value: scale_triple(a: space_2, b: space_0, c: space_1)),
     ] },
-    StaticRule { selector: ClassSelector { name: "observe-refused" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "observe-refused" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_12)),
       role_decl(prop: Color, r: TextRole),
       decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
@@ -777,49 +777,49 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: Margin, value: scale_triple(a: space_4, b: space_0, c: space_8)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
     ] },
-    StaticRule { selector: ClassSelector { name: "disclosure-reason" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "disclosure-reason" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_12)),
       role_decl(prop: Color, r: TextRole),
       decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
       decl(prop: PaddingLeft, value: scale_var(t: space_6)),
       decl(prop: Margin, value: scale_triple(a: space_2, b: space_0, c: space_2)),
     ] },
-    StaticRule { selector: ClassSelector { name: "item-body" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "item-body" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_12)),
       role_decl(prop: Color, r: TextRole),
       decl(prop: Margin, value: scale_triple(a: space_2, b: space_0, c: space_2)),
     ] },
-    StaticRule { selector: ClassSelector { name: "ticket-brief" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "ticket-brief" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_12)),
       role_decl(prop: Color, r: TextRole),
       decl(prop: Margin, value: scale_triple(a: space_2, b: space_0, c: space_3)),
     ] },
-    StaticRule { selector: ClassSelector { name: "ticket-field" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "ticket-field" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: Gap, value: scale_var(t: space_6)),
       decl(prop: FontSize, value: scale_var(t: text_12)),
       decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
     ] },
-    StaticRule { selector: ClassSelector { name: "ticket-field-label" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "ticket-field-label" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
     ] },
-    StaticRule { selector: ClassSelector { name: "ticket-updates" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "ticket-updates" }, decls: [
       decl(prop: Margin, value: scale_triple(a: space_3, b: space_0, c: space_1)),
       decl(prop: PaddingLeft, value: scale_var(t: space_8)),
       decl(prop: BorderLeft, value: scale_border(w: border_1, color_var: "var(--border)")),
     ] },
-    StaticRule { selector: ClassSelector { name: "ticket-updates-head" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "ticket-updates-head" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
     ] },
-    StaticRule { selector: ClassSelector { name: "ticket-update" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "ticket-update" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_12)),
       decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
     ] },
-    StaticRule { selector: ClassSelector { name: "ticket-update-date" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "ticket-update-date" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
@@ -830,7 +830,7 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
 
 fn roadmap_instance_rules_tail() -> List<gunbc.design.material.BuildRule> {
   [
-    StaticRule { selector: ClassSelector { name: swatch_toggle_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: swatch_toggle_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),
@@ -844,7 +844,7 @@ fn roadmap_instance_rules_tail() -> List<gunbc.design.material.BuildRule> {
       decl(prop: TextTransform, value: "lowercase"),
       decl(prop: LetterSpacing, value: "0.03em"),
     ] },
-    StaticRule { selector: ClassSelector { name: theme_toggle_class }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: theme_toggle_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),

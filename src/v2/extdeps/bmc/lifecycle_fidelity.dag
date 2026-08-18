@@ -23,7 +23,7 @@ fn bmc_lifecycle_lossy_witness_node(reason: SecretEpochNotInQuotient) -> Node {
 
 fn bmc_lifecycle_lossy_fidelity_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_fidelity_disposition_kind_declared_normalized,
@@ -42,7 +42,7 @@ fn bmc_lifecycle_lossy_fidelity_node() -> Node {
 
 fn bmc_lifecycle_inverse_fidelity_quotient_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^bmc_lifecycle_fidelity_factory_default,
@@ -67,7 +67,7 @@ fn bmc_lifecycle_inverse_fidelity_quotient_node() -> Node {
 
 fn bmc_lifecycle_inverse_fidelity_quotient_credentials_modeled_perturb_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^bmc_lifecycle_fidelity_factory_default,
@@ -92,7 +92,7 @@ fn bmc_lifecycle_inverse_fidelity_quotient_credentials_modeled_perturb_node() ->
 
 fn bmc_lifecycle_inverse_target_model_bundle_with_quotient(quotient: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^target_model_edge_fidelity_quotient,

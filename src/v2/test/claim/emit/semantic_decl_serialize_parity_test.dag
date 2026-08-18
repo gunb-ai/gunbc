@@ -5,10 +5,10 @@ data bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, F
 
 fn bool_coproduct() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: Disj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^True }, target: v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } },
-      v2.std.node.Edge { label: Named { name: ^False }, target: v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } }
+      v2.std.node.Edge { label: Named { name: ^True }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } },
+      v2.std.node.Edge { label: Named { name: ^False }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } }
     ],
     occurrence_id: SyntheticOccurrence
   }

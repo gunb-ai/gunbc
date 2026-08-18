@@ -23,13 +23,13 @@ data direct_rust_door_ingest_read: v2.compiler.source_authority.DagSourceReadWit
 }
 
 fn direct_rust_door_ingest() -> v2.compiler.source_authority.SourceRootIngest {
-  Cons { head: direct_rust_door_ingest_read, tail: Empty }
+  std.algebra.Cons { head: direct_rust_door_ingest_read, tail: Empty }
 }
 
 fn direct_rust_door_admission() -> v2.compiler.name_resolve.Admission {
   v2.compiler.name_resolve.Admission {
     subject: v2.compiler.name_resolve.ResolutionSubject {
-      name: Cons { head: ^add_probe, tail: Empty }
+      name: std.algebra.Cons { head: ^add_probe, tail: Empty }
     },
     imports: Empty
   }
@@ -179,11 +179,11 @@ fn direct_rust_door_canonical_grounding_for(node: Node) -> Witness<v2.std.constr
       )
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^direct_rust_door_grounding_miss,
         at: node_locus(node: node),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
@@ -198,7 +198,7 @@ fn direct_rust_door_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer
         Holds { value: proof } =>
           optional_present(
             value: v2.compiler.infer.InferredFacts {
-              grounding: DerivedGrounding { grounding: grounding },
+              grounding: v2.compiler.infer.DerivedGrounding { grounding: grounding },
               descent: Holds { value: proof }
             }
           )

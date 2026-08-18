@@ -26,28 +26,28 @@ fn p3(x: Int, y: Int, z: Int) -> std.affine_space.Point3 { point3(frame: room(),
 // that stops minting reds the witness at the fixture, which is the honest failure.
 fn space_ctor(vertices: List<std.affine_space.Point2>, low: Int, high: Int) -> OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace> {
   match orthogonal_loop2(vertices: vertices) {
-    OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
+    OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
     OrthogonalReady { value: l } =>
       match orthogonal_prism3(footprint: l, low: low, high: high) {
-        OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
-        OrthogonalReady { value: pr } => OrthogonalReady { value: enclosed_space(shell: closed_shell_of_prism(prism: pr)) }
+        OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
+        OrthogonalReady { value: pr } => std.orthogonal_geometry.OrthogonalReady { value: enclosed_space(shell: closed_shell_of_prism(prism: pr)) }
       }
   }
 }
 
 fn sequence_spaces(cs: List<OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>>) -> OrthogonalConstruction<List<std.orthogonal_topology.EnclosedSpace>> {
-  let folded = fold(cs, init: OrthogonalReady { value: [] }, f: (acc, c) =>
+  let folded = fold(cs, init: std.orthogonal_geometry.OrthogonalReady { value: [] }, f: (acc, c) =>
     match acc {
-      OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
+      OrthogonalRefused { cause: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
       OrthogonalReady { value: got } =>
         match c {
-          OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
-          OrthogonalReady { value: s } => OrthogonalReady { value: concat([s], got) }
+          OrthogonalRefused { cause: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
+          OrthogonalReady { value: s } => std.orthogonal_geometry.OrthogonalReady { value: concat([s], got) }
         }
     })
   match folded {
-    OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
-    OrthogonalReady { value: got } => OrthogonalReady { value: reverse(got) }
+    OrthogonalRefused { cause: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
+    OrthogonalReady { value: got } => std.orthogonal_geometry.OrthogonalReady { value: reverse(got) }
   }
 }
 

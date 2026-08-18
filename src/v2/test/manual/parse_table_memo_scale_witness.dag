@@ -54,11 +54,11 @@ fn witness_parse_memo_scale_tokenize_lookup_calls() -> Int {
 
 fn witness_parse_memo_scale_tokenize_report() -> List<Int> {
   let stats = parse_memo_scale_tokenize_stats()
-  Cons {
+  std.algebra.Cons {
     head: stats.hits,
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: stats.misses,
-      tail: Cons { head: stats.lookup_calls, tail: std.algebra.Empty }
+      tail: std.algebra.Cons { head: stats.lookup_calls, tail: std.algebra.Empty }
     }
   }
 }

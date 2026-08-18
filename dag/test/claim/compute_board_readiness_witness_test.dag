@@ -80,7 +80,7 @@ test fn w_duplicate_designator_refuses_at_correct_count() -> Bool {
 
 test fn w_incomplete_differential_polarity_projects_to_design_refusal() -> Bool {
   let projected = project_contact_map_standing(
-    standing: IncompleteDifferentialPolarity { pair: "DDR4_CLK_0" }
+    standing: extdeps.cpu.ampere_altra_package.IncompleteDifferentialPolarity { pair: "DDR4_CLK_0" }
   )
   list_count(xs: projected.design) == 1
     && list_is_empty(xs: projected.collateral)
@@ -115,13 +115,13 @@ test fn w_reference_board_collateral_reaches_the_readiness_fold() -> Bool {
   let blocked = board_readiness(
     intent: narrow_compute_node_intent,
     components: [],
-    contact_standing: PackageContactMapAdmitted { resolved: 4926 },
+    contact_standing: extdeps.cpu.ampere_altra_package.PackageContactMapAdmitted { resolved: 4926 },
     reference_board_standing: altra_reference_board_collateral_standing()
   )
   let clear = board_readiness(
     intent: narrow_compute_node_intent,
     components: [],
-    contact_standing: PackageContactMapAdmitted { resolved: 4926 },
+    contact_standing: extdeps.cpu.ampere_altra_package.PackageContactMapAdmitted { resolved: 4926 },
     reference_board_standing: ReferenceBoardCollateralAvailable
   )
   list_count(xs: blocked.collateral) == 1
@@ -146,8 +146,8 @@ fn cpu_component() -> product.compute_board.composition.ComponentInstance {
   product.compute_board.composition.ComponentInstance {
     designator: "U1",
     part: "processor",
-    justifications: [DischargesCapability { capability: Compute }],
-    provisions: [ProvidesCores { cores: hardware_thread_count(128) }],
+    justifications: [product.compute_board.composition.DischargesCapability { capability: Compute }],
+    provisions: [product.compute_board.composition.ProvidesCores { cores: hardware_thread_count(128) }],
   }
 }
 
@@ -155,8 +155,8 @@ fn undersized_cpu_component() -> product.compute_board.composition.ComponentInst
   product.compute_board.composition.ComponentInstance {
     designator: "U1",
     part: "processor",
-    justifications: [DischargesCapability { capability: Compute }],
-    provisions: [ProvidesCores { cores: hardware_thread_count(127) }],
+    justifications: [product.compute_board.composition.DischargesCapability { capability: Compute }],
+    provisions: [product.compute_board.composition.ProvidesCores { cores: hardware_thread_count(127) }],
   }
 }
 
@@ -165,7 +165,7 @@ fn decoupling_component() -> product.compute_board.composition.ComponentInstance
     designator: "C1",
     part: "decoupling network",
     justifications: [
-      ImposedByComponent {
+      product.compute_board.composition.ImposedByComponent {
         by: "U1",
         requirement: "supply decoupling required by the processor's power delivery specification",
         authority: witness_authority,
@@ -205,7 +205,7 @@ test fn w_manufacturing_refusal_alone_blocks_readiness() -> Bool {
   !board_is_ready(r: product.compute_board.composition.BoardReadiness {
     collateral: [],
     design: [],
-    manufacturing: [FabricatorStackupUnconfirmed { fabricator: "unselected" }],
+    manufacturing: [product.compute_board.composition.FabricatorStackupUnconfirmed { fabricator: "unselected" }],
   })
     && board_is_ready(r: product.compute_board.composition.BoardReadiness { collateral: [], design: [], manufacturing: [] })
 }
@@ -248,8 +248,8 @@ test fn w_connectivity_survives_dpmx_and_not_gerber() -> Bool {
 // the contract's quantity was read when the requirement was authored and discarded when it was
 // checked. One core is the smallest specimen that crosses the boundary.
 test fn w_cores_requirement_compares_quantity_not_capability_tag() -> Bool {
-  !requirement_met(components: [undersized_cpu_component()], r: ComputeCores { minimum_cores: hardware_thread_count(128) })
-    && requirement_met(components: [cpu_component()], r: ComputeCores { minimum_cores: hardware_thread_count(128) })
+  !requirement_met(components: [undersized_cpu_component()], r: product.compute_board.intent.ComputeCores { minimum_cores: hardware_thread_count(128) })
+    && requirement_met(components: [cpu_component()], r: product.compute_board.intent.ComputeCores { minimum_cores: hardware_thread_count(128) })
 }
 
 // The boolean-shaped requirements demand every declared sub-facility, not merely a provision of
@@ -259,15 +259,15 @@ test fn w_management_requirement_demands_every_declared_sub_facility() -> Bool {
   let partial = product.compute_board.composition.ComponentInstance {
     designator: "U2",
     part: "management controller",
-    justifications: [DischargesCapability { capability: Management }],
-    provisions: [ProvidesManagement { power_control: true, console: true, recovery: false }],
+    justifications: [product.compute_board.composition.DischargesCapability { capability: Management }],
+    provisions: [product.compute_board.composition.ProvidesManagement { power_control: true, console: true, recovery: false }],
   }
   let complete = product.compute_board.composition.ComponentInstance {
     designator: "U2",
     part: "management controller",
-    justifications: [DischargesCapability { capability: Management }],
-    provisions: [ProvidesManagement { power_control: true, console: true, recovery: true }],
+    justifications: [product.compute_board.composition.DischargesCapability { capability: Management }],
+    provisions: [product.compute_board.composition.ProvidesManagement { power_control: true, console: true, recovery: true }],
   }
-  !requirement_met(components: [partial], r: RemoteManagement { power_control: true, console: true, recovery: true })
-    && requirement_met(components: [complete], r: RemoteManagement { power_control: true, console: true, recovery: true })
+  !requirement_met(components: [partial], r: product.compute_board.intent.RemoteManagement { power_control: true, console: true, recovery: true })
+    && requirement_met(components: [complete], r: product.compute_board.intent.RemoteManagement { power_control: true, console: true, recovery: true })
 }

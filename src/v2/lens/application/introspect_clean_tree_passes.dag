@@ -32,14 +32,14 @@ fn introspect_clean_tree_passes_claim_rhs() -> Node {
     introspect_root
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_introspect_clean_tree_passes: v2.std.verification.TestClaim = EqualsClaim {
+data claim_introspect_clean_tree_passes: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_application/introspect_clean_tree_passes: Introspect apply_lens accepts clean tree",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: introspect_root,

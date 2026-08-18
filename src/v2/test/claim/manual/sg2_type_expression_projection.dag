@@ -9,7 +9,7 @@ data sg2_expected_conj_text: String = " { X: X, Y: Y }"
 
 fn sg2_pass_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^sg2_pass_sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sg2_pass_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -17,7 +17,7 @@ fn sg2_pass_node() -> Node {
 
 fn sg2_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^sg2_fail_sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sg2_fail_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -141,7 +141,7 @@ fn sg2_arrow_swapped_split_emitted() -> Node {
   let row = rust_type_expression_projection()
   target_type_expr_arrow_emitted(
     form: row.arrow_form,
-    inputs: Cons {
+    inputs: std.algebra.Cons {
       head: target_type_expr_atom_emitted(
         form: row.atom_form,
         identity: ^rust_binding_sg2_y
@@ -198,7 +198,7 @@ fn sg2_instantiation_delimiters_bidirectional() -> Bool {
     row.instantiation_form.close == ^rust_token_gt
 }
 
-data claim_sg2_projection_structural: v2.std.verification.TestClaim = EqualsClaim {
+data claim_sg2_projection_structural: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/sg2: Instantiation projects to golden Rc<FooBar<X,Y>> emitted node (no FooBar branch)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg2_project_instantiation_emitted(),
@@ -206,7 +206,7 @@ data claim_sg2_projection_structural: v2.std.verification.TestClaim = EqualsClai
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_serialize_falsification: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_serialize_falsification: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: serialized generic apply is Rc<FooBar<X, Y>> with correct arity",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_serialize_matches_expected()),
@@ -214,7 +214,7 @@ data claim_sg2_serialize_falsification: v2.std.verification.TestClaim = Compiles
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_projection_receipt: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_projection_receipt: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: projection structural receipt (content_hash golden match)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_projection_matches_golden()),
@@ -222,7 +222,7 @@ data claim_sg2_projection_receipt: v2.std.verification.TestClaim = CompilesClaim
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_bidirectional_delimiters: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_bidirectional_delimiters: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: instantiation_form delimiters are bidirectional lex token classes (§10.6)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_instantiation_delimiters_bidirectional()),
@@ -230,7 +230,7 @@ data claim_sg2_bidirectional_delimiters: v2.std.verification.TestClaim = Compile
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_arrow_projection_structural: v2.std.verification.TestClaim = EqualsClaim {
+data claim_sg2_arrow_projection_structural: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/sg2: Arrow<A,B> projects to golden arrow emitted node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg2_project_arrow_emitted(),
@@ -238,7 +238,7 @@ data claim_sg2_arrow_projection_structural: v2.std.verification.TestClaim = Equa
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_conj_projection_structural: v2.std.verification.TestClaim = EqualsClaim {
+data claim_sg2_conj_projection_structural: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/sg2: Conj product projects to golden record emitted node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg2_project_conj_emitted(),
@@ -246,7 +246,7 @@ data claim_sg2_conj_projection_structural: v2.std.verification.TestClaim = Equal
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_arrow_serialize: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_arrow_serialize: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: serialized arrow is (X) -> Y",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_arrow_serialize_matches_expected()),
@@ -254,7 +254,7 @@ data claim_sg2_arrow_serialize: v2.std.verification.TestClaim = CompilesClaim {
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_conj_serialize: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_conj_serialize: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: serialized conj record is { X, Y }",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_conj_serialize_matches_expected()),
@@ -262,7 +262,7 @@ data claim_sg2_conj_serialize: v2.std.verification.TestClaim = CompilesClaim {
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_binary_fn_projection: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_binary_fn_projection: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: substrate binary-fn Arrow (3 positional) projects n-ary inputs + output",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_binary_fn_projection_accepts()),
@@ -270,7 +270,7 @@ data claim_sg2_binary_fn_projection: v2.std.verification.TestClaim = CompilesCla
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_arrow_malformed_rejects: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_arrow_malformed_rejects: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: Arrow with fewer than two positional children rejects (fail-closed arity)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_arrow_malformed_projection_rejects()),
@@ -278,7 +278,7 @@ data claim_sg2_arrow_malformed_rejects: v2.std.verification.TestClaim = Compiles
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_serialize_rejects_malformed: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_serialize_rejects_malformed: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: serialize rejects malformed emitted node structurally",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: !sg2_serialize_accepts(emitted: sg2_fail_node())),
@@ -286,7 +286,7 @@ data claim_sg2_serialize_rejects_malformed: v2.std.verification.TestClaim = Comp
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_serialize_rejects_atom_extra_positional: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_serialize_rejects_atom_extra_positional: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged atom emitted with extra positional child",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
@@ -296,7 +296,7 @@ data claim_sg2_serialize_rejects_atom_extra_positional: v2.std.verification.Test
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_serialize_rejects_record_extra_positional: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_serialize_rejects_record_extra_positional: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged record emitted with extra positional child",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
@@ -306,7 +306,7 @@ data claim_sg2_serialize_rejects_record_extra_positional: v2.std.verification.Te
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_serialize_rejects_sum_extra_positional: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_serialize_rejects_sum_extra_positional: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged sum emitted with extra positional child",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
@@ -316,7 +316,7 @@ data claim_sg2_serialize_rejects_sum_extra_positional: v2.std.verification.TestC
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_serialize_rejects_atom_missing_surface: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_serialize_rejects_atom_missing_surface: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged atom emitted missing surface metadata",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
@@ -326,7 +326,7 @@ data claim_sg2_serialize_rejects_atom_missing_surface: v2.std.verification.TestC
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_serialize_rejects_atom_duplicate_surface: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_serialize_rejects_atom_duplicate_surface: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged atom emitted with duplicate surface metadata",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
@@ -336,7 +336,7 @@ data claim_sg2_serialize_rejects_atom_duplicate_surface: v2.std.verification.Tes
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_serialize_rejects_atom_wrong_surface: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_serialize_rejects_atom_wrong_surface: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged atom emitted with wrong surface metadata",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
@@ -346,7 +346,7 @@ data claim_sg2_serialize_rejects_atom_wrong_surface: v2.std.verification.TestCla
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_serialize_rejects_atom_extra_named: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_serialize_rejects_atom_extra_named: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged atom emitted with extra named metadata edge",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
@@ -356,7 +356,7 @@ data claim_sg2_serialize_rejects_atom_extra_named: v2.std.verification.TestClaim
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_wire_decode_rejects_atom_zero_positional: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_wire_decode_rejects_atom_zero_positional: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: wire decode rejects kind-tagged atom emitted with zero positional children",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
@@ -366,7 +366,7 @@ data claim_sg2_wire_decode_rejects_atom_zero_positional: v2.std.verification.Tes
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_wire_decode_rejects_arrow_one_positional: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_wire_decode_rejects_arrow_one_positional: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: wire decode rejects kind-tagged arrow emitted with one positional child",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
@@ -376,7 +376,7 @@ data claim_sg2_wire_decode_rejects_arrow_one_positional: v2.std.verification.Tes
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_wire_decode_rejects_instantiation_zero_positional: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_wire_decode_rejects_instantiation_zero_positional: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: wire decode rejects kind-tagged instantiation emitted with zero positional children",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
@@ -386,7 +386,7 @@ data claim_sg2_wire_decode_rejects_instantiation_zero_positional: v2.std.verific
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_rust_add_projection_absent: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_rust_add_projection_absent: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: rust_target_model lacks type-expression projection row (ProjectionAbsent)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_rust_add_projection_absent()),
@@ -394,7 +394,7 @@ data claim_sg2_rust_add_projection_absent: v2.std.verification.TestClaim = Compi
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_rust_add_translate_fallback: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_rust_add_translate_fallback: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: projection-absent translate fallback still grounds TypeNode subtrees (no projection row)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_rust_add_translate_fallback_accepts()),
@@ -441,7 +441,7 @@ fn sg2_wrong_arrow_projection() -> v2.std.compilers.target_model.TargetTypeExpre
   }
 }
 
-data claim_sg2_fold_row_delimiter_discriminates: v2.std.verification.TestClaim = CompilesClaim {
+data claim_sg2_fold_row_delimiter_discriminates: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/sg2: row witness gate rejects wrong arrow delimiter row (fold discrimination)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: witness_sg2_fold_row_delimiter_discriminates_holds()),
@@ -467,14 +467,14 @@ fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
   }
 }
 
-data unified_claim_sg2_arrow: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_sg2_arrow: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/sg2_type_expression_projection.dag",
     function: witness_sg2_arrow_holds
   }
 }
 
-data unified_claim_sg2_projection_falsification: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_sg2_projection_falsification: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/sg2_type_expression_projection.dag",
     function: witness_sg2_projection_falsification_holds

@@ -16,7 +16,7 @@ fn meta_node() -> std.markup.Fragment {
 }
 
 fn div_node() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "div", attributes: [], children: [ FragmentText { content: "content" } ] }
+  extdeps.browser.Element { tag: "div", attributes: [], children: [ std.markup.FragmentText { content: "content" } ] }
 }
 
 test fn witness_html_br_omits_close() -> Bool {

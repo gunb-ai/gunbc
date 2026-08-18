@@ -57,10 +57,10 @@ test fn witness_ephemeral_lifetime_matches_optional_impersonation_cap() -> Bool 
 }
 
 test fn witness_fail_closed_on_absent_or_expired_token() -> Bool {
-  ephemeral_token_gate_fail_closed(gate: TokenAbsent { reason: "not dispensed" })
-    && ephemeral_token_gate_fail_closed(gate: TokenExpired { reason: "ttl elapsed" })
+  ephemeral_token_gate_fail_closed(gate: gunbc.tailscale_acl_phase2_credential.TokenAbsent { reason: "not dispensed" })
+    && ephemeral_token_gate_fail_closed(gate: gunbc.tailscale_acl_phase2_credential.TokenExpired { reason: "ttl elapsed" })
     && !ephemeral_token_gate_valid(
-      gate: TokenAbsent { reason: "not dispensed" },
+      gate: gunbc.tailscale_acl_phase2_credential.TokenAbsent { reason: "not dispensed" },
       now: second(count: 1000)
     )
     && ephemeral_token_gate_valid(
@@ -79,20 +79,20 @@ test fn witness_fail_closed_on_absent_or_expired_token() -> Bool {
 }
 
 test fn witness_diff_gate_refuses_auto_upsert() -> Bool {
-  acl_auto_upsert_refused(gate: DiffPending { diff: PoliciesMatch })
-    && acl_auto_upsert_refused(gate: DiffPending {
-      diff: PoliciesDiffer { emitted: "{}", live: "{\"grants\":[]}" }
+  acl_auto_upsert_refused(gate: gunbc.tailscale_acl_phase2_credential.DiffPending { diff: PoliciesMatch })
+    && acl_auto_upsert_refused(gate: gunbc.tailscale_acl_phase2_credential.DiffPending {
+      diff: gunbc.tailscale_acl_phase2_credential.PoliciesDiffer { emitted: "{}", live: "{\"grants\":[]}" }
     })
-    && acl_auto_upsert_refused(gate: RefusedAutoUpsert { reason: "operator has not confirmed" })
-    && acl_upsert_wet_shape_is_diff_print_only(shape: DiffPrintOnly {
-      diff: PoliciesDiffer { emitted: "{}", live: "{\"grants\":[]}" }
+    && acl_auto_upsert_refused(gate: gunbc.tailscale_acl_phase2_credential.RefusedAutoUpsert { reason: "operator has not confirmed" })
+    && acl_upsert_wet_shape_is_diff_print_only(shape: gunbc.tailscale_acl_phase2_credential.DiffPrintOnly {
+      diff: gunbc.tailscale_acl_phase2_credential.PoliciesDiffer { emitted: "{}", live: "{\"grants\":[]}" }
     })
-    && !acl_upsert_wet_shape_is_diff_print_only(shape: LiveWriteRefused { reason: "design only" })
+    && !acl_upsert_wet_shape_is_diff_print_only(shape: gunbc.tailscale_acl_phase2_credential.LiveWriteRefused { reason: "design only" })
 }
 
 test fn witness_upsert_requires_valid_ephemeral_token() -> Bool {
   acl_upsert_permitted(
-    gate: OperatorConfirmed {
+    gate: gunbc.tailscale_acl_phase2_credential.OperatorConfirmed {
       emitted: "{}",
       token: "tskey-witness" as Secret,
       issued_at: second(count: 1000),
@@ -101,7 +101,7 @@ test fn witness_upsert_requires_valid_ephemeral_token() -> Bool {
     now: second(count: 2000)
   )
     && !acl_upsert_permitted(
-      gate: OperatorConfirmed {
+      gate: gunbc.tailscale_acl_phase2_credential.OperatorConfirmed {
         emitted: "{}",
         token: "tskey-witness" as Secret,
         issued_at: second(count: 1000),

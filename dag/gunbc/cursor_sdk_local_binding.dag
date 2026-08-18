@@ -19,7 +19,7 @@ fn cursor_sdk_local_credential_from_dispatch(
         CursorSdkSecretRefVersionRefused { reason } =>
           CursorSdkLocalCredentialRefused { reason: reason }
         CursorSdkSecretRefVersionAdmitted { secret_ref: admitted_ref } => {
-          let local = CursorSdkApiKeySecretRef { secret_ref: admitted_ref }
+          let local = extdeps.llm.cursor_sdk.CursorSdkApiKeySecretRef { secret_ref: admitted_ref }
           CursorSdkLocalCredentialAdmitted {
             credential: local,
             materialization: cursor_sdk_materialize_api_key(credential: local),

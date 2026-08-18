@@ -29,14 +29,14 @@ test fn emit_host_access_decision_seed_transport_is_declared_scaffold() -> Bool 
 
 fn well_formed_build() -> v2.std.host_transport.ProcessInvocation {
   v2.std.host_transport.ProcessInvocation {
-    program: HostToolProgram { executable: "cc" },
+    program: v2.std.host_transport.HostToolProgram { executable: "cc" },
     args: []
   }
 }
 
 fn well_formed_run() -> v2.std.host_transport.ProcessInvocation {
   v2.std.host_transport.ProcessInvocation {
-    program: ProducedProgram { path: "fixture" },
+    program: v2.std.host_transport.ProducedProgram { path: "fixture" },
     args: []
   }
 }
@@ -60,7 +60,7 @@ data dotdot_substring_transport: v2.std.host_transport.HostTransportDescriptor =
 
 fn build_with_arg(a: v2.std.host_transport.InvocationArg) -> v2.std.host_transport.ProcessInvocation {
   v2.std.host_transport.ProcessInvocation {
-    program: HostToolProgram { executable: "cc" },
+    program: v2.std.host_transport.HostToolProgram { executable: "cc" },
     args: [a]
   }
 }
@@ -76,10 +76,10 @@ fn transport_with_build(b: v2.std.host_transport.ProcessInvocation) -> v2.std.ho
 }
 
 data escaping_arg_transport: v2.std.host_transport.HostTransportDescriptor = transport_with_build(
-  b: build_with_arg(a: WorkspacePath { path: "../escape" })
+  b: build_with_arg(a: v2.std.host_transport.WorkspacePath { path: "../escape" })
 )
 data contained_arg_transport: v2.std.host_transport.HostTransportDescriptor = transport_with_build(
-  b: build_with_arg(a: WorkspacePath { path: "fixture.c" })
+  b: build_with_arg(a: v2.std.host_transport.WorkspacePath { path: "fixture.c" })
 )
 
 fn is_admitted(a: std.access.AccessDecision) -> Bool {

@@ -186,7 +186,7 @@ fn scan_host_key_lines(host: String) -> String {
 }
 
 func fleet_host_key_scan_wet() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let body = join(map(fleet_reach_probe_targets, h => scan_host_key_lines(host: h)), "")
   let w = Filesystem.Write(path: fleet_host_key_scan_receipt_path, content: body)
@@ -232,7 +232,7 @@ data fleet_host_key_enroll_receipt_path: String = "target/fleet-host-key-enroll-
 // HOME by fleet_host_key_enroll_apply, which the probe entry calls FIRST — enrollment
 // rides with every probe run instead of pretending to persist.
 func fleet_host_key_enroll_apply() -> String
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   if length(fleet_host_key_enrollments) == 0 {
     "enroll outcome=refused cause=registry-empty\n"
@@ -276,7 +276,7 @@ func fleet_host_key_enroll_apply() -> String
 }
 
 func fleet_host_key_enroll_wet() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let receipt = fleet_host_key_enroll_apply()
   let wr = Filesystem.Write(path: fleet_host_key_enroll_receipt_path, content: receipt)
@@ -309,7 +309,7 @@ fn fleet_automation_authorized_keys_line() -> String {
 }
 
 func fleet_authorized_key_self_enroll_wet() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let user = run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["whoami"] }, transport: LocalExec)
   let hostname = run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["hostname"] }, transport: LocalExec)

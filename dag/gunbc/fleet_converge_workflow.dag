@@ -35,7 +35,7 @@ fn fleet_converge_build_job() -> extdeps.github.actions.Job {
 }
 
 fn fleet_converge_host_pinned_runner_spec() -> extdeps.github.actions.RunnerSpec {
-  RunsOnExpression { expression: fleet_converge_host_runner_expression }
+  extdeps.github.actions.RunsOnExpression { expression: fleet_converge_host_runner_expression }
 }
 
 data fleet_converge_plan_step_if: String = "github.event.inputs.mode == 'plan'"
@@ -45,7 +45,7 @@ data fleet_converge_spark_linger_step_if: String = "github.event.inputs.mode == 
 data fleet_converge_spark_observe_step_if: String = "github.event.inputs.mode == 'spark_observe'"
 
 fn fleet_converge_plan_upload_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Upload fleet converge plan artifact" },
     id: Present { value: "plan_upload" },
     uses: upload_artifact_action,
@@ -66,7 +66,7 @@ fn fleet_converge_plan_upload_step() -> extdeps.github.actions.Step {
 }
 
 fn fleet_converge_plan_download_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Download fleet converge plan artifact" },
     id: Present { value: "plan_download" },
     uses: download_artifact_action,
@@ -86,7 +86,7 @@ fn fleet_converge_plan_download_step() -> extdeps.github.actions.Step {
 }
 
 fn fleet_converge_plan_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Fleet converge plan (membership_reconcile → artifact)" },
     id: Present { value: "plan" },
     run: gunbc_ci_fleet_converge_plan_invoke(),
@@ -100,7 +100,7 @@ fn fleet_converge_plan_step() -> extdeps.github.actions.Step {
 }
 
 fn fleet_converge_apply_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Fleet converge apply (CAS + generated apply.sh)" },
     id: Present { value: "apply" },
     run: gunbc_ci_fleet_converge_apply_invoke(),
@@ -121,7 +121,7 @@ fn fleet_converge_apply_step() -> extdeps.github.actions.Step {
 }
 
 fn fleet_converge_spark_linger_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Spark serving linger converge (executor→target FleetSsh typed argv)" },
     id: Present { value: "spark_linger" },
     run: gunbc_ci_spark_serving_converge_slice_invoke(),
@@ -140,7 +140,7 @@ fn fleet_converge_spark_linger_step() -> extdeps.github.actions.Step {
 }
 
 fn fleet_converge_spark_observe_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)" },
     id: Present { value: "spark_observe" },
     run: gunbc_ci_spark_serving_observe_invoke(),
@@ -206,28 +206,28 @@ fn fleet_converge_job() -> extdeps.github.actions.Job {
 data fleet_converge_workflow: extdeps.github.actions.Workflow = extdeps.github.actions.Workflow {
   name: "fleet-converge",
   on: [
-    WorkflowDispatch {
+    extdeps.github.actions.WorkflowDispatch {
       inputs: [
         extdeps.github.actions.DispatchInput {
           name: "host",
           description: Present { value: "Executor fleet host (runner pinned here; plan mode observes this host)" },
           required: true,
           default: none,
-          type: InputChoice { options: fleet_converge_enrolled_host_options },
+          type: extdeps.github.actions.InputChoice { options: fleet_converge_enrolled_host_options },
         },
         extdeps.github.actions.DispatchInput {
           name: "mode",
           description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks" },
           required: true,
           default: none,
-          type: InputChoice { options: fleet_converge_mode_options },
+          type: extdeps.github.actions.InputChoice { options: fleet_converge_mode_options },
         },
         extdeps.github.actions.DispatchInput {
           name: "target",
           description: Present { value: "Spark target host for spark_linger mode (srv5 or srv6)" },
           required: false,
           default: none,
-          type: InputChoice { options: fleet_converge_spark_target_options },
+          type: extdeps.github.actions.InputChoice { options: fleet_converge_spark_target_options },
         },
         extdeps.github.actions.DispatchInput {
           name: "plan_artifact_hash",

@@ -32,7 +32,7 @@ test fn planted_opaque_is_unknown_counted_holds() -> Bool {
   fallback_arm_class_is_unknown(c: c)
     && fallback_arm_class_eq(
       a: c,
-      b: ClassifierUnknown { cause: fallback_unknown_undecidable_body }
+      b: v2.lens.fallback_arm_census.ClassifierUnknown { cause: fallback_unknown_undecidable_body }
     )
 }
 
@@ -73,8 +73,8 @@ test fn classifier_class_eq_covers_all_variants_self_applies_holds() -> Bool {
     && fallback_arm_class_eq(a: DeclaredInterim, b: DeclaredInterim)
     && fallback_arm_class_eq(a: AnswersOnOpen, b: AnswersOnOpen)
     && fallback_arm_class_eq(
-      a: ClassifierUnknown { cause: fallback_unknown_undecidable_body },
-      b: ClassifierUnknown { cause: fallback_unknown_undecidable_body }
+      a: v2.lens.fallback_arm_census.ClassifierUnknown { cause: fallback_unknown_undecidable_body },
+      b: v2.lens.fallback_arm_census.ClassifierUnknown { cause: fallback_unknown_undecidable_body }
     )
     && !fallback_arm_class_eq(a: AnswersOnOpen, b: Refuses)
 }

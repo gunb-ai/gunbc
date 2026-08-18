@@ -3,11 +3,11 @@ module gunbc.plans.format_model_reconciliation
 
 fn format_model_reconciliation_body() -> List<std.markdown.MarkdownBlock> {
   [
-    BlockquoteBlock { blocks: [p(text: "Record-spelling reconciliation: one concept — how a format spells records — was historically forked across three models. The live tree has dissolved the two legacy models into `ConfigFormat`, `CommentSyntax`, `LayoutProtocol`, and `SerializationKnobs`; this tracker now owns only the remaining emitter migrations. DESIGN refs: §2 (one concept every scale), §3 (single authority), §5 (execution-grounded swap test), §6 (complementary to [regime-2 shared emission fold](regime2-shared-emission-fold.md), not a parallel ledger).")] },
+    std.markdown.BlockquoteBlock { blocks: [p(text: "Record-spelling reconciliation: one concept — how a format spells records — was historically forked across three models. The live tree has dissolved the two legacy models into `ConfigFormat`, `CommentSyntax`, `LayoutProtocol`, and `SerializationKnobs`; this tracker now owns only the remaining emitter migrations. DESIGN refs: §2 (one concept every scale), §3 (single authority), §5 (execution-grounded swap test), §6 (complementary to [regime-2 shared emission fold](regime2-shared-emission-fold.md), not a parallel ledger).")] },
     p(text: "**Status:** implementation tail · **`.dag` carrier is authority** (§6). Carrier facts re-verified against the live tree 2026-07-31."),
     h2(text: "1. The historical fork and its live resolution"),
     p(text: "Layout (line/indent/newline) is [regime-2 shared emission fold](regime2-shared-emission-fold.md). **This doc owns record spelling** — how key/value, assign, quoting, and nesting render into text or JSON:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "model"), cell(text: "where"), cell(text: "role"), cell(text: "verdict")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -26,7 +26,7 @@ fn format_model_reconciliation_body() -> List<std.markdown.MarkdownBlock> {
       li(text: "**Residue → `SerializationKnobs`** in `std.languages`: assign separator, entry separator, open/close delimiters, quoting policy — a comment-free record-spelling value"),
     ]),
     p(text: "**Live pipeline:** `std.serialize` `serialize_record_doc` produces `std.layout` `Doc` recursively; compose it with `std.layout` `render` for the line half."),
-    CodeBlock { code: "doc = serialize_record(record, knobs)   // record half (this doc)\ntext = render(doc, layout_protocol)     // line half (regime-2)\n" },
+    std.markdown.CodeBlock { code: "doc = serialize_record(record, knobs)   // record half (this doc)\ntext = render(doc, layout_protocol)     // line half (regime-2)\n" },
     h3(text: "The swap test (acid test)"),
     p(text: "`test.claim.config_record_emit_witness` and `test.claim.runner_placement_witness` exercise the same record projection with manifest and JSON knob values. This is the execution-grounded substrate for JSON-as-first-class under §6 cross-media."),
     h3(text: "Relationship to regime-2 (complementary, not duplicate)"),
@@ -65,6 +65,6 @@ data format_model_reconciliation_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "format-model-reconciliation",
   title: "Format-model reconciliation — record spelling onto single authority",
   body: format_model_reconciliation_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the C5 digest/accelerator tail is classified by semantic grain and every true record projection routes through `std.serialize` `serialize_record_doc` with byte-identical witnesses; presentation-only lists explicitly remain on `std.render`. The legacy FormatModel/OutputFormat collapse, runner manifest/JSON swap, gitignore line-layout de-fork, dnsmasq boundary, and CSS typed-row migration are already complete.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the C5 digest/accelerator tail is classified by semantic grain and every true record projection routes through `std.serialize` `serialize_record_doc` with byte-identical witnesses; presentation-only lists explicitly remain on `std.render`. The legacy FormatModel/OutputFormat collapse, runner manifest/JSON swap, gitignore line-layout de-fork, dnsmasq boundary, and CSS typed-row migration are already complete.")
   }
 }

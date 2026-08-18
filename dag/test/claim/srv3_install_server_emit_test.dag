@@ -33,7 +33,7 @@ test fn rfc4578_client_arch_mapping_is_grounded() -> Bool {
       Present { value: x } => dhcp_processor_architecture_code(a: x) == 16
       Absent => false
     }
-    && match dhcp_client_processor_architecture(arch: Aarch64, mode: LegacyBiosPxe { tftp_root: extdeps.uri.Uri { scheme: Https, locator: "x" } }) {
+    && match dhcp_client_processor_architecture(arch: Aarch64, mode: extdeps.provisioning.network_boot.LegacyBiosPxe { tftp_root: extdeps.uri.Uri { scheme: Https, locator: "x" } }) {
       Present { value: _ } => false
       Absent => true
     }

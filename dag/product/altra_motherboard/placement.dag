@@ -517,7 +517,7 @@ fn socket_envelope_blocker() -> product.altra_motherboard.attachment_stack.FactA
   match subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
     Present { value: b } => b
     Absent =>
-      NeedsSomeoneToFindTheDocument {
+      product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument {
         what_is_missing: "the socket layer reports no blocker, so a socket envelope binding is owed here rather than an obligation",
       }
   }
@@ -541,7 +541,7 @@ fn memory_slot_obligations(d: product.altra_motherboard.minimal_design.AltraMini
     let ch = ddr_channel_ordinal(c: s.channel)
     let pos = dimm_slot_position_ordinal(p: s.position)
     concat(acc, [obligation(
-      g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the MemoryModuleSlot role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" },
+      g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the MemoryModuleSlot role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" },
       id: "dimm_ddr{ch}_slot{pos}",
       r: MemoryModuleSlot { slot: s },
       x: 150000 + (pos * 14000),
@@ -578,10 +578,10 @@ fn altra_reference_plan() -> OrthogonalConstruction<BoardPlacementPlan> {
       envelope: processor_package_envelope,
       origin: point2(frame: altra_board_frame(), x: 60000, y: 90000),
     },
-    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the BootFirmwareEeprom role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "boot_eeprom", r: BootFirmwareEeprom, x: 250000, y: 40000),
-    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the FirmwareFlash role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "spi_nor", r: FirmwareFlash, x: 260000, y: 60000),
-    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the ResetController role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "reset_ctl", r: ResetController, x: 220000, y: 170000),
-    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "processor rail enable sequencing is not established: cited rail order exists but no sequencer population is justified for this board" }, id: "power_seq", r: ProcessorRailSequencer, x: 30000, y: 220000),
+    obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the BootFirmwareEeprom role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "boot_eeprom", r: BootFirmwareEeprom, x: 250000, y: 40000),
+    obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the FirmwareFlash role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "spi_nor", r: FirmwareFlash, x: 260000, y: 60000),
+    obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the ResetController role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "reset_ctl", r: ResetController, x: 220000, y: 170000),
+    obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "processor rail enable sequencing is not established: cited rail order exists but no sequencer population is justified for this board" }, id: "power_seq", r: ProcessorRailSequencer, x: 30000, y: 220000),
     PlannedComponent {
       identity: "power_stage",
       role: ProcessorPowerStage,
@@ -600,14 +600,14 @@ fn altra_reference_plan() -> OrthogonalConstruction<BoardPlacementPlan> {
       envelope: host_phy_envelope,
       origin: point2(frame: altra_board_frame(), x: 270000, y: 120000),
     },
-    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "management network connectivity is not established: reference precedent names a BMC plus PHY path on a dual-socket reference board, not a selected management population for this single-socket design" }, id: "mgmt_net", r: ManagementNetworkPath, x: 280000, y: 120000),
-    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the StorageEndpoint role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "nvme_conn", r: StorageEndpoint, x: 280000, y: 90000),
-    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the DebugConnector role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "debug_hdr", r: DebugConnector, x: 200000, y: 250000),
+    obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "management network connectivity is not established: reference precedent names a BMC plus PHY path on a dual-socket reference board, not a selected management population for this single-socket design" }, id: "mgmt_net", r: ManagementNetworkPath, x: 280000, y: 120000),
+    obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the StorageEndpoint role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "nvme_conn", r: StorageEndpoint, x: 280000, y: 90000),
+    obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the DebugConnector role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "debug_hdr", r: DebugConnector, x: 200000, y: 250000),
   ]
   match altra_board_outline() {
-    OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
+    OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
     OrthogonalReady { value: o } =>
-      OrthogonalReady {
+      std.orthogonal_geometry.OrthogonalReady {
         value: BoardPlacementPlan {
           frame: altra_board_frame(),
           outline: o,
@@ -692,8 +692,8 @@ fn board_body_layout_standing(d: product.altra_motherboard.minimal_design.AltraM
     FrameRegistryEstablished { registry: r } =>
       admit_body_envelopes(registry: r, article: board_article(plan: plan))
     FrameRegistryRefused { cause: c } =>
-      PhysicallyRefused { causes: product.pcb.physical.PhysicalRefusalSet {
-        first: BoardFrameRegistrationRefused { cause: c },
+      product.pcb.physical.PhysicallyRefused { causes: product.pcb.physical.PhysicalRefusalSet {
+        first: product.pcb.physical.BoardFrameRegistrationRefused { cause: c },
         rest: [],
       } }
   }

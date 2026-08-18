@@ -43,7 +43,7 @@ data eval_memo_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: StructuredArtifact
     locality: InProcess
-    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityBounded { limit: EntryCountCapacity { limit: ExactLimit { value: 1000000 } }, at_capacity: RefuseNewStore } }
+    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.EntryCountCapacity { limit: std.cache_interface.ExactLimit { value: 1000000 } }, at_capacity: RefuseNewStore } }
     atomicity: PerFile
     auth: None
     read_latency: InProcessNs
@@ -52,14 +52,14 @@ data eval_memo_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   evidence: [
     {
       field: "locality"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "scoped to InterpContext for the resolve-side share, but EVICTED at the witness frame (eval_call_memo_frame_exit after each claim fn on batch surfaces — ctx-lifetime retention across witnesses was the 2026-07-10 20GiB-class regression); entry-cap refusals counted as memo_overflow in the floor materialization receipt"
         observed_at: 0
       }
     },
     {
       field: "key_derivation"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "EvalRecomputeKey = fn identity x per-argument identity (scalars exact; composites recursive content hash, allocation-memoized with Weak liveness); content_verified_on_read is TRUE structurally: a hit serves only after stored argument names and values verify equal via Value equality, so a collision recomputes rather than lies"
         observed_at: 0
       }

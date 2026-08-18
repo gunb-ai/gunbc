@@ -103,11 +103,11 @@ fn witness_a_subject_outside_the_focal_region_stays_ground() -> Bool {
 fn witness_an_active_refusal_is_one_critical_subject_however_many_refuse() -> Bool {
   let a = project_finish_line_salience(
     camera: camera_on(l: CompilerFixedPoint),
-    refusal: ActiveRefusals { refused_count: 3 },
+    refusal: gunbc.design.instrument_projection.ActiveRefusals { refused_count: 3 },
   )
   count(a |> filter(x => salience_key(role: x.role) == salience_key(role: SalienceCritical))) == 1
     && role_key_for(assignments: a, subject: refusal_subject_key) == salience_key(role: SalienceCritical)
-    && refusal_count(r: ActiveRefusals { refused_count: 3 }) == 3
+    && refusal_count(r: gunbc.design.instrument_projection.ActiveRefusals { refused_count: 3 }) == 3
     && refusal_count(r: NoActiveRefusal) == 0
 }
 
@@ -115,7 +115,7 @@ fn witness_critical_interrupts_without_dethroning_the_derived_focal_subject() ->
   match project_admission(
     camera: camera_on(l: ZeroHandMaintainedRust),
     placements: finish_line_placements(),
-    refusal: ActiveRefusals { refused_count: 2 },
+    refusal: gunbc.design.instrument_projection.ActiveRefusals { refused_count: 2 },
   ) {
     FocalAdmitted { focal_count, critical_count } => focal_count == 1 && critical_count == 1
     FocalBudgetExceeded { region, focal_count } => false

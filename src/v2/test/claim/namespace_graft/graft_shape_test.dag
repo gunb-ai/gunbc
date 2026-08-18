@@ -3,7 +3,7 @@ module v2.test.claim.namespace_graft.graft_shape_test
 
 fn ng_sym_node(sym: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -21,7 +21,7 @@ fn ng_pre_graft_module_root(
   body_edges: List<v2.std.node.Edge>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: concat(
       [
         dag_named_edge(
@@ -169,13 +169,13 @@ fn namespace_graft_grafted_tree_has_no_metadata_edges(node: Node) -> Bool {
 
 data ng_empty_qn_node: Node = emit_module_header_emitted_node(
   qualified_name: v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 )
 
-data claim_namespace_graft_empty_qn_refused: v2.std.verification.TestClaim = EqualsClaim {
+data claim_namespace_graft_empty_qn_refused: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "namespace_graft RED: empty module header QN refuses graft",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ng_sym_node(sym: ^ng_bool_true),
@@ -194,15 +194,15 @@ test fn namespace_graft_empty_qn_refused_holds() -> Bool {
 }
 
 data ng_dual_position_root: Node = ng_pre_graft_module_root(
-  qn: Cons {
+  qn: std.algebra.Cons {
     head: ^NgAlpha,
-    tail: Cons { head: ^NgBeta, tail: Empty }
+    tail: std.algebra.Cons { head: ^NgBeta, tail: Empty }
   },
   body_edges: [
     v2.std.node.Edge {
       label: Named { name: ^NgAlpha },
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [ng_export_edge(name: ^NgDualPilot)],
         occurrence_id: SyntheticOccurrence
       }
@@ -210,7 +210,7 @@ data ng_dual_position_root: Node = ng_pre_graft_module_root(
   ]
 )
 
-data claim_namespace_graft_dual_position_refused: v2.std.verification.TestClaim = EqualsClaim {
+data claim_namespace_graft_dual_position_refused: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "namespace_graft RED: dual header+brace position refuses graft",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ng_sym_node(sym: ^ng_bool_true),

@@ -83,14 +83,14 @@ fn fx(id: String, owner: String) -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_J1Y305CV88R38QJXQFCY" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: id,
-    line: TicketLine { done: false, ticket: gunbc.roadmap_status.TicketFields {
+    line: gunbc.roadmap_status.TicketLine { done: false, ticket: gunbc.roadmap_status.TicketFields {
       headline: "fixture", brief: "fixture", displaced_cost: "fixture",
       current_state: "fixture", first_slice: "fixture", red_control: "fixture",
       out_of_scope: "fixture", handback: "fixture",
       updates: [], authored_on: "", last_verified_on: "",
     } },
     carriers: [gunbc.roadmap_model.Pointer { label: "authority", path: "DESIGN.md" }],
-    sizing: Sized { intricacy: IntricacyMedium, volume: VolumeMedium, repo: "gunbc", acceptance: ManualAcceptance },
+    sizing: gunbc.roadmap_model.Sized { intricacy: IntricacyMedium, volume: VolumeMedium, repo: "gunbc", acceptance: ManualAcceptance },
     execution: ExecutionContractUnspecified,
     owner: owner,
     signoff: Unsigned,
@@ -115,7 +115,7 @@ fn fixture_edges() -> List<gunbc.roadmap_model.RoadmapEdge> {
 }
 
 fn fixture_focus() -> gunbc.roadmap_focus.RoadmapFocus {
-  FocusOnOwners { label: "lane a", owners: ["lane-a"] }
+  gunbc.roadmap_focus.FocusOnOwners { label: "lane a", owners: ["lane-a"] }
 }
 
 test fn synthetic_closure_pulls_transitive_cross_lane_prerequisites() -> Bool {
@@ -146,7 +146,7 @@ test fn synthetic_no_visible_node_has_a_hidden_prerequisite() -> Bool {
 
 test fn synthetic_focus_with_no_external_prerequisite_pulls_nothing() -> Bool {
   count(focus_prerequisite_ids(
-    focus: FocusOnOwners { label: "lane b", owners: ["lane-b"] },
+    focus: gunbc.roadmap_focus.FocusOnOwners { label: "lane b", owners: ["lane-b"] },
     nodes: fixture_nodes(),
     edges: fixture_edges(),
   )) == 0

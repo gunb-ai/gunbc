@@ -3,12 +3,12 @@ module v2.extdeps.languages.bash_build
 
 fn bash_build_word_kinded(kind: v2.std.node.Symbol, value: String) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: kind } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: kind } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -16,7 +16,7 @@ fn bash_build_word_kinded(kind: v2.std.node.Symbol, value: String) -> Node {
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: value } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: value } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -36,12 +36,12 @@ fn bash_build_word_var(name: String) -> Node {
 
 fn bash_build_word_compound(kind: v2.std.node.Symbol, payload: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: kind } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: kind } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -62,7 +62,7 @@ fn bash_build_word_cmdsubst(body: Node) -> Node {
 
 fn bash_build_stmt_tag(binding: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: binding } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -70,7 +70,7 @@ fn bash_build_stmt_tag(binding: v2.std.node.Symbol) -> Node {
 
 fn bash_build_command_words_single(word: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: word }
     ],
@@ -80,7 +80,7 @@ fn bash_build_command_words_single(word: Node) -> Node {
 
 fn bash_build_command_words_pair(left: Node, right: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: left },
       v2.std.node.Edge { label: Positional, target: right }
@@ -91,7 +91,7 @@ fn bash_build_command_words_pair(left: Node, right: Node) -> Node {
 
 fn bash_build_command(words: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -150,7 +150,7 @@ fn bash_build_command_lit_var(lit: String, var_name: String) -> Node {
 
 fn bash_build_exit(code: String) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -159,7 +159,7 @@ fn bash_build_exit(code: String) -> Node {
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: code } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: code } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -171,7 +171,7 @@ fn bash_build_exit(code: String) -> Node {
 
 fn bash_build_assign(name: String, value: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -180,7 +180,7 @@ fn bash_build_assign(name: String, value: Node) -> Node {
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: name } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -201,7 +201,7 @@ fn bash_build_assign_var(name: String, var_name: String) -> Node {
 
 fn bash_build_binary_stmt(binding: v2.std.node.Symbol, left: Node, right: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: bash_build_stmt_tag(binding: binding) },
       v2.std.node.Edge { label: Positional, target: left },
@@ -237,7 +237,7 @@ fn bash_build_pipe(left: Node, right: Node) -> Node {
 
 fn bash_build_stmt_list_single(stmt: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: stmt }
     ],
@@ -247,7 +247,7 @@ fn bash_build_stmt_list_single(stmt: Node) -> Node {
 
 fn bash_build_stmt_list_pair(left: Node, right: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: left },
       v2.std.node.Edge { label: Positional, target: right }
@@ -258,7 +258,7 @@ fn bash_build_stmt_list_pair(left: Node, right: Node) -> Node {
 
 fn bash_build_subshell(body: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -272,7 +272,7 @@ fn bash_build_subshell(body: Node) -> Node {
 
 fn bash_build_if(cond: Node, body: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -287,7 +287,7 @@ fn bash_build_if(cond: Node, body: Node) -> Node {
 
 fn bash_build_with_redir(inner: Node, redir: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -302,7 +302,7 @@ fn bash_build_with_redir(inner: Node, redir: v2.std.node.Symbol) -> Node {
 
 fn bash_build_with_redir_to_file(inner: Node, path: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -321,7 +321,7 @@ fn bash_build_with_redir_to_file(inner: Node, path: Node) -> Node {
 
 fn bash_build_negation(inner: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -411,7 +411,7 @@ fn bash_build_stmt_list_from_nodes(stmts: List<Node>) -> Node {
       )
     HeadAbsent =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           v2.std.node.Edge {
             label: Positional,

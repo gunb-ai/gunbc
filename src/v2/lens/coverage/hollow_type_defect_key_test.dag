@@ -3,7 +3,7 @@ module v2.test.lens_coverage.hollow_type_defect_key
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 data hollow_type_authority_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^hollow_type_authority_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^hollow_type_authority_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }

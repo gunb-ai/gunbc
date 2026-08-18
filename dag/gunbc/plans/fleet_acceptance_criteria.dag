@@ -200,5 +200,5 @@ data fleet_acceptance_criteria_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "fleet-acceptance-criteria",
   title: "Fleet acceptance criteria — completion tiers and per-node operational acceptance",
   body: fleet_acceptance_criteria_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Dissolves when acceptance is carried as typed fields on RoadmapNode (a modeled completion tier + acceptance record) consumed by the dispatch surface, or when every §2 node named here has closed at its required tier — whichever comes first. Until then, an Accept: edit on a node and its checklist here land in the same PR (the node is the summary, this doc is the checklist; both project into generated artifacts).") },
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Dissolves when acceptance is carried as typed fields on RoadmapNode (a modeled completion tier + acceptance record) consumed by the dispatch surface, or when every §2 node named here has closed at its required tier — whichever comes first. Until then, an Accept: edit on a node and its checklist here land in the same PR (the node is the summary, this doc is the checklist; both project into generated artifacts).") },
 }

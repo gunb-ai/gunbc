@@ -61,12 +61,12 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
     provider_events_error: "not found",
     process: WorkerProcessAbsent,
     validation_summary: "",
-    verification_subject: VerificationSubjectUnobserved {
+    verification_subject: gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved {
       reason: "legacy attempt has no modeled verification subject",
     },
     verification_selection: SelectionAbsent,
     verification_source: VerificationReceiptAbsent,
-    publication_subject: PublicationSubjectUnobserved {
+    publication_subject: gunbc.roadmap_publish.PublicationSubjectUnobserved {
       reason: "legacy attempt has no observed head",
     },
     publication_source: ReceiptSourceAbsent,
@@ -84,7 +84,7 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
 }
 
 test fn lineage_and_turn_labels_are_human_readable() -> Bool {
-  attempt_lineage_row_label(lineage: Supersedes {
+  attempt_lineage_row_label(lineage: gunbc.roadmap_workflow_command.Supersedes {
     attempt_key: "feedfacefeedface",
     reason: "pre-receipt attempt",
   }, ordinal: 2) == "Attempt 2 — started fresh; supersedes feedface… (pre-receipt attempt)"

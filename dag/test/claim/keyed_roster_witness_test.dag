@@ -42,12 +42,12 @@ fn fixture_rows_duplicate_path() -> List<KeyedRow<String, FixtureGrant>> {
 fn fixture_frontier_rows_unique() -> List<std.roster_frontier.FrontierRow> {
   [
     std.roster_frontier.FrontierRow {
-      subject: PathSubject { path: "synthetic/a.dag::f" },
+      subject: std.roster_frontier.PathSubject { path: "synthetic/a.dag::f" },
       reason: "r1",
       dissolution: unbound_dissolution(description: "d1"),
     },
     std.roster_frontier.FrontierRow {
-      subject: PathSubject { path: "synthetic/b.dag::g" },
+      subject: std.roster_frontier.PathSubject { path: "synthetic/b.dag::g" },
       reason: "r2",
       dissolution: unbound_dissolution(description: "d2"),
     },
@@ -57,12 +57,12 @@ fn fixture_frontier_rows_unique() -> List<std.roster_frontier.FrontierRow> {
 fn fixture_frontier_rows_duplicate_path() -> List<std.roster_frontier.FrontierRow> {
   [
     std.roster_frontier.FrontierRow {
-      subject: PathSubject { path: "synthetic/a.dag::f" },
+      subject: std.roster_frontier.PathSubject { path: "synthetic/a.dag::f" },
       reason: "r1",
       dissolution: unbound_dissolution(description: "d1"),
     },
     std.roster_frontier.FrontierRow {
-      subject: PathSubject { path: "synthetic/a.dag::f" },
+      subject: std.roster_frontier.PathSubject { path: "synthetic/a.dag::f" },
       reason: "r2",
       dissolution: unbound_dissolution(description: "d2"),
     },

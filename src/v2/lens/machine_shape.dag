@@ -65,7 +65,7 @@ fn machine_shape_unsanctioned_construction_diagnostic(n: Node) -> v2.std.diagnos
   v2.std.diagnostic.Diagnostic {
     reason: ^machine_shape_unsanctioned_construction,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -154,5 +154,5 @@ fn machine_shape_compile_gate(node: Node) -> Outcome<Witness<Node>> {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }

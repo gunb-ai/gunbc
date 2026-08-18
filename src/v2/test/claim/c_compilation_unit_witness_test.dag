@@ -35,12 +35,12 @@ data witness_type_int: v2.std.node.Symbol = ^witness_cu_int
 data witness_fn_use_point: v2.std.node.Symbol = ^witness_cu_use_point
 
 fn witness_type_atom(sym: v2.std.node.Symbol) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [])
 }
 
 fn witness_struct_field_by_value(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^member },
@@ -52,12 +52,12 @@ fn witness_struct_field_by_value(sym: v2.std.node.Symbol) -> Node {
 
 fn witness_struct_field_by_pointer(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^next },
         target: node_synthetic(
-          kind: TypeNode { connective: Arrow },
+          kind: v2.std.node.TypeNode { connective: Arrow },
           children: [
             v2.std.node.Edge {
               label: Named { name: ^domain },
@@ -76,7 +76,7 @@ fn witness_struct_field_by_pointer(sym: v2.std.node.Symbol) -> Node {
 
 fn witness_point_struct_conj_body() -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^x },
@@ -88,7 +88,7 @@ fn witness_point_struct_conj_body() -> Node {
 
 fn witness_fn_taking_point_by_value() -> Node {
   node_synthetic(
-    kind: TypeNode {
+    kind: v2.std.node.TypeNode {
       connective: Arrow,
     },
     children: [

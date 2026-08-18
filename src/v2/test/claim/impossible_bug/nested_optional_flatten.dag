@@ -2,7 +2,7 @@ module v2.test.impossible_bug.nested_optional_flatten
 
 
 fn atom_node(s: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
@@ -10,12 +10,12 @@ fn atom_node(s: v2.std.node.Symbol) -> Node {
 data flattened_optional_input: Node = atom_node(s: ^flattened_optional_symbol)
 
 data falsification_nested_optional: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [
     v2.std.node.Edge {
       label: Positional,
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Cardinality },
+        kind: v2.std.node.TypeNode { connective: Cardinality },
         children: [
           v2.std.node.Edge { label: Positional, target: atom_node(s: ^optional_value_symbol) },
         ],
@@ -27,14 +27,14 @@ data falsification_nested_optional: Node = v2.std.node.Node {
 }
 
 data falsification_optional_double_unwrap: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: atom_node(s: ^double_unwrap_symbol) },
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data claim_optional_chaining_no_double_unwrap: v2.std.verification.TestClaim = CompilesClaim {
+data claim_optional_chaining_no_double_unwrap: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "optional cardinality refinement keeps accessor surface single-layer",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: flattened_optional_input,
@@ -42,7 +42,7 @@ data claim_optional_chaining_no_double_unwrap: v2.std.verification.TestClaim = C
   classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
 }
 
-data claim_optional_double_unwrap_rejected: v2.std.verification.TestClaim = DiagnosticClaim {
+data claim_optional_double_unwrap_rejected: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "optional accessor surface rejects double unwrap shape",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_optional_double_unwrap,
@@ -50,13 +50,13 @@ data claim_optional_double_unwrap_rejected: v2.std.verification.TestClaim = Diag
       d: v2.std.diagnostic.Diagnostic {
         reason: ^impossible_bug_reason_double_unwrap,
         at: node_locus(node: falsification_optional_double_unwrap),
-        correction: Suggested { node: flattened_optional_input }
+        correction: v2.std.diagnostic.Suggested { node: flattened_optional_input }
       }
     ),
   classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
 }
 
-data claim_nested_optional_collapses: v2.std.verification.TestClaim = DiagnosticClaim {
+data claim_nested_optional_collapses: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "nested optional cardinality collapses to one refinement",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_nested_optional,
@@ -64,7 +64,7 @@ data claim_nested_optional_collapses: v2.std.verification.TestClaim = Diagnostic
       d: v2.std.diagnostic.Diagnostic {
         reason: ^impossible_bug_reason_nested_optional,
         at: node_locus(node: falsification_nested_optional),
-        correction: Suggested { node: flattened_optional_input }
+        correction: v2.std.diagnostic.Suggested { node: flattened_optional_input }
       }
     ),
   classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }

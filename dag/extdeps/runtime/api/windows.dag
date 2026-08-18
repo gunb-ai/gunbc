@@ -71,7 +71,7 @@ data windows_11_user_mode_boundary: std.os.invocation.LibraryApiBoundary = {
   exports: windows_11_user_mode_exports,
 }
 
-data windows_11_library_api_surface: std.os.invocation.StableInvocationSurface = LibraryApiBoundarySurface {
+data windows_11_library_api_surface: std.os.invocation.StableInvocationSurface = std.os.invocation.LibraryApiBoundarySurface {
   boundary: windows_11_user_mode_boundary,
 }
 

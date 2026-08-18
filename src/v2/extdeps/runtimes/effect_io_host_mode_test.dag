@@ -4,7 +4,7 @@ module v2.test.runtimes.effect_io_host_mode
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn mode_resource_arg(bytes: List<Byte>) -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: effect_io_pure_unit_type_node(),
       bytes: bytes

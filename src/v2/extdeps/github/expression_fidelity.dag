@@ -7,7 +7,7 @@ fn gha_expression_modeled_fidelity_node() -> Node {
 
 fn gha_expression_roundtrip_fidelity_quotient_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^gha_expression_roundtrip_fidelity_core,
@@ -20,7 +20,7 @@ fn gha_expression_roundtrip_fidelity_quotient_node() -> Node {
 
 fn gha_expression_roundtrip_target_model_bundle() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^target_model_edge_fidelity_quotient,

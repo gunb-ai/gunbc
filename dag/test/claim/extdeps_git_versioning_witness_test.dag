@@ -45,7 +45,7 @@ test fn w_platform_suffix_is_structural_not_stringly() -> Bool {
   }
   let windows = extdeps.git.versioning.GitCliReportedVersion {
     git_release: git_2_0_release,
-    suffix: GitVersionWindows { build: 1 }
+    suffix: extdeps.git.versioning.GitVersionWindows { build: 1 }
   }
   plain.suffix != windows.suffix
 }

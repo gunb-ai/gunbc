@@ -9,5 +9,5 @@ test fn one_intent_two_transports_single_authority() -> Bool {
   (cfg_plan.iso_path as String == proxy_intent.iso_path as String)
     && (cfg_plan.bmc_host as String == proxy_intent.bmc_host as String)
     && (virtual_media_transport_kind(transport: srv4_configfs_transport) == "configfs-gadget")
-    && (virtual_media_transport_kind(transport: NbdProxyWebsocatTransport { params: proxy_params }) == "nbdproxy-websocat")
+    && (virtual_media_transport_kind(transport: extdeps.bmc.virtual_media.NbdProxyWebsocatTransport { params: proxy_params }) == "nbdproxy-websocat")
 }

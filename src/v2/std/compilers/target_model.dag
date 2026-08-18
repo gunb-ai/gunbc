@@ -95,12 +95,12 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
   match token {
     FixedToken { token_class: c } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           v2.std.node.Edge {
             label: Named { name: ^concrete_syntax_token_field_kind },
             target: v2.std.node.Node {
-              kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_fixed } },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^concrete_syntax_token_kind_fixed } },
               children: [],
               occurrence_id: SyntheticOccurrence
 }
@@ -108,7 +108,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
           v2.std.node.Edge {
             label: Named { name: ^concrete_syntax_token_field_class },
             target: v2.std.node.Node {
-              kind: TypeNode { connective: Atom { identity: c } },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: c } },
               children: [],
               occurrence_id: SyntheticOccurrence
 }
@@ -118,12 +118,12 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
 }
     BoundToken { token_class: c, binding: b } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           v2.std.node.Edge {
             label: Named { name: ^concrete_syntax_token_field_kind },
             target: v2.std.node.Node {
-              kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_bound } },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^concrete_syntax_token_kind_bound } },
               children: [],
               occurrence_id: SyntheticOccurrence
 }
@@ -131,7 +131,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
           v2.std.node.Edge {
             label: Named { name: ^concrete_syntax_token_field_class },
             target: v2.std.node.Node {
-              kind: TypeNode { connective: Atom { identity: c } },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: c } },
               children: [],
               occurrence_id: SyntheticOccurrence
 }
@@ -139,7 +139,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
           v2.std.node.Edge {
             label: Named { name: ^concrete_syntax_token_field_binding },
             target: v2.std.node.Node {
-              kind: TypeNode { connective: Atom { identity: b } },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: b } },
               children: [],
               occurrence_id: SyntheticOccurrence
 }
@@ -171,11 +171,11 @@ fn target_lex_rule_literal_not_found_diagnostic(token_class: v2.std.node.Symbol)
   v2.std.diagnostic.Diagnostic {
     reason: ^target_lex_rule_literal_not_found,
     at: node_locus(node: v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: token_class } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: token_class } },
       children: [],
       occurrence_id: SyntheticOccurrence
     }),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -183,11 +183,11 @@ fn target_binding_spelling_not_found_diagnostic(binding: v2.std.node.Symbol) -> 
   v2.std.diagnostic.Diagnostic {
     reason: ^target_binding_spelling_not_found,
     at: node_locus(node: v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: binding } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
       children: [],
       occurrence_id: SyntheticOccurrence
     }),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -195,7 +195,7 @@ fn target_concrete_token_kind_invalid_diagnostic(token: Node) -> v2.std.diagnost
   v2.std.diagnostic.Diagnostic {
     reason: ^target_concrete_token_kind_invalid,
     at: node_locus(node: token),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -286,7 +286,7 @@ fn target_type_expr_projection_bundle_malformed_diagnostic(bundle: Node) -> v2.s
   v2.std.diagnostic.Diagnostic {
     reason: ^target_type_expr_projection_bundle_malformed,
     at: node_locus(node: bundle),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -294,7 +294,7 @@ fn target_collection_shape_malformed_diagnostic(node: Node) -> v2.std.diagnostic
   v2.std.diagnostic.Diagnostic {
     reason: ^target_collection_shape_malformed,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -860,7 +860,7 @@ fn derive_bodied_arrow_scaffold(
 
 fn target_model_type_atom_node(identity: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -868,7 +868,7 @@ fn target_model_type_atom_node(identity: v2.std.node.Symbol) -> Node {
 
 fn target_model_type_conj_node(children: List<v2.std.node.Edge>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: children,
     occurrence_id: SyntheticOccurrence
   }
@@ -878,7 +878,7 @@ fn target_canonical_operation_wire_malformed_diagnostic(wire: Node) -> v2.std.di
   v2.std.diagnostic.Diagnostic {
     reason: ^target_canonical_operation_wire_malformed,
     at: node_locus(node: wire),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -974,7 +974,7 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
   match operation {
     AlgebraPrimitive { algebra_field: f } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: discriminant(v: AlgebraPrimitive {}) } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: discriminant(v: AlgebraPrimitive {}) } },
         children: [
           target_model_named_edge(
             name: ^target_canonical_operation_field_algebra_field,
@@ -985,7 +985,7 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
       }
     AlgebraInverseCompose { binary_field: b, inverse_field: i } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: discriminant(v: AlgebraInverseCompose {}) } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: discriminant(v: AlgebraInverseCompose {}) } },
         children: [
           target_model_named_edge(
             name: ^target_canonical_operation_field_binary_field,
@@ -1000,7 +1000,7 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
       }
     OrderingComparison { compare_field: c, predicate: p } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: discriminant(v: OrderingComparison {}) } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: discriminant(v: OrderingComparison {}) } },
         children: [
           target_model_named_edge(
             name: ^target_canonical_operation_field_compare_field,
@@ -1015,7 +1015,7 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
       }
     EqualityComparison { eq_field: e, predicate: p } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: discriminant(v: EqualityComparison {}) } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: discriminant(v: EqualityComparison {}) } },
         children: [
           target_model_named_edge(
             name: ^target_canonical_operation_field_eq_field,
@@ -1213,7 +1213,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
   match shape {
     InfixToken { token: t } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: discriminant(v: InfixToken {}) } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: discriminant(v: InfixToken {}) } },
         children: [
           target_model_named_edge(
             name: ^target_operator_shape_field_token,
@@ -1224,7 +1224,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
       }
     PrefixToken { token: t } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: discriminant(v: PrefixToken {}) } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: discriminant(v: PrefixToken {}) } },
         children: [
           target_model_named_edge(
             name: ^target_operator_shape_field_token,
@@ -1235,7 +1235,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
       }
     CallIdent { ident: i } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: discriminant(v: CallIdent {}) } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: discriminant(v: CallIdent {}) } },
         children: [
           target_model_named_edge(
             name: ^target_operator_shape_field_token,
@@ -1246,7 +1246,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
       }
     MethodIdent { ident: i } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: discriminant(v: MethodIdent {}) } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: discriminant(v: MethodIdent {}) } },
         children: [
           target_model_named_edge(
             name: ^target_operator_shape_field_token,
@@ -1262,7 +1262,7 @@ fn target_operator_shape_wire_malformed_diagnostic(wire: Node) -> v2.std.diagnos
   v2.std.diagnostic.Diagnostic {
     reason: ^target_operator_shape_wire_malformed,
     at: node_locus(node: wire),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -1364,7 +1364,7 @@ fn target_operator_realization_wire_malformed_diagnostic(row: Node) -> v2.std.di
   v2.std.diagnostic.Diagnostic {
     reason: ^target_operator_realization_wire_malformed,
     at: node_locus(node: row),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -1466,7 +1466,7 @@ fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
       xs: rows,
       empty: Empty,
       cons: fn(acc, row) {
-        Cons {
+        std.algebra.Cons {
           head: target_model_named_edge(
             name: ^target_operator_realization_row_edge,
             target: row
@@ -1482,7 +1482,7 @@ fn target_value_projection_field_missing_diagnostic(bundle: Node, field: v2.std.
   v2.std.diagnostic.Diagnostic {
     reason: ^target_value_projection_field_missing,
     at: node_locus(node: bundle),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -2817,7 +2817,7 @@ fn grammar_relation_row_attach_bodied_scaffold(
   target_model_type_conj_node(
     children: list_append(
       left: row.children,
-      right: Cons {
+      right: std.algebra.Cons {
         head: target_model_named_edge(
           name: ^grammar_relation_field_bodied_scaffold,
           target: bodied_arrow_statement_scaffold_bundle_node(scaffold: scaffold)
@@ -2849,7 +2849,7 @@ fn grammar_relation_bodied_scaffold_missing_diagnostic(row: Node) -> v2.std.diag
   v2.std.diagnostic.Diagnostic {
     reason: ^grammar_relation_bodied_scaffold_missing,
     at: node_locus(node: row),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -2857,7 +2857,7 @@ fn target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: Node) -> v2.
   v2.std.diagnostic.Diagnostic {
     reason: ^target_bodied_arrow_scaffold_bundle_malformed,
     at: node_locus(node: bundle),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -2902,7 +2902,7 @@ fn concrete_syntax_token_node_targets_from_list_node(node: Node) -> Outcome<List
                 bind_outcome(
                   o: concrete_syntax_token_node_targets_from_list_node(node: tail),
                   f: fn(rest) {
-                    outcome_accepted(Cons { head: head, tail: rest })
+                    outcome_accepted(std.algebra.Cons { head: head, tail: rest })
                   }
                 )
               }
@@ -3005,7 +3005,7 @@ fn concrete_syntax_token_wire_malformed_diagnostic(token: Node) -> v2.std.diagno
   v2.std.diagnostic.Diagnostic {
     reason: ^concrete_syntax_token_wire_malformed,
     at: node_locus(node: token),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -3142,7 +3142,7 @@ fn target_value_projection_bundle_malformed_diagnostic(bundle: Node) -> v2.std.d
   v2.std.diagnostic.Diagnostic {
     reason: ^target_value_projection_bundle_malformed,
     at: node_locus(node: bundle),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -3160,7 +3160,7 @@ type TargetAtomRealization {
 
 fn symbol_kernel_type_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^symbol_kernel_type_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^symbol_kernel_type_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -3168,7 +3168,7 @@ fn symbol_kernel_type_node() -> Node {
 
 fn char_kernel_type_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^char_kernel_type_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^char_kernel_type_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -3359,8 +3359,8 @@ fn target_value_template_for_kind(kind: TargetValueTemplateKind) -> TargetValueT
 
 fn target_value_template_tag_node(kind: TargetValueTemplateKind) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
-      connective: Atom { identity: discriminant(v: kind) }
+    kind: v2.std.node.TypeNode {
+      connective: v2.std.node.Atom { identity: discriminant(v: kind) }
     },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -3371,14 +3371,14 @@ fn target_value_expression_symbol_identity(identity: v2.std.node.Symbol) -> Targ
   TargetValueExpression {
     kind: TargetValueExprSymbolIdentity,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_symbol_identity_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_symbol_identity_atom }
       },
       children: [
         target_model_named_edge(
           name: ^target_value_expression_field_identity,
           target: v2.std.node.Node {
-            kind: TypeNode { connective: Atom { identity: identity } },
+            kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
             children: [],
             occurrence_id: SyntheticOccurrence
 }
@@ -3393,14 +3393,14 @@ fn target_value_expression_symbol_to_owned_string(identity: v2.std.node.Symbol) 
   TargetValueExpression {
     kind: TargetValueExprSymbolToOwnedString,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_symbol_to_owned_string_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_symbol_to_owned_string_atom }
       },
       children: [
         target_model_named_edge(
           name: ^target_value_expression_field_identity,
           target: v2.std.node.Node {
-            kind: TypeNode { connective: Atom { identity: identity } },
+            kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
             children: [],
             occurrence_id: SyntheticOccurrence
 }
@@ -3415,8 +3415,8 @@ fn target_value_expression_bool_literal(value: Bool) -> TargetValueExpression {
   TargetValueExpression {
     kind: TargetValueExprBoolLiteral,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_bool_literal_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_bool_literal_atom }
       },
       children: [
         target_model_named_edge(
@@ -3433,14 +3433,14 @@ fn target_value_expression_char_unicode_scalar(codepoint: std.types.Char) -> Tar
   TargetValueExpression {
     kind: TargetValueExprCharUnicodeScalar,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_char_unicode_scalar_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_char_unicode_scalar_atom }
       },
       children: [
         target_model_named_edge(
           name: ^target_value_expression_field_codepoint,
           target: v2.std.node.Node {
-            kind: TypeNode { connective: Atom { identity: codepoint } },
+            kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: codepoint } },
             children: [],
             occurrence_id: SyntheticOccurrence
 }
@@ -3455,8 +3455,8 @@ fn target_value_expression_string_literal(value: Node) -> TargetValueExpression 
   TargetValueExpression {
     kind: TargetValueExprStringLiteral,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_string_literal_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_string_literal_atom }
       },
       children: [
         target_model_named_edge(
@@ -3473,8 +3473,8 @@ fn target_value_expression_binding_ref(binding: v2.std.node.Symbol) -> TargetVal
   TargetValueExpression {
     kind: TargetValueExprBindingRef,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_binding_ref_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_binding_ref_atom }
       },
       children: [
         target_model_named_edge(
@@ -3494,7 +3494,7 @@ fn target_value_expr_primitive_apply_operand_edges(
     xs: operands,
     empty: Empty,
     snoc: fn(acc, operand) {
-      Cons {
+      std.algebra.Cons {
         head: target_model_named_edge(
           name: ^target_value_expr_field_operand,
           target: target_value_expression_node(expr: operand)
@@ -3509,7 +3509,7 @@ fn target_value_expr_operand_wire_malformed_diagnostic(wire: Node) -> v2.std.dia
   v2.std.diagnostic.Diagnostic {
     reason: ^target_value_expr_operand_wire_malformed,
     at: node_locus(node: wire),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -3696,8 +3696,8 @@ fn target_value_expression_primitive_apply(
   TargetValueExpression {
     kind: TargetValueExprPrimitiveApply,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_primitive_apply_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_primitive_apply_atom }
       },
       children: list_append(
         left: [
@@ -3720,8 +3720,8 @@ fn target_value_expression_effect_apply(
   TargetValueExpression {
     kind: TargetValueExprEffectApply,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_effect_apply_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_effect_apply_atom }
       },
       children: list_append(
         left: [
@@ -3905,9 +3905,9 @@ fn target_value_expression_effect_apply_to_concrete_tokens(
               outcome_accepted(
                 list_append(
                   left: list_append(
-                    left: Cons {
+                    left: std.algebra.Cons {
                       head: FixedToken { token_class: callee },
-                      tail: Cons {
+                      tail: std.algebra.Cons {
                         head: FixedToken { token_class: projection.effect_apply_form.open },
                         tail: Empty
                       }
@@ -3918,7 +3918,7 @@ fn target_value_expression_effect_apply_to_concrete_tokens(
                       separator: projection.effect_apply_form.separator
                     )
                   ),
-                  right: Cons {
+                  right: std.algebra.Cons {
                     head: FixedToken { token_class: projection.effect_apply_form.close },
                     tail: Empty
                   }
@@ -3940,8 +3940,8 @@ fn target_value_expression_conditional(
   TargetValueExpression {
     kind: TargetValueExprConditional,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_conditional_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_conditional_atom }
       },
       children: [
         target_model_named_edge(
@@ -3970,8 +3970,8 @@ fn target_value_expression_bind_let(
   TargetValueExpression {
     kind: TargetValueExprBindLet,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_bind_let_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_bind_let_atom }
       },
       children: [
         target_model_named_edge(
@@ -3996,8 +3996,8 @@ fn target_value_expression_loop(body: TargetValueExpression) -> TargetValueExpre
   TargetValueExpression {
     kind: TargetValueExprLoop,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_loop_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_loop_atom }
       },
       children: [
         target_model_named_edge(
@@ -4031,15 +4031,15 @@ fn target_value_expression_record_construct(
   TargetValueExpression {
     kind: TargetValueExprRecordConstruct,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_record_construct_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_record_construct_atom }
       },
       children: list_append(
         left: [
           target_model_named_edge(
             name: ^target_value_expr_field_record_type,
             target: v2.std.node.Node {
-              kind: TypeNode { connective: Atom { identity: type_name } },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: type_name } },
               children: [],
               occurrence_id: SyntheticOccurrence
             }
@@ -4059,8 +4059,8 @@ fn target_value_expression_field_access(
   TargetValueExpression {
     kind: TargetValueExprFieldAccess,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_field_access_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_field_access_atom }
       },
       children: [
         target_model_named_edge(
@@ -4070,7 +4070,7 @@ fn target_value_expression_field_access(
         target_model_named_edge(
           name: ^target_value_expr_field_field_access_field,
           target: v2.std.node.Node {
-            kind: TypeNode { connective: Atom { identity: field_name } },
+            kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: field_name } },
             children: [],
             occurrence_id: SyntheticOccurrence
           }
@@ -4122,7 +4122,7 @@ fn target_value_expr_match_arm_edges_after_scrutinee(children: List<v2.std.node.
 
 fn target_value_expr_match_arm_wire(arm: TargetValueExprMatchArmSlot) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       target_model_named_edge(name: match_arm_pattern, target: arm.pattern.node),
       target_model_named_edge(name: match_arm_body, target: arm.body.node)
@@ -4144,8 +4144,8 @@ fn target_value_expression_match(
   TargetValueExpression {
     kind: TargetValueExprMatch,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_match_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_match_atom }
       },
       children: list_append(
         left: [
@@ -4168,7 +4168,7 @@ fn target_value_expr_callable_arg_edges(
     xs: args,
     empty: Empty,
     snoc: fn(acc, arg) {
-      Cons {
+      std.algebra.Cons {
         head: target_model_named_edge(
           name: ^target_value_expr_field_callable_arg,
           target: target_value_expression_node(expr: arg)
@@ -4186,8 +4186,8 @@ fn target_value_expression_callable_apply(
   TargetValueExpression {
     kind: TargetValueExprCallableApply,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_callable_apply_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_callable_apply_atom }
       },
       children: list_append(
         left: [
@@ -4208,7 +4208,7 @@ fn target_value_expr_closure_param_edges(params: List<v2.std.node.Symbol>) -> Li
     xs: params,
     empty: Empty,
     snoc: fn(acc, param) {
-      Cons {
+      std.algebra.Cons {
         head: target_model_named_edge(
           name: ^target_value_expr_field_closure_param,
           target: target_model_type_atom_node(identity: param)
@@ -4226,8 +4226,8 @@ fn target_value_expression_closure(
   TargetValueExpression {
     kind: TargetValueExprClosure,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ^target_value_expression_closure_atom }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ^target_value_expression_closure_atom }
       },
       children: list_append(
         left: target_value_expr_closure_param_edges(params: params),
@@ -4247,7 +4247,7 @@ fn target_value_expression_emit_unsupported_kind_diagnostic(expr: TargetValueExp
   v2.std.diagnostic.Diagnostic {
     reason: ^target_value_expression_emit_unsupported_kind,
     at: node_locus(node: expr.node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -4255,7 +4255,7 @@ fn target_value_expression_emit_operator_shape_unsupported_diagnostic(expr: Targ
   v2.std.diagnostic.Diagnostic {
     reason: ^target_value_expression_emit_operator_shape_unsupported,
     at: node_locus(node: expr.node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -4263,7 +4263,7 @@ fn target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: T
   v2.std.diagnostic.Diagnostic {
     reason: ^target_value_expression_emit_primitive_apply_arity_invalid,
     at: node_locus(node: expr.node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -4271,7 +4271,7 @@ fn target_operator_realization_catalog_miss_diagnostic(catalog: Node) -> v2.std.
   v2.std.diagnostic.Diagnostic {
     reason: ^target_operator_realization_catalog_miss,
     at: node_locus(node: catalog),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -4279,7 +4279,7 @@ fn target_operator_realization_catalog_ambiguous_diagnostic(catalog: Node) -> v2
   v2.std.diagnostic.Diagnostic {
     reason: ^target_operator_realization_catalog_ambiguous,
     at: node_locus(node: catalog),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -4339,7 +4339,7 @@ fn target_operator_realization_catalog_lookup_step(
         canonical_op: canonical_op
       ) {
         match acc {
-          NoPassingCandidate => OnePassingCandidate { candidate: row_node }
+          NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row_node }
           OnePassingCandidate { candidate: _ } => ManyPassingCandidates
           ManyPassingCandidates => ManyPassingCandidates
         }
@@ -4454,11 +4454,11 @@ fn target_value_expression_binding_refs_intersperse_separator(
         projection: projection
       )
       match acc {
-        Empty => Cons { head: token, tail: Empty }
+        Empty => std.algebra.Cons { head: token, tail: Empty }
         _ =>
-          Cons {
+          std.algebra.Cons {
             head: token,
-            tail: Cons {
+            tail: std.algebra.Cons {
               head: FixedToken { token_class: separator },
               tail: acc
             }
@@ -4494,14 +4494,14 @@ fn target_operator_shape_emit_primitive_apply_tokens(
                 )
               Present { value: right_binding } =>
                 outcome_accepted(
-                  Cons {
+                  std.algebra.Cons {
                     head: target_value_expression_binding_ref_token(
                       binding: left_binding,
                       projection: projection
                     ),
-                    tail: Cons {
+                    tail: std.algebra.Cons {
                       head: FixedToken { token_class: op_token },
-                      tail: Cons {
+                      tail: std.algebra.Cons {
                         head: target_value_expression_binding_ref_token(
                           binding: right_binding,
                           projection: projection
@@ -4527,9 +4527,9 @@ fn target_operator_shape_emit_primitive_apply_tokens(
             )
           Present { value: binding } =>
             outcome_accepted(
-              Cons {
+              std.algebra.Cons {
                 head: FixedToken { token_class: op_token },
-                tail: Cons {
+                tail: std.algebra.Cons {
                   head: target_value_expression_binding_ref_token(
                     binding: binding,
                     projection: projection
@@ -4544,9 +4544,9 @@ fn target_operator_shape_emit_primitive_apply_tokens(
       outcome_accepted(
         list_append(
           left: list_append(
-            left: Cons {
+            left: std.algebra.Cons {
               head: FixedToken { token_class: projection.primitive_apply_form.open },
-              tail: Cons {
+              tail: std.algebra.Cons {
                 head: FixedToken { token_class: callee },
                 tail: Empty
               }
@@ -4557,7 +4557,7 @@ fn target_operator_shape_emit_primitive_apply_tokens(
               separator: projection.primitive_apply_form.separator
             )
           ),
-          right: Cons {
+          right: std.algebra.Cons {
             head: FixedToken { token_class: projection.primitive_apply_form.close },
             tail: Empty
           }
@@ -4614,7 +4614,7 @@ fn target_value_expression_binding_ref_to_concrete_tokens(
     o: target_value_expr_binding_ref_binding_from_wire(wire: expr.node),
     f: fn(binding) {
       outcome_accepted(
-        Cons {
+        std.algebra.Cons {
           head: target_value_expression_binding_ref_token(
             binding: binding,
             projection: projection
@@ -5087,7 +5087,7 @@ fn statement_sequenced_block_construct_unwired_diagnostic(wire: Node) -> v2.std.
   v2.std.diagnostic.Diagnostic {
     reason: ^statement_sequenced_block_construct_unwired,
     at: node_locus(node: wire),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -5147,7 +5147,7 @@ fn target_value_expression_loop_to_concrete_tokens_inner(
             f: fn(body_tokens) {
               outcome_accepted(
                 list_append(
-                  left: Cons {
+                  left: std.algebra.Cons {
                     head: FixedToken {
                       token_class: projection.loop_form.loop_token
                     },
@@ -5311,14 +5311,14 @@ fn target_value_expr_record_construct_field_tokens(
             f: fn(value_tokens) {
               let field_chunk = list_append(
                 left: list_append(
-                  left: Cons {
+                  left: std.algebra.Cons {
                     head: target_value_expression_binding_ref_token(
                       binding: slot.label,
                       projection: projection
                     ),
                     tail: Empty
                   },
-                  right: Cons {
+                  right: std.algebra.Cons {
                     head: FixedToken {
                       token_class: projection.record_construct_form.assign
                     },
@@ -5334,7 +5334,7 @@ fn target_value_expr_record_construct_field_tokens(
                   list_append(
                     left: list_append(
                       left: prior_tokens,
-                      right: Cons {
+                      right: std.algebra.Cons {
                         head: FixedToken {
                           token_class: projection.record_construct_form.separator
                         },
@@ -5377,7 +5377,7 @@ fn target_value_expression_record_construct_to_concrete_tokens(
                 ),
                 f: fn(field_tokens) {
                   let type_name_prefix_tokens = match projection.record_construct_form.record_literal_names_type {
-                    Prepend => Cons {
+                    Prepend => std.algebra.Cons {
                       head: target_value_expression_binding_ref_token(
                         binding: type_name,
                         projection: projection
@@ -5391,7 +5391,7 @@ fn target_value_expression_record_construct_to_concrete_tokens(
                       left: list_append(
                         left: list_append(
                           left: type_name_prefix_tokens,
-                          right: Cons {
+                          right: std.algebra.Cons {
                             head: FixedToken {
                               token_class: projection.record_construct_form.open
                             },
@@ -5400,7 +5400,7 @@ fn target_value_expression_record_construct_to_concrete_tokens(
                         ),
                         right: field_tokens
                       ),
-                      right: Cons {
+                      right: std.algebra.Cons {
                         head: FixedToken {
                           token_class: projection.record_construct_form.close
                         },
@@ -5422,7 +5422,7 @@ fn target_import_empty_names_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^target_import_names_empty,
     at: port_locus(port: ^target_import_names_empty),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -5430,7 +5430,7 @@ fn target_import_empty_path_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^target_import_path_empty,
     at: port_locus(port: ^target_import_path_empty),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -5444,13 +5444,13 @@ fn target_import_bound_tokens_intersperse(
     init: Empty,
     f: fn(acc, binding) {
       if is_empty(xs: acc) {
-        Cons { head: BoundToken { token_class: ident_token, binding: binding }, tail: Empty }
+        std.algebra.Cons { head: BoundToken { token_class: ident_token, binding: binding }, tail: Empty }
       } else {
         list_append(
           left: acc,
-          right: Cons {
+          right: std.algebra.Cons {
             head: FixedToken { token_class: separator },
-            tail: Cons {
+            tail: std.algebra.Cons {
               head: BoundToken { token_class: ident_token, binding: binding },
               tail: Empty
             }
@@ -5486,9 +5486,9 @@ fn target_import_to_concrete_tokens(
       } else {
         outcome_accepted(
           list_append(
-            left: Cons {
+            left: std.algebra.Cons {
               head: FixedToken { token_class: import_token },
-              tail: Cons { head: FixedToken { token_class: names_open }, tail: Empty }
+              tail: std.algebra.Cons { head: FixedToken { token_class: names_open }, tail: Empty }
             },
             right: list_append(
               left: target_import_bound_tokens_intersperse(
@@ -5497,11 +5497,11 @@ fn target_import_to_concrete_tokens(
                 separator: names_separator
               ),
               right: list_append(
-                left: Cons {
+                left: std.algebra.Cons {
                   head: FixedToken { token_class: names_close },
-                  tail: Cons {
+                  tail: std.algebra.Cons {
                     head: FixedToken { token_class: from_token },
-                    tail: Cons { head: FixedToken { token_class: path_open }, tail: Empty }
+                    tail: std.algebra.Cons { head: FixedToken { token_class: path_open }, tail: Empty }
                   }
                 },
                 right: list_append(
@@ -5510,9 +5510,9 @@ fn target_import_to_concrete_tokens(
                     ident_token: path_segment_token,
                     separator: path_segment_separator
                   ),
-                  right: Cons {
+                  right: std.algebra.Cons {
                     head: FixedToken { token_class: path_close },
-                    tail: Cons { head: FixedToken { token_class: terminator }, tail: Empty }
+                    tail: std.algebra.Cons { head: FixedToken { token_class: terminator }, tail: Empty }
                   }
                 )
               )
@@ -5527,7 +5527,7 @@ fn import_qualified_name_symbols(qn: v2.std.qualified_name.QualifiedName) -> Lis
   match qn {
     Empty => Empty
     Cons { head: h, tail: t } =>
-      Cons { head: h, tail: import_qualified_name_symbols(qn: t) }
+      std.algebra.Cons { head: h, tail: import_qualified_name_symbols(qn: t) }
   }
 }
 
@@ -5543,7 +5543,7 @@ fn import_name_symbols_from_block(block: Node) -> Outcome<List<v2.std.node.Symbo
             o: target_node_atom_identity(node: nd),
             f: fn(sym) {
               outcome_accepted(
-                value: list_append(left: syms, right: Cons { head: sym, tail: Empty })
+                value: list_append(left: syms, right: std.algebra.Cons { head: sym, tail: Empty })
               )
             }
           )
@@ -5857,14 +5857,14 @@ fn target_value_expression_field_access_to_concrete_tokens(
                     list_append(
                       left: list_append(
                         left: base_tokens,
-                        right: Cons {
+                        right: std.algebra.Cons {
                           head: FixedToken {
                             token_class: projection.field_access_form.dot
                           },
                           tail: Empty
                         }
                       ),
-                      right: Cons {
+                      right: std.algebra.Cons {
                         head: target_value_expression_binding_ref_token(
                           binding: field_name,
                           projection: projection
@@ -6269,7 +6269,7 @@ fn target_value_expr_bool_literal_octet_body_tokens(
       match target_value_expression_bool_literal_value_from_wire(wire: expr.node) {
         Present { value: false } =>
           outcome_accepted(
-            Cons {
+            std.algebra.Cons {
               head: target_value_expression_binding_ref_token(
                 binding: ^dag_binding_octet_zero,
                 projection: projection
@@ -6279,7 +6279,7 @@ fn target_value_expr_bool_literal_octet_body_tokens(
           )
         Present { value: true } =>
           outcome_accepted(
-            Cons {
+            std.algebra.Cons {
               head: target_value_expression_binding_ref_token(
                 binding: ^dag_binding_octet_one,
                 projection: projection
@@ -6322,12 +6322,12 @@ fn target_value_expr_int_bool_octet_scrutinee_carrier_tokens(
             concrete_syntax_tokens_extend(
               acc: concrete_syntax_tokens_extend(
                 acc: scrutinee_tokens,
-                more: Cons {
+                more: std.algebra.Cons {
                   head: FixedToken { token_class: ne_token },
                   tail: Empty
                 }
               ),
-              more: Cons {
+              more: std.algebra.Cons {
                 head: target_value_expression_binding_ref_token(
                   binding: ^dag_binding_octet_zero,
                   projection: projection
@@ -6543,7 +6543,7 @@ fn target_value_expression_bool_literal_to_concrete_tokens(
       match target_value_expression_bool_literal_value_from_wire(wire: expr.node) {
         Present { value: true } =>
           outcome_accepted(
-            Cons {
+            std.algebra.Cons {
               head: FixedToken {
                 token_class: projection.bool_literal_form.true_token
               },
@@ -6552,7 +6552,7 @@ fn target_value_expression_bool_literal_to_concrete_tokens(
           )
         Present { value: false } =>
           outcome_accepted(
-            Cons {
+            std.algebra.Cons {
               head: FixedToken {
                 token_class: projection.bool_literal_form.false_token
               },
@@ -6581,7 +6581,7 @@ fn target_value_expression_symbol_identity_to_concrete_tokens(
       match target_value_expr_binding_ref_for_literal_atom(id: token_class) {
         Present { value: binding } =>
           outcome_accepted(
-            Cons {
+            std.algebra.Cons {
               head: target_value_expression_binding_ref_token(
                 binding: binding,
                 projection: projection
@@ -6591,7 +6591,7 @@ fn target_value_expression_symbol_identity_to_concrete_tokens(
           )
         Absent =>
           outcome_accepted(
-            Cons {
+            std.algebra.Cons {
               head: FixedToken { token_class: token_class },
               tail: Empty
             }
@@ -6802,7 +6802,7 @@ fn target_value_expr_tokenize_intersperse(
                     list_append(
                       left: list_append(
                         left: toks,
-                        right: Cons {
+                        right: std.algebra.Cons {
                           head: FixedToken { token_class: separator },
                           tail: Empty
                         }
@@ -6840,12 +6840,12 @@ fn target_value_expression_callable_apply_to_concrete_tokens(
               outcome_accepted(
                 list_append(
                   left: list_append(
-                    left: Cons {
+                    left: std.algebra.Cons {
                       head: BoundToken {
                         token_class: projection.callable_apply_form.callee_ident_token,
                         binding: callee
                       },
-                      tail: Cons {
+                      tail: std.algebra.Cons {
                         head: FixedToken {
                           token_class: projection.callable_apply_form.open
                         },
@@ -6854,7 +6854,7 @@ fn target_value_expression_callable_apply_to_concrete_tokens(
                     },
                     right: arg_tokens
                   ),
-                  right: Cons {
+                  right: std.algebra.Cons {
                     head: FixedToken {
                       token_class: projection.callable_apply_form.close
                     },
@@ -6924,11 +6924,11 @@ fn target_value_expr_closure_param_tokens(
     snoc: fn(acc, p) {
       let token = BoundToken { token_class: ident_token, binding: p }
       match acc {
-        Empty => Cons { head: token, tail: Empty }
+        Empty => std.algebra.Cons { head: token, tail: Empty }
         _ =>
-          Cons {
+          std.algebra.Cons {
             head: token,
-            tail: Cons {
+            tail: std.algebra.Cons {
               head: FixedToken { token_class: separator },
               tail: acc
             }
@@ -6980,11 +6980,11 @@ fn target_value_expression_closure_to_concrete_tokens_inner(
                 list_append(
                   left: list_append(
                     left: list_append(
-                      left: Cons {
+                      left: std.algebra.Cons {
                         head: FixedToken {
                           token_class: projection.closure_form.fn_token
                         },
-                        tail: Cons {
+                        tail: std.algebra.Cons {
                           head: FixedToken {
                             token_class: projection.closure_form.open
                           },
@@ -6997,11 +6997,11 @@ fn target_value_expression_closure_to_concrete_tokens_inner(
                           ident_token: projection.closure_form.param_ident_token,
                           separator: projection.closure_form.separator
                         ),
-                        right: Cons {
+                        right: std.algebra.Cons {
                           head: FixedToken {
                             token_class: projection.closure_form.close
                           },
-                          tail: Cons {
+                          tail: std.algebra.Cons {
                             head: FixedToken {
                               token_class: projection.closure_form.body_open
                             },
@@ -7012,7 +7012,7 @@ fn target_value_expression_closure_to_concrete_tokens_inner(
                     ),
                     right: body_tokens
                   ),
-                  right: Cons {
+                  right: std.algebra.Cons {
                     head: FixedToken {
                       token_class: projection.closure_form.body_close
                     },
@@ -7392,7 +7392,7 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               xs: projection.effect_apply_form.callees,
               empty: Empty,
               cons: fn(acc, row) {
-                Cons {
+                std.algebra.Cons {
                   head: target_model_named_edge(
                     name: ^target_value_expr_effect_callee_row_edge,
                     target: target_value_expr_effect_callee_row_node(row: row)
@@ -7715,7 +7715,7 @@ fn target_value_template_mismatch_diagnostic(source_carrier: Node) -> v2.std.dia
   v2.std.diagnostic.Diagnostic {
     reason: ^target_value_template_mismatch,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -7726,7 +7726,7 @@ fn target_atom_realization_lookup_step(
 ) -> PassingCandidateFold<Node> {
   if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
     match acc {
-      NoPassingCandidate => OnePassingCandidate { candidate: row.source_carrier }
+      NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row.source_carrier }
       OnePassingCandidate { candidate: _ } => ManyPassingCandidates
       ManyPassingCandidates => ManyPassingCandidates
     }
@@ -7799,7 +7799,7 @@ fn target_atom_realization_lookup_miss_diagnostic(source_carrier: Node) -> v2.st
   v2.std.diagnostic.Diagnostic {
     reason: ^target_atom_realization_lookup_miss,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -7807,7 +7807,7 @@ fn target_atom_realization_lookup_ambiguous_diagnostic(source_carrier: Node) -> 
   v2.std.diagnostic.Diagnostic {
     reason: ^target_atom_realization_lookup_ambiguous,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -7826,16 +7826,16 @@ fn target_value_expression_bool_atom(value: Bool) -> Node {
   match value {
     true =>
       v2.std.node.Node {
-        kind: TypeNode {
-          connective: Atom { identity: ^target_value_expression_bool_true }
+        kind: v2.std.node.TypeNode {
+          connective: v2.std.node.Atom { identity: ^target_value_expression_bool_true }
         },
         children: [],
         occurrence_id: SyntheticOccurrence
 }
     false =>
       v2.std.node.Node {
-        kind: TypeNode {
-          connective: Atom { identity: ^target_value_expression_bool_false }
+        kind: v2.std.node.TypeNode {
+          connective: v2.std.node.Atom { identity: ^target_value_expression_bool_false }
         },
         children: [],
         occurrence_id: SyntheticOccurrence
@@ -7855,8 +7855,8 @@ fn target_constructor_template_node(form: Optional<TargetConstructorTemplate>) -
   match form {
     Absent =>
       v2.std.node.Node {
-        kind: TypeNode {
-          connective: Atom { identity: ^target_constructor_template_optional_absent }
+        kind: v2.std.node.TypeNode {
+          connective: v2.std.node.Atom { identity: ^target_constructor_template_optional_absent }
         },
         children: [],
         occurrence_id: SyntheticOccurrence
@@ -7865,8 +7865,8 @@ fn target_constructor_template_node(form: Optional<TargetConstructorTemplate>) -
       match template {
         CtorTemplateUnit {} =>
           v2.std.node.Node {
-            kind: TypeNode {
-              connective: Atom { identity: ^target_constructor_template_constructor_absent }
+            kind: v2.std.node.TypeNode {
+              connective: v2.std.node.Atom { identity: ^target_constructor_template_constructor_absent }
             },
             children: [],
             occurrence_id: SyntheticOccurrence
@@ -7879,7 +7879,7 @@ fn target_constructor_template_decode_invalid_diagnostic(source_carrier: Node) -
   v2.std.diagnostic.Diagnostic {
     reason: ^target_constructor_template_decode_invalid,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -7922,7 +7922,7 @@ fn target_model_bundle_core(host: TargetModel) -> Node {
   match host.bundle.kind {
     TypeNode { connective: Conj } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: fold_list(
           xs: host.bundle.children,
           empty: Empty,
@@ -7943,7 +7943,7 @@ fn target_atom_realization_bundle_matches_host(row_bundle: Node, host: TargetMod
 
 fn target_atom_realization_to_node(row: TargetAtomRealization, host_bundle: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       target_model_named_edge(
         name: ^target_atom_realization_field_source_carrier,
@@ -7968,7 +7968,7 @@ fn target_atom_realization_to_node(row: TargetAtomRealization, host_bundle: Node
       target_model_named_edge(
         name: ^target_atom_realization_field_display_name,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: row.display_name } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: row.display_name } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }
@@ -8004,7 +8004,7 @@ fn target_atom_realization_catalog_node(
   host_bundle: Node
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: fold_list(
       xs: rows,
       empty: Empty,
@@ -8026,7 +8026,7 @@ fn target_atom_realization_target_model_bundle_mismatch_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: ^target_atom_realization_target_model_bundle_mismatch,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -8036,7 +8036,7 @@ fn target_atom_realization_catalog_row_decode_invalid_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: ^target_atom_realization_catalog_row_decode_invalid,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -8053,7 +8053,7 @@ fn target_atom_realization_catalog_lookup_step(
     Accepted { value: row, diagnostics: _ } =>
       if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
         match acc {
-          NoPassingCandidate => OnePassingCandidate { candidate: row_node }
+          NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row_node }
           OnePassingCandidate { candidate: _ } => ManyPassingCandidates
           ManyPassingCandidates => ManyPassingCandidates
         }
@@ -8068,7 +8068,7 @@ fn target_value_template_decode_invalid_diagnostic(source_carrier: Node) -> v2.s
   v2.std.diagnostic.Diagnostic {
     reason: ^target_value_template_decode_invalid,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -8076,7 +8076,7 @@ fn target_type_expression_decode_invalid_diagnostic(source_carrier: Node) -> v2.
   v2.std.diagnostic.Diagnostic {
     reason: ^target_type_expression_decode_invalid,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -8086,7 +8086,7 @@ fn target_atom_realization_display_name_decode_invalid_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: ^target_atom_realization_display_name_decode_invalid,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -8316,8 +8316,8 @@ type TargetFunctionSignatureRealization {
 
 fn target_function_boundary_site_to_node(site: FunctionBoundarySite) -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
-      connective: Atom { identity: discriminant(v: site) }
+    kind: v2.std.node.TypeNode {
+      connective: v2.std.node.Atom { identity: discriminant(v: site) }
     },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -8332,7 +8332,7 @@ fn target_function_signature_realization_lookup_miss_diagnostic(source_carrier: 
   v2.std.diagnostic.Diagnostic {
     reason: ^target_function_signature_realization_lookup_miss,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -8340,7 +8340,7 @@ fn target_function_signature_realization_lookup_ambiguous_diagnostic(source_carr
   v2.std.diagnostic.Diagnostic {
     reason: ^target_function_signature_realization_lookup_ambiguous,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -8348,7 +8348,7 @@ fn target_function_signature_realization_row_decode_invalid_diagnostic(source_ca
   v2.std.diagnostic.Diagnostic {
     reason: ^target_function_signature_realization_row_decode_invalid,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -8356,7 +8356,7 @@ fn target_function_signature_realization_target_model_bundle_mismatch_diagnostic
   v2.std.diagnostic.Diagnostic {
     reason: ^target_function_signature_realization_target_model_bundle_mismatch,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -8364,7 +8364,7 @@ fn target_function_boundary_site_decode_invalid_diagnostic(source_carrier: Node)
   v2.std.diagnostic.Diagnostic {
     reason: ^target_function_boundary_site_decode_invalid,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -8400,7 +8400,7 @@ fn target_function_signature_realization_to_node(
   row: TargetFunctionSignatureRealization
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       target_model_named_edge(
         name: ^target_function_signature_realization_field_source_carrier,
@@ -8446,7 +8446,7 @@ fn target_function_signature_realization_catalog_node(
   rows: List<TargetFunctionSignatureRealization>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: fold_list(
       xs: rows,
       empty: Empty,
@@ -8687,7 +8687,7 @@ fn target_type_expr_surface_edge(surface: v2.std.node.Symbol) -> v2.std.node.Edg
   v2.std.node.Edge {
     label: Named { name: ^target_type_expr_field_surface },
     target: v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: surface } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: surface } },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
@@ -8790,8 +8790,8 @@ fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> v2.std.node.Edge {
   v2.std.node.Edge {
     label: Named { name: ^target_type_expr_field_kind },
     target: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: discriminant(v: kind) }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: discriminant(v: kind) }
       },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -8818,7 +8818,7 @@ fn target_type_expr_wrapped_emitted(
   children: List<Node>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_snoc_item(
       xs: list_snoc_item(
         xs: target_type_expr_positional_edges(children: children),
@@ -8836,7 +8836,7 @@ fn target_type_expr_atom_emitted(form: TargetAtomTypeShape, identity: v2.std.nod
     surface: form.surface,
     children: [
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: identity } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
         children: [],
         occurrence_id: SyntheticOccurrence
 }
@@ -8860,13 +8860,13 @@ fn target_type_expr_wrapped_emitted_labeled(
   slot_edges: List<v2.std.node.Edge>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: list_append(
         left: slot_edges,
-        right: Cons { head: target_type_expr_surface_edge(surface: surface), tail: Empty }
+        right: std.algebra.Cons { head: target_type_expr_surface_edge(surface: surface), tail: Empty }
       ),
-      right: Cons { head: target_type_expr_kind_edge(kind: kind), tail: Empty }
+      right: std.algebra.Cons { head: target_type_expr_kind_edge(kind: kind), tail: Empty }
     ),
     occurrence_id: SyntheticOccurrence
 }
@@ -8881,7 +8881,7 @@ fn target_type_expr_instantiation_emitted(
     kind: TargetTypeExprInstantiation,
     surface: form.surface,
     children: list_append(
-      left: Cons { head: head, tail: Empty },
+      left: std.algebra.Cons { head: head, tail: Empty },
       right: args
     )
   )
@@ -8896,7 +8896,7 @@ fn target_type_expr_cardinality_emitted(
     kind: TargetTypeExprCardinality,
     surface: form.surface,
     children: list_append(
-      left: Cons { head: head, tail: Empty },
+      left: std.algebra.Cons { head: head, tail: Empty },
       right: args
     )
   )
@@ -8947,7 +8947,7 @@ fn target_type_expr_emitted_shape_malformed_diagnostic(node: Node) -> v2.std.dia
   v2.std.diagnostic.Diagnostic {
     reason: ^target_type_expr_emitted_shape_malformed,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -9277,7 +9277,7 @@ fn target_type_expr_arrow_emitted(
   target_type_expr_wrapped_emitted(
     kind: TargetTypeExprArrow,
     surface: form.surface,
-    children: list_append(left: inputs, right: Cons { head: output, tail: Empty })
+    children: list_append(left: inputs, right: std.algebra.Cons { head: output, tail: Empty })
   )
 }
 
@@ -9291,7 +9291,7 @@ fn target_type_expr_arrow_emitted_named(
     surface: form.surface,
     slot_edges: list_append(
       left: target_type_expr_arrow_param_slot_edges(params: params),
-      right: Cons {
+      right: std.algebra.Cons {
         head: v2.std.node.Edge {
           label: Named { name: ^target_type_expr_field_codomain },
           target: output
@@ -9513,7 +9513,7 @@ fn target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic
   v2.std.diagnostic.Diagnostic {
     reason: ^target_derive_supplemental_generic_bound_contract_choice_malformed,
     at: node_locus(node: at),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -10141,7 +10141,7 @@ fn target_derive_supplemental_generic_bound_contract_lookup_miss_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: ^target_derive_supplemental_generic_bound_contract_lookup_miss,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -10173,7 +10173,7 @@ fn target_collection_set_no_representation_diagnostic() -> v2.std.diagnostic.Dia
   v2.std.diagnostic.Diagnostic {
     reason: ^target_collection_set_no_representation,
     at: port_locus(port: ^target_collection_set_no_representation_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -10181,7 +10181,7 @@ fn target_collection_free_monoid_no_representation_diagnostic() -> v2.std.diagno
   v2.std.diagnostic.Diagnostic {
     reason: ^target_collection_free_monoid_no_representation,
     at: port_locus(port: ^target_collection_free_monoid_no_representation_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -10189,7 +10189,7 @@ fn target_collection_realization_lookup_miss_diagnostic(source_carrier: Node) ->
   v2.std.diagnostic.Diagnostic {
     reason: ^target_collection_realization_lookup_miss,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -10197,7 +10197,7 @@ fn target_collection_realization_lookup_ambiguous_diagnostic(source_carrier: Nod
   v2.std.diagnostic.Diagnostic {
     reason: ^target_collection_realization_lookup_ambiguous,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -10247,7 +10247,7 @@ fn target_collection_realization_lookup_in_catalog(
 
 fn target_collection_set_carrier_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^target_collection_set_carrier } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^target_collection_set_carrier } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -10552,7 +10552,7 @@ type WrapDecisionGate
 
 fn target_carrier_type_node(identity: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -10648,7 +10648,7 @@ fn target_use_site_ownership_lookup_miss_diagnostic(source_carrier: Node) -> v2.
   v2.std.diagnostic.Diagnostic {
     reason: ^target_use_site_ownership_lookup_miss,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -10656,7 +10656,7 @@ fn target_use_site_ownership_lookup_ambiguous_diagnostic(source_carrier: Node) -
   v2.std.diagnostic.Diagnostic {
     reason: ^target_use_site_ownership_lookup_ambiguous,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -10666,7 +10666,7 @@ fn target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: ^target_use_site_ownership_catalog_row_decode_invalid,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -11005,7 +11005,7 @@ fn wrap_decision_lookup_in_catalog_node(
 
 fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipRealization) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       target_model_named_edge(
         name: ^target_use_site_ownership_field_source_carrier,
@@ -11014,8 +11014,8 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
       target_model_named_edge(
         name: ^target_use_site_ownership_field_source_projection,
         target: v2.std.node.Node {
-          kind: TypeNode {
-            connective: Atom {
+          kind: v2.std.node.TypeNode {
+            connective: v2.std.node.Atom {
               identity: discriminant(v: row.source_projection)
             }
           },
@@ -11026,8 +11026,8 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
       target_model_named_edge(
         name: ^target_use_site_ownership_field_use_site,
         target: v2.std.node.Node {
-          kind: TypeNode {
-            connective: Atom { identity: discriminant(v: row.use_site) }
+          kind: v2.std.node.TypeNode {
+            connective: v2.std.node.Atom { identity: discriminant(v: row.use_site) }
           },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -11036,8 +11036,8 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
       target_model_named_edge(
         name: ^target_use_site_ownership_field_reference_layer,
         target: v2.std.node.Node {
-          kind: TypeNode {
-            connective: Atom { identity: discriminant(v: row.reference_layer) }
+          kind: v2.std.node.TypeNode {
+            connective: v2.std.node.Atom { identity: discriminant(v: row.reference_layer) }
           },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -11066,7 +11066,7 @@ fn target_use_site_ownership_catalog_node(
   rows: List<TargetUseSiteOwnershipRealization>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: fold_list(
       xs: rows,
       empty: Empty,
@@ -11092,7 +11092,7 @@ fn target_use_site_ownership_catalog_append_derived_rows(
   match catalog.kind {
     TypeNode { connective: Conj } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: fold_list(
           xs: derived_rows,
           empty: catalog.children,
@@ -11117,7 +11117,7 @@ fn target_model_bundle_replace_edge_target(
   match bundle.kind {
     TypeNode { connective: Conj } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: fold(
           bundle.children,
           init: Empty,
@@ -11314,14 +11314,14 @@ fn target_model_augment_value_semantics_carriers(
 }
 
 fn target_value_semantics_carrier_atom_node(id: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: id } }, children: Empty,
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } }, children: Empty,
  occurrence_id: SyntheticOccurrence
 }
 }
 
 fn target_value_semantics_carriers_node(atoms: List<v2.std.node.Symbol>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: fold_list(
       xs: atoms,
       empty: Empty,
@@ -11359,7 +11359,7 @@ fn target_reference_layer_tokens_decode_invalid_diagnostic(source_carrier: Node)
   v2.std.diagnostic.Diagnostic {
     reason: ^target_reference_layer_tokens_decode_invalid,
     at: node_locus(node: source_carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -11427,12 +11427,12 @@ fn target_reference_layer_tokens_from_node(node: Node) -> Outcome<TargetReferenc
 
 fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       target_model_named_edge(
         name: ^target_reference_layer_tokens_field_rc_head,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: tokens.rc_type_head } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: tokens.rc_type_head } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }
@@ -11440,7 +11440,7 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
       target_model_named_edge(
         name: ^target_reference_layer_tokens_field_box_head,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: tokens.box_type_head } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: tokens.box_type_head } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }
@@ -11448,7 +11448,7 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
       target_model_named_edge(
         name: ^target_reference_layer_tokens_field_rc_new,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: tokens.rc_new_ctor } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: tokens.rc_new_ctor } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }
@@ -11456,7 +11456,7 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
       target_model_named_edge(
         name: ^target_reference_layer_tokens_field_box_new,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: tokens.box_new_ctor } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: tokens.box_new_ctor } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }
@@ -11502,7 +11502,7 @@ fn target_value_expression_reference_rc_new(
   TargetValueExpression {
     kind: TargetValueExprReferenceRcNew,
     node: v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: ctor } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ctor } },
       children: [
         target_model_named_edge(
           name: ^target_value_expression_field_inner,
@@ -11521,8 +11521,8 @@ fn target_value_expression_reference_box_new(
   TargetValueExpression {
     kind: TargetValueExprReferenceBoxNew,
     node: v2.std.node.Node {
-      kind: TypeNode {
-        connective: Atom { identity: ctor }
+      kind: v2.std.node.TypeNode {
+        connective: v2.std.node.Atom { identity: ctor }
       },
       children: [
         target_model_named_edge(
@@ -11595,7 +11595,7 @@ fn target_reference_layer_probe_from_emitted_type(
 
 fn target_type_expr_symbol_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -11603,7 +11603,7 @@ fn target_type_expr_symbol_atom(id: v2.std.node.Symbol) -> Node {
 
 fn target_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       target_model_named_edge(
         name: ^target_type_expr_field_surface,
@@ -11620,7 +11620,7 @@ fn target_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
 
 fn target_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: match form.field_label_separator {
       Present { value: s } =>
         list_snoc_item(
@@ -11673,7 +11673,7 @@ fn target_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
 
 fn target_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       target_model_named_edge(
         name: ^target_type_expr_field_surface,
@@ -11690,7 +11690,7 @@ fn target_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
 
 fn target_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       target_model_named_edge(
         name: ^target_type_expr_field_surface,
@@ -11743,7 +11743,7 @@ fn type_expr_projection_row_shape_envelope(
     n: envelope,
     children: list_append(
       left: envelope.children,
-      right: Cons {
+      right: std.algebra.Cons {
         head: target_model_named_edge(
           name: ^target_type_expr_field_child_slot_discipline,
           target: type_expr_projection_child_slot_discipline_atom(connective: connective)
@@ -11756,13 +11756,13 @@ fn type_expr_projection_row_shape_envelope(
 
 fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       target_model_named_edge(
         name: ^target_type_expr_field_atom,
         target: type_expr_projection_row_shape_envelope(
           envelope: target_type_expr_atom_shape_node(form: projection.atom_form),
-          connective: Atom { identity: ^target_type_expr_field_atom }
+          connective: v2.std.node.Atom { identity: ^target_type_expr_field_atom }
         )
       ),
       target_model_named_edge(
@@ -11973,7 +11973,7 @@ fn target_value_expr_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.st
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

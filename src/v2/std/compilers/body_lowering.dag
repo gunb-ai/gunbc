@@ -5,13 +5,13 @@ fn body_lowering_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagn
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
   node_synthetic(
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
       v2.std.node.Edge { label: Positional, target: operator },
       v2.std.node.Edge { label: Positional, target: left },
@@ -22,7 +22,7 @@ fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
 
 fn lower_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
   node_synthetic(
-    kind: ComputationNode { behavior: Branch },
+    kind: v2.std.node.ComputationNode { behavior: Branch },
     children: [
       v2.std.node.Edge { label: Positional, target: condition },
       v2.std.node.Edge { label: Positional, target: then_arm },
@@ -33,7 +33,7 @@ fn lower_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
 
 fn lower_loop(value: Node, bound: Node) -> Node {
   node_synthetic(
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: value },
       v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: bound }
@@ -43,7 +43,7 @@ fn lower_loop(value: Node, bound: Node) -> Node {
 
 fn lower_bind(key_binding: Node, value: Node, body_binding: Node) -> Node {
   node_synthetic(
-    kind: ComputationNode { behavior: Bind },
+    kind: v2.std.node.ComputationNode { behavior: Bind },
     children: [
       v2.std.node.Edge { label: Positional, target: key_binding },
       v2.std.node.Edge { label: Positional, target: value },
@@ -54,7 +54,7 @@ fn lower_bind(key_binding: Node, value: Node, body_binding: Node) -> Node {
 
 fn lower_match(scrutinee: Node, arms: List<Node>) -> Node {
   node_synthetic(
-    kind: ComputationNode { behavior: Match },
+    kind: v2.std.node.ComputationNode { behavior: Match },
     children: list_append(
       left: [v2.std.node.Edge { label: Positional, target: scrutinee }],
       right: fold(arms, init: Empty, f: fn(acc, arm) {

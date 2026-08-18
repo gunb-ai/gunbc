@@ -38,7 +38,7 @@ fn compile_pipeline_not_realized_diagnostic(at: v2.std.diagnostic.Locus) -> v2.s
   v2.std.diagnostic.Diagnostic {
     reason: ^compile_pipeline_not_realized,
     at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -46,7 +46,7 @@ fn compile_lens_gate_rejected_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.
   v2.std.diagnostic.Diagnostic {
     reason: ^compile_lens_gate_rejected,
     at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -54,7 +54,7 @@ fn compile_eval_not_realized_diagnostic(at: v2.std.diagnostic.Locus) -> v2.std.d
   v2.std.diagnostic.Diagnostic {
     reason: ^compile_eval_not_realized,
     at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -125,8 +125,8 @@ fn apply_compile_lens_introspect(
       outcome_with_diagnostics(value: w, diagnostics: od)
     Rejected { diagnostics: d } =>
       outcome_with_diagnostics(
-        value: Violates { diagnostic: d.head },
-        diagnostics: Some { diagnostics: d }
+        value: v2.std.witness.Violates { diagnostic: d.head },
+        diagnostics: v2.std.diagnostic.Some { diagnostics: d }
       )
   }
 }
@@ -146,7 +146,7 @@ fn prepend_lens_gate_witness(
   witnesses: List<LensGateWitness>,
   witness: Witness<Node>
 ) -> List<LensGateWitness> {
-  Cons { head: LensGateWitness { witness: witness }, tail: witnesses }
+  std.algebra.Cons { head: LensGateWitness { witness: witness }, tail: witnesses }
 }
 
 fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
@@ -339,7 +339,7 @@ fn compile_ingest_with_admission(
           bind_outcome(
             o: normalize(parse_tree: parse_tree),
             f: fn(normalized) {
-              let roots = Cons { head: normalized, tail: peer_roots }
+              let roots = std.algebra.Cons { head: normalized, tail: peer_roots }
               bind_outcome(
                 o: resolve_with_admission(
                   lm: lm,

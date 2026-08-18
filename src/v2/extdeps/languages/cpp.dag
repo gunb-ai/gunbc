@@ -105,27 +105,27 @@ data cpp_source_text: String = "int add(int x, int y) { return x + y; }"
 
 fn cpp_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^cpp_token_ty_int },
-    BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_fn_add },
-    FixedToken { token_class: ^cpp_token_lparen },
-    FixedToken { token_class: ^cpp_token_ty_int },
-    BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_param_x },
-    FixedToken { token_class: ^cpp_token_comma },
-    FixedToken { token_class: ^cpp_token_ty_int },
-    BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_param_y },
-    FixedToken { token_class: ^cpp_token_rparen },
-    FixedToken { token_class: ^cpp_token_lbrace },
-    FixedToken { token_class: ^cpp_token_kw_return },
-    BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_param_x },
-    FixedToken { token_class: ^cpp_token_plus },
-    BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_param_y },
-    FixedToken { token_class: ^cpp_token_semicolon },
-    FixedToken { token_class: ^cpp_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^cpp_token_ty_int },
+    v2.std.compilers.target_model.BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_fn_add },
+    v2.std.compilers.target_model.FixedToken { token_class: ^cpp_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^cpp_token_ty_int },
+    v2.std.compilers.target_model.BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^cpp_token_comma },
+    v2.std.compilers.target_model.FixedToken { token_class: ^cpp_token_ty_int },
+    v2.std.compilers.target_model.BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^cpp_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^cpp_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^cpp_token_kw_return },
+    v2.std.compilers.target_model.BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^cpp_token_plus },
+    v2.std.compilers.target_model.BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^cpp_token_semicolon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^cpp_token_rbrace }
   ]
 }
 fn cpp_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -167,7 +167,7 @@ fn cpp_fixed_code_unit_spelling_node(
 
 fn cpp_width_selection_node(spelling: Node, target_profile: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_width_selection, target: cpp_atom(id: ^cpp_tag_width_selection)),
       cpp_named_edge(name: ^cpp_field_spelling, target: spelling),
@@ -182,7 +182,7 @@ fn cpp_width_selection_node(spelling: Node, target_profile: Node) -> Node {
 
 fn cpp_target_profile_selection_node(kind: v2.std.node.Symbol, target_profile: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_atom(id: kind)),
       cpp_named_edge(name: ^cpp_field_target_profile, target: target_profile)
@@ -193,7 +193,7 @@ fn cpp_target_profile_selection_node(kind: v2.std.node.Symbol, target_profile: N
 
 fn cpp_integer_scalar_fact_node(facts: CppIntegerPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_scalar, target: facts.signedness_fact),
       cpp_named_edge(name: ^cpp_field_width_selection, target: facts.width_fact),
@@ -206,7 +206,7 @@ fn cpp_integer_scalar_fact_node(facts: CppIntegerPrimitiveFacts) -> Node {
 
 fn cpp_character_scalar_fact_node(facts: CppCharacterPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_scalar, target: facts.signedness_fact),
       cpp_named_edge(name: ^cpp_field_width_selection, target: facts.width_fact),
@@ -218,7 +218,7 @@ fn cpp_character_scalar_fact_node(facts: CppCharacterPrimitiveFacts) -> Node {
 
 fn cpp_integer_facts_node(facts: CppIntegerPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_integer_scalar_fact_node(facts: facts))
@@ -229,7 +229,7 @@ fn cpp_integer_facts_node(facts: CppIntegerPrimitiveFacts) -> Node {
 
 fn cpp_character_facts_node(facts: CppCharacterPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_character_scalar_fact_node(facts: facts))
@@ -240,7 +240,7 @@ fn cpp_character_facts_node(facts: CppCharacterPrimitiveFacts) -> Node {
 
 fn cpp_bool_facts_node(facts: CppBoolPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_atom(id: ^cpp_tag_bool)),
@@ -538,15 +538,15 @@ fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<v2.std.node
 fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: cpp_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
           v2.std.optional.Present { value: facts.width_fact }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}) {
           v2.std.optional.Present { value: facts.signedness_fact }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: facts.encoding_fact }
-      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}) {
           v2.std.optional.Present { value: facts.overflow_fact }
       } else {
           v2.std.optional.Absent
@@ -558,13 +558,13 @@ fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<v2.std.node.Sy
 fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: cpp_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
           v2.std.optional.Present { value: facts.width_fact }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}) {
           v2.std.optional.Present { value: facts.signedness_fact }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: facts.encoding_fact }
       } else {
           v2.std.optional.Absent
@@ -576,9 +576,9 @@ fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<v2.std.nod
 fn cpp_bool_spec_facts(facts: CppBoolPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: cpp_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: facts.encoding_fact }
       } else {
           v2.std.optional.Absent
@@ -667,7 +667,7 @@ fn cpp_primitive_fact_bundles(
 
 fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts, witness: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: witness, target: cpp_atom(id: witness)),
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
@@ -682,7 +682,7 @@ fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts, witness: v2
 
 fn cpp_signed_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(
         name: ^cpp_witness_representable_result_integer_arithmetic,
@@ -725,7 +725,7 @@ fn cpp_unsigned_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> 
 
 fn cpp_bool_algebra_witness_node(facts: CppBoolPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_witness_bool_boolean_algebra, target: cpp_atom(id: ^cpp_witness_bool_boolean_algebra)),
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
@@ -800,7 +800,7 @@ fn cpp_fail_closed_partial_operation(
   v2.std.model_core.PartialOperationDecl {
     operation: operation,
     precondition: cpp_atom(id: precondition),
-    discharge: FailClosedAtBoundary { reason: reason }
+    discharge: v2.std.model_core.FailClosedAtBoundary { reason: reason }
   }
 }
 
@@ -848,7 +848,7 @@ fn cpp_language_model(target_profile: Node) -> v2.std.language_model.LanguageMod
 
 fn cpp_int_inhabitant_node(target_profile: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_inhabitant_field_atom, target: cpp_atom(id: ^cpp_inhabitant_int)),
       cpp_named_edge(
@@ -868,7 +868,7 @@ fn cpp_int_inhabitant_node(target_profile: Node) -> Node {
 
 fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_inhabitant_field_int, target: cpp_int_inhabitant_node(target_profile: target_profile))
     ],
@@ -944,7 +944,7 @@ fn cpp_coercion_candidate_edges(target_profile: Node) -> List<v2.std.node.Edge> 
 
 fn cpp_add_declared_inhabitants_root(target_profile: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: cpp_coercion_candidate_edges(target_profile: target_profile),
     occurrence_id: SyntheticOccurrence
 }
@@ -956,7 +956,7 @@ fn cpp_selection_policy_node(target_profile: Node) -> Node {
 
 fn cpp_emitted_add_fn_node(target_profile: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
       v2.std.node.Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
@@ -990,7 +990,7 @@ fn cpp_serialize_source_children() -> List<v2.std.node.Edge> {
 }
 
 fn cpp_serialize_source_node() -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: cpp_serialize_source_children(),
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: cpp_serialize_source_children(),
  occurrence_id: SyntheticOccurrence
 }
 }
@@ -1039,7 +1039,7 @@ fn cpp_grammar_sequence_from_token_classes() -> v2.std.grammar.GrammarExpr {
           }
         CppGramBuild1StateReady { expr: acc } =>
           CppGramBuild1StateReady {
-            expr: Sequence {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: cpp_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -1071,7 +1071,7 @@ fn cpp_grammar_relation_row(target_profile: Node) -> CppGrammarRelationRow {
 
 fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
       cpp_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
@@ -1089,7 +1089,7 @@ fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
 
 fn cpp_translation_rules_node(target_profile: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^cpp_relation_rule_fn_add, target: cpp_grammar_relation_row_node(row: cpp_grammar_relation_row(target_profile: target_profile)))
     ],
@@ -1099,7 +1099,7 @@ fn cpp_translation_rules_node(target_profile: Node) -> Node {
 
 fn cpp_target_model_node(target_profile: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       cpp_named_edge(name: ^target_model_edge_selection_policy, target: cpp_selection_policy_node(target_profile: target_profile)),
       cpp_named_edge(name: ^target_model_edge_declared_inhabitants, target: cpp_add_declared_inhabitants_root(target_profile: target_profile)),
@@ -1122,7 +1122,7 @@ fn cpp_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   )
 }
 data cpp_target_profile: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^cpp_target_profile_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^cpp_target_profile_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -1144,7 +1144,7 @@ fn cpp_target_model_for_profile(target_profile: Node) -> v2.std.compilers.target
 }
 
 fn cpp_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+  v2.std.compilers.lexing.TokenRule { token_class: token_class, pattern: v2.std.compilers.lexing.LiteralPattern { text: text } }
 }
 
 fn cpp_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
@@ -1162,7 +1162,7 @@ fn cpp_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
 }
 
 fn cpp_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: cpp_lex_rules() } }
+  v2.std.compilers.lexing.ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: cpp_lex_rules() } }
 }
 
 data cpp_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

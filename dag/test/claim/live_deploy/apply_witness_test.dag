@@ -46,14 +46,14 @@ test fn witness_unknown_or_unparseable_route_refuses_before_slot_selection() -> 
 
 fn fixture_converged_mutation() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   Converged {
-    evidence: ShellEffectApplied {
+    evidence: gunbc.host_effect.ShellEffectApplied {
       exit_code: 0,
       stdout: "live-deploy-mutation-applied",
       stderr: "",
     },
     applied: gunbc.host_effect.HostEffectIntent {
-      target: HostOs { node: srv1_host },
-      effect: ShellCommand { script: "mutation-marker" },
+      target: gunbc.host_effect.HostOs { node: srv1_host },
+      effect: gunbc.host_effect.ShellCommand { script: "mutation-marker" },
       evidence: host_effect_identity_evidence,
       transport: LocalShell,
       privilege_denial: none,
@@ -62,7 +62,7 @@ fn fixture_converged_mutation() -> Reconciliation<HostEffectIntent, HostEffectEv
 }
 
 fn fixture_service_not_ready_readiness() -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  NotConverged {
+  std.realization_reconcile.NotConverged {
     reason: service_not_ready_reason(refusal: gunbc.live_deploy.service_ready.ServiceNotReady {
       unit: live_deploy_service_ready_unit_authority,
       endpoint: live_deploy_service_ready_endpoint_authority,

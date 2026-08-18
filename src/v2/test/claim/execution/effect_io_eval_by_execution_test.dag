@@ -11,7 +11,7 @@ fn effect_io_eval_termination_proof() -> v2.std.cardinality.TerminationProof {
 }
 
 fn effect_io_eval_literal_value() -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: effect_io_pure_unit_type_node(),
       bytes: []
@@ -20,13 +20,13 @@ fn effect_io_eval_literal_value() -> v2.std.runtime.RuntimeValue {
 }
 
 data effect_io_eval_locator_literal: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data effect_io_eval_payload_literal: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -169,7 +169,7 @@ test fn effect_io_eval_unbound_fail_closed_holds() -> Bool {
   }
 }
 
-data claim_effect_io_eval_roundtrip: v2.std.verification.TestClaim = EqualsClaim {
+data claim_effect_io_eval_roundtrip: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "V4-EFFECTS-IO: eval yields ReadResource→WriteResource round-trip through handler binding",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: effect_io_eval_roundtrip_node,

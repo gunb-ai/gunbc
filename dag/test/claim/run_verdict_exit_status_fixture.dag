@@ -14,7 +14,7 @@ module test.claim.run_verdict_exit_status_fixture
 data fixture_subject_note: String = "The driver seam maps a returned std.process.ProcessExit to the process exit status. Before the cli-run cut this mapping lived in one deleted function body and was asserted nowhere in the repository: it was CORRECT AND UNWITNESSED, which is why a reimplementation dropped it in silence with every instrument green. The dropped version printed ExitFailure and exited 0, so every consumer of `gunbc run` — the generated-artifact drift gate, the floor, and every witness invocation — would have reported success regardless of content. These three entries are the enrolled evidence that the boundary still holds."
 
 func verdict_failure() -> std.process.ProcessExit {
-  ExitFailure {
+  std.process.ExitFailure {
     code: 3,
     reason: "run_verdict_exit_status_fixture: deliberate failure verdict"
   }

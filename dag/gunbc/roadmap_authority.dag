@@ -4,7 +4,7 @@ module gunbc.roadmap_authority
 fn nid(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
 
 fn signed(by: String, works: gunbc.roadmap_status.RedControlEvidence, scope_equivalent: gunbc.roadmap_status.HandbackEvidence, as_expected: Bool) -> gunbc.roadmap_status.Signoff {
-  SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
+  gunbc.roadmap_status.SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
 }
 
 data namespace_kernel_authority_amendment_note: String = "THE KERNEL BAR AS FIRST WRITTEN DEADLOCKED ITS OWN SUCCESSOR, and this amendment is the fix (operator ruling, 2026-08-01). The recut landed namespace-binding-kernel with a red_control ending 'no second place in the compiler makes that same decision' and a handback demanding 'evidence that nothing else decides the same question'. That bar cannot be met while the bootstrap seed keeps its own hand-written none/one/many mirror inside the v1 adapter, and that mirror cannot be deleted until generic emission carries the canonical carrier with its required bounds. But namespace-reference-derived-closure DEPENDS on the kernel. So on the day the recut merged, the next step was already unstartable for a reason that had nothing to do with what the next step needs: deriving candidate populations does not require the seed mirror to be gone, it requires the canonical decision to EXIST and be callable.\n\nTHE CUT IS AUTHORITY VERSUS RETIREMENT. Owning the canonical decision and removing every rival implementation of it are separate achievements with separate evidence, and fusing them made an acceptance bar that no amount of correct kernel work could satisfy. The kernel now owns being the one canonical authority; namespace-legacy-choice-retirement owns deleting the older mechanisms, and the seed mirror is named there as one of its rows. A new node was deliberately NOT minted: that node already reads 'delete every other way of deciding what a name means' and already inventories every remaining place that decides, so the mirror is a row it should always have carried, and minting a sibling would have been a second home for one concept.\n\nTHE ADAPTER IS NOT THEREBY BLESSED. It remains a declared scaffold with its dissolution trigger on its own carrier, counted and visible; moving WHERE its retirement is tracked does not lower what is owed. What changes is only that a temporary bootstrap realization no longer gates work that does not depend on it.\n\nTWO ACCEPTANCE SENTENCES WERE ALSO WRONG AND ARE CORRECTED HERE. The red_control said 'a malformed name refuses', but this boundary accepts occurrence identities and derives no name spelling at all, so it named a check no implementation executes — it now reads malformed occurrence TRANSPORT. And the bar now states the two refusals that distinguish a malformed supplied population from a real verdict: a candidate handed in the wrong role refuses distinctly from one that is absent, and the same declaration supplied twice refuses as malformed rather than counting as two. Only two DISTINCT declaration identities are ambiguity. Collapsing either of those into an ordinary verdict would let a defective candidate producer read as a legitimate naming answer, which is the state-space conflation this whole lane exists to remove."
@@ -30,7 +30,7 @@ fn authored(identity: String,
   gunbc.roadmap_model.RoadmapNode {
     identity: identity as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: nid(s: id),
-    line: AuthoredLine { done: done, content: content },
+    line: gunbc.roadmap_status.AuthoredLine { done: done, content: content },
     carriers: [],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
@@ -44,7 +44,7 @@ fn derivable(identity: String,
   gunbc.roadmap_model.RoadmapNode {
     identity: identity as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: nid(s: id),
-    line: DerivableLine { prs: prs, title: title, description: description },
+    line: gunbc.roadmap_status.DerivableLine { prs: prs, title: title, description: description },
     carriers: [],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
@@ -66,9 +66,9 @@ fn derivable_wi(
   gunbc.roadmap_model.RoadmapNode {
     identity: identity as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: nid(s: id),
-    line: DerivableLine { prs: prs, title: title, description: description },
+    line: gunbc.roadmap_status.DerivableLine { prs: prs, title: title, description: description },
     carriers: [],
-    sizing: Sized {
+    sizing: gunbc.roadmap_model.Sized {
       intricacy: intricacy,
       volume: volume,
       repo: repo,
@@ -92,9 +92,9 @@ fn authored_wi(
   gunbc.roadmap_model.RoadmapNode {
     identity: identity as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: nid(s: id),
-    line: AuthoredLine { done: done, content: content },
+    line: gunbc.roadmap_status.AuthoredLine { done: done, content: content },
     carriers: [],
-    sizing: Sized {
+    sizing: gunbc.roadmap_model.Sized {
       intricacy: intricacy,
       volume: volume,
       repo: repo,
@@ -111,7 +111,7 @@ fn ticket_row(identity: String,
   gunbc.roadmap_model.RoadmapNode {
     identity: identity as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: nid(s: id),
-    line: TicketLine { done: done, ticket: t },
+    line: gunbc.roadmap_status.TicketLine { done: done, ticket: t },
     carriers: [],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
@@ -132,9 +132,9 @@ fn ticket_wi(
   gunbc.roadmap_model.RoadmapNode {
     identity: identity as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: nid(s: id),
-    line: TicketLine { done: done, ticket: t },
+    line: gunbc.roadmap_status.TicketLine { done: done, ticket: t },
     carriers: [],
-    sizing: Sized {
+    sizing: gunbc.roadmap_model.Sized {
       intricacy: intricacy,
       volume: volume,
       repo: repo,
@@ -151,7 +151,7 @@ fn superseded(identity: String,
   gunbc.roadmap_model.RoadmapNode {
     identity: identity as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: nid(s: id),
-    line: SupersededLine { by: by, content: content },
+    line: gunbc.roadmap_status.SupersededLine { by: by, content: content },
     carriers: [],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
@@ -343,9 +343,9 @@ fn active_sized(
   gunbc.roadmap_model.RoadmapNode {
     identity: identity as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: nid(s: id),
-    line: TicketLine { done: false, ticket: t },
+    line: gunbc.roadmap_status.TicketLine { done: false, ticket: t },
     carriers: carrier(path: path),
-    sizing: Sized {
+    sizing: gunbc.roadmap_model.Sized {
       intricacy: intricacy,
       volume: volume,
       repo: "gunbc",
@@ -2489,7 +2489,7 @@ fn roadmap_acceptance_receipts() -> RoadmapAcceptanceReceiptsProjection {
 fn roadmap_acceptance_history_integrity_verdict_on_authority() -> gunbc.roadmap_model.AcceptanceHistoryIntegrityVerdict {
   match roadmap_acceptance_event_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      AcceptanceHistoryIntegrityRefusedPriorHistoryObservation {
+      gunbc.roadmap_model.AcceptanceHistoryIntegrityRefusedPriorHistoryObservation {
         detail: concat("current history load refused: ", detail),
       }
     RoadmapAcceptanceEventHistoryLoaded { events: current } =>
@@ -2637,7 +2637,7 @@ fn closing_contract_task_for(n: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadma
   gunbc.roadmap_model.RoadmapNode {
     identity: concat(n.identity as String, "-closing-contract") as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: concat(n.node as String, "-closing-contract") as gunbc.roadmap_model.RoadmapNodeId,
-    line: TicketLine {
+    line: gunbc.roadmap_status.TicketLine {
       done: false,
       ticket: fields(
         headline: concat("Write the closing check for: ", ticket_headline_of(n: n)),
@@ -2650,7 +2650,7 @@ fn closing_contract_task_for(n: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadma
       ),
     },
     carriers: n.carriers,
-    sizing: Sized {
+    sizing: gunbc.roadmap_model.Sized {
       intricacy: IntricacyLow,
       volume: VolumeSmall,
       repo: "gunbc",
@@ -2741,16 +2741,16 @@ fn active_roadmap_edges_for_accepted(accepted: List<gunbc.roadmap_model.RoadmapN
 
 fn preamble() -> List<std.markdown.MarkdownBlock> {
   [
-    HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
-    ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted, so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
-    ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
-    ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [regen divergence ratchet](docs/plans/regen-divergence-ratchet-shape.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
+    std.markdown.HeadingBlock { level: H1, inlines: [std.markdown.TextInline { text: "gunbc — Roadmap" }] },
+    std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted, so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
+    std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
+    std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [regen divergence ratchet](docs/plans/regen-divergence-ratchet-shape.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
   ]
 }
 
 data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Focusing is a projection policy, not an edit — every node and edge stays declared in this file, the dispatch surface still sees the whole graph, and setting this back to NoFocus restores the full page with no recovery step. The projection states how many it is hiding, derived rather than transcribed, so a focused page can never read as a shorter roadmap.\n\nMOVED TO THE INFRASTRUCTURE LANES (operator direction, 2026-08-07). It previously selected the v1 exit lane and the compiler-guarantee climbs. Those remain real work and are unchanged in this file; they are off the page because forward movement on them was stopped. The stated reason is that infrastructure buckled underneath them — a fleet whose applied state cannot be answered without logging into machines, a required path whose cost is dominated by building and testing, machine faults arriving as reds that look like code faults, and generated artefacts conflicting over lists nobody disagrees about. Work carried out on top of that produces results nobody can trust, so the page shows the lanes that repair it and the lane that makes a merge to main become applied fleet state.\n\nTHE JUDGMENT LANE IS DELIBERATELY OFF THE PAGE while its prerequisites are on it: the machines that would serve its model are converging in the fleet lane, and putting the consumer beside the prerequisite would invite starting it early. It is declared, not parked. THE DETERMINISTIC CONFIDENCE LANE IS ON THE PAGE and is not the judgment lane: repository inspection — what exists, who consumes it, what a change may affect — is immediate development infrastructure that must work with no LLM and no Spark provisioned, so it does not wait behind serving. The judgment service depends on it as its grounding packet; the dependency edge carries that order.\n\nA FOCUS IS A DISPLAY CHOICE, NEVER A DISPOSITION, and the difference matters more now than it did when this row selected two lanes. Off the page currently sits real retained work with real remaining boundaries — the namespace closure re-observed on an exact main subject at four of six capabilities established (A–D; the two dependency-projection capabilities remain unavailable under their P2a triggers, closing frontier two — 2026-08-08 execution receipt, superseding the earlier none-admitted wording), the v1 exit with no module yet crossed and no hand-written Rust yet drained, the shell production vertical, the staged alert program, the frozen TypeScript boundary, the instrument adoption, the deployment activation receipt. Hidden means selected against, and nothing here records WHY a hidden lane is paused or what restarts it. That is a missing dimension on the node, not a fact this projection policy can carry: a lane frozen behind infrastructure, a lane draining to merge, and a lane parked because its hypothesis was falsified are three different states, and today all three read identically as absent. Supplying it is a change to the node shape and to what the page counts, and it lands next; until it does, read a hidden lane as retained and unexplained rather than as decided."
 
-data roadmap_focus_selection: gunbc.roadmap_focus.RoadmapFocus = FocusOnOwners {
+data roadmap_focus_selection: gunbc.roadmap_focus.RoadmapFocus = gunbc.roadmap_focus.FocusOnOwners {
   label: "the compute fabric + the infrastructure stabilisation lanes + fleet convergence from main",
   owners: ["compute", "fleet", "ci-placement", "ci-control", "generated-artifact", "ci-cost", "confidence"],
 }
@@ -3571,9 +3571,9 @@ data roadmap_authority_accessor_note: String = "Operational consumers (belt, dis
 fn roadmap_authority_refusal_document(detail: String) -> gunbc.roadmap_document.RoadmapDocument {
   gunbc.roadmap_document.RoadmapDocument {
     preamble: [
-      HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap (unavailable)" }] },
-      ParagraphBlock {
-        inlines: [TextInline {
+      std.markdown.HeadingBlock { level: H1, inlines: [std.markdown.TextInline { text: "gunbc — Roadmap (unavailable)" }] },
+      std.markdown.ParagraphBlock {
+        inlines: [std.markdown.TextInline {
           text: concat(
             "Acceptance history projection refused; match roadmap_authority_projection() at operational boundaries: ",
             detail,

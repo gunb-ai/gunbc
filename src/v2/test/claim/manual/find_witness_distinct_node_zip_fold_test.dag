@@ -4,28 +4,28 @@ module v2.test.manual.find_witness_distinct_node_zip_fold
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 fn distinct_source_leaf() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^distinct_zip_source_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^distinct_zip_source_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn distinct_target_leaf() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^distinct_zip_source_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^distinct_zip_source_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn distinct_wrong_leaf() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^distinct_zip_wrong_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^distinct_zip_wrong_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn distinct_source_add_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: distinct_source_leaf() },
       v2.std.node.Edge { label: Positional, target: distinct_source_leaf() },
@@ -36,7 +36,7 @@ fn distinct_source_add_node() -> Node {
 }
 fn distinct_target_add_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: distinct_target_leaf() },
       v2.std.node.Edge { label: Positional, target: distinct_target_leaf() },
@@ -47,7 +47,7 @@ fn distinct_target_add_node() -> Node {
 }
 fn distinct_wrong_arity_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: distinct_wrong_leaf() },
       v2.std.node.Edge { label: Positional, target: distinct_wrong_leaf() }
@@ -57,7 +57,7 @@ fn distinct_wrong_arity_node() -> Node {
 }
 fn distinct_wrong_subtree_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: distinct_wrong_arity_node() },
       v2.std.node.Edge { label: Positional, target: distinct_target_leaf() },
@@ -68,7 +68,7 @@ fn distinct_wrong_subtree_node() -> Node {
 }
 fn distinct_source_nested_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: distinct_source_add_node() },
       v2.std.node.Edge { label: Positional, target: distinct_source_leaf() }
@@ -78,7 +78,7 @@ fn distinct_source_nested_node() -> Node {
 }
 fn distinct_target_nested_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: distinct_target_add_node() },
       v2.std.node.Edge { label: Positional, target: distinct_target_leaf() }
@@ -212,7 +212,7 @@ fn distinct_coercion_candidates() -> v2.std.coercion.CoercionCandidateSet {
 test data witness_coercion_fold_distinct_node_accepts: Bool = match coercion_fold(
   source: distinct_grounding(),
   candidates: distinct_coercion_candidates(),
-  policy: TargetDeclaredPriority { priority: distinct_target_add_node() }
+  policy: v2.std.find_witness.TargetDeclaredPriority { priority: distinct_target_add_node() }
 ) {
   Accepted { value: r, diagnostics: _ } =>
     (r.target == distinct_target_add_node()) && (quality_is_exact(q: r.quality) || quality_is_identity(q: r.quality))

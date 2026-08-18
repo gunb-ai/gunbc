@@ -461,11 +461,11 @@ type FidelityFeature
 fn feature_disposition(f: FidelityFeature) -> FidelityDisposition<FidelityFeature> {
   match f {
     StructuralCore => Modeled
-    SsaValueSpelling => DeclaredNormalized { feature: SsaValueSpelling }
-    BlockTextualOrder => DeclaredNormalized { feature: BlockTextualOrder }
-    LexicalTrivia => DeclaredNormalized { feature: LexicalTrivia }
-    TargetConfigToken => DeclaredNormalized { feature: TargetConfigToken }
-    AdvisoryMetadata => DeclaredNormalized { feature: AdvisoryMetadata }
+    SsaValueSpelling => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: SsaValueSpelling }
+    BlockTextualOrder => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: BlockTextualOrder }
+    LexicalTrivia => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: LexicalTrivia }
+    TargetConfigToken => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: TargetConfigToken }
+    AdvisoryMetadata => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: AdvisoryMetadata }
     UnmodeledInlineAsm => FailClosed { feature: UnmodeledInlineAsm }
     UnmodeledSemanticAttribute => FailClosed { feature: UnmodeledSemanticAttribute }
     UnmodeledType => FailClosed { feature: UnmodeledType }
@@ -538,7 +538,7 @@ data llvm_float_facts_catalog: List<LlvmFloatPrimitiveFacts> = [
 
 fn llvm_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -561,18 +561,18 @@ fn llvm_float_kind_node(kind: LlvmFloatKind) -> Node {
 
 fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        label: Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) },
         target: llvm_inhabitant_atom(id: facts.surface_spelling)
       },
       v2.std.node.Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
+        label: Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) },
         target: llvm_integer_bits_node(bits: facts.bits)
       },
       v2.std.node.Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        label: Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) },
         target: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer)
       },
       v2.std.node.Edge {
@@ -586,14 +586,14 @@ fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
 
 fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        label: Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) },
         target: llvm_inhabitant_atom(id: facts.surface_spelling)
       },
       v2.std.node.Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        label: Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) },
         target: llvm_float_kind_node(kind: facts.kind)
       },
       v2.std.node.Edge {
@@ -608,11 +608,11 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
 fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
           v2.std.optional.Present { value: llvm_integer_bits_node(bits: facts.bits) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer) }
       } else {
           v2.std.optional.Absent
@@ -624,9 +624,9 @@ fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<v2.std.node.
 fn llvm_float_spec_facts(facts: LlvmFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: llvm_float_kind_node(kind: facts.kind) }
       } else {
           v2.std.optional.Absent
@@ -692,7 +692,7 @@ fn llvm_ir_model_core() -> v2.std.model_core.ModelCore {
   }
 }
 fn llvm_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.lexing.LexPattern) -> v2.std.compilers.lexing.LexRule {
-  TokenRule { token_class: token_class, pattern: pattern }
+  v2.std.compilers.lexing.TokenRule { token_class: token_class, pattern: pattern }
 }
 
 fn llvm_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
@@ -700,32 +700,32 @@ fn llvm_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.Gram
 }
 
 fn llvm_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  Sequence { left: left, right: right }
+  v2.std.grammar.Sequence { left: left, right: right }
 }
 
 fn llvm_global_ident_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: LiteralPattern { text: "@" },
-    right: SequencePattern {
-      left: CharClassPattern { class: IdentStartChar },
-      right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.LiteralPattern { text: "@" },
+    right: v2.std.compilers.lexing.SequencePattern {
+      left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
+      right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
     }
   }
 }
 
 fn llvm_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules {
+  v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
-        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } } },
         llvm_lex_token(token_class: ^llvm_token_global_ident, pattern: llvm_global_ident_pattern()),
-        llvm_lex_token(token_class: ^llvm_token_kw_define, pattern: KeywordPattern { text: "define" }),
-        llvm_lex_token(token_class: ^llvm_token_kw_void, pattern: KeywordPattern { text: "void" }),
-        llvm_lex_token(token_class: ^llvm_token_kw_ret, pattern: KeywordPattern { text: "ret" }),
-        llvm_lex_token(token_class: ^llvm_token_lparen, pattern: LiteralPattern { text: "(" }),
-        llvm_lex_token(token_class: ^llvm_token_rparen, pattern: LiteralPattern { text: ")" }),
-        llvm_lex_token(token_class: ^llvm_token_lbrace, pattern: LiteralPattern { text: "{" }),
-        llvm_lex_token(token_class: ^llvm_token_rbrace, pattern: LiteralPattern { text: "}" })
+        llvm_lex_token(token_class: ^llvm_token_kw_define, pattern: v2.std.compilers.lexing.KeywordPattern { text: "define" }),
+        llvm_lex_token(token_class: ^llvm_token_kw_void, pattern: v2.std.compilers.lexing.KeywordPattern { text: "void" }),
+        llvm_lex_token(token_class: ^llvm_token_kw_ret, pattern: v2.std.compilers.lexing.KeywordPattern { text: "ret" }),
+        llvm_lex_token(token_class: ^llvm_token_lparen, pattern: v2.std.compilers.lexing.LiteralPattern { text: "(" }),
+        llvm_lex_token(token_class: ^llvm_token_rparen, pattern: v2.std.compilers.lexing.LiteralPattern { text: ")" }),
+        llvm_lex_token(token_class: ^llvm_token_lbrace, pattern: v2.std.compilers.lexing.LiteralPattern { text: "{" }),
+        llvm_lex_token(token_class: ^llvm_token_rbrace, pattern: v2.std.compilers.lexing.LiteralPattern { text: "}" })
       ]
     }
   }
@@ -765,7 +765,7 @@ fn llvm_ir_grammar() -> v2.std.grammar.ParseGrammar {
     expression: llvm_void_function_expr(),
     emitted: grammar_atom(identity: ^llvm_surface_void_function)
   }
-  ModeledGrammar {
+  v2.std.grammar.ModeledGrammar {
     root: v2.std.grammar.GrammarRoot {
       start: ^llvm_production_void_function,
       productions: [start],

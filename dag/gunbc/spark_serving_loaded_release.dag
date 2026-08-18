@@ -105,14 +105,14 @@ fn derive_loaded_spark_serving_release_identity(readback: SparkServingReadback) 
 fn derive_spark_serving_observation(readback: SparkServingReadback) -> gunbc.spark_serving_release.SparkServingObservation {
   match readback.unit_outcome {
     SparkServingUnitAbsent =>
-      SparkServingAbsent { host: readback.host }
+      gunbc.spark_serving_release.SparkServingAbsent { host: readback.host }
     SparkServingUnitInactive =>
-      SparkServingObservationRefused {
+      gunbc.spark_serving_release.SparkServingObservationRefused {
         host: readback.host,
         cause: "serving unit is present but inactive" as std.types.NonEmptyStr,
       }
     SparkServingUnitObservationRefused { cause: c } =>
-      SparkServingObservationRefused { host: readback.host, cause: c }
+      gunbc.spark_serving_release.SparkServingObservationRefused { host: readback.host, cause: c }
     SparkServingUnitActive =>
       match spark_serving_first_readback_refusal(fields: [
         readback.runtime_version,
@@ -123,20 +123,20 @@ fn derive_spark_serving_observation(readback: SparkServingReadback) -> gunbc.spa
         readback.nvidia_driver,
       ]) {
         Present { value: cause } =>
-          SparkServingObservationRefused { host: readback.host, cause: cause }
+          gunbc.spark_serving_release.SparkServingObservationRefused { host: readback.host, cause: cause }
         Absent =>
           match spark_serving_runtime_admission_refusal_cause(nvidia_driver: readback.nvidia_driver) {
             Present { value: admission_cause } =>
-              SparkServingObservationRefused { host: readback.host, cause: admission_cause }
+              gunbc.spark_serving_release.SparkServingObservationRefused { host: readback.host, cause: admission_cause }
             Absent =>
               match derive_loaded_spark_serving_release(readback: readback) {
                 Absent =>
-                  SparkServingObservationRefused {
+                  gunbc.spark_serving_release.SparkServingObservationRefused {
                     host: readback.host,
                     cause: "serving unit is active but loaded-release fingerprint could not be derived from independent readback" as std.types.NonEmptyStr,
                   }
                 Present { value: loaded } =>
-                  SparkServingObserved { host: readback.host, loaded_release: loaded }
+                  gunbc.spark_serving_release.SparkServingObserved { host: readback.host, loaded_release: loaded }
               }
           }
       }

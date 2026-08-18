@@ -158,17 +158,17 @@ type BmcwebNbdProxyEndpointVariant =
 
 data nbd_slot_endpoint_path_template: std.http_path.PathTemplate = std.http_path.PathTemplate {
   tokens: [
-    LiteralToken { text: "/nbd/" },
-    ParamToken { name: "slot" },
+    std.http_path.LiteralToken { text: "/nbd/" },
+    std.http_path.ParamToken { name: "slot" },
   ],
 }
 
 data vm_slot_index_endpoint_path_template: std.http_path.PathTemplate = std.http_path.PathTemplate {
   tokens: [
-    LiteralToken { text: "/vm/" },
-    ParamToken { name: "slot" },
-    LiteralToken { text: "/" },
-    ParamToken { name: "index" },
+    std.http_path.LiteralToken { text: "/vm/" },
+    std.http_path.ParamToken { name: "slot" },
+    std.http_path.LiteralToken { text: "/" },
+    std.http_path.ParamToken { name: "index" },
   ],
 }
 

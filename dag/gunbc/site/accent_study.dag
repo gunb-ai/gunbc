@@ -79,54 +79,54 @@ fn day_panel() -> std.markup.Fragment {
 
 fn study_static_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    StaticRule { selector: ElementSelector { tag: "body" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "body" }, decls: [
       role_decl(prop: Background, r: CanvasRole),
       role_decl(prop: Color, r: TextRole),
       decl(prop: FontFamily, value: "'Noto Sans', system-ui, sans-serif"),
       decl(prop: Margin, value: "0"),
       decl(prop: LineHeight, value: "1.55"),
     ] },
-    StaticRule { selector: ElementSelector { tag: "main" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "main" }, decls: [
       decl(prop: MaxWidth, value: "54rem"),
       decl(prop: Margin, value: "0 auto"),
       decl(prop: Padding, value: "3rem 1.5rem 4rem"),
     ] },
-    StaticRule { selector: ElementSelector { tag: "h1" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "h1" }, decls: [
       decl(prop: FontSize, value: "1.2rem"),
       decl(prop: FontWeight, value: "500"),
     ] },
-    StaticRule { selector: ClassSelector { name: "thesis" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "thesis" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: Margin, value: "0.25rem 0 0"),
     ] },
-    StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "h2" }, decls: [
       decl(prop: FontSize, value: "0.85rem"),
       decl(prop: FontWeight, value: "500"),
-      decl(prop: RawProperty { name: "code-spacing" }, value: "0.08em"),
+      decl(prop: extdeps.languages.css.properties.RawProperty { name: "code-spacing" }, value: "0.08em"),
       decl(prop: TextTransform, value: "lowercase"),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: MarginTop, value: "2.2rem"),
     ] },
-    StaticRule { selector: ClassSelector { name: "panel" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "panel" }, decls: [
       role_decl(prop: Background, r: SurfaceRole),
       decl(prop: Border, value: "1px solid var(--border)"),
       decl(prop: BorderRadius, value: "3px"),
       decl(prop: Padding, value: "1.1rem 1.25rem"),
       decl(prop: MarginTop, value: "0.8rem"),
     ] },
-    StaticRule { selector: ClassSelector { name: "day-panel" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "day-panel" }, decls: [
       decl(prop: Background, value: "var(--canvas)"),
       decl(prop: Color, value: "var(--text)"),
     ] },
-    StaticRule { selector: ClassSelector { name: "constellation" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "constellation" }, decls: [
       decl(prop: Width, value: "100%"),
       decl(prop: Height, value: "auto"),
     ] },
-    StaticRule { selector: ClassSelector { name: "mono" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mono" }, decls: [
       decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
       decl(prop: FontSize, value: "0.78em"),
     ] },
-    StaticRule { selector: ClassSelector { name: "label" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "label" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: Margin, value: "0.6rem 0 0"),
     ] },

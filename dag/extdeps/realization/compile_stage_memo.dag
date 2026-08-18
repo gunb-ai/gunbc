@@ -41,14 +41,14 @@ data compile_stage_memo_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = 
   evidence: [
     {
       field: "locality"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "scoped to compile_ingest_staging pipeline; drops with the ingest walk — within-run stage memo (v2.std.staging.cached_stage)"
         observed_at: 0
       }
     },
     {
       field: "key_derivation"
-      evidence: OperatorObserved {
+      evidence: std.cache_interface.OperatorObserved {
         note: "stage input content-addressed at the cached_stage lookup site; miss runs the stage, hit skips recompute"
         observed_at: 0
       }

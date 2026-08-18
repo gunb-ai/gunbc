@@ -160,7 +160,7 @@ test fn w_github_hetzner_knowable_wedge_derived_with_declared_assumptions() -> B
   match derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_actions_linux_2core_price,
     floor_row: hetzner_ax41_1_ltd_price,
-    assumptions_input: WedgeAssumptionsDeclared {
+    assumptions_input: gunbc.econ.knowable_wedge.WedgeAssumptionsDeclared {
       assumptions: github_hetzner_wedge_assumptions,
     },
   ) {
@@ -187,7 +187,7 @@ test fn w_github_hetzner_knowable_wedge_red_on_zero_utilization() -> Bool {
   match derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_actions_linux_2core_price,
     floor_row: hetzner_ax41_1_ltd_price,
-    assumptions_input: WedgeAssumptionsDeclared {
+    assumptions_input: gunbc.econ.knowable_wedge.WedgeAssumptionsDeclared {
       assumptions: github_hetzner_zero_utilization_assumptions,
     },
   ) {
@@ -200,7 +200,7 @@ test fn w_github_hetzner_knowable_wedge_red_on_floor_currency_mismatch() -> Bool
   match derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_actions_linux_2core_price,
     floor_row: hetzner_ax41_usd_floor_fixture,
-    assumptions_input: WedgeAssumptionsDeclared {
+    assumptions_input: gunbc.econ.knowable_wedge.WedgeAssumptionsDeclared {
       assumptions: github_hetzner_wedge_assumptions,
     },
   ) {
@@ -213,7 +213,7 @@ test fn w_github_hetzner_knowable_wedge_red_on_floor_exceeds_umbrella() -> Bool 
   match derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_tiny_umbrella_fixture,
     floor_row: hetzner_ax41_1_ltd_price,
-    assumptions_input: WedgeAssumptionsDeclared {
+    assumptions_input: gunbc.econ.knowable_wedge.WedgeAssumptionsDeclared {
       assumptions: github_hetzner_wedge_assumptions,
     },
   ) {
@@ -226,7 +226,7 @@ test fn w_github_hetzner_knowable_wedge_red_on_zero_runner_threads() -> Bool {
   match derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_zero_vcpu_runner_fixture,
     floor_row: hetzner_ax41_1_ltd_price,
-    assumptions_input: WedgeAssumptionsDeclared {
+    assumptions_input: gunbc.econ.knowable_wedge.WedgeAssumptionsDeclared {
       assumptions: github_hetzner_wedge_assumptions,
     },
   ) {

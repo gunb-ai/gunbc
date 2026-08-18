@@ -5,7 +5,7 @@ data gauntlet_lane_enrollment_note: String = "Executing consumer for the Falsifi
 
 fn synthetic_rehomed_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
   gunbc.commit_workflow.CommitCheckEnrollment {
-    check: CommitWitnessClaim {
+    check: gunbc.commit_workflow.CommitWitnessClaim {
       entry: "src/v2/test/claim/long/synthetic_rehomed_witness_test.dag",
       check_fns: ["synthetic_rehomed_holds"],
       kind: ExecutionWitnessKind,
@@ -17,7 +17,7 @@ fn synthetic_rehomed_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
 
 fn synthetic_pr_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
   gunbc.commit_workflow.CommitCheckEnrollment {
-    check: CommitWitnessClaim {
+    check: gunbc.commit_workflow.CommitWitnessClaim {
       entry: "src/v2/test/claim/synthetic_pr_witness_test.dag",
       check_fns: ["synthetic_pr_holds"],
       kind: ExecutionWitnessKind,
@@ -29,7 +29,7 @@ fn synthetic_pr_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
 
 fn synthetic_bare_deenrolled_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
   gunbc.commit_workflow.CommitCheckEnrollment {
-    check: CommitWitnessClaim {
+    check: gunbc.commit_workflow.CommitWitnessClaim {
       entry: "src/v2/test/claim/long/synthetic_dropped_witness_test.dag",
       check_fns: ["synthetic_dropped_holds"],
       kind: ExecutionWitnessKind,
@@ -83,21 +83,21 @@ data gate_half_of_the_wall_note: String = "The GATE half, added 2026-07-26 when 
 
 fn synthetic_cadence_gate_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
   gunbc.commit_workflow.CommitCheckEnrollment {
-    check: CommitSpecGate { gate: CheapClaimPoolGate },
+    check: gunbc.commit_workflow.CommitSpecGate { gate: CheapClaimPoolGate },
     surfaces: [FalsifierCadenceJob]
   }
 }
 
 fn synthetic_regen_gate_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
   gunbc.commit_workflow.CommitCheckEnrollment {
-    check: CommitSpecGate { gate: RegenVerifyGate },
+    check: gunbc.commit_workflow.CommitSpecGate { gate: RegenVerifyGate },
     surfaces: [GithubActionsCiRegenJob]
   }
 }
 
 fn synthetic_bare_deenrolled_gate_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
   gunbc.commit_workflow.CommitCheckEnrollment {
-    check: CommitSpecGate { gate: CheapClaimPoolGate },
+    check: gunbc.commit_workflow.CommitSpecGate { gate: CheapClaimPoolGate },
     surfaces: [GitPrePushHook]
   }
 }

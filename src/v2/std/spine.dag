@@ -22,17 +22,17 @@ fn add_profiles(a: List<Int>, b: List<Int>) -> List<Int> {
       match b {
         Empty => a
         Cons { head: hb, tail: tb } =>
-          Cons { head: ha + hb, tail: add_profiles(a: ta, b: tb) }
+          std.algebra.Cons { head: ha + hb, tail: add_profiles(a: ta, b: tb) }
       }
   }
 }
 
 fn shift_deeper(profile: List<Int>) -> List<Int> {
-  Cons { head: 0, tail: profile }
+  std.algebra.Cons { head: 0, tail: profile }
 }
 
 fn profile_fold_init(_n: Node) -> List<Int> {
-  Cons { head: 1, tail: Empty }
+  std.algebra.Cons { head: 1, tail: Empty }
 }
 
 fn profile_fold_step(acc: List<Int>, _edge: v2.std.node.Edge, child_profile: List<Int>) -> List<Int> {

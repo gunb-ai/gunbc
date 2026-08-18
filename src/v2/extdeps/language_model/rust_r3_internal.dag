@@ -2,10 +2,10 @@ module v2.test.language_model.rust_r3_internal
 
 fn rust_r3_internal_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^rust_r3_internal_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^rust_r3_internal_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^rust_r3_internal_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^rust_r3_internal_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
@@ -18,7 +18,7 @@ fn rust_r3_internal_emit_coupling_fixture_wired() -> Bool {
   && rust_r3_internal_emit_coupling_both_projections_changed(receipt: receipt)
 }
 
-data claim_rust_r3_internal_emit_coupling_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_rust_r3_internal_emit_coupling_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/rust_r3_internal: emit-coupling receipt references rust_atom_realization_symbol and both projections change on row mutation",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: rust_r3_internal_claim_bool_atom(b: true),
@@ -28,8 +28,8 @@ data claim_rust_r3_internal_emit_coupling_wired: v2.std.verification.TestClaim =
 fn rust_r3_internal_pending_verification_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^rust_r3_internal_pending_verification_reason,
-    at: Textual { file: ^rust_r3_internal_pending_verification_reason, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: ^rust_r3_internal_pending_verification_reason, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -47,7 +47,7 @@ fn rust_r3_internal_verification_receipt_claim_id_wired() -> Bool {
   rust_r3_internal_verification_run_receipt_default.claim_id == leaf_model_claim_rust_r3_internal_symbol_coupling
 }
 
-data claim_rust_r3_internal_verification_receipt_shape: v2.std.verification.TestClaim = EqualsClaim {
+data claim_rust_r3_internal_verification_receipt_shape: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/rust_r3_internal: verification receipt carriers happy + falsification verdict slots",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: rust_r3_internal_claim_bool_atom(b: rust_r3_internal_verification_receipt_claim_id_wired()),

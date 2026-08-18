@@ -14,7 +14,7 @@ fn classify_arrow_body_form_red_no_direct_atom(target: Node) -> v2.std.node.Arro
   match target.kind {
     TypeNode { connective: Atom { identity: _ } } => UnsupportedArrowBody
     TypeNode { connective: Conj } => RecordConstructBody
-    ComputationNode { behavior: b } => ComputationBody { behavior: b }
+    ComputationNode { behavior: b } => v2.std.node.ComputationBody { behavior: b }
     _ => UnsupportedArrowBody
   }
 }
@@ -143,7 +143,7 @@ fn arrow_body_form_eval_admitted_tree(root: Node) -> v2.compiler.infer.InferredT
 
 fn arrow_body_form_eval_nullary_call_node(callee: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [v2.std.node.Edge { label: Positional, target: callee }]
   }
@@ -151,7 +151,7 @@ fn arrow_body_form_eval_nullary_call_node(callee: Node) -> Node {
 
 fn arrow_body_form_eval_unary_call_node(callee: Node, arg: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: callee },
@@ -162,7 +162,7 @@ fn arrow_body_form_eval_unary_call_node(callee: Node, arg: Node) -> Node {
 
 fn arrow_body_form_eval_binary_call_node(callee: Node, left: Node, right: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: callee },

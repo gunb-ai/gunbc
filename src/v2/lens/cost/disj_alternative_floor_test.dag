@@ -3,19 +3,19 @@ module v2.test.lens_cost.disj_alternative_floor
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data disj_floor_arm_a: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^disj_floor_arm_a_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^disj_floor_arm_a_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data disj_floor_arm_b: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^disj_floor_arm_b_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^disj_floor_arm_b_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data disj_floor_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Disj },
+  kind: v2.std.node.TypeNode { connective: Disj },
   children: [
     v2.std.node.Edge { label: Positional, target: disj_floor_arm_a },
     v2.std.node.Edge { label: Positional, target: disj_floor_arm_b }

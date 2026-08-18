@@ -228,7 +228,7 @@ test fn autosave_permits_local_checkpoint_only() -> Bool {
 
 test fn healer_refuses_author_branch_mutation() -> Bool {
   match adjudicate_remote_publication(
-    context: PublicationContextArtifactHealer {
+    context: gunbc.session_auto_publish.PublicationContextArtifactHealer {
       repair_target: HealerRepairTargetAuthorBranch,
     },
     operation: HealerMutateAuthorBranch,
@@ -238,14 +238,14 @@ test fn healer_refuses_author_branch_mutation() -> Bool {
   }
     && publication_is_permitted(
       disposition: adjudicate_remote_publication(
-        context: PublicationContextArtifactHealer {
+        context: gunbc.session_auto_publish.PublicationContextArtifactHealer {
           repair_target: HealerRepairTargetBotBranch,
         },
         operation: RemotePushBranch,
       ),
     )
     && match adjudicate_remote_publication(
-      context: PublicationContextArtifactHealer {
+      context: gunbc.session_auto_publish.PublicationContextArtifactHealer {
         repair_target: HealerRepairTargetPatchArtifact,
       },
       operation: RemotePushBranch,
@@ -257,7 +257,7 @@ test fn healer_refuses_author_branch_mutation() -> Bool {
 
 test fn healer_bot_branch_refuses_pr_creation() -> Bool {
   match adjudicate_remote_publication(
-    context: PublicationContextArtifactHealer {
+    context: gunbc.session_auto_publish.PublicationContextArtifactHealer {
       repair_target: HealerRepairTargetBotBranch,
     },
     operation: RemoteCreatePullRequest,
@@ -285,7 +285,7 @@ test fn unknown_context_refuses_remote_publication() -> Bool {
 
 test fn unknown_healer_target_refuses_remote_publication() -> Bool {
   match adjudicate_remote_publication(
-    context: PublicationContextArtifactHealer {
+    context: gunbc.session_auto_publish.PublicationContextArtifactHealer {
       repair_target: HealerRepairTargetUnknown,
     },
     operation: RemotePushBranch,
@@ -339,14 +339,14 @@ fn clean_publish_attempt(head: std.types.CommitSha, paths: List<String>) -> gunb
   let request = ingested_publish_request(head: head)
   let digest = write_digest_a
   gunbc.session_auto_publish.RemotePublishAttempt {
-    context: PublicationContextCtrlUserPublish { request: request },
+    context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
     operation: RemotePushBranch,
-    observed_remote_head: RemoteHeadKnown { head: head },
-    current_remote_head: RemoteHeadKnown { head: head },
+    observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head },
+    current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head },
     current_local_head: Present { value: head },
     index_cleanliness: IndexClean,
-    unmerged_stage_count: CountKnown { count: 0 },
-    conflict_marker_count: CountKnown { count: 0 },
+    unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
+    conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
     declared_write_paths: paths,
     actual_write_paths: paths,
     post_write_validation: Present {
@@ -372,14 +372,14 @@ test fn fixture_uncompilable_tree_refuses_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
-      context: PublicationContextCtrlUserPublish { request: request },
+      context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
-      observed_remote_head: RemoteHeadKnown { head: head_a },
-      current_remote_head: RemoteHeadKnown { head: head_a },
+      observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
+      current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: Present { value: head_a },
       index_cleanliness: IndexClean,
-      unmerged_stage_count: CountKnown { count: 0 },
-      conflict_marker_count: CountKnown { count: 0 },
+      unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
+      conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       post_write_validation: Present {
@@ -406,14 +406,14 @@ test fn fixture_conflict_markers_refuse_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
-      context: PublicationContextCtrlUserPublish { request: request },
+      context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
-      observed_remote_head: RemoteHeadKnown { head: head_a },
-      current_remote_head: RemoteHeadKnown { head: head_a },
+      observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
+      current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: Present { value: head_a },
       index_cleanliness: IndexClean,
-      unmerged_stage_count: CountKnown { count: 0 },
-      conflict_marker_count: CountKnown { count: 39 },
+      unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
+      conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 39 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       post_write_validation: Present {
@@ -432,14 +432,14 @@ test fn fixture_write_outside_declared_set_refuses_before_remote_write() -> Bool
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
-      context: PublicationContextCtrlUserPublish { request: request },
+      context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
-      observed_remote_head: RemoteHeadKnown { head: head_a },
-      current_remote_head: RemoteHeadKnown { head: head_a },
+      observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
+      current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: Present { value: head_a },
       index_cleanliness: IndexClean,
-      unmerged_stage_count: CountKnown { count: 0 },
-      conflict_marker_count: CountKnown { count: 0 },
+      unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
+      conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["scratch/spike_probe.dag"],
       post_write_validation: Present {
@@ -459,14 +459,14 @@ test fn fixture_peer_commit_not_authored_by_publisher_refuses() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
-      context: PublicationContextCtrlUserPublish { request: request },
+      context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
-      observed_remote_head: RemoteHeadKnown { head: head_a },
-      current_remote_head: RemoteHeadKnown { head: head_a },
+      observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
+      current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: Present { value: head_a },
       index_cleanliness: IndexClean,
-      unmerged_stage_count: CountKnown { count: 0 },
-      conflict_marker_count: CountKnown { count: 0 },
+      unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
+      conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       post_write_validation: Present {
@@ -485,14 +485,14 @@ test fn fixture_remote_head_moved_refuses_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
-      context: PublicationContextCtrlUserPublish { request: request },
+      context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
-      observed_remote_head: RemoteHeadKnown { head: head_a },
-      current_remote_head: RemoteHeadKnown { head: head_b },
+      observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
+      current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_b },
       current_local_head: Present { value: head_a },
       index_cleanliness: IndexClean,
-      unmerged_stage_count: CountKnown { count: 0 },
-      conflict_marker_count: CountKnown { count: 0 },
+      unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
+      conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       post_write_validation: Present {
@@ -512,12 +512,12 @@ test fn fixture_no_explicit_request_refuses_before_remote_write() -> Bool {
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: PublicationContextScratchProbe,
       operation: RemotePushBranch,
-      observed_remote_head: RemoteHeadKnown { head: head_a },
-      current_remote_head: RemoteHeadKnown { head: head_a },
+      observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
+      current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: Present { value: head_a },
       index_cleanliness: IndexClean,
-      unmerged_stage_count: CountKnown { count: 0 },
-      conflict_marker_count: CountKnown { count: 0 },
+      unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
+      conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       post_write_validation: Present {
@@ -536,14 +536,14 @@ test fn red_unevaluable_validation_status_refuses_not_passes() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
-      context: PublicationContextCtrlUserPublish { request: request },
+      context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
-      observed_remote_head: RemoteHeadKnown { head: head_a },
-      current_remote_head: RemoteHeadKnown { head: head_a },
+      observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
+      current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: Present { value: head_a },
       index_cleanliness: IndexClean,
-      unmerged_stage_count: CountKnown { count: 0 },
-      conflict_marker_count: CountKnown { count: 0 },
+      unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
+      conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       post_write_validation: Present {
@@ -570,14 +570,14 @@ test fn red_transferable_green_evidence_refuses_when_receipt_head_differs_from_r
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
-      context: PublicationContextCtrlUserPublish { request: request },
+      context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
-      observed_remote_head: RemoteHeadKnown { head: head_a },
-      current_remote_head: RemoteHeadKnown { head: head_a },
+      observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
+      current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: Present { value: head_a },
       index_cleanliness: IndexClean,
-      unmerged_stage_count: CountKnown { count: 0 },
-      conflict_marker_count: CountKnown { count: 0 },
+      unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
+      conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       post_write_validation: Present {
@@ -596,14 +596,14 @@ test fn dirty_index_refuses_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
-      context: PublicationContextCtrlUserPublish { request: request },
+      context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
-      observed_remote_head: RemoteHeadKnown { head: head_a },
-      current_remote_head: RemoteHeadKnown { head: head_a },
+      observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
+      current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: Present { value: head_a },
       index_cleanliness: IndexDirty,
-      unmerged_stage_count: CountKnown { count: 0 },
-      conflict_marker_count: CountKnown { count: 0 },
+      unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
+      conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       post_write_validation: Present {
@@ -620,7 +620,7 @@ test fn dirty_index_refuses_before_remote_write() -> Bool {
 
 test fn red_patch_artifact_remote_push_would_have_published() -> Bool {
   match adjudicate_remote_publication(
-    context: PublicationContextArtifactHealer {
+    context: gunbc.session_auto_publish.PublicationContextArtifactHealer {
       repair_target: HealerRepairTargetPatchArtifact,
     },
     operation: RemoteCreatePullRequest,
@@ -634,7 +634,7 @@ test fn ctrl_user_publish_derives_intent_from_ingested_request_only() -> Bool {
   let request = ingested_publish_request(head: head_a)
   publication_is_permitted(
     disposition: adjudicate_remote_publication(
-      context: PublicationContextCtrlUserPublish { request: request },
+      context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
     ),
   )

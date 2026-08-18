@@ -522,15 +522,15 @@ fn mercurial_compatibility_observed_state_identity(
 fn mercurial_compatibility_fidelity() -> gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
   gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
     endpoint_state: CompatibilityFidelityPreserved,
-    upstream_change_evidence: CompatibilityFidelityDowngraded {
+    upstream_change_evidence: gunbc.scm_compatibility_shape.CompatibilityFidelityDowngraded {
       cause: "portable changeset history preserves upstream history but not the authored source operation",
     },
-    native_proposal_contract: CompatibilityFidelityUnavailable {
+    native_proposal_contract: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
       cause: "Mercurial R0 carries no native reads/frame/ensures proposal contract",
     },
     history: CompatibilityFidelityPreserved,
     publication: CompatibilityFidelityPreserved,
-    conflict_facts: CompatibilityFidelityUnavailable {
+    conflict_facts: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
       cause: "Mercurial R0 does not promote merge presentation into semantic conflict evidence",
     },
     path_and_mode: CompatibilityFidelityPreserved,
@@ -563,7 +563,7 @@ fn mercurial_compatibility_projection_receipt(
           producer: receipt.read_back.observed_by,
           state: state,
         ),
-        advance: CompatibilityAdvanceUnavailable { cause: reason },
+        advance: gunbc.scm_compatibility_shape.CompatibilityAdvanceUnavailable { cause: reason },
         fidelity: mercurial_compatibility_fidelity(),
       }
   }

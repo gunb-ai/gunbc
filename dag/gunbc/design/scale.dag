@@ -38,7 +38,7 @@ fn scale_var(t: ScaleToken) -> String {
 }
 
 fn scale_decl(t: ScaleToken) -> gunbc.design.material.CssDecl {
-  decl(prop: CustomProperty { name: t.name }, value: scale_value_wire(v: t.value))
+  decl(prop: extdeps.languages.css.properties.CustomProperty { name: t.name }, value: scale_value_wire(v: t.value))
 }
 
 fn scale_pair(a: ScaleToken, b: ScaleToken) -> String {
@@ -83,13 +83,13 @@ data type_scale: List<ScaleToken> = [
 ]
 
 data font_sans: ScaleToken = font_token(name: "font-sans", families: [
-  NamedFamily { name: "Noto Sans" },
-  GenericFamily { kind: GenericSystemUi },
-  GenericFamily { kind: GenericSansSerif },
+  extdeps.languages.css.values.NamedFamily { name: "Noto Sans" },
+  extdeps.languages.css.values.GenericFamily { kind: GenericSystemUi },
+  extdeps.languages.css.values.GenericFamily { kind: GenericSansSerif },
 ])
 data font_mono: ScaleToken = font_token(name: "font-mono", families: [
-  NamedFamily { name: "JetBrains Mono" },
-  GenericFamily { kind: GenericMonospace },
+  extdeps.languages.css.values.NamedFamily { name: "JetBrains Mono" },
+  extdeps.languages.css.values.GenericFamily { kind: GenericMonospace },
 ])
 
 data font_stack: List<ScaleToken> = [font_sans, font_mono]

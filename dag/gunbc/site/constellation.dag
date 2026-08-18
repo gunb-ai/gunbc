@@ -102,8 +102,8 @@ fn legend_item(s: LayerStar) -> std.markup.Fragment {
     sattr(name: "class", value: concat("legend-", s.key)),
   ], children: [
     extdeps.browser.Element { tag: "span", attributes: [ sattr(name: "class", value: "legend-key") ],
-      children: [ FragmentText { content: s.key } ] },
-    FragmentText { content: concat(" — ", s.claim) },
+      children: [ std.markup.FragmentText { content: s.key } ] },
+    std.markup.FragmentText { content: concat(" — ", s.claim) },
   ] }
 }
 

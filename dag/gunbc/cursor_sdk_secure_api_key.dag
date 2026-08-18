@@ -34,7 +34,7 @@ fn cursor_sdk_secure_api_key_from_secret_ref(
             ),
           }
         SecretCredentialReady { credential: credential, resolved_version: _ } => {
-          let local = CursorSdkApiKeySecretRef { secret_ref: admitted_ref }
+          let local = extdeps.llm.cursor_sdk.CursorSdkApiKeySecretRef { secret_ref: admitted_ref }
           CursorSdkSecureApiKeyReady {
             secret_ref: admitted_ref,
             credential: credential,

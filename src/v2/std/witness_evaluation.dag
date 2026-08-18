@@ -19,8 +19,8 @@ data unrealized_frame_refusal_note: String = "THE PURE BODY REFUSES; IT DOES NOT
 fn witness_frame_unrealized_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^witness_evaluation_frame_not_realized,
-    at: Textual { file: ^witness_evaluation_unrealized_boundary, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^witness_evaluation_unrealized_boundary, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 

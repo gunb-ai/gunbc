@@ -64,7 +64,7 @@ fn path_unresolvable_diagnostic(at: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^path_unresolvable_reason,
     at: node_locus(node: at),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -72,7 +72,7 @@ fn path_ambiguous_diagnostic(at: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^path_ambiguous_reason,
     at: node_locus(node: at),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -82,7 +82,7 @@ fn lens_enforcement_violation_diagnostic<Projected, Budget>(
   v2.std.diagnostic.Diagnostic {
     reason: ^lens_enforcement_violation_reason,
     at: node_locus(node: input.at),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -102,7 +102,7 @@ fn advisory_report_diagnostic(report: v2.std.report.Report) -> v2.std.diagnostic
   v2.std.diagnostic.Diagnostic {
     reason: report_reason_to_diagnostic_reason(reason: report.reason),
     at: report.at,
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -218,7 +218,7 @@ fn collect_ancestor_frames(root: Node, steps: List<v2.std.node.Symbol>) -> Outco
             f: fn(child) {
               outcome_accepted(value: AncestorWalk {
                 current: child,
-                frames: Cons {
+                frames: std.algebra.Cons {
                   head: AncestorFrame { ancestor: walk.current, step: step },
                   tail: walk.frames
                 }
@@ -395,7 +395,7 @@ fn advisory_reports_empty_diagnostic(at: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^advisory_reports_empty_reason,
     at: node_locus(node: at),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -460,5 +460,5 @@ fn apply_advisory_lens(
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

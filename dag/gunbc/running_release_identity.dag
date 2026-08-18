@@ -97,7 +97,7 @@ fn observe_running_release_identity(healthz_body: String) -> RunningReleaseIdent
         JsonMemberDuplicated { count: n } =>
           RunningReleaseUnidentified { cause: ReleaseRevisionDuplicated { count: n } }
         JsonMemberFound { value: rv } =>
-          match running_release_member_string(lookup: JsonMemberFound { value: rv }) {
+          match running_release_member_string(lookup: extdeps.languages.json.parse.JsonMemberFound { value: rv }) {
             Absent => RunningReleaseUnidentified { cause: ReleaseRevisionNotAString }
             Present { value: revision_text } =>
               if release_revision_text_valid(text: revision_text) {
@@ -109,7 +109,7 @@ fn observe_running_release_identity(healthz_body: String) -> RunningReleaseIdent
                   JsonMemberDuplicated { count: m } =>
                     RunningReleaseUnidentified { cause: SurfaceBundleIdentityDuplicated { count: m } }
                   JsonMemberFound { value: sv } =>
-                    match running_release_member_string(lookup: JsonMemberFound { value: sv }) {
+                    match running_release_member_string(lookup: extdeps.languages.json.parse.JsonMemberFound { value: sv }) {
                       Absent =>
                         RunningReleaseUnidentified { cause: SurfaceBundleIdentityNotAString }
                       Present { value: surface_text } =>

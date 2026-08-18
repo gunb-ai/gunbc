@@ -12,12 +12,12 @@ data wire_contract: std.serialization.VariantEncoding = llm_snake_wire_contract
 
 data openai_chat_message_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.openai", decl_name: "OpenAiChatMessage", field: WholeDeclaration },
-  encoding: InternallyTaggedObject { tag_field: "role", naming: StripPrefixAndSnakeCase { prefix: "OpenAiChatMessage" } }
+  encoding: std.serialization.InternallyTaggedObject { tag_field: "role", naming: std.serialization.StripPrefixAndSnakeCase { prefix: "OpenAiChatMessage" } }
 }
 
 data openai_chat_message_part_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.openai", decl_name: "OpenAiChatMessagePart", field: WholeDeclaration },
-  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "OpenAiChatMessage", suffix: "Part" } }
+  encoding: std.serialization.InternallyTaggedObject { tag_field: "type", naming: std.serialization.StripPrefixSuffixAndSnakeCase { prefix: "OpenAiChatMessage", suffix: "Part" } }
 }
 
 data openai_chat_message_content_wire_contract: std.serialization.CoproductWireContract = {

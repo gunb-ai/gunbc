@@ -71,7 +71,7 @@ fn section_3() -> List<std.markdown.MarkdownBlock> {
     p(text: "**LANDED (emit) — backward row selection:** `grammar_relation_row_reverse_parse_selection` in `v2.std.grammar`, consumed by `06_translate.dag`."),
     p(text: "**INTERIM — hand-walker (`v2.compiler.body_lowering_fold`, ~1.5k LOC):** production-identity dispatch in `body_lower_production_emitted` / `body_lower_finish`. Dissolution contract on carrier: **do NOT port arms into `SugarRule` rows** — dissolve into **GrammarRelationRow forward fold** (general-body-producer-design §3)."),
     p(text: "**Two layers (clarifies `body_lowering_fold_note` ambiguity):**"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "layer"), cell(text: "mechanism"), cell(text: "owns")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -91,7 +91,7 @@ fn section_3() -> List<std.markdown.MarkdownBlock> {
     p(text: "Slice 0 does **not** add `grammar_relation_row_forward_selection` — that name is **already landed** in `03_ingest.dag` for reparse (token-spine keyed). `ObligationForwardDeterminism` / `ObligationSlotBijection` in `grammar.dag` remain unconsumed at the normalize/body-producer seam."),
     p(text: "**Slice 0 remains:** production-identity-keyed forward row select + slot-map apply at `body_lower_finish`, reusing the `ForwardRowNone` / `ForwardRowOne` / `ForwardRowMany` exactly-one pattern (or a shared helper extracted from ingest/backward — never a third selection authority). Wire `ObligationForwardDeterminism` + `ObligationSlotBijection` as the body-producer's first consumer."),
     h3(text: "3.4 Row inventory (hand-walker arms → rows)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "slice"), cell(text: "productions"), cell(text: "core target"), cell(text: "dissolves")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -106,7 +106,7 @@ fn section_3() -> List<std.markdown.MarkdownBlock> {
     h3(text: "3.5 SugarRule vs forward row — decision rule"),
     p(text: "If lowering needs per-production captured-slot bijection from the grammar relation, it is a **forward row**, not a `SugarRule` arm — prevents re-widening the sugar fork."),
     h3(text: "3.6 Implementation slices and acceptance"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "slice"), cell(text: "PR scope"), cell(text: "accept")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -138,7 +138,7 @@ fn section_4() -> List<std.markdown.MarkdownBlock> {
     ]),
     p(text: "**One-index invariant:** fill is policy-agnostic; `ResolutionPolicy` gates lookup only (namespace-resolution-design §7.5 + type-env-single-authority §7.5)."),
     h3(text: "4.2 Per-module tiers (prefix modules only)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "module (sweep prefix)"), cell(text: "SymbolIndex tier"), cell(text: "namespace flip gate?")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -152,7 +152,7 @@ fn section_4() -> List<std.markdown.MarkdownBlock> {
     h3(text: "4.3 Band dependency order"),
     p(text: "Band A: no SymbolIndex work. Band B: `fold_lowering` blocked on `^migrate_when_body_lowering_generalizes`, not namespace. Band C: `symbol_index_fill` → `03_name_resolve` → `03_resolve` → `04_infer`; gates in §4.4 must land before Band C flips."),
     h3(text: "4.4 Band C gates"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "gate"), cell(text: "deliverable"), cell(text: "unblocks")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -169,7 +169,7 @@ fn section_4() -> List<std.markdown.MarkdownBlock> {
 fn section_5() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "5. Risks and escalation"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "risk"), cell(text: "signal"), cell(text: "action")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -195,6 +195,6 @@ data wave2_prep_design_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "wave2-prep-design",
   title: "Wave 2 prep — module-flip census, FLAG E row-fold, SymbolIndex dependency map",
   body: wave2_prep_design_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when Wave 2 Band A–C flips are underway and either (a) body_lowering_fold.dag is deleted per §3 slice 4, or (b) the frontier carrier holds execution-measured per-module probes replacing knowledge-attributed census. Surviving checklist rows migrate into gunbc.plans.v2_self_hosting or the frontier carrier; enroll generated docs/plans md at checkpoint 1 only then — never hand-author the projection.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when Wave 2 Band A–C flips are underway and either (a) body_lowering_fold.dag is deleted per §3 slice 4, or (b) the frontier carrier holds execution-measured per-module probes replacing knowledge-attributed census. Surviving checklist rows migrate into gunbc.plans.v2_self_hosting or the frontier carrier; enroll generated docs/plans md at checkpoint 1 only then — never hand-author the projection.")
   }
 }

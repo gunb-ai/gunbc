@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 data redundancy_present_successor_locator: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "std.disposition",
   decl_name: "Disposition",
-  field: NamedField { field_name: "marker" }
+  field: std.decl_ref.NamedField { field_name: "marker" }
 }
 
 data redundancy_red_scaffold: std.disposition.Disposition = Scaffold {
@@ -14,7 +14,7 @@ data redundancy_red_scaffold: std.disposition.Disposition = Scaffold {
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.disposition",
     decl_name: "Disposition",
-    field: NamedField { field_name: "marker" }
+    field: std.decl_ref.NamedField { field_name: "marker" }
   }
 }
 
@@ -26,7 +26,7 @@ data redundancy_region1_real_successor_present: List<std.decl_ref.DeclarationRef
   std.decl_ref.DeclarationRef {
     module_path: "extdeps.llm.anthropic",
     decl_name: "AnthropicTextBlock",
-    field: NamedField { field_name: "cache_control" }
+    field: std.decl_ref.NamedField { field_name: "cache_control" }
   }
 ]
 

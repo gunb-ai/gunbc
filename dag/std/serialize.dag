@@ -1,7 +1,7 @@
 module std.serialize
 
 fn serial_scalar(text: String) -> std.languages.SerialValue {
-  ScalarValue { text: text }
+  std.languages.ScalarValue { text: text }
 }
 
 fn serial_field(key: String, value: std.languages.SerialValue) -> std.languages.SerialField {

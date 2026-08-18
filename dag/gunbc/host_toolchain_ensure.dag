@@ -58,9 +58,9 @@ fn host_toolchain_ensure_reach(
 
 fn host_toolchain_ensure_effect(kind: HostToolchainKind) -> gunbc.host_effect.HostEffect {
   match kind {
-    BuildCache => ProvisionBuildCache { catalog_id: sccache_local_id }
-    CodexRuntime => ProvisionCodexRuntime {}
-    OsInstallActuator => OsInstallActuatorToolchainEnsure {}
+    BuildCache => gunbc.host_effect.ProvisionBuildCache { catalog_id: sccache_local_id }
+    CodexRuntime => gunbc.host_effect.ProvisionCodexRuntime {}
+    OsInstallActuator => gunbc.host_effect.OsInstallActuatorToolchainEnsure {}
   }
 }
 
@@ -78,13 +78,13 @@ fn host_toolchain_ensure_target_host(kind: HostToolchainKind, host: product.plac
 }
 
 func host_toolchain_ensure(host: product.placement_supply.HostIdentity, kind: HostToolchainKind) -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   match host_toolchain_ensure_reach(kind: kind, host: host) {
     ReachResolved { reach: reach } =>
       match host_effect_apply_gated(
         access: reach.access,
-        target: HostOs { node: reach.target },
+        target: gunbc.host_effect.HostOs { node: reach.target },
         effect: host_toolchain_ensure_effect(kind: kind),
         evidence: host_effect_identity_evidence,
         transport: reach.access.transport,

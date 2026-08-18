@@ -119,10 +119,10 @@ fn bash_test_path_kind_op(kind: std.filesystem.types.EntryKind) -> Outcome<Strin
 
 fn bash_test_path_kind_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_test_lbracket },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_path_kind_op },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_path_kind_operand },
-    FixedToken { token_class: ^bash_token_test_rbracket }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_lbracket },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_path_kind_op },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_path_kind_operand },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_rbracket }
   ]
 }
 
@@ -180,7 +180,7 @@ fn bash_path_intent_invalid_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^bash_path_intent_operand_invalid,
     at: port_locus(port: ^bash_path_intent_operand_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -293,7 +293,7 @@ fn bash_dirname_ascent_target_model(ascent: std.path_intent.DirnameAscent) -> Ou
       }
     PathJoin { base: b, suffix: s } =>
       bind_outcome(
-        o: bash_path_intent_text(path: PathJoin { base: b, suffix: s }),
+        o: bash_path_intent_text(path: std.path_intent.PathJoin { base: b, suffix: s }),
         f: fn(text) {
           if !bash_dirname_ascent_target_ok(target: ascent.target as String) {
             outcome_rejected(bash_path_intent_invalid_diagnostic())
@@ -313,13 +313,13 @@ fn bash_dirname_ascent_target_model(ascent: std.path_intent.DirnameAscent) -> Ou
 
 fn bash_stmt_if_else_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_if_kw },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
-    FixedToken { token_class: ^bash_token_if_then },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_body },
-    FixedToken { token_class: ^bash_token_if_else },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_else_body },
-    FixedToken { token_class: ^bash_token_if_fi }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_kw },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_then },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_else },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_else_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_fi }
   ]
 }
 
@@ -394,13 +394,13 @@ data bash_stmt_if_else_block_note: String = "Same If/else semantics as bash_stmt
 
 fn bash_stmt_if_else_block_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_if_kw },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
-    FixedToken { token_class: ^bash_token_if_then_block },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_body },
-    FixedToken { token_class: ^bash_token_if_else_block },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_else_body },
-    FixedToken { token_class: ^bash_token_if_fi_block }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_kw },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_then_block },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_else_block },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_else_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_fi_block }
   ]
 }
 
@@ -459,11 +459,11 @@ fn bash_stmt_if_else_block_target_model(cond: String, then_body: String, else_bo
 
 fn bash_test_str_eq_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_test_lbracket },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_eq_lhs },
-    FixedToken { token_class: ^bash_token_test_eq },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_eq_rhs },
-    FixedToken { token_class: ^bash_token_test_rbracket }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_lbracket },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_eq_lhs },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_eq },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_eq_rhs },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_rbracket }
   ]
 }
 
@@ -520,11 +520,11 @@ fn bash_test_str_eq_target_model(lhs: String, rhs: String) -> Outcome<v2.std.com
 
 fn bash_test_str_not_eq_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_test_lbracket },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_not_eq_lhs },
-    FixedToken { token_class: ^bash_token_test_eq },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_not_eq_rhs },
-    FixedToken { token_class: ^bash_token_test_rbracket }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_lbracket },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_not_eq_lhs },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_eq },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_not_eq_rhs },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_rbracket }
   ]
 }
 
@@ -581,9 +581,9 @@ fn bash_test_str_not_eq_target_model(lhs: String, rhs: String) -> Outcome<v2.std
 
 fn bash_test_str_empty_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_test_lbracket },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_empty_operand },
-    FixedToken { token_class: ^bash_token_test_rbracket }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_lbracket },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_empty_operand },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_rbracket }
   ]
 }
 
@@ -636,9 +636,9 @@ fn bash_test_str_empty_target_model(operand: String) -> Outcome<v2.std.compilers
 
 fn bash_test_str_nonempty_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_test_lbracket },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_nonempty_operand },
-    FixedToken { token_class: ^bash_token_test_rbracket }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_lbracket },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_nonempty_operand },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_rbracket }
   ]
 }
 
@@ -691,10 +691,10 @@ fn bash_test_str_nonempty_target_model(operand: String) -> Outcome<v2.std.compil
 
 fn bash_log_matches_grep_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_grep_kw },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_log_matches_pattern },
-    FixedToken { token_class: ^bash_token_grep_sp },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_log_matches_source }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_grep_kw },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_log_matches_pattern },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_grep_sp },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_log_matches_source }
   ]
 }
 
@@ -750,8 +750,8 @@ fn bash_log_matches_grep_target_model(pattern: String, source: String) -> Outcom
 
 fn bash_stmt_or_ignore_fail_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_or_ignore_fail_stmt },
-    FixedToken { token_class: ^bash_token_or_ignore_fail_sep }
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_or_ignore_fail_stmt },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_or_ignore_fail_sep }
   ]
 }
 
@@ -819,11 +819,11 @@ fn orch_if_else_block_target_model(cond: String, then_body: String, else_body: S
 
 fn bash_stmt_while_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_while_kw },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_while_cond },
-    FixedToken { token_class: ^bash_token_while_do },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_while_body },
-    FixedToken { token_class: ^bash_token_while_done }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_while_kw },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_while_cond },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_while_do },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_while_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_while_done }
   ]
 }
 
@@ -884,11 +884,11 @@ fn orch_while_target_model(cond: String, body: String) -> Outcome<v2.std.compile
 
 fn bash_test_int_ne_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_test_lbracket },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_int_ne_lhs },
-    FixedToken { token_class: ^bash_token_test_ne },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_int_ne_rhs },
-    FixedToken { token_class: ^bash_token_test_rbracket }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_lbracket },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_int_ne_lhs },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_ne },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_int_ne_rhs },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_test_rbracket }
   ]
 }
 

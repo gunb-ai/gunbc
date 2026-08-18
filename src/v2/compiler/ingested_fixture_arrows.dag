@@ -26,7 +26,7 @@ fn ingested_fixture_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.di
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -188,7 +188,7 @@ fn ingested_add_decl_node(fn_name: v2.std.node.Symbol) -> Outcome<Node> {
     f: fn(arrow_with_body) {
       outcome_accepted(
         value: node_synthetic(
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             v2.std.node.Edge {
               label: Named { name: fn_name },

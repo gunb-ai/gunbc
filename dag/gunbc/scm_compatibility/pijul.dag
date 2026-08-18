@@ -91,11 +91,11 @@ fn pijul_compatibility_fidelity() -> gunbc.scm_compatibility_shape.Compatibility
   gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
     endpoint_state: CompatibilityFidelityPreserved,
     upstream_change_evidence: CompatibilityFidelityPreserved,
-    native_proposal_contract: CompatibilityFidelityUnavailable {
+    native_proposal_contract: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
       cause: "Pijul recorded changes retain upstream operations and dependencies, not the native proposal's full reads/frame/ensures contract",
     },
     history: CompatibilityFidelityPreserved,
-    publication: CompatibilityFidelityDowngraded {
+    publication: gunbc.scm_compatibility_shape.CompatibilityFidelityDowngraded {
       cause: "a Pijul channel is retained as native state, not promoted into the product publication policy",
     },
     conflict_facts: CompatibilityFidelityPreserved,
@@ -606,7 +606,7 @@ fn pijul_compatibility_projection_receipt(
           ),
           state: state,
         ),
-        advance: CompatibilityAdvanceUnavailable { cause: reason },
+        advance: gunbc.scm_compatibility_shape.CompatibilityAdvanceUnavailable { cause: reason },
         fidelity: pijul_compatibility_fidelity(),
       }
   }

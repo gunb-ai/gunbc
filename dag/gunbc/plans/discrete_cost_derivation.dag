@@ -3,7 +3,7 @@ module gunbc.plans.discrete_cost_derivation
 
 fn discrete_cost_derivation_body() -> List<std.markdown.MarkdownBlock> {
   [
-    BlockquoteBlock { blocks: [
+    std.markdown.BlockquoteBlock { blocks: [
       p(text: "**Status: DRAFT for operator review (2026-08-04).** Design-note-first: **no code lands from this note.** It declares the carrier shapes, the authority ruling, the phase order, and the discriminating controls for deriving a *discrete work account* from a DAG section plus an input plus a realization. Every carrier and symbol named below was verified against the live tree at this revision; the four corrections in section 4 are things the tree says that the originating sketch did not."),
       p(text: "**This note does not replace [`bounded-input-cost-envelope-scheduling.md`](bounded-input-cost-envelope-scheduling.md)** (operator-signed 2026-07-02) — it *fills that design's declared hole*. That doc rules bounded input, then cost, then schedule, and names `v2.lens.cost` as the symbolic-cost authority that must not be re-minted. It never says how a symbolic cost becomes a *number* at a declared input. This note is that step, and defers to the signed doc on every scheduling question."),
     ] },
@@ -21,7 +21,7 @@ fn discrete_cost_derivation_body() -> List<std.markdown.MarkdownBlock> {
 
     h2(text: "2. Three quantities, never one number"),
     p(text: "The originating question asks for 'a literal number of cycles x reads'. **Cycles and reads are different dimensions and must not be multiplied into one scalar** — that product has no unit and no falsifier. Three quantities wear the word 'cost', and conflating any two is the DESIGN state-space conflation class:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [
         cell(text: "Quantity"),
         cell(text: "Question"),
@@ -55,7 +55,7 @@ fn discrete_cost_derivation_body() -> List<std.markdown.MarkdownBlock> {
 
     h2(text: "3. What already exists (verified against the tree)"),
     p(text: "Four load-bearing pieces exist. This note reuses all four and mints no parallel cost taxonomy (DESIGN §3)."),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [
         cell(text: "Piece"),
         cell(text: "Authority"),
@@ -103,20 +103,20 @@ fn discrete_cost_derivation_body() -> List<std.markdown.MarkdownBlock> {
 
     h2(text: "5. The subject: what a cost derivation is *about*"),
     p(text: "A cost number with no bound subject is the provenance failure this repo keeps finding: a figure measured on a fixture, attached to a live-tree run. The subject is therefore structural, and every derivation carries it:"),
-    CodeBlock { code: "CostSubject \{\n  root: Node\n  graph_identity: ContentHash\n  input: ValueIdentity\n  realization: RealizationIdentity\n  cost_model_revision: CostModelRevision\n\}\n" },
+    std.markdown.CodeBlock { code: "CostSubject \{\n  root: Node\n  graph_identity: ContentHash\n  input: ValueIdentity\n  realization: RealizationIdentity\n  cost_model_revision: CostModelRevision\n\}\n" },
     p(text: "`graph_identity` and `input` are content identities (`std.content_hash`, the `Fnv1a64Structural` family member `v2.std.node` `Hash` already uses); `realization` names the materialization/target decisions of §8; `cost_model_revision` versions the atom-cost table so a re-calibration is a visible revision rather than a silent restatement. **Two derivations may be compared only when their subjects agree on the axes being compared** — the same construction wall shape as `gunbc.econ.scm_serving_model` `VendorMismatchAcrossRows`, which makes 'S3 storage with R2 egress' unwritable rather than merely wrong."),
 
     h2(text: "6. The work account"),
     p(text: "Semantic work is a **multiset of cost atoms**, not a scalar. A closed atom vocabulary keeps the fold total by construction, the same property `base_cost_for_connective` / `base_cost_for_behavior` have today:"),
-    CodeBlock { code: "type WorkAtom\n  = StructuralWork \{ kind: StructuralWorkKind \}\n  | PrimitiveWork \{ primitive: PrimitiveIdentity \}\n  | EffectWork \{ operation: DeclarationRef \}\n\ntype StructuralWorkKind\n  = EvaluateNode\n  | TraverseEdge\n  | InvokeFunction\n  | DecideBranch\n" },
+    std.markdown.CodeBlock { code: "type WorkAtom\n  = StructuralWork \{ kind: StructuralWorkKind \}\n  | PrimitiveWork \{ primitive: PrimitiveIdentity \}\n  | EffectWork \{ operation: DeclarationRef \}\n\ntype StructuralWorkKind\n  = EvaluateNode\n  | TraverseEdge\n  | InvokeFunction\n  | DecideBranch\n" },
     p(text: "**Shape ruled 2026-08-05 (see section 15).** The outer sum is CLOSED so the fold stays total; the primitive and effect populations are OPEN through exact identities so a new measurable operation is a row, not a substrate edit. An unknown identity **refuses** — it never becomes zero-cost, which is the arm that would otherwise re-open the fabricated-plausible-output class one level down. The byte axes that an earlier revision carried as bare atoms (`AllocateBytes` / `ReadBytes` / `WriteBytes`) do not belong in this sum at all: they are quantities in a unit, not kinds of work, and the ruling is explicit that operation counts and byte quantities must not both be anonymous `Nat`s."),
     p(text: "`DiscreteWork` is then a `Map<WorkAtom, Nat>` — one carrier, extensible by row rather than by field (DESIGN §2 horizontal: the record-of-named-counters shape re-forks every time an axis is added). The summary retains the axes v1's `ComplexitySummary` already proved useful:"),
-    CodeBlock { code: "type DiscreteWork \{ atoms: Map<WorkAtom, Nat> \}\n\ntype DiscreteCostSummary \{\n  work: DiscreteWork\n  span: DiscreteWork\n  peak_space: SizeExpression\n  output_sizes: Map<OutputIdentity, SizeExpression>\n\}\n" },
+    std.markdown.CodeBlock { code: "type DiscreteWork \{ atoms: Map<WorkAtom, Nat> \}\n\ntype DiscreteCostSummary \{\n  work: DiscreteWork\n  span: DiscreteWork\n  peak_space: SizeExpression\n  output_sizes: Map<OutputIdentity, SizeExpression>\n\}\n" },
     p(text: "**`work` and `span` are separate and neither derives the other.** `work` is total operations; `span` is the critical path under perfect parallelism. A graph can have large work and small span or the reverse, and the scheduling consumer needs both — `std.realization_measurement` already models exactly this asymmetry for the measured side (sequential time sums / parallel time maxes; sequential peak space maxes / parallel peak space sums), so the derived side must match it or the two cannot be compared."),
 
     h2(text: "7. Four honesty states — the result is not always a literal"),
     p(text: "The derivation is total and fail-closed. It never returns a number it cannot justify, and it never silently contributes zero for something it failed to model (`zero_cost()` for an unmodeled construct is the fabricated-plausible-output class, DESIGN §5):"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [
         cell(text: "State"),
         cell(text: "When"),
@@ -161,7 +161,7 @@ fn discrete_cost_derivation_body() -> List<std.markdown.MarkdownBlock> {
 
     h2(text: "9. Projecting to cycles, time, and energy"),
     p(text: "Only after the work vector exists does a target-qualified projection make sense, against a model that names its machine:"),
-    CodeBlock { code: "type RealizationCostModel \{\n  target: MachineIdentity\n  runtime: RuntimeIdentity\n  cache_posture: CachePosture\n  atom_costs: Map<WorkAtom, CostDistribution>\n  basis: DatedBasis\n\}\n" },
+    std.markdown.CodeBlock { code: "type RealizationCostModel \{\n  target: MachineIdentity\n  runtime: RuntimeIdentity\n  cache_posture: CachePosture\n  atom_costs: Map<WorkAtom, CostDistribution>\n  basis: DatedBasis\n\}\n" },
     p(text: "Predicted cycles is then the sum over atoms of count x calibrated cost, and predicted time is a critical-path projection over `span` plus external-effect latency. Three constraints keep this honest:"),
     ol(items: [
       li(text: "**A projection with no calibrated row for an atom refuses** — it does not assume 1, and it does not drop the atom. This is where `llvm_instruction_cost`'s bare `Int` table (correction 4) is re-homed: per-target, cited, unit-carrying, dated, and *outside* `v2.lens.cost`."),
@@ -172,7 +172,7 @@ fn discrete_cost_derivation_body() -> List<std.markdown.MarkdownBlock> {
 
     h2(text: "10. Why a large input is or is not honest"),
     p(text: "Cost alone cannot answer whether a witness is merely proving that the computer can compute. That is a second, orthogonal question — **what semantic fact does the extra work establish?** — and it is the question the directory heuristic never asks. A large input is justified only when it is one of:"),
-    CodeBlock { code: "type CostJustification\n  = MinimalCounterexample\n  | BoundaryCrossing \{ modeled_boundary: DeclarationRef, chosen_input: ValueIdentity \}\n  | PopulationTotality \{ population: DeclarationRef \}\n  | ExternalFidelity \{ effect: DeclarationRef \}\n  | ResourceContract \{ resource: ResourceKind, bound: Measure \}\n" },
+    std.markdown.CodeBlock { code: "type CostJustification\n  = MinimalCounterexample\n  | BoundaryCrossing \{ modeled_boundary: DeclarationRef, chosen_input: ValueIdentity \}\n  | PopulationTotality \{ population: DeclarationRef \}\n  | ExternalFidelity \{ effect: DeclarationRef \}\n  | ResourceContract \{ resource: ResourceKind, bound: Measure \}\n" },
     p(text: "If increasing N crosses no modeled boundary, enlarges no population whose totality is the claim, exercises no external effect that is itself the subject, and tests no declared resource bound, then a larger N is just more computation. Worked example, on a real shape from this tree: for a closure-matrix admission law whose assertions are 'duplicate ref refuses', 'wrong digest refuses', 'entry absent refuses', the semantic cost is O(refs) and the discriminating fixture is two or three rows. Where an inline cap of 64 is the modeled boundary, the smallest discriminating input is **65** — not an arbitrarily large corpus — and the real 91-read compiler closure is then a *separately scheduled* integration receipt. Per-PR gets tiny algebra controls plus one minimal boundary fixture; the scheduled lane gets the corpus. No arbitrary scale anywhere."),
     p(text: "This decomposition is the existing W/C/F test-decomposition practice made derivable rather than judged: wet/external work is honestly scheduled, corpus totality splits mechanism fixtures from corpus execution, and **fixture-shaped work that is nonetheless slow is a cost defect, not a long test** — today it is indistinguishable from an honest one, because both merely exceed 5 seconds."),
 
@@ -243,6 +243,6 @@ data discrete_cost_derivation_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "discrete-cost-derivation",
   title: "Discrete cost derivation — the work account between symbolic cost and measured wall",
   body: discrete_cost_derivation_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the C0 authority ruling is stated on the carriers themselves (v2.lens.cost owning discrete work, the v1 CostExpr machinery migrated, llvm_instruction_cost re-homed to a cited per-target model), a DAG section plus a declared input plus a realization derives ExactCost or BoundedCost or refuses with typed counted causes by execution, the projection to predicted time calibrates against dag/gunbc/witness_row_cost_basis.tsv with a planted-omission RED, and floor admission consumes declared per-witness cost envelopes so gunbc_ci_fast_lane_rule_note, gunbc_falsifier_substrate_long_lane_budget_note, and long_lane_exclusion_note all fire their own dissolve-on together — at which point the carriers state the policy and this note retires.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the C0 authority ruling is stated on the carriers themselves (v2.lens.cost owning discrete work, the v1 CostExpr machinery migrated, llvm_instruction_cost re-homed to a cited per-target model), a DAG section plus a declared input plus a realization derives ExactCost or BoundedCost or refuses with typed counted causes by execution, the projection to predicted time calibrates against dag/gunbc/witness_row_cost_basis.tsv with a planted-omission RED, and floor admission consumes declared per-witness cost envelopes so gunbc_ci_fast_lane_rule_note, gunbc_falsifier_substrate_long_lane_budget_note, and long_lane_exclusion_note all fire their own dissolve-on together — at which point the carriers state the policy and this note retires.")
   }
 }

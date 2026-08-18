@@ -43,12 +43,12 @@ fn receipt_fixture(node: String, digest: std.content_hash.Fnv1a64Structural) -> 
   gunbc.roadmap_model.RoadmapAcceptanceReceipt {
     node: tnid(s: node),
     criteria_digest: digest,
-    red_control: RedControlExecuted {
+    red_control: gunbc.roadmap_status.RedControlExecuted {
       witness_module: "test.fixture",
       witness_fn: "fixture_red_control",
       executed_on: "2026-07-28",
     },
-    handback: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+    handback: gunbc.roadmap_status.HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
     accepted_by: "operator",
     accepted_on: "2026-07-28",
   }
@@ -59,7 +59,7 @@ fn evidenceless_receipt_fixture(rn: gunbc.roadmap_model.RoadmapNode) -> gunbc.ro
     node: rn.node,
     criteria_digest: digest_or_zero(rn: rn),
     red_control: RedControlNotRun,
-    handback: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+    handback: gunbc.roadmap_status.HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
     accepted_by: "operator",
     accepted_on: "2026-07-28",
   }
@@ -69,7 +69,7 @@ fn undelivered_receipt_fixture(rn: gunbc.roadmap_model.RoadmapNode) -> gunbc.roa
   gunbc.roadmap_model.RoadmapAcceptanceReceipt {
     node: rn.node,
     criteria_digest: digest_or_zero(rn: rn),
-    red_control: RedControlExecuted {
+    red_control: gunbc.roadmap_status.RedControlExecuted {
       witness_module: "test.fixture",
       witness_fn: "fixture_red_control",
       executed_on: "2026-07-28",
@@ -150,7 +150,7 @@ fn red_fixture(line: gunbc.roadmap_status.RoadmapItem, signoff: gunbc.roadmap_st
     node: "red-fixture",
     line: line,
     carriers: [gunbc.roadmap_model.Pointer { label: "authority", path: "DESIGN.md" }],
-    sizing: Sized {
+    sizing: gunbc.roadmap_model.Sized {
       intricacy: IntricacyMedium,
       volume: VolumeMedium,
       repo: "gunbc",
@@ -163,7 +163,7 @@ fn red_fixture(line: gunbc.roadmap_status.RoadmapItem, signoff: gunbc.roadmap_st
 }
 
 fn red_ticket(done: Bool) -> gunbc.roadmap_status.RoadmapItem {
-  TicketLine {
+  gunbc.roadmap_status.TicketLine {
     done: done,
     ticket: gunbc.roadmap_status.TicketFields {
       headline: "planted completed-row RED",
@@ -307,7 +307,7 @@ test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
       |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
   )
   let current = concat(prior, [
-    AcceptanceRevoked {
+    gunbc.roadmap_model.AcceptanceRevoked {
       exact_prior_receipt: receipt,
       disposition: gunbc.roadmap_model.AcceptanceNodeReopensActiveFrontier {},
       reason: "fixture revocation witness" as std.types.NonEmptyStr,
@@ -368,10 +368,10 @@ test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
 test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
   !active_node_admissible(n: red_fixture(
     line: red_ticket(done: false),
-    signoff: SignedOff {
+    signoff: gunbc.roadmap_status.SignedOff {
       by: "operator",
-      works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" },
-      scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+      works: gunbc.roadmap_status.RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" },
+      scope_equivalent: gunbc.roadmap_status.HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
       as_expected: true,
     },
   ))
@@ -379,7 +379,7 @@ test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
 
 test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
   !active_node_admissible(n: red_fixture(
-    line: SupersededLine { by: "replacement", content: "retired history" },
+    line: gunbc.roadmap_status.SupersededLine { by: "replacement", content: "retired history" },
     signoff: Unsigned,
   ))
 }

@@ -14,7 +14,7 @@ fn pa_admitted(o: v2.compiler.self_host.promotion_admission.PromotionOutcome) ->
 fn pa_artifact(hex: String) -> v2.compiler.self_host.generation.GeneratedArtifactIdentity {
   match sha512_hex_digest(hex: hex) {
     Present { value: d } =>
-      ArtifactMaterialized { digest: v2.compiler.self_host.generation.observed_artifact_digest(observed: d) }
+      v2.compiler.self_host.generation.ArtifactMaterialized { digest: v2.compiler.self_host.generation.observed_artifact_digest(observed: d) }
     Absent => ArtifactNotMaterialized
   }
 }
@@ -263,7 +263,7 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
         corpus: pa_corpus(expected: pa_corpus_cases),
         cases_compared: pa_corpus_cases,
         outcome: Observed {
-          value: BehaviorDiverges { at_case: "classical_and(True,False)" }
+          value: v2.compiler.self_host.promotion_admission.BehaviorDiverges { at_case: "classical_and(True,False)" }
         }
       },
       successor_equivalence: v2.compiler.self_host.promotion_admission.BehavioralEquivalenceReceipt {
@@ -312,7 +312,7 @@ test fn uncaught_planted_fault_is_refused() -> Bool {
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
         outcome: Observed {
-          value: FaultNotCaught { at_case: "classical_not(True)" }
+          value: v2.compiler.self_host.promotion_admission.FaultNotCaught { at_case: "classical_not(True)" }
         }
       ),
       candidate_provenance: pa_provenance(
@@ -356,7 +356,7 @@ test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Boo
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: ObservationUnavailable { cause: ^fault_harness_did_not_run }
+        outcome: v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^fault_harness_did_not_run }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -1049,7 +1049,7 @@ test fn unreported_fault_observation_refuses_through_the_seam() -> Bool {
       o: pa_observation(
         build: Observed { value: BuildGreen },
         equivalence: Observed { value: BehaviorAgrees },
-        fault: ObservationUnavailable { cause: ^slb_fault_run_unreported }
+        fault: v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_fault_run_unreported }
       )
     )
   )
@@ -1067,9 +1067,9 @@ test fn unbuilt_run_refuses_through_the_seam() -> Bool {
   let o = admit_promotion(
     c: pa_bundle_from_observation(
       o: pa_observation(
-        build: ObservationUnavailable { cause: ^slb_stage_incomplete },
-        equivalence: ObservationUnavailable { cause: ^slb_comparison_did_not_run },
-        fault: ObservationUnavailable { cause: ^slb_fault_run_did_not_run }
+        build: v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_stage_incomplete },
+        equivalence: v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_comparison_did_not_run },
+        fault: v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_fault_run_did_not_run }
       )
     )
   )

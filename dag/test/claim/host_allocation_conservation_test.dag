@@ -128,7 +128,7 @@ data differential_witness_note: String = "ASSERTING THAT FOUR LOOKUPS RETURN A P
 
 fn synthetic_usable_ram_for(host: product.placement_supply.HostIdentity) -> gunbc.ci_floor_measurement.HostUsableRam {
   if (host as String) == (operator_host_srv3 as String) {
-    HostUsableRamMeasured { bytes: byte_size(268435456000), provenance: "synthetic fixture: srv3 alone perturbed to prove the lookup is keyed by host" }
+    gunbc.ci_floor_measurement.HostUsableRamMeasured { bytes: byte_size(268435456000), provenance: "synthetic fixture: srv3 alone perturbed to prove the lookup is keyed by host" }
   } else {
     gunbc_ci_host_usable_ram_for(host: host)
   }

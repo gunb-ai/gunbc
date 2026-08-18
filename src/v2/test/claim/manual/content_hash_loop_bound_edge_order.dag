@@ -3,7 +3,7 @@ module v2.test.manual.content_hash_loop_bound_edge_order
 
 fn content_hash_loop_body_leaf() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_body_sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^content_hash_loop_body_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -11,7 +11,7 @@ fn content_hash_loop_body_leaf() -> Node {
 
 fn content_hash_loop_measure_leaf() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_measure_sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^content_hash_loop_measure_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -19,7 +19,7 @@ fn content_hash_loop_measure_leaf() -> Node {
 
 fn content_hash_loop_body() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
       v2.std.node.Edge { label: Positional, target: content_hash_loop_body_leaf() }
     ],
@@ -29,7 +29,7 @@ fn content_hash_loop_body() -> Node {
 
 fn content_hash_loop_body_two() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
       v2.std.node.Edge { label: Positional, target: content_hash_loop_body_leaf() },
       v2.std.node.Edge { label: Positional, target: content_hash_loop_body_leaf() }
@@ -40,7 +40,7 @@ fn content_hash_loop_body_two() -> Node {
 
 fn content_hash_loop_bound_last() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: content_hash_loop_body() },
       v2.std.node.Edge {
@@ -54,7 +54,7 @@ fn content_hash_loop_bound_last() -> Node {
 
 fn content_hash_loop_bound_first() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^loop_bound_edge },
@@ -68,7 +68,7 @@ fn content_hash_loop_bound_first() -> Node {
 
 fn content_hash_loop_bound_middle() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: content_hash_loop_body_two() },
       v2.std.node.Edge {
@@ -83,7 +83,7 @@ fn content_hash_loop_bound_middle() -> Node {
 
 fn content_hash_loop_bound_last_two_body() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: content_hash_loop_body_two() },
       v2.std.node.Edge { label: Positional, target: content_hash_loop_body_two() },
@@ -98,7 +98,7 @@ fn content_hash_loop_bound_last_two_body() -> Node {
 
 fn content_hash_loop_pass_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_pass_sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^content_hash_loop_pass_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -106,14 +106,14 @@ fn content_hash_loop_pass_node() -> Node {
 
 fn content_hash_loop_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_fail_sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^content_hash_loop_fail_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn content_hash_loop_with_extra_named() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: content_hash_loop_body() },
       v2.std.node.Edge {
@@ -142,7 +142,7 @@ fn content_hash_loop_order_claim_input(ok: Bool) -> Node {
   if ok { content_hash_loop_pass_node() } else { content_hash_loop_fail_node() }
 }
 
-data claim_content_hash_loop_bound_edge_order_invariant: v2.std.verification.TestClaim = CompilesClaim {
+data claim_content_hash_loop_bound_edge_order_invariant: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/content_hash: Loop loop_bound_edge digest is placement-independent",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: content_hash_loop_order_claim_input(ok: content_hash_loop_bound_edge_order_holds()),

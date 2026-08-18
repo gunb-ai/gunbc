@@ -21,58 +21,58 @@ fn corpus_live_roster_module_count() -> Int {
   extdeps_external_authority_live_roster_module_count()
 }
 
-data extdeps_fixture_missing_anchor_module: v2.std.qualified_name.QualifiedName = Cons {
+data extdeps_fixture_missing_anchor_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: ^fixture,
-    tail: Cons { head: ^external_authority_missing, tail: Empty }
+    tail: std.algebra.Cons { head: ^external_authority_missing, tail: Empty }
   }
 }
 
-data extdeps_fixture_file_anchor_module: v2.std.qualified_name.QualifiedName = Cons {
+data extdeps_fixture_file_anchor_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: ^fixture,
-    tail: Cons { head: ^external_authority_file_anchor, tail: Empty }
+    tail: std.algebra.Cons { head: ^external_authority_file_anchor, tail: Empty }
   }
 }
 
-data extdeps_color_srgb_module: v2.std.qualified_name.QualifiedName = Cons {
+data extdeps_color_srgb_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: ^color,
-    tail: Cons { head: ^srgb, tail: Empty }
+    tail: std.algebra.Cons { head: ^srgb, tail: Empty }
   }
 }
 
-data extdeps_archive_format_module: v2.std.qualified_name.QualifiedName = Cons {
+data extdeps_archive_format_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: ^archive,
-    tail: Cons { head: symbol_intern_lexeme(lexeme: "format"), tail: Empty }
+    tail: std.algebra.Cons { head: symbol_intern_lexeme(lexeme: "format"), tail: Empty }
   }
 }
 
-data extdeps_ollama_binary_release_module: v2.std.qualified_name.QualifiedName = Cons {
+data extdeps_ollama_binary_release_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: ^ollama,
-    tail: Cons { head: symbol_intern_lexeme(lexeme: "binary_release"), tail: Empty }
+    tail: std.algebra.Cons { head: symbol_intern_lexeme(lexeme: "binary_release"), tail: Empty }
   }
 }
 
-data extdeps_ollama_capability_module: v2.std.qualified_name.QualifiedName = Cons {
+data extdeps_ollama_capability_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: ^ollama,
-    tail: Cons { head: symbol_intern_lexeme(lexeme: "capability"), tail: Empty }
+    tail: std.algebra.Cons { head: symbol_intern_lexeme(lexeme: "capability"), tail: Empty }
   }
 }
 
-data extdeps_ollama_gpu_support_module: v2.std.qualified_name.QualifiedName = Cons {
+data extdeps_ollama_gpu_support_module: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^extdeps,
-  tail: Cons {
+  tail: std.algebra.Cons {
     head: ^ollama,
-    tail: Cons { head: symbol_intern_lexeme(lexeme: "gpu_support"), tail: Empty }
+    tail: std.algebra.Cons { head: symbol_intern_lexeme(lexeme: "gpu_support"), tail: Empty }
   }
 }

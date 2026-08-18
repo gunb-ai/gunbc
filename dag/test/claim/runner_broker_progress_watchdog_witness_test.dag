@@ -4,7 +4,7 @@ module test.claim.runner_broker_progress_watchdog_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn remote_offline() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
-  RemoteRegistrationObserved {
+  gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
     registration: RunnerRemoteOffline,
     registration_id: "",
     grade: ObservedEvidence,
@@ -12,8 +12,8 @@ fn remote_offline() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationE
 }
 
 fn remote_online() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
-  RemoteRegistrationObserved {
-    registration: RunnerRemoteOnline {
+  gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
+    registration: gunbc.runner_broker_progress_watchdog.RunnerRemoteOnline {
       runner_name: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
       labels: ["self-hosted"],
     },
@@ -25,8 +25,8 @@ fn remote_online() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEv
 test fn remote_online_is_healthy_noop_state() -> Bool {
   match classify_runner_watchdog_verdict(
     remote: remote_online(),
-    broker: BrokerProgressSilent { silence_seconds: 0, grade: ObservedEvidence },
-    worker: RunnerWorkerAbsent { grade: ObservedEvidence },
+    broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent { silence_seconds: 0, grade: ObservedEvidence },
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
   ) {
     WatchdogHealthy => true
     WatchdogRetrying { silence_seconds: _ } => false
@@ -39,12 +39,12 @@ test fn remote_online_is_healthy_noop_state() -> Bool {
 test fn offline_with_recent_broker_progress_is_retrying() -> Bool {
   match classify_runner_watchdog_verdict(
     remote: remote_offline(),
-    broker: BrokerProgressObserved {
+    broker: gunbc.runner_broker_progress_watchdog.BrokerProgressObserved {
       last_event: AcquireAttempt,
       last_at: "2026-08-06T20:00:00Z" as std.types.Timestamp,
       grade: ObservedEvidence,
     },
-    worker: RunnerWorkerAbsent { grade: ObservedEvidence },
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
   ) {
     WatchdogRetrying { silence_seconds: _ } => true
     WatchdogWedged { silence_seconds: _ } => false
@@ -57,11 +57,11 @@ test fn offline_with_recent_broker_progress_is_retrying() -> Bool {
 test fn offline_stale_broker_progress_is_wedged() -> Bool {
   match classify_runner_watchdog_verdict(
     remote: remote_offline(),
-    broker: BrokerProgressSilent {
+    broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
       silence_seconds: runner_broker_progress_silence_bound_seconds,
       grade: ObservedEvidence,
     },
-    worker: RunnerWorkerAbsent { grade: ObservedEvidence },
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
   ) {
     WatchdogWedged { silence_seconds: s } => s == runner_broker_progress_silence_bound_seconds
     WatchdogRetrying { silence_seconds: _ } => false
@@ -74,11 +74,11 @@ test fn offline_stale_broker_progress_is_wedged() -> Bool {
 test fn worker_alive_is_busy_noop_state() -> Bool {
   match classify_runner_watchdog_verdict(
     remote: remote_offline(),
-    broker: BrokerProgressSilent {
+    broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
       silence_seconds: runner_broker_progress_silence_bound_seconds,
       grade: ObservedEvidence,
     },
-    worker: RunnerWorkerAlive {
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAlive {
       detail: "Runner.Worker executing job" as std.types.NonEmptyStr,
       grade: ObservedEvidence,
     },
@@ -93,11 +93,11 @@ test fn worker_alive_is_busy_noop_state() -> Bool {
 
 test fn unreadable_remote_evidence_refuses() -> Bool {
   match classify_runner_watchdog_verdict(
-    remote: RemoteRegistrationRefused {
+    remote: gunbc.runner_broker_progress_watchdog.RemoteRegistrationRefused {
       reason: "org runner roster credential unreadable" as std.types.NonEmptyStr,
     },
-    broker: BrokerProgressUnobserved { reason: "n/a" as std.types.NonEmptyStr },
-    worker: RunnerWorkerUnobserved { reason: "n/a" as std.types.NonEmptyStr },
+    broker: gunbc.runner_broker_progress_watchdog.BrokerProgressUnobserved { reason: "n/a" as std.types.NonEmptyStr },
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerUnobserved { reason: "n/a" as std.types.NonEmptyStr },
   ) {
     WatchdogRefused { reason: _ } => true
     WatchdogHealthy => false
@@ -130,20 +130,20 @@ test fn closed_set_broker_events_all_reset_silence() -> Bool {
 test fn wedged_predicate_requires_grace_and_no_worker() -> Bool {
   watchdog_replace_predicate_holds(
     remote: remote_offline(),
-    broker: BrokerProgressSilent {
+    broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
       silence_seconds: runner_broker_progress_silence_bound_seconds,
       grade: ObservedEvidence,
     },
-    worker: RunnerWorkerAbsent { grade: ObservedEvidence },
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
     registration_grace_elapsed: true,
   )
     && !watchdog_replace_predicate_holds(
          remote: remote_offline(),
-         broker: BrokerProgressSilent {
+         broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
            silence_seconds: runner_broker_progress_silence_bound_seconds,
            grade: ObservedEvidence,
          },
-         worker: RunnerWorkerAbsent { grade: ObservedEvidence },
+         worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
          registration_grace_elapsed: false,
        )
 }
@@ -177,8 +177,8 @@ test fn reobservation_refuses_when_local_process_changed() -> Bool {
       start_time: "91000000" as std.types.NonEmptyStr,
     },
     fresh_remote: remote_offline(),
-    fresh_worker: RunnerWorkerAbsent { grade: ObservedEvidence },
-    fresh_broker: BrokerProgressSilent {
+    fresh_worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
+    fresh_broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
       silence_seconds: runner_broker_progress_silence_bound_seconds,
       grade: ObservedEvidence,
     },
@@ -202,8 +202,8 @@ test fn reobservation_refuses_when_remote_recovered() -> Bool {
     receipt: receipt,
     fresh_local_process: receipt.local_process,
     fresh_remote: remote_online(),
-    fresh_worker: RunnerWorkerAbsent { grade: ObservedEvidence },
-    fresh_broker: BrokerProgressSilent {
+    fresh_worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
+    fresh_broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
       silence_seconds: runner_broker_progress_silence_bound_seconds,
       grade: ObservedEvidence,
     },

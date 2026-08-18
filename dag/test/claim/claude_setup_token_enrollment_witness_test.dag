@@ -26,7 +26,7 @@ test fn witness_setup_token_capture_refuses_multiple_candidates() -> Bool {
   match admit_setup_token_capture(
     candidate_count: 2,
     token: Present { value: "sk-ant-oat01-test" },
-    format: SetupTokenFormatMeasured {
+    format: extdeps.llm.claude_setup_token_cli.SetupTokenFormatMeasured {
       format: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatMeasured {
         token_prefix: "sk-ant-oat01-" as std.types.NonEmptyStr,
         min_length: character_count(count: 20),
@@ -43,7 +43,7 @@ test fn witness_setup_token_capture_admits_single_candidate() -> Bool {
   match admit_setup_token_capture(
     candidate_count: 1,
     token: Present { value: "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz" },
-    format: SetupTokenFormatMeasured {
+    format: extdeps.llm.claude_setup_token_cli.SetupTokenFormatMeasured {
       format: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatMeasured {
         token_prefix: "sk-ant-oat01-" as std.types.NonEmptyStr,
         min_length: character_count(count: 20),
@@ -57,7 +57,7 @@ test fn witness_setup_token_capture_admits_single_candidate() -> Bool {
 }
 
 fn witness_setup_token_format_measured() -> extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatObservation {
-  SetupTokenFormatMeasured {
+  extdeps.llm.claude_setup_token_cli.SetupTokenFormatMeasured {
     format: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatMeasured {
       token_prefix: "sk-ant-oat01-" as std.types.NonEmptyStr,
       min_length: character_count(count: 20),
@@ -70,7 +70,7 @@ test fn witness_setup_token_capture_refuses_format_unobserved() -> Bool {
   match admit_setup_token_capture(
     candidate_count: 1,
     token: Present { value: "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz" },
-    format: SetupTokenFormatUnobserved {
+    format: extdeps.llm.claude_setup_token_cli.SetupTokenFormatUnobserved {
       reason: "pinned executable format not yet measured" as std.types.NonEmptyStr,
     },
   ) {
@@ -142,7 +142,7 @@ test fn witness_paired_probe_native_limit_encoding() -> Bool {
 
 test fn witness_rejected_credential_emits_reconnect_action() -> Bool {
   match claude_enrollment_action_for_credential_standing(
-    standing: ClaudeCredentialRejected { reason: "token revoked" as std.types.NonEmptyStr },
+    standing: gunbc.claude_setup_token_enrollment.ClaudeCredentialRejected { reason: "token revoked" as std.types.NonEmptyStr },
   ) {
     ReconnectClaude { cause } => cause == ("token revoked" as std.types.NonEmptyStr)
     ConnectClaude => false
@@ -242,7 +242,7 @@ test fn witness_credential_write_back_refuses_missing_observation() -> Bool {
 
 test fn witness_setup_token_standing_is_rotation_unobserved_by_default() -> Bool {
   claude_setup_token_standing_from_capture(
-    capture: SetupTokenCaptureAdmitted {
+    capture: gunbc.claude_setup_token_enrollment.SetupTokenCaptureAdmitted {
       token_length: character_count(count: 42),
     },
   ) == SetupTokenUsable
@@ -301,12 +301,12 @@ test fn witness_enrollment_workflow_refuses_host_effects_scaffold() -> Bool {
 
 test fn witness_exact_secret_version_binding_admits_write_and_readback() -> Bool {
   match admit_exact_secret_version_binding(
-    target: EnrollmentSecretTargetSpecified {
+    target: gunbc.claude_setup_token_enrollment.EnrollmentSecretTargetSpecified {
       project: "operator-selected-project" as std.types.NonEmptyStr,
       secret: "operator-selected-secret" as std.types.NonEmptyStr,
     },
-    write: EnrollmentSecretWritten { version: "7" as std.types.NonEmptyStr },
-    readback: EnrollmentSecretReadBackOk {
+    write: gunbc.claude_setup_token_enrollment.EnrollmentSecretWritten { version: "7" as std.types.NonEmptyStr },
+    readback: gunbc.claude_setup_token_enrollment.EnrollmentSecretReadBackOk {
       version: "7" as std.types.NonEmptyStr,
       private_content_identity: "sha256:managed-token" as std.types.NonEmptyStr,
       digest_matches: true,

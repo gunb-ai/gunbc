@@ -89,7 +89,7 @@ fn svg_document(view_box: String, class_name: String, aria_label: String, childr
 // The content is emitted through the ordinary text escape, so a selector may not use the child
 // combinator or an ampersand; descendant selectors express everything this document needs.
 fn svg_style(css: String) -> std.markup.Fragment {
-  svg_element(tag: svg_style_tag, attributes: [], children: [FragmentText { content: css }])
+  svg_element(tag: svg_style_tag, attributes: [], children: [std.markup.FragmentText { content: css }])
 }
 
 fn svg_group(class_name: String, children: List<std.markup.Fragment>) -> std.markup.Fragment {
@@ -114,7 +114,7 @@ fn svg_text(x: Int, y: Int, label: String, class_name: String) -> std.markup.Fra
     attr(name: "x", value: to_string(x)),
     attr(name: "y", value: to_string(y)),
     attr(name: "class", value: class_name),
-  ], children: [FragmentText { content: label }])
+  ], children: [std.markup.FragmentText { content: label }])
 }
 
 fn serialize_svg_document(doc: std.markup.Fragment) -> String {

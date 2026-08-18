@@ -39,14 +39,14 @@ data per_placement_a: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "ci_workflow.arch_amd64",
   computation_key: release_build_key,
   guard: UnguardedDemand,
-  replication: ReplicatedOracle { runs: 2 }
+  replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }
 }
 
 data per_placement_b: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "ci_workflow.arch_arm64",
   computation_key: release_build_key,
   guard: UnguardedDemand,
-  replication: ReplicatedOracle { runs: 2 }
+  replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }
 }
 
 test fn ci_build_across_two_jobs_is_one_violation() -> Bool {

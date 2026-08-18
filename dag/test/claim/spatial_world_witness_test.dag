@@ -144,7 +144,7 @@ test fn adding_a_room_through_a_delta_extends_the_world_and_leaves_the_base_alon
         Present { value: study } =>
           let v = world_variant(
             base: base,
-            delta: std.change.KeyedPatch { hunks: [KeyedDiffAddedHunk { hunk_key: ("study" as product.placement_supply.RoomIdentity), to: study }] },
+            delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffAddedHunk { hunk_key: ("study" as product.placement_supply.RoomIdentity), to: study }] },
           )
           realized_room_count(v: v) == 3 && world_room_count(w: variant_base(v: v)) == 2
       }
@@ -166,7 +166,7 @@ test fn a_delta_that_makes_rooms_overlap_refuses_at_realization() -> Bool {
             Present { value: widened } =>
               let v = world_variant(
                 base: base,
-                delta: std.change.KeyedPatch { hunks: [KeyedDiffModifiedHunk {
+                delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffModifiedHunk {
                   hunk_key: ("kitchen" as product.placement_supply.RoomIdentity),
                   from: current.space,
                   to: widened,
@@ -200,7 +200,7 @@ test fn a_delta_computed_against_a_stale_base_refuses() -> Bool {
             Present { value: to } =>
               let v = world_variant(
                 base: base,
-                delta: std.change.KeyedPatch { hunks: [KeyedDiffModifiedHunk {
+                delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffModifiedHunk {
                   hunk_key: ("kitchen" as product.placement_supply.RoomIdentity),
                   from: stale_from,
                   to: to,
@@ -226,11 +226,11 @@ test fn absent_and_present_targets_refuse_rather_than_absorbing() -> Bool {
         Present { value: k } =>
           let remove_missing = world_variant(
             base: base,
-            delta: std.change.KeyedPatch { hunks: [KeyedDiffRemovedHunk { hunk_key: ("cellar" as product.placement_supply.RoomIdentity), from: k.space }] },
+            delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffRemovedHunk { hunk_key: ("cellar" as product.placement_supply.RoomIdentity), from: k.space }] },
           )
           let add_existing = world_variant(
             base: base,
-            delta: std.change.KeyedPatch { hunks: [KeyedDiffAddedHunk { hunk_key: ("kitchen" as product.placement_supply.RoomIdentity), to: k.space }] },
+            delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffAddedHunk { hunk_key: ("kitchen" as product.placement_supply.RoomIdentity), to: k.space }] },
           )
           match realize_variant(v: remove_missing) {
             WorldReady { value: _ } => false
@@ -258,7 +258,7 @@ test fn removing_a_room_shrinks_the_realized_world_only() -> Bool {
         Present { value: h } =>
           let v = world_variant(
             base: base,
-            delta: std.change.KeyedPatch { hunks: [KeyedDiffRemovedHunk { hunk_key: ("hall" as product.placement_supply.RoomIdentity), from: h.space }] },
+            delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffRemovedHunk { hunk_key: ("hall" as product.placement_supply.RoomIdentity), from: h.space }] },
           )
           realized_room_count(v: v) == 1 && world_room_count(w: variant_base(v: v)) == 2
       }
@@ -277,8 +277,8 @@ test fn two_variants_over_one_base_do_not_see_each_other() -> Bool {
           match hall() {
             Absent => false
             Present { value: h } =>
-              let grown = world_variant(base: base, delta: std.change.KeyedPatch { hunks: [KeyedDiffAddedHunk { hunk_key: ("study" as product.placement_supply.RoomIdentity), to: study }] })
-              let shrunk = world_variant(base: base, delta: std.change.KeyedPatch { hunks: [KeyedDiffRemovedHunk { hunk_key: ("hall" as product.placement_supply.RoomIdentity), from: h.space }] })
+              let grown = world_variant(base: base, delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffAddedHunk { hunk_key: ("study" as product.placement_supply.RoomIdentity), to: study }] })
+              let shrunk = world_variant(base: base, delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffRemovedHunk { hunk_key: ("hall" as product.placement_supply.RoomIdentity), from: h.space }] })
               realized_room_count(v: grown) == 3
                 && realized_room_count(v: shrunk) == 1
                 && world_room_count(w: base) == 2
@@ -346,7 +346,7 @@ test fn modifying_a_room_preserves_the_room_order() -> Bool {
                     Present { value: narrower } =>
                       let v = world_variant(
                         base: base,
-                        delta: std.change.KeyedPatch { hunks: [KeyedDiffModifiedHunk {
+                        delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffModifiedHunk {
                           hunk_key: ("hall" as product.placement_supply.RoomIdentity),
                           from: h.space,
                           to: narrower,

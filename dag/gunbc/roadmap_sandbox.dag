@@ -5,67 +5,67 @@ data roadmap_sandbox_note: String = "The /sandbox design surface (P4): the regis
 
 fn sandbox_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    StaticRule { selector: ClassSelector { name: "sandbox" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "sandbox" }, decls: [
       decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
       decl(prop: MaxWidth, value: scale_var(t: measure_page)),
     ] },
-    StaticRule { selector: RawSelector { text: ".sandbox section" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".sandbox section" }, decls: [
       decl(prop: MarginBottom, value: scale_var(t: space_24)),
     ] },
-    StaticRule { selector: ClassSelector { name: "swatch-row" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "swatch-row" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: space_6)),
       decl(prop: MarginBottom, value: scale_var(t: space_2)),
     ] },
-    StaticRule { selector: ClassSelector { name: "swatch" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "swatch" }, decls: [
       decl(prop: Display, value: "inline-block"),
       decl(prop: Width, value: scale_var(t: space_24)),
       decl(prop: Height, value: scale_var(t: space_24)),
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
     ] },
-    StaticRule { selector: ClassSelector { name: "role-name" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "role-name" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_12)),
       role_decl(prop: Color, r: TextRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "role-var" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "role-var" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_12)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "token-row" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "token-row" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: Gap, value: scale_var(t: space_8)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_12)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "gallery-row" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "gallery-row" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: Gap, value: scale_var(t: space_8)),
       decl(prop: FlexWrap, value: "wrap"),
       decl(prop: AlignItems, value: "baseline"),
     ] },
-    StaticRule { selector: ClassSelector { name: "gallery-cell" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "gallery-cell" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: space_2)),
     ] },
-    StaticRule { selector: ClassSelector { name: "gallery-arm" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "gallery-arm" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_10)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "auditioner-bar" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "auditioner-bar" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: Gap, value: scale_var(t: space_4)),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Margin, value: scale_triple(a: space_3, b: space_0, c: space_3)),
     ] },
-    StaticRule { selector: ClassSelector { name: "band-chip" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "band-chip" }, decls: [
       decl(prop: Display, value: "inline-block"),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_10)),
@@ -79,21 +79,21 @@ data fixture_frame_width_note: String = "The three fixture frames simulate the f
 
 fn fixture_frame_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    StaticRule { selector: RawSelector { text: ".sandbox-work-row" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".sandbox-work-row" }, decls: [
       decl(prop: MaxWidth, value: "none"),
     ] },
-    StaticRule { selector: ClassSelector { name: "fixture-frame" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "fixture-frame" }, decls: [
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
       decl(prop: Padding, value: scale_var(t: space_8)),
       decl(prop: MarginBottom, value: scale_var(t: space_16)),
     ] },
-    StaticRule { selector: ClassSelector { name: "fixture-wide" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "fixture-wide" }, decls: [
       decl(prop: MaxWidth, value: "1680px"),
     ] },
-    StaticRule { selector: ClassSelector { name: "fixture-medium" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "fixture-medium" }, decls: [
       decl(prop: MaxWidth, value: "1024px"),
     ] },
-    StaticRule { selector: ClassSelector { name: "fixture-narrow" }, decls: [
+    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "fixture-narrow" }, decls: [
       decl(prop: MaxWidth, value: "480px"),
     ] },
   ]
@@ -251,7 +251,7 @@ fn fixture_active_view() -> gunbc.roadmap_presentation.WorkRowView {
   fixture_specimen_view(node_id: "sandbox-specimen-active", activity: activity_view_from_parts(
     segments: fixture_specimen_segments(),
     remaining: 4,
-    process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
     current_activity: "Worked for 6m 34s"))
 }
 
@@ -262,7 +262,7 @@ fn fixture_refused_view() -> gunbc.roadmap_presentation.WorkRowView {
       gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
     ],
     remaining: 6,
-    process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
     current_activity: ""))
 }
 

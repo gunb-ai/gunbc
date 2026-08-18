@@ -2,7 +2,7 @@ module v2.test.coercion_fold_int_rust_fixture
 
 fn int_source_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^fixture_int_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fixture_int_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -37,7 +37,7 @@ fn coercion_fold_int_to_i32_fixture() -> Outcome<v2.std.coercion.CoercionResult>
   coercion_fold(
     source: int_source_grounding_fixture(),
     candidates: rust_i32_candidate_fixture(),
-    policy: TargetDeclaredPriority {
+    policy: v2.std.find_witness.TargetDeclaredPriority {
       priority: rust_inhabitant_i32_node()
     }
   )

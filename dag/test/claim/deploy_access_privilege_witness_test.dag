@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data privilege_mutation_marker: String = "host-mutation-privilege-marker-7f3a"
 
 fn host_os_target() -> gunbc.host_effect.NodeControlPlane {
-  HostOs { node: srv1_host }
+  gunbc.host_effect.HostOs { node: srv1_host }
 }
 
 test fn witness_modeled_unprivileged_fixture_is_denied() -> Bool {
@@ -27,7 +27,7 @@ test fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
   match host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
-    effect: ShellCommand {
+    effect: gunbc.host_effect.ShellCommand {
       script: concat("echo ", privilege_mutation_marker, " && exit 99")
     },
     evidence: host_effect_identity_evidence,
@@ -52,7 +52,7 @@ test fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
   let r = host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
-    effect: ShellCommand { script: concat("echo ", privilege_mutation_marker) },
+    effect: gunbc.host_effect.ShellCommand { script: concat("echo ", privilege_mutation_marker) },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
@@ -75,7 +75,7 @@ test fn witness_privileged_fixture_mutation_applies() -> Bool {
   reconciliation_converged(r: host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
-    effect: ShellCommand { script: "true" },
+    effect: gunbc.host_effect.ShellCommand { script: "true" },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present {
@@ -88,7 +88,7 @@ test fn witness_privileged_fixture_surfaces_stdout() -> Bool {
   match host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
-    effect: ShellCommand {
+    effect: gunbc.host_effect.ShellCommand {
       script: concat("echo ", privilege_mutation_marker)
     },
     evidence: host_effect_identity_evidence,

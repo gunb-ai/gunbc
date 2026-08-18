@@ -33,7 +33,7 @@ fn serialize_diff_as_source_patch(
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallNow {
+  class: v2.lens.common.construction_justification.WallNow {
     mechanism: RealizationDispatch,
     authority: std.decl_ref.DeclarationRef { module_path: "v2.compiler.translate", decl_name: "target_serialize_source_from_model", field: WholeDeclaration }
   }

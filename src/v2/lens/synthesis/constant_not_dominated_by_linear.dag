@@ -2,7 +2,7 @@ module v2.test.lens_synthesis.constant_not_dominated_by_linear
 
 
 data synthesis_const_x: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^synthesis_const_x_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^synthesis_const_x_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -10,7 +10,7 @@ data synthesis_const_x: Node = v2.std.node.Node {
 fn constant_not_dominated_by_linear_claim_holds() -> Bool {
   !symbolic_cost_dominates(
     a: unit_cost(),
-    b: LinearCost { variable: v2.lens.cost.SizeVariable { source: synthesis_const_x } }
+    b: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: synthesis_const_x } }
   )
 }
 
@@ -19,14 +19,14 @@ fn constant_not_dominated_by_linear_claim_rhs() -> Node {
     synthesis_const_x
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_constant_not_dominated_by_linear: v2.std.verification.TestClaim = EqualsClaim {
+data claim_constant_not_dominated_by_linear: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_synthesis/constant_not_dominated_by_linear: constant not dominated by linear",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: synthesis_const_x,

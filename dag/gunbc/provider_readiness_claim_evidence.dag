@@ -150,7 +150,7 @@ fn provider_live_request_challenge(
       basis: "provider response belongs to the named request attempt",
     },
     fidelity: std.claim_evidence.EvidenceFidelity {
-      boundary: ProviderRefreshFailed { reason: reason },
+      boundary: extdeps.llm.cli_lifecycle.ProviderRefreshFailed { reason: reason },
       losses: [],
     },
     probe: provider_live_request_probe,
@@ -404,7 +404,7 @@ fn provider_readiness_link_relation(
           provider: link.fact.value.provider,
           bound: link.fact.value.bound,
         )
-        && link.fidelity.boundary == ProviderRefreshFailed { reason: reason }
+        && link.fidelity.boundary == extdeps.llm.cli_lifecycle.ProviderRefreshFailed { reason: reason }
     ProviderLiveModelResponseReceived { response: _ } =>
       supports
         && link.inference_rule == "provider-live-request-succeeded"

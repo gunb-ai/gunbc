@@ -51,11 +51,11 @@ fn arm_payload_from_target(target: Node) -> v2.std.node.ArmPayload {
       if count(target.children) == 0 {
         Nullary
       } else {
-        Typed { target_ref: conj_authored_payload_type_name(n: target) }
+        v2.std.node.Typed { target_ref: conj_authored_payload_type_name(n: target) }
       }
     TypeNode { connective: Atom { identity: sym } } =>
-      Typed { target_ref: sym }
-    _ => Typed { target_ref: ^coproduct_unresolved_payload }
+      v2.std.node.Typed { target_ref: sym }
+    _ => v2.std.node.Typed { target_ref: ^coproduct_unresolved_payload }
   }
 }
 
@@ -164,7 +164,7 @@ fn coproduct_nullary_inhabitant_lookup_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: resolve_type_node(type_name: type_name)),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -246,14 +246,14 @@ fn call_callee_target(node: Node) -> Outcome<Node> {
         outcome_rejected(d: v2.std.diagnostic.Diagnostic {
           reason: ^call_callee_absent,
           at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         })
     }
   } else {
     outcome_rejected(d: v2.std.diagnostic.Diagnostic {
       reason: ^node_not_a_call,
       at: node_locus(node: node),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     })
   }
 }
@@ -281,7 +281,7 @@ fn node_envelope_without_named_coordinate_go(
             outcome_rejected(d: v2.std.diagnostic.Diagnostic {
               reason: ^named_child_ambiguous,
               at: node_locus(node: root),
-              correction: Unavailable { reason: ExternalContractUnknown }
+              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
             })
           } else {
             node_envelope_without_named_coordinate_go(
@@ -314,7 +314,7 @@ fn find_named_child(root: Node, name: v2.std.node.Symbol) -> Outcome<Node> {
           init: outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^named_child_missing,
             at: node_locus(node: root),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           }),
           f: fn(acc, e) {
             match acc {
@@ -332,20 +332,20 @@ fn find_named_child(root: Node, name: v2.std.node.Symbol) -> Outcome<Node> {
         outcome_rejected(d: v2.std.diagnostic.Diagnostic {
           reason: ^named_child_missing,
           at: node_locus(node: root),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         })
       } else {
         outcome_rejected(d: v2.std.diagnostic.Diagnostic {
           reason: ^named_child_ambiguous,
           at: node_locus(node: root),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         })
       }
     _ =>
       outcome_rejected(d: v2.std.diagnostic.Diagnostic {
         reason: ^named_child_missing,
         at: node_locus(node: root),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       })
   }
 }
@@ -359,20 +359,20 @@ fn find_arrow_body_child(root: Node) -> Outcome<Node> {
           outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^arrow_body_child_ambiguous,
             at: node_locus(node: root),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           })
         _ =>
           outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^arrow_body_child_missing,
             at: node_locus(node: root),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           })
       }
     _ =>
       outcome_rejected(d: v2.std.diagnostic.Diagnostic {
         reason: ^arrow_body_child_not_arrow,
         at: node_locus(node: root),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       })
   }
 }
@@ -381,7 +381,7 @@ fn node_query_domain_malformed_diagnostic(domain: Node) -> v2.std.diagnostic.Dia
   v2.std.diagnostic.Diagnostic {
     reason: ^arrow_domain_named_param_bindings_malformed,
     at: node_locus(node: domain),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -432,14 +432,14 @@ fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<v2.std.node.Sy
           outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^arrow_domain_named_param_bindings_missing,
             at: node_locus(node: arrow),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           })
       }
     _ =>
       outcome_rejected(d: v2.std.diagnostic.Diagnostic {
         reason: ^arrow_domain_named_param_bindings_not_arrow,
         at: node_locus(node: arrow),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       })
   }
 }

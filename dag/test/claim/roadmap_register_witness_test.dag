@@ -14,7 +14,7 @@ test fn witness_roadmap_colors_all_routed() -> Bool {
 }
 
 fn rogue_hex_rule() -> gunbc.design.material.BuildRule {
-  StaticRule { selector: ClassSelector { name: "rogue-link" }, decls: [ decl(prop: Color, value: "#0969da") ] }
+  gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "rogue-link" }, decls: [ decl(prop: Color, value: "#0969da") ] }
 }
 
 test fn witness_local_hex_literal_refused() -> Bool {
@@ -29,7 +29,7 @@ test fn witness_roadmap_lengths_all_tokened() -> Bool {
 }
 
 fn rogue_px_rule() -> gunbc.design.material.BuildRule {
-  StaticRule { selector: ClassSelector { name: "rogue-pad" }, decls: [ decl(prop: Padding, value: "14px") ] }
+  gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "rogue-pad" }, decls: [ decl(prop: Padding, value: "14px") ] }
 }
 
 test fn witness_local_px_literal_refused() -> Bool {

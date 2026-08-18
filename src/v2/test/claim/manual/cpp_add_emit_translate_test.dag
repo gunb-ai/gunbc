@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data cpp_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
 data cpp_add_target_profile: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^cpp_add_target_profile_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^cpp_add_target_profile_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -41,7 +41,7 @@ data cpp_add_poisoned_authority_target_model: v2.std.compilers.target_model.Targ
 }
 
 data cpp_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -185,11 +185,11 @@ fn cpp_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Can
       )
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^cpp_add_grounding_miss,
         at: node_locus(node: node),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
@@ -228,7 +228,7 @@ fn anchor_cpp_add_emit_accepts() -> Outcome<Medium<String>> {
 fn anchor_cpp_add_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
   compile_inferred(
     inferred: cpp_add_inferred_tree,
-    mode: TranslateTo { target: cpp_add_poisoned_authority_target_model }
+    mode: v2.compiler.compile.TranslateTo { target: cpp_add_poisoned_authority_target_model }
   )
 }
 

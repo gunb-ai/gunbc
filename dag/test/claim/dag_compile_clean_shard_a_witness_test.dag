@@ -3,7 +3,7 @@ module test.claim.dag_compile_clean_shard_a_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 data witness_compose_red_on_injected_failure: Bool = compose_compile_clean_shard_verdicts(
-  verdicts: [ShardClean, ShardFailed { entry_path: shard_a_exemplar_entry_path }]
+  verdicts: [ShardClean, tools.dag_compile_clean_partition.ShardFailed { entry_path: shard_a_exemplar_entry_path }]
 ) != ShardClean
 
 test fn compile_clean_partition_boundary_matches_compile_clean_source_roots() -> Bool {

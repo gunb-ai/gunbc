@@ -32,7 +32,7 @@ fn unknown_third_obligation_realizations() -> List<gunbc.ci_materialization.Reso
   [
     cold_realization(id: CompileAnchorWholeTree, nanos: 1),
     cold_realization(id: NativeBundleEscapingEntry, nanos: 1),
-    ColdResolvePerformed {
+    gunbc.ci_materialization.ColdResolvePerformed {
       obligation: gunbc.ci_materialization.ResolveObligation {
         identity: NativeBundleEscapingEntry,
         subject: gunbc.ci_materialization.ResolveObligationSubject {
@@ -46,7 +46,7 @@ fn unknown_third_obligation_realizations() -> List<gunbc.ci_materialization.Reso
 }
 
 fn broken_warm_native_realization() -> gunbc.ci_materialization.ResolveRealization {
-  SatisfiedFromSharedPool {
+  gunbc.ci_materialization.SatisfiedFromSharedPool {
     obligation: expected_obligation(id: NativeBundleEscapingEntry),
     provider: gunbc.ci_materialization.ResolveSharedPoolProvider { provider_id: "" },
     receipt: gunbc.ci_materialization.ResolveSharedPoolReceipt { provider_id: floor_entry_walk_memo_provider_id },

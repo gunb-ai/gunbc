@@ -681,7 +681,7 @@ fn witness_production_slot(
     dispatch_base_ref: "origin/main" as std.types.NonEmptyStr,
     dispatch_state_scope: scope,
     execution_environment: dashboard_execution_environment(serve_binary: binary),
-    provider_state: DashboardExistingProviderState {
+    provider_state: gunbc.roadmap_dashboard_instance.DashboardExistingProviderState {
       root: srv1_roadmap_codex_home,
       executable: srv1_codex_bundled_executable(),
       binding: admitted_single_session_binding(
@@ -695,8 +695,8 @@ fn witness_production_slot(
     listen_port: 18081,
     tmux_server: DefaultTmuxServer,
     actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as std.types.NonEmptyStr },
-    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as std.types.NonEmptyStr },
+    provision_transport: gunbc.roadmap_dashboard_instance.DashboardSshProvision { host: "srv1" as std.types.NonEmptyStr },
+    source_seed: gunbc.roadmap_dashboard_instance.DashboardExistingRepo { anchor_ref: "origin/main" as std.types.NonEmptyStr },
   }
 }
 
@@ -704,7 +704,7 @@ fn witness_agreeing_slot() -> gunbc.roadmap_dashboard_instance.HostDashboardInst
   witness_production_slot(
     instance_id: "srv1-witness-agreeing" as std.types.NonEmptyStr,
     root: "/opt/gunbc-witness" as std.types.FilePath,
-    scope: DispatchStateHostShared {
+    scope: gunbc.roadmap_dashboard_instance.DispatchStateHostShared {
       worktree_root: srv1_dispatch_worktree_root,
       attempt_state_root: srv1_dispatch_attempt_state_root,
     },
@@ -717,7 +717,7 @@ fn witness_slot_keeping_its_own_dispatch_state() -> gunbc.roadmap_dashboard_inst
   witness_production_slot(
     instance_id: "srv1-witness-own-state" as std.types.NonEmptyStr,
     root: root,
-    scope: DispatchStateHostShared {
+    scope: gunbc.roadmap_dashboard_instance.DispatchStateHostShared {
       worktree_root: dashboard_instance_child(root: root, child: "dispatch-worktrees"),
       attempt_state_root: dashboard_instance_child(root: root, child: "attempt-state"),
     },
@@ -778,7 +778,7 @@ test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
   let other_host = witness_production_slot(
     instance_id: "srv2-witness-live" as std.types.NonEmptyStr,
     root: "/opt/gunbc" as std.types.FilePath,
-    scope: DispatchStateHostShared {
+    scope: gunbc.roadmap_dashboard_instance.DispatchStateHostShared {
       worktree_root: srv1_dispatch_worktree_root,
       attempt_state_root: srv1_dispatch_attempt_state_root,
     },

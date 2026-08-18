@@ -4,7 +4,7 @@ module v2.extdeps.formats.spice_passive_projection
 fn passive_terminal_from_node_ref(node: v2.extdeps.formats.spice.NodeRef) -> v2.std.timeseries_signal.PotentialReference {
   match node {
     Ground => GroundReference
-    Named { node: NamedNode { name } } => NodeReference { name: name as String as v2.std.timeseries_signal.CircuitNodeName }
+    Named { node: NamedNode { name } } => v2.std.timeseries_signal.NodeReference { name: name as String as v2.std.timeseries_signal.CircuitNodeName }
   }
 }
 
@@ -46,13 +46,13 @@ fn passive_spec_from_component(component: Component) -> Optional<v2.std.timeseri
   match passive_topology_from_component(component: component) {
     Present { value: topology } => match component {
       Resistor { name: _, n_plus: _, n_minus: _, value: _ } => Present {
-        value: ResistorPassive { topology: topology }
+        value: v2.std.timeseries_signal.ResistorPassive { topology: topology }
       }
       Capacitor { name: _, n_plus: _, n_minus: _, value: _ } => Present {
-        value: CapacitorPassive { topology: topology }
+        value: v2.std.timeseries_signal.CapacitorPassive { topology: topology }
       }
       Inductor { name: _, n_plus: _, n_minus: _, value: _ } => Present {
-        value: InductorPassive { topology: topology }
+        value: v2.std.timeseries_signal.InductorPassive { topology: topology }
       }
       _ => Absent
     }

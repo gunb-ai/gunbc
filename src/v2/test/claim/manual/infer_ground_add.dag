@@ -18,7 +18,7 @@ type InferReceiptCase
 
 fn fixture_int_type_node(atom: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -26,14 +26,14 @@ fn fixture_int_type_node(atom: v2.std.node.Symbol) -> Node {
 
 fn infer_receipt_symbol_node(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
 fn infer_receipt_runtime_value() -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: infer_receipt_symbol_node(s: ^infer_receipt_runtime_value_symbol),
       bytes: []
@@ -45,7 +45,7 @@ fn infer_receipt_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^infer_receipt_extdeps,
     at: node_locus(node: n),
-    correction: Unavailable { reason: AmbiguousIntent }
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
@@ -115,7 +115,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> v2.std.verification.TestClaim 
       input: input,
       expected_rejection: r
     } =>
-      DiagnosticClaim {
+      v2.std.verification.DiagnosticClaim {
         label: label,
         anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
         input: input,
@@ -128,7 +128,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> v2.std.verification.TestClaim 
       input: input,
       expected_value: v
     } =>
-      CompilesClaim {
+      v2.std.verification.CompilesClaim {
         label: label,
         anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
         input: input,
@@ -252,12 +252,12 @@ fn fixture_add_resolved_node() -> Node {
 }
 fn fixture_add_resolved_tree() -> v2.compiler.resolve.ResolvedTree {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^fixture_add_name },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Arrow },
+          kind: v2.std.node.TypeNode { connective: Arrow },
           children: [
             v2.std.node.Edge {
               label: Positional,

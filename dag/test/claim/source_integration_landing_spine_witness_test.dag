@@ -306,9 +306,9 @@ fn p0_closed_one() -> gunbc.source_integration_landing_spine.LandingClosedOneRec
     preview: "Worker was renamed and its callers were updated.",
   )
   match landing_closed_result_space(
-    attempt: LandingClosureComplete {
+    attempt: gunbc.source_integration_landing_spine.LandingClosureComplete {
       receipt: p0_closed_receipt(
-        candidates: LandingOneResultClass { result: result },
+        candidates: gunbc.source_integration_landing_spine.LandingOneResultClass { result: result },
       ),
     },
     zero_refusal: p0_refusal(
@@ -328,7 +328,7 @@ fn p0_closed_one() -> gunbc.source_integration_landing_spine.LandingClosedOneRec
 fn p0_admitted() -> gunbc.source_integration_landing_spine.LandingAdmittedResult {
   let semantic = p0_closed_one()
   match landing_admitted_result(
-    admission: LandingAdmitted {
+    admission: gunbc.source_integration_landing_spine.LandingAdmitted {
       receipt: gunbc.source_integration_landing_spine.LandingAdmissionReceipt {
         semantic: semantic,
         authority: "fixture-author",
@@ -623,7 +623,7 @@ test fn witness_p0_block_disposition_is_not_boolean_laundered() -> Bool {
     } =>
       refusal.kind == LandingEvidenceAdmissionDenied
         && match landing_user_boundary(
-          receipt: LandingSemanticSpine { result: semantic },
+          receipt: gunbc.source_integration_landing_spine.LandingSemanticSpine { result: semantic },
         ) {
           LandingTerminal {
             outcome: NativeScmTerminalCouldNotLand { refusal: presented },
@@ -637,13 +637,13 @@ test fn witness_p0_block_disposition_is_not_boolean_laundered() -> Bool {
 
 test fn witness_p0_closed_zero_is_closure_qualified() -> Bool {
   let receipt = p0_closed_receipt(
-    candidates: LandingNoResultClasses {
+    candidates: gunbc.source_integration_landing_spine.LandingNoResultClasses {
       incompatible_core: "the two required guarantees cannot coexist",
       counterexample: "the public call changes behavior",
     },
   )
   match landing_closed_result_space(
-    attempt: LandingClosureComplete { receipt: receipt },
+    attempt: gunbc.source_integration_landing_spine.LandingClosureComplete { receipt: receipt },
     zero_refusal: p0_refusal(
       kind: LandingSemanticRequirementsIncompatible,
       reason: "The requested guarantees cannot all hold.",
@@ -681,20 +681,20 @@ test fn witness_p0_closed_many_owns_material_alternatives() -> Bool {
       label: "use this result",
       preview: first.preview,
       resume_hint: "same-non-authoritative-hint",
-      alternative: LandingSelectResult { result: first },
+      alternative: gunbc.source_integration_landing_spine.LandingSelectResult { result: first },
     },
     second_option: gunbc.source_integration_landing_spine.LandingNormativeOption {
       label: "use this result",
       preview: second.preview,
       resume_hint: "same-non-authoritative-hint",
-      alternative: LandingSelectResult { result: second },
+      alternative: gunbc.source_integration_landing_spine.LandingSelectResult { result: second },
     },
     additional_options: [],
   }
   match landing_closed_result_space(
-    attempt: LandingClosureComplete {
+    attempt: gunbc.source_integration_landing_spine.LandingClosureComplete {
       receipt: p0_closed_receipt(
-        candidates: LandingManyResultClasses {
+        candidates: gunbc.source_integration_landing_spine.LandingManyResultClasses {
           question: "Which result should be used?",
           options: options,
         },
@@ -746,10 +746,10 @@ test fn witness_p0_closed_many_owns_material_alternatives() -> Bool {
         }
         && match landing_resolve_question(
           prior: receipt,
-          choice: NativeScmAdditionalContinuationOption { index: 3 },
+          choice: gunbc.native_scm_interaction_contract.NativeScmAdditionalContinuationOption { index: 3 },
         ) {
           LandingChoiceNotOffered { prior: _, choice } =>
-            choice == NativeScmAdditionalContinuationOption { index: 3 }
+            choice == gunbc.native_scm_interaction_contract.NativeScmAdditionalContinuationOption { index: 3 }
           LandingChoiceAdvanced { continuation: _ } => false
         }
     _ => false
@@ -769,7 +769,7 @@ fn p0_incomplete_closure_stays_machine_owned(
       receipt: content_hash_of_value(value: "read-back-authority-receipt"),
     },
     equivalence: "p0-declared-equivalence",
-    candidates: LandingOneResultClass {
+    candidates: gunbc.source_integration_landing_spine.LandingOneResultClass {
       result: p0_result(
         handle: "unique-result-42",
         preview: "Worker was renamed and its callers were updated.",
@@ -777,7 +777,7 @@ fn p0_incomplete_closure_stays_machine_owned(
     },
   }
   let semantic = landing_closed_result_space(
-    attempt: LandingClosureIncomplete {
+    attempt: gunbc.source_integration_landing_spine.LandingClosureIncomplete {
       subject: subject,
       missing: missing,
       cause: "one required closure receipt is absent",
@@ -803,7 +803,7 @@ fn p0_incomplete_closure_stays_machine_owned(
     } =>
       certificate == missing
         && match landing_user_boundary(
-        receipt: LandingSemanticSpine { result: semantic },
+        receipt: gunbc.source_integration_landing_spine.LandingSemanticSpine { result: semantic },
       ) {
         LandingMachineOwned { status, continuation: _ } =>
           status == "checking the result space"
@@ -934,10 +934,10 @@ test fn witness_p0_projection_from_another_transition_refuses_commit() -> Bool {
         LandingProjectionBindingRefused { cause: _ } => false
         LandingProjectionBound { receipt: bound } =>
           match landing_user_boundary(
-            receipt: LandingTransitionSpine {
-              transition: LandingCommitObserved {
+            receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
+              transition: gunbc.source_integration_landing_spine.LandingCommitObserved {
                 observation: observation,
-                projections: [LandingProjected { receipt: bound }],
+                projections: [gunbc.source_integration_landing_spine.LandingProjected { receipt: bound }],
                 continuation: p0_continuation(
                   kind: LandingRetryCurrentTarget,
                   status: "rechecking transition relations",
@@ -983,10 +983,10 @@ test fn witness_p0_unique_admitted_commit_lands_with_bound_git_projection() -> B
         LandingProjectionBindingRefused { cause: _ } => false
         LandingProjectionBound { receipt: bound } =>
           match landing_user_boundary(
-            receipt: LandingTransitionSpine {
-              transition: LandingCommitObserved {
+            receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
+              transition: gunbc.source_integration_landing_spine.LandingCommitObserved {
                 observation: observation,
-                projections: [LandingProjected { receipt: bound }],
+                projections: [gunbc.source_integration_landing_spine.LandingProjected { receipt: bound }],
                 continuation: p0_continuation(
                   kind: LandingRetryCurrentTarget,
                   status: "rechecking transition relations",
@@ -1017,7 +1017,7 @@ test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
     observed_state: "state-42",
     authority: "independent-read-back",
   }
-  let failed = LandingProjectionFailed {
+  let failed = gunbc.source_integration_landing_spine.LandingProjectionFailed {
     transition: transition,
     realization: "git-r0",
     target: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding {
@@ -1028,8 +1028,8 @@ test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
     cause: "the compatibility view will be retried",
   }
   match landing_user_boundary(
-    receipt: LandingTransitionSpine {
-      transition: LandingCommitObserved {
+    receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
+      transition: gunbc.source_integration_landing_spine.LandingCommitObserved {
         observation: observation,
         projections: [failed],
         continuation: p0_continuation(
@@ -1050,7 +1050,7 @@ test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
 test fn witness_p0_refused_admission_cannot_advance() -> Bool {
   let semantic = p0_closed_one()
   match landing_admitted_result(
-    admission: LandingUnauthorized {
+    admission: gunbc.source_integration_landing_spine.LandingUnauthorized {
       semantic: semantic,
       refusal: p0_refusal(
         kind: LandingAuthorizationDenied,
@@ -1071,8 +1071,8 @@ test fn witness_p0_refused_admission_cannot_advance() -> Bool {
 
 test fn witness_p0_stale_parent_retries_inside_machine() -> Bool {
   match landing_user_boundary(
-    receipt: LandingTransitionSpine {
-      transition: LandingRetryStaleParent {
+    receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
+      transition: gunbc.source_integration_landing_spine.LandingRetryStaleParent {
         admitted: p0_admitted(),
         continuation: p0_continuation(
           kind: LandingRetryCurrentTarget,
@@ -1090,8 +1090,8 @@ test fn witness_p0_stale_parent_retries_inside_machine() -> Bool {
 
 test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool {
   let machine = landing_user_boundary(
-    receipt: LandingTransitionSpine {
-      transition: LandingRetryStaleParent {
+    receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
+      transition: gunbc.source_integration_landing_spine.LandingRetryStaleParent {
         admitted: p0_admitted(),
         continuation: p0_continuation(
           kind: LandingRetryCurrentTarget,
@@ -1101,8 +1101,8 @@ test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool {
     },
   )
   let refused = landing_user_boundary(
-    receipt: LandingAdmissionSpine {
-      admission: LandingSelfAmendmentRefused {
+    receipt: gunbc.source_integration_landing_spine.LandingAdmissionSpine {
+      admission: gunbc.source_integration_landing_spine.LandingSelfAmendmentRefused {
         semantic: p0_closed_one(),
         refusal: p0_refusal(
           kind: LandingSelfAmendmentDenied,
@@ -1112,8 +1112,8 @@ test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool {
     },
   )
   let unauthorized = landing_user_boundary(
-    receipt: LandingAdmissionSpine {
-      admission: LandingUnauthorized {
+    receipt: gunbc.source_integration_landing_spine.LandingAdmissionSpine {
+      admission: gunbc.source_integration_landing_spine.LandingUnauthorized {
         semantic: p0_closed_one(),
         refusal: p0_refusal(
           kind: LandingAuthorizationDenied,
@@ -1123,14 +1123,14 @@ test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool {
     },
   )
   let exhausted = landing_user_boundary(
-    receipt: LandingSemanticSpine {
-      result: LandingUnclosed {
+    receipt: gunbc.source_integration_landing_spine.LandingSemanticSpine {
+      result: gunbc.source_integration_landing_spine.LandingUnclosed {
         proposal: p0_proposal(),
-        cause: LandingSearchBoundExhausted {
+        cause: gunbc.source_integration_landing_spine.LandingSearchBoundExhausted {
           cause: "the declared search bound was exhausted",
         },
         partial_results: [],
-        disposition: LandingUnclosedTerminal {
+        disposition: gunbc.source_integration_landing_spine.LandingUnclosedTerminal {
           refusal: p0_refusal(
             kind: LandingBoundExhausted,
             reason: "This change is outside the supported search limit.",
@@ -1140,8 +1140,8 @@ test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool {
     },
   )
   let permanent = landing_user_boundary(
-    receipt: LandingTransitionSpine {
-      transition: LandingEffectFailed {
+    receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
+      transition: gunbc.source_integration_landing_spine.LandingEffectFailed {
         admitted: p0_admitted(),
         refusal: p0_refusal(
           kind: LandingPermanentEffectFailure,
@@ -1214,8 +1214,8 @@ test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool
     receipt: content_hash_of_value(value: "private-refusal-receipt"),
   }
   match landing_user_boundary(
-    receipt: LandingTransitionSpine {
-      transition: LandingEffectFailed {
+    receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
+      transition: gunbc.source_integration_landing_spine.LandingEffectFailed {
         admitted: p0_admitted(),
         refusal: refusal,
       },

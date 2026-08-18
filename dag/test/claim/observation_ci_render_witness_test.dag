@@ -20,9 +20,9 @@ data crawl_heartbeat_pressure_bp: Int = 901
 fn crawl_entry_subject() -> std.observation.ObservationSubject {
   std.observation.ObservationSubject {
     segments: [
-      RunSegment { id: crawl_run_id },
-      BatchSegment { index: 3, label: "witness discovery" as std.types.NonEmptyStr },
-      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as std.types.NonEmptyStr }
+      std.observation.RunSegment { id: crawl_run_id },
+      std.observation.BatchSegment { index: 3, label: "witness discovery" as std.types.NonEmptyStr },
+      std.observation.EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as std.types.NonEmptyStr }
     ]
   }
 }
@@ -30,11 +30,11 @@ fn crawl_entry_subject() -> std.observation.ObservationSubject {
 fn crawl_leaf_subject() -> std.observation.ObservationSubject {
   std.observation.ObservationSubject {
     segments: [
-      RunSegment { id: crawl_run_id },
-      BatchSegment { index: 3, label: "witness discovery" as std.types.NonEmptyStr },
-      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as std.types.NonEmptyStr },
-      ModuleSegment { module_path: crawl_quiet_module },
-      PhaseSegment { name: "typecheck" as std.types.NonEmptyStr }
+      std.observation.RunSegment { id: crawl_run_id },
+      std.observation.BatchSegment { index: 3, label: "witness discovery" as std.types.NonEmptyStr },
+      std.observation.EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as std.types.NonEmptyStr },
+      std.observation.ModuleSegment { module_path: crawl_quiet_module },
+      std.observation.PhaseSegment { name: "typecheck" as std.types.NonEmptyStr }
     ]
   }
 }
@@ -45,9 +45,9 @@ fn crawl_heartbeat() -> gunbc.observation_ci_render.HeartbeatSample {
     active: crawl_leaf_subject(),
     entry_index: 214,
     entry_total: 602,
-    rss: MeasuredValue { value: byte_size(crawl_heartbeat_rss_bytes) },
-    swap: MeasuredValue { value: byte_size(crawl_heartbeat_swap_bytes) },
-    pressure: MeasuredValue { value: basis_point(count: crawl_heartbeat_pressure_bp) }
+    rss: std.observation.MeasuredValue { value: byte_size(crawl_heartbeat_rss_bytes) },
+    swap: std.observation.MeasuredValue { value: byte_size(crawl_heartbeat_swap_bytes) },
+    pressure: std.observation.MeasuredValue { value: basis_point(count: crawl_heartbeat_pressure_bp) }
   }
 }
 
@@ -99,7 +99,7 @@ test fn w_escalation_surfaces_the_cause_at_the_deeper_threshold() -> Bool {
     active_leaf: crawl_leaf_subject(),
     quiet: millisecond(count: 240000),
     t: observation_dwell_threshold,
-    hold: PsiPressure { avg10: basis_point(count: crawl_heartbeat_pressure_bp) }
+    hold: std.observation.PsiPressure { avg10: basis_point(count: crawl_heartbeat_pressure_bp) }
   )
   string_contains(s: line.text, pattern: "blocked on memory reclaim") &&
   string_contains(s: line.text, pattern: "9.0%") &&
@@ -114,9 +114,9 @@ test fn w_escalation_is_recursive_over_the_captured_window() -> Bool {
 test fn w_outcome_lines_carry_durations() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
-    transition: Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 230))),
-    rss: MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
   string_contains(s: ci_event_line(event: event, basis: crawl_basis()).text, pattern: "in 230ms")
 }
@@ -124,9 +124,9 @@ test fn w_outcome_lines_carry_durations() -> Bool {
 test fn w_sub_millisecond_duration_never_renders_as_zero() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
-    transition: Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: nanosecond(count: 999999)),
-    rss: MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
   let text = ci_event_line(event: event, basis: crawl_basis()).text
   string_contains(s: text, pattern: "in 999999ns") &&
@@ -136,9 +136,9 @@ test fn w_sub_millisecond_duration_never_renders_as_zero() -> Bool {
 test fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
   let refusal = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
-    transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr } },
+    transition: std.observation.Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr } },
     durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 2472000))),
-    rss: MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
   let line = ci_event_line(event: refusal, basis: crawl_basis())
   line.attention == Anomaly &&
@@ -148,9 +148,9 @@ test fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
 test fn w_routine_green_collapses_inside_a_group() -> Bool {
   let green = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
-    transition: Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 230))),
-    rss: MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
   let line = ci_event_line(event: green, basis: crawl_basis())
   line.attention == Ambient &&
@@ -217,9 +217,9 @@ test fn w_run_summary_keeps_refused_and_failed_apart() -> Bool {
 test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
-    transition: Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: Done },
     durations: observation_durations_wall_unavailable(cause: "clock unavailable in this leg" as std.types.NonEmptyStr),
-    rss: MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
   let line = ci_event_line(event: event, basis: crawl_basis())
   string_contains(s: line.text, pattern: "duration unmeasured: clock unavailable in this leg")
@@ -233,8 +233,8 @@ test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
 fn proj_batch_subject() -> std.observation.ObservationSubject {
   std.observation.ObservationSubject {
     segments: [
-      RunSegment { id: "run-proj" },
-      BatchSegment { index: 3, label: "witness discovery" },
+      std.observation.RunSegment { id: "run-proj" },
+      std.observation.BatchSegment { index: 3, label: "witness discovery" },
     ],
   }
 }
@@ -242,9 +242,9 @@ fn proj_batch_subject() -> std.observation.ObservationSubject {
 fn proj_leaf_subject(entry: std.types.NonEmptyStr) -> std.observation.ObservationSubject {
   std.observation.ObservationSubject {
     segments: [
-      RunSegment { id: "run-proj" },
-      BatchSegment { index: 3, label: "witness discovery" },
-      EntrySegment { source_path: entry },
+      std.observation.RunSegment { id: "run-proj" },
+      std.observation.BatchSegment { index: 3, label: "witness discovery" },
+      std.observation.EntrySegment { source_path: entry },
     ],
   }
 }
@@ -254,13 +254,13 @@ fn proj_event(subject: std.observation.ObservationSubject, transition: std.obser
     subject: subject,
     transition: transition,
     durations: observation_durations_wall(elapsed: nanosecond(count: 1500000)),
-    rss: MeasuredValue { value: byte_size(count: 4096) },
+    rss: std.observation.MeasuredValue { value: byte_size(count: 4096) },
   }
 }
 
 test fn w_a_passing_witness_folds_into_its_batch_and_emits_nothing() -> Bool {
   match ci_routine_projection(
-    event: proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done }),
     grain: Present { value: BatchGrain },
   ) {
     FoldedIntoRollup { at: a } => observation_subject_contains(ancestor: a, descendant: proj_leaf_subject(entry: "dag/a.dag"))
@@ -270,7 +270,7 @@ test fn w_a_passing_witness_folds_into_its_batch_and_emits_nothing() -> Bool {
 
 test fn w_RED_a_failure_pierces_the_fold_at_its_exact_leaf() -> Bool {
   match ci_routine_projection(
-    event: proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Failed { error: "witness red", output: "" } }),
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Failed { error: "witness red", output: "" } }),
     grain: Present { value: BatchGrain },
   ) {
     FoldedIntoRollup { at: _ } => false
@@ -283,7 +283,7 @@ test fn w_RED_a_failure_pierces_the_fold_at_its_exact_leaf() -> Bool {
 
 test fn w_RED_a_refusal_pierces_the_fold_too() -> Bool {
   match ci_routine_projection(
-    event: proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: Concluded { outcome: Refused { diagnostic: "admission refused" } }),
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: Refused { diagnostic: "admission refused" } }),
     grain: Present { value: BatchGrain },
   ) {
     FoldedIntoRollup { at: _ } => false
@@ -293,7 +293,7 @@ test fn w_RED_a_refusal_pierces_the_fold_too() -> Bool {
 
 test fn w_verbose_leaf_grain_emits_every_routine_event() -> Bool {
   match ci_routine_projection(
-    event: proj_event(subject: proj_leaf_subject(entry: "dag/d.dag"), transition: Concluded { outcome: Done }),
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/d.dag"), transition: std.observation.Concluded { outcome: Done }),
     grain: none,
   ) {
     FoldedIntoRollup { at: _ } => false
@@ -303,7 +303,7 @@ test fn w_verbose_leaf_grain_emits_every_routine_event() -> Bool {
 
 test fn w_RED_an_event_with_no_ancestor_at_the_grain_is_emitted_not_dropped() -> Bool {
   match ci_routine_projection(
-    event: proj_event(subject: proj_batch_subject(), transition: Concluded { outcome: Done }),
+    event: proj_event(subject: proj_batch_subject(), transition: std.observation.Concluded { outcome: Done }),
     grain: Present { value: ModuleGrain },
   ) {
     FoldedIntoRollup { at: _ } => false
@@ -314,9 +314,9 @@ test fn w_RED_an_event_with_no_ancestor_at_the_grain_is_emitted_not_dropped() ->
 test fn w_batch_summary_reports_the_folded_counts() -> Bool {
   let folded = fold(
     [
-      proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
-      proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Done }),
-      proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: Concluded { outcome: Skipped { reason: "unaffected" } }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Done }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: Skipped { reason: "unaffected" } }),
     ],
     init: observation_rollup_open(subject: proj_batch_subject()),
     f: (acc, e) => match observation_rollup_accept(rollup: acc, event: e) {
@@ -334,8 +334,8 @@ test fn w_batch_summary_reports_the_folded_counts() -> Bool {
 test fn w_RED_a_batch_carrying_a_failure_summarises_as_an_anomaly() -> Bool {
   let folded = fold(
     [
-      proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
-      proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Failed { error: "red", output: "" } }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Failed { error: "red", output: "" } }),
     ],
     init: observation_rollup_open(subject: proj_batch_subject()),
     f: (acc, e) => match observation_rollup_accept(rollup: acc, event: e) {
@@ -464,8 +464,8 @@ fn proj_folds_at_batch(e: std.observation.ObservationEvent) -> Bool {
 // projection it stands in for — that agreement is the whole reason the Rust arm stopped being a
 // second representation. Asserted in both directions against ci_routine_projection itself.
 test fn w_the_transported_fold_verdict_agrees_with_the_projection() -> Bool {
-  let pass_event = proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done })
-  let fail_event = proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Failed { error: "x", output: "" } })
+  let pass_event = proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done })
+  let fail_event = proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Failed { error: "x", output: "" } })
   let pass_agrees = concluded_outcome_folds(passed: true) == proj_folds_at_batch(e: pass_event)
   let fail_agrees = concluded_outcome_folds(passed: false) == proj_folds_at_batch(e: fail_event)
   pass_agrees && fail_agrees

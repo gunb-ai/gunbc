@@ -4,13 +4,13 @@ module v2.test.claim.realization_runner_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data runner_test_a_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^runner_test_a } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^runner_test_a } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data runner_test_b_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^runner_test_b } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^runner_test_b } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }

@@ -93,7 +93,7 @@ fn prepared_floor_entry_artifact_request(
   discovery: v2.workflow.floor_discovery.FloorDiscoveryRequest,
   entry: PreparedFloorEntryRequest,
 ) -> std.materialization_provider.ArtifactRequest {
-  ResolveClosureRequest {
+  std.materialization_provider.ResolveClosureRequest {
     closure_digest: entry.closure_digest,
     compiler: compiler_identity_input(digest: discovery.subject.tool_identity),
   }

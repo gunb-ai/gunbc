@@ -21,12 +21,12 @@ fn runner_slot_apply_effect(slot_unit: std.types.NonEmptyStr, expected_cap: std.
 fn ground_runner_slot_from_read(effective: gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness, expected_cap: std.measure.ByteSize) -> Grounding<RunnerSlotEnforcement> {
   match effective {
     CapUnbounded =>
-      DoesNotGround { reason: "per-slot MemoryMax reads infinity (uncapped): the inert-cap OOM-reboot vector (two concurrent heavy jobs exceed the shared runner slice); refuse to ground RunnerSlotEnforced" }
+      std.realization_reconcile.DoesNotGround { reason: "per-slot MemoryMax reads infinity (uncapped): the inert-cap OOM-reboot vector (two concurrent heavy jobs exceed the shared runner slice); refuse to ground RunnerSlotEnforced" }
     CapEffective { bytes: b } =>
       if byte_size_count(b: b) == byte_size_count(b: expected_cap) {
-        Grounds { evidence: RunnerSlotEnforced }
+        std.realization_reconcile.Grounds { evidence: RunnerSlotEnforced }
       } else {
-        DoesNotGround { reason: "effective per-slot MemoryMax does not equal the emitted per_runner_memory_cap (disk!=live drift): refuse to ground enforcement until the live cap matches the model" }
+        std.realization_reconcile.DoesNotGround { reason: "effective per-slot MemoryMax does not equal the emitted per_runner_memory_cap (disk!=live drift): refuse to ground enforcement until the live cap matches the model" }
       }
   }
 }
@@ -41,7 +41,7 @@ fn reconcile_runner_slot(
       reconcile_grounded(
         apply_effect: apply,
         show_read: read,
-        grounding: DoesNotGround { reason: why }
+        grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
     ReadObserved { value: observed } =>
       reconcile_grounded(
@@ -82,7 +82,7 @@ fn runner_slot_enforcement_from_unit_read(read: gunbc.runner_unit_live_read.Runn
       runner_slot_enforcement_evidence(
         slot_unit: read.unit,
         expected_cap: expected_cap,
-        read: ReadObserved { value: eff }
+        read: std.realization_reconcile.ReadObserved { value: eff }
       )
     Absent =>
       RunnerSlotUnenforced { reason: "per-slot MemoryMax read absent: fail-closed, no fabricated cap" }

@@ -11,7 +11,7 @@ fn session() -> gunbc.build_cache_instance.BuildCacheInstance { session_cache_in
 fn ci_unit() -> List<String> { render_build_cache_unit(instance: ci()) }
 
 fn current() -> gunbc.build_cache_endpoint_path.ObservationCurrency {
-  ObservationCurrent { observed_at_boot: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr }
+  gunbc.build_cache_endpoint_path.ObservationCurrent { observed_at_boot: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr }
 }
 
 fn srv1_stranded_owner() -> ProcessIdentity {
@@ -84,11 +84,11 @@ fn ensure_for(placement: gunbc.build_cache_instance.BuildCacheServerPlacement, p
 
 test fn witness_srv1_live_wrong_owner_refuses_rather_than_evicting() -> Bool {
   let a = ensure_for(
-    placement: ServerRunnerOwned {
+    placement: gunbc.build_cache_instance.ServerRunnerOwned {
       slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 },
       lifecycle: RetiredRunnerSlot,
     },
-    path: EndpointListening { owner: srv1_stranded_owner() },
+    path: gunbc.build_cache_endpoint_path.EndpointListening { owner: srv1_stranded_owner() },
   )
   (ensure_yields_unit(admission: a) == false) && (build_cache_ensure_is_converged(admission: a) == false)
 }
@@ -96,7 +96,7 @@ test fn witness_srv1_live_wrong_owner_refuses_rather_than_evicting() -> Bool {
 test fn witness_srv4_stale_socket_is_admitted_with_unlink_first() -> Bool {
   let a = ensure_for(
     placement: ServerPlacementAbsent,
-    path: EndpointStaleSocket {
+    path: gunbc.build_cache_endpoint_path.EndpointStaleSocket {
       detail: "server.sock present, no listener, no fd owner; error log reads Address in use (os error 98)" as std.types.NonEmptyStr,
     },
   )
@@ -112,16 +112,16 @@ data idempotence_doc: String = "The reconcile property. If the intended unit alr
 
 test fn witness_an_already_managed_endpoint_is_converged_and_emits_nothing() -> Bool {
   let a = ensure_for(
-    placement: ServerManagedUnitOwned { unit: "gunbc-build-cache-ci.service" as std.types.NonEmptyStr },
-    path: EndpointListening { owner: srv1_stranded_owner() },
+    placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: "gunbc-build-cache-ci.service" as std.types.NonEmptyStr },
+    path: gunbc.build_cache_endpoint_path.EndpointListening { owner: srv1_stranded_owner() },
   )
   build_cache_ensure_is_converged(admission: a) && (ensure_yields_unit(admission: a) == false)
 }
 
 test fn witness_a_managed_unit_that_is_not_ours_is_not_converged() -> Bool {
   let a = ensure_for(
-    placement: ServerManagedUnitOwned { unit: "ctrl-sccache.service" as std.types.NonEmptyStr },
-    path: EndpointListening { owner: srv1_stranded_owner() },
+    placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: "ctrl-sccache.service" as std.types.NonEmptyStr },
+    path: gunbc.build_cache_endpoint_path.EndpointListening { owner: srv1_stranded_owner() },
   )
   build_cache_ensure_is_converged(admission: a) == false
 }
@@ -130,7 +130,7 @@ data wrong_managed_unit_doc: String = "ctrl-sccache.service is the real specimen
 
 test fn witness_unknown_placement_refuses_before_reading_the_path() -> Bool {
   let a = ensure_for(
-    placement: ServerPlacementUnknown { detail: "owner cgroup unclassifiable" as std.types.NonEmptyStr },
+    placement: gunbc.build_cache_instance.ServerPlacementUnknown { detail: "owner cgroup unclassifiable" as std.types.NonEmptyStr },
     path: EndpointPathAbsent,
   )
   (ensure_yields_unit(admission: a) == false) && (build_cache_ensure_is_converged(admission: a) == false)
@@ -141,7 +141,7 @@ data unknown_before_path_doc: String = "The discriminating case for the ordering
 test fn witness_a_path_conflict_is_never_admitted() -> Bool {
   let a = ensure_for(
     placement: ServerPlacementAbsent,
-    path: EndpointPathConflict { detail: "path exists and is a regular file" as std.types.NonEmptyStr },
+    path: gunbc.build_cache_endpoint_path.EndpointPathConflict { detail: "path exists and is a regular file" as std.types.NonEmptyStr },
   )
   ensure_yields_unit(admission: a) == false
 }
@@ -150,8 +150,8 @@ test fn witness_a_stale_read_cannot_license_the_ensure() -> Bool {
   let a = admit_ensure_build_cache_instance(
     desired: ci(),
     placement: ServerPlacementAbsent,
-    observed_path: EndpointStaleSocket { detail: "stale" as std.types.NonEmptyStr },
-    currency: ObservationCurrencyUnknown { detail: "boot id unreadable" as std.types.NonEmptyStr },
+    observed_path: gunbc.build_cache_endpoint_path.EndpointStaleSocket { detail: "stale" as std.types.NonEmptyStr },
+    currency: gunbc.build_cache_endpoint_path.ObservationCurrencyUnknown { detail: "boot id unreadable" as std.types.NonEmptyStr },
   )
   ensure_yields_unit(admission: a) == false
 }

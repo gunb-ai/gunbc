@@ -79,7 +79,7 @@ fn host_identity_plan_effect(plan: HostIdentityPlan) -> gunbc.host_effect.HostEf
   match plan {
     ApplyPlan { base: b, desired: d } =>
       Present {
-        value: SetHostnameCas {
+        value: gunbc.host_effect.SetHostnameCas {
           hostnamectl_path: host_identity_hostnamectl_path,
           base: b,
           desired: d,
@@ -90,11 +90,11 @@ fn host_identity_plan_effect(plan: HostIdentityPlan) -> gunbc.host_effect.HostEf
   }
 }
 
-data host_identity_hostname_key_source: std.effects.KeySource = CompositeKey { fields: ["host", "hostname_short"] }
+data host_identity_hostname_key_source: std.effects.KeySource = std.effects.CompositeKey { fields: ["host", "hostname_short"] }
 
-data host_identity_hostname_effect_shape: EffectShape<std.effects.KeySource> = UpsertEffect { key_source: host_identity_hostname_key_source }
+data host_identity_hostname_effect_shape: EffectShape<std.effects.KeySource> = std.effects.UpsertEffect { key_source: host_identity_hostname_key_source }
 
-data host_identity_hostname_idempotency_evidence: std.effects.IdempotencyEvidence = LatticeEffect { shape: host_identity_hostname_effect_shape }
+data host_identity_hostname_idempotency_evidence: std.effects.IdempotencyEvidence = std.effects.LatticeEffect { shape: host_identity_hostname_effect_shape }
 
 fn host_identity_apply_evidence() -> std.effects.IdempotencyEvidence {
   host_identity_hostname_idempotency_evidence
@@ -106,7 +106,7 @@ fn host_identity_apply_denied(
   transport: gunbc.host_effect.HostEffectTransport,
   reason: String,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  NotConverged {
+  std.realization_reconcile.NotConverged {
     reason: reason,
     applied: gunbc.host_effect.HostEffectIntent {
       target: target,

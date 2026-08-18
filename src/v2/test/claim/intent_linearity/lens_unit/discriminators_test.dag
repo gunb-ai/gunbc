@@ -4,10 +4,10 @@ module v2.test.intent_linearity.lens_unit.discriminators
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn atom(id: v2.std.node.Symbol) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } }, children: [])
 }
 fn conj2(a: Node, b: Node) -> Node {
-  node_synthetic(kind: TypeNode { connective: Conj }, children: [
+  node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: [
     v2.std.node.Edge { label: Positional, target: a }, v2.std.node.Edge { label: Positional, target: b } ])
 }
 

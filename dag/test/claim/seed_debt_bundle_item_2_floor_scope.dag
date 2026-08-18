@@ -12,7 +12,7 @@ fn seed_debt_witness_entries() -> List<std.realization_schedule.ScheduleWitnessE
 
 fn seed_debt_floor_scope_batches() -> List<List<std.realization_schedule.Runnable>> {
   [[
-    RunnableDiscoveryBatch {
+    std.realization_schedule.RunnableDiscoveryBatch {
       source_roots: witness_layer_roots,
       scan_dirs: [],
       explicit_entries: seed_debt_witness_entries(),

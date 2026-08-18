@@ -7,8 +7,8 @@ test fn witness_limit_warning_does_not_block_selection() -> Bool {
     authentication: AuthenticationAuthenticated,
     entitlement: EntitlementObservedAvailable,
     limits: [
-      LimitWarning {
-        subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+      gunbc.provider_standing.LimitWarning {
+        subject: gunbc.provider_standing.ProviderAccountLimit { credential: LimitCredentialUnspecified },
         native_token: "seven_day_opus" as std.types.NonEmptyStr,
         utilization_basis_points: basis_point(count: 9500),
       },
@@ -20,12 +20,12 @@ test fn witness_limit_warning_does_not_block_selection() -> Bool {
     standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: ClaudeCliProvider,
-        host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "claude" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
       bundle: bundle,
     ),
@@ -39,16 +39,16 @@ test fn witness_model_limit_rejection_does_not_block_account_selection() -> Bool
     authentication: AuthenticationAuthenticated,
     entitlement: EntitlementObservedAvailable,
     limits: [
-      LimitRejected {
-        subject: ProviderModelLimit {
+      gunbc.provider_standing.LimitRejected {
+        subject: gunbc.provider_standing.ProviderModelLimit {
           credential: LimitCredentialUnspecified,
           model: "fable" as std.types.NonEmptyStr,
         },
         native_token: "fable" as std.types.NonEmptyStr,
         reason: "fable bucket rejected" as std.types.NonEmptyStr,
       },
-      LimitObservedAvailable {
-        subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+      gunbc.provider_standing.LimitObservedAvailable {
+        subject: gunbc.provider_standing.ProviderAccountLimit { credential: LimitCredentialUnspecified },
       },
     ],
     turn: TurnNotStarted,
@@ -58,16 +58,16 @@ test fn witness_model_limit_rejection_does_not_block_account_selection() -> Bool
     standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: ClaudeCliProvider,
-        host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "claude" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
       bundle: bundle,
     ),
-    draw: LimitDispatchDrawModel {
+    draw: gunbc.provider_standing.LimitDispatchDrawModel {
       credential: LimitCredentialUnspecified,
       model: "opus" as std.types.NonEmptyStr,
     },
@@ -80,15 +80,15 @@ test fn witness_claude_native_bucket_exhaustion_blocks_model_draw() -> Bool {
     authentication: AuthenticationAuthenticated,
     entitlement: EntitlementObservedAvailable,
     limits: [
-      LimitExhausted {
-        subject: ProviderNativeLimitBucket {
+      gunbc.provider_standing.LimitExhausted {
+        subject: gunbc.provider_standing.ProviderNativeLimitBucket {
           credential: LimitCredentialUnspecified,
           native_key: "seven_day_opus" as std.types.NonEmptyStr,
         },
         native_token: "seven_day_opus" as std.types.NonEmptyStr,
       },
-      LimitObservedAvailable {
-        subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+      gunbc.provider_standing.LimitObservedAvailable {
+        subject: gunbc.provider_standing.ProviderAccountLimit { credential: LimitCredentialUnspecified },
       },
     ],
     turn: TurnNotStarted,
@@ -98,16 +98,16 @@ test fn witness_claude_native_bucket_exhaustion_blocks_model_draw() -> Bool {
     standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: ClaudeCliProvider,
-        host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "claude" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
       bundle: bundle,
     ),
-    draw: LimitDispatchDrawModel {
+    draw: gunbc.provider_standing.LimitDispatchDrawModel {
       credential: LimitCredentialUnspecified,
       model: "opus" as std.types.NonEmptyStr,
     },
@@ -116,16 +116,16 @@ test fn witness_claude_native_bucket_exhaustion_blocks_model_draw() -> Bool {
 
 test fn witness_model_limit_rejection_does_not_block_unspecified_draw() -> Bool {
   let limits = [
-    LimitRejected {
-      subject: ProviderModelLimit {
+    gunbc.provider_standing.LimitRejected {
+      subject: gunbc.provider_standing.ProviderModelLimit {
         credential: LimitCredentialUnspecified,
         model: "fable" as std.types.NonEmptyStr,
       },
       native_token: "fable" as std.types.NonEmptyStr,
       reason: "fable bucket rejected" as std.types.NonEmptyStr,
     },
-    LimitObservedAvailable {
-      subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+    gunbc.provider_standing.LimitObservedAvailable {
+      subject: gunbc.provider_standing.ProviderAccountLimit { credential: LimitCredentialUnspecified },
     },
   ]
   limit_observations_are_selection_eligible(
@@ -140,12 +140,12 @@ test fn witness_unspecified_draw_refuses_selection_eligibility() -> Bool {
     standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: ClaudeCliProvider,
-        host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "claude" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
       bundle: bundle,
     ),
@@ -159,8 +159,8 @@ test fn witness_native_bucket_rejection_blocks_automatic_draw() -> Bool {
     authentication: AuthenticationAuthenticated,
     entitlement: EntitlementObservedAvailable,
     limits: [
-      LimitRejected {
-        subject: ProviderNativeLimitBucket {
+      gunbc.provider_standing.LimitRejected {
+        subject: gunbc.provider_standing.ProviderNativeLimitBucket {
           credential: LimitCredentialUnspecified,
           native_key: codex_default_rate_limit_id,
         },
@@ -175,12 +175,12 @@ test fn witness_native_bucket_rejection_blocks_automatic_draw() -> Bool {
     standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: CodexCliProvider,
-        host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "codex" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
       bundle: bundle,
     ),
@@ -194,15 +194,15 @@ test fn witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfo
     authentication: AuthenticationAuthenticated,
     entitlement: EntitlementObservedAvailable,
     limits: [
-      LimitExhausted {
-        subject: ProviderNativeLimitBucket {
+      gunbc.provider_standing.LimitExhausted {
+        subject: gunbc.provider_standing.ProviderNativeLimitBucket {
           credential: LimitCredentialUnspecified,
           native_key: codex_default_rate_limit_id,
         },
         native_token: codex_default_rate_limit_id,
       },
-      LimitObservedAvailable {
-        subject: ProviderNativeLimitBucket {
+      gunbc.provider_standing.LimitObservedAvailable {
+        subject: gunbc.provider_standing.ProviderNativeLimitBucket {
           credential: LimitCredentialUnspecified,
           native_key: codex_bengalfox_rate_limit_id,
         },
@@ -214,12 +214,12 @@ test fn witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfo
   let standing = provider_standing_from_fixture_bundle(
     provider: extdeps.llm.cli_lifecycle.ProviderInstance {
       kind: CodexCliProvider,
-      host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       executable: "codex" as std.types.NonEmptyStr,
-      observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-      state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-      credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-      service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
     },
     bundle: bundle,
   )
@@ -229,7 +229,7 @@ test fn witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfo
   )
     && provider_standing_is_selection_eligible(
       standing: standing,
-      draw: LimitDispatchDrawNativeBucket {
+      draw: gunbc.provider_standing.LimitDispatchDrawNativeBucket {
         credential: LimitCredentialUnspecified,
         native_key: codex_bengalfox_rate_limit_id,
       },
@@ -238,7 +238,7 @@ test fn witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfo
 
 test fn witness_unobserved_standing_is_ineligible() -> Bool {
   !provider_standing_is_selection_eligible(
-    standing: ProviderStandingUnobserved {
+    standing: gunbc.provider_standing.ProviderStandingUnobserved {
       reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
     },
     draw: LimitDispatchDrawAutomatic,
@@ -250,12 +250,12 @@ test fn witness_cursor_capability_gap_is_eligible() -> Bool {
     standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: CodexCliProvider,
-        host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "cursor-agent" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
       bundle: fixture_standing_bundle_cursor_capability_gap(),
     ),
@@ -270,24 +270,24 @@ test fn witness_codex_unavailable_prefers_claude_over_codex() -> Bool {
     codex_standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: CodexCliProvider,
-        host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "codex" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
       bundle: fixture_standing_bundle_authenticated_unavailable_until_reset(),
     ),
     claude_standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: ClaudeCliProvider,
-        host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "claude" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
       bundle: fixture_standing_bundle_authenticated_available(),
     ),
@@ -303,24 +303,24 @@ test fn witness_offer_list_order_does_not_change_automatic_selection() -> Bool {
   let codex_standing = provider_standing_from_fixture_bundle(
     provider: extdeps.llm.cli_lifecycle.ProviderInstance {
       kind: CodexCliProvider,
-      host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       executable: "codex" as std.types.NonEmptyStr,
-      observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-      state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-      credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-      service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
     },
     bundle: fixture_standing_bundle_authenticated_unavailable_until_reset(),
   )
   let claude_standing = provider_standing_from_fixture_bundle(
     provider: extdeps.llm.cli_lifecycle.ProviderInstance {
       kind: ClaudeCliProvider,
-      host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       executable: "claude" as std.types.NonEmptyStr,
-      observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-      state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-      credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-      service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+      service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
     },
     bundle: fixture_standing_bundle_authenticated_available(),
   )
@@ -353,24 +353,24 @@ test fn witness_standing_ineligible_codex_selects_claude_before_resolve() -> Boo
     codex_standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: CodexCliProvider,
-        host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "codex" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
       bundle: fixture_standing_bundle_authenticated_unavailable_until_reset(),
     ),
     claude_standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: ClaudeCliProvider,
-        host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "claude" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
       bundle: fixture_standing_bundle_authenticated_available(),
     ),
@@ -390,20 +390,20 @@ test fn witness_profile_present_token_absent_not_selection_eligible() -> Bool {
     standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: ClaudeCliProvider,
-        host: ProviderInstanceFieldUnobserved {
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
         executable: "claude" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved {
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
-        state_directory: ProviderInstanceFieldUnobserved {
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
-        credential_storage_method: ProviderInstanceFieldUnobserved {
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
-        service_identity: ProviderInstanceFieldUnobserved {
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
       },
@@ -432,32 +432,32 @@ test fn witness_profile_present_token_absent_claude_skipped_for_codex() -> Bool 
     codex_standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: CodexCliProvider,
-        host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "codex" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
       bundle: fixture_standing_bundle_authenticated_available(),
     ),
     claude_standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: ClaudeCliProvider,
-        host: ProviderInstanceFieldUnobserved {
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
         executable: "claude" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved {
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
-        state_directory: ProviderInstanceFieldUnobserved {
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
-        credential_storage_method: ProviderInstanceFieldUnobserved {
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
-        service_identity: ProviderInstanceFieldUnobserved {
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
       },
@@ -476,11 +476,11 @@ test fn witness_turn_outcome_unobserved_is_ineligible() -> Bool {
     authentication: AuthenticationAuthenticated,
     entitlement: EntitlementObservedAvailable,
     limits: [
-      LimitObservedAvailable {
-        subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
+      gunbc.provider_standing.LimitObservedAvailable {
+        subject: gunbc.provider_standing.ProviderAccountLimit { credential: LimitCredentialUnspecified },
       },
     ],
-    turn: TurnOutcomeUnobserved {
+    turn: gunbc.provider_standing.TurnOutcomeUnobserved {
       reason: "no turn outcome observed at selection time" as std.types.NonEmptyStr,
     },
     tool_environment: ToolEnvironmentReady,
@@ -489,12 +489,12 @@ test fn witness_turn_outcome_unobserved_is_ineligible() -> Bool {
     standing: provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
         kind: CodexCliProvider,
-        host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "codex" as std.types.NonEmptyStr,
-        observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-        service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+        service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
       bundle: bundle,
     ),

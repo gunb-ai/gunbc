@@ -289,7 +289,7 @@ test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
 }
 
 test fn dashboard_refusal_receipt_is_typed_and_located() -> Bool {
-  let result = DashboardApplyRefused {
+  let result = gunbc.roadmap_dashboard_instance_apply.DashboardApplyRefused {
     instance_id: "srv1-lab-codex-feedback-v0",
     step: "verify-provider-auth",
     detail: "codex login status exited nonzero",
@@ -493,7 +493,7 @@ test fn dashboard_bootstrap_parent_writability_is_a_preflight_fact() -> Bool {
     instance: lab,
     root: PathObservedAbsent,
     bootstrap_present: PathObservedPresent,
-    bootstrap_writable: PathObservationRefused {
+    bootstrap_writable: gunbc.roadmap_dashboard_instance_apply.PathObservationRefused {
       reason: "ssh: connect to host srv1 port 22: No route to host",
     },
   )
@@ -526,7 +526,7 @@ test fn dashboard_unreachable_root_refuses_before_choosing_a_parent() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   match dashboard_bootstrap_preflight_decision(
     instance: lab,
-    root: PathObservationRefused { reason: "ssh transport refused" },
+    root: gunbc.roadmap_dashboard_instance_apply.PathObservationRefused { reason: "ssh transport refused" },
     bootstrap_present: PathObservedPresent,
     bootstrap_writable: PathObservedPresent,
   ) {
@@ -540,15 +540,15 @@ test fn dashboard_unreachable_root_refuses_before_choosing_a_parent() -> Bool {
 
 // THE ARM THAT MATTERS IS THE MIXED ONE. An unpeered host has no production liveness to compare, so the tempting shortcut is to let an absent reading compare equal to anything and move on — which would let an apply that STARTED with production served and ENDED with it unreachable report untouched, the precise reading the post-apply check exists to prevent. Equality is therefore required to agree on the arm as well as the contents: two reads compare their snapshots, two unpeered readings compare their hosts, and one of each is never equal regardless of what happened in between.\n\nThe isolation claim is the counterpart. NoProductionPeer discharges the disjointness obligation because there is no peer to overlap with, but it must not discharge the instance's OWN ownership requirement — an unowned path is unowned whether or not a production dashboard shares the machine, and preflight checks the two separately for that reason.
 fn witness_peered() -> gunbc.roadmap_dashboard_instance_apply.DashboardProductionPeer {
-  ProductionPeer { instance: srv1_live_dashboard_instance() }
+  gunbc.roadmap_dashboard_instance_apply.ProductionPeer { instance: srv1_live_dashboard_instance() }
 }
 
 fn witness_unpeered() -> gunbc.roadmap_dashboard_instance_apply.DashboardProductionPeer {
-  NoProductionPeer { host: "srv2" as std.types.NonEmptyStr }
+  gunbc.roadmap_dashboard_instance_apply.NoProductionPeer { host: "srv2" as std.types.NonEmptyStr }
 }
 
 fn witness_reading_read() -> gunbc.roadmap_dashboard_instance_apply.DashboardProductionReading {
-  ProductionRead {
+  gunbc.roadmap_dashboard_instance_apply.ProductionRead {
     snapshot: gunbc.roadmap_dashboard_instance_apply.DashboardProductionSnapshot {
       observed: true,
       head: "abc123",
@@ -560,14 +560,14 @@ fn witness_reading_read() -> gunbc.roadmap_dashboard_instance_apply.DashboardPro
 
 test fn production_reading_never_equates_absent_with_observed() -> Bool {
   let read = witness_reading_read()
-  let unpeered = ProductionUnpeered { host: "srv2" as std.types.NonEmptyStr }
+  let unpeered = gunbc.roadmap_dashboard_instance_apply.ProductionUnpeered { host: "srv2" as std.types.NonEmptyStr }
   dashboard_production_readings_equal(before: read, after: read)
     && dashboard_production_readings_equal(before: unpeered, after: unpeered)
     && !dashboard_production_readings_equal(before: read, after: unpeered)
     && !dashboard_production_readings_equal(before: unpeered, after: read)
     && !dashboard_production_readings_equal(
       before: unpeered,
-      after: ProductionUnpeered { host: "srv1" as std.types.NonEmptyStr },
+      after: gunbc.roadmap_dashboard_instance_apply.ProductionUnpeered { host: "srv1" as std.types.NonEmptyStr },
     )
 }
 

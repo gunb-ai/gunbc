@@ -99,14 +99,14 @@ test fn witness_completeness_does_not_imply_the_gate_finds_it() -> Bool {
   let unreachable_but_complete = gate_finds_component_verdict(
     completeness: std.upsert_decision.Converged,
     reachability: Present {
-      value: NotReachableOnSpawnPath {
+      value: gunbc.host_toolchain_components.NotReachableOnSpawnPath {
         inherited_path: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin",
       },
     },
   )
   let reachable_and_complete = gate_finds_component_verdict(
     completeness: std.upsert_decision.Converged,
-    reachability: Present { value: ReachableOnSpawnPath { path_source: "job step probe" } },
+    reachability: Present { value: gunbc.host_toolchain_components.ReachableOnSpawnPath { path_source: "job step probe" } },
   )
   observation_verdict_eq(a: completeness, b: std.upsert_decision.Converged)
     && observation_verdict_eq(a: combined, b: std.upsert_decision.UnknownRefused)

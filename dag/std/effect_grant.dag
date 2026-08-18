@@ -182,7 +182,7 @@ fn effect_grant_decide(
     CoveredBy { grant: grant } => Permit
     NoCoveringGrant { verb: verb, target: target, frame: frame } => Deny {
       refusal: std.access.AccessRefusal {
-        cause: AccessActionNotGranted { action: effect_verb_label(verb: verb) },
+        cause: std.access.AccessActionNotGranted { action: effect_verb_label(verb: verb) },
         location: std.access.AccessRefusalLocation {
           profile: "EffectRequest",
           subject: frame.name,

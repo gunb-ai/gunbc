@@ -9,31 +9,31 @@ fn linearize_steps(steps: List<gunbc.idea_pr_spine.StageStep>) -> std.workflow_r
 }
 
 fn deep_unknown_tree() -> std.workflow_recursive.VerdictTree {
-  Decomposed { children: [
-    std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 1 } },
-    Decomposed { children: [
-      std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 2 } },
+  std.workflow_recursive.Decomposed { children: [
+    std.workflow_recursive.Leaf { verdict: std.reducible.Reduced { last_parts: 1 } },
+    std.workflow_recursive.Decomposed { children: [
+      std.workflow_recursive.Leaf { verdict: std.reducible.Reduced { last_parts: 2 } },
       std.workflow_recursive.Leaf { verdict: std.reducible.Unknown { missing: "deep-axis" } },
     ] },
-    std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 3 } },
+    std.workflow_recursive.Leaf { verdict: std.reducible.Reduced { last_parts: 3 } },
   ] }
 }
 
 fn all_green_tree() -> std.workflow_recursive.VerdictTree {
-  Decomposed { children: [
-    std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 1 } },
-    Decomposed { children: [
-      std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 2 } },
-      std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 3 } },
+  std.workflow_recursive.Decomposed { children: [
+    std.workflow_recursive.Leaf { verdict: std.reducible.Reduced { last_parts: 1 } },
+    std.workflow_recursive.Decomposed { children: [
+      std.workflow_recursive.Leaf { verdict: std.reducible.Reduced { last_parts: 2 } },
+      std.workflow_recursive.Leaf { verdict: std.reducible.Reduced { last_parts: 3 } },
     ] },
   ] }
 }
 
 fn review_tree_blocks() -> std.workflow_recursive.VerdictTree {
-  Decomposed { children: [
-    std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 1 } },
+  std.workflow_recursive.Decomposed { children: [
+    std.workflow_recursive.Leaf { verdict: std.reducible.Reduced { last_parts: 1 } },
     std.workflow_recursive.Leaf { verdict: review_step(gunbc.idea_pr_spine.Review { subject: DagModel, reviewer: gunbc.review_verdict.Llm { provider: Claude }, verdict: gunbc.review_verdict.RequestChanges }).verdict },
-    std.workflow_recursive.Leaf { verdict: Reduced { last_parts: 9 } },
+    std.workflow_recursive.Leaf { verdict: std.reducible.Reduced { last_parts: 9 } },
   ] }
 }
 
@@ -54,9 +54,9 @@ type WorkflowKernelWitnessed {
 }
 
 fn witness_semigroup_associativity() -> WorkflowLawWitness {
-  let a = Reduced { last_parts: 1 }
+  let a = std.reducible.Reduced { last_parts: 1 }
   let b = std.reducible.Unknown { missing: "axis-b" }
-  let c = Irreducible { witness: "w" }
+  let c = std.reducible.Irreducible { witness: "w" }
   WorkflowLawWitness {
     law_tag: "reduce_verdict:semigroup_associativity",
     verified: verdict_eq(
@@ -78,7 +78,7 @@ fn witness_semigroup_absorption_left() -> WorkflowLawWitness {
     verified: verdict_eq(
       a: reduce_verdict_combine(
         a: std.reducible.Unknown { missing: "latch-axis" },
-        b: Reduced { last_parts: 9 }
+        b: std.reducible.Reduced { last_parts: 9 }
       ),
       b: std.reducible.Unknown { missing: "latch-axis" }
     ),
@@ -90,7 +90,7 @@ fn witness_semigroup_absorption_right() -> WorkflowLawWitness {
     law_tag: "reduce_verdict:unknown_absorbs_right",
     verified: verdict_eq(
       a: reduce_verdict_combine(
-        a: Reduced { last_parts: 9 },
+        a: std.reducible.Reduced { last_parts: 9 },
         b: std.reducible.Unknown { missing: "latch-axis" }
       ),
       b: std.reducible.Unknown { missing: "latch-axis" }
@@ -113,7 +113,7 @@ fn witness_green_tree_settles_decisive() -> WorkflowLawWitness {
     law_tag: "workflow:green_tree_settles_decisive",
     verified: verdict_eq(
       a: settle_verdict_tree(all_green_tree()),
-      b: Reduced { last_parts: 3 }
+      b: std.reducible.Reduced { last_parts: 3 }
     ),
   }
 }

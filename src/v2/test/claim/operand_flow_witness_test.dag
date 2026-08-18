@@ -4,19 +4,19 @@ module v2.test.claim.operand_flow_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data operand_flow_shared_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^operand_flow_shared } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^operand_flow_shared } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data operand_flow_consumer_a_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^operand_flow_consumer_a } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^operand_flow_consumer_a } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data operand_flow_consumer_b_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^operand_flow_consumer_b } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^operand_flow_consumer_b } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }

@@ -2,14 +2,14 @@ module v2.test.impossible_bug.idempotency_contract
 
 
 fn atom_node(s: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
 fn idempotency_contract(body: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: ^idempotency_position_field }, target: atom_node(s: ^idempotent_position_symbol) },
       v2.std.node.Edge { label: Named { name: ^idempotency_body_field }, target: body },
@@ -24,7 +24,7 @@ data falsification_nonidempotent_in_idempotent_position: Node = idempotency_cont
 
 data falsification_repeated_append_in_idempotent_position: Node = idempotency_contract(body: atom_node(s: ^repeated_append_effect_symbol))
 
-data claim_idempotent_inhabitant_passes: v2.std.verification.TestClaim = CompilesClaim {
+data claim_idempotent_inhabitant_passes: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "idempotent algebra inhabitant accepts idempotent structure",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: idempotent_inhabitant_input,
@@ -32,7 +32,7 @@ data claim_idempotent_inhabitant_passes: v2.std.verification.TestClaim = Compile
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_repeated_append_in_idempotent_position_caught: v2.std.verification.TestClaim = DiagnosticClaim {
+data claim_repeated_append_in_idempotent_position_caught: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "idempotent algebra inhabitance rejects repeated append composition",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_repeated_append_in_idempotent_position,
@@ -40,13 +40,13 @@ data claim_repeated_append_in_idempotent_position_caught: v2.std.verification.Te
       d: v2.std.diagnostic.Diagnostic {
         reason: ^impossible_bug_reason_idempotency_repetition,
         at: node_locus(node: falsification_repeated_append_in_idempotent_position),
-        correction: Suggested { node: idempotent_inhabitant_input }
+        correction: v2.std.diagnostic.Suggested { node: idempotent_inhabitant_input }
       }
     ),
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_nonidempotent_in_idempotent_position_caught: v2.std.verification.TestClaim = DiagnosticClaim {
+data claim_nonidempotent_in_idempotent_position_caught: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "idempotent algebra inhabitance rejects non-idempotent composition",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_nonidempotent_in_idempotent_position,
@@ -54,7 +54,7 @@ data claim_nonidempotent_in_idempotent_position_caught: v2.std.verification.Test
       d: v2.std.diagnostic.Diagnostic {
         reason: ^impossible_bug_reason_idempotency_violation,
         at: node_locus(node: falsification_nonidempotent_in_idempotent_position),
-        correction: Suggested { node: idempotent_inhabitant_input }
+        correction: v2.std.diagnostic.Suggested { node: idempotent_inhabitant_input }
       }
     ),
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }

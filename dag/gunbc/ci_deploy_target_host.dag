@@ -183,7 +183,7 @@ fn deploy_local_apply_refused_for_observed_host(
 fn host_pinned_runner_spec(offer: gunbc.ci_fleet.ComputeOffer, host: product.placement_supply.HostIdentity) -> extdeps.github.actions.RunnerSpec {
   match runner_spec_from_offer(offer: offer) {
     SelfHosted { labels: labels } =>
-      SelfHosted { labels: concat(labels, [host]) }
+      extdeps.github.actions.SelfHosted { labels: concat(labels, [host]) }
     other => other
   }
 }

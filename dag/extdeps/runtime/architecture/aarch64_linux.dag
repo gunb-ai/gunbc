@@ -35,7 +35,7 @@ data aarch64_linux_architecture_profile: extdeps.toolchain.architecture_profile.
 
 data aarch64_linux_deployment_target: extdeps.toolchain.architecture_profile.DeploymentTarget = {
   profile: aarch64_linux_architecture_profile,
-  invocation: SyscallAbiSurface { abi: linux_aarch64_syscall_abi },
+  invocation: std.os.invocation.SyscallAbiSurface { abi: linux_aarch64_syscall_abi },
 }
 
 fn witness_architecture_is_aarch64() -> Bool {

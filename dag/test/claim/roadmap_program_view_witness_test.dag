@@ -28,13 +28,13 @@ fn fx_node_custom(
   gunbc.roadmap_model.RoadmapNode {
     identity: concat("fx_", id) as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: id as gunbc.roadmap_model.RoadmapNodeId,
-    line: TicketLine { done: false, ticket: fx_ticket(headline: headline) },
+    line: gunbc.roadmap_status.TicketLine { done: false, ticket: fx_ticket(headline: headline) },
     carriers: [],
     sizing: if sized {
-      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
+      gunbc.roadmap_model.Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
     } else { Unsized },
     execution: if bound {
-      ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
+      gunbc.roadmap_execution_contract.ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
     } else { ExecutionContractUnspecified },
     owner: "fixture",
     signoff: Unsigned,
@@ -45,13 +45,13 @@ fn fx_node(id: String, bound: Bool, sized: Bool) -> gunbc.roadmap_model.RoadmapN
   gunbc.roadmap_model.RoadmapNode {
     identity: concat("fx_", id) as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: id as gunbc.roadmap_model.RoadmapNodeId,
-    line: TicketLine { done: false, ticket: fx_ticket(headline: concat("Fixture: ", id)) },
+    line: gunbc.roadmap_status.TicketLine { done: false, ticket: fx_ticket(headline: concat("Fixture: ", id)) },
     carriers: [],
     sizing: if sized {
-      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
+      gunbc.roadmap_model.Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
     } else { Unsized },
     execution: if bound {
-      ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
+      gunbc.roadmap_execution_contract.ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
     } else { ExecutionContractUnspecified },
     owner: "fixture",
     signoff: Unsigned,
@@ -62,10 +62,10 @@ fn fx_pr_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
     identity: concat("fx_", id) as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: id as gunbc.roadmap_model.RoadmapNodeId,
-    line: DerivableLine { prs: [9999], title: concat("Fixture merged-PR node: ", id), description: "merged but never accepted" },
+    line: gunbc.roadmap_status.DerivableLine { prs: [9999], title: concat("Fixture merged-PR node: ", id), description: "merged but never accepted" },
     carriers: [],
-    sizing: Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: PrsMerged },
-    execution: ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] },
+    sizing: gunbc.roadmap_model.Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: PrsMerged },
+    execution: gunbc.roadmap_execution_contract.ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] },
     owner: "fixture",
     signoff: Unsigned,
   }
@@ -126,12 +126,12 @@ fn fx_receipt_for(n: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_model.Roa
   gunbc.roadmap_model.RoadmapAcceptanceReceipt {
     node: n.node,
     criteria_digest: roadmap_criteria_digest(t: fx_ticket(headline: concat("Fixture: ", n.node as String))),
-    red_control: RedControlExecuted {
+    red_control: gunbc.roadmap_status.RedControlExecuted {
       witness_module: "test.claim.roadmap_program_view_witness" as std.types.NonEmptyStr,
       witness_fn: "fixture" as std.types.NonEmptyStr,
       executed_on: "2026-08-02" as std.types.NonEmptyStr,
     },
-    handback: HandbackDelivered {
+    handback: gunbc.roadmap_status.HandbackDelivered {
       first_artifact: "fixture-artifact" as std.types.NonEmptyStr,
       further_artifacts: [],
     },
@@ -328,12 +328,12 @@ test fn witness_red_merged_prs_and_contracts_do_not_accept() -> Bool {
   let bogus_receipt = gunbc.roadmap_model.RoadmapAcceptanceReceipt {
     node: "fe" as gunbc.roadmap_model.RoadmapNodeId,
     criteria_digest: roadmap_criteria_digest(t: fx_ticket(headline: "Fixture: fe")),
-    red_control: RedControlExecuted {
+    red_control: gunbc.roadmap_status.RedControlExecuted {
       witness_module: "test.claim.roadmap_program_view_witness" as std.types.NonEmptyStr,
       witness_fn: "fixture" as std.types.NonEmptyStr,
       executed_on: "2026-08-02" as std.types.NonEmptyStr,
     },
-    handback: HandbackDelivered {
+    handback: gunbc.roadmap_status.HandbackDelivered {
       first_artifact: "fixture-artifact" as std.types.NonEmptyStr,
       further_artifacts: [],
     },

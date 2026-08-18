@@ -18,7 +18,7 @@ data nbd_proxy_serve_expected_owner_label: std.types.NonEmptyStr = "gunbc-nbd-pr
 data nbd_proxy_serve_expected_process_fingerprint: std.types.NonEmptyStr = "gunbc-nbd-proxy" as std.types.NonEmptyStr
 
 fn host_effect_nbd_proxy_serve_session_policy(lease_key: std.types.NonEmptyStr) -> std.temporal_effect.TemporalEffectPolicy {
-  HeldSessionLease { lease_key: lease_key }
+  std.temporal_effect.HeldSessionLease { lease_key: lease_key }
 }
 
 fn host_effect_nbd_proxy_serve_session_policy_is_held_lease(lease_key: std.types.NonEmptyStr) -> Bool {

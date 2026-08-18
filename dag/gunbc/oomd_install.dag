@@ -160,8 +160,8 @@ fn first_grounding_failure(checks: List<OomdGroundingCheck>) -> String? {
 
 fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> Grounding<gunbc.ci_floor_measurement.OomdEnforcementEvidence> {
   match first_grounding_failure(checks: grounding_checks(read: read, req: req)) {
-    Absent => Grounds { evidence: OomdEnforced }
-    Present { value: reason } => DoesNotGround { reason: reason }
+    Absent => std.realization_reconcile.Grounds { evidence: OomdEnforced }
+    Present { value: reason } => std.realization_reconcile.DoesNotGround { reason: reason }
   }
 }
 
@@ -171,7 +171,7 @@ fn reconcile_oomd(read: ShowEffectiveRead<OomdEffectiveRead>, req: OomdGrounding
       reconcile_grounded(
         apply_effect: gunbc_oomd_apply_effect,
         show_read: read,
-        grounding: DoesNotGround { reason: why }
+        grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
     ReadObserved { value: observed } =>
       reconcile_grounded(
@@ -189,7 +189,7 @@ fn oomd_evidence_from_reconciliation(r: Reconciliation<OomdApplyEffect, OomdEnfo
   }
 }
 
-data gunbc_oomd_show_effective_read: ShowEffectiveRead<OomdEffectiveRead> = ReadAbsent {
+data gunbc_oomd_show_effective_read: ShowEffectiveRead<OomdEffectiveRead> = std.realization_reconcile.ReadAbsent {
   reason: "no live systemctl show-effective / oomctl read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"
 }
 

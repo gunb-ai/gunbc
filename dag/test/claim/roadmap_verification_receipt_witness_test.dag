@@ -20,7 +20,7 @@ fn exact_head_receipt(head: std.types.CommitSha) -> gunbc.roadmap_verification_r
     oracle_identity: content_hash_of_value(value: "pinned-oracle"),
     executions: [
       gunbc.roadmap_verification_receipt.ValidationExecution {
-        validation: GunbcClaimValidation {
+        validation: gunbc.roadmap_execution_contract.GunbcClaimValidation {
           entry: "dag/test/claim/exact_head_test.dag" as std.types.FilePath,
           function: "exact_head_holds" as std.types.NonEmptyStr,
         },
@@ -37,7 +37,7 @@ fn exact_head_receipt(head: std.types.CommitSha) -> gunbc.roadmap_verification_r
         stderr: "",
       },
     ],
-    verdict: ValidationPassed {
+    verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
       command: "/opt/gunbc/bin/gunbc run --claim-run",
       oracle_identity: content_hash_of_value(value: "pinned-oracle"),
     },
@@ -52,13 +52,13 @@ test fn complete_exact_head_receipt_constructs_and_matches() -> Bool {
   let receipt = exact_head_receipt(head: head_a)
   match verification_evidence_for(
     expected: expected,
-    source: ExactHeadVerificationReceipt { receipt: receipt },
+    source: gunbc.roadmap_verification_receipt.ExactHeadVerificationReceipt { receipt: receipt },
   ) {
     VerificationEvidenceForSubject { receipt: found } =>
       count(found.executions) == 1
         && found.executions.first().command.args.first() == "run"
         && verification_evidence_moves_lamp(
-          evidence: VerificationEvidenceForSubject { receipt: found },
+          evidence: gunbc.roadmap_verification_receipt.VerificationEvidenceForSubject { receipt: found },
         )
     _ => false
   }
@@ -67,7 +67,7 @@ test fn complete_exact_head_receipt_constructs_and_matches() -> Bool {
 test fn passed_receipt_for_old_head_refuses_to_move_new_head_lamp() -> Bool {
   let evidence = verification_evidence_for(
     expected: subject_at(head: head_b),
-    source: ExactHeadVerificationReceipt {
+    source: gunbc.roadmap_verification_receipt.ExactHeadVerificationReceipt {
       receipt: exact_head_receipt(head: head_a),
     },
   )
@@ -84,7 +84,7 @@ test fn passed_receipt_for_old_head_refuses_to_move_new_head_lamp() -> Bool {
 test fn attempt_level_pass_is_typed_legacy_and_never_evidence() -> Bool {
   let evidence = verification_evidence_for(
     expected: subject_at(head: head_a),
-    source: LegacyAttemptValidationReceipt { verdict_key: "passed" },
+    source: gunbc.roadmap_verification_receipt.LegacyAttemptValidationReceipt { verdict_key: "passed" },
   )
   match evidence {
     VerificationEvidenceLegacyAttemptLevel { verdict_key } =>
@@ -131,7 +131,7 @@ test fn exact_head_receipt_round_trips_through_json_codec() -> Bool {
         VerificationSubjectMatches =>
           count(decoded.executions) == count(receipt.executions)
             && verification_evidence_moves_lamp(
-              evidence: VerificationEvidenceForSubject { receipt: decoded },
+              evidence: gunbc.roadmap_verification_receipt.VerificationEvidenceForSubject { receipt: decoded },
             )
         VerificationSubjectDiffers { field: _, expected: _, found: _ } => false
       }
@@ -144,9 +144,9 @@ test fn change_window_refused_verdict_round_trips_through_json_codec() -> Bool {
     subject: subject_at(head: head_a),
     oracle_identity: content_hash_of_value(value: "pinned-oracle"),
     executions: [],
-    verdict: ValidationRefused {
-      cause: ValidationChangeWindowRefused {
-        cause: ChangeWindowPersistenceRefused {
+    verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
+      cause: gunbc.roadmap_validation_oracle.ValidationChangeWindowRefused {
+        cause: gunbc.git_diff_change_window.ChangeWindowPersistenceRefused {
           path: "/tmp/attempt/verification/window.json",
           cause: "merge-base observation failed (exit 128): fatal: Not a valid object name",
         },

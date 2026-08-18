@@ -4,9 +4,9 @@ module gunbc.gha_yaml_fold_pilot
 data gha_fold_pilot_job: extdeps.github.actions.Job = extdeps.github.actions.Job {
   id: "pilot",
   name: Absent,
-  runner: SelfHosted { labels: ["self-hosted", "linux"] },
+  runner: extdeps.github.actions.SelfHosted { labels: ["self-hosted", "linux"] },
   steps: [
-    RunStep {
+    extdeps.github.actions.RunStep {
       name: Absent,
       id: Absent,
       run: "echo hi",
@@ -17,7 +17,7 @@ data gha_fold_pilot_job: extdeps.github.actions.Job = extdeps.github.actions.Job
       continue_on_error: Absent,
       timeout_minutes: Absent
     },
-    UsesStep {
+    extdeps.github.actions.UsesStep {
       name: Absent,
       id: Absent,
       uses: extdeps.github.actions.ActionRef { owner: "actions", repo: "checkout", ref: "v4" },

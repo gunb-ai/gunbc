@@ -9,7 +9,7 @@ data sg_rc_expected_rc_outcome_node: String = "Rc<Outcome<Node>>"
 
 fn sg_rc_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^sg_rc_fail_sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sg_rc_fail_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -57,12 +57,12 @@ fn sg_rc_serialized_type_text(emitted: Node) -> String {
 
 fn sg_rc_outcome_node_source_type() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Instantiation },
+    kind: v2.std.node.TypeNode { connective: Instantiation },
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^target_carrier_outcome } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^target_carrier_outcome } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }
@@ -70,7 +70,7 @@ fn sg_rc_outcome_node_source_type() -> Node {
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^target_carrier_node } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^target_carrier_node } },
           children: [],
           occurrence_id: SyntheticOccurrence
 }

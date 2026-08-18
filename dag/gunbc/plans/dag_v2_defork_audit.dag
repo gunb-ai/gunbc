@@ -9,7 +9,7 @@ fn dag_v2_defork_audit_body() -> List<std.markdown.MarkdownBlock> {
     ThematicBreak,
     h2(text: "2A. 2026-06-23 executed Q2 confirmation (post-#5640) — supersedes the `verification` census row"),
     p(text: "Read-only, by execution. Structural extraction of every top-level `type` decl in `dag/std/<b>.dag`\nvs `src/v2/std/<b>.dag`; shared **unqualified type names** compared with the #2 guard's own\n`structural_inequality` predicate (normalized body equality) — this run is also the §5 proof that the\npredicate classifies correctly. Reachability = BFS of all **351** `_test.dag` floor entries' whole-module\nimport closures testing whether `std.<b>` and `v2.std.<b>` co-occur in one closure (= the guard fires)."),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "basename"), cell(text: "shared type-names"), cell(text: "structural verdict"), cell(text: "floor co-occurrence"), cell(text: "category"), cell(text: "unify status")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -49,7 +49,7 @@ fn dag_v2_defork_audit_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "2. Fork census, re-verdicted by execution (the real shape)"),
     p(text: "Three tiers. **Mirror** = v2's used symbols ⊆ dag → mechanical delete + repoint. **Not-a-fork** = shared symbol count is *zero*, the basename is the only collision → rename to disambiguate — **but where the dag-side file is consumed by the `src/v1` seed (import + emitted Rust + a guard test), the rename cascades into the seed and is held** (see the v1-coupled subsection). **Grounding cluster** = the same concept grounded on a different axis/realization in each tree (shared symbols exist, often with a *diverging shared-type body*) → single-authority **design**, operator-owned, downstream of #5428 + the model↔realization grounding. *Not* a repoint and *not* a clean additive merge."),
     h3(text: "Mechanical lane (still-deer authority, bright-stag review) — finishable independently"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "concept"), cell(text: "shared"), cell(text: "each side"), cell(text: "verdict / state")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -60,7 +60,7 @@ fn dag_v2_defork_audit_body() -> List<std.markdown.MarkdownBlock> {
     },
     h3(text: "Name-collision renames — V1-SEED-COUPLED (held for ruling)"),
     p(text: "`coercion` and `node` are genuine not-a-forks (shared symbol count = 0; the dag and v2 files denote different concepts), **but they are not clean-lane renames**: the dag-side file in each is consumed by the `src/v1` bootstrap seed, so renaming its module cascades into the seed. *Caught by execution — importer greps that omitted `src/v1` initially mis-scoped both as low/zero-importer.* **Ruled DEFER** (bright-stag, 2026-06-22): both renames touch `04_infer` (a DESIGN-named load-bearing inference stage), the emitted Rust seed, and a guard test — high cost + load-bearing **now**, for a pure naming-collision fix whose collision is largely a v1-existence artifact. The cost drops toward zero once v1's consumers are gone (DESIGN §7 / ROADMAP §5 shrink-to-zero), and **the deferred work shrinks rather than just moving** (see each row). Dissolution trigger: *when v1's consumers of `dag/std/\{node,coercion\}` are removed (v1 shrink).*"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "concept"), cell(text: "shared"), cell(text: "each side"), cell(text: "v1 coupling"), cell(text: "verdict / state")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -70,7 +70,7 @@ fn dag_v2_defork_audit_body() -> List<std.markdown.MarkdownBlock> {
     },
     h3(text: "Grounding cluster (operator authority) — 7 concepts, a unification *design*"),
     p(text: "Each row is **operator decision-input**: what is shared (and whether the shared body itself diverges), what each side uniquely carries, and the specific grounding entanglement that makes it a design, not a repoint."),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "concept"), cell(text: "shared"), cell(text: "shared body diverges?"), cell(text: "dag-only / v2-only"), cell(text: "grounding entanglement")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -132,6 +132,6 @@ data dag_v2_defork_audit_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "dag-v2-defork-audit",
   title: "Plan — De-fork `dag/` ↔ `src/v2/` (collapse the duplicated standard library)",
   body: dag_v2_defork_audit_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the fork census reaches zero — when no `std` basename denotes two concepts and every concept has a single authority. The census now has **three categories**, dissolving on different triggers: **(a) True mirrors** (`reducible`, `measure`) — mechanical collapse; dissolve into their carriers (absent files, re-pointed imports) as each PR lands. Plus `probe_selector` (the step-4 data-import unblock), independent. **(b) Grounding divergences** (`algebra`, `logic`, `nat`, `integer`, `float`, `effects`, `verification`) — downstream of the operator's grounding-unification design; tracked here as decision-input until that design lands and the repoints become mechanical. **(c) v1-artifact collisions** (`node`, `coercion`) — deferred to v1-shrink; trigger \"when v1's consumers of `dag/std/\{node,coercion\}` are removed\" (`node` self-dissolves, `coercion` shrinks to a v1-free rename). At the point all three are resolved the carriers tell the whole story and this audit is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the fork census reaches zero — when no `std` basename denotes two concepts and every concept has a single authority. The census now has **three categories**, dissolving on different triggers: **(a) True mirrors** (`reducible`, `measure`) — mechanical collapse; dissolve into their carriers (absent files, re-pointed imports) as each PR lands. Plus `probe_selector` (the step-4 data-import unblock), independent. **(b) Grounding divergences** (`algebra`, `logic`, `nat`, `integer`, `float`, `effects`, `verification`) — downstream of the operator's grounding-unification design; tracked here as decision-input until that design lands and the repoints become mechanical. **(c) v1-artifact collisions** (`node`, `coercion`) — deferred to v1-shrink; trigger \"when v1's consumers of `dag/std/\{node,coercion\}` are removed\" (`node` self-dissolves, `coercion` shrinks to a v1-free rename). At the point all three are resolved the carriers tell the whole story and this audit is redundant.")
   }
 }

@@ -41,7 +41,7 @@ test fn active_without_registration_is_orphaned() -> Bool {
 data roster_unavailable_is_unknown_not_detached_note: String = "THE FAIL-CLOSED ROW PR B'S SAFETY DEPENDS ON: a roster read failure must render UNKNOWN on every active slot, never detached. Zero-width achieved fields must stay unobserved rather than fabricated as zero registrations."
 
 test fn roster_unavailable_yields_unknown_on_every_active_slot() -> Bool {
-  let roster = RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
+  let roster = gunbc.fleet_runner_connectivity.RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
   roster_unavailable_yields_unknown_not_detached(roster: roster)
     && all(
       connectivity_verdicts_for_active_incarnations(roster: roster),
@@ -51,7 +51,7 @@ test fn roster_unavailable_yields_unknown_on_every_active_slot() -> Bool {
 
 test fn roster_unavailable_does_not_fabricate_zero_achieved_widths() -> Bool {
   let snapshot = fleet_runner_capacity_width_snapshot_from_roster(
-    roster: RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
+    roster: gunbc.fleet_runner_connectivity.RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
   )
   match snapshot.achieved {
     AchievedWidthsUnobserved { reason: _ } => true

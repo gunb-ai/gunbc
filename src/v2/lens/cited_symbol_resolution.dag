@@ -4,7 +4,7 @@ module v2.lens.cited_symbol_resolution
 data cited_symbol_resolution_law: String = "feature:cited-symbol-resolution — every typed DeclarationRef enrolled in hand_authored_production_doc_declaration_refs (HandAuthoredDocBind primary_work + additional_works, excluding permanent g1-cited-symbol-control-* probe rows) resolves to exactly one decl_facts row over a declared module, or refuses with a typed five-arm result. Population is structural, not corpus text scan. Permanent planted controls in hand_authored_cited_symbol_control_declaration_refs stay enrolled for mutation witnesses — they never retire when production goes green (operator ruling 2026-08-03, DESIGN 4b(4)). Resolution semantics live in v2.std.decl_ref_resolution.resolve_declaration_ref over decl_facts + module_declaration_facts — single authority, no per-kind fork. dissolve-on: substrate refuses unwritable DeclarationRef at construction; enrollment widens to every structural DeclarationRef carrier when the Node-tree reader lands."
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }
 
 data cited_symbol_planted_ambiguous_control_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {

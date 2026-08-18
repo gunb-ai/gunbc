@@ -12,10 +12,10 @@ fn pbf_graft_module_root(root: Node) -> Node {
 
 fn pbf_qn_node(seg: v2.std.node.Symbol) -> Node {
   fold_list_node(
-    xs: Cons { head: seg, tail: Empty },
+    xs: std.algebra.Cons { head: seg, tail: Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: sym } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
@@ -25,7 +25,7 @@ fn pbf_qn_node(seg: v2.std.node.Symbol) -> Node {
 
 fn pbf_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -38,7 +38,7 @@ fn pbf_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, expo
       v2.std.node.Edge {
         label: Named { name: export_sym },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: export_atom } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: export_atom } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -50,7 +50,7 @@ fn pbf_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, expo
 
 fn pbf_subject_with_import_use() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -63,7 +63,7 @@ fn pbf_subject_with_import_use() -> Node {
       v2.std.node.Edge {
         label: Named { name: ^pbf_import_use_sym },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^pbf_imported_decl } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^pbf_imported_decl } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -75,9 +75,9 @@ fn pbf_subject_with_import_use() -> Node {
 
 fn pbf_cross_file_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
-    roots: Cons {
+    roots: std.algebra.Cons {
     head: pbf_graft_module_root(root: pbf_subject_with_import_use()),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: pbf_graft_module_root(
         root: pbf_module_root(
           seg: ^pbf_imported_seg,
@@ -101,11 +101,11 @@ fn pbf_cross_file_import_resolves() -> Bool {
       roots: admitted_roots,
       admission: v2.compiler.name_resolve.Admission {
         subject: v2.compiler.name_resolve.ResolutionSubject {
-          name: Cons { head: ^pbf_subject_seg, tail: Empty }
+          name: std.algebra.Cons { head: ^pbf_subject_seg, tail: Empty }
         },
-        imports: Cons {
+        imports: std.algebra.Cons {
           head: v2.compiler.name_resolve.Import {
-            target: Cons { head: ^pbf_imported_seg, tail: Empty },
+            target: std.algebra.Cons { head: ^pbf_imported_seg, tail: Empty },
             visibility: ImportVisible
           },
           tail: Empty
@@ -123,12 +123,12 @@ fn pbf_cross_file_import_resolves() -> Bool {
 
 fn pbf_unbound_atom_tree() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^pbf_unbound_sym } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^pbf_unbound_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -154,7 +154,7 @@ fn pbf_resolve_unbound_symbol_rejects() -> Bool {
 
 fn pbf_subject_with_ambiguous_import_use() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -167,7 +167,7 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
       v2.std.node.Edge {
         label: Named { name: ^pbf_ambiguous_export_sym },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^pbf_ambiguous_export_sym } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^pbf_ambiguous_export_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -179,9 +179,9 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
 
 fn pbf_ambiguous_import_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
-    roots: Cons {
+    roots: std.algebra.Cons {
     head: pbf_graft_module_root(root: pbf_subject_with_ambiguous_import_use()),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: pbf_graft_module_root(
         root: pbf_module_root(
           seg: ^pbf_ambiguous_import_a_seg,
@@ -189,7 +189,7 @@ fn pbf_ambiguous_import_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tre
           export_atom: ^dag_c3_surface_sugar_service
         )
       ),
-      tail: Cons {
+      tail: std.algebra.Cons {
         head: pbf_graft_module_root(
           root: pbf_module_root(
             seg: ^pbf_ambiguous_import_b_seg,
@@ -214,16 +214,16 @@ fn pbf_ambiguous_export_rejects() -> Bool {
       roots: admitted,
       admission: v2.compiler.name_resolve.Admission {
         subject: v2.compiler.name_resolve.ResolutionSubject {
-          name: Cons { head: ^pbf_subject_seg, tail: Empty }
+          name: std.algebra.Cons { head: ^pbf_subject_seg, tail: Empty }
         },
-        imports: Cons {
+        imports: std.algebra.Cons {
           head: v2.compiler.name_resolve.Import {
-            target: Cons { head: ^pbf_ambiguous_import_a_seg, tail: Empty },
+            target: std.algebra.Cons { head: ^pbf_ambiguous_import_a_seg, tail: Empty },
             visibility: ImportVisible
           },
-          tail: Cons {
+          tail: std.algebra.Cons {
             head: v2.compiler.name_resolve.Import {
-              target: Cons { head: ^pbf_ambiguous_import_b_seg, tail: Empty },
+              target: std.algebra.Cons { head: ^pbf_ambiguous_import_b_seg, tail: Empty },
               visibility: ImportVisible
             },
             tail: Empty

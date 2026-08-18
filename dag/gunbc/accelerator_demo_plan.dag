@@ -14,8 +14,8 @@ type AcceleratorRefusalReason
 
 type AcceleratorRecognitionOutcome
   = Recognized {
-      plan: RealizationPlan<Nano>
-      kernel_step: RealizedStep<Nano>
+      plan: RealizationPlan<std.measure.Nano>
+      kernel_step: RealizedStep<std.measure.Nano>
       contract: std.numerical_contract.NumericalContract
       fidelity: extdeps.communication.medium.DecodeFidelity
       target_medium: std.types.NonEmptyStr
@@ -35,12 +35,12 @@ fn demo_accelerator_placement() -> std.realization.Placement {
   LocalAccelerator
 }
 
-fn demo_plan_total() -> CostAccount<Nano> {
+fn demo_plan_total() -> CostAccount<std.measure.Nano> {
   cost_account_predicted_zero()
 }
 
-fn demo_kernel_step(placement: std.realization.Placement) -> RealizedStep<Nano> {
-  RealizedStep {
+fn demo_kernel_step(placement: std.realization.Placement) -> RealizedStep<std.measure.Nano> {
+  std.realization.RealizedStep {
     shape: ReadEffect
     placement: placement
     materialization: std.realization.Recompute
@@ -49,13 +49,13 @@ fn demo_kernel_step(placement: std.realization.Placement) -> RealizedStep<Nano> 
 }
 
 fn relu_mul_add_schedule() -> std.realization_schedule.Schedule {
-  [[RunnableKernelWorkload { fused_op_count: relu_mul_add_fused_op_count }]]
+  [[std.realization_schedule.RunnableKernelWorkload { fused_op_count: relu_mul_add_fused_op_count }]]
 }
 
-fn build_realization_plan(schedule: std.realization_schedule.Schedule) -> RealizationPlan<Nano> {
-  RealizationPlan {
+fn build_realization_plan(schedule: std.realization_schedule.Schedule) -> RealizationPlan<std.measure.Nano> {
+  std.realization_schedule.RealizationPlan {
     target: demo_target_label
-    objective: RealizationObjective { goals: [] }
+    objective: std.realization_schedule.RealizationObjective { goals: [] }
     schedule: schedule
     total: demo_plan_total()
   }
@@ -69,8 +69,8 @@ fn accelerator_refusal_from_lowering(reason: extdeps.communication.numerical_fid
 }
 
 fn recognized_outcome(
-  contract: NumericalContract,
-  fidelity: DecodeFidelity
+  contract: std.numerical_contract.NumericalContract,
+  fidelity: extdeps.communication.medium.DecodeFidelity
 ) -> AcceleratorRecognitionOutcome {
   Recognized {
     plan: build_realization_plan(schedule: relu_mul_add_schedule())
@@ -82,7 +82,7 @@ fn recognized_outcome(
 }
 
 fn recognize_with_contract(
-  contract: NumericalContract,
+  contract: std.numerical_contract.NumericalContract,
   insist_on_fma_fused_kernel: Bool
 ) -> AcceleratorRecognitionOutcome {
   match extdeps.communication.numerical_fidelity.lowering_fidelity_verdict_for_contract(contract: contract) {
@@ -130,7 +130,7 @@ fn recognize_float_fma_fused_kernel_when_contraction_refused() -> AcceleratorRec
   )
 }
 
-fn demo_plan_fused_op_count(plan: RealizationPlan<Nano>) -> Int {
+fn demo_plan_fused_op_count(plan: RealizationPlan<std.measure.Nano>) -> Int {
   let batch = plan.schedule.first()
   match batch.first() {
     Absent => 0
@@ -142,7 +142,7 @@ fn demo_plan_fused_op_count(plan: RealizationPlan<Nano>) -> Int {
   }
 }
 
-fn demo_plan_has_three_fused_ops(plan: RealizationPlan<Nano>) -> Bool {
+fn demo_plan_has_three_fused_ops(plan: RealizationPlan<std.measure.Nano>) -> Bool {
   demo_plan_fused_op_count(plan: plan) == 3
 }
 
@@ -223,7 +223,7 @@ fn witness_float_fma_fused_kernel_refused_when_contraction_refused() -> Bool {
   }
 }
 
-fn relu_mul_add_demo_plan() -> RealizationPlan<Nano> {
+fn relu_mul_add_demo_plan() -> RealizationPlan<std.measure.Nano> {
   build_realization_plan(schedule: relu_mul_add_schedule())
 }
 

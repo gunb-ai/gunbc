@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data real_execution_home_doc: String = "Wet execution witnesses for Wave A2 Do-effect leaves: real shell.Exec.Run (LocalShell true/exit-1) through host_effect_plan_apply. Split out of host_effect_plan_witness_test.dag so hermetic per-PR discovery keeps the pure refusal poles; excluded from discovery (gunbc.ci_layer_roots witness_exclusion_substrings) and re-enrolled in bin_witness_wet_entries, same lane as host_build_cache_provision_real_execution_witness_test.dag."
 
 fn witness_host_os_target() -> gunbc.host_effect.NodeControlPlane {
-  HostOs { node: srv1_host }
+  gunbc.host_effect.HostOs { node: srv1_host }
 }
 
 fn witness_plan_ctx() -> gunbc.host_effect_plan.HostEffectPlanContext {
@@ -19,14 +19,14 @@ fn witness_plan_ctx() -> gunbc.host_effect_plan.HostEffectPlanContext {
 
 fn witness_single_do_true_plan() -> gunbc.host_effect_plan.HostEffectPlan {
   v2.std.effect_plan.EffectPlan {
-    steps: [Do { effect: ShellCommand { script: "true" } }],
+    steps: [Do { effect: gunbc.host_effect.ShellCommand { script: "true" } }],
     on_failure: FailFast,
   }
 }
 
 fn witness_single_do_false_plan() -> gunbc.host_effect_plan.HostEffectPlan {
   v2.std.effect_plan.EffectPlan {
-    steps: [Do { effect: ShellCommand { script: "exit 1" } }],
+    steps: [Do { effect: gunbc.host_effect.ShellCommand { script: "exit 1" } }],
     on_failure: FailFast,
   }
 }
@@ -34,8 +34,8 @@ fn witness_single_do_false_plan() -> gunbc.host_effect_plan.HostEffectPlan {
 fn witness_sequential_do_plan() -> gunbc.host_effect_plan.HostEffectPlan {
   v2.std.effect_plan.EffectPlan {
     steps: [
-      Do { effect: ShellCommand { script: "true" } },
-      Do { effect: ShellCommand { script: "true" } },
+      Do { effect: gunbc.host_effect.ShellCommand { script: "true" } },
+      Do { effect: gunbc.host_effect.ShellCommand { script: "true" } },
     ],
     on_failure: FailFast,
   }

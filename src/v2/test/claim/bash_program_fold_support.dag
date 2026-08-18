@@ -8,7 +8,7 @@ fn bash_program_fold_tagged(
   production_binding: v2.std.node.Symbol,
   rule_name: v2.std.node.Symbol
 ) -> v2.workflow.bash_emit.BashEmitSpecial {
-  BashEmitTagged {
+  v2.workflow.bash_emit.BashEmitTagged {
     stmt: v2.workflow.bash_emit.BashEmitStmt {
       node: node,
       production_binding: production_binding,

@@ -594,7 +594,7 @@ fn ci_batch_summary_text(
         to_string(unaffected), " unaffected · ",
         to_string(deferred), " deferred · ",
         to_string(failed), " failed · ",
-        ci_measured_elapsed_text(m: MeasuredValue { value: work }),
+        ci_measured_elapsed_text(m: std.observation.MeasuredValue { value: work }),
         " work",
         ci_population_reconciliation_text(declared: declared_population, classified: classified),
       ], ""),

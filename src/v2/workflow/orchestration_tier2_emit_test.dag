@@ -8,7 +8,7 @@ data orch_tier2_golden_note: String = "Goldens below are hand-authored bytes fro
 fn fresh_standup_cmdsubst_assign_intent() -> v2.std.orchestration.PipelineStep {
   Let {
     name: "dag_pin",
-    value: ExprCmdSubst {
+    value: v2.std.orchestration.ExprCmdSubst {
       callee: "converge_read_gunbc_host_pin",
       args: ["\"$checkout\""]
     }
@@ -75,7 +75,7 @@ test fn orch_tier2_fresh_standup_read_pin_call_holds() -> Bool {
 }
 
 fn fresh_standup_verdict_absent_let_intent() -> v2.std.orchestration.PipelineStep {
-  Let { name: "verdict", value: ExprLit { spelling: "absent" } }
+  Let { name: "verdict", value: v2.std.orchestration.ExprLit { spelling: "absent" } }
 }
 
 fn fresh_standup_verdict_absent_let_golden() -> String {
@@ -94,7 +94,7 @@ test fn orch_tier2_fresh_standup_verdict_absent_let_holds() -> Bool {
 }
 
 fn fresh_standup_effective_var_let_intent() -> v2.std.orchestration.PipelineStep {
-  Let { name: "effective", value: ExprLit { spelling: "\"$dag_pin\"" } }
+  Let { name: "effective", value: v2.std.orchestration.ExprLit { spelling: "\"$dag_pin\"" } }
 }
 
 fn fresh_standup_effective_var_let_golden() -> String {
@@ -113,7 +113,7 @@ test fn orch_tier2_fresh_standup_effective_var_let_holds() -> Bool {
 }
 
 fn fresh_standup_dag_pin_empty_let_intent() -> v2.std.orchestration.PipelineStep {
-  Let { name: "dag_pin", value: ExprLit { spelling: "\"\"" } }
+  Let { name: "dag_pin", value: v2.std.orchestration.ExprLit { spelling: "\"\"" } }
 }
 
 fn fresh_standup_dag_pin_empty_let_golden() -> String {
@@ -135,9 +135,9 @@ fn decide_verdict_procedure_body() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
     steps: [
       If {
-        cond: StrEmpty { operand: "\"$1\"" },
+        cond: v2.std.orchestration.StrEmpty { operand: "\"$1\"" },
         then_: v2.std.orchestration.Pipeline {
-          steps: [Let { name: "verdict", value: ExprLit { spelling: "absent" } }],
+          steps: [Let { name: "verdict", value: v2.std.orchestration.ExprLit { spelling: "absent" } }],
           on_failure: FailFast
         },
         else_: Absent

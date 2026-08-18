@@ -11,7 +11,7 @@ data interpreter_dispatch_bijection_real_roster_memory_envelope_note: String = "
 // resolves — see gunbc.cargo_execution_placement for why the two hardcoded
 // /opt/cargo/bin/cargo literals this replaces were a placement decision written as a
 // literal, and why the modeled cargo.Build.Test could not be used as it stands.
-data real_roster_placement_requirement: gunbc.cargo_execution_placement.CargoSubjectPlacementRequirement = RequiresLocalWorkspace {
+data real_roster_placement_requirement: gunbc.cargo_execution_placement.CargoSubjectPlacementRequirement = gunbc.cargo_execution_placement.RequiresLocalWorkspace {
     required_by: std.decl_ref.DeclarationRef {
       module_path: "tools.interpreter_dispatch_bijection_real_roster_transport",
       decl_name: "run_interpreter_dispatch_bijection_real_roster_red",
@@ -67,10 +67,10 @@ fn real_roster_cargo_decision() -> gunbc.cargo_execution_placement.CargoPlacemen
   if observed.exists {
     decide_cargo_placement(
       requirement: real_roster_placement_requirement,
-      placement: LocalRunner { cargo_path: "cargo" }
+      placement: gunbc.cargo_execution_placement.LocalRunner { cargo_path: "cargo" }
     )
   } else {
-    PlacementRefused { cause: CargoExecutableUnobserved { observation: "which cargo" } }
+    PlacementRefused { cause: gunbc.cargo_execution_placement.CargoExecutableUnobserved { observation: "which cargo" } }
   }
 }
 
@@ -91,13 +91,13 @@ fn real_roster_cargo_run(cargo_bin: String) -> gunbc.cargo_execution_placement.C
   if run.success {
     CargoInvocationPassed
   } else {
-    CargoInvocationFailed { exit_code: run.exit_code, cause: run.stderr }
+    gunbc.cargo_execution_placement.CargoInvocationFailed { exit_code: run.exit_code, cause: run.stderr }
   }
 }
 
 fn run_interpreter_dispatch_bijection_real_roster_outcome() -> gunbc.cargo_execution_placement.CargoInvocationOutcome {
   match real_roster_cargo_decision() {
-    PlacementRefused { cause: c } => CargoInvocationNotAttempted { refusal: c }
+    PlacementRefused { cause: c } => gunbc.cargo_execution_placement.CargoInvocationNotAttempted { refusal: c }
     PlacementAdmitted { cargo_path: cargo_bin } => real_roster_cargo_run(cargo_bin: cargo_bin)
   }
 }

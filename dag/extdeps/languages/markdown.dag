@@ -89,17 +89,17 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> std.markup.MarkupMedium {
 fn md_inline_to_fragment(inline: std.markdown.MarkdownInline, sp: MarkdownSpellings) -> std.markup.Fragment {
   match inline {
     TextInline { text } =>
-      FragmentText { content: text }
+      std.markup.FragmentText { content: text }
     EmphasisInline { inlines } =>
       extdeps.browser.Element { tag: "em", attributes: [], children: md_inlines_to_fragments(inlines: inlines, sp: sp) }
     StrongInline { inlines } =>
       extdeps.browser.Element { tag: "strong", attributes: [], children: md_inlines_to_fragments(inlines: inlines, sp: sp) }
     CodeInline { text } =>
-      extdeps.browser.Element { tag: "code", attributes: [], children: [ FragmentText { content: text } ] }
+      extdeps.browser.Element { tag: "code", attributes: [], children: [ std.markup.FragmentText { content: text } ] }
     LinkInline { inlines, url } =>
-      RawNode { content: md_link_form(text: md_render_inlines(inlines: inlines, sp: sp), url: url, sp: sp) }
+      std.markup.RawNode { content: md_link_form(text: md_render_inlines(inlines: inlines, sp: sp), url: url, sp: sp) }
     ImageInline { alt, url } =>
-      RawNode { content: join([sp.image_marker, md_link_form(text: alt, url: url, sp: sp)], "") }
+      std.markup.RawNode { content: join([sp.image_marker, md_link_form(text: alt, url: url, sp: sp)], "") }
   }
 }
 
@@ -323,7 +323,7 @@ fn md_strip_digits(s: String, n: Int) -> RepeatStrip {
 }
 
 fn md_ingest_inlines(text: String) -> List<std.markdown.MarkdownInline> {
-  [ TextInline { text: text } ]
+  [ std.markdown.TextInline { text: text } ]
 }
 
 fn md_split_blocks(src: String, sp: MarkdownSpellings) -> List<String> {
@@ -356,7 +356,7 @@ fn md_is_ordered_line(line: String, sp: MarkdownSpellings) -> Bool {
 
 fn md_parse_heading(line: String, sp: MarkdownSpellings) -> std.markdown.MarkdownBlock {
   let h = md_strip_repeated(s: line, unit: sp.heading_marker, n: 0)
-  HeadingBlock {
+  std.markdown.HeadingBlock {
     level: int_to_heading_level(n: h.count),
     inlines: md_ingest_inlines(text: md_drop_prefix(s: h.rest, prefix: sp.heading_sep)),
   }
@@ -364,14 +364,14 @@ fn md_parse_heading(line: String, sp: MarkdownSpellings) -> std.markdown.Markdow
 
 fn md_unordered_item(line: String, sp: MarkdownSpellings) -> std.markdown.MarkdownListItem {
   std.markdown.MarkdownListItem {
-    blocks: [ ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: line, prefix: sp.unordered_bullet)) } ],
+    blocks: [ std.markdown.ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: line, prefix: sp.unordered_bullet)) } ],
   }
 }
 
 fn md_ordered_item(line: String, sp: MarkdownSpellings) -> std.markdown.MarkdownListItem {
   let d = md_strip_digits(s: line, n: 0)
   std.markdown.MarkdownListItem {
-    blocks: [ ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: d.rest, prefix: sp.ordered_suffix)) } ],
+    blocks: [ std.markdown.ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: d.rest, prefix: sp.ordered_suffix)) } ],
   }
 }
 
@@ -380,19 +380,19 @@ fn md_task_item(line: String, sp: MarkdownSpellings) -> std.markdown.MarkdownTas
   if starts_with(s: after, prefix: sp.task_checked) {
     std.markdown.MarkdownTaskItem {
       state: Checked,
-      blocks: [ ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: after, prefix: sp.task_checked)) } ],
+      blocks: [ std.markdown.ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: after, prefix: sp.task_checked)) } ],
     }
   } else {
     std.markdown.MarkdownTaskItem {
       state: Unchecked,
-      blocks: [ ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: after, prefix: sp.task_unchecked)) } ],
+      blocks: [ std.markdown.ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: after, prefix: sp.task_unchecked)) } ],
     }
   }
 }
 
 fn md_parse_code(block_lines: List<String>) -> std.markdown.MarkdownBlock {
   let inner = block_lines.skip(n: 1).take(n: block_lines.length() - 2)
-  CodeBlock {
+  std.markdown.CodeBlock {
     code: if inner == [] { "" } else { concat(join(inner, "\n"), "\n") },
   }
 }
@@ -405,14 +405,14 @@ fn md_parse_block(block_src: String, sp: MarkdownSpellings) -> std.markdown.Mark
   } else if md_is_heading(line: first, sp: sp) {
     md_parse_heading(line: first, sp: sp)
   } else if md_is_task_line(line: first, sp: sp) {
-    TaskListBlock { items: map(lines, l => md_task_item(line: l, sp: sp)) }
+    std.markdown.TaskListBlock { items: map(lines, l => md_task_item(line: l, sp: sp)) }
   } else if md_is_ordered_line(line: first, sp: sp) {
-    OrderedListBlock { items: map(lines, l => md_ordered_item(line: l, sp: sp)) }
+    std.markdown.OrderedListBlock { items: map(lines, l => md_ordered_item(line: l, sp: sp)) }
   } else if starts_with(s: first, prefix: sp.unordered_bullet) {
-    UnorderedListBlock { items: map(lines, l => md_unordered_item(line: l, sp: sp)) }
+    std.markdown.UnorderedListBlock { items: map(lines, l => md_unordered_item(line: l, sp: sp)) }
   } else {
 
-    ParagraphBlock { inlines: md_ingest_inlines(text: block_src) }
+    std.markdown.ParagraphBlock { inlines: md_ingest_inlines(text: block_src) }
   }
 }
 
@@ -549,7 +549,7 @@ fn try_serialize_markdown_document(doc: std.markdown.MarkdownDocument) -> std.ma
     Present { value: _ } =>
       Rejected { reason: "URL scheme not allowlisted for markdown link/image" }
     Absent =>
-      Serialized { html: serialize_markdown_document(doc: doc) }
+      std.markup.Serialized { html: serialize_markdown_document(doc: doc) }
   }
 }
 
@@ -577,7 +577,7 @@ fn md_split_on_delim_pair(text: String, delim: String) -> InlineSplitResult {
 }
 
 fn md_text_inline_if_nonempty(s: String) -> List<std.markdown.MarkdownInline> {
-  if s == "" { [] } else { [ TextInline { text: s } ] }
+  if s == "" { [] } else { [ std.markdown.TextInline { text: s } ] }
 }
 
 fn md_parse_inline_rest(text: String, sp: MarkdownSpellings) -> List<std.markdown.MarkdownInline> {
@@ -589,7 +589,7 @@ fn md_parse_inline_rest(text: String, sp: MarkdownSpellings) -> List<std.markdow
         concat(
           md_parse_inline_rest(text: p.before, sp: sp),
           concat(
-            [ StrongInline { inlines: md_parse_inline_rest(text: p.inner, sp: sp) } ],
+            [ std.markdown.StrongInline { inlines: md_parse_inline_rest(text: p.inner, sp: sp) } ],
             md_parse_inline_rest(text: p.after, sp: sp)
           )
         )
@@ -599,7 +599,7 @@ fn md_parse_inline_rest(text: String, sp: MarkdownSpellings) -> List<std.markdow
             concat(
               md_parse_inline_rest(text: p.before, sp: sp),
               concat(
-                [ CodeInline { text: p.inner } ],
+                [ std.markdown.CodeInline { text: p.inner } ],
                 md_parse_inline_rest(text: p.after, sp: sp)
               )
             )
@@ -609,7 +609,7 @@ fn md_parse_inline_rest(text: String, sp: MarkdownSpellings) -> List<std.markdow
                 concat(
                   md_parse_inline_rest(text: p.before, sp: sp),
                   concat(
-                    [ EmphasisInline { inlines: md_parse_inline_rest(text: p.inner, sp: sp) } ],
+                    [ std.markdown.EmphasisInline { inlines: md_parse_inline_rest(text: p.inner, sp: sp) } ],
                     md_parse_inline_rest(text: p.after, sp: sp)
                   )
                 )
@@ -624,27 +624,27 @@ fn md_parse_inline_rest(text: String, sp: MarkdownSpellings) -> List<std.markdow
 fn md_parse_inline_link(text: String, sp: MarkdownSpellings) -> List<std.markdown.MarkdownInline> {
   let open_parts = split(s: text, delimiter: sp.link_text_open)
   if open_parts.length() < 2 {
-    [ TextInline { text: text } ]
+    [ std.markdown.TextInline { text: text } ]
   } else {
     let before_bracket = open_parts.first()
     let after_bracket = join(open_parts.skip(n: 1), sp.link_text_open)
     let close_open_pat = join([sp.link_text_close, sp.link_url_open], "")
     let inner_parts = split(s: after_bracket, delimiter: close_open_pat)
     if inner_parts.length() < 2 {
-      [ TextInline { text: text } ]
+      [ std.markdown.TextInline { text: text } ]
     } else {
       let label_text = inner_parts.first()
       let url_and_rest = join(inner_parts.skip(n: 1), close_open_pat)
       let url_parts = split(s: url_and_rest, delimiter: sp.link_url_close)
       if url_parts.length() < 2 {
-        [ TextInline { text: text } ]
+        [ std.markdown.TextInline { text: text } ]
       } else {
         let url = url_parts.first()
         let after_link = join(url_parts.skip(n: 1), sp.link_url_close)
         concat(
           md_text_inline_if_nonempty(s: before_bracket),
           concat(
-            [ LinkInline {
+            [ std.markdown.LinkInline {
                 inlines: md_parse_inline_rest(text: label_text, sp: sp),
                 url: url,
               }

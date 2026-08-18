@@ -125,22 +125,22 @@ data go_source_text: String = "func add(x int, y int) int { return x + y }"
 
 fn go_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^go_token_kw_func },
-    BoundToken { token_class: ^go_token_ident, binding: ^go_binding_fn_add },
-    FixedToken { token_class: ^go_token_lparen },
-    BoundToken { token_class: ^go_token_ident, binding: ^go_binding_param_x },
-    FixedToken { token_class: ^go_token_ty_int },
-    FixedToken { token_class: ^go_token_comma },
-    BoundToken { token_class: ^go_token_ident, binding: ^go_binding_param_y },
-    FixedToken { token_class: ^go_token_ty_int },
-    FixedToken { token_class: ^go_token_rparen },
-    FixedToken { token_class: ^go_token_ty_int },
-    FixedToken { token_class: ^go_token_lbrace },
-    FixedToken { token_class: ^go_token_kw_return },
-    BoundToken { token_class: ^go_token_ident, binding: ^go_binding_param_x },
-    FixedToken { token_class: ^go_token_plus },
-    BoundToken { token_class: ^go_token_ident, binding: ^go_binding_param_y },
-    FixedToken { token_class: ^go_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^go_token_kw_func },
+    v2.std.compilers.target_model.BoundToken { token_class: ^go_token_ident, binding: ^go_binding_fn_add },
+    v2.std.compilers.target_model.FixedToken { token_class: ^go_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^go_token_ident, binding: ^go_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^go_token_ty_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^go_token_comma },
+    v2.std.compilers.target_model.BoundToken { token_class: ^go_token_ident, binding: ^go_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^go_token_ty_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^go_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^go_token_ty_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^go_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^go_token_kw_return },
+    v2.std.compilers.target_model.BoundToken { token_class: ^go_token_ident, binding: ^go_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^go_token_plus },
+    v2.std.compilers.target_model.BoundToken { token_class: ^go_token_ident, binding: ^go_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^go_token_rbrace }
   ]
 }
 data go_facts_int8: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
@@ -303,7 +303,7 @@ data go_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn go_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -372,7 +372,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
       encoding,
       std_projection
     } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         go_named_edge(
           name: ^facts_field_surface_spelling,
@@ -409,7 +409,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
       encoding,
       std_projection
     } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         go_named_edge(
           name: ^go_facts_field_surface_spelling,
@@ -445,7 +445,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
 
 fn go_float_facts_node(facts: GoFloatPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(
         name: ^go_facts_field_surface_spelling,
@@ -470,7 +470,7 @@ fn go_float_facts_node(facts: GoFloatPrimitiveFacts) -> Node {
 
 fn go_complex_facts_node(facts: GoComplexPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(
         name: ^go_facts_field_surface_spelling,
@@ -495,7 +495,7 @@ fn go_complex_facts_node(facts: GoComplexPrimitiveFacts) -> Node {
 
 fn go_bool_facts_node(facts: GoBoolPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(
         name: ^go_facts_field_surface_spelling,
@@ -516,7 +516,7 @@ fn go_bool_facts_node(facts: GoBoolPrimitiveFacts) -> Node {
 
 fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(
         name: ^go_facts_field_surface_spelling,
@@ -616,17 +616,17 @@ fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> v2.
     } => v2.std.model_core.PrimitiveFactBundle {
       substrate_carrier: go_integer_facts_node(facts: facts),
       spec_facts: go_primitive_fact_map_5(
-        axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+        axis0: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
         fact0: go_inhabitant_atom(id: surface_spelling),
-        axis1: discriminant(v: ModelCoreFactAxisWidth {}),
+        axis1: discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}),
         fact1: go_signed_int_width_node(width: width),
-        axis2: discriminant(v: ModelCoreFactAxisSignedness {}),
+        axis2: discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}),
         fact2: go_int_kind_node(kind: Signed),
-        axis3: discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
+        axis3: discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}),
         fact3: go_overflow_node(
           overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
         ),
-        axis4: discriminant(v: ModelCoreFactAxisEncoding {}),
+        axis4: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
         fact4: go_inhabitant_atom(id: encoding)
       )
     }
@@ -638,17 +638,17 @@ fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> v2.
     } => v2.std.model_core.PrimitiveFactBundle {
       substrate_carrier: go_integer_facts_node(facts: facts),
       spec_facts: go_primitive_fact_map_5(
-        axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+        axis0: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
         fact0: go_inhabitant_atom(id: surface_spelling),
-        axis1: discriminant(v: ModelCoreFactAxisWidth {}),
+        axis1: discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}),
         fact1: go_unsigned_int_width_node(width: width),
-        axis2: discriminant(v: ModelCoreFactAxisSignedness {}),
+        axis2: discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}),
         fact2: go_int_kind_node(kind: Unsigned),
-        axis3: discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
+        axis3: discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}),
         fact3: go_overflow_node(
           overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
         ),
-        axis4: discriminant(v: ModelCoreFactAxisEncoding {}),
+        axis4: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
         fact4: go_inhabitant_atom(id: encoding)
       )
     }
@@ -659,11 +659,11 @@ fn go_primitive_bundle_from_float_facts(facts: GoFloatPrimitiveFacts) -> v2.std.
   v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: go_float_facts_node(facts: facts),
     spec_facts: go_primitive_fact_map_3(
-      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      axis0: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
       fact0: go_inhabitant_atom(id: facts.surface_spelling),
-      axis1: discriminant(v: ModelCoreFactAxisWidth {}),
+      axis1: discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}),
       fact1: go_float_width_node(width: facts.width),
-      axis2: discriminant(v: ModelCoreFactAxisEncoding {}),
+      axis2: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
       fact2: go_inhabitant_atom(id: facts.ieee754_binary)
     )
   }
@@ -673,11 +673,11 @@ fn go_primitive_bundle_from_complex_facts(facts: GoComplexPrimitiveFacts) -> v2.
   v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: go_complex_facts_node(facts: facts),
     spec_facts: go_primitive_fact_map_3(
-      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      axis0: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
       fact0: go_inhabitant_atom(id: facts.surface_spelling),
-      axis1: discriminant(v: ModelCoreFactAxisWidth {}),
+      axis1: discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}),
       fact1: go_complex_width_node(width: facts.width),
-      axis2: discriminant(v: ModelCoreFactAxisEncoding {}),
+      axis2: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
       fact2: go_inhabitant_atom(id: facts.component_ieee754_binary)
     )
   }
@@ -687,9 +687,9 @@ fn go_primitive_bundle_from_bool_facts(facts: GoBoolPrimitiveFacts) -> v2.std.mo
   v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: go_bool_facts_node(facts: facts),
     spec_facts: go_primitive_fact_map_2(
-      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      axis0: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
       fact0: go_inhabitant_atom(id: facts.surface_spelling),
-      axis1: discriminant(v: ModelCoreFactAxisEncoding {}),
+      axis1: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
       fact1: go_inhabitant_atom(id: facts.encoding)
     )
   }
@@ -699,9 +699,9 @@ fn go_primitive_bundle_from_string_facts(facts: GoStringPrimitiveFacts) -> v2.st
   v2.std.model_core.PrimitiveFactBundle {
     substrate_carrier: go_string_facts_node(facts: facts),
     spec_facts: go_primitive_fact_map_2(
-      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      axis0: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
       fact0: go_inhabitant_atom(id: facts.surface_spelling),
-      axis1: discriminant(v: ModelCoreFactAxisEncoding {}),
+      axis1: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
       fact1: go_inhabitant_atom(id: facts.encoding)
     )
   }
@@ -822,29 +822,29 @@ fn go_integer_per_language_fact_bundle_entries(
     } => [
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: ModelCoreFactAxisSurfaceSpelling {},
+        axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
         fact_value: go_inhabitant_atom(id: surface_spelling)
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: ModelCoreFactAxisWidth {},
+        axis: v2.std.model_core.ModelCoreFactAxisWidth {},
         fact_value: go_signed_int_width_node(width: width)
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: ModelCoreFactAxisSignedness {},
+        axis: v2.std.model_core.ModelCoreFactAxisSignedness {},
         fact_value: go_int_kind_node(kind: Signed)
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: ModelCoreFactAxisOverflowDisposition {},
+        axis: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {},
         fact_value: go_overflow_node(
           overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
         )
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: ModelCoreFactAxisEncoding {},
+        axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
         fact_value: go_inhabitant_atom(id: encoding)
       )
     ]
@@ -856,29 +856,29 @@ fn go_integer_per_language_fact_bundle_entries(
     } => [
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: ModelCoreFactAxisSurfaceSpelling {},
+        axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
         fact_value: go_inhabitant_atom(id: surface_spelling)
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: ModelCoreFactAxisWidth {},
+        axis: v2.std.model_core.ModelCoreFactAxisWidth {},
         fact_value: go_unsigned_int_width_node(width: width)
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: ModelCoreFactAxisSignedness {},
+        axis: v2.std.model_core.ModelCoreFactAxisSignedness {},
         fact_value: go_int_kind_node(kind: Unsigned)
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: ModelCoreFactAxisOverflowDisposition {},
+        axis: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {},
         fact_value: go_overflow_node(
           overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
         )
       ),
       go_per_language_fact_bundle_entry(
         subject: go_integer_facts_node(facts: facts),
-        axis: ModelCoreFactAxisEncoding {},
+        axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
         fact_value: go_inhabitant_atom(id: encoding)
       )
     ]
@@ -891,17 +891,17 @@ fn go_float_per_language_fact_bundle_entries(
   [
     go_per_language_fact_bundle_entry(
       subject: go_float_facts_node(facts: facts),
-      axis: ModelCoreFactAxisSurfaceSpelling {},
+      axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
       fact_value: go_inhabitant_atom(id: facts.surface_spelling)
     ),
     go_per_language_fact_bundle_entry(
       subject: go_float_facts_node(facts: facts),
-      axis: ModelCoreFactAxisWidth {},
+      axis: v2.std.model_core.ModelCoreFactAxisWidth {},
       fact_value: go_float_width_node(width: facts.width)
     ),
     go_per_language_fact_bundle_entry(
       subject: go_float_facts_node(facts: facts),
-      axis: ModelCoreFactAxisEncoding {},
+      axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
       fact_value: go_inhabitant_atom(id: facts.ieee754_binary)
     )
   ]
@@ -913,17 +913,17 @@ fn go_complex_per_language_fact_bundle_entries(
   [
     go_per_language_fact_bundle_entry(
       subject: go_complex_facts_node(facts: facts),
-      axis: ModelCoreFactAxisSurfaceSpelling {},
+      axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
       fact_value: go_inhabitant_atom(id: facts.surface_spelling)
     ),
     go_per_language_fact_bundle_entry(
       subject: go_complex_facts_node(facts: facts),
-      axis: ModelCoreFactAxisWidth {},
+      axis: v2.std.model_core.ModelCoreFactAxisWidth {},
       fact_value: go_complex_width_node(width: facts.width)
     ),
     go_per_language_fact_bundle_entry(
       subject: go_complex_facts_node(facts: facts),
-      axis: ModelCoreFactAxisEncoding {},
+      axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
       fact_value: go_inhabitant_atom(id: facts.component_ieee754_binary)
     )
   ]
@@ -935,12 +935,12 @@ fn go_bool_per_language_fact_bundle_entries(
   [
     go_per_language_fact_bundle_entry(
       subject: go_bool_facts_node(facts: facts),
-      axis: ModelCoreFactAxisSurfaceSpelling {},
+      axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
       fact_value: go_inhabitant_atom(id: facts.surface_spelling)
     ),
     go_per_language_fact_bundle_entry(
       subject: go_bool_facts_node(facts: facts),
-      axis: ModelCoreFactAxisEncoding {},
+      axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
       fact_value: go_inhabitant_atom(id: facts.encoding)
     )
   ]
@@ -952,12 +952,12 @@ fn go_string_per_language_fact_bundle_entries(
   [
     go_per_language_fact_bundle_entry(
       subject: go_string_facts_node(facts: facts),
-      axis: ModelCoreFactAxisSurfaceSpelling {},
+      axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
       fact_value: go_inhabitant_atom(id: facts.surface_spelling)
     ),
     go_per_language_fact_bundle_entry(
       subject: go_string_facts_node(facts: facts),
-      axis: ModelCoreFactAxisEncoding {},
+      axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
       fact_value: go_inhabitant_atom(id: facts.encoding)
     )
   ]
@@ -1073,7 +1073,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
       encoding,
       std_projection
     } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         go_named_edge(
           name: ^go_witness_integer_commutative_ring,
@@ -1110,7 +1110,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
       encoding,
       std_projection
     } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         go_named_edge(
           name: ^go_witness_integer_commutative_ring,
@@ -1146,7 +1146,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
 
 fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(
         name: ^go_witness_float_approximate_field,
@@ -1167,7 +1167,7 @@ fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
 
 fn go_bool_algebra_witness_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(
         name: ^go_witness_bool_boolean_algebra,
@@ -1184,7 +1184,7 @@ fn go_bool_algebra_witness_node() -> Node {
 
 fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(
         name: ^go_witness_string_free_monoid,
@@ -1319,7 +1319,7 @@ fn go_model_core() -> v2.std.model_core.ModelCore {
 
 fn go_int_inhabitant_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(name: ^go_inhabitant_field_facts, target: go_integer_facts_node(facts: go_facts_int))
@@ -1330,13 +1330,13 @@ fn go_int_inhabitant_node() -> Node {
 
 fn go_int_additive_numeric_inhabitant_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             go_named_edge(
               name: ^facts_field_surface_spelling,
@@ -1375,13 +1375,13 @@ fn go_int_additive_numeric_inhabitant_node() -> Node {
 
 fn go_int64_additive_numeric_inhabitant_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
         name: ^go_inhabitant_field_facts,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             go_named_edge(
               name: ^facts_field_surface_spelling,
@@ -1420,7 +1420,7 @@ fn go_int64_additive_numeric_inhabitant_node() -> Node {
 
 fn go_int64_falsifier_emitted_add_fn_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
       v2.std.node.Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
@@ -1432,7 +1432,7 @@ fn go_int64_falsifier_emitted_add_fn_node() -> Node {
 
 fn go_declared_inhabitants_root() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node()),
       v2.std.node.Edge { label: Positional, target: go_int_additive_numeric_inhabitant_node() },
@@ -1492,7 +1492,7 @@ fn go_coercion_candidate_edges() -> List<v2.std.node.Edge> {
 
 fn go_add_declared_inhabitants_root() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: go_coercion_candidate_edges(),
     occurrence_id: SyntheticOccurrence
 }
@@ -1504,7 +1504,7 @@ fn go_selection_policy_node() -> Node {
 
 fn go_int64_selection_policy_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(
@@ -1518,7 +1518,7 @@ fn go_int64_selection_policy_node() -> Node {
 
 fn go_emitted_add_fn_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       go_named_edge(name: ^go_surface_fn_item, target: go_inhabitant_atom(id: ^go_surface_fn_item)),
       v2.std.node.Edge { label: Positional, target: go_int_inhabitant_node() },
@@ -1553,7 +1553,7 @@ fn go_serialize_source_children() -> List<v2.std.node.Edge> {
 }
 
 fn go_serialize_source_node() -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: go_serialize_source_children(),
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: go_serialize_source_children(),
  occurrence_id: SyntheticOccurrence
 }
 }
@@ -1599,7 +1599,7 @@ fn go_grammar_sequence_from_token_classes() -> v2.std.grammar.GrammarExpr {
           }
         GoGramBuild1StateReady { expr: acc } =>
           GoGramBuild1StateReady {
-            expr: Sequence {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: go_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -1634,7 +1634,7 @@ fn go_grammar_relation_row() -> GoGrammarRelationRow {
 
 fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
       go_named_edge(name: ^grammar_relation_field_emitted, target: row.production.emitted),
@@ -1652,7 +1652,7 @@ fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
 
 fn go_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^go_relation_rule_fn_add, target: go_grammar_relation_row_node(row: go_grammar_relation_row()))
     ],
@@ -1686,7 +1686,7 @@ fn go_binding_spellings() -> Map<v2.std.node.Symbol, String> {
 
 fn go_emit_host_runtime_primitive_type_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^go_emit_host_runtime_primitive_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^go_emit_host_runtime_primitive_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -1703,18 +1703,18 @@ fn go_host_transport_descriptor() -> v2.std.host_transport.HostTransportDescript
     ],
     build: Empty,
     run: v2.std.host_transport.ProcessInvocation {
-      program: HostToolProgram { executable: "go" },
+      program: v2.std.host_transport.HostToolProgram { executable: "go" },
       args: [
-        LiteralArg { text: "run" },
-        WorkspacePath { path: "main.go" }
+        v2.std.host_transport.LiteralArg { text: "run" },
+        v2.std.host_transport.WorkspacePath { path: "main.go" }
       ]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn go_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: go_host_transport_descriptor(),
       runtime_primitive_type: go_emit_host_runtime_primitive_type_node()
@@ -1724,7 +1724,7 @@ fn go_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
 
 fn go_target_model_bundle_core() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^target_model_edge_selection_policy, target: go_selection_policy_node()),
       go_named_edge(name: ^target_model_edge_declared_inhabitants, target: go_add_declared_inhabitants_root()),
@@ -1792,7 +1792,7 @@ data go_target_atom_realization_catalog: List<v2.std.compilers.target_model.Targ
 
 fn go_target_model_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^target_model_edge_selection_policy, target: go_selection_policy_node()),
       go_named_edge(name: ^target_model_edge_declared_inhabitants, target: go_add_declared_inhabitants_root()),
@@ -1824,7 +1824,7 @@ fn go_target_model() -> v2.std.compilers.target_model.TargetModel {
 
 fn go_target_model_node_with_selection_policy(selection: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^target_model_edge_selection_policy, target: selection),
       go_named_edge(name: ^target_model_edge_declared_inhabitants, target: go_add_declared_inhabitants_root()),
@@ -1857,29 +1857,29 @@ fn go_target_model_int64_selection_policy() -> v2.std.compilers.target_model.Tar
 }
 
 fn go_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+  v2.std.compilers.lexing.TokenRule { token_class: token_class, pattern: v2.std.compilers.lexing.LiteralPattern { text: text } }
 }
 
 fn go_keyword_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule { token_class: token_class, pattern: KeywordPattern { text: text } }
+  v2.std.compilers.lexing.TokenRule { token_class: token_class, pattern: v2.std.compilers.lexing.KeywordPattern { text: text } }
 }
 
 fn go_whitespace_trivia_rule() -> v2.std.compilers.lexing.LexRule {
 
-  TriviaRule {
-    pattern: OneOrMorePattern { element: LiteralPattern { text: " " } }
+  v2.std.compilers.lexing.TriviaRule {
+    pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.LiteralPattern { text: " " } }
   }
 }
 
 fn go_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: CharClassPattern { class: IdentStartChar },
-    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
   }
 }
 
 fn go_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^go_token_ident,
     pattern: go_ident_lex_pattern()
   }
@@ -1906,7 +1906,7 @@ fn go_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn go_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: go_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: go_lex_rules() }
 }
 
 fn go_grammar_root() -> v2.std.grammar.GrammarRoot {
@@ -1919,7 +1919,7 @@ fn go_grammar_root() -> v2.std.grammar.GrammarRoot {
 }
 
 fn go_grammar() -> v2.std.grammar.ParseGrammar {
-  ModeledGrammar { root: go_grammar_root() }
+  v2.std.grammar.ModeledGrammar { root: go_grammar_root() }
 }
 
 fn go_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {

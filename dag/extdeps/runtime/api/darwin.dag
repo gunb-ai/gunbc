@@ -29,7 +29,7 @@ data macos_libsystem_boundary: std.os.invocation.LibraryApiBoundary = {
   exports: macos_libsystem_exports,
 }
 
-data macos_15_library_api_surface: std.os.invocation.StableInvocationSurface = LibraryApiBoundarySurface {
+data macos_15_library_api_surface: std.os.invocation.StableInvocationSurface = std.os.invocation.LibraryApiBoundarySurface {
   boundary: macos_libsystem_boundary,
 }
 

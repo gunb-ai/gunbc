@@ -11,7 +11,7 @@ fn section_0() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "0. Grounded today — receipts from the live repo"),
     p(text: "This is not speculative. The stale-green class reddened main at least three times (gunbc.plans.ci_merge_freshness records #5429/#5445/#5453; the recent case is #5933, reddened by #5943 removing a field on a base #5933's CI never saw). The probe below reads the actual gunb-ai/gunbc settings via the GitHub API and shows the gap is live config, not lore:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Live setting (read 2026-06-29)"), cell(text: "Value"), cell(text: "Consequence")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -64,7 +64,7 @@ fn section_2() -> List<std.markdown.MarkdownBlock> {
     h2(text: "2. §3 spine — three facts, one authority, reuse not re-coin"),
     p(text: "The same separation gunbc.commit_workflow already applies to the CI/pre-push side, extended to the merge step: (a) interface shape = the RepoStandard (desired settings + admission rule); (b) transport = the GitHub Rulesets API and PATCH /repos, one realization handler of N; (c) business policy = the admission predicate. The merge step is the one fact currently OUTSIDE the model (ci_merge_freshness calls it the operator's repo-admin half) — pulling it in dissolves the inversion."),
     p(text: "DFS of the concept DAG first: almost everything is already modeled. Reuse, do not mint a nickname:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Concept"), cell(text: "Existing authority to reuse")]),
       alignments: [AlignNone, AlignNone],
       rows: [
@@ -102,7 +102,7 @@ fn section_4() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "4. The simulation — before/after green-to-red as DATA, options COMPUTED"),
     p(text: "Per the operator: encode the situation and let a witness compute which policies survive, rather than argue in prose. The scenario is two events as data: PR-X earns a receipt against base B0 with roster R0 (green); then PR-Y lands removing a field, advancing main to B1 (roster still R0). A separate scenario isolates the criteria case: main tree unchanged (B0) but roster advances R0 to R1. A witness (a test fn in a _test.dag, floor-enrolled by naming) runs each candidate AdmissionPolicy over both scenarios and asserts which are total — admit nothing that reds main:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "AdmissionPolicy"), cell(text: "catches stale base-tree"), cell(text: "catches stale roster (criteria changed)"), cell(text: "green-stays-green total"), cell(text: "cost")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -120,7 +120,7 @@ fn section_5() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "5. Realization — GitHub API hookup, and why it is idempotent"),
     p(text: "Probed read-only on 2026-06-29. The legacy branch-protection API is dead to our integration (403 not accessible); the modern Rulesets API — which supersedes it and is where merge-queue config also lives — reads fine. So the handler targets rulesets, not branch protection:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Setting"), cell(text: "Read endpoint"), cell(text: "Idempotent write"), cell(text: "Token today")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -162,6 +162,6 @@ data branch_merge_admission_model_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "branch-merge-admission-model",
   title: "[SKETCH] Branch & merge-admission model — green-stays-green by construction + repo-standard drift gate",
   body: branch_merge_admission_model_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when the merge-admission authority is landed and witnessed: RepoStandard is the single source for the repo settings, the KeyedReceipt admission predicate is in force (a stale base-tree OR stale gate-roster receipt is unwritable), and the read-only RepoStandard drift gate runs over the live GitHub config — at which point stale-green and standard-vs-reality drift are unwritable by construction and this sketch is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when the merge-admission authority is landed and witnessed: RepoStandard is the single source for the repo settings, the KeyedReceipt admission predicate is in force (a stale base-tree OR stale gate-roster receipt is unwritable), and the read-only RepoStandard drift gate runs over the live GitHub config — at which point stale-green and standard-vs-reality drift are unwritable by construction and this sketch is redundant.")
   }
 }

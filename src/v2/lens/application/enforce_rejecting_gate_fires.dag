@@ -34,14 +34,14 @@ fn enforce_rejecting_gate_fires_claim_rhs() -> Node {
     enforce_reject_root
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_enforce_rejecting_gate_fires: v2.std.verification.TestClaim = EqualsClaim {
+data claim_enforce_rejecting_gate_fires: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_application/enforce_rejecting_gate_fires: Enforce apply_lens rejects gate",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: enforce_reject_root,

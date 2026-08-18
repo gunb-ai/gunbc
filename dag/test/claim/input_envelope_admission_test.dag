@@ -3,7 +3,7 @@ module test.claim.input_envelope_admission
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data test_envelope: gunbc.ci_input_envelope.InputEnvelope = BoundedInput {
+data test_envelope: gunbc.ci_input_envelope.InputEnvelope = gunbc.ci_input_envelope.BoundedInput {
   bounds: [
     gunbc.ci_input_envelope.InputBound { axis: WitnessCount, max: std.measure.Measure { count: 100 } },
     gunbc.ci_input_envelope.InputBound { axis: SourceNodeCount, max: std.measure.Measure { count: 10000 } },

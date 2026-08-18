@@ -91,7 +91,7 @@ fn graph_invariant_reach_verdict(
   if graph_invariant_reaches(projection: projection, target: unreachable) {
     Holds
   } else {
-    Violation {
+    v2.std.lens_verdict.Violation {
       diagnostic: graph_reach_unreachable_diagnostic(
         reason: reason,
         root: root,
@@ -104,7 +104,7 @@ fn graph_invariant_reach_verdict(
 
 fn graph_reach_add_edge_repair(root: Node, edge_target: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: root },
       v2.std.node.Edge { label: Positional, target: edge_target }
@@ -127,7 +127,7 @@ fn graph_reach_unreachable_diagnostic(
     v2.std.diagnostic.Diagnostic {
       reason: reason,
       at: node_locus(node: root),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     }
   } else {
     match graph_reach_suggested_add_edge_repair(root: root, edge_target: unreachable) {
@@ -135,13 +135,13 @@ fn graph_reach_unreachable_diagnostic(
         v2.std.diagnostic.Diagnostic {
           reason: reason,
           at: node_locus(node: root),
-          correction: Suggested { node: repaired }
+          correction: v2.std.diagnostic.Suggested { node: repaired }
         }
       Rejected { diagnostics: _ } =>
         v2.std.diagnostic.Diagnostic {
           reason: reason,
           at: node_locus(node: root),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
     }
   }

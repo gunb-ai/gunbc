@@ -4,26 +4,26 @@ module v2.test.lens_lifecycle_carrier.raw_prose_field_flagged
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data string_leaf_target: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^String } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^String } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data nonempty_str_leaf_target: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^NonEmptyStr } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^NonEmptyStr } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data dissolution_condition_leaf_target: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^DissolutionCondition } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^DissolutionCondition } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 // RED control: the exact shape this wall exists to make unwritable.
 data raw_dissolve_on_field_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^dissolve_on },
@@ -35,7 +35,7 @@ data raw_dissolve_on_field_input: Node = v2.std.node.Node {
 
 // RED control on the second bare-string spelling, so NonEmptyStr is not a hole.
 data raw_dissolution_trigger_nonempty_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^dissolution_trigger },
@@ -47,7 +47,7 @@ data raw_dissolution_trigger_nonempty_input: Node = v2.std.node.Node {
 
 // Positive control: the migrated shape must pass.
 data typed_dissolution_field_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^dissolution },
@@ -61,7 +61,7 @@ data typed_dissolution_field_input: Node = v2.std.node.Node {
 // lifecycle name class must pass. Without this, a gate that rejected every
 // String field would satisfy both RED controls above and still be wrong.
 data ordinary_string_field_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^reason },

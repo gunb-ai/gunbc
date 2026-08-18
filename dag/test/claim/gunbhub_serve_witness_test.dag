@@ -137,7 +137,7 @@ fn witness_hostile_page_not_in_static_table() -> Bool {
 
 fn witness_hostile_page_rejected_before_response() -> Bool {
   match serve_gunbhub_page_source(
-    source: ReactPage { node: gunbhub_hostile_page() }
+    source: gunbc.gunbhub_serve.ReactPage { node: gunbhub_hostile_page() }
   ) {
     RenderRejectedBeforeServe { reason: _ } => true
     Served { response: _ } => false

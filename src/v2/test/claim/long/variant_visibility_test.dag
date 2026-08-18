@@ -10,7 +10,7 @@ data variant_vis_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {
 }
 
 fn variant_vis_ingest_for(src: String) -> v2.compiler.source_authority.SourceRootIngest {
-  Cons {
+  std.algebra.Cons {
     head: v2.compiler.source_authority.DagSourceReadWitness {
       source: extdeps.communication.medium.Medium { carried: src, fidelity: Lossless },
       artifact: variant_vis_artifact,
@@ -23,7 +23,7 @@ fn variant_vis_ingest_for(src: String) -> v2.compiler.source_authority.SourceRoo
 
 fn variant_vis_admission() -> v2.compiler.name_resolve.Admission {
   v2.compiler.name_resolve.Admission {
-    subject: v2.compiler.name_resolve.ResolutionSubject { name: Cons { head: ^variant_vis_pilot, tail: std.algebra.Empty } },
+    subject: v2.compiler.name_resolve.ResolutionSubject { name: std.algebra.Cons { head: ^variant_vis_pilot, tail: std.algebra.Empty } },
     imports: Empty
   }
 }

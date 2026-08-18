@@ -14,7 +14,7 @@ test fn witness_run_owns_one_execution_identity() -> Bool {
     }
     && environment.architecture == Aarch64
     && environment.presentation_mode == HeadlessPresentation
-    && environment.launch_configuration == PlaywrightDefaultChromiumLaunch {
+    && environment.launch_configuration == gunbc.served_surface_browser_observation.PlaywrightDefaultChromiumLaunch {
       executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as std.types.FilePath,
     }
     && run.observed_on == "2026-08-01T04:58:15Z" as extdeps.time.rfc3339.Rfc3339Timestamp
@@ -27,8 +27,8 @@ test fn witness_connection_refusal_is_exact_specimen() -> Bool {
     TcpConnectionRefusedStimulus { requested_url: _, origin } => origin == LocalSyntheticHarness
     _ => false
   }
-    && presentation.navigation == ChromiumNavigationFailed { error: ChromiumErrConnectionRefused }
-    && presentation.document == ChromiumInternalPresentedDocument {
+    && presentation.navigation == gunbc.served_surface_browser_observation.ChromiumNavigationFailed { error: ChromiumErrConnectionRefused }
+    && presentation.document == gunbc.served_surface_browser_observation.ChromiumInternalPresentedDocument {
       document: ChromiumWebDataErrorDocument,
       final_url: ChromiumWebDataErrorUrl,
     }
@@ -42,14 +42,14 @@ test fn witness_empty_502_is_exact_not_total_profile() -> Bool {
       origin == LocalSyntheticHarness
         && status == 502
         && configured_headers == [
-          ContentLengthHeader { bytes: byte_size(0) },
+          gunbc.served_surface_browser_observation.ContentLengthHeader { bytes: byte_size(0) },
           Empty502SpecimenHeader,
         ]
         && body == EmptyNavigationResponseBody
     _ => false
   }
-    && presentation.navigation == ChromiumNavigationFailed { error: ChromiumErrHttpResponseCodeFailure }
-    && presentation.document == ChromiumInternalPresentedDocument {
+    && presentation.navigation == gunbc.served_surface_browser_observation.ChromiumNavigationFailed { error: ChromiumErrHttpResponseCodeFailure }
+    && presentation.document == gunbc.served_surface_browser_observation.ChromiumInternalPresentedDocument {
       document: ChromiumWebDataErrorDocument,
       final_url: ChromiumWebDataErrorUrl,
     }
@@ -63,18 +63,18 @@ test fn witness_bodied_502_retains_network_document() -> Bool {
       origin == LocalSyntheticHarness
         && status == 502
         && configured_headers == [
-          ContentLengthHeader { bytes: byte_size(26) },
+          gunbc.served_surface_browser_observation.ContentLengthHeader { bytes: byte_size(26) },
           TextPlainUtf8ContentTypeHeader,
           Sentinel502SpecimenHeader,
         ]
-        && body == Utf8NavigationResponseBody {
+        && body == gunbc.served_surface_browser_observation.Utf8NavigationResponseBody {
           text: "GUNBC_TYPED_ERROR_SENTINEL",
           bytes: byte_size(26),
         }
     _ => false
   }
-    && presentation.navigation == NavigationReturnedHttpResponse { status: 502 }
-    && presentation.document == NetworkResponsePresentedDocument {
+    && presentation.navigation == gunbc.served_surface_browser_observation.NavigationReturnedHttpResponse { status: 502 }
+    && presentation.document == gunbc.served_surface_browser_observation.NetworkResponsePresentedDocument {
       final_url: local_http_url(locator: "127.0.0.1:43821/body" as std.types.NonEmptyStr),
     }
 }

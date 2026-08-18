@@ -8,12 +8,12 @@ data body_lowering_match_swapped_source: String = "module m\n\nfn classical_not(
 fn body_lowering_match_bool_node(pass: Bool) -> Node {
   if pass {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_match_pass } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_match_pass } },
       children: []
     )
   } else {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_match_fail } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_match_fail } },
       children: []
     )
   }
@@ -181,7 +181,7 @@ fn body_lowering_match_first_arm_wires() -> Bool {
 // Synthetic empty Conj arm capture has no navigable match_arm production spine — body_lower_wire_match_arm_capture must refuse with ^body_lowering_reason_match_arm_navigation_refused (structural termination; no fuel budget).
 fn body_lowering_match_unnavigable_arm_refuses() -> Bool {
   let unnavigable_arm = node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: Empty
   )
   match body_lower_wire_match_arm_capture(arm_capture: unnavigable_arm) {
@@ -191,7 +191,7 @@ fn body_lowering_match_unnavigable_arm_refuses() -> Bool {
   }
 }
 
-data claim_body_lowering_match_arms_found: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_match_arms_found: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-match: classical_not arms discoverable",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_match_bool_node(pass: body_lowering_match_arms_found()),
@@ -199,7 +199,7 @@ data claim_body_lowering_match_arms_found: v2.std.verification.TestClaim = Equal
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_match_lowers_to_match: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_match_lowers_to_match: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-match: match_expr lowers to Match computation",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_match_bool_node(pass: body_lowering_match_lowers_to_match()),
@@ -207,7 +207,7 @@ data claim_body_lowering_match_lowers_to_match: v2.std.verification.TestClaim = 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_match_normalize_accepts: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_match_normalize_accepts: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-match: classical_not module normalizes without refusal",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_match_bool_node(pass: body_lowering_normalize_accepts_match_module()),
@@ -215,7 +215,7 @@ data claim_body_lowering_match_normalize_accepts: v2.std.verification.TestClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_match_normalized_has_match: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_match_normalized_has_match: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-match: normalized classical_not retains Match behavior",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_match_bool_node(pass: body_lowering_normalized_module_has_match()),
@@ -223,7 +223,7 @@ data claim_body_lowering_match_normalized_has_match: v2.std.verification.TestCla
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_match_swapped_normalize_accepts: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_match_swapped_normalize_accepts: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-match: swapped-arm module normalizes without refusal",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_match_bool_node(pass: body_lowering_match_swapped_arms_normalize_accepts()),
@@ -231,7 +231,7 @@ data claim_body_lowering_match_swapped_normalize_accepts: v2.std.verification.Te
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_match_first_arm_wires: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_match_first_arm_wires: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-match: true=>false arm wires pattern and body",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_match_bool_node(pass: body_lowering_match_first_arm_wires()),
@@ -239,7 +239,7 @@ data claim_body_lowering_match_first_arm_wires: v2.std.verification.TestClaim = 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_match_unnavigable_arm_refuses: v2.std.verification.TestClaim = EqualsClaim {
+data claim_body_lowering_match_unnavigable_arm_refuses: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/body-lowering-match: unnavigable arm subtree refuses (fail-closed)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_match_bool_node(pass: body_lowering_match_unnavigable_arm_refuses()),

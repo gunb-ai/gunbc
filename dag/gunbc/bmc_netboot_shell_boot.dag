@@ -25,21 +25,21 @@ fn bmc_tftpd_serve_command(plan: gunbc.bmc_netboot_serve.BmcNetbootServePlan) ->
 
 fn shell_boot_kernel_cmdline(plan: gunbc.bmc_netboot_serve.BmcNetbootServePlan) -> List<extdeps.firmware.kernel_cmdline.KernelCmdlineArg> {
   [
-    KernelKeyValue { key: "initrd", value: "\\initrd" },
-    KernelKeyValue { key: "ip", value: "dhcp" },
-    KernelKeyValue { key: "url", value: uri_wire(uri: plan.bulk_iso_url) },
-    KernelFlag { name: "autoinstall" },
-    KernelKeyValue { key: "ds", value: bmc_netboot_seed_datasource(plan: plan) },
+    extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "initrd", value: "\\initrd" },
+    extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "ip", value: "dhcp" },
+    extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "url", value: uri_wire(uri: plan.bulk_iso_url) },
+    extdeps.firmware.kernel_cmdline.KernelFlag { name: "autoinstall" },
+    extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "ds", value: bmc_netboot_seed_datasource(plan: plan) },
   ]
 }
 
 fn bmc_netboot_shell_boot_commands(plan: gunbc.bmc_netboot_serve.BmcNetbootServePlan) -> List<extdeps.firmware.uefi_shell.UefiShellCommand> {
   [
-    Ifconfig { action: IfconfigSetDhcp { interface: plan.boot_interface } },
-    Ping { host: plan.bmc_host },
+    extdeps.firmware.uefi_shell.Ifconfig { action: extdeps.firmware.uefi_shell.IfconfigSetDhcp { interface: plan.boot_interface } },
+    extdeps.firmware.uefi_shell.Ping { host: plan.bmc_host },
     Tftp { interface: plan.boot_interface, server: plan.bmc_host, remote_file: "vmlinuz", local_file: shell_boot_local_kernel },
     Tftp { interface: plan.boot_interface, server: plan.bmc_host, remote_file: "initrd", local_file: shell_boot_local_initrd },
-    ExecuteEfi { path: shell_boot_local_kernel, cmdline: shell_boot_kernel_cmdline(plan: plan) },
+    extdeps.firmware.uefi_shell.ExecuteEfi { path: shell_boot_local_kernel, cmdline: shell_boot_kernel_cmdline(plan: plan) },
   ]
 }
 

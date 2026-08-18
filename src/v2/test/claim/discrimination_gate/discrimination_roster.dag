@@ -50,15 +50,15 @@ fn negative_control_correctly_rejected() -> Bool {
   !unit_is_discriminating(unit: all_positive_control_unit)
 }
 
-data non_perturbed_red_over_green_input: v2.std.verification.TestClaim = DiagnosticClaim {
+data non_perturbed_red_over_green_input: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "non-perturbation control: red asserted over the SAME input the positive accepts",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: within_bound_input,
   expected_rejection: diagnostics_singleton(
     d: v2.std.diagnostic.Diagnostic {
       reason: ^discrimination_control_non_perturbed_reason,
-      at: Textual { file: ^discrimination_gate_virtual_file, extent: WholeFile },
-      correction: Unavailable { reason: UserInputBoundary }
+      at: v2.std.diagnostic.Textual { file: ^discrimination_gate_virtual_file, extent: WholeFile },
+      correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
     }
   ),
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }

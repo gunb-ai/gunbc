@@ -2,19 +2,19 @@ module v2.test.lens_application.substitute_at_depth_three
 
 
 data depth_three_original_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^depth_three_original_leaf_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^depth_three_original_leaf_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data depth_three_replacement_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^depth_three_replacement_leaf_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^depth_three_replacement_leaf_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data depth_three_inner: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^depth_three_step_c },
@@ -25,7 +25,7 @@ data depth_three_inner: Node = v2.std.node.Node {
 }
 
 data depth_three_middle: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^depth_three_step_b },
@@ -36,7 +36,7 @@ data depth_three_middle: Node = v2.std.node.Node {
 }
 
 data depth_three_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^depth_three_step_a },
@@ -47,17 +47,17 @@ data depth_three_root: Node = v2.std.node.Node {
 }
 
 data depth_three_expected_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^depth_three_step_a },
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           v2.std.node.Edge {
             label: Named { name: ^depth_three_step_b },
             target: v2.std.node.Node {
-              kind: TypeNode { connective: Conj },
+              kind: v2.std.node.TypeNode { connective: Conj },
               children: [
                 v2.std.node.Edge {
                   label: Named { name: ^depth_three_step_c },
@@ -93,14 +93,14 @@ fn substitute_at_depth_three_claim_rhs() -> Node {
     depth_three_expected_root
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_substitute_at_depth_three: v2.std.verification.TestClaim = EqualsClaim {
+data claim_substitute_at_depth_three: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_application/substitute_at_depth_three: path depth 3 preserves root ancestry",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: depth_three_expected_root,

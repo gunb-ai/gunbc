@@ -3,7 +3,7 @@ module gunbc.plans.bounded_input_cost_envelope_scheduling
 
 fn bounded_input_cost_envelope_scheduling_body() -> List<std.markdown.MarkdownBlock> {
   [
-    BlockquoteBlock { blocks: [
+    std.markdown.BlockquoteBlock { blocks: [
       p(text: "**Interim update (2026-07-12, CI-debug lane):** the static per-runnable predicted-peak rows and `spawn_width_cap` this doc's interim formulas referenced were DELETED by the adaptive-memory-governor ruling (operator 2026-07-12) — width admission now lives in the v1 seed AIMD governor (`memory_governor.rs`), whose own dissolve-on is this doc's P2: graph-derived Predicted `CostAccount.space`. The `spawn_width = floor(budget / max_runnable_predicted_space)` rows below describe the P2+ destination, not the current tree; the governor is the loud, counted interim between the deleted hand-pins and that derivation."),
       p(text: "**Status: operator-signed design record (2026-07-02).** Model-before-implement: this doc is the single authority for how bounded input, cost envelopes, and scheduling compose. It declares carrier shapes, the pipeline order, and acceptance tiers — **not** scheduler-type implementations (those dispatch as separate work items). DESIGN refs: §1 (time = cost; safety — cost never drives selection), §2 (one concept every scale — width is a budget fit count), §3 (single authority — do not re-mint InputEnvelope / symbolic_cost / budget tree), §5 (fail-closed — unbounded input and zero predicted cost are the same smell; Predicted authority / Measured falsifier), §6 (this doc dissolves when the carriers state the policy)."),
     ] },
@@ -25,7 +25,7 @@ fn bounded_input_cost_envelope_scheduling_body() -> List<std.markdown.MarkdownBl
     p(text: "**Definition:** `CostEnvelope = symbolic_cost(graph structure)` evaluated with size variables bound to the `BoundedInput` ceilings (reuse `v2.lens.cost` / `symbolic_cost_of_node` — do **not** mint a parallel cost fold). The envelope binds axes (`WitnessCount`, `SourceNodeCount`, `CorpusNodeCount`) to the symbolic cost's size parameters so predicted space/time is a **function of declared input**, not a static data row."),
     p(text: "**On `Runnable`:** `cost: CostAccount` with `basis = Predicted`; `space` (and rolled-up `time` where modeled) come from the CostEnvelope evaluation for that runnable's graph slice. `cost_account_predicted_zero()` is the tell that Predicted authority is not yet wired — it must have no consumers on the floor path when implementation closes."),
     h2(text: "4. The pipeline — three stages, never fused"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [
         cell(text: "Stage"),
         cell(text: "Question"),
@@ -115,6 +115,6 @@ data bounded_input_cost_envelope_scheduling_plan: gunbc.plan.Plan = gunbc.plan.P
   slug: "bounded-input-cost-envelope-scheduling",
   title: "Bounded-input / cost-envelope scheduling — operator-signed design",
   body: bounded_input_cost_envelope_scheduling_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when `gunbc_ci_corpus_envelope` carries derived `BoundedInput` ceilings (P5), every floor `Runnable` carries Predicted `CostEnvelope`-derived cost, `spawn_width` is derived from `WidthBoundedRealization` (no side-channel), `gunbc.fleet_intent.PerformanceReceipt` falsifies Predicted with a discriminating RED, runtime admission consumes `input_admitted` on the live floor path, and the selection/scheduling axis split is witnessed — at which point the carriers state the policy and companion trackers (`resource-aware-scheduler.md`, `input-envelope-roadmap.md`) may dissolve.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when `gunbc_ci_corpus_envelope` carries derived `BoundedInput` ceilings (P5), every floor `Runnable` carries Predicted `CostEnvelope`-derived cost, `spawn_width` is derived from `WidthBoundedRealization` (no side-channel), `gunbc.fleet_intent.PerformanceReceipt` falsifies Predicted with a discriminating RED, runtime admission consumes `input_admitted` on the live floor path, and the selection/scheduling axis split is witnessed — at which point the carriers state the policy and companion trackers (`resource-aware-scheduler.md`, `input-envelope-roadmap.md`) may dissolve.")
   }
 }

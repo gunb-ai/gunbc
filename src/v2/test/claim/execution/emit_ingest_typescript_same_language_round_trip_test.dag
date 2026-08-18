@@ -121,7 +121,7 @@ test fn emit_ingest_typescript_perturbed_frontier_fails_closed() -> Bool {
 
 test fn ingest_typescript_forward_fails_closed_off_frontier_holds() -> Bool {
   match grammar_relation_row_forward_selection(
-    frontier: Cons { head: ^emit_ingest_typescript_perturb_bogus_tok, tail: std.algebra.Empty },
+    frontier: std.algebra.Cons { head: ^emit_ingest_typescript_perturb_bogus_tok, tail: std.algebra.Empty },
     rules: emit_ingest_typescript_shared_rules()
   ) {
     Accepted { value: _, diagnostics: _ } => false
@@ -198,7 +198,7 @@ test fn emit_ingest_typescript_same_language_round_trip_holds() -> Bool {
     && typescript_same_language_discriminates_on_real_tree()
 }
 
-data claim_emit_ingest_typescript_same_language_round_trip: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data claim_emit_ingest_typescript_same_language_round_trip: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   label: "S4: TypeScript same-language emit↔ingest round-trip (selector bijectivity + parse bridge + source round-trip)",
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/execution/emit_ingest_typescript_same_language_round_trip_test.dag"

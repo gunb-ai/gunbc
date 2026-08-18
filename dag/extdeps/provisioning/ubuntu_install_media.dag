@@ -1,8 +1,8 @@
 module extdeps.provisioning.ubuntu_install_media
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS"
   }
@@ -25,7 +25,7 @@ type UbuntuInstallMediaMirrorRow {
 }
 
 type UbuntuInstallMediaArtifactRow {
-  distribution: NobleNumbat2404Lts
+  distribution: std.os.types.NobleNumbat2404Lts
   point_release: std.types.NonEmptyStr
   architecture: UbuntuInstallMediaArchitecture
   flavor: UbuntuInstallMediaFlavor
@@ -33,20 +33,20 @@ type UbuntuInstallMediaArtifactRow {
   sha256sums_authority: extdeps.external_authority.ExternalAuthority
 }
 
-fn ubuntu_install_media_architecture_wire(arch: UbuntuInstallMediaArchitecture) -> NonEmptyStr {
+fn ubuntu_install_media_architecture_wire(arch: UbuntuInstallMediaArchitecture) -> std.types.NonEmptyStr {
   match arch {
     Aarch64 => "arm64"
     Amd64 => "amd64"
   }
 }
 
-fn ubuntu_install_media_flavor_wire(flavor: UbuntuInstallMediaFlavor) -> NonEmptyStr {
+fn ubuntu_install_media_flavor_wire(flavor: UbuntuInstallMediaFlavor) -> std.types.NonEmptyStr {
   match flavor {
     UbuntuLiveServer => "live-server"
   }
 }
 
-fn ubuntu_install_media_filename(artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+fn ubuntu_install_media_filename(artifact: UbuntuInstallMediaArtifactRow) -> std.types.NonEmptyStr {
   concat(
     concat(
       concat(
@@ -62,10 +62,10 @@ fn ubuntu_install_media_filename(artifact: UbuntuInstallMediaArtifactRow) -> Non
         ".iso",
       ),
     ),
-  ) as NonEmptyStr
+  ) as std.types.NonEmptyStr
 }
 
-fn ubuntu_install_media_mirror_path_segment(host: UbuntuInstallMediaMirrorHost) -> NonEmptyStr {
+fn ubuntu_install_media_mirror_path_segment(host: UbuntuInstallMediaMirrorHost) -> std.types.NonEmptyStr {
   match host {
     ReleasesUbuntuCom => "24.04"
     CdimageUbuntuCom => "releases/24.04/release"
@@ -76,9 +76,9 @@ fn ubuntu_install_media_mirror_path_segment(host: UbuntuInstallMediaMirrorHost) 
 fn ubuntu_install_media_mirror_url(
   artifact: UbuntuInstallMediaArtifactRow,
   mirror: UbuntuInstallMediaMirrorRow,
-) -> NonEmptyStr {
+) -> std.types.NonEmptyStr {
   let filename = ubuntu_install_media_filename(artifact: artifact)
-  uri_wire(uri: Uri {
+  uri_wire(uri: extdeps.uri.Uri {
     scheme: Https,
     locator: concat(
       concat(
@@ -86,7 +86,7 @@ fn ubuntu_install_media_mirror_url(
         ubuntu_install_media_mirror_path_segment(host: mirror.host) as String,
       ),
       concat("/", filename as String),
-    ) as NonEmptyStr,
+    ) as std.types.NonEmptyStr,
   })
 }
 
@@ -105,30 +105,30 @@ data ubuntu_install_media_mirror_rows: List<UbuntuInstallMediaMirrorRow> = [
   },
 ]
 
-fn ubuntu_install_media_mirror_urls(artifact: UbuntuInstallMediaArtifactRow) -> List<NonEmptyStr> {
+fn ubuntu_install_media_mirror_urls(artifact: UbuntuInstallMediaArtifactRow) -> List<std.types.NonEmptyStr> {
   map(
     ubuntu_install_media_mirror_rows,
     m => ubuntu_install_media_mirror_url(artifact: artifact, mirror: m),
   )
 }
 
-fn ubuntu_install_media_artifacts_dir() -> NonEmptyStr {
-  "/var/lib/gunbc/artifacts" as NonEmptyStr
+fn ubuntu_install_media_artifacts_dir() -> std.types.NonEmptyStr {
+  "/var/lib/gunbc/artifacts" as std.types.NonEmptyStr
 }
 
-fn ubuntu_install_media_install_path(artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+fn ubuntu_install_media_install_path(artifact: UbuntuInstallMediaArtifactRow) -> std.types.NonEmptyStr {
   concat(
     concat(ubuntu_install_media_artifacts_dir() as String, "/"),
     ubuntu_install_media_filename(artifact: artifact) as String,
-  ) as NonEmptyStr
+  ) as std.types.NonEmptyStr
 }
 
-fn ubuntu_install_media_part_path(install_path: NonEmptyStr) -> NonEmptyStr {
-  concat(install_path as String, ".part") as NonEmptyStr
+fn ubuntu_install_media_part_path(install_path: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
+  concat(install_path as String, ".part") as std.types.NonEmptyStr
 }
 
-data noble_numbat_2404_3_live_server_arm64_sha256sums_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data noble_numbat_2404_3_live_server_arm64_sha256sums_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS"
   }

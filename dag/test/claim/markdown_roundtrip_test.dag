@@ -5,34 +5,34 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn roundtrip_core_doc() -> std.markdown.MarkdownDocument {
   std.markdown.MarkdownDocument {
     blocks: [
-      HeadingBlock { level: H1, inlines: [ TextInline { text: "Roadmap" } ] },
-      ParagraphBlock { inlines: [ TextInline { text: "Status of the work." } ] },
-      HeadingBlock { level: H2, inlines: [ TextInline { text: "Tasks" } ] },
-      TaskListBlock {
+      std.markdown.HeadingBlock { level: H1, inlines: [ std.markdown.TextInline { text: "Roadmap" } ] },
+      std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "Status of the work." } ] },
+      std.markdown.HeadingBlock { level: H2, inlines: [ std.markdown.TextInline { text: "Tasks" } ] },
+      std.markdown.TaskListBlock {
         items: [
           std.markdown.MarkdownTaskItem {
             state: Checked,
-            blocks: [ ParagraphBlock { inlines: [ TextInline { text: "done item" } ] } ],
+            blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "done item" } ] } ],
           },
           std.markdown.MarkdownTaskItem {
             state: Unchecked,
-            blocks: [ ParagraphBlock { inlines: [ TextInline { text: "todo item" } ] } ],
+            blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "todo item" } ] } ],
           },
         ],
       },
-      UnorderedListBlock {
+      std.markdown.UnorderedListBlock {
         items: [
-          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "alpha" } ] } ] },
-          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "beta" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "alpha" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "beta" } ] } ] },
         ],
       },
-      OrderedListBlock {
+      std.markdown.OrderedListBlock {
         items: [
-          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "first" } ] } ] },
-          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "second" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "first" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "second" } ] } ] },
         ],
       },
-      CodeBlock { code: "let x = 1;\n" },
+      std.markdown.CodeBlock { code: "let x = 1;\n" },
     ],
   }
 }
@@ -106,10 +106,10 @@ test fn witness_core_advertised_lossless() -> Bool {
 fn frontier_emphasis_doc() -> std.markdown.MarkdownDocument {
   std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          TextInline { text: "see " },
-          EmphasisInline { inlines: [ TextInline { text: "this" } ] },
+          std.markdown.TextInline { text: "see " },
+          std.markdown.EmphasisInline { inlines: [ std.markdown.TextInline { text: "this" } ] },
         ],
       },
     ],

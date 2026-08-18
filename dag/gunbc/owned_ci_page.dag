@@ -7,7 +7,7 @@ fn owned_ci_runs_page(body_json: String) -> std.markup.Fragment {
   el("html", [
     el("head", [
       el("title", [txt("gunbc CI runs")]),
-      el("style", [RawNode { content: roadmap_css() }]),
+      el("style", [std.markup.RawNode { content: roadmap_css() }]),
     ]),
     el("body", [
       roadmap_header(page: "Owned CI"),
@@ -26,7 +26,7 @@ fn owned_ci_run_detail_page(run_id: String, body_json: String) -> std.markup.Fra
   el("html", [
     el("head", [
       el("title", [txt(concat("CI run ", run_id))]),
-      el("style", [RawNode { content: roadmap_css() }]),
+      el("style", [std.markup.RawNode { content: roadmap_css() }]),
     ]),
     el("body", [
       roadmap_header(page: "Owned CI"),

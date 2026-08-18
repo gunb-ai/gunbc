@@ -10,14 +10,14 @@ fn translate_refused_canonical_grounding(d: v2.std.diagnostic.NonEmptyDiagnostic
 }
 
 data translate_underived_value_specimen: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 fn translate_underived_conj_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -25,7 +25,7 @@ fn translate_underived_conj_node() -> Node {
 
 fn translate_underived_disj_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: Disj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -161,7 +161,7 @@ fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> Outcome<Node>
     f: fn(arrow) {
       outcome_accepted(
         value: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             v2.std.node.Edge { label: Positional, target: arrow }
           ],
@@ -192,7 +192,7 @@ fn translate_underived_grammar_match_atom_node() -> Node {
 
 fn translate_underived_grammar_match_bundle() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^target_model_edge_translation_rules,

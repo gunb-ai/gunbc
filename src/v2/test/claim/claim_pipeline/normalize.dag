@@ -3,20 +3,20 @@ module v2.test.claim_pipeline.normalize
 
 
 data spine_normalize_module_subject: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^spine_normalize_module } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^spine_normalize_module } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 fn spine_normalize_service_parse_tree() -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
-      connective: Atom { identity: ^dag_c3_surface_sugar_service }
+    kind: v2.std.node.TypeNode {
+      connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service }
     },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^spine_normalize_service_decl },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [],
           occurrence_id: SyntheticOccurrence
 }
@@ -35,7 +35,7 @@ fn spine_normalize_accepts_well_formed_sugar() -> Bool {
 
 fn spine_normalize_nested_service_parse_tree() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^spine_normalize_nested_field },
@@ -69,20 +69,20 @@ fn spine_normalize_bool_atom(b: Bool) -> Node {
   match b {
     true =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: ^spine_normalize_pass } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^spine_normalize_pass } },
         children: [],
         occurrence_id: SyntheticOccurrence
 }
     false =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: ^spine_normalize_fail } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^spine_normalize_fail } },
         children: [],
         occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_pipeline_normalize_module_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_pipeline_normalize_module_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "claim_pipeline/normalize: v2.compiler.normalize stage module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: spine_normalize_module_subject,
@@ -90,7 +90,7 @@ data claim_pipeline_normalize_module_compiles: v2.std.verification.TestClaim = C
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_pipeline_normalize_accepts_sugar_tree: v2.std.verification.TestClaim = EqualsClaim {
+data claim_pipeline_normalize_accepts_sugar_tree: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "claim_pipeline/normalize: normalize accepts well-formed C3 service sugar ParseTree",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: spine_normalize_bool_atom(b: spine_normalize_accepts_well_formed_sugar()),
@@ -98,7 +98,7 @@ data claim_pipeline_normalize_accepts_sugar_tree: v2.std.verification.TestClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_pipeline_normalize_dissolves_interior_sugar: v2.std.verification.TestClaim = EqualsClaim {
+data claim_pipeline_normalize_dissolves_interior_sugar: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "claim_pipeline/normalize: normalize dissolves interior C3 service sugar to Conj",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: spine_normalize_bool_atom(b: spine_normalize_dissolves_interior_service_sugar()),

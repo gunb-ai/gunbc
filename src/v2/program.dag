@@ -3,7 +3,7 @@ module v2.program
 
 fn program_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -27,14 +27,14 @@ fn program_unit_type() -> Node {
 
 fn program_bool_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
   if is_true {
-    RuntimePrimitive {
+    v2.std.runtime.RuntimePrimitive {
       value: v2.std.runtime.RuntimePrimitiveValue {
         primitive_type: program_bool_type(),
         bytes: [program_byte()]
       }
     }
   } else {
-    RuntimePrimitive {
+    v2.std.runtime.RuntimePrimitive {
       value: v2.std.runtime.RuntimePrimitiveValue {
         primitive_type: program_bool_type(),
         bytes: Empty
@@ -44,7 +44,7 @@ fn program_bool_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
 }
 
 fn program_int_one_value() -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: program_i64_type(),
       bytes: [program_byte()]
@@ -53,7 +53,7 @@ fn program_int_one_value() -> v2.std.runtime.RuntimeValue {
 }
 
 fn program_unit_value() -> v2.std.runtime.RuntimeValue {
-  RuntimeUnit {
+  v2.std.runtime.RuntimeUnit {
     value: v2.std.runtime.RuntimeUnitValue {
       unit_type: program_unit_type()
     }
@@ -77,13 +77,13 @@ fn program_kw_false() -> Node {
 }
 
 data program_locator_literal: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data program_payload_literal: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -111,7 +111,7 @@ fn program_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironme
     Accepted { value: program_int_one_value(), diagnostics: None }
   } else if node == program_literal_two() {
     Accepted {
-      value: RuntimePrimitive {
+      value: v2.std.runtime.RuntimePrimitive {
         value: v2.std.runtime.RuntimePrimitiveValue {
           primitive_type: program_i64_type(),
           bytes: [program_byte(), program_byte()]
@@ -302,7 +302,7 @@ fn program_branch_effect_io_holds() -> Bool {
 
 fn program_pick_if_call(callee: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [v2.std.node.Edge { label: Positional, target: callee }],
     occurrence_id: SyntheticOccurrence
   }
@@ -376,7 +376,7 @@ fn program_runs_holds() -> Bool {
     && program_runtime_run_holds()
 }
 
-data unified_claim_program_runs: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_program_runs: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/program.dag",
     function: program_runs_holds

@@ -25,7 +25,7 @@ data scaffold_single_authority_named_specimen: std.disposition.Disposition = Sca
   bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.scaffold_disposition_census.pool.specimens",
     decl_name: "scaffold_single_authority_named_specimen",
-    field: NamedField { field_name: "dissolves_to" }
+    field: std.decl_ref.NamedField { field_name: "dissolves_to" }
   }
 }
 
@@ -43,7 +43,7 @@ data scaffold_realization_dispatch_named_specimen: std.disposition.Disposition =
   bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.scaffold_disposition_census.pool.specimens",
     decl_name: "scaffold_realization_dispatch_named_specimen",
-    field: NamedField { field_name: "bind" }
+    field: std.decl_ref.NamedField { field_name: "bind" }
   }
 }
 
@@ -61,7 +61,7 @@ data scaffold_substrate_mandatory_tag_named_specimen: std.disposition.Dispositio
   bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.scaffold_disposition_census.pool.specimens",
     decl_name: "scaffold_substrate_mandatory_tag_named_specimen",
-    field: NamedField { field_name: "dissolves_to" }
+    field: std.decl_ref.NamedField { field_name: "dissolves_to" }
   }
 }
 

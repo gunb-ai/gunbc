@@ -17,9 +17,9 @@ fn cause_of(s: gunbc.tools.body_lowering_population_probe.BodyLoweringObservatio
   }
 }
 
-data non_batch_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubject = gunbc.tools.body_lowering_population_probe.BodyLoweringSubject { label: ^logic, realization: LiveFileSubject { path: "src/v2/std/logic.dag" } }
+data non_batch_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubject = gunbc.tools.body_lowering_population_probe.BodyLoweringSubject { label: ^logic, realization: gunbc.tools.body_lowering_population_probe.LiveFileSubject { path: "src/v2/std/logic.dag" } }
 
-data batch_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubject = gunbc.tools.body_lowering_population_probe.BodyLoweringSubject { label: ^optional, realization: LiveFileSubject { path: "src/v2/std/optional.dag" } }
+data batch_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubject = gunbc.tools.body_lowering_population_probe.BodyLoweringSubject { label: ^optional, realization: gunbc.tools.body_lowering_population_probe.LiveFileSubject { path: "src/v2/std/optional.dag" } }
 
 data specimen_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubject = gunbc.tools.body_lowering_population_probe.BodyLoweringSubject { label: ^vacuity_bare_expression_specimens, realization: UnauthoredSpecimenClass }
 
@@ -52,9 +52,9 @@ test fn retained_reads_as_a_named_cause() -> Bool { reading_of_stage(s: Normaliz
 // reading_of_standing collapsed by mapping unmeasured onto the unclassified-refusal arm.
 
 test fn an_unmeasured_subject_has_no_reading_RED() -> Bool {
-  reading_of_standing(st: SubjectUnmeasured { cause: ^not_selected_into_execution_batch }) == StandingNotObserved
+  reading_of_standing(st: gunbc.tools.body_lowering_population_probe.SubjectUnmeasured { cause: ^not_selected_into_execution_batch }) == StandingNotObserved
 }
 
 test fn an_observed_subject_carries_its_reading() -> Bool {
-  reading_of_standing(st: SubjectObserved { stage: NormalizeAccepted }) == StandingObserved { reading: ObservedClean }
+  reading_of_standing(st: gunbc.tools.body_lowering_population_probe.SubjectObserved { stage: NormalizeAccepted }) == gunbc.tools.body_lowering_population_probe.StandingObserved { reading: ObservedClean }
 }

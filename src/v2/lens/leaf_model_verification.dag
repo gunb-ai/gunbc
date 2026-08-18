@@ -29,7 +29,7 @@ fn rust_r1_fixture_pair() -> v2.std.leaf_model_verification.LeafModelFixturePair
     expected_happy_verdict: TargetCompileAccepted,
     falsification: v2.std.leaf_model_verification.LeafModelFalsificationCase {
       fixture: rust_r1_falsification_fixture(),
-      expected_verdict: TargetCompileRejected {
+      expected_verdict: v2.std.leaf_model_verification.TargetCompileRejected {
         diagnostic_code: ^target_diagnostic_e0308_type_mismatch
       }
     }
@@ -61,7 +61,7 @@ fn python_r1_fixture_pair() -> v2.std.leaf_model_verification.LeafModelPythonFix
     expected_happy_verdict: TargetPythonExerciseAccepted,
     falsification: v2.std.leaf_model_verification.LeafModelPythonFalsificationCase {
       fixture: python_r1_falsification_fixture(),
-      expected_verdict: TargetPythonExecRejected {
+      expected_verdict: v2.std.leaf_model_verification.TargetPythonExecRejected {
         diagnostic_code: ^target_diagnostic_python_name_error_undefined_name
       }
     }
@@ -93,7 +93,7 @@ fn python_r2a_fixture_pair() -> v2.std.leaf_model_verification.LeafModelPythonFi
     expected_happy_verdict: TargetPythonExerciseAccepted,
     falsification: v2.std.leaf_model_verification.LeafModelPythonFalsificationCase {
       fixture: python_r2a_falsification_fixture(),
-      expected_verdict: TargetPythonExecRejected {
+      expected_verdict: v2.std.leaf_model_verification.TargetPythonExecRejected {
         diagnostic_code: ^target_diagnostic_python_attribute_error_method_not_found
       }
     }
@@ -224,7 +224,7 @@ fn python_r3_external_fixture_pair() -> v2.std.leaf_model_verification.LeafModel
     expected_happy_verdict: TargetPythonExerciseAccepted,
     falsification: v2.std.leaf_model_verification.LeafModelPythonFalsificationCase {
       fixture: python_r3_external_falsification_fixture(),
-      expected_verdict: TargetPythonExecRejected {
+      expected_verdict: v2.std.leaf_model_verification.TargetPythonExecRejected {
         diagnostic_code: ^target_diagnostic_python_type_error_init_arity_mismatch
       }
     }
@@ -256,7 +256,7 @@ fn typescript_r2a_fixture_pair() -> v2.std.leaf_model_verification.LeafModelType
     expected_happy_verdict: TargetTypeScriptCompileAccepted,
     falsification: v2.std.leaf_model_verification.LeafModelTypeScriptFalsificationCase {
       fixture: typescript_r2a_falsification_fixture(),
-      expected_verdict: TargetTypeScriptCompileRejected {
+      expected_verdict: v2.std.leaf_model_verification.TargetTypeScriptCompileRejected {
         diagnostic_code: ^target_diagnostic_ts2339_property_does_not_exist
       }
     }
@@ -317,7 +317,7 @@ fn typescript_r3_external_fixture_pair() -> v2.std.leaf_model_verification.LeafM
     expected_happy_verdict: TargetTypeScriptCompileAccepted,
     falsification: v2.std.leaf_model_verification.LeafModelTypeScriptFalsificationCase {
       fixture: typescript_r3_external_falsification_fixture(),
-      expected_verdict: TargetTypeScriptCompileRejected {
+      expected_verdict: v2.std.leaf_model_verification.TargetTypeScriptCompileRejected {
         diagnostic_code: ^target_diagnostic_ts7009_new_expression_not_constructable
       }
     }
@@ -355,7 +355,7 @@ fn rust_r2a_fixture_pair() -> v2.std.leaf_model_verification.LeafModelFixturePai
     expected_happy_verdict: TargetCompileAccepted,
     falsification: v2.std.leaf_model_verification.LeafModelFalsificationCase {
       fixture: rust_r2a_falsification_fixture(),
-      expected_verdict: TargetCompileRejected {
+      expected_verdict: v2.std.leaf_model_verification.TargetCompileRejected {
         diagnostic_code: ^target_diagnostic_e0599_method_not_found
       }
     }
@@ -438,7 +438,7 @@ fn rust_r3_external_fixture_pair() -> v2.std.leaf_model_verification.LeafModelFi
     expected_happy_verdict: TargetCompileAccepted,
     falsification: v2.std.leaf_model_verification.LeafModelFalsificationCase {
       fixture: rust_r3_external_falsification_fixture(),
-      expected_verdict: TargetCompileRejected {
+      expected_verdict: v2.std.leaf_model_verification.TargetCompileRejected {
         diagnostic_code: ^target_diagnostic_e0423_expected_value_found_type
       }
     }
@@ -507,7 +507,7 @@ fn go_run_fixture(source: String) -> v2.std.leaf_model_verification.LeafModelGoR
 }
 
 fn go_leaf_model_fact_atom(id: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: id } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
@@ -525,7 +525,7 @@ fn go_r1_fixture_pair() -> v2.std.leaf_model_verification.LeafModelGoCompileFixt
     expected_happy_verdict: TargetCompileAccepted,
     falsification: v2.std.leaf_model_verification.LeafModelGoCompileFalsificationCase {
       fixture: go_build_fixture(source: go_r1_falsification_fixture_source),
-      expected_verdict: TargetCompileRejected {
+      expected_verdict: v2.std.leaf_model_verification.TargetCompileRejected {
         diagnostic_code: ^target_diagnostic_go_undefined_type
       }
     }
@@ -550,7 +550,7 @@ fn go_r2a_fixture_pair() -> v2.std.leaf_model_verification.LeafModelGoCompileFix
     expected_happy_verdict: TargetCompileAccepted,
     falsification: v2.std.leaf_model_verification.LeafModelGoCompileFalsificationCase {
       fixture: go_build_fixture(source: go_r2a_falsification_fixture_source),
-      expected_verdict: TargetCompileRejected {
+      expected_verdict: v2.std.leaf_model_verification.TargetCompileRejected {
         diagnostic_code: ^target_diagnostic_go_undefined_method
       }
     }
@@ -575,7 +575,7 @@ fn go_r2b_fixture_pair() -> v2.std.leaf_model_verification.LeafModelGoRuntimeFix
     expected_happy_verdict: TargetRuntimeExerciseAccepted,
     falsification: v2.std.leaf_model_verification.LeafModelGoRuntimeFalsificationCase {
       fixture: go_run_fixture(source: go_r2b_falsification_fixture_source),
-      expected_verdict: TargetRuntimeExerciseRejected {
+      expected_verdict: v2.std.leaf_model_verification.TargetRuntimeExerciseRejected {
         diagnostic_code: ^target_diagnostic_go_runtime_panic
       }
     }
@@ -598,7 +598,7 @@ fn go_r3_external_fixture_pair() -> v2.std.leaf_model_verification.LeafModelGoCo
     expected_happy_verdict: TargetCompileAccepted,
     falsification: v2.std.leaf_model_verification.LeafModelGoCompileFalsificationCase {
       fixture: go_build_fixture(source: go_r3_external_falsification_fixture_source),
-      expected_verdict: TargetCompileRejected {
+      expected_verdict: v2.std.leaf_model_verification.TargetCompileRejected {
         diagnostic_code: ^target_diagnostic_go_invalid_conversion_arity
       }
     }
@@ -703,5 +703,5 @@ fn python_l1_static_mypy_fixture() -> v2.std.leaf_model_verification.LeafModelPy
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

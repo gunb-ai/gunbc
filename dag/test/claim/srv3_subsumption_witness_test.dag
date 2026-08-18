@@ -179,7 +179,7 @@ fn reach_pair_agrees_for(reach: gunbc.host_toolchain_ensure.HostToolchainReach) 
 }
 
 test fn reach_wrong_machine_pairing_is_unwritable() -> Bool {
-  let old_shape = ResolvedHostToolchainReach {
+  let old_shape = gunbc.host_toolchain_ensure.ResolvedHostToolchainReach {
     target: srv3_host,
     access: host_identity_srv1_access,
   }

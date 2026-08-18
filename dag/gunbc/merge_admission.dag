@@ -262,7 +262,7 @@ fn merge_admission_fixture_git_sha1(hex: std.types.NonEmptyStr) -> extdeps.git.o
   match git_sha1_object_id(hex: hex as String) {
     Present { value: oid } => oid
     Absent =>
-      GitSha1ObjectId {
+      extdeps.git.object_store.GitSha1ObjectId {
         digest: std.content_hash.Sha1Digest { hex: hex as std.content_hash.Sha1DigestHex },
       }
   }

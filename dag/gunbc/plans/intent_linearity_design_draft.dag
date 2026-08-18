@@ -27,6 +27,6 @@ data intent_linearity_design_draft_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "intent-linearity-design-draft",
   title: "DRAFT for operator review — a candidate DESIGN.md articulation",
   body: intent_linearity_design_draft_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this draft when the operator rules on it: either intent-linearity is absorbed into DESIGN.md (the §1 axioms modeled in `.dag` with a syllogism-enforcing lens, the open thread this draft lands on) — at which point the authority doc carries the articulation and holding a separate draft against it is the §6 parallel-ledger violation — or it is rejected as off-thesis, at which point it is §5 dead scaffold. Either way the ruling retires the draft; prose held against the authority doc has no standing once the authority doc has spoken.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this draft when the operator rules on it: either intent-linearity is absorbed into DESIGN.md (the §1 axioms modeled in `.dag` with a syllogism-enforcing lens, the open thread this draft lands on) — at which point the authority doc carries the articulation and holding a separate draft against it is the §6 parallel-ledger violation — or it is rejected as off-thesis, at which point it is §5 dead scaffold. Either way the ruling retires the draft; prose held against the authority doc has no standing once the authority doc has spoken.")
   }
 }

@@ -3,7 +3,7 @@ module v2.test.lens_ownership.subject_roster
 
 fn ownership_claim_pass_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^lens_ownership_claim_pass_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lens_ownership_claim_pass_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -11,7 +11,7 @@ fn ownership_claim_pass_node() -> Node {
 
 fn ownership_claim_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^lens_ownership_claim_fail_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lens_ownership_claim_fail_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -25,7 +25,7 @@ fn ownership_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_lens_ownership_resource_dependency: v2.std.verification.TestClaim = EqualsClaim {
+data claim_lens_ownership_resource_dependency: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_ownership resource dependency witness passes through run_test_claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ownership_claim_input(ok: ownership_resource_dependency_claim_passes),

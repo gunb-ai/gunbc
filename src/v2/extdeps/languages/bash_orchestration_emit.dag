@@ -3,7 +3,7 @@ module v2.extdeps.languages.bash_orchestration_emit
 
 fn bash_orchestration_emit_registry_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       bash_named_edge(
         name: orch_construct_run_rawline,
@@ -81,7 +81,7 @@ fn bash_orchestration_emit_registry_node() -> Node {
 fn bash_orchestration_medium_authority() -> v2.std.compilers.target_model.TargetModel {
   target_model_make_with_emit_transforms(
     bundle: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         bash_named_edge(
           name: ^target_model_edge_orchestration_emit,

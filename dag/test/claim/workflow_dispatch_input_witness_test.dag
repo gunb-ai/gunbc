@@ -47,7 +47,7 @@ fn value_is_expected_input(v: extdeps.languages.yaml.types.YamlValue) -> Bool {
 }
 
 test fn workflow_dispatch_nonempty_inputs_are_realized_not_dropped() -> Bool {
-  let entry = workflow_trigger_entry(trigger: WorkflowDispatch {
+  let entry = workflow_trigger_entry(trigger: extdeps.github.actions.WorkflowDispatch {
     inputs: [extdeps.github.actions.DispatchInput {
       name: "expected_healed_sha",
       description: Present { value: "immutable subject" },
@@ -60,7 +60,7 @@ test fn workflow_dispatch_nonempty_inputs_are_realized_not_dropped() -> Bool {
 }
 
 test fn workflow_dispatch_empty_inputs_preserve_null_projection() -> Bool {
-  match workflow_trigger_entry(trigger: WorkflowDispatch { inputs: [] }).value {
+  match workflow_trigger_entry(trigger: extdeps.github.actions.WorkflowDispatch { inputs: [] }).value {
     YamlNull => true
     YamlBool { value: _ } => false
     YamlInt { lexeme: _ } => false

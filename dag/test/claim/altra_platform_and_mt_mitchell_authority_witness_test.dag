@@ -97,7 +97,7 @@ test fn w_altra_attachment_facts_absent_or_drawn_are_classified_not_missing() ->
   altra_platform_keepout_availability == AbsentFromDocument
     && altra_platform_coordinate_origin_availability == AbsentFromDocument
     && altra_platform_ddr_routing_rule_availability == AbsentFromDocument
-    && altra_platform_orientation_datum_availability == StatedOnlyInsideFigure { figure: "Figure 3" }
+    && altra_platform_orientation_datum_availability == extdeps.cpu.ampere_altra_platform_hw_design.platform.StatedOnlyInsideFigure { figure: "Figure 3" }
     && !pad_array_is_positionable_from_running_text()
 }
 
@@ -194,8 +194,8 @@ test fn w_mt_mitchell_board_dimensions_are_exact_in_micrometres() -> Bool {
 // --- Carriage derives from public availability, and only from that ---
 
 test fn w_both_public_documents_are_carriable_by_different_kinds_of_status() -> Bool {
-  altra_platform_hw_design_publication_status == PubliclyPublishedWithRestrictiveMarking { marking: "Ampere Computing Proprietary" }
-    && mt_mitchell_publication_status == PubliclyPublishedUnderOpenLicense { license: "Open Web Foundation Modified Final Specification Agreement (OWFa 1.0)" }
+  altra_platform_hw_design_publication_status == extdeps.publication.PubliclyPublishedWithRestrictiveMarking { marking: "Ampere Computing Proprietary" }
+    && mt_mitchell_publication_status == extdeps.publication.PubliclyPublishedUnderOpenLicense { license: "Open Web Foundation Modified Final Specification Agreement (OWFa 1.0)" }
     && carriage_permits_facts(carriage: upstream_fact_carriage(status: altra_platform_hw_design_publication_status))
     && carriage_permits_facts(carriage: upstream_fact_carriage(status: mt_mitchell_publication_status))
     && altra_platform_hw_design_publication_status != mt_mitchell_publication_status
@@ -237,8 +237,8 @@ test fn w_red_access_gated_collateral_is_barred_on_the_same_axis() -> Bool {
   let status = ampere_customer_connect_collateral_status
   !publication_status_is_publicly_published(status: status)
     && !carriage_permits_facts(carriage: upstream_fact_carriage(status: status))
-    && (upstream_fact_carriage(status: status) == FactsBarredDocumentNotPublic { gate: "Ampere Customer Connect, NDA registration required" })
-    && (upstream_fact_carriage(status: PubliclyPublishedWithRestrictiveMarking { marking: "any marking at all" }) == FactsMayBeCarried)
+    && (upstream_fact_carriage(status: status) == gunbc.upstream_document_carriage.FactsBarredDocumentNotPublic { gate: "Ampere Customer Connect, NDA registration required" })
+    && (upstream_fact_carriage(status: extdeps.publication.PubliclyPublishedWithRestrictiveMarking { marking: "any marking at all" }) == FactsMayBeCarried)
 }
 
 test fn w_red_a_mechanical_title_would_be_detected_in_the_bibliography() -> Bool {

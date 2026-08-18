@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn wire_probe_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^emit_host_wire_probe } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^emit_host_wire_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -26,19 +26,19 @@ fn wire_fixed_main_row(main_text: String) -> v2.std.host_transport.EmitHostRunti
       workspace: [
         v2.std.host_transport.WorkspaceFile {
           path: "Cargo.toml",
-          content: FixedText { text: rust_emit_host_cargo_manifest }
+          content: v2.std.host_transport.FixedText { text: rust_emit_host_cargo_manifest }
         },
         v2.std.host_transport.WorkspaceFile {
           path: "src/main.rs",
-          content: FixedText { text: main_text }
+          content: v2.std.host_transport.FixedText { text: main_text }
         }
       ],
       build: [],
       run: v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       },
-      runtime_value_codec: FixedWidthBytes { width: 5 }
+      runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
     },
     runtime_primitive_type: wire_probe_node()
   }
@@ -51,15 +51,15 @@ fn wire_escaping_row() -> v2.std.host_transport.EmitHostRuntimeRow {
       workspace: [
         v2.std.host_transport.WorkspaceFile {
           path: "../escape.rs",
-          content: FixedText { text: "fn main() {}" }
+          content: v2.std.host_transport.FixedText { text: "fn main() {}" }
         }
       ],
       build: [],
       run: v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cargo" },
-        args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cargo" },
+        args: [v2.std.host_transport.LiteralArg { text: "run" }, v2.std.host_transport.LiteralArg { text: "--quiet" }]
       },
-      runtime_value_codec: FixedWidthBytes { width: 5 }
+      runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
     },
     runtime_primitive_type: wire_probe_node()
   }
@@ -134,7 +134,7 @@ test fn emit_host_transport_byte_width_mismatch_refuses_holds() -> Bool {
 }
 
 test fn emit_host_row_bound_executable_identity_holds() -> Bool {
-  match emit_host_process_program_name(program: HostToolProgram { executable: "go" }) {
+  match emit_host_process_program_name(program: v2.std.host_transport.HostToolProgram { executable: "go" }) {
     Accepted { value: name, diagnostics: None } => name == "go"
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
@@ -142,7 +142,7 @@ test fn emit_host_row_bound_executable_identity_holds() -> Bool {
 }
 
 test fn emit_host_row_bound_executable_identity_discriminates_holds() -> Bool {
-  match emit_host_process_program_name(program: HostToolProgram { executable: "python3" }) {
+  match emit_host_process_program_name(program: v2.std.host_transport.HostToolProgram { executable: "python3" }) {
     Accepted { value: name, diagnostics: None } => name == "python3"
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false

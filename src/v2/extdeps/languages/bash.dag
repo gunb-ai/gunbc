@@ -3,7 +3,7 @@ module v2.extdeps.languages.bash
 
 fn bash_word_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -11,11 +11,11 @@ fn bash_word_atom(id: v2.std.node.Symbol) -> Node {
 
 fn bash_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_flat_map(xs: tokens, f: fn(token) {
       match token {
         BoundToken { binding: binding, token_class: _ } =>
-          Cons {
+          std.algebra.Cons {
             head: v2.std.node.Edge { label: Positional, target: bash_word_atom(id: binding) },
             tail: Empty
           }
@@ -68,13 +68,13 @@ fn bash_lhs_exact_relation_row_witness(
         productions: productions,
         emitted: emitted
       )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn bash_empty_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -94,14 +94,14 @@ fn bash_relation_translation_rules_witness(
     Holds { value: row } =>
       Holds {
         value: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             bash_named_edge(name: rule_name, target: row)
           ],
           occurrence_id: SyntheticOccurrence
         }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -231,8 +231,8 @@ fn bash_embedded_quote_translation_rules_node() -> Node {
 
 fn bash_bound_words_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_ROOT },
-    BoundToken { token_class: ^bash_token_lit_spaced, binding: ^bash_binding_lit_ROOT }
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_ROOT },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_lit_spaced, binding: ^bash_binding_lit_ROOT }
   ]
 }
 
@@ -244,7 +244,7 @@ data bash_bound_words_source_text: String = "\"$ROOT\" 'ROOT'"
 
 fn bash_embedded_quote_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken {
+    v2.std.compilers.target_model.BoundToken {
       token_class: ^bash_token_lit,
       binding: ^bash_binding_lit_a_quote_b
     }
@@ -678,7 +678,7 @@ fn bash_serialize_source_node(
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       bash_named_edge(
         name: ^serialize_source_field_source_text,
@@ -702,7 +702,7 @@ fn bash_serialize_source_node(
 
 fn bash_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       bash_named_edge(
         name: ^target_model_edge_translation_rules,
@@ -957,9 +957,9 @@ fn bash_or_else_with_redir_target_model() -> v2.std.compilers.target_model.Targe
 
 fn emit_directive_bash_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_word_echo },
-    BoundToken { token_class: ^bash_token_lit_spaced, binding: ^emit_directive_message },
-    FixedToken { token_class: ^bash_token_redir_stdout_to_stderr }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_word_echo },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_lit_spaced, binding: ^emit_directive_message },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_redir_stdout_to_stderr }
   ]
 }
 
@@ -1005,8 +1005,8 @@ fn emit_directive_bash_target_model(d: v2.std.diagnostic.EmitDirective) -> v2.st
 
 fn emit_directive_bash_to_stdout_wrong_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_word_echo },
-    BoundToken { token_class: ^bash_token_lit_spaced, binding: ^emit_directive_message }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_word_echo },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_lit_spaced, binding: ^emit_directive_message }
   ]
 }
 
@@ -1119,9 +1119,9 @@ fn retry_eagain_bash_lex() -> v2.std.compilers.lexing.LexRules {
 
 fn orch_seq2_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_seq2_left },
-    FixedToken { token_class: ^bash_token_orch_seq_newline },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_seq2_right }
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_seq2_left },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_orch_seq_newline },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_seq2_right }
   ]
 }
 
@@ -1169,27 +1169,27 @@ fn orch_seq2_target_model(left: String, right: String) -> v2.std.compilers.targe
 
 fn orch_retry_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_retry_seg_a },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ1 },
-    FixedToken { token_class: ^bash_token_retry_seg_b },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_pattern1 },
-    FixedToken { token_class: ^bash_token_retry_seg_c },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_warn1 },
-    FixedToken { token_class: ^bash_token_retry_seg_d },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ2 },
-    FixedToken { token_class: ^bash_token_retry_seg_e },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_pattern2 },
-    FixedToken { token_class: ^bash_token_retry_seg_f },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_warn2 },
-    FixedToken { token_class: ^bash_token_retry_seg_g },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ3 },
-    FixedToken { token_class: ^bash_token_retry_seg_h1 },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_exhausted },
-    FixedToken { token_class: ^bash_token_retry_seg_h2 },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_exhausted },
-    FixedToken { token_class: ^bash_token_retry_seg_h3 },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_exhausted },
-    FixedToken { token_class: ^bash_token_retry_seg_h4 }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_a },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ1 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_b },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_pattern1 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_c },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_warn1 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_d },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ2 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_e },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_pattern2 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_f },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_warn2 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_g },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ3 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_h1 },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_exhausted },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_h2 },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_exhausted },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_h3 },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_exhausted },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_h4 }
   ]
 }
 
@@ -1319,17 +1319,17 @@ fn orch_retry_1level_seg_f() -> String {
 
 fn orch_retry_1level_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_retry_seg_a },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_1level_occ1 },
-    FixedToken { token_class: ^bash_token_retry_seg_b },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_1level_pattern1 },
-    FixedToken { token_class: ^bash_token_retry_seg_c },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_1level_warn1 },
-    FixedToken { token_class: ^bash_token_retry_1level_seg_d },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_1level_occ2 },
-    FixedToken { token_class: ^bash_token_retry_1level_seg_e },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_1level_exhausted },
-    FixedToken { token_class: ^bash_token_retry_1level_seg_f }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_a },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_1level_occ1 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_b },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_1level_pattern1 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_seg_c },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_1level_warn1 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_1level_seg_d },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_1level_occ2 },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_1level_seg_e },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_1level_exhausted },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_1level_seg_f }
   ]
 }
 
@@ -1431,9 +1431,9 @@ fn orch_retry_escalation_final_seg_or() -> String {
 
 fn orch_retry_escalation_final_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_final_occ },
-    FixedToken { token_class: ^bash_token_retry_escalation_final_or },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_final_exhausted }
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_final_occ },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_escalation_final_or },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_final_exhausted }
   ]
 }
 
@@ -1512,18 +1512,18 @@ fn orch_retry_escalation_step_seg_g() -> String {
 
 fn orch_retry_escalation_step_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_a },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_occ },
-    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_b },
-    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_c },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_pattern },
-    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_d },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_warn },
-    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_e },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_inner },
-    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_f },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_exhausted },
-    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_g }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_escalation_step_seg_a },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_occ },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_escalation_step_seg_b },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_escalation_step_seg_c },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_pattern },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_escalation_step_seg_d },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_warn },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_escalation_step_seg_e },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_inner },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_escalation_step_seg_f },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_exhausted },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_retry_escalation_step_seg_g }
   ]
 }
 
@@ -1623,7 +1623,7 @@ fn orch_retry_escalation_step_target_model(
 
 fn bash_word_pass_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_pass_spelling }
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_pass_spelling }
   ]
 }
 
@@ -1664,9 +1664,9 @@ fn bash_word_pass_target_model(spelling: String) -> v2.std.compilers.target_mode
 
 fn bash_word_cmdsubst_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_cmdsubst_open },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_cmdsubst_body },
-    FixedToken { token_class: ^bash_token_cmdsubst_close }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_cmdsubst_open },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_cmdsubst_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_cmdsubst_close }
   ]
 }
 
@@ -1712,9 +1712,9 @@ fn bash_word_cmdsubst_target_model(body: String) -> v2.std.compilers.target_mode
 
 fn bash_stmt_subshell_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_subshell_open },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_subshell_body },
-    FixedToken { token_class: ^bash_token_subshell_close }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_subshell_open },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_subshell_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_subshell_close }
   ]
 }
 
@@ -1760,9 +1760,9 @@ fn bash_stmt_subshell_target_model(body: String) -> v2.std.compilers.target_mode
 
 fn bash_stmt_brace_group_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_brace_group_open },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_brace_group_body },
-    FixedToken { token_class: ^bash_token_brace_group_close }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_brace_group_open },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_brace_group_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_brace_group_close }
   ]
 }
 
@@ -1808,8 +1808,8 @@ fn bash_stmt_brace_group_target_model(body: String) -> v2.std.compilers.target_m
 
 fn bash_stmt_exit_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_stmt_exit_kw },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_exit_code }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_stmt_exit_kw },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_exit_code }
   ]
 }
 
@@ -1854,9 +1854,9 @@ fn bash_stmt_exit_target_model(code: String) -> v2.std.compilers.target_model.Ta
 
 fn bash_stmt_assign_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_assign_name },
-    FixedToken { token_class: ^bash_token_assign_eq },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_assign_value }
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_assign_name },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_assign_eq },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_assign_value }
   ]
 }
 
@@ -1906,11 +1906,11 @@ fn bash_stmt_assign_target_model(name: String, value: String) -> v2.std.compiler
 
 fn bash_stmt_andor_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_andor_left },
-    FixedToken { token_class: ^bash_token_andor_sp1 },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_andor_op },
-    FixedToken { token_class: ^bash_token_andor_sp2 },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_andor_right }
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_andor_left },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_andor_sp1 },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_andor_op },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_andor_sp2 },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_andor_right }
   ]
 }
 
@@ -1962,9 +1962,9 @@ fn bash_stmt_andor_target_model(left: String, op: String, right: String) -> v2.s
 
 fn bash_stmt_pipe_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_pipe_left },
-    FixedToken { token_class: ^bash_token_pipe_sep },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_pipe_right }
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_pipe_left },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_pipe_sep },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_pipe_right }
   ]
 }
 
@@ -2012,9 +2012,9 @@ fn bash_stmt_pipe_target_model(left: String, right: String) -> v2.std.compilers.
 
 fn bash_stmt_with_redir_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_with_redir_stmt },
-    FixedToken { token_class: ^bash_token_with_redir_sp },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_with_redir_redir }
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_with_redir_stmt },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_with_redir_sp },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_with_redir_redir }
   ]
 }
 
@@ -2062,11 +2062,11 @@ fn bash_stmt_with_redir_target_model(stmt: String, redir: String) -> v2.std.comp
 
 fn bash_stmt_env_prefixed_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_name },
-    FixedToken { token_class: ^bash_token_envp_eq },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_value },
-    FixedToken { token_class: ^bash_token_envp_sp },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_command }
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_name },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_envp_eq },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_value },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_envp_sp },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_command }
   ]
 }
 
@@ -2118,10 +2118,10 @@ fn bash_stmt_env_prefixed_target_model(name: String, value: String, command: Str
 
 fn bash_stmt_env_unset_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_env_unset_prefix },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_unset_name },
-    FixedToken { token_class: ^bash_token_env_unset_sp },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_unset_command }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_env_unset_prefix },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_unset_name },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_env_unset_sp },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_unset_command }
   ]
 }
 
@@ -2170,11 +2170,11 @@ fn bash_stmt_env_unset_target_model(name: String, command: String) -> v2.std.com
 
 fn bash_stmt_if_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_if_kw },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
-    FixedToken { token_class: ^bash_token_if_then },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_body },
-    FixedToken { token_class: ^bash_token_if_fi }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_kw },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_then },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_fi }
   ]
 }
 
@@ -2233,11 +2233,11 @@ data bash_stmt_if_block_note: String = "Same If semantics as bash_stmt_if_tokens
 
 fn bash_stmt_if_block_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_if_kw },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
-    FixedToken { token_class: ^bash_token_if_then_block },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_body },
-    FixedToken { token_class: ^bash_token_if_fi_block }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_kw },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_then_block },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_if_fi_block }
   ]
 }
 
@@ -2287,14 +2287,14 @@ fn bash_stmt_if_block_target_model(cond: String, body: String) -> Outcome<v2.std
 
 fn bash_stmt_heredoc_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_heredoc_kw },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_path },
-    FixedToken { token_class: ^bash_token_heredoc_dlt_open },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_delim_open },
-    FixedToken { token_class: ^bash_token_heredoc_nl1 },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_body },
-    FixedToken { token_class: ^bash_token_heredoc_nl2 },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_delim_close }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_heredoc_kw },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_path },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_heredoc_dlt_open },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_delim_open },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_heredoc_nl1 },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_body },
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_heredoc_nl2 },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_delim_close }
   ]
 }
 
@@ -2352,8 +2352,8 @@ fn bash_stmt_heredoc_target_model(path: String, delimiter: String, body: String)
 
 fn bash_program_set_e_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_program_set_e_kw },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_program_body }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_program_set_e_kw },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_program_body }
   ]
 }
 
@@ -2399,8 +2399,8 @@ fn bash_program_set_e_target_model(body: String) -> v2.std.compilers.target_mode
 
 fn bash_stmt_negation_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_negation_kw },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_negation_inner }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_negation_kw },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_negation_inner }
   ]
 }
 
@@ -2605,8 +2605,8 @@ fn bash_redir_stdout_to_stderr_target_model() -> v2.std.compilers.target_model.T
 
 fn bash_redir_to_file_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^bash_token_redir_to_file_prefix },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_redir_to_file_path }
+    v2.std.compilers.target_model.FixedToken { token_class: ^bash_token_redir_to_file_prefix },
+    v2.std.compilers.target_model.BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_redir_to_file_path }
   ]
 }
 

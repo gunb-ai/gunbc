@@ -16,7 +16,7 @@ fn complete_discovery(
   module_path: String,
   declaration_names: List<String>,
 ) -> gunbc.commit_workflow.EntryDeclarationDiscovery {
-  DiscoveryComplete {
+  gunbc.commit_workflow.DiscoveryComplete {
     entry: entry,
     module_path: module_path as std.types.NonEmptyStr,
     declarations: map(
@@ -30,7 +30,7 @@ fn synthetic_witness_check(
   entry: String,
   check_fns: List<String>,
 ) -> gunbc.commit_workflow.CommitCheckKind {
-  CommitWitnessClaim {
+  gunbc.commit_workflow.CommitWitnessClaim {
     entry: entry,
     check_fns: check_fns,
     kind: CorpusWitnessKind,
@@ -327,7 +327,7 @@ test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invari
 }
 
 test fn commit_check_demand_gate_and_fmt_rows_stay_typed_and_empty() -> Bool {
-  let gate = CommitSpecGate { gate: EmitHostGate }
+  let gate = gunbc.commit_workflow.CommitSpecGate { gate: EmitHostGate }
   let fmt = CommitCargoFmtCheck
   let roster = [
     synthetic_enrollment(check: gate),
@@ -513,7 +513,7 @@ test fn commit_check_demand_incomplete_discovery_stays_incomplete() -> Bool {
   match project_enrollment_witness_demands_unchecked(
     roster: [synthetic_enrollment(check: check)],
     discoveries: [
-      DiscoveryIncomplete {
+      gunbc.commit_workflow.DiscoveryIncomplete {
         entry: "dag/test/claim/incomplete_test.dag",
         cause: "source scan refused" as std.types.NonEmptyStr
       }
@@ -547,7 +547,7 @@ test fn commit_check_demand_overlapping_output_membership_is_ambiguous() -> Bool
     entry: "dag/test/claim/overlap_test.dag",
     check_fns: ["same_holds"]
   )
-  let second = CommitWitnessClaim {
+  let second = gunbc.commit_workflow.CommitWitnessClaim {
     entry: "dag/test/claim/overlap_test.dag",
     check_fns: ["same_holds"],
     kind: ExecutionWitnessKind,
@@ -575,7 +575,7 @@ test fn commit_check_demand_overlapping_output_membership_is_ambiguous() -> Bool
 }
 
 test fn commit_check_demand_roster_and_expansion_set_equality_has_teeth() -> Bool {
-  let gate = CommitSpecGate { gate: EmitHostGate }
+  let gate = gunbc.commit_workflow.CommitSpecGate { gate: EmitHostGate }
   let fmt = CommitCargoFmtCheck
   let roster = [
     synthetic_enrollment(check: gate),
@@ -609,13 +609,13 @@ test fn commit_check_demand_rejects_non_whole_discovery() -> Bool {
   let wrong_field = std.decl_ref.DeclarationRef {
     module_path: "test.claim.wrong_identity" as std.types.NonEmptyStr,
     decl_name: "holds" as std.types.NonEmptyStr,
-    field: NamedField { field_name: "body" as std.types.NonEmptyStr }
+    field: std.decl_ref.NamedField { field_name: "body" as std.types.NonEmptyStr }
   }
   declaration_ref_lists_eq(left: [wrong_field], right: [wrong_field])
     && match project_enrollment_witness_demands_unchecked(
     roster: [synthetic_enrollment(check: check)],
     discoveries: [
-      DiscoveryComplete {
+      gunbc.commit_workflow.DiscoveryComplete {
         entry: "dag/test/claim/wrong_identity_test.dag",
         module_path: "test.claim.wrong_identity" as std.types.NonEmptyStr,
         declarations: [wrong_field]
@@ -642,7 +642,7 @@ test fn commit_check_demand_rejects_wrong_module_discovery() -> Bool {
   match project_enrollment_witness_demands_unchecked(
     roster: [synthetic_enrollment(check: check)],
     discoveries: [
-      DiscoveryComplete {
+      gunbc.commit_workflow.DiscoveryComplete {
         entry: "dag/test/claim/wrong_module_test.dag",
         module_path: "test.claim.supplied_module" as std.types.NonEmptyStr,
         declarations: [wrong_module]

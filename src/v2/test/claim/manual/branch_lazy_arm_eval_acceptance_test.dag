@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn lazy_arm_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     occurrence_id: SyntheticOccurrence,
     children: []
   }
@@ -25,14 +25,14 @@ fn lazy_arm_i64() -> Node {
 
 fn lazy_arm_bool_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
   if is_true {
-    RuntimePrimitive {
+    v2.std.runtime.RuntimePrimitive {
       value: v2.std.runtime.RuntimePrimitiveValue {
         primitive_type: lazy_arm_bool_type(),
         bytes: [lazy_arm_byte()]
       }
     }
   } else {
-    RuntimePrimitive {
+    v2.std.runtime.RuntimePrimitive {
       value: v2.std.runtime.RuntimePrimitiveValue {
         primitive_type: lazy_arm_bool_type(),
         bytes: Empty
@@ -42,7 +42,7 @@ fn lazy_arm_bool_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
 }
 
 fn lazy_arm_one_value() -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: lazy_arm_i64(),
       bytes: [lazy_arm_byte()]
@@ -51,7 +51,7 @@ fn lazy_arm_one_value() -> v2.std.runtime.RuntimeValue {
 }
 
 fn lazy_arm_two_value() -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: lazy_arm_i64(),
       bytes: [lazy_arm_byte(), lazy_arm_byte()]
@@ -72,7 +72,7 @@ fn lazy_arm_int_literal_from_lexeme(lexeme: String) -> Node {
     Accepted { value: n, diagnostics: _ } => n
     Rejected { diagnostics: _ } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: ^lazy_arm_lit_lexeme_invalid } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lazy_arm_lit_lexeme_invalid } },
         occurrence_id: SyntheticOccurrence,
         children: []
       }
@@ -84,13 +84,13 @@ fn lazy_arm_lit_one() -> Node {
 }
 
 data lazy_arm_divergent_value_node: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: Value },
   occurrence_id: SyntheticOccurrence,
   children: []
 }
 
 data lazy_arm_counted_value_node: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: Value },
   occurrence_id: SyntheticOccurrence,
   children: []
 }
@@ -142,7 +142,7 @@ fn lazy_arm_touch_from_env(env: v2.std.runtime.EvaluationEnvironment) -> Int {
 
 fn lazy_arm_int_bytes(n: Int) -> v2.std.runtime.RuntimeValue {
   if n == 0 {
-    RuntimePrimitive {
+    v2.std.runtime.RuntimePrimitive {
       value: v2.std.runtime.RuntimePrimitiveValue {
         primitive_type: lazy_arm_i64(),
         bytes: Empty
@@ -161,7 +161,7 @@ fn lazy_arm_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^lazy_arm_runtime_rejected,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -326,7 +326,7 @@ fn lazy_arm_bind_node(
   body: Node
 ) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Bind },
+    kind: v2.std.node.ComputationNode { behavior: Bind },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: key_decl },
@@ -350,7 +350,7 @@ fn lazy_arm_branch_body(
   else_arm: Node
 ) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Branch },
+    kind: v2.std.node.ComputationNode { behavior: Branch },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: condition },
@@ -362,7 +362,7 @@ fn lazy_arm_branch_body(
 
 fn lazy_arm_pick_call(callee: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [v2.std.node.Edge { label: Positional, target: callee }]
   }
@@ -370,13 +370,13 @@ fn lazy_arm_pick_call(callee: Node) -> Node {
 
 fn lazy_arm_arrow_with_body(body: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           occurrence_id: SyntheticOccurrence,
           children: []
         }
@@ -390,7 +390,7 @@ fn lazy_arm_arrow_with_body(body: Node) -> Node {
 
 fn lazy_arm_tree_root(call: Node, expected: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Named { name: ^lazy_arm_actual }, target: call },
@@ -425,7 +425,7 @@ fn lazy_arm_run_branch(
   outcome_accepted(
     value: run_test_claim(
       subject: v2.compiler.eval.TestClaimEvalSubject {
-        claim: CompilesClaim {
+        claim: v2.std.verification.CompilesClaim {
           label: "manual/branch_lazy_arm: demand-driven Branch eval acceptance",
           anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
           input: call,

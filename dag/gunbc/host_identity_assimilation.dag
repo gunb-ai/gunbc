@@ -15,7 +15,7 @@ fn host_identity_assimilation_target_srv1(transport: gunbc.host_effect.HostEffec
   HostIdentityAssimilationTarget {
     fleet_slot: operator_host_srv1,
     target_host: srv1_host,
-    control_plane: HostOs { node: srv1_host },
+    control_plane: gunbc.host_effect.HostOs { node: srv1_host },
     transport: transport,
     access: host_identity_srv1_access,
     persisted_base: gunbc_srv1_deployed_intent_v0_persisted,
@@ -27,7 +27,7 @@ fn host_identity_assimilation_target_srv2(transport: gunbc.host_effect.HostEffec
   HostIdentityAssimilationTarget {
     fleet_slot: operator_host_srv2,
     target_host: srv2_host,
-    control_plane: HostOs { node: srv2_host },
+    control_plane: gunbc.host_effect.HostOs { node: srv2_host },
     transport: transport,
     access: host_identity_srv2_access,
     persisted_base: gunbc_srv2_deployed_intent_v0_persisted,

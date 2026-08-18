@@ -184,7 +184,7 @@ test fn project_navigable_uri_refuses_unencodable_nameddest_value() -> Bool {
     PdfProfileParameterWireRefused { parameter: p, cause: cause } =>
       match navigable_uri_projection_from_sequence_wire(
         base: witness_pdf_base_uri,
-        sequence_wire: PdfOpenParameterSequenceWireRefused { parameter: p, cause: cause },
+        sequence_wire: extdeps.standards.rfc_8118.PdfOpenParameterSequenceWireRefused { parameter: p, cause: cause },
       ) {
         NavigableUriRefused { cause: PdfOpenParameterPercentEncodeRefused { parameter: _, cause: _ } } => true
         _ => false

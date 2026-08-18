@@ -58,7 +58,7 @@ fn outcome_is_rejected(o: Outcome<Node>) -> Bool {
 
 fn collect_atom_identities(n: Node, acc: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   let acc1 = match node_atom_identity_optional(node: n) {
-    Present { value: s } => Cons { head: s, tail: acc }
+    Present { value: s } => std.algebra.Cons { head: s, tail: acc }
     Absent => acc
   }
   fold(n.children, init: acc1, f: fn(a, e) {

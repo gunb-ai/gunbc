@@ -37,12 +37,12 @@ fn monolith_control_reds_with_same_diagnostic_class(receipt: CrossShardSeamRecei
 
 fn cross_shard_seam_composed_verdict(receipt: CrossShardSeamReceipt) -> tools.dag_compile_clean_partition.CompileCleanShardVerdict {
   let verdict_y = if shard_y_reds(receipt: receipt) {
-    ShardFailed { entry_path: cross_shard_seam_importee_entry_path }
+    tools.dag_compile_clean_partition.ShardFailed { entry_path: cross_shard_seam_importee_entry_path }
   } else {
     ShardClean
   }
   let verdict_x = if shard_x_reds_with_seam_attribution(receipt: receipt) {
-    ShardFailed { entry_path: cross_shard_seam_importer_entry_path }
+    tools.dag_compile_clean_partition.ShardFailed { entry_path: cross_shard_seam_importer_entry_path }
   } else {
     ShardClean
   }

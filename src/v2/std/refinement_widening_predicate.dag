@@ -7,10 +7,10 @@ fn refinement_widening_predicate_algebra(
   refinement_widening_predicate_algebra_for_value_sets(
     source: source,
     candidate: candidate,
-    source_value_set: v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^refinement_value_set_unknown } }, children: [],
+    source_value_set: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^refinement_value_set_unknown } }, children: [],
  occurrence_id: SyntheticOccurrence
 },
-    candidate_value_set: v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^refinement_value_set_unknown } }, children: [],
+    candidate_value_set: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^refinement_value_set_unknown } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   )
@@ -22,7 +22,7 @@ fn refinement_widening_predicate_algebra_for_value_sets(
   candidate_value_set: Node,
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Named { name: ^refinement_widening_field_source },

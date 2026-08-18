@@ -155,7 +155,7 @@ data linger_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = Pro
 // The one that must NOT be used as evidence, kept as a row precisely so its unsuitability is
 // visible rather than rediscovered: SSH login starts a user manager through logind, so a probe that
 // observes a running manager over SSH may have started it.
-data user_manager_over_ssh_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = ProbeMayEstablish {
+data user_manager_over_ssh_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = gunbc.readback_independence.ProbeMayEstablish {
   mechanism: "an SSH login starts a systemd user manager via pam_systemd/logind, so observing a running manager through an SSH probe may have created it" as std.types.NonEmptyStr
 }
 

@@ -14,7 +14,7 @@ fn probe_subject() -> gunbc.host_realization.HostRealization {
         field: WholeDeclaration
       }
     },
-    platform_revision: RefReducedByPolicy { reported: "Mac OS X 10_15_7" },
+    platform_revision: gunbc.host_realization.RefReducedByPolicy { reported: "Mac OS X 10_15_7" },
     device_identity: RefNotProbed,
     role: PrimaryInstrument,
     container_kind: BrowserDocument,
@@ -23,7 +23,7 @@ fn probe_subject() -> gunbc.host_realization.HostRealization {
       decl_name: "google_chrome",
       field: WholeDeclaration
     },
-    container_product_build: RefReducedByPolicy { reported: "150.0.0.0" },
+    container_product_build: gunbc.host_realization.RefReducedByPolicy { reported: "150.0.0.0" },
     runtime_engine: RefResolved {
       declaration: std.decl_ref.DeclarationRef {
         module_path: "extdeps.browser.chromium",
@@ -93,7 +93,7 @@ fn observation_with_stream(s: gunbc.web_motion_binding.MotionStreamState) -> gun
     accelerometer_policy: PolicyAllowsFeature,
     gyroscope_policy: PolicyAllowsFeature,
     permission_method: PermissionMethodExposed,
-    permission: PermissionObservedAs { state: PermissionGranted },
+    permission: gunbc.web_motion_binding.PermissionObservedAs { state: PermissionGranted },
     stream: s,
     observation_window_ms: 4000,
   }
@@ -109,10 +109,10 @@ fn witness_only_named_obstacles_are_unreachable() -> Bool {
   reachability_of(s: StreamInterfaceNotExposed) == "unreachable"
     && reachability_of(s: StreamPolicyBlocked) == "unreachable"
     && reachability_of(s: StreamPermissionDenied) == "unreachable"
-    && reachability_of(s: StreamConnectionRefused { error_name: "NotReadableError" }) == "unresolved"
+    && reachability_of(s: gunbc.web_motion_binding.StreamConnectionRefused { error_name: "NotReadableError" }) == "unresolved"
     && reachability_of(s: StreamActivatedNoReading) == "unresolved"
     && reachability_of(s: StreamNoEventsObserved) == "unresolved"
-    && reachability_of(s: StreamHollowEventsObserved { count: 12 }) == "unresolved"
+    && reachability_of(s: gunbc.web_motion_binding.StreamHollowEventsObserved { count: 12 }) == "unresolved"
     && reachability_of(s: StreamUnobserved) == "unresolved"
 }
 
@@ -121,23 +121,23 @@ fn witness_only_an_unexposed_interface_reaches_absent() -> Bool {
       "absent"
     && sensor_availability_key(a: project_sensor_availability(o: observation_with_stream(s: StreamPolicyBlocked))) ==
       "availability-unknown"
-    && sensor_availability_key(a: project_sensor_availability(o: observation_with_stream(s: StreamConnectionRefused { error_name: "NotReadableError" }))) ==
+    && sensor_availability_key(a: project_sensor_availability(o: observation_with_stream(s: gunbc.web_motion_binding.StreamConnectionRefused { error_name: "NotReadableError" }))) ==
       "availability-unknown"
 }
 
 fn witness_hollow_events_are_distinct_from_silence() -> Bool {
-  stream_state_key(s: StreamHollowEventsObserved { count: 12 }) !=
+  stream_state_key(s: gunbc.web_motion_binding.StreamHollowEventsObserved { count: 12 }) !=
       stream_state_key(s: StreamNoEventsObserved)
-    && !stream_delivered_a_value(s: StreamHollowEventsObserved { count: 12 })
+    && !stream_delivered_a_value(s: gunbc.web_motion_binding.StreamHollowEventsObserved { count: 12 })
     && !stream_delivered_a_value(s: StreamNoEventsObserved)
-    && stream_delivered_a_value(s: StreamReadingsObserved { count: 1, peak_milli_m_per_s2: 200, sample_interval_ms: 16 })
+    && stream_delivered_a_value(s: gunbc.web_motion_binding.StreamReadingsObserved { count: 1, peak_milli_m_per_s2: 200, sample_interval_ms: 16 })
 }
 
 fn witness_a_null_axis_is_not_a_zero_axis() -> Bool {
   !axis_has_value(r: AxisNull)
-    && axis_has_value(r: AxisValue { milli_units: 0 })
+    && axis_has_value(r: extdeps.w3c.device_orientation_and_motion.AxisValue { milli_units: 0 })
     && !acceleration_carries_any_value(a: extdeps.w3c.device_orientation_and_motion.DeviceMotionAcceleration { x: AxisNull, y: AxisNull, z: AxisNull })
-    && acceleration_carries_any_value(a: extdeps.w3c.device_orientation_and_motion.DeviceMotionAcceleration { x: AxisNull, y: AxisValue { milli_units: 0 }, z: AxisNull })
+    && acceleration_carries_any_value(a: extdeps.w3c.device_orientation_and_motion.DeviceMotionAcceleration { x: AxisNull, y: extdeps.w3c.device_orientation_and_motion.AxisValue { milli_units: 0 }, z: AxisNull })
 }
 
 fn witness_hollow_emission_is_advisory_and_dispatch_needs_both_permissions() -> Bool {
@@ -215,7 +215,7 @@ fn witness_the_web_stream_projects_without_inventing_facts() -> Bool {
     && binding_stream_key(s: project_binding_stream(o: observation_with_stream(s: StreamInterfaceNotExposed))) ==
       "interface-unavailable"
     && binding_stream_key(s: project_binding_stream(o: observation_with_stream(
-         s: StreamReadingsObserved { count: 42, peak_milli_m_per_s2: 3100, sample_interval_ms: 16 }))) ==
+         s: gunbc.web_motion_binding.StreamReadingsObserved { count: 42, peak_milli_m_per_s2: 3100, sample_interval_ms: 16 }))) ==
       "samples-observed"
 }
 
@@ -234,14 +234,14 @@ data web_cannot_self_qualify_note: String = "The RED that keeps readability from
 
 fn witness_red_no_web_arm_can_project_to_a_qualified_tap() -> Bool {
   binding_stream_key(s: project_binding_stream(o: observation_with_stream(
-      s: StreamReadingsObserved { count: 9999, peak_milli_m_per_s2: 99999, sample_interval_ms: 1 }))) !=
+      s: gunbc.web_motion_binding.StreamReadingsObserved { count: 9999, peak_milli_m_per_s2: 99999, sample_interval_ms: 1 }))) !=
     "tap-qualified"
 }
 
 data contradiction_note: String = "An observation can be complete and still be impossible, and the earlier derivation read only the stream. Readings under an insecure context, a blocked policy, or a denied permission are each refused by the cited contracts, so they are located contradictions rather than verdicts — named separately because their remedies differ."
 
 fn contradicted_observation(c: gunbc.web_motion_binding.ObservationContradiction) -> gunbc.web_motion_binding.WebMotionObservation {
-  let base = observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })
+  let base = observation_with_stream(s: gunbc.web_motion_binding.StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })
   match c {
     ReadingsUnderInsecureContext => gunbc.web_motion_binding.WebMotionObservation {
       host: base.host, provider: base.provider, browsing_context: base.browsing_context,
@@ -272,7 +272,7 @@ fn contradicted_observation(c: gunbc.web_motion_binding.ObservationContradiction
       secure_context: base.secure_context, visibility: base.visibility, focus: base.focus,
       interface_exposure: base.interface_exposure, accelerometer_policy: base.accelerometer_policy,
       gyroscope_policy: base.gyroscope_policy, permission_method: base.permission_method,
-      permission: PermissionObservedAs { state: PermissionPrompt }, stream: base.stream,
+      permission: gunbc.web_motion_binding.PermissionObservedAs { state: PermissionPrompt }, stream: base.stream,
       observation_window_ms: base.observation_window_ms,
     }
     ReadingsUnderDeniedPermission => gunbc.web_motion_binding.WebMotionObservation {
@@ -280,7 +280,7 @@ fn contradicted_observation(c: gunbc.web_motion_binding.ObservationContradiction
       secure_context: base.secure_context, visibility: base.visibility, focus: base.focus,
       interface_exposure: base.interface_exposure, accelerometer_policy: base.accelerometer_policy,
       gyroscope_policy: base.gyroscope_policy, permission_method: base.permission_method,
-      permission: PermissionObservedAs { state: PermissionDenied }, stream: base.stream,
+      permission: gunbc.web_motion_binding.PermissionObservedAs { state: PermissionDenied }, stream: base.stream,
       observation_window_ms: base.observation_window_ms,
     }
   }
@@ -302,7 +302,7 @@ fn reachability_of_observation(o: gunbc.web_motion_binding.WebMotionObservation)
 data gyroscope_is_per_provider_note: String = "THE SAME BLOCKED POLICY IS A CONTRADICTION FOR ONE PROVIDER AND SILENCE FOR ANOTHER, which is what makes the per-provider derivation a real distinction rather than a widened check. devicemotion dispatches only when both named permissions are granted, so readings under a blocked gyroscope policy are impossible there; a LinearAccelerationSensor is admitted by its own feature and a gyroscope policy says nothing about it. The fixture for the gyroscope contradiction therefore switches the provider, and this control asserts BOTH directions — otherwise the check would pass by being applied everywhere."
 
 fn readings_with_blocked_gyroscope(p: gunbc.web_motion_binding.WebMotionProvider) -> gunbc.web_motion_binding.WebMotionObservation {
-  let base = observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })
+  let base = observation_with_stream(s: gunbc.web_motion_binding.StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })
   gunbc.web_motion_binding.WebMotionObservation {
     host: base.host, provider: p, browsing_context: base.browsing_context,
     secure_context: base.secure_context, visibility: base.visibility, focus: base.focus,
@@ -328,7 +328,7 @@ fn witness_red_a_contradicted_observation_has_no_route_to_a_verdict() -> Bool {
     && reachability_of_observation(o: contradicted_observation(c: ReadingsUnderBlockedGyroscopePolicy)) == "unresolved"
     && reachability_of_observation(o: contradicted_observation(c: ReadingsUnderUnansweredPermissionPrompt)) == "unresolved"
     && reachability_of_observation(o: contradicted_observation(c: ReadingsUnderDeniedPermission)) == "unresolved"
-    && reachability_of_observation(o: observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })) == "reachable"
+    && reachability_of_observation(o: observation_with_stream(s: gunbc.web_motion_binding.StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })) == "reachable"
     && binding_stream_key(s: project_binding_stream(o: contradicted_observation(c: ReadingsUnderBlockedGyroscopePolicy))) == "unobserved"
     && witness_red_no_third_path_around_admission()
 }
@@ -348,7 +348,7 @@ fn witness_red_no_third_path_around_admission() -> Bool {
          "availability-unknown"
     && sensor_availability_key(a: project_sensor_availability(o: contradicted_observation(c: ReadingsUnderUnansweredPermissionPrompt))) ==
          "availability-unknown"
-    && sensor_availability_key(a: project_sensor_availability(o: observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 }))) ==
+    && sensor_availability_key(a: project_sensor_availability(o: observation_with_stream(s: gunbc.web_motion_binding.StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 }))) ==
          "present"
 }
 
@@ -358,14 +358,14 @@ fn witness_red_a_contradictory_observation_refuses_rather_than_deriving() -> Boo
     && is_contradicted(o: contradicted_observation(c: ReadingsUnderBlockedGyroscopePolicy))
     && is_contradicted(o: contradicted_observation(c: ReadingsUnderUnansweredPermissionPrompt))
     && is_contradicted(o: contradicted_observation(c: ReadingsUnderDeniedPermission))
-    && !is_contradicted(o: observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 }))
+    && !is_contradicted(o: observation_with_stream(s: gunbc.web_motion_binding.StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 }))
     && !observation_is_coherent(o: contradicted_observation(c: ReadingsUnderInsecureContext))
     && observation_is_coherent(o: discredited_probe_observation())
     && contradiction_key(c: ReadingsUnderInsecureContext) != contradiction_key(c: ReadingsUnderBlockedPolicy)
 }
 
 fn witness_decisiveness_requires_coherence_too() -> Bool {
-  let coherent_full = observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })
+  let coherent_full = observation_with_stream(s: gunbc.web_motion_binding.StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })
   observation_is_decisive_and_coherent(o: coherent_full)
     && !observation_is_decisive_and_coherent(o: contradicted_observation(c: ReadingsUnderBlockedPolicy))
     && !observation_is_decisive_and_coherent(o: discredited_probe_observation())

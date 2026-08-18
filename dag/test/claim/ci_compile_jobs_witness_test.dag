@@ -26,7 +26,7 @@ fn sample_measured() -> gunbc.ci_compile_measurement.CompileJobMeasurement {
 }
 
 fn measured_with_pids(p: Int) -> gunbc.ci_compile_measurement.CompileJobMeasurement {
-  CompileJobMeasured { per_rustc_peak: hypothetical_peak(), procs_per_job: 3, pids_budget: p }
+  gunbc.ci_compile_measurement.CompileJobMeasured { per_rustc_peak: hypothetical_peak(), procs_per_job: 3, pids_budget: p }
 }
 
 fn hypothetical_peak() -> std.measure.ByteSize {
@@ -124,11 +124,11 @@ test fn witness_build_flag_spelling() -> Bool {
 }
 
 test fn witness_count_or_serial_passes_measured_count() -> Bool {
-  compile_jobs_count_or_serial(jobs: CompileJobs { count: 8 }) == 8
+  compile_jobs_count_or_serial(jobs: gunbc.ci_compile_jobs.CompileJobs { count: 8 }) == 8
 }
 
 test fn witness_count_or_serial_refuse_falls_to_serial() -> Bool {
-  compile_jobs_count_or_serial(jobs: CompileJobsRefuse { reason: "unmeasured" }) == 1
+  compile_jobs_count_or_serial(jobs: gunbc.ci_compile_jobs.CompileJobsRefuse { reason: "unmeasured" }) == 1
 }
 
 test fn witness_live_rust_gate_uses_slot_budget_lanes() -> Bool {

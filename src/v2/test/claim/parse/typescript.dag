@@ -13,10 +13,10 @@ data ts_union_minimal_source: String = "const bit: 'On' | 'Off' = bit;"
 
 fn ts_parse_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^ts_parse_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ts_parse_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^ts_parse_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ts_parse_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
@@ -41,7 +41,7 @@ fn ts_tokenize_and_parse_source(text: String) -> Outcome<v2.std.grammar.ParseTre
   }
 }
 
-data claim_ts_type_alias_task_parses: v2.std.verification.TestClaim = EqualsClaim {
+data claim_ts_type_alias_task_parses: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "TS grammar accepts the Task record-type alias: type Task = { id: TaskId, title: string, status: TaskStatus };",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_parse_bool_atom(
@@ -53,7 +53,7 @@ data claim_ts_type_alias_task_parses: v2.std.verification.TestClaim = EqualsClai
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
 }
 
-data claim_ts_type_alias_minimal_parses: v2.std.verification.TestClaim = EqualsClaim {
+data claim_ts_type_alias_minimal_parses: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "TS grammar accepts a minimal single-field record-type alias with the spec-required `=` token",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_parse_bool_atom(
@@ -65,7 +65,7 @@ data claim_ts_type_alias_minimal_parses: v2.std.verification.TestClaim = EqualsC
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
 }
 
-data claim_ts_type_alias_missing_eq_rejected: v2.std.verification.TestClaim = EqualsClaim {
+data claim_ts_type_alias_missing_eq_rejected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "TS grammar REJECTS the no-`=` form `type Box { value: number };` — parse rejects missing ts_token_eq after ident",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_parse_bool_atom(
@@ -77,7 +77,7 @@ data claim_ts_type_alias_missing_eq_rejected: v2.std.verification.TestClaim = Eq
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
 }
 
-data claim_ts_union_task_status_parses: v2.std.verification.TestClaim = EqualsClaim {
+data claim_ts_union_task_status_parses: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "TS grammar accepts a 3-variant string-literal discriminated union in a const annotation (TaskStatus surface): const status: 'Open' | 'InProgress' | 'Done' = status;",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_parse_bool_atom(
@@ -89,7 +89,7 @@ data claim_ts_union_task_status_parses: v2.std.verification.TestClaim = EqualsCl
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
 }
 
-data claim_ts_union_minimal_parses: v2.std.verification.TestClaim = EqualsClaim {
+data claim_ts_union_minimal_parses: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "TS grammar accepts a minimal two-variant string-literal union (regression against left-recursive form requiring ≥3 variants)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_parse_bool_atom(
@@ -103,7 +103,7 @@ data claim_ts_union_minimal_parses: v2.std.verification.TestClaim = EqualsClaim 
 
 data ts_typed_fn_list_tasks_source: String = "function list_tasks(): Task[] { return x; }"
 
-data claim_ts_typed_fn_list_tasks_parses: v2.std.verification.TestClaim = EqualsClaim {
+data claim_ts_typed_fn_list_tasks_parses: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "TS grammar accepts a typed-return fn with array-of-named-type: function list_tasks(): Task[] { return x; }",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ts_parse_bool_atom(

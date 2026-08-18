@@ -177,7 +177,7 @@ data srv4_bmc_fan_realization_id: std.types.NonEmptyStr = "altrad8ud-openbmc-3.2
 fn bmc_fan_caller_asserted_definition_linkage(
   reason: std.types.NonEmptyStr,
 ) -> std.state_durability.StateDefinitionLinkage {
-  CallerAssertedDefinitionLinkage {
+  std.state_durability.CallerAssertedDefinitionLinkage {
     reason: reason,
     dissolution: symbol_index_subtree_digest_dissolution,
   }
@@ -228,7 +228,7 @@ data srv4_bmc_fan_converged_policy_observation: extdeps.bmc.types.BmcFanPolicyOb
   board_config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,
   controller_binary: "/usr/bin/swampd",
-  controller_shape: FanPidAggregatedEntry {
+  controller_shape: extdeps.bmc.types.FanPidAggregatedEntry {
     entry_name: srv4_bmc_fan_observed_aggregate_entry,
     tach_inputs: srv4_bmc_fan_observed_tach_inputs,
   },
@@ -255,7 +255,7 @@ data srv4_bmc_root_overlay_observation: extdeps.filesystem.linux.LinuxOverlayObs
   },
 }
 
-data srv4_bmc_config_persistence_observation: extdeps.bmc.types.BmcConfigPersistenceObservation = BmcOverlayConfigObserved {
+data srv4_bmc_config_persistence_observation: extdeps.bmc.types.BmcConfigPersistenceObservation = extdeps.bmc.types.BmcOverlayConfigObserved {
   firmware: srv4_bmc_firmware_observation.firmware,
   config_path: srv4_bmc_fan_observed_config_path,
   overlay: srv4_bmc_root_overlay_observation,
@@ -299,7 +299,7 @@ data srv4_bmc_fan_post_reboot_policy_observation: extdeps.bmc.types.BmcFanPolicy
   board_config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,
   controller_binary: "/usr/bin/swampd",
-  controller_shape: FanPidAggregatedEntry {
+  controller_shape: extdeps.bmc.types.FanPidAggregatedEntry {
     entry_name: srv4_bmc_fan_observed_aggregate_entry,
     tach_inputs: srv4_bmc_fan_observed_tach_inputs,
   },

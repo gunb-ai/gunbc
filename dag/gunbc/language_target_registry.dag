@@ -99,108 +99,108 @@ data governing_contract_id_resolution_note: String = "WHY THIS ROW CARRIES A MOD
 
 data registered_language_targets: List<std.language_target_identity.LanguageTargetRegistration> = [
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: gnu_bash_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: gnu_bash_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: typescript_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: typescript_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: html_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: html_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: css_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: css_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: c_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: c_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: python_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: python_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: verilog_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: verilog_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: spice_netlist_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: spice_netlist_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: rust_language_model_scope },
-    disposition: TargetGovernedByContracts { contract_ids: ["v2.compiler.self_host.emitter_producer_provenance"] }
+    grounding: std.language_target_identity.ExternalGrounding { scope: rust_language_model_scope },
+    disposition: std.language_target_identity.TargetGovernedByContracts { contract_ids: ["v2.compiler.self_host.emitter_producer_provenance"] }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: ecmascript_language_model_scope },
-    disposition: TargetDecisionPending { decision_id: "docs/plans/language-support-completion-design.md#7 decision 1 — ECMAScript authority" }
+    grounding: std.language_target_identity.ExternalGrounding { scope: ecmascript_language_model_scope },
+    disposition: std.language_target_identity.TargetDecisionPending { decision_id: "docs/plans/language-support-completion-design.md#7 decision 1 — ECMAScript authority" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: cpp_language_model_scope },
-    disposition: TargetDecisionPending { decision_id: "docs/plans/language-support-completion-design.md#7 decision 2 — C++ profile" }
+    grounding: std.language_target_identity.ExternalGrounding { scope: cpp_language_model_scope },
+    disposition: std.language_target_identity.TargetDecisionPending { decision_id: "docs/plans/language-support-completion-design.md#7 decision 2 — C++ profile" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: go_language_model_scope },
-    disposition: TargetParked { reason: "P2 second compiled general target; frontier row records the TargetModel as a skeleton needing buildout, so no work is in progress" }
+    grounding: std.language_target_identity.ExternalGrounding { scope: go_language_model_scope },
+    disposition: std.language_target_identity.TargetParked { reason: "P2 second compiled general target; frontier row records the TargetModel as a skeleton needing buildout, so no work is in progress" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: llvm_ir_language_model_scope },
-    disposition: TargetParked { reason: "P2 backend/validator profile; frontier row records no committed TargetModel" }
+    grounding: std.language_target_identity.ExternalGrounding { scope: llvm_ir_language_model_scope },
+    disposition: std.language_target_identity.TargetParked { reason: "P2 backend/validator profile; frontier row records no committed TargetModel" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: webassembly_language_model_scope },
-    disposition: TargetParked { reason: "P2 backend/runtime profile; a TargetModel exists but bar-c is unreachable until the wasmtime runtime row is configured" }
+    grounding: std.language_target_identity.ExternalGrounding { scope: webassembly_language_model_scope },
+    disposition: std.language_target_identity.TargetParked { reason: "P2 backend/runtime profile; a TargetModel exists but bar-c is unreachable until the wasmtime runtime row is configured" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: lean_language_model_scope },
-    disposition: TargetParked { reason: "P2 proof/checker profile; frontier row records no committed TargetModel, and the expression spine it would stress is itself unbuilt" }
+    grounding: std.language_target_identity.ExternalGrounding { scope: lean_language_model_scope },
+    disposition: std.language_target_identity.TargetParked { reason: "P2 proof/checker profile; frontier row records no committed TargetModel, and the expression spine it would stress is itself unbuilt" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: ptx_language_model_scope },
-    disposition: TargetParked { reason: "P1 accelerator seam, but deliberately last in that seam: the existing plan orders CPU fused-kernel oracle then PTX validation then CUDA execution, so PTX is not startable work today" }
+    grounding: std.language_target_identity.ExternalGrounding { scope: ptx_language_model_scope },
+    disposition: std.language_target_identity.TargetParked { reason: "P1 accelerator seam, but deliberately last in that seam: the existing plan orders CPU fused-kernel oracle then PTX validation then CUDA execution, so PTX is not startable work today" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: java_language_model_scope },
-    disposition: TargetParked { reason: "P3 confirm-only fan-out; earns a slot only after the compiled-family self-host proof lands" }
+    grounding: std.language_target_identity.ExternalGrounding { scope: java_language_model_scope },
+    disposition: std.language_target_identity.TargetParked { reason: "P3 confirm-only fan-out; earns a slot only after the compiled-family self-host proof lands" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: kotlin_language_model_scope },
-    disposition: TargetParked { reason: "P3 confirm-only fan-out; same gate as Java" }
+    grounding: std.language_target_identity.ExternalGrounding { scope: kotlin_language_model_scope },
+    disposition: std.language_target_identity.TargetParked { reason: "P3 confirm-only fan-out; same gate as Java" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: swift_language_model_scope },
-    disposition: TargetParked { reason: "P3 confirm-only fan-out; same gate as Java" }
+    grounding: std.language_target_identity.ExternalGrounding { scope: swift_language_model_scope },
+    disposition: std.language_target_identity.TargetParked { reason: "P3 confirm-only fan-out; same gate as Java" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: jsx_language_model_scope },
-    disposition: TargetDecisionPending { decision_id: "jsx registry role — independently supported target medium, or syntax capability of the web/ECMAScript path (see jsx_registry_role_note)" }
+    grounding: std.language_target_identity.ExternalGrounding { scope: jsx_language_model_scope },
+    disposition: std.language_target_identity.TargetDecisionPending { decision_id: "jsx registry role — independently supported target medium, or syntax capability of the web/ECMAScript path (see jsx_registry_role_note)" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: riscv_isa_model_scope },
-    disposition: TargetParked { reason: "P3 ISA target; registered because its authority verified, but the surface that would consume it fuses three ISAs and must be decomposed first" }
+    grounding: std.language_target_identity.ExternalGrounding { scope: riscv_isa_model_scope },
+    disposition: std.language_target_identity.TargetParked { reason: "P3 ISA target; registered because its authority verified, but the surface that would consume it fuses three ISAs and must be decomposed first" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: json_format_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: json_format_model_scope },
     disposition: TargetMaintenanceOnly
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: yaml_format_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: yaml_format_model_scope },
     disposition: TargetMaintenanceOnly
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: commonmark_format_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: commonmark_format_model_scope },
     disposition: TargetMaintenanceOnly
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ProjectGrounding { authority: dag_syntax_authority },
+    grounding: std.language_target_identity.ProjectGrounding { authority: dag_syntax_authority },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: ProjectGrounding { authority: english_formal_sentence_authority },
-    disposition: TargetParked {
+    grounding: std.language_target_identity.ProjectGrounding { authority: english_formal_sentence_authority },
+    disposition: std.language_target_identity.TargetParked {
       reason: "controlled-English medium: bounded formal-subset profile, P3 priority; registered so the strategy row stays visible while implementation has not begun"
     }
   }
@@ -283,7 +283,7 @@ fn unidentified_decl_row(
 ) -> std.language_target_identity.LanguageTargetSurfaceRow {
   std.language_target_identity.LanguageTargetSurfaceRow {
     authority: authority,
-    surface: SurfaceDeclaration {
+    surface: std.language_target_identity.SurfaceDeclaration {
       ref: std.decl_ref.DeclarationRef {
         module_path: module_path,
         decl_name: decl_name,
@@ -300,7 +300,7 @@ fn unidentified_module_row(
 ) -> std.language_target_identity.LanguageTargetSurfaceRow {
   std.language_target_identity.LanguageTargetSurfaceRow {
     authority: authority,
-    surface: SurfaceModule { module_path: module_path },
+    surface: std.language_target_identity.SurfaceModule { module_path: module_path },
     target: none
   }
 }
@@ -378,7 +378,7 @@ fn identified_decl_row(
 ) -> std.language_target_identity.LanguageTargetSurfaceRow {
   std.language_target_identity.LanguageTargetSurfaceRow {
     authority: authority,
-    surface: SurfaceDeclaration {
+    surface: std.language_target_identity.SurfaceDeclaration {
       ref: std.decl_ref.DeclarationRef {
         module_path: module_path,
         decl_name: decl_name,
@@ -396,7 +396,7 @@ fn identified_module_row(
 ) -> std.language_target_identity.LanguageTargetSurfaceRow {
   std.language_target_identity.LanguageTargetSurfaceRow {
     authority: authority,
-    surface: SurfaceModule { module_path: module_path },
+    surface: std.language_target_identity.SurfaceModule { module_path: module_path },
     target: Present { value: subject }
   }
 }

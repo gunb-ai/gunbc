@@ -23,11 +23,11 @@ fn detail_location_of(d: v2.std.diagnostic.Diagnostic) -> v2.std.node.Symbol {
 fn textual_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cause_location_probe_unclassified_reason,
-    at: Textual {
+    at: v2.std.diagnostic.Textual {
       file: ^cause_location_probe_file_symbol,
-      extent: ByteRange { start: 7, end: 9 }
+      extent: v2.std.diagnostic.ByteRange { start: 7, end: 9 }
     },
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -35,7 +35,7 @@ fn node_locus_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cause_location_probe_unclassified_reason,
     at: node_locus(node: Empty),
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -43,7 +43,7 @@ fn port_locus_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cause_location_probe_unclassified_reason,
     at: port_locus(port: ^cause_location_probe_port),
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -71,7 +71,7 @@ fn textual_extent_start() -> Int {
 fn two_diagnostic_stage() -> v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
   v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
     head: parse_stage_diagnostic_from_diagnostic_only(d: textual_diagnostic()),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: parse_stage_diagnostic_from_diagnostic_only(d: later_diagnostic()),
       tail: Empty
     }
@@ -81,11 +81,11 @@ fn two_diagnostic_stage() -> v2.compiler.parse_diagnostic.NonEmptyParseStageDiag
 fn later_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cause_location_probe_second_reason,
-    at: Textual {
+    at: v2.std.diagnostic.Textual {
       file: ^cause_location_probe_other_file_symbol,
-      extent: ByteRange { start: 99, end: 101 }
+      extent: v2.std.diagnostic.ByteRange { start: 99, end: 101 }
     },
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 

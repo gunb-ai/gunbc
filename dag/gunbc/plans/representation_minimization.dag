@@ -54,6 +54,6 @@ data representation_minimization_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "representation-minimization",
   title: "Resolved-graph representation minimization (root-first, v1-survivable)",
   body: representation_minimization_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "§7 v2 self-host fixed point: when the resolved-graph representation is minimal-by-construction in the `.dag` authority and the v1 Rust seed is retired, items 1 through 4 are landed-or-moot and item 5 dies with the seed; this lane dissolves into the v2 representation.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "§7 v2 self-host fixed point: when the resolved-graph representation is minimal-by-construction in the `.dag` authority and the v1 Rust seed is retired, items 1 through 4 are landed-or-moot and item 5 dies with the seed; this lane dissolves into the v2 representation.")
   }
 }

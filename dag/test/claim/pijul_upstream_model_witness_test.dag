@@ -50,7 +50,7 @@ data pijul_vertex_missing: extdeps.pijul.PijulVertexId = extdeps.pijul.PijulVert
 fn fixture_identity(hash: extdeps.pijul.PijulChangeHash) -> extdeps.pijul.PijulChangeIdentity {
   extdeps.pijul.PijulChangeIdentity {
     hash: hash,
-    producer: PijulChangeFileObserved {
+    producer: extdeps.pijul.PijulChangeFileObserved {
       pijul_version: pijul_upstream_version,
     },
   }
@@ -62,7 +62,7 @@ fn fixture_changes() -> List<extdeps.pijul.PijulRecordedChange> {
       identity: fixture_identity(hash: pijul_change_root),
       dependencies: [],
       actions: [
-        PijulNewVertex {
+        extdeps.pijul.PijulNewVertex {
           vertex: pijul_vertex_root,
           up_context: [],
           down_context: [],
@@ -82,7 +82,7 @@ fn fixture_changes() -> List<extdeps.pijul.PijulRecordedChange> {
         },
       ],
       actions: [
-        PijulNewVertex {
+        extdeps.pijul.PijulNewVertex {
           vertex: pijul_vertex_left,
           up_context: [extdeps.pijul.PijulContext { vertex: pijul_vertex_root }],
           down_context: [],
@@ -102,7 +102,7 @@ fn fixture_changes() -> List<extdeps.pijul.PijulRecordedChange> {
         },
       ],
       actions: [
-        PijulNewVertex {
+        extdeps.pijul.PijulNewVertex {
           vertex: pijul_vertex_right,
           up_context: [extdeps.pijul.PijulContext { vertex: pijul_vertex_root }],
           down_context: [],
@@ -147,7 +147,7 @@ fn fixture_pristine() -> extdeps.pijul.PijulPristineState {
       },
     ],
     conflicts: [
-      PijulOrderConflict {
+      extdeps.pijul.PijulOrderConflict {
         left: pijul_change_left,
         right: pijul_change_right,
         at: pijul_vertex_root,
@@ -193,7 +193,7 @@ fn fixture_channels() -> List<extdeps.pijul.PijulChannel> {
       state_identity: extdeps.pijul.PijulChannelStateIdentity {
         state: pijul_state_combined,
         changes: [pijul_change_root, pijul_change_left, pijul_change_right],
-        producer: PijulLogStateObserved {
+        producer: extdeps.pijul.PijulLogStateObserved {
           pijul_version: pijul_upstream_version,
         },
       },
@@ -203,7 +203,7 @@ fn fixture_channels() -> List<extdeps.pijul.PijulChannel> {
       state_identity: extdeps.pijul.PijulChannelStateIdentity {
         state: pijul_state_combined,
         changes: [pijul_change_root, pijul_change_right, pijul_change_left],
-        producer: PijulLogStateObserved {
+        producer: extdeps.pijul.PijulLogStateObserved {
           pijul_version: pijul_upstream_version,
         },
       },
@@ -213,7 +213,7 @@ fn fixture_channels() -> List<extdeps.pijul.PijulChannel> {
       state_identity: extdeps.pijul.PijulChannelStateIdentity {
         state: pijul_state_root,
         changes: [pijul_change_root],
-        producer: PijulLogStateObserved {
+        producer: extdeps.pijul.PijulLogStateObserved {
           pijul_version: pijul_upstream_version,
         },
       },
@@ -237,7 +237,7 @@ fn pijul_fixture_repository() -> extdeps.pijul.PijulRepositoryState {
 }
 
 fn pijul_r0_fixture_projection() -> extdeps.pijul.PijulRepositoryProjection {
-  PijulPartialProjection {
+  extdeps.pijul.PijulPartialProjection {
     candidate: pijul_r0_fixture_repository(),
     missing_changes: [pijul_change_missing],
     missing_vertices: [pijul_vertex_missing],
@@ -257,7 +257,7 @@ fn projection_with_channels(
     projection: projection,
     fold: extdeps.pijul.PijulRepositoryProjectionFold {
       complete: fn(candidate) {
-        PijulCompleteProjection {
+        extdeps.pijul.PijulCompleteProjection {
           candidate: extdeps.pijul.PijulRepositoryState {
             changes: candidate.changes,
             pristine: candidate.pristine,
@@ -269,7 +269,7 @@ fn projection_with_channels(
         }
       },
       partial: fn(candidate, missing_changes, missing_vertices, missing_paths) {
-        PijulPartialProjection {
+        extdeps.pijul.PijulPartialProjection {
           candidate: extdeps.pijul.PijulRepositoryState {
             changes: candidate.changes,
             pristine: candidate.pristine,
@@ -284,7 +284,7 @@ fn projection_with_channels(
         }
       },
       inaccessible: fn(reason) {
-        PijulInaccessibleProjection { reason: reason }
+        extdeps.pijul.PijulInaccessibleProjection { reason: reason }
       },
     },
   )
@@ -382,7 +382,7 @@ test fn witness_pijul_projects_and_assesses_caller_supplied_readback() -> Bool {
         expected: projection,
         observation: extdeps.pijul.PijulReadBackObservation {
           pijul_version: pijul_upstream_version,
-          projection: PijulCompleteProjection {
+          projection: extdeps.pijul.PijulCompleteProjection {
             candidate: pijul_fixture_repository(),
           },
         },
@@ -396,7 +396,7 @@ test fn witness_pijul_projects_and_assesses_caller_supplied_readback() -> Bool {
 
 test fn witness_pijul_readback_rejects_perturbed_working_copy() -> Bool {
   let expected = pijul_fixture_repository()
-  let perturbed = PijulPartialProjection {
+  let perturbed = extdeps.pijul.PijulPartialProjection {
     candidate: extdeps.pijul.PijulRepositoryState {
       changes: expected.changes,
       pristine: expected.pristine,
@@ -490,7 +490,7 @@ test fn witness_pijul_log_wire_constructs_independent_channel_readback() -> Bool
         expected: extdeps.pijul.PijulChannelStateIdentity {
           state: pijul_state_combined,
           changes: [pijul_change_root, pijul_change_left, pijul_change_right],
-          producer: PijulLogStateObserved {
+          producer: extdeps.pijul.PijulLogStateObserved {
             pijul_version: pijul_upstream_version,
           },
         },
@@ -668,7 +668,7 @@ test fn witness_pijul_missing_dependency_refuses_delivery() -> Bool {
     channels: base.channels,
     current_channel: base.current_channel,
   }
-  let projection = PijulCompleteProjection { candidate: repository }
+  let projection = extdeps.pijul.PijulCompleteProjection { candidate: repository }
   match pijul_plan_delivery(
     projection: projection,
     channel_name: "base",
@@ -697,7 +697,7 @@ test fn witness_pijul_unknown_change_never_applies_as_empty() -> Bool {
 }
 
 test fn witness_pijul_present_change_cannot_also_be_declared_missing() -> Bool {
-  let invalid = PijulPartialProjection {
+  let invalid = extdeps.pijul.PijulPartialProjection {
     candidate: pijul_fixture_repository(),
     missing_changes: [pijul_change_root],
     missing_vertices: [],
@@ -712,7 +712,7 @@ test fn witness_pijul_present_change_cannot_also_be_declared_missing() -> Bool {
 }
 
 test fn witness_pijul_delivery_revalidates_raw_projection() -> Bool {
-  let invalid = PijulPartialProjection {
+  let invalid = extdeps.pijul.PijulPartialProjection {
     candidate: pijul_fixture_repository(),
     missing_changes: [pijul_change_root],
     missing_vertices: [],
@@ -752,12 +752,12 @@ test fn witness_pijul_missing_dependency_in_channel_still_refuses_delivery() -> 
     state_identity: extdeps.pijul.PijulChannelStateIdentity {
       state: pijul_state_partial,
       changes: [pijul_change_root, pijul_change_missing],
-      producer: PijulLogStateObserved {
+      producer: extdeps.pijul.PijulLogStateObserved {
         pijul_version: pijul_upstream_version,
       },
     },
   }
-  let projection = PijulPartialProjection {
+  let projection = extdeps.pijul.PijulPartialProjection {
     candidate: extdeps.pijul.PijulRepositoryState {
       changes: append(base.changes, items: [dependent]),
       pristine: base.pristine,
@@ -808,12 +808,12 @@ test fn witness_pijul_existing_channel_member_dependency_gap_refuses_delivery() 
         pijul_change_left,
         pijul_change_missing,
       ],
-      producer: PijulLogStateObserved {
+      producer: extdeps.pijul.PijulLogStateObserved {
         pijul_version: pijul_upstream_version,
       },
     },
   }
-  let projection = PijulPartialProjection {
+  let projection = extdeps.pijul.PijulPartialProjection {
     candidate: extdeps.pijul.PijulRepositoryState {
       changes: append(
         base.changes
@@ -853,7 +853,7 @@ test fn witness_pijul_duplicate_channel_member_refuses_capture() -> Bool {
     state_identity: extdeps.pijul.PijulChannelStateIdentity {
       state: pijul_state_combined,
       changes: [pijul_change_root, pijul_change_left, pijul_change_left],
-      producer: PijulLogStateObserved {
+      producer: extdeps.pijul.PijulLogStateObserved {
         pijul_version: pijul_upstream_version,
       },
     },
@@ -878,7 +878,7 @@ test fn witness_pijul_one_state_hash_cannot_name_different_change_sets() -> Bool
     state_identity: extdeps.pijul.PijulChannelStateIdentity {
       state: pijul_state_combined,
       changes: [pijul_change_root],
-      producer: PijulLogStateObserved {
+      producer: extdeps.pijul.PijulLogStateObserved {
         pijul_version: pijul_upstream_version,
       },
     },
@@ -907,7 +907,7 @@ test fn witness_pijul_equal_change_sets_require_one_state_identity() -> Bool {
     state_identity: extdeps.pijul.PijulChannelStateIdentity {
       state: pijul_state_wrong,
       changes: [pijul_change_right, pijul_change_root, pijul_change_left],
-      producer: PijulLogStateObserved {
+      producer: extdeps.pijul.PijulLogStateObserved {
         pijul_version: pijul_upstream_version,
       },
     },
@@ -936,7 +936,7 @@ test fn witness_pijul_undeclared_context_refuses_capture() -> Bool {
     identity: fixture_identity(hash: pijul_change_dependent),
     dependencies: [],
     actions: [
-      PijulNewVertex {
+      extdeps.pijul.PijulNewVertex {
         vertex: extdeps.pijul.PijulVertexId {
           introduced_by: pijul_change_dependent,
           position: extdeps.pijul.PijulVertexPosition { value: 0 },
@@ -950,7 +950,7 @@ test fn witness_pijul_undeclared_context_refuses_capture() -> Bool {
     message: "bad context",
     recorded_at: "provenance-only-bad",
   }
-  let changed = PijulCompleteProjection {
+  let changed = extdeps.pijul.PijulCompleteProjection {
     candidate: extdeps.pijul.PijulRepositoryState {
       changes: append(base.changes, items: [bad_change]),
       pristine: base.pristine,
@@ -975,7 +975,7 @@ test fn witness_pijul_declared_partial_change_is_not_fabricated() -> Bool {
     state_identity: extdeps.pijul.PijulChannelStateIdentity {
       state: pijul_state_partial,
       changes: [pijul_change_root, pijul_change_missing],
-      producer: PijulLogStateObserved {
+      producer: extdeps.pijul.PijulLogStateObserved {
         pijul_version: pijul_upstream_version,
       },
     },

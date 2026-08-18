@@ -20,7 +20,7 @@ fn symbol_in(needle: v2.std.node.Symbol, xs: List<v2.std.node.Symbol>) -> Bool {
 }
 
 fn poly_two_cost(n: Node) -> v2.lens.cost.SymbolicCost {
-  PolynomialCost {
+  v2.lens.cost.PolynomialCost {
     variable: v2.lens.cost.SizeVariable { source: n },
     degree: polynomial_degree_two()
   }
@@ -141,5 +141,5 @@ fn classify_call(
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

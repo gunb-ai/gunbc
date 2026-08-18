@@ -3,7 +3,7 @@ module v2.test.lens_ownership.resource_dependency
 data ownership_child: Node = claim_atom_node(s: ^ownership_child_symbol)
 
 data ownership_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^ownership_root_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ownership_root_symbol } },
   children: [
     v2.std.node.Edge { label: Named { name: ^ownership_edge_symbol }, target: ownership_child }
   ],

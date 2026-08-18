@@ -14,7 +14,7 @@ fn host_compile_skipped(o: HostWarmObservation) -> Bool {
 
 fn model_lookup_for(o: HostWarmObservation, key: std.content_hash.ContentHash) -> std.emit_on_demand.EmitOnDemandLookup {
   if host_compile_skipped(o: o) {
-    EmitOnDemandHit {
+    std.emit_on_demand.EmitOnDemandHit {
       receipt: std.emit_on_demand.EmitOnDemandCacheReceipt { key: key, compile_skipped: true }
     }
   } else {

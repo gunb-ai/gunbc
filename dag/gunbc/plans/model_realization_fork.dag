@@ -10,7 +10,7 @@ fn model_realization_fork_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "1. The seam"),
     p(text: "**Native realization** — `Value` enum, 13 variants (`v1_interpreter.rs:448-483`): `Null, Bool, Int, Float, Str, List, Map, Set, Record, Variant, Closure, Fn, Unit`."),
     p(text: "**Modeled coproducts** (each → a native variant):"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "modeled"), cell(text: "form"), cell(text: "native"), cell(text: "bridge site"), cell(text: "coverage")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -23,7 +23,7 @@ fn model_realization_fork_body() -> List<std.markdown.MarkdownBlock> {
       ],
     },
     h2(text: "2. Reconciliation chokepoints (fail-open / closed / reconciled)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "site"), cell(text: "file:line"), cell(text: "verdict")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -54,6 +54,6 @@ data model_realization_fork_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "model-realization-fork",
   title: "Plan — model↔realization fork (the root of the fail-open problem)",
   body: model_realization_fork_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the numeric tower is grounded (`Int`/`Nat` native = modeled, guard is dead code) **and** `Value::Null` is split into its grounded carriers (Optional/Witness/miss each own their realization). At that point the per-site bridges are gone and the seam no longer exists.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the numeric tower is grounded (`Int`/`Nat` native = modeled, guard is dead code) **and** `Value::Null` is split into its grounded carriers (Optional/Witness/miss each own their realization). At that point the per-site bridges are gone and the seam no longer exists.")
   }
 }

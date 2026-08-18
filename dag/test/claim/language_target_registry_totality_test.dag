@@ -21,7 +21,7 @@ test fn identified_and_unidentified_partition_the_census_exactly() -> Bool {
 
 test fn bash_vocabulary_surface_joins_the_bash_subject() -> Bool {
   match resolve_target_for_surface(
-    surface: SurfaceModule { module_path: "v2.extdeps.languages.bash" },
+    surface: std.language_target_identity.SurfaceModule { module_path: "v2.extdeps.languages.bash" },
     rows: language_target_surface_census,
     registry: registered_language_targets
   ) {
@@ -36,7 +36,7 @@ data vocabulary_surface_premise_inversion_note: String = "THIS TEST'S PREMISE IN
 
 test fn typescript_vocabulary_surface_resolves_to_the_typescript_subject() -> Bool {
   match resolve_target_for_surface(
-    surface: SurfaceModule { module_path: "extdeps.languages.typescript.program" },
+    surface: std.language_target_identity.SurfaceModule { module_path: "extdeps.languages.typescript.program" },
     rows: language_target_surface_census,
     registry: registered_language_targets
   ) {
@@ -49,7 +49,7 @@ test fn typescript_vocabulary_surface_resolves_to_the_typescript_subject() -> Bo
 
 test fn machine_code_surface_is_visibly_unidentified() -> Bool {
   match resolve_target_for_surface(
-    surface: SurfaceModule { module_path: "v2.extdeps.languages.machine_code" },
+    surface: std.language_target_identity.SurfaceModule { module_path: "v2.extdeps.languages.machine_code" },
     rows: language_target_surface_census,
     registry: registered_language_targets
   ) {
@@ -67,7 +67,7 @@ test fn unidentified_population_is_positive_and_below_the_census() -> Bool {
 
 test fn a_surface_absent_from_the_registry_does_not_resolve() -> Bool {
   match resolve_target_for_surface(
-    surface: SurfaceModule { module_path: "v2.extdeps.languages.not_a_real_target" },
+    surface: std.language_target_identity.SurfaceModule { module_path: "v2.extdeps.languages.not_a_real_target" },
     rows: language_target_surface_census,
     registry: registered_language_targets
   ) {

@@ -159,8 +159,8 @@ data srv4_cooler_asset: product.placement_supply.PhysicalAsset = product.placeme
 }
 
 data installed_cooler_containments: List<product.placement_supply.PhysicalContainment> = [
-  HostContainsComponent { host: host_srv3, component: cooler_srv3 },
-  HostContainsComponent { host: host_srv4, component: cooler_srv4 },
+  product.placement_supply.HostContainsComponent { host: host_srv3, component: cooler_srv3 },
+  product.placement_supply.HostContainsComponent { host: host_srv4, component: cooler_srv4 },
 ]
 
 // srv1/srv2 carry no cooler asset row: their installed cooling is UNOBSERVED — not absent, and

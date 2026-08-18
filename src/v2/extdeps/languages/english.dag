@@ -45,27 +45,27 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition
   }
 }
 fn english_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.lexing.LexPattern) -> v2.std.compilers.lexing.LexRule {
-  TokenRule { token_class: token_class, pattern: pattern }
+  v2.std.compilers.lexing.TokenRule { token_class: token_class, pattern: pattern }
 }
 
 fn english_word_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: CharClassPattern { class: IdentStartChar },
-    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
   }
 }
 
 fn english_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules {
+  v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
-        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } } },
         english_lex_token(token_class: ^english_token_word, pattern: english_word_pattern()),
-        english_lex_token(token_class: ^english_token_period, pattern: LiteralPattern { text: "." }),
-        english_lex_token(token_class: ^english_token_indefinite_article, pattern: KeywordPattern { text: "a" }),
-        english_lex_token(token_class: ^english_token_indefinite_article, pattern: KeywordPattern { text: "an" }),
-        english_lex_token(token_class: ^english_token_definite_article, pattern: KeywordPattern { text: "the" }),
-        english_lex_token(token_class: ^english_token_copula, pattern: KeywordPattern { text: "is" })
+        english_lex_token(token_class: ^english_token_period, pattern: v2.std.compilers.lexing.LiteralPattern { text: "." }),
+        english_lex_token(token_class: ^english_token_indefinite_article, pattern: v2.std.compilers.lexing.KeywordPattern { text: "a" }),
+        english_lex_token(token_class: ^english_token_indefinite_article, pattern: v2.std.compilers.lexing.KeywordPattern { text: "an" }),
+        english_lex_token(token_class: ^english_token_definite_article, pattern: v2.std.compilers.lexing.KeywordPattern { text: "the" }),
+        english_lex_token(token_class: ^english_token_copula, pattern: v2.std.compilers.lexing.KeywordPattern { text: "is" })
       ]
     }
   }
@@ -76,18 +76,18 @@ fn english_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.G
 }
 
 fn english_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  Sequence { left: left, right: right }
+  v2.std.grammar.Sequence { left: left, right: right }
 }
 
 fn english_article_expr() -> v2.std.grammar.GrammarExpr {
-  Choice {
+  v2.std.grammar.Choice {
     left: english_grammar_terminal(token_class: ^english_token_definite_article),
     right: english_grammar_terminal(token_class: ^english_token_indefinite_article)
   }
 }
 
 fn english_article_nonterminal() -> v2.std.grammar.GrammarExpr {
-  Nonterminal { production: ^english_production_article }
+  v2.std.grammar.Nonterminal { production: ^english_production_article }
 }
 
 fn english_svo_sentence_expr() -> v2.std.grammar.GrammarExpr {
@@ -146,9 +146,9 @@ fn english_productions() -> List<v2.std.grammar.GrammarProduction> {
   }
   let sentence = v2.std.grammar.GrammarProduction {
     name: ^english_production_sentence,
-    expression: Choice {
-      left: Nonterminal { production: ^english_production_svo_sentence },
-      right: Nonterminal { production: ^english_production_copula_sentence }
+    expression: v2.std.grammar.Choice {
+      left: v2.std.grammar.Nonterminal { production: ^english_production_svo_sentence },
+      right: v2.std.grammar.Nonterminal { production: ^english_production_copula_sentence }
     },
     emitted: grammar_atom(identity: ^english_surface_sentence)
   }
@@ -156,7 +156,7 @@ fn english_productions() -> List<v2.std.grammar.GrammarProduction> {
 }
 
 fn english_grammar() -> v2.std.grammar.ParseGrammar {
-  ModeledGrammar {
+  v2.std.grammar.ModeledGrammar {
     root: v2.std.grammar.GrammarRoot {
       start: ^english_production_sentence,
       productions: english_productions(),
@@ -265,7 +265,7 @@ fn english_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edg
 
 fn english_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -273,7 +273,7 @@ fn english_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
 
 fn english_noun_facts_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       english_named_edge(
         name: ^english_facts_field_surface_spelling,
@@ -290,7 +290,7 @@ fn english_noun_facts_node() -> Node {
 
 fn english_noun_inhabitant_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       english_named_edge(
         name: ^english_inhabitant_field_atom,
@@ -307,7 +307,7 @@ fn english_noun_inhabitant_node() -> Node {
 
 fn english_add_fn_emitted_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: english_noun_inhabitant_node() },
       v2.std.node.Edge { label: Positional, target: english_noun_inhabitant_node() },
@@ -320,47 +320,47 @@ fn english_add_fn_emitted_node() -> Node {
 fn english_add_fn_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
 
-    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_fn_add },
-    BoundToken { token_class: ^english_token_copula, binding: ^english_binding_copula_is },
-    BoundToken { token_class: ^english_token_indefinite_article, binding: ^english_binding_article_a },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_noun_function },
-    BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_fn_add },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_copula, binding: ^english_binding_copula_is },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_indefinite_article, binding: ^english_binding_article_a },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_noun_function },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
 
-    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_fn_add },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_takes },
-    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_param_x },
-    BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_fn_add },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_takes },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_param_x },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
 
-    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_fn_add },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_takes },
-    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_param_y },
-    BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_fn_add },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_takes },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_param_y },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
 
-    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_fn_add },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_returns },
-    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_noun_sum },
-    BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_fn_add },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_returns },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_noun_sum },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
 
-    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_noun_sum_subject },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_adds },
-    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_param_x },
-    BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_noun_sum_subject },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_adds },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_param_x },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_period, binding: ^english_binding_sentence_separator },
 
-    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_noun_sum_subject },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_adds },
-    BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
-    BoundToken { token_class: ^english_token_word, binding: ^english_binding_param_y },
-    FixedToken { token_class: ^english_token_period }
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_noun_sum_subject },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_verb_adds },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_definite_article, binding: ^english_binding_article_the },
+    v2.std.compilers.target_model.BoundToken { token_class: ^english_token_word, binding: ^english_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^english_token_period }
   ]
 }
 
@@ -457,7 +457,7 @@ fn english_add_fn_relation_row() -> EnglishGrammarRelationRow {
 
 fn english_grammar_relation_row_node(row: EnglishGrammarRelationRow) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       english_named_edge(
         name: ^grammar_relation_field_production,
@@ -478,7 +478,7 @@ fn english_grammar_relation_row_node(row: EnglishGrammarRelationRow) -> Node {
 
 fn english_add_fn_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       english_named_edge(
         name: ^english_relation_rule_add_fn,
@@ -491,7 +491,7 @@ fn english_add_fn_translation_rules_node() -> Node {
 
 fn english_add_fn_serialize_source_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       english_named_edge(
         name: ^serialize_source_field_source_text,
@@ -540,7 +540,7 @@ fn english_add_fn_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
 
 fn english_declared_inhabitants_root() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: list_append(
       left: [
         english_named_edge(
@@ -560,7 +560,7 @@ fn english_selection_policy_node() -> Node {
 
 fn english_add_fn_target_model_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       english_named_edge(name: ^target_model_edge_selection_policy, target: english_selection_policy_node()),
       english_named_edge(name: ^target_model_edge_declared_inhabitants, target: english_declared_inhabitants_root()),
@@ -584,19 +584,19 @@ fn english_add_fn_target_model() -> v2.std.compilers.target_model.TargetModel {
 }
 
 fn english_sentence_nonterminal() -> v2.std.grammar.GrammarExpr {
-  Nonterminal { production: ^english_production_sentence }
+  v2.std.grammar.Nonterminal { production: ^english_production_sentence }
 }
 
 fn english_add_fn_paragraph_expr() -> v2.std.grammar.GrammarExpr {
-  Sequence {
+  v2.std.grammar.Sequence {
     left: english_sentence_nonterminal(),
-    right: Sequence {
+    right: v2.std.grammar.Sequence {
       left: english_sentence_nonterminal(),
-      right: Sequence {
+      right: v2.std.grammar.Sequence {
         left: english_sentence_nonterminal(),
-        right: Sequence {
+        right: v2.std.grammar.Sequence {
           left: english_sentence_nonterminal(),
-          right: Sequence {
+          right: v2.std.grammar.Sequence {
             left: english_sentence_nonterminal(),
             right: english_sentence_nonterminal()
           }
@@ -615,7 +615,7 @@ fn english_add_fn_paragraph_production() -> v2.std.grammar.GrammarProduction {
 }
 
 fn english_add_fn_paragraph_grammar() -> v2.std.grammar.ParseGrammar {
-  ModeledGrammar {
+  v2.std.grammar.ModeledGrammar {
     root: v2.std.grammar.GrammarRoot {
       start: ^english_production_add_fn_paragraph,
       productions: list_append(

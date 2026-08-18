@@ -4,16 +4,16 @@ module v2.std.verification
 fn test_claim_expected_outcome_undeclared_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^test_claim_expected_outcome_undeclared,
-    at: Textual { file: ^v2_std_verification_file, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: ^v2_std_verification_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
 fn unified_test_claim_bool_witness_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^unified_test_claim_bool_witness_absent,
-    at: Textual { file: ^v2_std_verification_file, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: ^v2_std_verification_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -57,8 +57,8 @@ fn impossible_bug_class_coproduct_variants() -> List<ImpossibleBugClass> {
 fn impossible_bug_diagnostic_reason_unmapped_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^impossible_bug_diagnostic_reason_unmapped,
-    at: Textual { file: ^v2_std_verification_file, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: ^v2_std_verification_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 

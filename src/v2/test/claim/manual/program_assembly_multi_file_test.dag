@@ -12,10 +12,10 @@ fn pa_graft_module_root(root: Node) -> Node {
 
 fn pa_qn_node(seg: v2.std.node.Symbol) -> Node {
   fold_list_node(
-    xs: Cons { head: seg, tail: Empty },
+    xs: std.algebra.Cons { head: seg, tail: Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: sym } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
@@ -25,7 +25,7 @@ fn pa_qn_node(seg: v2.std.node.Symbol) -> Node {
 
 fn pa_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -38,7 +38,7 @@ fn pa_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, expor
       v2.std.node.Edge {
         label: Named { name: export_sym },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: export_atom } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: export_atom } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -50,7 +50,7 @@ fn pa_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, expor
 
 fn pa_subject_with_import_use() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -63,7 +63,7 @@ fn pa_subject_with_import_use() -> Node {
       v2.std.node.Edge {
         label: Named { name: ^pa_import_use_sym },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^pa_imported_decl } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^pa_imported_decl } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -75,9 +75,9 @@ fn pa_subject_with_import_use() -> Node {
 
 fn pa_cross_file_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
-    roots: Cons {
+    roots: std.algebra.Cons {
     head: pa_graft_module_root(root: pa_subject_with_import_use()),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: pa_graft_module_root(
         root: pa_module_root(
           seg: ^pa_imported_seg,
@@ -94,7 +94,7 @@ fn pa_cross_file_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.Norma
 
 fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
-    roots: Cons {
+    roots: std.algebra.Cons {
     head: pa_graft_module_root(
       root: pa_module_root(
         seg: ^pa_subject_seg,
@@ -102,7 +102,7 @@ fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree
         export_atom: ^dag_c3_surface_sugar_service
       )
     ),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: pa_graft_module_root(
         root: pa_module_root(
           seg: ^pa_subject_seg,
@@ -120,11 +120,11 @@ fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree
 fn pa_cross_file_admission() -> v2.compiler.name_resolve.Admission {
   v2.compiler.name_resolve.Admission {
     subject: v2.compiler.name_resolve.ResolutionSubject {
-      name: Cons { head: ^pa_subject_seg, tail: Empty }
+      name: std.algebra.Cons { head: ^pa_subject_seg, tail: Empty }
     },
-    imports: Cons {
+    imports: std.algebra.Cons {
       head: v2.compiler.name_resolve.Import {
-        target: Cons { head: ^pa_imported_seg, tail: Empty },
+        target: std.algebra.Cons { head: ^pa_imported_seg, tail: Empty },
         visibility: ImportVisible
       },
       tail: Empty
@@ -189,7 +189,7 @@ data pa_ingest_non_source_read: v2.compiler.source_authority.DagSourceReadWitnes
   source_root: V2Tree
 }
 
-data pa_ingest_non_source_ingest: v2.compiler.source_authority.SourceRootIngest = Cons {
+data pa_ingest_non_source_ingest: v2.compiler.source_authority.SourceRootIngest = std.algebra.Cons {
   head: pa_ingest_non_source_read,
   tail: Empty
 }
@@ -199,7 +199,7 @@ test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
     ingest: pa_ingest_non_source_ingest,
     admission: v2.compiler.name_resolve.Admission {
       subject: v2.compiler.name_resolve.ResolutionSubject {
-        name: Cons { head: ^pa_subject_seg, tail: Empty }
+        name: std.algebra.Cons { head: ^pa_subject_seg, tail: Empty }
       },
       imports: Empty
     },

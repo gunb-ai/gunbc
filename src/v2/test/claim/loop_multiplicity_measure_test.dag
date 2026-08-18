@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn lmm_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -13,7 +13,7 @@ fn lmm_atom(s: v2.std.node.Symbol) -> Node {
 
 fn lmm_loop_with_measure(measure: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) },
       v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: measure }
@@ -24,7 +24,7 @@ fn lmm_loop_with_measure(measure: Node) -> Node {
 
 fn lmm_loop_without_measure() -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) }
     ],
@@ -34,7 +34,7 @@ fn lmm_loop_without_measure() -> Node {
 
 fn lmm_conj_measure(a: Node, b: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: ^lmm_dim_left }, target: a },
       v2.std.node.Edge { label: Named { name: ^lmm_dim_right }, target: b }
@@ -172,7 +172,7 @@ test fn live_registry_proves_loop_measure() -> Bool {
 test fn nested_unproven_loop_still_poisons_the_fold() -> Bool {
   let inner = lmm_loop_with_measure(measure: lmm_atom(s: ^lmm_unregistered_dim))
   let outer = v2.std.node.Node {
-    kind: ComputationNode { behavior: Loop },
+    kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: inner },
       v2.std.node.Edge {

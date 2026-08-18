@@ -55,7 +55,7 @@ fn render_refusal_reason(reason: gunbc.accelerator_demo_plan.AcceleratorRefusalR
 }
 
 fn project_plan_view(
-  plan: RealizationPlan<Nano>,
+  plan: RealizationPlan<std.measure.Nano>,
   kernel_placement: std.realization.Placement,
   contract: std.numerical_contract.NumericalContract,
   fidelity: extdeps.communication.medium.DecodeFidelity,

@@ -2,10 +2,10 @@ module v2.test.language_model.python_cross_runtime_drift
 
 fn python_cross_runtime_drift_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^python_cross_runtime_drift_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^python_cross_runtime_drift_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^python_cross_runtime_drift_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^python_cross_runtime_drift_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
@@ -27,7 +27,7 @@ fn python_cross_runtime_drift_probe_diverges(p: v2.std.leaf_model_verification.L
   p.expected_divergence.expected != p.expected_divergence.actual
 }
 
-data claim_python_cross_runtime_drift_probe_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_python_cross_runtime_drift_probe_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/python_cross_runtime_drift: probe wires drift claim id + per-target sources + ValueDiff divergence anchor",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_cross_runtime_drift_claim_bool_atom(b: true),
@@ -37,7 +37,7 @@ data claim_python_cross_runtime_drift_probe_wired: v2.std.verification.TestClaim
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data claim_python_cross_runtime_drift_is_positive_divergence: v2.std.verification.TestClaim = EqualsClaim {
+data claim_python_cross_runtime_drift_is_positive_divergence: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/python_cross_runtime_drift: arbitrary-precision value diverges from fixed-width value (drift is real)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_cross_runtime_drift_claim_bool_atom(b: true),

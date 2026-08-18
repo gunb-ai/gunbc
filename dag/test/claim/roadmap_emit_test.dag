@@ -11,7 +11,7 @@ fn parent_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_5E27VQFME81E3RP60RE6" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: parent_id,
-    line: AuthoredLine { done: false, content: "**invert hand-maintained**" },
+    line: gunbc.roadmap_status.AuthoredLine { done: false, content: "**invert hand-maintained**" },
     carriers: [gunbc.roadmap_model.Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
@@ -24,7 +24,7 @@ fn child_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_8P7AJ3QVQCM2E8W3AMR7" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_id,
-    line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
+    line: gunbc.roadmap_status.DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
@@ -37,12 +37,12 @@ fn signed_child_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_D1QNZ9290W7D8GPH4XJQ" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_id,
-    line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
+    line: gunbc.roadmap_status.DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
+    signoff: gunbc.roadmap_status.SignedOff { by: "operator", works: gunbc.roadmap_status.RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: gunbc.roadmap_status.HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
   }
 }
 
@@ -109,7 +109,7 @@ fn superseded_child_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_HSDEAR3FG68K530CRD70" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_id,
-    line: SupersededLine { by: "successor-lane", content: "**PR-checkbox status**" },
+    line: gunbc.roadmap_status.SupersededLine { by: "successor-lane", content: "**PR-checkbox status**" },
     carriers: [],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,

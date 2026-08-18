@@ -3,7 +3,7 @@ module v2.test.lens_cost.atom_zero
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 data atom_zero_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^atom_zero_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^atom_zero_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }

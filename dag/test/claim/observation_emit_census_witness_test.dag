@@ -22,7 +22,7 @@ test fn w_roster_staleness_check_discriminates() -> Bool {
   let bogus = gunbc.observation_emit_census.CensusedEmitSite {
     marker: "[this-marker-does-not-exist-in-the-seed]" as std.types.NonEmptyStr,
     source_file: "src/v1/stage0/src/bin/claim_executor.rs" as std.types.NonEmptyStr,
-    disposition: CountedFrontierSite {
+    disposition: gunbc.observation_emit_census.CountedFrontierSite {
       reason: "control" as std.types.NonEmptyStr,
       dissolution: unbound_dissolution(description: "control")
     }

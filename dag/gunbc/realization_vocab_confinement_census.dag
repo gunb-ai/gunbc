@@ -46,7 +46,7 @@ data confinement_census_population: gunbc.repository_census_observation.Reposito
 }
 
 fn confinement_census_revision(commit: String) -> gunbc.guarantee_measurement.MeasurementRevision {
-  GitRevision { commit: commit }
+  gunbc.guarantee_measurement.GitRevision { commit: commit }
 }
 
 fn confinement_census_invocation(
@@ -72,7 +72,7 @@ fn confinement_census_run(
   )
 }
 
-data confinement_census_capability: gunbc.repository_census_coverage.CensusMethodCapability = ClassifiesDeclaredStructure {
+data confinement_census_capability: gunbc.repository_census_coverage.CensusMethodCapability = gunbc.repository_census_coverage.ClassifiesDeclaredStructure {
   contract: confinement_census_decl(name: "confinement_surface_axis_of_declared_key"),
 }
 

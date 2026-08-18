@@ -81,11 +81,11 @@ data witness_project_to_core_derives_preserves_ambiguity: Bool = match find_witn
 
 fn surface_only_node(surface: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: v2.std.node.Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: v2.std.node.SyntheticOccurrence }
+        label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) },
+        target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: surface } }, children: [], occurrence_id: v2.std.node.SyntheticOccurrence }
       }
     ],
     occurrence_id: SyntheticOccurrence
@@ -104,20 +104,20 @@ data witness_project_to_core_rejects_surface_only_empty_core: Bool = match find_
 
 fn surface_wrapped_core_node(core: v2.std.node.Symbol, surface: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             v2.std.node.Edge {
               label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) },
-              target: v2.std.node.Node { kind: TypeNode { connective: Atom { identity: core } }, children: [], occurrence_id: SyntheticOccurrence }
+              target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: core } }, children: [], occurrence_id: SyntheticOccurrence }
             },
             v2.std.node.Edge {
-              label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-              target: v2.std.node.Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: SyntheticOccurrence }
+              label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) },
+              target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: surface } }, children: [], occurrence_id: SyntheticOccurrence }
             }
           ],
           occurrence_id: SyntheticOccurrence
@@ -143,20 +143,20 @@ data witness_project_to_core_rejects_core_only_under_surface: Bool = match find_
 
 fn nested_project_to_core_node(nested_core: v2.std.node.Symbol, nested_surface: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             v2.std.node.Edge {
-              label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-              target: v2.std.node.Node { kind: TypeNode { connective: Atom { identity: nested_core } }, children: [], occurrence_id: SyntheticOccurrence }
+              label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) },
+              target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: nested_core } }, children: [], occurrence_id: SyntheticOccurrence }
             },
             v2.std.node.Edge {
-              label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-              target: v2.std.node.Node { kind: TypeNode { connective: Atom { identity: nested_surface } }, children: [], occurrence_id: SyntheticOccurrence }
+              label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) },
+              target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: nested_surface } }, children: [], occurrence_id: SyntheticOccurrence }
             }
           ],
           occurrence_id: SyntheticOccurrence
@@ -196,11 +196,11 @@ data witness_project_to_core_rejects_nested_core_difference: Bool = match find_w
 
 data witness_project_to_core_rejects_different_connective_same_core_children: Bool = match find_witness_derives(
   source_facts: v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
+        label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) },
+        target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
       }
     ],
     occurrence_id: SyntheticOccurrence
@@ -208,33 +208,33 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
   candidates: control_candidate_set(
     candidates: [
       v2.std.node.Node {
-        kind: TypeNode { connective: Disj },
+        kind: v2.std.node.TypeNode { connective: Disj },
         children: [
           v2.std.node.Edge {
-            label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-            target: v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
+            label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) },
+            target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
           }
         ],
         occurrence_id: SyntheticOccurrence
 }
     ],
     closedness_evidence: v2.std.node.Node {
-      kind: TypeNode { connective: Disj },
+      kind: v2.std.node.TypeNode { connective: Disj },
       children: [
         v2.std.node.Edge {
-          label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-          target: v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
+          label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) },
+          target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
         }
       ],
       occurrence_id: SyntheticOccurrence
 }
   ),
   derivation_algebra: v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
+        label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) },
+        target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
       }
     ],
     occurrence_id: SyntheticOccurrence
@@ -251,7 +251,7 @@ fn i32_value_set() -> Node {
 
 fn i32_value_set_interval_first() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^integer_value_set_field_interval },
@@ -260,7 +260,7 @@ fn i32_value_set_interval_first() -> Node {
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^integer_value_set_field_kind },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_interval } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^integer_value_set_kind_interval } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -291,7 +291,7 @@ data witness_integer_value_set_accepts_u8_subset_i16: Bool = integer_value_set_c
 fn malformed_interval_value_set() -> Node {
   integer_interval_value_set_node(
     interval: v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: ^malformed_interval_payload } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^malformed_interval_payload } },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
@@ -300,12 +300,12 @@ fn malformed_interval_value_set() -> Node {
 
 fn unbounded_value_set_with_extra_field() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^integer_value_set_field_kind },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_unbounded } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^integer_value_set_kind_unbounded } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -313,7 +313,7 @@ fn unbounded_value_set_with_extra_field() -> Node {
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^integer_value_set_field_extra },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^integer_value_set_field_extra } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^integer_value_set_field_extra } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -387,126 +387,126 @@ data witness_integer_interval_bound_compare_orders_pointer_width_bounds: Bool = 
       contained: int8_interval_spec()
     )
 
-data unified_claim_project_to_core_accepts_sibling: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_project_to_core_accepts_sibling: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_real_dispatch_accepts_sibling
   }
 }
 
-data unified_claim_project_to_core_rejects_wrong_core: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_project_to_core_rejects_wrong_core: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_real_dispatch_rejects_wrong_core
   }
 }
 
-data unified_claim_project_to_core_rejects_empty_core: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_project_to_core_rejects_empty_core: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_rejects_surface_only_empty_core
   }
 }
 
-data unified_claim_project_to_core_rejects_surface_wrapped_core: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_project_to_core_rejects_surface_wrapped_core: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_rejects_core_only_under_surface
   }
 }
 
-data unified_claim_project_to_core_preserves_ambiguity: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_project_to_core_preserves_ambiguity: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_derives_preserves_ambiguity
   }
 }
 
-data unified_claim_project_to_core_drops_nested_surface: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_project_to_core_drops_nested_surface: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_drops_nested_surface
   }
 }
 
-data unified_claim_project_to_core_rejects_nested_core_difference: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_project_to_core_rejects_nested_core_difference: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_rejects_nested_core_difference
   }
 }
 
-data unified_claim_project_to_core_rejects_different_connective_same_core_children: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_project_to_core_rejects_different_connective_same_core_children: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_rejects_different_connective_same_core_children
   }
 }
 
-data unified_claim_integer_value_set_accepts_subset: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_integer_value_set_accepts_subset: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_accepts_i32_subset_python_int
   }
 }
 
-data unified_claim_integer_value_set_accepts_proper_subrange: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_integer_value_set_accepts_proper_subrange: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_accepts_i16_subset_i32
   }
 }
 
-data unified_claim_integer_value_set_accepts_cross_signed_subrange: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_integer_value_set_accepts_cross_signed_subrange: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_accepts_u8_subset_i16
   }
 }
 
-data unified_claim_integer_value_set_rejects_malformed_interval: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_integer_value_set_rejects_malformed_interval: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_rejects_malformed_interval_payload
   }
 }
 
-data unified_claim_integer_value_set_interval_rejects_malformed_interval: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_integer_value_set_interval_rejects_malformed_interval: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_interval_containment_rejects_malformed_payload
   }
 }
 
-data unified_claim_integer_value_set_reverse_strict: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_integer_value_set_reverse_strict: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_reverse_is_strict_coarsening
   }
 }
 
-data unified_claim_integer_value_set_refuses_incompatible: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_integer_value_set_refuses_incompatible: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_refuses_incompatible_unknown
   }
 }
 
-data unified_claim_refinement_widening_refuses_semantically_equal_value_sets: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_refinement_widening_refuses_semantically_equal_value_sets: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_refinement_widening_refuses_semantically_equal_value_sets
   }
 }
 
-data unified_claim_integer_interval_bound_compare_orders_pointer_width_bounds: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_integer_interval_bound_compare_orders_pointer_width_bounds: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_interval_bound_compare_orders_pointer_width_bounds
   }
 }
 
-data unified_claim_integer_value_set_rejects_unbounded_with_extra_field: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+data unified_claim_integer_value_set_rejects_unbounded_with_extra_field: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_rejects_unbounded_with_extra_field

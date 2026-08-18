@@ -2,10 +2,10 @@ module v2.test.parse.go
 
 fn go_parse_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^go_parse_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^go_parse_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^go_parse_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^go_parse_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
@@ -30,7 +30,7 @@ fn go_tokenize_and_parse() -> Outcome<v2.std.grammar.ParseTree> {
   }
 }
 
-data claim_go_add_function_parses: v2.std.verification.TestClaim = EqualsClaim {
+data claim_go_add_function_parses: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "Go corpus symmetry accepts the current add-function source through the Go lex/grammar",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_parse_bool_atom(

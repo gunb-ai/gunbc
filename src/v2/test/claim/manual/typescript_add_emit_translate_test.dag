@@ -6,7 +6,7 @@ data typescript_add_forbidden_authority_source_text: String = "authority_source_
 data typescript_add_number_inhabitant: Node = ts_inhabitant_number_node()
 
 data typescript_add_emitted_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Arrow },
+  kind: v2.std.node.TypeNode { connective: Arrow },
   children: [
     v2.std.node.Edge { label: Positional, target: typescript_add_number_inhabitant },
     v2.std.node.Edge { label: Positional, target: typescript_add_number_inhabitant },
@@ -34,7 +34,7 @@ data typescript_add_poisoned_authority_target_model: v2.std.compilers.target_mod
 }
 
 data typescript_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -171,11 +171,11 @@ fn typescript_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constrai
       )
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^typescript_add_grounding_miss,
         at: node_locus(node: node),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
@@ -214,7 +214,7 @@ fn anchor_typescript_add_emit_accepts() -> Outcome<Medium<String>> {
 fn anchor_typescript_add_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
   compile_inferred(
     inferred: typescript_add_inferred_tree,
-    mode: TranslateTo { target: typescript_add_poisoned_authority_target_model }
+    mode: v2.compiler.compile.TranslateTo { target: typescript_add_poisoned_authority_target_model }
   )
 }
 

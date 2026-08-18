@@ -21,7 +21,7 @@ data atlassian_fy2022_comparative_citation: extdeps.sec.facts.FiledFactCitation 
   fiscal_year: 2023,
   fiscal_period: "FY",
   form: AnnualReport,
-  period: FiledDuration { start: "2021-07-01", end: "2022-06-30" },
+  period: extdeps.sec.facts.FiledDuration { start: "2021-07-01", end: "2022-06-30" },
   filed_date: "2023-08-18",
 }
 
@@ -30,7 +30,7 @@ data atlassian_fy2023_citation: extdeps.sec.facts.FiledFactCitation = extdeps.se
   fiscal_year: 2023,
   fiscal_period: "FY",
   form: AnnualReport,
-  period: FiledDuration { start: "2022-07-01", end: "2023-06-30" },
+  period: extdeps.sec.facts.FiledDuration { start: "2022-07-01", end: "2023-06-30" },
   filed_date: "2023-08-18",
 }
 
@@ -39,7 +39,7 @@ data atlassian_fy2024_citation: extdeps.sec.facts.FiledFactCitation = extdeps.se
   fiscal_year: 2024,
   fiscal_period: "FY",
   form: AnnualReport,
-  period: FiledDuration { start: "2023-07-01", end: "2024-06-30" },
+  period: extdeps.sec.facts.FiledDuration { start: "2023-07-01", end: "2024-06-30" },
   filed_date: "2024-08-16",
 }
 
@@ -48,7 +48,7 @@ data atlassian_fy2025_citation: extdeps.sec.facts.FiledFactCitation = extdeps.se
   fiscal_year: 2025,
   fiscal_period: "FY",
   form: AnnualReport,
-  period: FiledDuration { start: "2024-07-01", end: "2025-06-30" },
+  period: extdeps.sec.facts.FiledDuration { start: "2024-07-01", end: "2025-06-30" },
   filed_date: "2025-08-15",
 }
 
@@ -96,13 +96,13 @@ data atlassian_fy2022_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = 
 
 data atlassian_fy2022_operating_income: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_operating_income_loss,
-  amount: FiledSigned { value: signed_usd_non_negative(count: 70083000) },
+  amount: extdeps.sec.facts.FiledSigned { value: signed_usd_non_negative(count: 70083000) },
   citation: atlassian_fy2022_comparative_citation,
 }
 
 data atlassian_fy2022_net_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_net_income_loss,
-  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 519510000) },
+  amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 519510000) },
   citation: atlassian_fy2022_comparative_citation,
 }
 
@@ -150,13 +150,13 @@ data atlassian_fy2023_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = 
 
 data atlassian_fy2023_operating_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_operating_income_loss,
-  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 345222000) },
+  amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 345222000) },
   citation: atlassian_fy2023_citation,
 }
 
 data atlassian_fy2023_net_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_net_income_loss,
-  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 486761000) },
+  amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 486761000) },
   citation: atlassian_fy2023_citation,
 }
 
@@ -204,13 +204,13 @@ data atlassian_fy2024_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = 
 
 data atlassian_fy2024_operating_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_operating_income_loss,
-  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 117077000) },
+  amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 117077000) },
   citation: atlassian_fy2024_citation,
 }
 
 data atlassian_fy2024_net_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_net_income_loss,
-  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 300519000) },
+  amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 300519000) },
   citation: atlassian_fy2024_citation,
 }
 
@@ -258,13 +258,13 @@ data atlassian_fy2025_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = 
 
 data atlassian_fy2025_operating_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_operating_income_loss,
-  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 130392000) },
+  amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 130392000) },
   citation: atlassian_fy2025_citation,
 }
 
 data atlassian_fy2025_net_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_net_income_loss,
-  amount: FiledSigned { value: signed_usd_negative(magnitude_count: 256687000) },
+  amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 256687000) },
   citation: atlassian_fy2025_citation,
 }
 

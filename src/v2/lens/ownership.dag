@@ -36,15 +36,15 @@ fn ownership_fact_unresolved(fact: OwnershipFact) -> Bool {
 fn ownership_witness_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^ownership_reason_unresolved_projection,
-    at: Textual { file: ^ownership_projection_virtual_file, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^ownership_projection_virtual_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
 fn ownership_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<OwnershipFact> {
   let fact = ownership_fact(tree: tree, dependencies: dependencies)
   if ownership_fact_unresolved(fact: fact) {
-    Violates { diagnostic: ownership_witness_diagnostic() }
+    v2.std.witness.Violates { diagnostic: ownership_witness_diagnostic() }
   } else {
     Holds { value: fact }
   }
@@ -87,5 +87,5 @@ fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }

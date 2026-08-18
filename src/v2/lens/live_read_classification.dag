@@ -11,7 +11,7 @@ module v2.lens.live_read_classification
 data live_read_classification_law: String = "G2 (call-reachability) live-read classification per docs/plans/live-read-witness-classification-design.md P1: proven runtime-read closure = import-closure modules intersecting carrier homes PLUS call-reachable fn bodies from the witness entry module over fn-arrow DependencyView facts. Carrier invocations (filesystem_read, module_declaration_facts, decl_facts) are located in reachable skeletons; path patterns are LiteralPath when a string literal atom is statable, ParamRef when the filesystem_read path argument is a parameter reference, UnknownPath fail-closed otherwise."
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
 data empty_carrier_list: List<v2.std.live_read.LiveReadCarrier> = []
@@ -47,10 +47,10 @@ fn carrier_homes_in_closure(
 fn carrier_home_kind_to_g1_carrier(home: v2.std.live_read.LiveReadCarrierHome) -> v2.std.live_read.LiveReadCarrier {
   match home.kind {
     FilesystemReadCarrier =>
-      FilesystemReadPath { path_pattern: UnknownPath }
+      v2.std.live_read.FilesystemReadPath { path_pattern: UnknownPath }
     ModuleDeclarationFactsCarrier => ModuleDeclarationFactsScan
     DeclFactsReflectionCarrier =>
-      DeclFactsReflection { home: home.module }
+      v2.std.live_read.DeclFactsReflection { home: home.module }
   }
 }
 
@@ -71,7 +71,7 @@ fn live_read_classification_g1(
   if length(xs: hits) == 0 {
     LocalRead
   } else {
-    RuntimeRead { carriers: g1_carriers_from_homes(homes: hits) }
+    v2.std.live_read.RuntimeRead { carriers: g1_carriers_from_homes(homes: hits) }
   }
 }
 
@@ -176,9 +176,9 @@ fn param_names_of(decl: v2.std.fn_index.FnArrowDecl) -> List<String> {
 
 fn path_pattern_from_lexeme(text: String, param_names: List<String>) -> v2.std.live_read.PathPattern {
   if is_path_like_lexeme(text: text) {
-    LiteralPath { path: text }
+    v2.std.live_read.LiteralPath { path: text }
   } else if contains(xs: param_names, item: text, eq: string_eq) {
-    ParamRef { name: text }
+    v2.std.live_read.ParamRef { name: text }
   } else {
     UnknownPath
   }
@@ -246,21 +246,21 @@ fn carrier_for_callee_text(
   if string_eq(a: callee_text, b: "filesystem_read") {
     match list_head(xs: args) {
       HeadFound { value: arg } =>
-        FilesystemReadPath {
+        v2.std.live_read.FilesystemReadPath {
           path_pattern: path_pattern_from_lexeme(
             text: symbol_lexeme(sym: arg),
             param_names: param_names
           )
         }
-      HeadAbsent => FilesystemReadPath { path_pattern: UnknownPath }
+      HeadAbsent => v2.std.live_read.FilesystemReadPath { path_pattern: UnknownPath }
     }
   } else if string_eq(a: callee_text, b: "module_declaration_facts")
     || string_eq(a: callee_text, b: "module_declaration_facts_live") {
     ModuleDeclarationFactsScan
   } else if string_eq(a: callee_text, b: "decl_facts") {
-    DeclFactsReflection { home: "v2.std.decl_index" }
+    v2.std.live_read.DeclFactsReflection { home: "v2.std.decl_index" }
   } else {
-    FilesystemReadPath { path_pattern: UnknownPath }
+    v2.std.live_read.FilesystemReadPath { path_pattern: UnknownPath }
   }
 }
 
@@ -311,7 +311,7 @@ fn tail_nodes(xs: List<Node>) -> List<Node> {
 }
 
 fn literal_path_carrier(text: String) -> v2.std.live_read.LiveReadCarrier {
-  FilesystemReadPath { path_pattern: LiteralPath { path: text } }
+  v2.std.live_read.FilesystemReadPath { path_pattern: v2.std.live_read.LiteralPath { path: text } }
 }
 
 fn literal_path_carriers_from_atoms(
@@ -538,7 +538,7 @@ fn live_read_classification_g2_from_facts(
   if length(xs: carriers) == 0 {
     LocalRead
   } else {
-    RuntimeRead { carriers: carriers }
+    v2.std.live_read.RuntimeRead { carriers: carriers }
   }
 }
 
@@ -655,7 +655,7 @@ fn live_read_classification_g2_from_edges(
   if length(xs: carriers) == 0 {
     LocalRead
   } else {
-    RuntimeRead { carriers: carriers }
+    v2.std.live_read.RuntimeRead { carriers: carriers }
   }
 }
 
@@ -701,9 +701,9 @@ fn live_read_selection_projection_for_subject(
 ) -> v2.std.live_read.LiveReadSelectionProjection {
   match subject {
     WholeTreeFactSubject =>
-      LiveReadSelectionClassified { classification: classification }
+      v2.std.live_read.LiveReadSelectionClassified { classification: classification }
     PartialFactSubject { cause: cause } =>
-      LiveReadSelectionRefused {
+      v2.std.live_read.LiveReadSelectionRefused {
         cause: concat(
           concat(
             "G2 ran against a partial fact subject, so no classification may decide a skip. ",
@@ -725,7 +725,7 @@ fn live_read_selection_projection_live(
 ) -> v2.std.live_read.LiveReadSelectionProjection {
   match bind_g2_root(entry_path: entry_path, fn_name: fn_name, nodes: nodes, decls: decls) {
     G2RootUnbound { cause: cause } =>
-      LiveReadSelectionRefused {
+      v2.std.live_read.LiveReadSelectionRefused {
         cause: concat("G2 root is not exactly bound, so no classification was run: ", cause)
       }
     G2RootBound { entry_path: bound_path, entry_module: bound_module, decl: _ } =>
@@ -755,7 +755,7 @@ fn live_read_selection_projection_from_facts(
     carrier_homes: carrier_homes,
     decls: decls
   ) {
-    LiveReadSelectionClassified {
+    v2.std.live_read.LiveReadSelectionClassified {
       classification: live_read_classification_g2_from_facts(
         entry_module: entry_module,
         facts: facts,
@@ -764,7 +764,7 @@ fn live_read_selection_projection_from_facts(
       )
     }
   } else {
-    LiveReadSelectionRefused {
+    v2.std.live_read.LiveReadSelectionRefused {
       cause: concat(
         "G2 fn-arrow facts do not cover a reachable carrier home for entry ",
         entry_module

@@ -238,8 +238,8 @@ fn time_series_append(
 ) -> TimeSeriesSignal {
   fold_list_right(
     xs: signal,
-    empty: Cons { head: sample, tail: Empty },
-    snoc: fn(acc, item) { Cons { head: item, tail: acc } }
+    empty: std.algebra.Cons { head: sample, tail: Empty },
+    snoc: fn(acc, item) { std.algebra.Cons { head: item, tail: acc } }
   )
 }
 

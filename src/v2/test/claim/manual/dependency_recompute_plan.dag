@@ -2,19 +2,19 @@ module v2.test.manual.dependency_recompute_plan
 
 
 data refinement_subject_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^refinement_subject_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^refinement_subject_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data refinement_new_field_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^refinement_new_field_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^refinement_new_field_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data refinement_after_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^refinement_new_field_symbol },
@@ -25,25 +25,25 @@ data refinement_after_node: Node = v2.std.node.Node {
 }
 
 data testclaim_lens_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^testclaim_lens_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^testclaim_lens_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data boundary_test_lens_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^boundary_test_lens_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^boundary_test_lens_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data target_test_projection_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^target_test_projection_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^target_test_projection_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data dependency_projection_subgraph: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^testclaim_lens_symbol },
@@ -96,7 +96,7 @@ data target_projection_dependency: v2.std.dependency.DependencyView = v2.std.dep
   usage_site: target_test_projection_node
 }
 
-data refinement_affected_set: v2.std.change.AffectedSet = AffectedSetProduced {
+data refinement_affected_set: v2.std.change.AffectedSet = v2.std.change.AffectedSetProduced {
   changes: refinement_change_set,
   affected: [
     v2.std.change.AffectedDependency {

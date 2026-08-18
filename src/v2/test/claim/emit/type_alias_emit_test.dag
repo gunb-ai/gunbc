@@ -15,7 +15,7 @@ fn type_alias_atom(spelling: String) -> Node {
 
 fn type_alias_qualified_name_emitted(type_name: String) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [ v2.std.node.Edge { label: Positional, target: type_alias_atom(spelling: type_name) } ],
     occurrence_id: SyntheticOccurrence
   }
@@ -23,7 +23,7 @@ fn type_alias_qualified_name_emitted(type_name: String) -> Node {
 
 fn type_alias_type_expr_emitted(type_name: String) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [ v2.std.node.Edge { label: Positional, target: type_alias_qualified_name_emitted(type_name: type_name) } ],
     occurrence_id: SyntheticOccurrence
   }
@@ -31,7 +31,7 @@ fn type_alias_type_expr_emitted(type_name: String) -> Node {
 
 fn type_alias_decl_emitted(name: String, type_name: String) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: type_alias_atom(spelling: name) },
       v2.std.node.Edge { label: Positional, target: type_alias_type_expr_emitted(type_name: type_name) }
@@ -50,7 +50,7 @@ fn type_alias_generator_id_emitted() -> Node {
 
 fn type_alias_generic_qualified_name_emitted(head: String, arg: String) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: type_alias_atom(spelling: head) },
       v2.std.node.Edge { label: Positional, target: type_alias_atom(spelling: arg) }
@@ -61,7 +61,7 @@ fn type_alias_generic_qualified_name_emitted(head: String, arg: String) -> Node 
 
 fn type_alias_generic_type_expr_emitted(head: String, arg: String) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [ v2.std.node.Edge { label: Positional, target: type_alias_generic_qualified_name_emitted(head: head, arg: arg) } ],
     occurrence_id: SyntheticOccurrence
   }
@@ -69,7 +69,7 @@ fn type_alias_generic_type_expr_emitted(head: String, arg: String) -> Node {
 
 fn type_alias_generic_rhs_decl_emitted() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: type_alias_atom(spelling: "NodeList") },
       v2.std.node.Edge { label: Positional, target: type_alias_generic_type_expr_emitted(head: "List", arg: "Node") }

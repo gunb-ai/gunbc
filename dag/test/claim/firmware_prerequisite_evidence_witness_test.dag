@@ -14,7 +14,7 @@ data synthetic_lower_refusal: extdeps.firmware.types.FirmwarePrerequisiteObserva
   image_kind: OpenBmcWebUiTar,
   gating_target: BmcController,
   gating_version: firmware_semantic_version(major: 1, minor: 0, patch: 0),
-  outcome: PushRefusedByTarget { diagnostic: "authored probe; no such push was executed" },
+  outcome: extdeps.firmware.types.PushRefusedByTarget { diagnostic: "authored probe; no such push was executed" },
   observed_at: 1786579200000,
 }
 

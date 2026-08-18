@@ -46,7 +46,7 @@ fn resolve_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnosti
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: port_locus(port: reason),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -70,7 +70,7 @@ fn resolve_module_not_found_diagnostic_from_missing(
       module_file: symbol_intern_lexeme(
         lexeme: qualified_name_to_dotted_string(qn: requested)
       ),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     )
   )
 }
@@ -83,7 +83,7 @@ fn collect_import_decl_nodes(n: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node>
   let here = match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } =>
       if id == ^dag_surface_import_decl {
-        Cons { head: n, tail: acc }
+        std.algebra.Cons { head: n, tail: acc }
       } else {
         acc
       }
@@ -110,7 +110,7 @@ fn import_rows_from_parsed_module(root: Node) -> ImportRowsState {
             Rejected { diagnostics: d } => ImportRowsFailed { reason: d.head.reason }
             Accepted { value: target_qn, diagnostics: _ } =>
               ImportRowsOk {
-                rows: Cons {
+                rows: std.algebra.Cons {
                   head: Import { target: target_qn, visibility: ImportVisible },
                   tail: prior
                 }
@@ -226,7 +226,7 @@ fn validate_module_roots(roots: FreeMonoid<v2.compiler.normalized_tree.Normalize
                 ) {
                   ModuleRootNameNotFound =>
                     ModuleRootsValid {
-                      seen: Cons { head: name, tail: prior },
+                      seen: std.algebra.Cons { head: name, tail: prior },
                       diagnostics: merged_diag
                     }
                   ModuleRootNameFoundOnce =>
@@ -285,7 +285,7 @@ fn module_root_lookup(
                     value: match candidate == name {
                       true =>
                         match fold_state {
-                          NoPassingCandidate => OnePassingCandidate { candidate: root }
+                          NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: root }
                           OnePassingCandidate { candidate: _ } => ManyPassingCandidates
                           ManyPassingCandidates => ManyPassingCandidates
                         }

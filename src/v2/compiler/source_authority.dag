@@ -437,13 +437,13 @@ fn source_ref_read_failed_diagnostic(ref: SourceRef, error: String) -> v2.std.di
     head: v2.std.diagnostic.Diagnostic {
       reason: source_ref_read_refused,
       at: textual_whole_file_locus(file: symbol_intern_lexeme(lexeme: ref.path)),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     },
     tail: [
       v2.std.diagnostic.Diagnostic {
         reason: source_ref_read_refused,
         at: port_locus(port: symbol_intern_lexeme(lexeme: error)),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     ]
   }
@@ -468,13 +468,13 @@ fn source_ref_content_hash_mismatch_diagnostic(
     head: v2.std.diagnostic.Diagnostic {
       reason: source_ref_content_hash_mismatch,
       at: textual_whole_file_locus(file: symbol_intern_lexeme(lexeme: ref.path)),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     },
     tail: [
       v2.std.diagnostic.Diagnostic {
         reason: source_ref_content_hash_mismatch,
         at: port_locus(port: symbol_intern_lexeme(lexeme: detail)),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     ]
   }
@@ -667,7 +667,7 @@ fn source_authority_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: port_locus(port: ^source_authority_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -1283,7 +1283,7 @@ fn source_ast_equal_witness(
   if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     Holds { value: SourceAstEqual { original: original, reparsed: reparsed } }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: source_authority_diagnostic(reason: ^source_authority_ast_mismatch)
     }
   }
@@ -1296,7 +1296,7 @@ fn normalized_source_ast_equal_witness(
   if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     Holds { value: NormalizedSourceAstEqual { original: original, reparsed: reparsed } }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: source_authority_diagnostic(reason: ^source_authority_normalized_ast_mismatch)
     }
   }
@@ -1309,7 +1309,7 @@ fn semantic_ir_equal_witness(
   if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     Holds { value: SemanticIrEqual { original: original, reparsed: reparsed } }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: source_authority_diagnostic(reason: ^source_authority_ir_mismatch)
     }
   }
@@ -1327,7 +1327,7 @@ fn deterministic_dag_source_serializer_witness(
       }
     }
   } else {
-    Violates {
+    v2.std.witness.Violates {
       diagnostic: source_authority_diagnostic(reason: ^source_authority_serializer_nondeterministic)
     }
   }

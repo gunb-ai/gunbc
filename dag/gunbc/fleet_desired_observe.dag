@@ -16,20 +16,20 @@ fn observe_fleet_desired_revision(repo: std.types.FilePath) -> gunbc.fleet_main_
   if read.exit_code == 0 {
     let line = trim(s: read.advertised)
     if line == "" {
-      FleetDesiredUnobserved {
+      gunbc.fleet_main_revision.FleetDesiredUnobserved {
         cause: concat("fleet_desired_observe: origin does not advertise ", fleet_desired_ref_name),
       }
     } else {
       match git_object_id_from_untagged_hex(hex: split(s: line, delimiter: "\t").first()) {
-        Present { value: oid } => FleetDesiredAdmitted { revision: oid }
+        Present { value: oid } => gunbc.fleet_main_revision.FleetDesiredAdmitted { revision: oid }
         Absent =>
-          FleetDesiredUnobserved {
+          gunbc.fleet_main_revision.FleetDesiredUnobserved {
             cause: concat("fleet_desired_observe: advertisement is not a decodable object id: ", line),
           }
       }
     }
   } else {
-    FleetDesiredUnobserved {
+    gunbc.fleet_main_revision.FleetDesiredUnobserved {
       cause: concat("fleet_desired_observe: ls-remote refused: ", read.stderr),
     }
   }

@@ -96,23 +96,23 @@ type AnthropicToolResultBlock
 data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<std.disposition.Disposition> = [
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "cache_control" } }
+    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: std.decl_ref.NamedField { field_name: "cache_control" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "citations" } }
+    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: std.decl_ref.NamedField { field_name: "citations" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicImageBlock", field: NamedField { field_name: "cache_control" } }
+    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicImageBlock", field: std.decl_ref.NamedField { field_name: "cache_control" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolReferenceBlock", field: NamedField { field_name: "cache_control" } }
+    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolReferenceBlock", field: std.decl_ref.NamedField { field_name: "cache_control" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "CacheControl", field: NamedField { field_name: "ttl" } }
+    bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "CacheControl", field: std.decl_ref.NamedField { field_name: "ttl" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
@@ -242,56 +242,56 @@ type AnthropicMessages200Body {
 data structural_coverage_gap_anthropic_messages_200_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "AnthropicMessages200Body" },
-      JsonPending { field: "container" },
-      Subject { path: "AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content" },
-      Subject { path: "AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.caller" },
-      JsonPending { field: "web_search_tool_result_payload" }
+      extdeps.coverage.Subject { path: "AnthropicMessages200Body" },
+      extdeps.coverage.JsonPending { field: "container" },
+      extdeps.coverage.Subject { path: "AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content" },
+      extdeps.coverage.Subject { path: "AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.caller" },
+      extdeps.coverage.JsonPending { field: "web_search_tool_result_payload" }
     ],
     trigger: "container-management response surface plus web search result/error payload coproduct plus typed caller carrier for web search tool result"
   },
   {
     facts: [
-      Subject { path: "AnthropicMessages200ContentBlock.MessagesToolUseBlock" },
-      Residue { description: "client_tool_name_input_and_optional_caller_payloads_not_bound_to_declared_tool_schema" }
+      extdeps.coverage.Subject { path: "AnthropicMessages200ContentBlock.MessagesToolUseBlock" },
+      extdeps.coverage.Residue { description: "client_tool_name_input_and_optional_caller_payloads_not_bound_to_declared_tool_schema" }
     ],
     trigger: "tool_use response block references declared AnthropicToolDefinition through typed caller carrier and input payload schema"
   },
   {
     facts: [
-      Subject { path: "AnthropicMessages200ContentBlock.MessagesServerToolUseBlock" },
-      Residue { description: "server_tool_input_and_optional_caller_payloads_unmodeled" }
+      extdeps.coverage.Subject { path: "AnthropicMessages200ContentBlock.MessagesServerToolUseBlock" },
+      extdeps.coverage.Residue { description: "server_tool_input_and_optional_caller_payloads_unmodeled" }
     ],
     trigger: "fold server_tool_use name and input into a server-tool-use coproduct keyed by AnthropicServerToolName"
   },
   {
     facts: [
-      Subject { path: "AnthropicServerToolName" },
-      ExternalSpecWatch { item: "server_tool_use_name_set" }
+      extdeps.coverage.Subject { path: "AnthropicServerToolName" },
+      extdeps.coverage.ExternalSpecWatch { item: "server_tool_use_name_set" }
     ],
     trigger: "Anthropic publishes additional server_tool_use.name values beyond the generated SDK literal set"
   },
   {
     facts: [
-      Subject { path: "AnthropicMessages200ContentBlock" },
-      VariantPending { variant: "web_fetch_tool_result" },
-      VariantPending { variant: "code_execution_tool_result" },
-      VariantPending { variant: "bash_code_execution_tool_result" },
-      VariantPending { variant: "text_editor_code_execution_tool_result" },
-      VariantPending { variant: "tool_search_tool_result" },
-      VariantPending { variant: "advisor_tool_result" },
-      VariantPending { variant: "mcp_tool_use" },
-      VariantPending { variant: "mcp_tool_result" },
-      VariantPending { variant: "container_upload" }
+      extdeps.coverage.Subject { path: "AnthropicMessages200ContentBlock" },
+      extdeps.coverage.VariantPending { variant: "web_fetch_tool_result" },
+      extdeps.coverage.VariantPending { variant: "code_execution_tool_result" },
+      extdeps.coverage.VariantPending { variant: "bash_code_execution_tool_result" },
+      extdeps.coverage.VariantPending { variant: "text_editor_code_execution_tool_result" },
+      extdeps.coverage.VariantPending { variant: "tool_search_tool_result" },
+      extdeps.coverage.VariantPending { variant: "advisor_tool_result" },
+      extdeps.coverage.VariantPending { variant: "mcp_tool_use" },
+      extdeps.coverage.VariantPending { variant: "mcp_tool_result" },
+      extdeps.coverage.VariantPending { variant: "container_upload" }
     ],
     trigger: "Anthropic beta/server-tool content-block surface modeled structurally"
   },
   {
     facts: [
-      Subject { path: "llm.Anthropic.Messages.output.content" },
+      extdeps.coverage.Subject { path: "llm.Anthropic.Messages.output.content" },
       Blocked { reason: "variant_aware_typed_rest_response_projection" },
       PathRef { path: "content/0/text" },
-      RequiresArm { arm: "AnthropicMessages200ContentBlock.MessagesTextBlock" }
+      extdeps.coverage.RequiresArm { arm: "AnthropicMessages200ContentBlock.MessagesTextBlock" }
     ],
     trigger: "structural projection metadata carrier lands"
   }
@@ -300,41 +300,41 @@ data structural_coverage_gap_anthropic_messages_200_residual: List<extdeps.cover
 data rest_request_wire_serde_alignment_receipt: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "llm.Anthropic.Messages" },
-      Subject { path: "AnthropicChatMessage" },
-      Paid { item: "role_internally_tagged_object_user_assistant" }
+      extdeps.coverage.Subject { path: "llm.Anthropic.Messages" },
+      extdeps.coverage.Subject { path: "AnthropicChatMessage" },
+      extdeps.coverage.Paid { item: "role_internally_tagged_object_user_assistant" }
     ],
     trigger: none
   },
   {
     facts: [
-      Subject { path: "llm.Anthropic.Messages" },
-      Subject { path: "AnthropicUserContentBlock" },
-      Paid { item: "type_internally_tagged_object_text_tool_result" }
+      extdeps.coverage.Subject { path: "llm.Anthropic.Messages" },
+      extdeps.coverage.Subject { path: "AnthropicUserContentBlock" },
+      extdeps.coverage.Paid { item: "type_internally_tagged_object_text_tool_result" }
     ],
     trigger: none
   },
   {
     facts: [
-      Subject { path: "llm.Anthropic.Messages" },
-      Subject { path: "AnthropicAssistantContentBlock" },
-      Paid { item: "type_internally_tagged_object_text_tool_use" }
+      extdeps.coverage.Subject { path: "llm.Anthropic.Messages" },
+      extdeps.coverage.Subject { path: "AnthropicAssistantContentBlock" },
+      extdeps.coverage.Paid { item: "type_internally_tagged_object_text_tool_use" }
     ],
     trigger: none
   },
   {
     facts: [
-      Subject { path: "llm.Anthropic.Messages" },
-      Subject { path: "AnthropicUserContentBlock.UserToolResultBlock.content" },
-      Paid { item: "tool_result_content_untagged_scalar_or_block_array" }
+      extdeps.coverage.Subject { path: "llm.Anthropic.Messages" },
+      extdeps.coverage.Subject { path: "AnthropicUserContentBlock.UserToolResultBlock.content" },
+      extdeps.coverage.Paid { item: "tool_result_content_untagged_scalar_or_block_array" }
     ],
     trigger: none
   },
   {
     facts: [
-      Subject { path: "llm.Anthropic.Messages" },
-      Subject { path: "AnthropicToolResultBlock" },
-      Paid { item: "type_internally_tagged_object_tool_result_nested_blocks" }
+      extdeps.coverage.Subject { path: "llm.Anthropic.Messages" },
+      extdeps.coverage.Subject { path: "AnthropicToolResultBlock" },
+      extdeps.coverage.Paid { item: "type_internally_tagged_object_tool_result_nested_blocks" }
     ],
     trigger: none
   }
@@ -343,9 +343,9 @@ data rest_request_wire_serde_alignment_receipt: List<extdeps.coverage.CoverageCl
 data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "ImageSource" },
-      VariantPending { variant: "FileImage" },
-      Residue { description: "file_source_requires_anthropic_beta_on_messages_transport" }
+      extdeps.coverage.Subject { path: "ImageSource" },
+      extdeps.coverage.VariantPending { variant: "FileImage" },
+      extdeps.coverage.Residue { description: "file_source_requires_anthropic_beta_on_messages_transport" }
     ],
     trigger: "add FileImage arm and emit anthropic-beta files-api-2025-04-14 when REST transport binds beta header on FileImage presence"
   }
@@ -354,9 +354,9 @@ data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<ext
 data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "llm.Anthropic.Messages" },
-      Subject { path: "AnthropicMessages200ContentBlock" },
-      Residue { description: "messages_200_content_block_internally_tagged_object_unproved" }
+      extdeps.coverage.Subject { path: "llm.Anthropic.Messages" },
+      extdeps.coverage.Subject { path: "AnthropicMessages200ContentBlock" },
+      extdeps.coverage.Residue { description: "messages_200_content_block_internally_tagged_object_unproved" }
     ],
     trigger: "generated response enum serde/emitter ratchet consumes the type-tagged AnthropicMessages200ContentBlock wire contract"
   }

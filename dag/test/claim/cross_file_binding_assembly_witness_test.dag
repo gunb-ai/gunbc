@@ -134,7 +134,7 @@ fn cfba_single_occurrence_closure_row(
     },
     inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
       module_paths: [std.occurrence_binding_candidates.OccurrenceModulePathRow { occurrence: occ, module_path: module_path }],
-      exposure_rows: [std.occurrence_binding_candidates.DeclarationExposureRow { occurrence: occ, exposure: ModuleExposure { module: module_path } }],
+      exposure_rows: [std.occurrence_binding_candidates.DeclarationExposureRow { occurrence: occ, exposure: std.occurrence_binding_candidates.ModuleExposure { module: module_path } }],
       authored_order_rows: [std.occurrence_binding_candidates.AuthoredOrderRow { occurrence: occ, ordinal: std.occurrence_identity.AuthoredTokenOrdinal { value: 0 } }],
     },
     module_path: module_path,
@@ -224,7 +224,7 @@ fn cfba_provider_with_reference_closure_row(
         std.occurrence_binding_candidates.OccurrenceModulePathRow { occurrence: ref_occ, module_path: module_path },
       ],
       exposure_rows: [
-        std.occurrence_binding_candidates.DeclarationExposureRow { occurrence: decl_occ, exposure: ModuleExposure { module: module_path } },
+        std.occurrence_binding_candidates.DeclarationExposureRow { occurrence: decl_occ, exposure: std.occurrence_binding_candidates.ModuleExposure { module: module_path } },
       ],
       authored_order_rows: [
         std.occurrence_binding_candidates.AuthoredOrderRow { occurrence: decl_occ, ordinal: std.occurrence_identity.AuthoredTokenOrdinal { value: 0 } },
@@ -313,7 +313,7 @@ test fn lexical_exposure_scope_rekeys_to_same_closure_id_as_its_index_entry_hold
       exposure_rows: [
         std.occurrence_binding_candidates.DeclarationExposureRow {
           occurrence: binder,
-          exposure: LexicalExposure { exposing_scope: outer_path },
+          exposure: std.occurrence_binding_candidates.LexicalExposure { exposing_scope: outer_path },
         },
       ],
       authored_order_rows: [],

@@ -17,11 +17,11 @@ data example_srv2_redfish_system: extdeps.bmc.types.RedfishSystemInventory = red
 data example_srv2_sensor_power: extdeps.bmc.types.RedfishChassisSensorCollection = extdeps.bmc.types.RedfishChassisSensorCollection {
   chassis_id: asrock_altrad8ud_redfish_chassis_id,
   sensors: [
-    PowerSensor {
+    extdeps.bmc.types.PowerSensor {
       name: "power_PWR_Core_VRD",
       watts: Present { value: watt(count: 95) },
     },
-    PowerSensor {
+    extdeps.bmc.types.PowerSensor {
       name: "power_PWR_SOC_VRD",
       watts: Present { value: watt(count: 17) },
     },

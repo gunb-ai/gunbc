@@ -28,7 +28,7 @@ fn obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId) -> std.o
 fn obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId, module: String) -> std.occurrence_binding_candidates.DeclarationExposureRow {
   std.occurrence_binding_candidates.DeclarationExposureRow {
     occurrence: occurrence,
-    exposure: ModuleExposure { module: obc_module_path(dotted: module) },
+    exposure: std.occurrence_binding_candidates.ModuleExposure { module: obc_module_path(dotted: module) },
   }
 }
 
@@ -38,7 +38,7 @@ fn obc_lexical_exposure(
 ) -> std.occurrence_binding_candidates.DeclarationExposureRow {
   std.occurrence_binding_candidates.DeclarationExposureRow {
     occurrence: occurrence,
-    exposure: LexicalExposure { exposing_scope: scope },
+    exposure: std.occurrence_binding_candidates.LexicalExposure { exposing_scope: scope },
   }
 }
 
@@ -542,7 +542,7 @@ test fn direct_module_dependency_dedupes_by_module_pair_holds() -> Bool {
     provider_module: obc_module_path(dotted: "app.provider"),
   }
   let edges = match direct_module_dependencies_from_bound_population(
-    population: AllReferencesBound {
+    population: std.occurrence_binding_candidates.AllReferencesBound {
       providers: [same_module_provider, cross_module_provider_one, cross_module_provider_two],
     },
   ) {
@@ -560,8 +560,8 @@ data occurrence_binding_candidates_witness_refused_population_never_empty_edges_
 
 test fn refused_population_never_projects_empty_edge_list_holds() -> Bool {
   match direct_module_dependencies_from_bound_population(
-    population: ReferencePopulationRefused {
-      first_failure: ReferenceBindingProjectionUnbound {
+    population: std.occurrence_binding_candidates.ReferencePopulationRefused {
+      first_failure: std.occurrence_binding_candidates.ReferenceBindingProjectionUnbound {
         occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
       },
       more_failures: [],
@@ -600,7 +600,7 @@ test fn repeated_cross_file_mentions_collapse_provider_file_holds() -> Bool {
   match module_file_index {
     ModulePathFileIndexReady { entries: module_files } =>
       match reference_derived_provider_files_for_consumer(
-        population: AllReferencesBound { providers: [provider_one, provider_two] },
+        population: std.occurrence_binding_candidates.AllReferencesBound { providers: [provider_one, provider_two] },
         module_files: module_files,
         consumer_file: "dag/app/consumer.dag",
       ) {

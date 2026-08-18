@@ -5,7 +5,7 @@ fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> v2.std.diagnostic.Di
   v2.std.diagnostic.Diagnostic {
     reason: ^emit_semantic_decl_unsupported_shape,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

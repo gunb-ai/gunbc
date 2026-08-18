@@ -20,11 +20,11 @@ test fn w_package_version_field_renders() -> Bool {
 test fn w_registry_dep_version_requirements() -> Bool {
   let serde = extdeps.cargo.CargoDependency {
     name: "serde",
-    source: RegistryDep { version: "1", features: ["derive", "rc"] }
+    source: extdeps.cargo.RegistryDep { version: "1", features: ["derive", "rc"] }
   }
   let stacker = extdeps.cargo.CargoDependency {
     name: "stacker",
-    source: RegistryDep { version: "0.1", features: [] }
+    source: extdeps.cargo.RegistryDep { version: "0.1", features: [] }
   }
   match serde.source {
     RegistryDep { version: v, features: f } =>

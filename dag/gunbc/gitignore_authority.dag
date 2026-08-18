@@ -3,87 +3,87 @@ module gunbc.gitignore_authority
 
 data gitignore_authority: List<gunbc.gitignore_model.IgnoreGroup> = [
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: CargoArtifacts },
+    producer: gunbc.gitignore_model.Derivable { kind: CargoArtifacts },
     artifacts: [CargoTargetDir, CargoTargetCodexDir]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: CargoCacheLocal },
+    producer: gunbc.gitignore_model.Derivable { kind: CargoCacheLocal },
     artifacts: [LocalCargoHome]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: CodegenSymlink },
+    producer: gunbc.gitignore_model.Derivable { kind: CodegenSymlink },
     artifacts: [CodegenBinSymlink]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: CoverageReport },
+    producer: gunbc.gitignore_model.Derivable { kind: CoverageReport },
     artifacts: [TarpaulinHtmlReport, TarpaulinJsonReport, CoberturaReport, LcovReport, CoverageOutputDir]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Cited { kind: JetBrainsIDE, upstream: "jetbrains.com/idea" },
+    producer: gunbc.gitignore_model.Cited { kind: JetBrainsIDE, upstream: "jetbrains.com/idea" },
     artifacts: [JetBrainsProjectDir]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Cited { kind: VSCodeIDE, upstream: "code.visualstudio.com" },
+    producer: gunbc.gitignore_model.Cited { kind: VSCodeIDE, upstream: "code.visualstudio.com" },
     artifacts: [VSCodeWorkspaceDir]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Cited { kind: VimEditor, upstream: "vim.org" },
+    producer: gunbc.gitignore_model.Cited { kind: VimEditor, upstream: "vim.org" },
     artifacts: [VimSwapFile, VimSwapFileAlt]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Cited { kind: EmacsEditor, upstream: "gnu.org/software/emacs" },
+    producer: gunbc.gitignore_model.Cited { kind: EmacsEditor, upstream: "gnu.org/software/emacs" },
     artifacts: [EmacsBackupFile]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Cited { kind: GenericEditorBackup, upstream: "cross-editor backup convention" },
+    producer: gunbc.gitignore_model.Cited { kind: GenericEditorBackup, upstream: "cross-editor backup convention" },
     artifacts: [GenericBackupFile]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Cited { kind: MacOSFinder, upstream: "developer.apple.com (Finder metadata)" },
+    producer: gunbc.gitignore_model.Cited { kind: MacOSFinder, upstream: "developer.apple.com (Finder metadata)" },
     artifacts: [MacOSFinderMetadata]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Cited { kind: WindowsExplorer, upstream: "microsoft.com (Explorer thumbnail cache)" },
+    producer: gunbc.gitignore_model.Cited { kind: WindowsExplorer, upstream: "microsoft.com (Explorer thumbnail cache)" },
     artifacts: [WindowsThumbnailCache]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Cited { kind: Tmux, upstream: "github.com/tmux/tmux (pipe-pane log naming)" },
+    producer: gunbc.gitignore_model.Cited { kind: Tmux, upstream: "github.com/tmux/tmux (pipe-pane log naming)" },
     artifacts: [TmuxLogFile]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Cited { kind: SecretsConvention, upstream: "github.com/motdotla/dotenv" },
+    producer: gunbc.gitignore_model.Cited { kind: SecretsConvention, upstream: "github.com/motdotla/dotenv" },
     artifacts: [DotEnvFile, DotEnvLocalFile, DotEnvLocalWildcard]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: GeneratorStamp },
+    producer: gunbc.gitignore_model.Derivable { kind: GeneratorStamp },
     artifacts: [GeneratorStampFile]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: WorkflowRuntime },
+    producer: gunbc.gitignore_model.Derivable { kind: WorkflowRuntime },
     artifacts: [GunbcWorkflowDir]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: TestgenOutput },
+    producer: gunbc.gitignore_model.Derivable { kind: TestgenOutput },
     artifacts: [TestgenOutputDir]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Cited { kind: NodeJS, upstream: "github/gitignore/Node.gitignore" },
+    producer: gunbc.gitignore_model.Cited { kind: NodeJS, upstream: "github/gitignore/Node.gitignore" },
     artifacts: [NodeModulesDir]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: ClaudeCodeSession },
+    producer: gunbc.gitignore_model.Derivable { kind: ClaudeCodeSession },
     artifacts: [ClaudeSessionDir]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: RegenTempDir },
+    producer: gunbc.gitignore_model.Derivable { kind: RegenTempDir },
     artifacts: [RegenSourcesDir, RegenOutputDir, RegenGeneratedSourceRootDir, FreshnessCheckDir]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: AuthSessionTranscript },
+    producer: gunbc.gitignore_model.Derivable { kind: AuthSessionTranscript },
     artifacts: [AuthTranscriptFile]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: OpenClawArtifact },
+    producer: gunbc.gitignore_model.Derivable { kind: OpenClawArtifact },
     artifacts: [
       OpenClawControlDir, OpenClawAgentsFile, OpenClawHeartbeatFile, OpenClawIdentityFile,
       OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
@@ -91,11 +91,11 @@ data gitignore_authority: List<gunbc.gitignore_model.IgnoreGroup> = [
     ]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: GithubCLICache },
+    producer: gunbc.gitignore_model.Derivable { kind: GithubCLICache },
     artifacts: [GithubCLICacheDir]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: PythonLocalDevScript },
+    producer: gunbc.gitignore_model.Derivable { kind: PythonLocalDevScript },
     artifacts: [
       PythonLocalDevScriptFile,
       PythonAuditScriptAllowlisted,
@@ -103,15 +103,15 @@ data gitignore_authority: List<gunbc.gitignore_model.IgnoreGroup> = [
     ]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Cited { kind: CPythonInterpreter, upstream: "python.org/peps/pep-3147" },
+    producer: gunbc.gitignore_model.Cited { kind: CPythonInterpreter, upstream: "python.org/peps/pep-3147" },
     artifacts: [PythonBytecodeCacheDir, PythonCompiledBytecode]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: ClaimMapOutput },
+    producer: gunbc.gitignore_model.Derivable { kind: ClaimMapOutput },
     artifacts: [ClaimMapDir, ScratchProbeFile]
   },
   gunbc.gitignore_model.IgnoreGroup {
-    producer: Derivable { kind: SupersededPlanningDir },
+    producer: gunbc.gitignore_model.Derivable { kind: SupersededPlanningDir },
     artifacts: [GunbcPlanningDir, ScriptsFixturesDir]
   }
 ]

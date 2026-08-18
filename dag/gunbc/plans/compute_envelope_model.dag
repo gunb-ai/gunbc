@@ -17,7 +17,7 @@ fn compute_envelope_model_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "Neither extreme is a capacity problem. The host has enormous headroom on both axes; the failures are **coordination** failures."),
     h2(text: "2. The root: N hand-tuned dimensions, no single authority (§3)"),
     p(text: "Every resource/parallelism knob is set **independently, by a different hand, blind to the others** — the textbook §3 violation (one fact, many homes). There is no `ResourceEnvelope` the knobs derive from, so they cannot be mutually consistent:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Dimension"), cell(text: "Set today by"), cell(text: "Blind to")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -33,7 +33,7 @@ fn compute_envelope_model_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "The under-side and the over-side are the **same defect** seen twice: width bounded *below* the envelope (idle) and fan-out bursting *above* a cap that the envelope never informed (crash)."),
     h2(text: "3. The move: one ResourceEnvelope, every knob derived (§3 single authority)"),
     p(text: "Collapse the N hand-tuned dimensions into **one authority** — the host `ResourceEnvelope` (cores, memory, pids capacity; already a type in `dag/product/compute_fabric.dag`) — and make **every knob a function of it**. Then the dimensions stop being N things to juggle: they are one measured fact with derivations, and the fleet gets **exactly one coherent operating point**. It *cannot* be both starved and thrashing, because both the width floor and the fan-out ceiling come from the same envelope."),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Knob"), cell(text: "Derivation from the envelope"), cell(text: "Tier (§4)"), cell(text: "Owner"), cell(text: "Status")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -92,6 +92,6 @@ data compute_envelope_model_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "compute-envelope-model",
   title: "Compute envelope — one authority for the CI fleet's resource dimensions",
   body: compute_envelope_model_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the host `ResourceEnvelope` is grounded in measured truth (128c/128GB, both hosts) and every knob — spawn width, host packing, per-build fan-out, `TasksMax`, jobserver tokens, `MemoryMax` — is *derived* from that single authority (the ctrl units generated, never hand-typed), at which point the coherent operating point is a witnessed by-construction property (§3/§5) and this planning tracker is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the host `ResourceEnvelope` is grounded in measured truth (128c/128GB, both hosts) and every knob — spawn width, host packing, per-build fan-out, `TasksMax`, jobserver tokens, `MemoryMax` — is *derived* from that single authority (the ctrl units generated, never hand-typed), at which point the coherent operating point is a witnessed by-construction property (§3/§5) and this planning tracker is redundant.")
   }
 }

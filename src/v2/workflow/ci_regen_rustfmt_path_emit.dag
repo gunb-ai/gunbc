@@ -88,11 +88,11 @@ data ci_regen_ensure_rustfmt_path_shell_emit_scaffold: std.disposition.Dispositi
 }
 
 fn ci_regen_rustfmt_exit_zero(command: String) -> v2.std.orchestration.Predicate {
-  ExitZero { run: orch_bash_run(command: command) }
+  v2.std.orchestration.ExitZero { run: orch_bash_run(command: command) }
 }
 
 fn ci_regen_rustfmt_command_v_ok() -> v2.std.orchestration.Predicate {
-  ExitZero {
+  v2.std.orchestration.ExitZero {
     run: v2.std.orchestration.Run {
       command: ci_regen_rustfmt_command_v(),
       env: [],
@@ -120,7 +120,7 @@ fn ci_regen_rustfmt_one_step(command: String) -> v2.std.orchestration.Pipeline {
 fn ci_regen_rustfmt_probe_cargo_home_step() -> v2.std.orchestration.PipelineStep {
   If {
     cond: And {
-      lhs: StrNonempty { operand: "\"$CARGO_HOME\"" },
+      lhs: v2.std.orchestration.StrNonempty { operand: "\"$CARGO_HOME\"" },
       rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_cargo_home())
     },
     then_: ci_regen_rustfmt_one_step(command: ci_regen_rustfmt_export_cargo_home_path),
@@ -164,7 +164,7 @@ fn ci_regen_rustfmt_rustup_which_bind_step() -> v2.std.orchestration.PipelineSte
 fn ci_regen_rustfmt_dirname_rf_step() -> v2.std.orchestration.PipelineStep {
   Let {
     name: "RF_DIR",
-    value: ExprCmdSubst {
+    value: v2.std.orchestration.ExprCmdSubst {
       callee: "dirname",
       args: ["\"$RF\""]
     }
@@ -177,7 +177,7 @@ fn ci_regen_rustfmt_probe_rustup_then() -> v2.std.orchestration.Pipeline {
       ci_regen_rustfmt_rustup_which_bind_step(),
       If {
         cond: And {
-          lhs: StrNonempty { operand: "\"$RF\"" },
+          lhs: v2.std.orchestration.StrNonempty { operand: "\"$RF\"" },
           rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_rf)
         },
         then_: v2.std.orchestration.Pipeline {
@@ -208,7 +208,7 @@ fn ci_regen_rustfmt_require_step() -> v2.std.orchestration.PipelineStep {
     then_: v2.std.orchestration.Pipeline {
       steps: [
         orch_bash_do(command: ci_regen_rustfmt_error_echo()),
-        Exit { status: "1" }
+        v2.std.orchestration.Exit { status: "1" }
       ],
       on_failure: FailFast
     },

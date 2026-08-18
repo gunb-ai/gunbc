@@ -15,7 +15,7 @@ fn frontier_probe_entry_receipt() -> v2.compiler.self_host.frontier_probe_types.
     )
   } else {
     frontier_probe_receipt_for_subject(
-      subject: FrontierProbeFixture {
+      subject: v2.compiler.self_host.frontier_probe.FrontierProbeFixture {
         ingest: host_source_root_ingest,
         admission: host_compiler_closure_admission
       },

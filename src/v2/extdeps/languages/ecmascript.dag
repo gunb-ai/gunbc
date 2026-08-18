@@ -58,18 +58,18 @@ data ecmascript_source_text: String = "function add(x, y) { return x + y; }"
 
 fn ecmascript_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^ecmascript_token_kw_function },
-    BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_fn_add },
-    FixedToken { token_class: ^ecmascript_token_lparen },
-    BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_param_x },
-    FixedToken { token_class: ^ecmascript_token_comma },
-    BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_param_y },
-    FixedToken { token_class: ^ecmascript_token_rparen_lbrace_open },
-    FixedToken { token_class: ^ecmascript_token_kw_return },
-    BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_param_x },
-    FixedToken { token_class: ^ecmascript_token_plus },
-    BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_param_y },
-    FixedToken { token_class: ^ecmascript_token_semicolon_rbrace_close }
+    v2.std.compilers.target_model.FixedToken { token_class: ^ecmascript_token_kw_function },
+    v2.std.compilers.target_model.BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_fn_add },
+    v2.std.compilers.target_model.FixedToken { token_class: ^ecmascript_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^ecmascript_token_comma },
+    v2.std.compilers.target_model.BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^ecmascript_token_rparen_lbrace_open },
+    v2.std.compilers.target_model.FixedToken { token_class: ^ecmascript_token_kw_return },
+    v2.std.compilers.target_model.BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^ecmascript_token_plus },
+    v2.std.compilers.target_model.BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^ecmascript_token_semicolon_rbrace_close }
   ]
 }
 
@@ -144,7 +144,7 @@ data ecmascript_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn ecmascript_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -161,7 +161,7 @@ fn ecmascript_primitive_facts_node(
   std_projection: v2.std.node.Symbol
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(
         name: ^ecmascript_facts_field_surface_spelling,
@@ -186,9 +186,9 @@ fn ecmascript_primitive_spec_facts(
 ) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: ecmascript_inhabitant_atom(id: surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: ecmascript_inhabitant_atom(id: encoding_value) }
       } else {
           v2.std.optional.Absent
@@ -205,7 +205,7 @@ fn ecmascript_primitive_algebra_witness_node(
   std_projection: v2.std.node.Symbol
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(
         name: witness_field_name,
@@ -583,7 +583,7 @@ fn ecmascript_model_core() -> v2.std.model_core.ModelCore {
 
 fn ecmascript_inhabitant_node(id: v2.std.node.Symbol, facts: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_atom, target: ecmascript_inhabitant_atom(id: id)),
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_facts, target: facts)
@@ -608,7 +608,7 @@ fn ecmascript_bigint_inhabitant_node() -> Node {
 
 fn ecmascript_declared_inhabitants_root() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_number, target: ecmascript_number_inhabitant_node()),
       ecmascript_named_edge(name: ^ecmascript_inhabitant_field_bigint, target: ecmascript_bigint_inhabitant_node())
@@ -623,7 +623,7 @@ fn ecmascript_selection_policy_node() -> Node {
 
 fn ecmascript_emitted_add_fn_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: ecmascript_number_inhabitant_node() },
       v2.std.node.Edge { label: Positional, target: ecmascript_number_inhabitant_node() },
@@ -658,7 +658,7 @@ fn ecmascript_serialize_source_children() -> List<v2.std.node.Edge> {
 
 fn ecmascript_serialize_source_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: ecmascript_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
@@ -702,7 +702,7 @@ fn ecmascript_formal_rhs_to_grammar_expr(rhs: List<v2.std.grammar.FormalGrammarS
           EcmascriptFormalRhsToExprReady { expr: piece }
         EcmascriptFormalRhsToExprReady { expr: acc } =>
           EcmascriptFormalRhsToExprReady {
-            expr: Sequence { left: acc, right: piece }
+            expr: v2.std.grammar.Sequence { left: acc, right: piece }
           }
       }
     }
@@ -727,7 +727,7 @@ fn ecmascript_formal_alternatives_to_choice_expr(alts: List<List<v2.std.grammar.
           EcmascriptFormalAltChoiceReady { expr: alt_expr }
         EcmascriptFormalAltChoiceReady { expr: acc } =>
           EcmascriptFormalAltChoiceReady {
-            expr: Choice { left: acc, right: alt_expr }
+            expr: v2.std.grammar.Choice { left: acc, right: alt_expr }
           }
       }
     }
@@ -816,7 +816,7 @@ fn ecmascript_grammar_relation_row() -> EcmascriptGrammarRelationRow {
 
 fn ecmascript_grammar_relation_row_node(row: EcmascriptGrammarRelationRow) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(name: ^grammar_relation_field_production, target: formal_production_to_node(production: row.production)),
       ecmascript_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
@@ -834,7 +834,7 @@ fn ecmascript_grammar_relation_row_node(row: EcmascriptGrammarRelationRow) -> No
 
 fn ecmascript_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(
         name: ^ecmascript_relation_rule_fn_add,
@@ -847,7 +847,7 @@ fn ecmascript_translation_rules_node() -> Node {
 
 fn ecmascript_target_model_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(name: ^target_model_edge_selection_policy, target: ecmascript_selection_policy_node()),
       ecmascript_named_edge(name: ^target_model_edge_declared_inhabitants, target: ecmascript_declared_inhabitants_root()),
@@ -883,41 +883,41 @@ fn ecmascript_target_model() -> v2.std.compilers.target_model.TargetModel {
 }
 
 fn ecmascript_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+  v2.std.compilers.lexing.TokenRule { token_class: token_class, pattern: v2.std.compilers.lexing.LiteralPattern { text: text } }
 }
 
 fn ecmascript_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: CharClassPattern { class: IdentStartChar },
-    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
   }
 }
 
 fn ecmascript_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^ecmascript_token_ident,
     pattern: ecmascript_ident_lex_pattern()
   }
 }
 
 fn ecmascript_nonzero_digit_char_pattern() -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern {
-    left: CharPattern { char: 49 },
-    right: ChoicePattern {
-      left: CharPattern { char: 50 },
-      right: ChoicePattern {
-        left: CharPattern { char: 51 },
-        right: ChoicePattern {
-          left: CharPattern { char: 52 },
-          right: ChoicePattern {
-            left: CharPattern { char: 53 },
-            right: ChoicePattern {
-              left: CharPattern { char: 54 },
-              right: ChoicePattern {
-                left: CharPattern { char: 55 },
-                right: ChoicePattern {
-                  left: CharPattern { char: 56 },
-                  right: CharPattern { char: 57 }
+  v2.std.compilers.lexing.ChoicePattern {
+    left: v2.std.compilers.lexing.CharPattern { char: 49 },
+    right: v2.std.compilers.lexing.ChoicePattern {
+      left: v2.std.compilers.lexing.CharPattern { char: 50 },
+      right: v2.std.compilers.lexing.ChoicePattern {
+        left: v2.std.compilers.lexing.CharPattern { char: 51 },
+        right: v2.std.compilers.lexing.ChoicePattern {
+          left: v2.std.compilers.lexing.CharPattern { char: 52 },
+          right: v2.std.compilers.lexing.ChoicePattern {
+            left: v2.std.compilers.lexing.CharPattern { char: 53 },
+            right: v2.std.compilers.lexing.ChoicePattern {
+              left: v2.std.compilers.lexing.CharPattern { char: 54 },
+              right: v2.std.compilers.lexing.ChoicePattern {
+                left: v2.std.compilers.lexing.CharPattern { char: 55 },
+                right: v2.std.compilers.lexing.ChoicePattern {
+                  left: v2.std.compilers.lexing.CharPattern { char: 56 },
+                  right: v2.std.compilers.lexing.CharPattern { char: 57 }
                 }
               }
             }
@@ -929,17 +929,17 @@ fn ecmascript_nonzero_digit_char_pattern() -> v2.std.compilers.lexing.LexPattern
 }
 
 fn ecmascript_decimal_int_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern {
-    left: LiteralPattern { text: "0" },
-    right: SequencePattern {
+  v2.std.compilers.lexing.ChoicePattern {
+    left: v2.std.compilers.lexing.LiteralPattern { text: "0" },
+    right: v2.std.compilers.lexing.SequencePattern {
       left: ecmascript_nonzero_digit_char_pattern(),
-      right: RepeatPattern { element: CharClassPattern { class: DigitChar } }
+      right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: DigitChar } }
     }
   }
 }
 
 fn ecmascript_int_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^ecmascript_token_int_literal,
     pattern: ecmascript_decimal_int_literal_pattern()
   }
@@ -976,7 +976,7 @@ fn ecmascript_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn ecmascript_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: ecmascript_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: ecmascript_lex_rules() }
 }
 
 fn ecmascript_grammar_atom(id: v2.std.node.Symbol) -> Node {
@@ -1162,7 +1162,7 @@ fn ecmascript_grammar_root() -> v2.std.grammar.GrammarRoot {
 }
 
 fn ecmascript_grammar() -> v2.std.grammar.ParseGrammar {
-  ModeledGrammar { root: ecmascript_grammar_root() }
+  v2.std.grammar.ModeledGrammar { root: ecmascript_grammar_root() }
 }
 
 fn ecmascript_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {

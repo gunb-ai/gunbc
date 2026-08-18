@@ -43,11 +43,11 @@ test fn probe_wire_unknown_failure_is_transport_unavailable_never_reachable() ->
 // the receipt, and this witness pins that both arms exist separately AND project the
 // same fail-closed verdict (neither is ever Converged or Absent).
 test fn reach_projection_covers_all_arms() -> Bool {
-  reach_verdict_from_outcome(o: ProbeReachable { observed_short_hostname: "srv1", observed_principal: "gunbc-fleet" }) == Converged
-    && reach_verdict_from_outcome(o: ProbeTransportUnavailable { cause: "timeout" }) == Inaccessible
-    && reach_verdict_from_outcome(o: ProbeAuthenticationRefused { cause: "denied" }) == Inaccessible
-    && reach_verdict_from_outcome(o: ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == Conflict
-    && reach_verdict_from_outcome(o: ProbeHostKeyUnenrolled { transport_diagnostic: "Host key verification failed." }) == Inaccessible
+  reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: "srv1", observed_principal: "gunbc-fleet" }) == Converged
+    && reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeTransportUnavailable { cause: "timeout" }) == Inaccessible
+    && reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeAuthenticationRefused { cause: "denied" }) == Inaccessible
+    && reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == Conflict
+    && reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeHostKeyUnenrolled { transport_diagnostic: "Host key verification failed." }) == Inaccessible
 }
 
 // Identity deduction: reachable-and-matching converges; reachable-but-different is
@@ -56,14 +56,14 @@ test fn reach_projection_covers_all_arms() -> Bool {
 // the enrolled host, so its hostname must never launder into an identity observation.
 test fn identity_projection_discriminates_match_drift_and_wrong_machine() -> Bool {
   let desired = host_identity_desired_short_hostname(host: operator_host_srv1)
-  identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: desired, observed_principal: "gunbc-fleet" }) == Converged
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "altrad8ud-1l2t-1", observed_principal: "gunbc-fleet" }) == std.upsert_decision.Drifted
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: desired, observed_principal: "root" }) == std.upsert_decision.Drifted
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeTransportUnavailable { cause: "x" }) == Inaccessible
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeAuthenticationRefused { cause: "x" }) == Inaccessible
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == Conflict
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeHostKeyUnenrolled { transport_diagnostic: "x" }) == Inaccessible
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeTargetUnobserved { cause: "x" }) == Inaccessible
+  identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: desired, observed_principal: "gunbc-fleet" }) == Converged
+    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: "altrad8ud-1l2t-1", observed_principal: "gunbc-fleet" }) == std.upsert_decision.Drifted
+    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: desired, observed_principal: "root" }) == std.upsert_decision.Drifted
+    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeTransportUnavailable { cause: "x" }) == Inaccessible
+    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeAuthenticationRefused { cause: "x" }) == Inaccessible
+    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == Conflict
+    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeHostKeyUnenrolled { transport_diagnostic: "x" }) == Inaccessible
+    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeTargetUnobserved { cause: "x" }) == Inaccessible
 }
 
 // Join 4 (operator verdict): the executed probe run's receipts ARE the registry now —
@@ -124,7 +124,7 @@ test fn one_receipt_feeds_both_cells() -> Bool {
     host: operator_host_srv1,
     probed_at: "witness-fixture" as std.types.NonEmptyStr,
     requested_principal: "gunbc-fleet",
-    outcome: ProbeReachable { observed_short_hostname: host_identity_desired_short_hostname(host: operator_host_srv1), observed_principal: "gunbc-fleet" },
+    outcome: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: host_identity_desired_short_hostname(host: operator_host_srv1), observed_principal: "gunbc-fleet" },
   }
   reach_verdict_from_outcome(o: r.outcome) == Converged
     && identity_verdict_from_outcome(host: r.host, requested_principal: r.requested_principal, o: r.outcome) == Converged

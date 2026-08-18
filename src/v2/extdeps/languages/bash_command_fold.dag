@@ -2,7 +2,7 @@ module v2.extdeps.languages.bash_command_fold
 
 
 data bash_fold_diagnostic_anchor: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -18,7 +18,7 @@ fn bash_fold_unsupported_variant_diagnostic(variant: v2.std.node.Symbol) -> v2.s
   v2.std.diagnostic.Diagnostic {
     reason: variant,
     at: node_locus(node: bash_fold_diagnostic_anchor),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -34,7 +34,7 @@ fn bash_fold_delegated_needs_component_spellings_diagnostic() -> v2.std.diagnost
   v2.std.diagnostic.Diagnostic {
     reason: ^bash_fold_delegated_target_needs_component_spellings,
     at: node_locus(node: bash_fold_diagnostic_anchor),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -591,7 +591,7 @@ fn bash_fold_translation_rules_node_for_emitted(
     Holds { value: row } =>
       Holds {
         value: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             bash_named_edge(
               name: ^grammar_relation_rules_formal_productions,
@@ -607,7 +607,7 @@ fn bash_fold_translation_rules_node_for_emitted(
           occurrence_id: SyntheticOccurrence
         }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -624,7 +624,7 @@ fn bash_fold_relation_row_witness(emitted: Node, lhs: v2.std.node.Symbol) -> Wit
         productions: productions,
         emitted: emitted
       )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -639,7 +639,7 @@ fn bash_fold_serialize_source_witness(
         Accepted { value: tokens_root, diagnostics: _ } =>
           Holds {
             value: v2.std.node.Node {
-              kind: TypeNode { connective: Conj },
+              kind: v2.std.node.TypeNode { connective: Conj },
               children: [
                 bash_named_edge(
                   name: ^serialize_source_field_source_text,
@@ -657,16 +657,16 @@ fn bash_fold_serialize_source_witness(
               occurrence_id: SyntheticOccurrence
             }
           }
-        Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+        Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn bash_fold_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: v2.std.compilers.lexing.LiteralPattern { text: text }
   }
 }
 
@@ -708,7 +708,7 @@ fn bash_fold_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn bash_fold_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: bash_fold_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: bash_fold_lex_rules() }
 }
 
 data bash_ingest_only_lex_rules_note: String = "INGEST-direction lex view. §4 asymmetry — ingest RECOGNIZES a superset of what emit PRODUCES. Recognized-but-UNMODELED control keywords (no production); presence marks an incompletely-modeled control form => AmbiguousParse, never Violation. Emit set (bash_fold_lex_rules) UNCHANGED so emit stays byte-identical. Word boundaries ride the spelling (trailing/leading space; done/esac terminal; do is spelled with a REQUIRED leading space so at the d of done its spelling can never be a prefix candidate — do and done do not collide at the same start position, so no maximal-munch arbitration between them is needed). newline reuses existing separator class bash_token_orch_seq_newline (bash.dag:1184)."
@@ -792,9 +792,9 @@ fn bash_fold_target_model_bundle_witness(
               serialize_source: serialize_source
             )
           }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -822,7 +822,7 @@ fn bash_fold_target_model_for_emitted_witness(
           runtime_row: target_emit_host_runtime_row_unconfigured
         )
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -906,7 +906,7 @@ data bash_fold_exit_42_emitted: Node = bash_build_exit(code: "42")
 data bash_fold_exit_wrong_emitted: Node = bash_build_exit(code: "0")
 
 data bash_fold_assign_foo_bar_emitted: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Positional,
@@ -915,7 +915,7 @@ data bash_fold_assign_foo_bar_emitted: Node = v2.std.node.Node {
     v2.std.node.Edge {
       label: Positional,
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: "FOO" } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: "FOO" } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
@@ -929,7 +929,7 @@ data bash_fold_assign_foo_bar_emitted: Node = v2.std.node.Node {
 }
 
 data bash_fold_assign_x_home_emitted: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Positional,
@@ -938,7 +938,7 @@ data bash_fold_assign_x_home_emitted: Node = v2.std.node.Node {
     v2.std.node.Edge {
       label: Positional,
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: "X" } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: "X" } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
@@ -952,7 +952,7 @@ data bash_fold_assign_x_home_emitted: Node = v2.std.node.Node {
 }
 
 data bash_fold_assign_wrong_emitted: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Positional,
@@ -961,7 +961,7 @@ data bash_fold_assign_wrong_emitted: Node = v2.std.node.Node {
     v2.std.node.Edge {
       label: Positional,
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: "FOO" } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: "FOO" } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }

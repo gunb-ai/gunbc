@@ -7,7 +7,7 @@ fn sample_button() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "button",
     attributes: [ attr(name: "class", value: "primary" ) ],
-    children: [ FragmentText { content: "Go" } ],
+    children: [ std.markup.FragmentText { content: "Go" } ],
   }
 }
 
@@ -29,7 +29,7 @@ fn hostile_javascript_href() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "a",
     attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
-    children: [ FragmentText { content: "click" } ],
+    children: [ std.markup.FragmentText { content: "click" } ],
   }
 }
 
@@ -82,7 +82,7 @@ test fn witness_http_href_serializes() -> Bool {
     node: extdeps.browser.Element {
       tag: "a",
       attributes: [ attr(name: "href", value: "https://gunbc.dev" ) ],
-      children: [ FragmentText { content: "home" } ],
+      children: [ std.markup.FragmentText { content: "home" } ],
     }
   ) {
     EmitOk { html: h } => h == "<a href=\"https://gunbc.dev\">home</a>"
@@ -94,7 +94,7 @@ fn trusted_relative_link() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "a",
     attributes: [ attr(name: "href", value: "/tree/dag" ) ],
-    children: [ FragmentText { content: "dag" } ],
+    children: [ std.markup.FragmentText { content: "dag" } ],
   }
 }
 

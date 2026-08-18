@@ -243,7 +243,7 @@ test fn archive_digest_admission_matches_and_mismatches() -> Bool {
             CodexNpmIntegrityAdmitted { digest: expected } => {
               let matched = admit_observed_archive_digest(
                 expected: expected,
-                observation: PackageArchiveDigestObserved {
+                observation: gunbc.package_delivery.PackageArchiveDigestObserved {
                   locator: artifact.resolved.locator,
                   observed: expected,
                 },
@@ -255,7 +255,7 @@ test fn archive_digest_admission_matches_and_mismatches() -> Bool {
                     PackageArchiveDigestMatched { locator: _, digest: _ } =>
                       match admit_observed_archive_digest(
                         expected: expected,
-                        observation: PackageArchiveDigestObserved {
+                        observation: gunbc.package_delivery.PackageArchiveDigestObserved {
                           locator: artifact.resolved.locator,
                           observed: other,
                         },

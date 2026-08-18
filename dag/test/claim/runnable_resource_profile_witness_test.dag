@@ -29,7 +29,7 @@ test fn witness_profile_eq_discriminates_execution_mode() -> Bool {
 }
 
 test fn witness_substantial_memory_forbids_corpus_co_residence() -> Bool {
-  let heavy = RunnableSingleClaim {
+  let heavy = std.realization_schedule.RunnableSingleClaim {
     entry: "e"
     function: "f"
     profile: runnable_resource_profile(
@@ -43,7 +43,7 @@ test fn witness_substantial_memory_forbids_corpus_co_residence() -> Bool {
 }
 
 test fn witness_corpus_never_forbids_co_residence() -> Bool {
-  let corpus = RunnableDiscoveryBatch {
+  let corpus = std.realization_schedule.RunnableDiscoveryBatch {
     source_roots: []
     scan_dirs: []
     explicit_entries: []

@@ -206,7 +206,7 @@ fn host_phase_desired(enrollments: List<gunbc.host_assimilation_program.HostEnro
 data host_phase_desired_disposition_note: String = "Desired pins BOTH axes to their end state, not just the verdict: a modeled authority AND an observed Converged. Pinning only the verdict would make a DeclaredGap phase whose host happens to be Converged compare equal to desired — which is exactly srv3 and prefix:os-install-actuated today, a host that IS installed while the actuation that installed it is not reproducible. That cell is real remaining work (the model cannot rebuild the host), so it must produce a hunk; a desired row that ignored the disposition would silently retire it."
 
 fn host_phase_desired_disposition() -> gunbc.host_standup.PhaseDisposition {
-  ModeledCompose {
+  gunbc.host_standup.ModeledCompose {
     authorities: [
       std.decl_ref.DeclarationRef {
         module_path: "gunbc.host_phase_status",

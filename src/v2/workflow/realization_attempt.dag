@@ -92,7 +92,7 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
         match first_arrow_in(root: e.target) {
           Present { value: arrow } =>
             concat(inner, [node_synthetic(
-              kind: TypeNode { connective: Conj },
+              kind: v2.std.node.TypeNode { connective: Conj },
               children: [v2.std.node.Edge { label: Named { name: decl_name }, target: arrow }]
             )])
           Absent => inner
@@ -220,7 +220,7 @@ fn decl_edges_named(root: Node, fn_name: v2.std.node.Symbol, acc: List<Node>) ->
         if n == fn_name {
           match first_arrow_in(root: e.target) {
             Present { value: _ } => concat(inner, [node_synthetic(
-              kind: TypeNode { connective: Conj },
+              kind: v2.std.node.TypeNode { connective: Conj },
               children: [v2.std.node.Edge { label: Named { name: n }, target: e.target }]
             )])
             Absent => inner
@@ -265,7 +265,7 @@ fn attempt_joined(program: Node, fn_name: v2.std.node.Symbol, entry: String) -> 
           Rejected { diagnostics: ds } =>
             attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>
-            match compile_inferred(inferred: inferred, mode: TranslateTo { target: rust_target_model_staging() }) {
+            match compile_inferred(inferred: inferred, mode: v2.compiler.compile.TranslateTo { target: rust_target_model_staging() }) {
               Rejected { diagnostics: ds } =>
                 attempt_refused_at(entry: entry, phase: PhaseTranslate, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
               Accepted { value: out, diagnostics: _ } =>
@@ -307,7 +307,7 @@ fn capture_markers_ingest(ingest: v2.compiler.source_authority.SourceRootIngest)
   match ingest {
     Empty => Empty
     Cons { head: r, tail: t } =>
-      Cons {
+      std.algebra.Cons {
         head: v2.compiler.source_authority.DagSourceReadWitness {
           source: extdeps.communication.medium.Medium {
             carried: capture_test_markers(source: r.source.carried).unmarked,

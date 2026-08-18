@@ -4,19 +4,19 @@ module examples.html_markup_smoke
 data tiny: std.markup.Fragment = extdeps.browser.Element {
   tag: "p",
   attributes: [],
-  children: [ FragmentText { content: "ok" } ],
+  children: [ std.markup.FragmentText { content: "ok" } ],
 }
 
 data with_attr: std.markup.Fragment = extdeps.browser.Element {
   tag: "a",
   attributes: [ attr(name: "href", value: "/tree/dag" ) ],
-  children: [ FragmentText { content: "dag" } ],
+  children: [ std.markup.FragmentText { content: "dag" } ],
 }
 
 data href_amp: std.markup.Fragment = extdeps.browser.Element {
   tag: "a",
   attributes: [ attr(name: "href", value: "/x?a=1&b=2" ) ],
-  children: [ FragmentText { content: "link" } ],
+  children: [ std.markup.FragmentText { content: "link" } ],
 }
 
 data href_hostile: std.markup.Fragment = extdeps.browser.Element {
@@ -28,7 +28,7 @@ data href_hostile: std.markup.Fragment = extdeps.browser.Element {
 data href_javascript: std.markup.Fragment = extdeps.browser.Element {
   tag: "a",
   attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
-  children: [ FragmentText { content: "click" } ],
+  children: [ std.markup.FragmentText { content: "click" } ],
 }
 
 fn serialize_ok(node: std.markup.Fragment, expected: String) -> Bool {
@@ -57,6 +57,6 @@ func main() -> std.process.ProcessExit {
     && escape_text(s: "<b>") == "&lt;b&gt;" {
     ExitSuccess
   } else {
-    ExitFailure { code: exit_code_general_error, reason: "html_markup_smoke mismatch" }
+    std.process.ExitFailure { code: exit_code_general_error, reason: "html_markup_smoke mismatch" }
   }
 }

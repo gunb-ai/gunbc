@@ -19,10 +19,10 @@ fn solve_higher_order_design_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "For the **structural** family, `Loop` + the existing `solve_constraints` / `ConstraintGraph` authority already compose to \"select an assignment that satisfies a structural predicate under a bound.\" A parallel `solve` primitive — or a parallel `Residual`/`Constraint` + `solve` authority — is a **second name** for that composition: the §3 nicknaming violation at the most expensive layer to fork (the substrate). We generate from concepts; a substrate nickname duplicates into every derived thing (emit, testgen, lenses). For the **numerical** family there is nothing to nickname *yet* — it is absent — so it is authored once, as the three orthogonal facts below, not forked in."),
     hr(),
     h2(text: "The decomposition — structural exists, numerical is three orthogonal facts"),
-    CodeBlock {
+    std.markdown.CodeBlock {
       code: "solve_numeric  ≜  Loop(\n                    body:       step( residual(model, candidate) ),   // solver method = extdeps handler\n                    measure:    finite_measure  ⊢ TerminationProof,   // termination.dag — separate from descent\n                    accept_when: residual_within(contract),           // typed norm/units/bound contract — semantics\n                    on_exhaust:  Refuse{ iters, residual }            // §5 fail-closed\n                  )\n// STRUCTURAL solving already exists: ConstraintGraph / solve_constraints (constraints.dag). NUMERICAL solving is ABSENT."
     },
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "fact (numerical, when built)"), cell(text: "what it is"), cell(text: "grounded on")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -64,6 +64,6 @@ data solve_higher_order_design_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "solve-higher-order-design",
   title: "`solve` is higher-order, not a primitive — the standing rationale",
   body: solve_higher_order_design_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "This doc dissolves when the lane un-shelves: the **structural**-solve rationale migrates onto the existing `solve_constraints` / `ConstraintGraph` authority's typed doc-rows (`src/v2/std/constraints.dag`; `.dag` has no comment trivia — encode as `data … : String`) plus a DESIGN §4 anchor, and the **numerical**-solve gap is authored at its own trigger as the three orthogonal facts above (finite measure + `TerminationProof`, typed residual-acceptance contract, extdeps solver handler) — no parallel `Residual`/`Constraint` authority is minted. Until then, this is the single authority for the ruling.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "This doc dissolves when the lane un-shelves: the **structural**-solve rationale migrates onto the existing `solve_constraints` / `ConstraintGraph` authority's typed doc-rows (`src/v2/std/constraints.dag`; `.dag` has no comment trivia — encode as `data … : String`) plus a DESIGN §4 anchor, and the **numerical**-solve gap is authored at its own trigger as the three orthogonal facts above (finite measure + `TerminationProof`, typed residual-acceptance contract, extdeps solver handler) — no parallel `Residual`/`Constraint` authority is minted. Until then, this is the single authority for the ruling.")
   }
 }

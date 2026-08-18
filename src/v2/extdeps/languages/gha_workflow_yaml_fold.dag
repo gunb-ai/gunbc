@@ -15,7 +15,7 @@ type GhaFoldJobBundle {
 
 fn gha_fold_prod_tag(binding: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: binding } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -29,7 +29,7 @@ fn gha_fold_prod_kind_tag_terminal(binding: v2.std.node.Symbol) -> v2.std.gramma
 }
 
 data gha_fold_diagnostic_anchor: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -38,18 +38,18 @@ fn gha_fold_unsupported_variant_diagnostic(variant: v2.std.node.Symbol) -> v2.st
   v2.std.diagnostic.Diagnostic {
     reason: variant,
     at: node_locus(node: gha_fold_diagnostic_anchor),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 fn gha_fold_scalar_emitted(text: String) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^gha_fold_scalar_kind } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^gha_fold_scalar_kind } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -57,7 +57,7 @@ fn gha_fold_scalar_emitted(text: String) -> Node {
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: emit_inline_scalar_text(s: text) } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: emit_inline_scalar_text(s: text) } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -69,7 +69,7 @@ fn gha_fold_scalar_emitted(text: String) -> Node {
 
 fn gha_fold_flow_labels_single_emitted(label: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [v2.std.node.Edge { label: Positional, target: label }],
     occurrence_id: SyntheticOccurrence
   }
@@ -77,7 +77,7 @@ fn gha_fold_flow_labels_single_emitted(label: Node) -> Node {
 
 fn gha_fold_flow_labels_pair_emitted(left: Node, right: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: left },
       v2.std.node.Edge { label: Positional, target: right }
@@ -119,13 +119,13 @@ fn gha_fold_flow_labels_emitted_witness(labels: List<String>) -> Witness<Node> {
         ),
         index: 1
       )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn gha_fold_runs_on_self_hosted_emitted(labels: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -139,7 +139,7 @@ fn gha_fold_runs_on_self_hosted_emitted(labels: Node) -> Node {
 
 fn gha_fold_step_head_run_emitted(scalar: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -153,7 +153,7 @@ fn gha_fold_step_head_run_emitted(scalar: Node) -> Node {
 
 fn gha_fold_step_head_uses_emitted(scalar: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -167,7 +167,7 @@ fn gha_fold_step_head_uses_emitted(scalar: Node) -> Node {
 
 fn gha_fold_step_tail_run_emitted(scalar: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -181,7 +181,7 @@ fn gha_fold_step_tail_run_emitted(scalar: Node) -> Node {
 
 fn gha_fold_step_tail_uses_emitted(scalar: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -250,10 +250,10 @@ fn gha_fold_step_list_emitted_from_suffix_witness(
                 accumulated: gha_fold_step_list_pair_emitted(left: accumulated, right: tail),
                 index: index + 1
               )
-            Violates { diagnostic: d } => Violates { diagnostic: d }
+            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
         Absent =>
-          Violates {
+          v2.std.witness.Violates {
             diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_unsupported_step_kind)
           }
       }
@@ -277,20 +277,20 @@ fn gha_fold_step_list_emitted_witness(job: extdeps.github.actions.Job) -> Witnes
                 accumulated: gha_fold_step_list_single_emitted(step_head: head),
                 index: 1
               )
-            Violates { diagnostic: d } => Violates { diagnostic: d }
+            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
         Absent =>
-          Violates {
+          v2.std.witness.Violates {
             diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_unsupported_step_kind)
           }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn gha_fold_step_list_single_emitted(step_head: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: step_head }
     ],
@@ -300,7 +300,7 @@ fn gha_fold_step_list_single_emitted(step_head: Node) -> Node {
 
 fn gha_fold_step_list_pair_emitted(left: Node, right: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: left },
       v2.std.node.Edge { label: Positional, target: right }
@@ -311,7 +311,7 @@ fn gha_fold_step_list_pair_emitted(left: Node, right: Node) -> Node {
 
 fn gha_fold_steps_block_emitted(step_list: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -325,7 +325,7 @@ fn gha_fold_steps_block_emitted(step_list: Node) -> Node {
 
 fn gha_fold_job_emitted(runs_on: Node, steps_block: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -355,12 +355,12 @@ fn gha_fold_job_bundle_witness(job: extdeps.github.actions.Job) -> Witness<GhaFo
                   )
                 }
               }
-            Violates { diagnostic: d } => Violates { diagnostic: d }
+            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
     _ =>
-      Violates {
+      v2.std.witness.Violates {
         diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_runner_not_self_hosted_pilot)
       }
   }
@@ -554,7 +554,7 @@ fn gha_fold_relation_row_witness(emitted: Node, lhs: v2.std.node.Symbol) -> Witn
         productions: productions,
         emitted: emitted
       )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -600,7 +600,7 @@ fn gha_fold_serialize_source_witness(
         Accepted { value: tokens_root, diagnostics: _ } =>
           Holds {
             value: v2.std.node.Node {
-              kind: TypeNode { connective: Conj },
+              kind: v2.std.node.TypeNode { connective: Conj },
               children: [
                 bash_named_edge(
                   name: ^serialize_source_field_source_text,
@@ -618,9 +618,9 @@ fn gha_fold_serialize_source_witness(
               occurrence_id: SyntheticOccurrence
             }
           }
-        Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+        Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -633,7 +633,7 @@ fn gha_fold_translation_rules_node_for_emitted(
     Holds { value: row } =>
       Holds {
         value: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             bash_named_edge(
               name: ^grammar_relation_rules_formal_productions,
@@ -646,14 +646,14 @@ fn gha_fold_translation_rules_node_for_emitted(
           occurrence_id: SyntheticOccurrence
         }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn gha_fold_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: v2.std.compilers.lexing.LiteralPattern { text: text }
   }
 }
 
@@ -681,7 +681,7 @@ fn gha_fold_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn gha_fold_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: gha_fold_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: gha_fold_lex_rules() }
 }
 
 fn gha_fold_kind_emit_transform(_spelling: String) -> String {
@@ -731,9 +731,9 @@ fn gha_fold_target_model_bundle_witness(
               serialize_source: serialize_source
             )
           }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -761,14 +761,14 @@ fn gha_fold_target_model_for_emitted_witness(
           runtime_row: target_emit_host_runtime_row_unconfigured
         )
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn gha_fold_job_emitted_witness(job: extdeps.github.actions.Job) -> Witness<Node> {
   match gha_fold_job_bundle_witness(job: job) {
     Holds { value: bundle } => Holds { value: bundle.emitted }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -782,13 +782,13 @@ fn gha_fold_target_model_for_job_witness(job: extdeps.github.actions.Job, source
         production_binding: bundle.production_binding,
         rule_name: bundle.relation_rule
       )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn gha_fold_flat_step_head_run_emitted(scalar: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -802,7 +802,7 @@ fn gha_fold_flat_step_head_run_emitted(scalar: Node) -> Node {
 
 fn gha_fold_flat_step_tail_uses_emitted(scalar: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
@@ -815,7 +815,7 @@ fn gha_fold_flat_step_tail_uses_emitted(scalar: Node) -> Node {
 }
 
 data gha_fold_flat_steps_wrong_emitted: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Positional,
@@ -835,7 +835,7 @@ data gha_fold_flat_steps_wrong_emitted: Node = v2.std.node.Node {
     v2.std.node.Edge {
       label: Positional,
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           v2.std.node.Edge {
             label: Positional,
@@ -873,7 +873,7 @@ fn gha_fold_flat_steps_wrong_target_model_witness(source_text: String) -> Witnes
 }
 
 data gha_fold_job_wrong_production_emitted: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Positional,

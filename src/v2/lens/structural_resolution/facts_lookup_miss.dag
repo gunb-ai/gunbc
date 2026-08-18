@@ -5,7 +5,7 @@ data sr_lookup_claim_hash: v2.std.node.Hash = sr_lookup_claim_hash
 
 fn sr_lookup_claim_atom(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -14,7 +14,7 @@ fn sr_lookup_claim_atom(s: v2.std.node.Symbol) -> Node {
 data sr_lookup_use: Node = sr_lookup_claim_atom(s: ^sr_lookup_use_symbol)
 
 data sr_lookup_decl: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_lookup_use }
   ],

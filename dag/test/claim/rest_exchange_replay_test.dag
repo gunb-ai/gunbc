@@ -31,10 +31,10 @@ fn replay_frame(fixtures: List<extdeps.transports.rest.RestExchangeFixture>) -> 
       grants: [std.effect_grant.Grant {
         verb: Read
         root: std.effect_grant.NamespacePosition {
-          tree: ServiceOpTree { service: "test.RestReplay" }
+          tree: std.effect_grant.ServiceOpTree { service: "test.RestReplay" }
           path: []
         }
-        binding: Replay { fixture_store: replay_store }
+        binding: std.effect_grant.Replay { fixture_store: replay_store }
         lifecycle: LifecycleByConstruction
       }]
     }
@@ -51,9 +51,9 @@ fn fixture_for(operation: String, observation: extdeps.transports.rest.RestExcha
 }
 
 fn denied_observation() -> extdeps.transports.rest.RestExchangeObservation {
-  RestResponseObserved {
+  extdeps.transports.rest.RestResponseObserved {
     status: 401
-    body: RestBodyRead { body: "{\"message\":\"denied\"}" }
+    body: extdeps.transports.rest.RestBodyRead { body: "{\"message\":\"denied\"}" }
   }
 }
 
@@ -75,9 +75,9 @@ test fn rest_success_projects_rest_ok() -> Bool {
   let result = v2.std.witness_evaluation.evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "Observe",
-      observation: RestResponseObserved {
+      observation: extdeps.transports.rest.RestResponseObserved {
         status: 200
-        body: RestBodyRead { body: "{\"message\":\"accepted\"}" }
+        body: extdeps.transports.rest.RestBodyRead { body: "{\"message\":\"accepted\"}" }
       }
     )]),
     subject: fn(_scope) { test.RestReplay.Observe() }
@@ -106,7 +106,7 @@ test fn rest_transport_failure_is_persistable() -> Bool {
   let result = v2.std.witness_evaluation.evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "Observe",
-      observation: RestExchangeRefused { cause: "connection refused by fixture" }
+      observation: extdeps.transports.rest.RestExchangeRefused { cause: "connection refused by fixture" }
     )]),
     subject: fn(_scope) { test.RestReplay.Observe() }
   )
@@ -123,9 +123,9 @@ test fn rest_unreadable_body_is_not_fabricated_empty() -> Bool {
   let result = v2.std.witness_evaluation.evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "Observe",
-      observation: RestResponseObserved {
+      observation: extdeps.transports.rest.RestResponseObserved {
         status: 401
-        body: RestBodyReadRefused { cause: "truncated response body" }
+        body: extdeps.transports.rest.RestBodyReadRefused { cause: "truncated response body" }
       }
     )]),
     subject: fn(_scope) { test.RestReplay.Observe() }

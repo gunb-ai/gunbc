@@ -85,7 +85,7 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 
 fn witness_floor_checkout_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Checkout" },
     id: none,
     uses: extdeps.github.actions.checkout_action,
@@ -140,7 +140,7 @@ fn witness_floor_checkout_step() -> extdeps.github.actions.Step {
 // a full disk refuses loudly, a deleted source file mid-compile does not — but it is a real
 // obligation and it belongs to whoever owns fleet disk, not to this file.
 fn witness_floor_toolchain_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Install Rust toolchain" },
     id: none,
     uses: extdeps.github.actions.setup_rust_action,
@@ -167,7 +167,7 @@ fn witness_floor_build_script() -> String {
 }
 
 fn witness_floor_build_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Build the witness fold" },
     id: none,
     run: concat(witness_floor_build_script(), "\n"),
@@ -208,7 +208,7 @@ fn witness_floor_run_script() -> String {
 }
 
 fn witness_floor_run_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "All witnesses (one prepared subject, one fold)" },
     id: none,
     run: witness_floor_run_script(),
@@ -266,7 +266,7 @@ fn witness_floor_job() -> extdeps.github.actions.Job {
 data witness_floor_workflow: extdeps.github.actions.Workflow = {
   name: "witnesses",
   on: [
-    WorkflowDispatch { inputs: [] },
+    extdeps.github.actions.WorkflowDispatch { inputs: [] },
     Push { branches: [gunbc.repo_identity.gunbc_default_branch_name], paths: [] },
     extdeps.github.pulls.PullRequest {
       branches: [gunbc.repo_identity.gunbc_default_branch_name],
@@ -277,7 +277,7 @@ data witness_floor_workflow: extdeps.github.actions.Workflow = {
     value: ConcurrencyMappingQueueNotMax {
       group: witness_floor_concurrency_group,
       cancel_in_progress: Present {
-        value: CancelInProgressExpression {
+        value: extdeps.github.actions.CancelInProgressExpression {
           expression: "${{ github.event_name == 'pull_request' }}"
         }
       },

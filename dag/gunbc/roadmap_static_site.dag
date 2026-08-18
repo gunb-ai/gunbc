@@ -107,7 +107,7 @@ fn roadmap_site_path_template(raw: String) -> std.http_path.PathTemplate {
   match parse_path_template(raw: raw) {
     ParsedPathTemplate { template: t } => t
     MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
-      std.http_path.PathTemplate { tokens: [LiteralToken { text: raw }] }
+      std.http_path.PathTemplate { tokens: [std.http_path.LiteralToken { text: raw }] }
   }
 }
 

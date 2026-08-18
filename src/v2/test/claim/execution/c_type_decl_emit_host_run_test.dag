@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn ctd_run_probe_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^c_type_decl_emit_host_run_probe } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^c_type_decl_emit_host_run_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -16,11 +16,11 @@ fn ctd_run_inputs() -> v2.compiler.eval.Inputs {
 }
 
 fn ctd_empty_conj() -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
 fn ctd_atom_type(name: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
 fn ctd_field_edge(name: v2.std.node.Symbol, type_name: v2.std.node.Symbol) -> v2.std.node.Edge {
@@ -33,7 +33,7 @@ fn ctd_variant_edge(name: v2.std.node.Symbol) -> v2.std.node.Edge {
 
 fn ctd_point_record() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       ctd_field_edge(name: ^x, type_name: ^Int),
       ctd_field_edge(name: ^y, type_name: ^Int)
@@ -44,7 +44,7 @@ fn ctd_point_record() -> Node {
 
 fn ctd_bool_coproduct() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: Disj },
     children: [ ctd_variant_edge(name: ^True), ctd_variant_edge(name: ^False) ],
     occurrence_id: SyntheticOccurrence
   }

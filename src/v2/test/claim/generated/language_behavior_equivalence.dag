@@ -4,14 +4,14 @@ module v2.test.generated.language_behavior_equivalence
 
 fn lbe_symbol_node(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
 fn lbe_runtime_value() -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: lbe_symbol_node(s: ^lbe_runtime_value_symbol),
       bytes: []
@@ -23,7 +23,7 @@ fn lbe_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^lbe_interpretation_rejected,
     at: node_locus(node: n),
-    correction: Unavailable { reason: AmbiguousIntent }
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
@@ -57,7 +57,7 @@ fn lbe_inferred_facts(resolved: Node) -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: resolved,
     algebra: resolved,
-    descent: Violates {
+    descent: v2.std.witness.Violates {
       diagnostic: eval_diagnostic(reason: ^eval_rejected_lbe_projection_deferred, node: resolved)
     }
   )
@@ -143,7 +143,7 @@ fn lbe_emit_rejection_sentinel_claim(
   mock: v2.lens.testgen.LanguageBehaviorIoMock,
   expected: v2.std.diagnostic.NonEmptyDiagnostics
 ) -> v2.std.verification.TestClaim {
-  DiagnosticClaim {
+  v2.std.verification.DiagnosticClaim {
     label: label,
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: mock.snapshot.input_node,
@@ -170,7 +170,7 @@ fn lbe_run_test_claim_assert_from_emit(
     Accepted { value: claim, diagnostics: None } =>
       lbe_run_test_claim_assert_from_mock(claim: claim, mock: mock)
     Rejected { diagnostics: d } =>
-      SemanticMismatch { actual: Rejected { diagnostics: d }, falsification: Absent }
+      v2.std.verdict.SemanticMismatch { actual: Rejected { diagnostics: d }, falsification: Absent }
   }
 }
 
@@ -185,7 +185,7 @@ fn lbe_test_claim_run_from_emit(
     Rejected { diagnostics: d } =>
       v2.compiler.eval.TestClaimRun {
         cache: lbe_rejected_emit_cache_receipt(label: label, mock: mock, expected: d),
-        verdict: SemanticMismatch { actual: Rejected { diagnostics: d }, falsification: Absent }
+        verdict: v2.std.verdict.SemanticMismatch { actual: Rejected { diagnostics: d }, falsification: Absent }
       }
   }
 }

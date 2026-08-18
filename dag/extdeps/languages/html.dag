@@ -208,7 +208,7 @@ fn parse_one_with(s: String, sp: std.markup.MarkupBracket) -> HtmlParseOneResult
   } else {
     let text_raw = split(s: s, delimiter: sp.tag_open).first()
     let rest = html_strip_prefix(s: s, prefix: text_raw)
-    ParsedOne { node: FragmentText { content: unescape_text(s: text_raw) }, rest: rest }
+    ParsedOne { node: std.markup.FragmentText { content: unescape_text(s: text_raw) }, rest: rest }
   }
 }
 

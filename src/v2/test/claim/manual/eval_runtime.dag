@@ -8,7 +8,7 @@ fn eval_byte() -> Byte {
 
 fn eval_i64_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^eval_i64_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^eval_i64_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -16,20 +16,20 @@ fn eval_i64_node() -> Node {
 
 fn eval_algebra_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^eval_algebra_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^eval_algebra_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
 data eval_two_literal: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data eval_add_subgraph_node: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: Transform },
   children: [
     v2.std.node.Edge { label: Positional, target: eval_two_literal },
     v2.std.node.Edge { label: Positional, target: eval_two_literal }
@@ -42,7 +42,7 @@ fn eval_add_subgraph() -> Node {
 }
 
 fn eval_runtime_value(bytes: List<Byte>) -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: eval_i64_node(),
       bytes: bytes
@@ -260,7 +260,7 @@ fn eval_context() -> v2.compiler.eval.EvalContext {
   )
 }
 
-data claim_eval_test_claim_route: v2.std.verification.TestClaim = EqualsClaim {
+data claim_eval_test_claim_route: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "eval routes TestClaim through runtime interpretation",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: eval_add_subgraph(),

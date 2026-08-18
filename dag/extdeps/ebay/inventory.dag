@@ -131,18 +131,18 @@ type InventoryItem {
 data structural_coverage_gap_inventory_item_response_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "InventoryItem" },
-      JsonPending { field: "packageWeightAndSize" },
-      JsonPending { field: "conditionDescriptors" },
-      JsonPending { field: "availability/pickupAtLocationAvailability" },
-      JsonPending { field: "product/brand" },
-      JsonPending { field: "product/mpn" },
-      JsonPending { field: "product/upc" },
-      JsonPending { field: "product/isbn" },
-      JsonPending { field: "product/ean" },
-      JsonPending { field: "product/epid" },
-      JsonPending { field: "product/subtitle" },
-      JsonPending { field: "product/videoIds" }
+      extdeps.coverage.Subject { path: "InventoryItem" },
+      extdeps.coverage.JsonPending { field: "packageWeightAndSize" },
+      extdeps.coverage.JsonPending { field: "conditionDescriptors" },
+      extdeps.coverage.JsonPending { field: "availability/pickupAtLocationAvailability" },
+      extdeps.coverage.JsonPending { field: "product/brand" },
+      extdeps.coverage.JsonPending { field: "product/mpn" },
+      extdeps.coverage.JsonPending { field: "product/upc" },
+      extdeps.coverage.JsonPending { field: "product/isbn" },
+      extdeps.coverage.JsonPending { field: "product/ean" },
+      extdeps.coverage.JsonPending { field: "product/epid" },
+      extdeps.coverage.JsonPending { field: "product/subtitle" },
+      extdeps.coverage.JsonPending { field: "product/videoIds" }
     ],
     trigger: "eBay inventory consumer needs full item fidelity (package dimensions, pickup availability, product identifiers)"
   }
@@ -159,9 +159,9 @@ type InventoryItemWithSkuLocaleGroupid {
 data structural_coverage_gap_inventory_item_row_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "InventoryItemWithSkuLocaleGroupid" },
-      JsonPending { field: "groupIds" },
-      JsonPending { field: "inventoryItemGroupKeys" }
+      extdeps.coverage.Subject { path: "InventoryItemWithSkuLocaleGroupid" },
+      extdeps.coverage.JsonPending { field: "groupIds" },
+      extdeps.coverage.JsonPending { field: "inventoryItemGroupKeys" }
     ],
     trigger: "eBay inventory consumer needs item-group (multi-variation listing) fidelity"
   }
@@ -188,13 +188,13 @@ type PricingSummary {
 data structural_coverage_gap_pricing_summary_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "PricingSummary" },
-      JsonPending { field: "auctionReservePrice" },
-      JsonPending { field: "auctionStartPrice" },
-      JsonPending { field: "minimumAdvertisedPrice" },
-      JsonPending { field: "originallySoldForRetailPriceOn" },
-      JsonPending { field: "originalRetailPrice" },
-      JsonPending { field: "pricingVisibility" }
+      extdeps.coverage.Subject { path: "PricingSummary" },
+      extdeps.coverage.JsonPending { field: "auctionReservePrice" },
+      extdeps.coverage.JsonPending { field: "auctionStartPrice" },
+      extdeps.coverage.JsonPending { field: "minimumAdvertisedPrice" },
+      extdeps.coverage.JsonPending { field: "originallySoldForRetailPriceOn" },
+      extdeps.coverage.JsonPending { field: "originalRetailPrice" },
+      extdeps.coverage.JsonPending { field: "pricingVisibility" }
     ],
     trigger: "eBay offer consumer needs auction or strike-through pricing fidelity"
   }
@@ -209,12 +209,12 @@ type ListingPolicies {
 data structural_coverage_gap_listing_policies_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "ListingPolicies" },
-      JsonPending { field: "bestOfferTerms" },
-      JsonPending { field: "eBayPlusIfEligible" },
-      JsonPending { field: "shippingCostOverrides" },
-      JsonPending { field: "productCompliancePolicyIds" },
-      JsonPending { field: "takeBackPolicyId" }
+      extdeps.coverage.Subject { path: "ListingPolicies" },
+      extdeps.coverage.JsonPending { field: "bestOfferTerms" },
+      extdeps.coverage.JsonPending { field: "eBayPlusIfEligible" },
+      extdeps.coverage.JsonPending { field: "shippingCostOverrides" },
+      extdeps.coverage.JsonPending { field: "productCompliancePolicyIds" },
+      extdeps.coverage.JsonPending { field: "takeBackPolicyId" }
     ],
     trigger: "eBay offer consumer needs best-offer or shipping-override policy fidelity"
   }
@@ -236,18 +236,18 @@ type EbayOfferDetailsWithKeys {
 data structural_coverage_gap_offer_details_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "EbayOfferDetailsWithKeys" },
-      JsonPending { field: "tax" },
-      JsonPending { field: "charity" },
-      JsonPending { field: "extendedProducerResponsibility" },
-      JsonPending { field: "regulatory" },
-      JsonPending { field: "lotSize" },
-      JsonPending { field: "quantityLimitPerBuyer" },
-      JsonPending { field: "secondaryCategoryId" },
-      JsonPending { field: "storeCategoryNames" },
-      JsonPending { field: "hideBuyerDetails" },
-      JsonPending { field: "includeCatalogProductDetails" },
-      JsonPending { field: "listingStartDate" }
+      extdeps.coverage.Subject { path: "EbayOfferDetailsWithKeys" },
+      extdeps.coverage.JsonPending { field: "tax" },
+      extdeps.coverage.JsonPending { field: "charity" },
+      extdeps.coverage.JsonPending { field: "extendedProducerResponsibility" },
+      extdeps.coverage.JsonPending { field: "regulatory" },
+      extdeps.coverage.JsonPending { field: "lotSize" },
+      extdeps.coverage.JsonPending { field: "quantityLimitPerBuyer" },
+      extdeps.coverage.JsonPending { field: "secondaryCategoryId" },
+      extdeps.coverage.JsonPending { field: "storeCategoryNames" },
+      extdeps.coverage.JsonPending { field: "hideBuyerDetails" },
+      extdeps.coverage.JsonPending { field: "includeCatalogProductDetails" },
+      extdeps.coverage.JsonPending { field: "listingStartDate" }
     ],
     trigger: "eBay offer consumer needs tax, charity, regulatory, or scheduled-listing fidelity"
   }
@@ -276,11 +276,11 @@ type EbayOfferDetailsWithAll {
 data structural_coverage_gap_offer_row_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "EbayOfferDetailsWithAll" },
-      JsonPending { field: "listing/listingStatus" },
-      JsonPending { field: "listing/soldQuantity" },
-      JsonPending { field: "status" },
-      JsonPending { field: "statusReason" }
+      extdeps.coverage.Subject { path: "EbayOfferDetailsWithAll" },
+      extdeps.coverage.JsonPending { field: "listing/listingStatus" },
+      extdeps.coverage.JsonPending { field: "listing/soldQuantity" },
+      extdeps.coverage.JsonPending { field: "status" },
+      extdeps.coverage.JsonPending { field: "statusReason" }
     ],
     trigger: "eBay offer consumer needs published-listing status fidelity"
   }

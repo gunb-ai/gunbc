@@ -2,19 +2,19 @@ module v2.test.lens_cost.loop_linear
 
 
 data loop_linear_body_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^loop_linear_body_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^loop_linear_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data loop_linear_measure_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^loop_linear_measure_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^loop_linear_measure_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data loop_linear_body: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: Transform },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_linear_body_leaf }
   ],
@@ -22,7 +22,7 @@ data loop_linear_body: Node = v2.std.node.Node {
 }
 
 data loop_linear_input: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Loop },
+  kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_linear_body },
     v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_measure_leaf }
@@ -46,14 +46,14 @@ fn loop_linear_claim_rhs() -> Node {
     loop_linear_input
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_loop_linear: v2.std.verification.TestClaim = EqualsClaim {
+data claim_loop_linear: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_cost/loop_linear: loop with loop_bound_edge projects iterative linear cost",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: loop_linear_input,

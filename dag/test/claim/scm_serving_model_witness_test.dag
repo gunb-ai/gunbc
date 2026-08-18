@@ -4,7 +4,7 @@ module test.claim.scm_serving_model_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // One profile, priced twice: the SAME 10,000-user SCM workload against AWS S3 (metered egress) and Cloudflare R2 (zero egress), so the spread between them is derived from cited rows rather than asserted. Profile matches the envelope gunbc.econ.free_tier_serving already declares (100 MB stored and 500 MB egress per user-month) so the two models are comparable, plus object-operation counts this axis needs and that one does not have.
-data decimal_basis_assumption: gunbc.econ.scm_serving_model.ByteBasisAssumption = BasisAssumed {
+data decimal_basis_assumption: gunbc.econ.scm_serving_model.ByteBasisAssumption = gunbc.econ.scm_serving_model.BasisAssumed {
   basis: DecimalGigabyte,
   rationale: "Neither cited pricing surface states its byte basis, so this is a DECLARED modeling assumption (the knowable-wedge shape): decimal 10^9 bytes per billing unit, the reading that makes the vendor's own 'GB' arithmetic in their worked examples come out. Swapping to BinaryGibibyte moves every figure below by 7.4 percent, which is why it is a parameter and not a constant.",
 }
@@ -177,7 +177,7 @@ test fn w_red_declared_basis_contradicting_a_cited_row_refuses() -> Bool {
 test fn w_red_binary_basis_moves_every_figure() -> Bool {
   match derive_scm_usage(
     profile: solo_scm_10k_profile,
-    assumption: BasisAssumed {
+    assumption: gunbc.econ.scm_serving_model.BasisAssumed {
       basis: BinaryGibibyte,
       rationale: "control: the same profile read as binary units",
     },

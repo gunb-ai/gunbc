@@ -40,7 +40,7 @@ data zero_floor_registered_users_fixture: extdeps.sec.operating_metrics.Register
 test fn w_10k_users_floor_is_two_ax41_boxes() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
-    assumptions_input: FreeTierAssumptionsDeclared {
+    assumptions_input: gunbc.econ.free_tier_serving.FreeTierAssumptionsDeclared {
       envelope: solo_scm_user_envelope,
       assumptions: solo_scm_10k_assumptions,
     },
@@ -54,7 +54,7 @@ test fn w_10k_users_floor_is_two_ax41_boxes() -> Bool {
 test fn w_100k_users_floor_scales_to_nineteen_boxes() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
-    assumptions_input: FreeTierAssumptionsDeclared {
+    assumptions_input: gunbc.econ.free_tier_serving.FreeTierAssumptionsDeclared {
       envelope: solo_scm_user_envelope,
       assumptions: solo_scm_100k_assumptions,
     },
@@ -100,7 +100,7 @@ test fn w_red_unknown_assumptions_refused() -> Bool {
 test fn w_red_zero_user_count_refused() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
-    assumptions_input: FreeTierAssumptionsDeclared {
+    assumptions_input: gunbc.econ.free_tier_serving.FreeTierAssumptionsDeclared {
       envelope: solo_scm_user_envelope,
       assumptions: gunbc.econ.free_tier_serving.FreeTierServingAssumptions {
         user_count: 0,
@@ -117,7 +117,7 @@ test fn w_red_zero_user_count_refused() -> Bool {
 test fn w_red_zero_storage_per_user_refused() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
-    assumptions_input: FreeTierAssumptionsDeclared {
+    assumptions_input: gunbc.econ.free_tier_serving.FreeTierAssumptionsDeclared {
       envelope: gunbc.econ.free_tier_serving.FreeTierUserEnvelope {
         storage_bytes_per_user: byte_size(count: 0),
         monthly_egress_bytes_per_user: byte_size(count: 500000000),
@@ -133,7 +133,7 @@ test fn w_red_zero_storage_per_user_refused() -> Bool {
 test fn w_red_zero_replica_count_refused() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
-    assumptions_input: FreeTierAssumptionsDeclared {
+    assumptions_input: gunbc.econ.free_tier_serving.FreeTierAssumptionsDeclared {
       envelope: solo_scm_user_envelope,
       assumptions: gunbc.econ.free_tier_serving.FreeTierServingAssumptions {
         user_count: 10000,
@@ -150,7 +150,7 @@ test fn w_red_zero_replica_count_refused() -> Bool {
 test fn w_red_zero_egress_allowance_refused() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
-    assumptions_input: FreeTierAssumptionsDeclared {
+    assumptions_input: gunbc.econ.free_tier_serving.FreeTierAssumptionsDeclared {
       envelope: solo_scm_user_envelope,
       assumptions: gunbc.econ.free_tier_serving.FreeTierServingAssumptions {
         user_count: 10000,
@@ -167,7 +167,7 @@ test fn w_red_zero_egress_allowance_refused() -> Bool {
 test fn w_red_zero_box_storage_refused() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: ax41_zero_storage_fixture,
-    assumptions_input: FreeTierAssumptionsDeclared {
+    assumptions_input: gunbc.econ.free_tier_serving.FreeTierAssumptionsDeclared {
       envelope: solo_scm_user_envelope,
       assumptions: solo_scm_10k_assumptions,
     },

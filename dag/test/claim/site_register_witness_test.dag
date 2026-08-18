@@ -175,7 +175,7 @@ fn witness_unthemed_color_census_empty() -> Bool {
 }
 
 fn witness_unthemed_color_is_counted() -> Bool {
-  let rogue = StaticRule { selector: ClassSelector { name: "rogue" }, decls: [ decl(prop: Color, value: "hsl(194 88% 76%)") ] }
+  let rogue = gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "rogue" }, decls: [ decl(prop: Color, value: "hsl(194 88% 76%)") ] }
   let census = unthemed_color_decls(rules: [rogue])
   census.length() == 1
     && all(census, c => c.selector == ".rogue" && c.prop == "color")

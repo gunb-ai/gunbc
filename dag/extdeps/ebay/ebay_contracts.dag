@@ -10,20 +10,20 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data marketplace_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.ebay.ebay", decl_name: "MarketplaceEnum", field: WholeDeclaration },
-  encoding: StringVariant { naming: ScreamingSnakeCase }
+  encoding: std.serialization.StringVariant { naming: ScreamingSnakeCase }
 }
 
 data condition_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.ebay.inventory", decl_name: "ConditionEnum", field: WholeDeclaration },
-  encoding: StringVariant { naming: ScreamingSnakeCase }
+  encoding: std.serialization.StringVariant { naming: ScreamingSnakeCase }
 }
 
 data format_type_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.ebay.inventory", decl_name: "FormatTypeEnum", field: WholeDeclaration },
-  encoding: StringVariant { naming: ScreamingSnakeCase }
+  encoding: std.serialization.StringVariant { naming: ScreamingSnakeCase }
 }
 
 data error_category_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.ebay.errors", decl_name: "EbayErrorCategory", field: WholeDeclaration },
-  encoding: StringVariant { naming: ScreamingSnakeCase }
+  encoding: std.serialization.StringVariant { naming: ScreamingSnakeCase }
 }

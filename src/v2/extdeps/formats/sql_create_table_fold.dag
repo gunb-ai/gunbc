@@ -3,7 +3,7 @@ module v2.extdeps.formats.sql_create_table_fold
 
 fn sql_fold_stmt_tag(binding: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: binding } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -17,7 +17,7 @@ fn sql_fold_stmt_kind_tag_terminal(binding: v2.std.node.Symbol) -> v2.std.gramma
 }
 
 data sql_fold_diagnostic_anchor: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -26,7 +26,7 @@ fn sql_fold_unsupported_variant_diagnostic(variant: v2.std.node.Symbol) -> v2.st
   v2.std.diagnostic.Diagnostic {
     reason: variant,
     at: node_locus(node: sql_fold_diagnostic_anchor),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -34,7 +34,7 @@ fn sql_fold_columns_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^sql_fold_columns_empty,
     at: node_locus(node: sql_fold_diagnostic_anchor),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -42,7 +42,7 @@ fn sql_fold_identifier_spelling(id: v2.extdeps.formats.sql.SqlIdentifier) -> Wit
   match id {
     SqlRegularIdentifier { name: n } => Holds { value: n }
     SqlDelimitedIdentifier { name: _ } =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_delimited_identifier) }
+      v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_delimited_identifier) }
   }
 }
 
@@ -54,7 +54,7 @@ fn sql_fold_column_def_emitted_witness(col: v2.extdeps.formats.sql.SqlColumnDefi
           if col.constraints.not_null {
             Holds {
               value: v2.std.node.Node {
-                kind: TypeNode { connective: Conj },
+                kind: v2.std.node.TypeNode { connective: Conj },
                 children: [
                   v2.std.node.Edge {
                     label: Positional,
@@ -63,7 +63,7 @@ fn sql_fold_column_def_emitted_witness(col: v2.extdeps.formats.sql.SqlColumnDefi
                   v2.std.node.Edge {
                     label: Positional,
                     target: v2.std.node.Node {
-                      kind: TypeNode { connective: Atom { identity: name } },
+                      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } },
                       children: [],
                       occurrence_id: SyntheticOccurrence
                     }
@@ -73,44 +73,44 @@ fn sql_fold_column_def_emitted_witness(col: v2.extdeps.formats.sql.SqlColumnDefi
               }
             }
           } else {
-            Violates {
+            v2.std.witness.Violates {
               diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_nullable_column)
             }
           }
         SqlTypeBoolean =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
         SqlTypeSmallInt =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
         SqlTypeInteger =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
         SqlTypeBigInt =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
         SqlTypeReal =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
         SqlTypeDoublePrecision =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
         SqlTypeNumeric { precision: _, scale: _ } =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
         SqlTypeCharacter { length: _ } =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
         SqlTypeCharacterVarying { length: _ } =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
         SqlTypeDate =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
         SqlTypeTime =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
         SqlTypeTimestamp =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
         SqlTypeTimestampWithTimeZone =>
-          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+          v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn sql_fold_conj_list_root(item: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: item }
     ],
@@ -120,7 +120,7 @@ fn sql_fold_conj_list_root(item: Node) -> Node {
 
 fn sql_fold_conj_list_append(left: Node, right: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Positional, target: left },
       v2.std.node.Edge { label: Positional, target: right }
@@ -143,7 +143,7 @@ fn sql_fold_list_production_emitted_fold_rest(
             accumulated: sql_fold_conj_list_append(left: accumulated, right: col_node),
             index: index + 1
           )
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
     Absent => Holds { value: accumulated }
   }
@@ -159,16 +159,16 @@ fn sql_fold_column_list_emitted_witness(cols: List<v2.extdeps.formats.sql.SqlCol
             accumulated: sql_fold_conj_list_root(item: col_node),
             index: 1
           )
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn sql_fold_primary_key_emitted_witness(pk: Optional<List<v2.extdeps.formats.sql.SqlIdentifier>>) -> Witness<Node> {
   match pk {
     Absent =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_no_primary_key) }
+      v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_no_primary_key) }
     Present { value: cols } =>
       match list_nth(xs: cols, wanted: 0, absent: sql_fold_columns_absent_diagnostic()) {
         Holds { value: id0 } =>
@@ -176,7 +176,7 @@ fn sql_fold_primary_key_emitted_witness(pk: Optional<List<v2.extdeps.formats.sql
             Holds { value: name } =>
               Holds {
                 value: v2.std.node.Node {
-                  kind: TypeNode { connective: Conj },
+                  kind: v2.std.node.TypeNode { connective: Conj },
                   children: [
                     v2.std.node.Edge {
                       label: Positional,
@@ -185,7 +185,7 @@ fn sql_fold_primary_key_emitted_witness(pk: Optional<List<v2.extdeps.formats.sql
                     v2.std.node.Edge {
                       label: Positional,
                       target: v2.std.node.Node {
-                        kind: TypeNode { connective: Atom { identity: name } },
+                        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } },
                         children: [],
                         occurrence_id: SyntheticOccurrence
                       }
@@ -194,9 +194,9 @@ fn sql_fold_primary_key_emitted_witness(pk: Optional<List<v2.extdeps.formats.sql
                   occurrence_id: SyntheticOccurrence
                 }
               }
-            Violates { diagnostic: d } => Violates { diagnostic: d }
+            Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
   }
 }
@@ -209,7 +209,7 @@ fn sql_fold_create_table_body_emitted(
   match primary_key {
     Absent =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           v2.std.node.Edge {
             label: Positional,
@@ -218,7 +218,7 @@ fn sql_fold_create_table_body_emitted(
           v2.std.node.Edge {
             label: Positional,
             target: v2.std.node.Node {
-              kind: TypeNode { connective: Atom { identity: table_name } },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: table_name } },
               children: [],
               occurrence_id: SyntheticOccurrence
             }
@@ -229,7 +229,7 @@ fn sql_fold_create_table_body_emitted(
       }
     Present { value: pk_node } =>
       v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           v2.std.node.Edge {
             label: Positional,
@@ -238,7 +238,7 @@ fn sql_fold_create_table_body_emitted(
           v2.std.node.Edge {
             label: Positional,
             target: v2.std.node.Node {
-              kind: TypeNode { connective: Atom { identity: table_name } },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: table_name } },
               children: [],
               occurrence_id: SyntheticOccurrence
             }
@@ -289,12 +289,12 @@ fn sql_fold_create_table_bundle_witness(table: v2.extdeps.formats.sql.SqlTableDe
                       )
                     }
                   }
-                Violates { diagnostic: d } => Violates { diagnostic: d }
+                Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
               }
           }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -302,21 +302,21 @@ fn sql_fold_schema_operation_bundle_witness(op: v2.extdeps.formats.sql.SqlSchema
   match op {
     SqlCreateTable { table: t } => sql_fold_create_table_bundle_witness(table: t)
     SqlDropTable { table_name: _ } =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+      v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
     SqlAddColumn { table_name: _, column: _ } =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+      v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
     SqlDropColumn { table_name: _, column_name: _ } =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+      v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
     SqlAlterTableConstraint { table_name: _, constraint: _ } =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+      v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
     SqlCreateIndex { index_name: _, table_name: _, columns: _ } =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+      v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
     SqlDropIndex { index_name: _ } =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+      v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
     SqlAlterTableRaw { table_name: _, alteration: _ } =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+      v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
     SqlRawStep { statement: _ } =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+      v2.std.witness.Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
   }
 }
 
@@ -440,9 +440,9 @@ fn sql_fold_column_list_uses_recursive_list_production_witness(
           Holds {
             value: sql_fold_column_list_production_is_recursive_list(production: production)
           }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -459,7 +459,7 @@ fn sql_fold_relation_row_witness(emitted: Node, lhs: v2.std.node.Symbol) -> Witn
         productions: productions,
         emitted: emitted
       )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -472,7 +472,7 @@ fn sql_fold_translation_rules_node_for_emitted(
     Holds { value: row } =>
       Holds {
         value: v2.std.node.Node {
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             dag_named_edge(
               name: ^grammar_relation_rules_formal_productions,
@@ -488,7 +488,7 @@ fn sql_fold_translation_rules_node_for_emitted(
           occurrence_id: SyntheticOccurrence
         }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -521,7 +521,7 @@ fn sql_fold_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn sql_fold_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: sql_fold_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: sql_fold_lex_rules() }
 }
 
 fn sql_fold_serialize_source_witness(
@@ -535,7 +535,7 @@ fn sql_fold_serialize_source_witness(
         Accepted { value: tokens_root, diagnostics: _ } =>
           Holds {
             value: v2.std.node.Node {
-              kind: TypeNode { connective: Conj },
+              kind: v2.std.node.TypeNode { connective: Conj },
               children: [
                 dag_named_edge(
                   name: ^serialize_source_field_source_text,
@@ -553,9 +553,9 @@ fn sql_fold_serialize_source_witness(
               occurrence_id: SyntheticOccurrence
             }
           }
-        Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+        Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -591,9 +591,9 @@ fn sql_fold_target_model_for_emitted_witness(
               runtime_row: target_emit_host_runtime_row_unconfigured
             )
           }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -621,26 +621,26 @@ fn sql_fold_target_model_for_operation_witness(op: v2.extdeps.formats.sql.SqlSch
                 bundle: bundle,
                 source_text: source_text
               )
-            Some { diagnostics: nd } => Violates { diagnostic: nd.head }
+            Some { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
           }
-        Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+        Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn sql_fold_operation_emitted_witness(op: v2.extdeps.formats.sql.SqlSchemaOperation) -> Witness<Node> {
   match sql_fold_schema_operation_bundle_witness(op: op) {
     Holds { value: bundle } => Holds { value: bundle.emitted }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 data sql_fold_tasks_single_col_table: v2.extdeps.formats.sql.SqlTableDefinition = v2.extdeps.formats.sql.SqlTableDefinition {
-    name: SqlRegularIdentifier { name: "tasks" },
+    name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "tasks" },
     columns: [
       v2.extdeps.formats.sql.SqlColumnDefinition {
-        name: SqlRegularIdentifier { name: "id" },
+        name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "id" },
         data_type: SqlTypeCharacterLargeObject,
         constraints: v2.extdeps.formats.sql.SqlColumnConstraints { not_null: true },
         column_default: SqlColumnDefaultAbsent
@@ -651,16 +651,16 @@ data sql_fold_tasks_single_col_table: v2.extdeps.formats.sql.SqlTableDefinition 
 }
 
 data sql_fold_tasks_two_col_table: v2.extdeps.formats.sql.SqlTableDefinition = v2.extdeps.formats.sql.SqlTableDefinition {
-    name: SqlRegularIdentifier { name: "tasks" },
+    name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "tasks" },
     columns: [
       v2.extdeps.formats.sql.SqlColumnDefinition {
-        name: SqlRegularIdentifier { name: "id" },
+        name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "id" },
         data_type: SqlTypeCharacterLargeObject,
         constraints: v2.extdeps.formats.sql.SqlColumnConstraints { not_null: true },
         column_default: SqlColumnDefaultAbsent
       },
       v2.extdeps.formats.sql.SqlColumnDefinition {
-        name: SqlRegularIdentifier { name: "title" },
+        name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "title" },
         data_type: SqlTypeCharacterLargeObject,
         constraints: v2.extdeps.formats.sql.SqlColumnConstraints { not_null: true },
         column_default: SqlColumnDefaultAbsent
@@ -671,29 +671,29 @@ data sql_fold_tasks_two_col_table: v2.extdeps.formats.sql.SqlTableDefinition = v
 }
 
 data sql_fold_tasks_pk_table: v2.extdeps.formats.sql.SqlTableDefinition = v2.extdeps.formats.sql.SqlTableDefinition {
-    name: SqlRegularIdentifier { name: "tasks" },
+    name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "tasks" },
     columns: [
       v2.extdeps.formats.sql.SqlColumnDefinition {
-        name: SqlRegularIdentifier { name: "id" },
+        name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "id" },
         data_type: SqlTypeCharacterLargeObject,
         constraints: v2.extdeps.formats.sql.SqlColumnConstraints { not_null: true },
         column_default: SqlColumnDefaultAbsent
       },
       v2.extdeps.formats.sql.SqlColumnDefinition {
-        name: SqlRegularIdentifier { name: "title" },
+        name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "title" },
         data_type: SqlTypeCharacterLargeObject,
         constraints: v2.extdeps.formats.sql.SqlColumnConstraints { not_null: true },
         column_default: SqlColumnDefaultAbsent
       },
       v2.extdeps.formats.sql.SqlColumnDefinition {
-        name: SqlRegularIdentifier { name: "status" },
+        name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "status" },
         data_type: SqlTypeCharacterLargeObject,
         constraints: v2.extdeps.formats.sql.SqlColumnConstraints { not_null: true },
         column_default: SqlColumnDefaultAbsent
       }
     ],
     primary_key: Present {
-      value: [SqlRegularIdentifier { name: "id" }]
+      value: [v2.extdeps.formats.sql.SqlRegularIdentifier { name: "id" }]
     },
     table_constraints: []
 }

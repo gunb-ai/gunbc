@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data commit_writer_index_selection_note: String = "BEHAVIOURAL CONTROL for gunbc.commit_workflow commit_writer_index_entries_for_path, owed by the operator verdict on gunbc#7480 (2026-08-02). That function selects index entries by path, and its body is a DECLARED SCAFFOLD: it spells the selection with flat_map because the bare name filter is captured in that module by v2.std.algebra's filter<T> over FreeMonoid<T>, which enters the resolution population through the semantically-required v2.compiler.source_authority import and cannot reconcile with List<GitIndexEntry>. The scaffold's own note in commit_workflow carries the root cause and the dissolve-on. THIS file is the other half: the whole-tree compile is the discriminating red for the CAPTURE, while these rows prove the interim spelling did not change commit-writer SEMANTICS. They must therefore keep executing after the resolver fix restores the filter spelling -- a control that proves the two spellings agree is exactly what makes that restoration safe, so it does not retire with the scaffold. The closure is deliberately live rather than synthetic: importing gunbc.commit_workflow pulls v2.compiler.source_authority, and therefore v2.std.algebra, into this test's population too, so these rows execute under the same capture conditions as production rather than in a closure where the defect could not arise. Coverage is the verdict's list: two or more entries, matching AND nonmatching paths, and preservation of both the ORDER and the STAGE of matching entries -- order and stage are asserted rather than counted because a selection that returned the right NUMBER of entries while reordering them, dropping a duplicate-path stage, or rewriting a stage would still be wrong, and a count alone cannot see any of that."
 
 fn oid_of(hex: String) -> extdeps.git.object_store.GitObjectId {
-  GitSha1ObjectId { digest: std.content_hash.Sha1Digest { hex: hex as std.content_hash.Sha1DigestHex } }
+  extdeps.git.object_store.GitSha1ObjectId { digest: std.content_hash.Sha1Digest { hex: hex as std.content_hash.Sha1DigestHex } }
 }
 
 data oid_a1: String = "aa11111111111111111111111111111111111111"
@@ -17,7 +17,7 @@ data oid_b2: String = "bb22222222222222222222222222222222222222"
 fn fallback_path() -> extdeps.git.object_store.GitPath {
   extdeps.git.object_store.GitPath {
     first: extdeps.git.object_store.GitTreeEntryName {
-      first: GitTreeEntryNameOctetAfterSlash {
+      first: extdeps.git.object_store.GitTreeEntryNameOctetAfterSlash {
         value: 120 as extdeps.git.object_store.GitTreeEntryNameAfterSlashValue
       },
       rest: []

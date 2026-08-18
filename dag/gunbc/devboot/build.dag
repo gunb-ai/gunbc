@@ -140,7 +140,7 @@ fn file_sha256(repo_root: String, path: String) -> FileSha256Outcome {
   }
 }
 
-fn render_sha256_digest(digest: Sha256Digest) -> String {
+fn render_sha256_digest(digest: std.content_hash.Sha256Digest) -> String {
   digest.hex as String
 }
 
@@ -159,8 +159,8 @@ type BuildReceipt {
 
 type BuildRefusal
   = ProgramNotBuildable { program: String, offered: String }
-  | WorktreeNotSnapshotted { refusal: SnapshotRefused }
-  | ToolchainNotObserved { refusal: ToolchainObservationRefused }
+  | WorktreeNotSnapshotted { refusal: gunbc.devboot.produce.SnapshotRefused }
+  | ToolchainNotObserved { refusal: gunbc.devboot.produce.ToolchainObservationRefused }
   | SourceTreeOidUnusable { hex: String }
   | SubjectNotAdmitted { cause: gunbc.devboot.subject.BuildSubjectRefusalCause }
   | ProducerUnreachable { detail: String }
@@ -225,7 +225,7 @@ fn poll_settled(acc: PollState) -> Bool {
 }
 
 // THE POLL INTERVAL IS A DURATION, not a number that happens to be counted in seconds. A scale unit living in a name rather than in the type is the conflation this repository treats as a hard block, and leaving it here while the producer's wait was migrated to Second in this same change would have been worse than either choice alone: two representations of one concept, one file apart from the authority that already models it.
-fn poll_interval() -> Second {
+fn poll_interval() -> std.measure.Second {
   second(count: 5)
 }
 
@@ -241,7 +241,7 @@ fn poll_attempts() -> List<Int> {
   fold([1, 2, 3, 4, 5, 6], init: [], f: (acc, outer) => concat(acc, poll_tick_unit()))
 }
 
-fn poll_budget() -> Second {
+fn poll_budget() -> std.measure.Second {
   second(count: (poll_attempts() |> count) * second_count(poll_interval()))
 }
 
@@ -494,12 +494,12 @@ fn devboot_build(
       }
     ProgramSelected { package, cargo_target, bin_name } =>
       match devboot_snapshot(repo_root: repo_root, work_root: work_root) {
-        SnapshotRefused { detail } => BuildRefused { cause: WorktreeNotSnapshotted { refusal: SnapshotRefused { detail: detail } } }
+        SnapshotRefused { detail } => BuildRefused { cause: WorktreeNotSnapshotted { refusal: gunbc.devboot.produce.SnapshotRefused { detail: detail } } }
         SnapshotTaken { tree_hex } =>
           match observe_toolchain(repo_root: repo_root) {
             ToolchainObservationRefused { detail } =>
               BuildRefused {
-                cause: ToolchainNotObserved { refusal: ToolchainObservationRefused { detail: detail } },
+                cause: ToolchainNotObserved { refusal: gunbc.devboot.produce.ToolchainObservationRefused { detail: detail } },
               }
             ToolchainObserved { toolchain, host } =>
               match git_object_id_from_untagged_hex(hex: tree_hex) {
@@ -547,7 +547,7 @@ fn devboot_build_admitted(
   endpoint: String,
   out_path: String,
   tree_hex: String,
-  subject: BuildSubject,
+  subject: gunbc.devboot.subject.BuildSubject,
   token: String,
 ) -> BuildOutcome {
   let subject_text = render_build_subject(subject: subject)
@@ -793,7 +793,7 @@ fn publish_produced_tree(
   token: String,
   subject_text: String,
   artifact_path: String,
-  artifact_sha256: Sha256Digest?,
+  artifact_sha256: std.content_hash.Sha256Digest?,
   refusal_text: String,
 ) -> Bool {
   let staging = join([work_root, "/", token, "/produced"], "")
@@ -978,7 +978,7 @@ fn devboot_serve_admitted(
   home: ProducerHome,
   token: String,
   requested_subject: String,
-  subject: BuildSubject,
+  subject: gunbc.devboot.subject.BuildSubject,
   source_tree: String,
   package: String,
   bin_name: String,
@@ -1111,7 +1111,7 @@ fn render_build_outcome(outcome: BuildOutcome) -> String {
   }
 }
 
-fn build_outcome_exit(outcome: BuildOutcome) -> ProcessExit {
+fn build_outcome_exit(outcome: BuildOutcome) -> std.process.ProcessExit {
   match outcome {
     Built { program_subject, artifact, receipt } => ExitSuccess
     BuildRefused { cause } => exit_failure(reason: build_refusal_sentence(cause: cause))
@@ -1126,7 +1126,7 @@ fn render_serve_report(report: ServeReport) -> String {
   }
 }
 
-fn serve_report_exit(report: ServeReport) -> ProcessExit {
+fn serve_report_exit(report: ServeReport) -> std.process.ProcessExit {
   match report {
     ServeProduced { token, sha256 } => ExitSuccess
     ServeRefused { token, detail } => exit_failure(reason: detail)
@@ -1141,7 +1141,7 @@ fn devboot_build_entry(
   endpoint: String,
   out_path: String,
   receipt_path: String,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   let outcome = devboot_build(
     program: program,
     repo_root: repo_root,
@@ -1169,7 +1169,7 @@ fn devboot_serve_entry(
   cargo_home: String,
   build_jobs: String,
   receipt_path: String,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   let report = devboot_serve_request(
     repo_root: repo_root,
     work_root: work_root,

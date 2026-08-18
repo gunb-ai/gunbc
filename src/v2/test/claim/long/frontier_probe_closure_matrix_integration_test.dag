@@ -28,7 +28,7 @@ fn fp_matrix_closure_subject_matching_digest(
 
 fn fp_matrix_below_cap_complete_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
   fp_matrix_closure_subject_matching_digest(
-    refs: Cons {
+    refs: std.algebra.Cons {
       head: fp_matrix_ref_a(),
       tail: Empty
     },
@@ -40,9 +40,9 @@ fn fp_matrix_below_cap_complete_subject() -> v2.compiler.self_host.frontier_prob
 
 fn fp_matrix_second_root_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
   fp_matrix_closure_subject_matching_digest(
-    refs: Cons {
+    refs: std.algebra.Cons {
       head: fp_matrix_ref_a(),
-      tail: Cons { head: fp_matrix_ref_v2(), tail: Empty }
+      tail: std.algebra.Cons { head: fp_matrix_ref_v2(), tail: Empty }
     },
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 2,

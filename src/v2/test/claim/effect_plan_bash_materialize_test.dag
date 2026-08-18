@@ -417,13 +417,13 @@ fn unsupported_step_refuses(
 }
 
 test fn effect_plan_bash_RED_every_unsupported_step_arm_is_typed() -> Bool {
-  let predicate = StrEq { lhs: "a", rhs: "a" }
+  let predicate = v2.std.orchestration.StrEq { lhs: "a", rhs: "a" }
   unsupported_step_refuses(
     step: If { cond: predicate, then_: empty_plan(), else_: Absent },
     expected: UnsupportedIf
   )
     && unsupported_step_refuses(
-      step: For { binder: ^item, over: ModeledList { items: [] }, body: empty_plan() },
+      step: For { binder: ^item, over: v2.std.orchestration.ModeledList { items: [] }, body: empty_plan() },
       expected: UnsupportedFor
     )
     && unsupported_step_refuses(
@@ -435,7 +435,7 @@ test fn effect_plan_bash_RED_every_unsupported_step_arm_is_typed() -> Bool {
       expected: UnsupportedRetry
     )
     && unsupported_step_refuses(
-      step: Let { name: "x", value: ExprLit { spelling: "x" } },
+      step: Let { name: "x", value: v2.std.orchestration.ExprLit { spelling: "x" } },
       expected: UnsupportedLet
     )
     && unsupported_step_refuses(

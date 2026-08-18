@@ -51,7 +51,7 @@ fn witness_binding() -> gunbc.code_change_workflow.CodeChangeBinding {
 fn witness_active_facts(active: gunbc.code_change_workflow.CodeChangeActiveStage) -> gunbc.code_change_workflow.CodeChangeFacts {
   gunbc.code_change_workflow.CodeChangeFacts {
     binding: witness_binding(),
-    stage: CodeChangeActive { stage: active },
+    stage: gunbc.code_change_workflow.CodeChangeActive { stage: active },
     head_sha: Present { value: witness_head_sha },
     marked_ready_at: none,
     merge_ready_at: none,
@@ -63,7 +63,7 @@ fn witness_active_facts(active: gunbc.code_change_workflow.CodeChangeActiveStage
 fn witness_terminal_facts(terminal: gunbc.code_change_workflow.CodeChangeTerminalStage) -> gunbc.code_change_workflow.CodeChangeFacts {
   gunbc.code_change_workflow.CodeChangeFacts {
     binding: witness_binding(),
-    stage: CodeChangeTerminal { stage: terminal },
+    stage: gunbc.code_change_workflow.CodeChangeTerminal { stage: terminal },
     head_sha: Present { value: witness_head_sha },
     marked_ready_at: none,
     merge_ready_at: none,
@@ -303,7 +303,7 @@ fn witness_digest_not_ready_blocks() -> Bool {
       facts: witness_active_facts(active: ChangeUnderReview),
       event: RecordMergeReady,
       github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
-      digest: Present { value: NotReady { first_reason: "draft", more_reasons: [] } },
+      digest: Present { value: gunbc.pr_digests.NotReady { first_reason: "draft", more_reasons: [] } },
       tally: Present { value: witness_tally_green() },
       policy_permitted: Present { value: true },
     }

@@ -23,19 +23,19 @@ fn host_identity_observed_probed_at() -> std.types.NonEmptyStr {
 }
 
 fn srv1_host_identity_ssh_transport() -> gunbc.host_effect.HostEffectTransport {
-  SshShell { ssh_host: operator_host_srv1 as std.types.NonEmptyStr }
+  gunbc.host_effect.SshShell { ssh_host: operator_host_srv1 as std.types.NonEmptyStr }
 }
 
 fn srv1_host_identity_os_target() -> gunbc.host_effect.NodeControlPlane {
-  HostOs { node: srv1_host }
+  gunbc.host_effect.HostOs { node: srv1_host }
 }
 
 fn srv2_host_identity_ssh_transport() -> gunbc.host_effect.HostEffectTransport {
-  SshShell { ssh_host: operator_host_srv2 as std.types.NonEmptyStr }
+  gunbc.host_effect.SshShell { ssh_host: operator_host_srv2 as std.types.NonEmptyStr }
 }
 
 fn srv2_host_identity_os_target() -> gunbc.host_effect.NodeControlPlane {
-  HostOs { node: srv2_host }
+  gunbc.host_effect.HostOs { node: srv2_host }
 }
 
 fn host_identity_transport_label(transport: gunbc.host_effect.HostEffectTransport) -> String {
@@ -134,8 +134,8 @@ fn host_identity_adopt_receipt_message(receipt: HostIdentityAdoptReceipt) -> Str
 fn host_identity_receipt_emit(message: String) -> Bool {
   reconciliation_converged(
     r: host_effect_apply(
-      target: HostOs { node: srv1_host },
-      effect: Srv3ReceiptEmit { lines: [message] },
+      target: gunbc.host_effect.HostOs { node: srv1_host },
+      effect: gunbc.host_effect.Srv3ReceiptEmit { lines: [message] },
       evidence: host_effect_identity_evidence,
       transport: LocalShell,
     )

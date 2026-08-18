@@ -56,7 +56,7 @@ fn domain(id: std.machine_shape.DomainId, n: std.nat.Nat, mem: List<std.machine_
 fn encoding_pool_under_cpu() -> std.machine_shape.MachineShape {
   std.machine_shape.MachineShape {
     domains: [domain(id: cpu_domain, n: 20, mem: [pool()]), domain(id: gpu_domain, n: 6144, mem: [])],
-    edges: [SharedLevelEdge { owner: cpu_domain, sharer: gpu_domain, level: pool_level }],
+    edges: [std.machine_shape.SharedLevelEdge { owner: cpu_domain, sharer: gpu_domain, level: pool_level }],
   }
 }
 
@@ -64,7 +64,7 @@ fn encoding_pool_under_cpu() -> std.machine_shape.MachineShape {
 fn encoding_pool_under_gpu() -> std.machine_shape.MachineShape {
   std.machine_shape.MachineShape {
     domains: [domain(id: cpu_domain, n: 20, mem: []), domain(id: gpu_domain, n: 6144, mem: [pool()])],
-    edges: [SharedLevelEdge { owner: gpu_domain, sharer: cpu_domain, level: pool_level }],
+    edges: [std.machine_shape.SharedLevelEdge { owner: gpu_domain, sharer: cpu_domain, level: pool_level }],
   }
 }
 

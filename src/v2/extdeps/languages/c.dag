@@ -586,8 +586,8 @@ fn c_validate_partition_r4(
   ) {
     Absent => PartitionR4Valid
     Present { value: detail } =>
-      PartitionR4Refused {
-        cause: ByValueTypeCycle { detail: detail },
+      v2.std.compilers.compilation_unit.PartitionR4Refused {
+        cause: v2.std.compilers.compilation_unit.ByValueTypeCycle { detail: detail },
       }
   }
 }
@@ -645,27 +645,27 @@ fn c_bool_literal_host_source_text(literal: String) -> String {
 }
 
 fn c_bool_literal_host_runtime_row(literal: String) -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: v2.std.host_transport.HostTransportDescriptor {
         identity: ^c_bool_literal_host_transport_identity,
         workspace: [
           v2.std.host_transport.WorkspaceFile {
             path: "fixture.c",
-            content: FixedText { text: c_bool_literal_host_source_text(literal: literal) }
+            content: v2.std.host_transport.FixedText { text: c_bool_literal_host_source_text(literal: literal) }
           }
         ],
         build: [
           v2.std.host_transport.ProcessInvocation {
-            program: HostToolProgram { executable: "cc" },
-            args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
+            program: v2.std.host_transport.HostToolProgram { executable: "cc" },
+            args: [v2.std.host_transport.LiteralArg { text: "fixture.c" }, v2.std.host_transport.LiteralArg { text: "-o" }, v2.std.host_transport.LiteralArg { text: "fixture" }]
           }
         ],
         run: v2.std.host_transport.ProcessInvocation {
-          program: ProducedProgram { path: "fixture" },
+          program: v2.std.host_transport.ProducedProgram { path: "fixture" },
           args: []
         },
-        runtime_value_codec: FixedWidthBytes { width: 0 }
+        runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 0 }
       },
       runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
     }
@@ -684,7 +684,7 @@ data c_emit_host_main_suffix_dissolution_trigger: std.dissolution.DissolutionCon
 
 fn c_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -696,28 +696,28 @@ fn c_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
 
 fn c_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^c_token_ty_int },
-    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_fn_add },
-    FixedToken { token_class: ^c_token_lparen },
-    FixedToken { token_class: ^c_token_ty_int },
-    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_x },
-    FixedToken { token_class: ^c_token_comma },
-    FixedToken { token_class: ^c_token_ty_int },
-    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_y },
-    FixedToken { token_class: ^c_token_rparen },
-    FixedToken { token_class: ^c_token_lbrace },
-    FixedToken { token_class: ^c_token_kw_return },
-    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_x },
-    FixedToken { token_class: ^c_token_plus },
-    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_y },
-    FixedToken { token_class: ^c_token_semicolon },
-    FixedToken { token_class: ^c_token_rbrace }
+    v2.std.compilers.target_model.FixedToken { token_class: ^c_token_ty_int },
+    v2.std.compilers.target_model.BoundToken { token_class: ^c_token_ident, binding: ^c_binding_fn_add },
+    v2.std.compilers.target_model.FixedToken { token_class: ^c_token_lparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^c_token_ty_int },
+    v2.std.compilers.target_model.BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^c_token_comma },
+    v2.std.compilers.target_model.FixedToken { token_class: ^c_token_ty_int },
+    v2.std.compilers.target_model.BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^c_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^c_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^c_token_kw_return },
+    v2.std.compilers.target_model.BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^c_token_plus },
+    v2.std.compilers.target_model.BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^c_token_semicolon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^c_token_rbrace }
   ]
 }
 
 fn c_int_inhabitant_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       c_named_edge(name: ^c_inhabitant_field_atom, target: c_atom(id: ^c_inhabitant_int))
     ],
@@ -727,7 +727,7 @@ fn c_int_inhabitant_node() -> Node {
 
 fn c_emitted_add_fn_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: c_int_inhabitant_node() },
       v2.std.node.Edge { label: Positional, target: c_int_inhabitant_node() },
@@ -761,7 +761,7 @@ fn c_serialize_source_children() -> List<v2.std.node.Edge> {
 
 fn c_serialize_source_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: c_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
   }
@@ -787,7 +787,7 @@ fn c_grammar_sequence_from_token_classes() -> v2.std.grammar.GrammarExpr {
           }
         CGramBuild1StateReady { expr: acc } =>
           CGramBuild1StateReady {
-            expr: Sequence {
+            expr: v2.std.grammar.Sequence {
               left: acc,
               right: c_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
             }
@@ -825,7 +825,7 @@ fn c_grammar_relation_row() -> CGrammarRelationRow {
 
 fn c_grammar_relation_row_node(row: CGrammarRelationRow) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       c_named_edge(name: ^grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
       c_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
@@ -843,7 +843,7 @@ fn c_grammar_relation_row_node(row: CGrammarRelationRow) -> Node {
 
 fn c_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       c_named_edge(name: ^c_relation_rule_fn_add, target: c_grammar_relation_row_node(row: c_grammar_relation_row()))
     ],
@@ -857,7 +857,7 @@ fn c_selection_policy_node() -> Node {
 
 fn c_add_declared_inhabitants_root() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       c_named_edge(name: ^c_inhabitant_field_int, target: c_int_inhabitant_node()),
       c_named_edge(name: ^c_inhabitant_field_add_fn, target: c_emitted_add_fn_node())
@@ -942,7 +942,7 @@ fn c_value_expression_projection() -> v2.std.compilers.target_model.TargetValueE
       true_token: ^c_token_kw_true,
       false_token: ^c_token_kw_false
     },
-    block_evaluation_mode: StatementSequenced {
+    block_evaluation_mode: v2.std.compilers.target_model.StatementSequenced {
       return_token: ^c_token_kw_return,
       statement_terminator: ^c_token_semicolon
     }
@@ -953,14 +953,14 @@ fn c_operator_realizations_catalog_node() -> Node {
   target_operator_realizations_catalog_node(rows: [
     target_operator_realization_node(
       operation: canonical_operation_op_add(),
-      shape: InfixToken { token: ^c_token_plus }
+      shape: v2.std.compilers.target_model.InfixToken { token: ^c_token_plus }
     )
   ])
 }
 
 fn c_target_model_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       c_named_edge(name: ^target_model_edge_selection_policy, target: c_selection_policy_node()),
       c_named_edge(name: ^target_model_edge_declared_inhabitants, target: c_add_declared_inhabitants_root()),
@@ -1012,7 +1012,7 @@ fn c_binding_spellings_with_dag_fixture() -> Map<v2.std.node.Symbol, String> {
 }
 
 fn c_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+  v2.std.compilers.lexing.TokenRule { token_class: token_class, pattern: v2.std.compilers.lexing.LiteralPattern { text: text } }
 }
 
 fn c_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
@@ -1035,12 +1035,12 @@ fn c_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
 }
 
 fn c_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: c_lex_rules() } }
+  v2.std.compilers.lexing.ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: c_lex_rules() } }
 }
 
 fn c_emit_host_runtime_primitive_type_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^c_emit_host_runtime_primitive_symbol } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^c_emit_host_runtime_primitive_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -1052,25 +1052,25 @@ fn c_host_transport_descriptor(main_suffix: String) -> v2.std.host_transport.Hos
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "fixture.c",
-        content: EmittedWithSuffix { suffix: main_suffix }
+        content: v2.std.host_transport.EmittedWithSuffix { suffix: main_suffix }
       }
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cc" },
-        args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cc" },
+        args: [v2.std.host_transport.LiteralArg { text: "fixture.c" }, v2.std.host_transport.LiteralArg { text: "-o" }, v2.std.host_transport.LiteralArg { text: "fixture" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: ProducedProgram { path: "fixture" },
+      program: v2.std.host_transport.ProducedProgram { path: "fixture" },
       args: []
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn c_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: c_host_transport_descriptor(main_suffix: c_emit_host_main_suffix),
       runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
@@ -1079,7 +1079,7 @@ fn c_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
 }
 
 fn c_inject_fault_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: c_host_transport_descriptor(main_suffix: c_emit_host_inject_fault_main_suffix),
       runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
@@ -1099,25 +1099,25 @@ fn c_type_decl_host_transport_descriptor(main_suffix: String) -> v2.std.host_tra
     workspace: [
       v2.std.host_transport.WorkspaceFile {
         path: "fixture.c",
-        content: EmittedWithSuffix { suffix: main_suffix }
+        content: v2.std.host_transport.EmittedWithSuffix { suffix: main_suffix }
       }
     ],
     build: [
       v2.std.host_transport.ProcessInvocation {
-        program: HostToolProgram { executable: "cc" },
-        args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
+        program: v2.std.host_transport.HostToolProgram { executable: "cc" },
+        args: [v2.std.host_transport.LiteralArg { text: "fixture.c" }, v2.std.host_transport.LiteralArg { text: "-o" }, v2.std.host_transport.LiteralArg { text: "fixture" }]
       }
     ],
     run: v2.std.host_transport.ProcessInvocation {
-      program: ProducedProgram { path: "fixture" },
+      program: v2.std.host_transport.ProducedProgram { path: "fixture" },
       args: []
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
 fn c_type_decl_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: c_type_decl_host_transport_descriptor(main_suffix: c_emit_host_type_decl_main_suffix),
       runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
@@ -1126,7 +1126,7 @@ fn c_type_decl_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
 }
 
 fn c_type_decl_inject_fault_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
+  v2.std.host_transport.HostRuntimeRowPresent {
     row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: c_type_decl_host_transport_descriptor(main_suffix: c_emit_host_type_decl_inject_fault_main_suffix),
       runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
@@ -1155,7 +1155,7 @@ fn c_type_decl_target_model() -> v2.std.compilers.target_model.TargetModel {
 fn c_produced_type_tokens(type_node: Node) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match type_node.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      outcome_accepted(value: [BoundToken { token_class: ^c_token_ident, binding: id }])
+      outcome_accepted(value: [v2.std.compilers.target_model.BoundToken { token_class: ^c_token_ident, binding: id }])
     _ =>
       outcome_rejected(
         d: c_produced_decl_diagnostic(reason: ^c_produced_signature_type_unsupported, node: type_node)
@@ -1167,7 +1167,7 @@ fn c_produced_decl_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.std.
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -1180,7 +1180,7 @@ fn c_produced_one_param_tokens(edge: v2.std.node.Edge) -> Outcome<List<v2.std.co
           outcome_accepted(
             value: list_append(
               left: type_toks,
-              right: [BoundToken { token_class: ^c_token_ident, binding: pname }]
+              right: [v2.std.compilers.target_model.BoundToken { token_class: ^c_token_ident, binding: pname }]
             )
           )
         }
@@ -1204,7 +1204,7 @@ fn c_produced_params_tail_tokens(params: List<v2.std.node.Edge>) -> Outcome<List
             f: fn(rest_toks) {
               outcome_accepted(
                 value: list_append(
-                  left: list_append(left: [FixedToken { token_class: ^c_token_comma }], right: toks),
+                  left: list_append(left: [v2.std.compilers.target_model.FixedToken { token_class: ^c_token_comma }], right: toks),
                   right: rest_toks
                 )
               )
@@ -1252,15 +1252,15 @@ fn c_produced_signature_from_name_and_arrow(
                       left: list_append(
                         left: ret_toks,
                         right: [
-                          BoundToken { token_class: ^c_token_ident, binding: fn_name },
-                          FixedToken { token_class: ^c_token_lparen }
+                          v2.std.compilers.target_model.BoundToken { token_class: ^c_token_ident, binding: fn_name },
+                          v2.std.compilers.target_model.FixedToken { token_class: ^c_token_lparen }
                         ]
                       ),
                       right: list_append(
                         left: param_toks,
                         right: [
-                          FixedToken { token_class: ^c_token_rparen },
-                          FixedToken { token_class: ^c_token_lbrace }
+                          v2.std.compilers.target_model.FixedToken { token_class: ^c_token_rparen },
+                          v2.std.compilers.target_model.FixedToken { token_class: ^c_token_lbrace }
                         ]
                       )
                     )
@@ -1297,8 +1297,8 @@ fn c_produced_decl_render(decl: Node) -> Outcome<v2.std.compilers.target_model.T
                   outcome_accepted(
                     derive_bodied_arrow_scaffold(
                       signature_with_open: signature_with_open,
-                      block_close: [FixedToken { token_class: ^c_token_rbrace }],
-                      mode: StatementSequenced {
+                      block_close: [v2.std.compilers.target_model.FixedToken { token_class: ^c_token_rbrace }],
+                      mode: v2.std.compilers.target_model.StatementSequenced {
                         return_token: ^c_token_kw_return,
                         statement_terminator: ^c_token_semicolon
                       }
@@ -1324,7 +1324,7 @@ fn c_produced_decl_render(decl: Node) -> Outcome<v2.std.compilers.target_model.T
 }
 
 fn c_produced_decl_support() -> v2.std.compilers.target_model.ProducedDeclSupport {
-  ProducedDeclWired {
+  v2.std.compilers.target_model.ProducedDeclWired {
     render: c_produced_decl_render,
     scaffold_relation_rule_name: ^c_relation_rule_fn_add,
     scaffold_base_row: c_grammar_relation_row_node(row: c_grammar_relation_row())

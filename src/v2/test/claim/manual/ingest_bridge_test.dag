@@ -16,7 +16,7 @@ fn ingest_fixture_token() -> v2.std.compilers.lexing.Token {
 fn ingest_fixture_root() -> v2.std.grammar.GrammarRoot {
   v2.std.grammar.GrammarRoot {
     start: ^ingest_fixture_start,
-    productions: Cons {
+    productions: std.algebra.Cons {
       head: v2.std.grammar.GrammarProduction {
         name: ^ingest_fixture_start,
         expression: Terminal { token_class: ^ingest_fixture_tok, stamp: StampClass },
@@ -34,7 +34,7 @@ fn ingest_parse() -> Outcome<Node> {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: validated, diagnostics: _ } =>
       match parse_production(
-        tokens: Cons { head: ingest_fixture_token(), tail: Empty },
+        tokens: std.algebra.Cons { head: ingest_fixture_token(), tail: Empty },
         validated: validated,
         production_name: ^ingest_fixture_start
       ) {
@@ -47,13 +47,13 @@ fn ingest_parse() -> Outcome<Node> {
 
 fn ingest_fixture_row_node(emitted: Node, spine_class: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: ^grammar_relation_field_emitted }, target: emitted },
       v2.std.node.Edge {
         label: Named { name: ^grammar_relation_field_tokens },
         target: grammar_relation_tokens_node(
-          tokens: Cons { head: spine_class, tail: Empty },
+          tokens: std.algebra.Cons { head: spine_class, tail: Empty },
           token_to_node: grammar_concrete_fixed_token_node
         )
       }
@@ -64,7 +64,7 @@ fn ingest_fixture_row_node(emitted: Node, spine_class: v2.std.node.Symbol) -> No
 
 fn ingest_fixture_bundle_with_rules(rules: Node) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: ^target_model_edge_selection_policy }, target: dag_selection_policy_node() },
       v2.std.node.Edge { label: Named { name: ^target_model_edge_declared_inhabitants }, target: dag_declared_inhabitants_root() },
@@ -90,7 +90,7 @@ fn ingest_fixture_model_from_bundle(bundle: Node) -> v2.std.compilers.target_mod
 
 fn ingest_fixture_model(emitted: Node, spine_class: v2.std.node.Symbol) -> v2.std.compilers.target_model.TargetModel {
   let rules = v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
     ],
@@ -101,7 +101,7 @@ fn ingest_fixture_model(emitted: Node, spine_class: v2.std.node.Symbol) -> v2.st
 
 fn ingest_fixture_model_ambiguous(emitted: Node, spine_class: v2.std.node.Symbol) -> v2.std.compilers.target_model.TargetModel {
   let rules = v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) },
       v2.std.node.Edge { label: Named { name: ^ingest_fixture_rule_alt }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
@@ -215,7 +215,7 @@ test fn ingest_fails_closed_ambiguous_holds() -> Bool {
 
 fn ingest_unstamped_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
 }

@@ -185,7 +185,7 @@ fn signed_off_dispatch_node() -> gunbc.roadmap_model.RoadmapNode {
     sizing: base.sizing,
     execution: base.execution,
     owner: base.owner,
-    signoff: gunbc.roadmap_authority.signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
+    signoff: gunbc.roadmap_authority.signed(by: "op", works: gunbc.roadmap_status.RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: gunbc.roadmap_status.HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
   }
 }
 
@@ -242,7 +242,7 @@ test fn witness_page_script_census_clean() -> Bool {
 fn hand_inline_script_page() -> std.markup.Fragment {
   extdeps.browser.Element { tag: "body", attributes: [], children: [
     dispatch_client_script(),
-    extdeps.browser.Element { tag: "script", attributes: [], children: [ FragmentText { content: "alert('rogue')" } ] },
+    extdeps.browser.Element { tag: "script", attributes: [], children: [ std.markup.FragmentText { content: "alert('rogue')" } ] },
   ] }
 }
 
@@ -402,7 +402,7 @@ test fn witness_raw_text_close_guard_refuses() -> Bool {
   let bad = extdeps.browser.Element {
     tag: "style",
     attributes: [],
-    children: [ FragmentText { content: "a \{ color: red } </style><p>escaped</p>" } ],
+    children: [ std.markup.FragmentText { content: "a \{ color: red } </style><p>escaped</p>" } ],
   }
   match try_serialize_html_source(node: bad) {
     EmitOk { html: _ } => false

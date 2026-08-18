@@ -22,7 +22,7 @@ fn semver_1_0_0_alpha() -> extdeps.version.semver.SemVerVersion {
     major: 1,
     minor: 0,
     patch: 0,
-    pre_release: [SemVerAlphanumericIdentifier { label: "alpha" }],
+    pre_release: [extdeps.version.semver.SemVerAlphanumericIdentifier { label: "alpha" }],
     build: []
   }
 }
@@ -32,7 +32,7 @@ fn semver_1_0_0_alpha_1() -> extdeps.version.semver.SemVerVersion {
     major: 1,
     minor: 0,
     patch: 0,
-    pre_release: [SemVerAlphanumericIdentifier { label: "alpha" }, SemVerNumericIdentifier { value: 1 }],
+    pre_release: [extdeps.version.semver.SemVerAlphanumericIdentifier { label: "alpha" }, extdeps.version.semver.SemVerNumericIdentifier { value: 1 }],
     build: []
   }
 }
@@ -42,7 +42,7 @@ fn semver_1_0_0_alpha_0() -> extdeps.version.semver.SemVerVersion {
     major: 1,
     minor: 0,
     patch: 0,
-    pre_release: [SemVerNumericIdentifier { value: 0 }, SemVerAlphanumericIdentifier { label: "alpha" }, SemVerNumericIdentifier { value: 1 }],
+    pre_release: [extdeps.version.semver.SemVerNumericIdentifier { value: 0 }, extdeps.version.semver.SemVerAlphanumericIdentifier { label: "alpha" }, extdeps.version.semver.SemVerNumericIdentifier { value: 1 }],
     build: []
   }
 }
@@ -53,7 +53,7 @@ fn semver_1_0_0_build_1() -> extdeps.version.semver.SemVerVersion {
     minor: 0,
     patch: 0,
     pre_release: [],
-    build: [SemVerNumericIdentifier { value: 1 }]
+    build: [extdeps.version.semver.SemVerNumericIdentifier { value: 1 }]
   }
 }
 
@@ -79,8 +79,8 @@ test fn w_semver_scheme_wire_label_ordering() -> Bool {
 
 test fn w_semver_compare_identifier_numeric_less_than_alphanumeric() -> Bool {
   match semver_compare_identifier(
-    a: SemVerNumericIdentifier { value: 1 },
-    b: SemVerAlphanumericIdentifier { label: "alpha" }
+    a: extdeps.version.semver.SemVerNumericIdentifier { value: 1 },
+    b: extdeps.version.semver.SemVerAlphanumericIdentifier { label: "alpha" }
   ) {
     Less => true
     _ => false

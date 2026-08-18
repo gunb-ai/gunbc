@@ -4,17 +4,17 @@ module v2.test.lens_complexity_lowering.loop_invariant_hoist
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn leaf(id: v2.std.node.Symbol) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } }, children: [])
 }
 
-data quadratic_cost: v2.lens.cost.SymbolicCost = ProductCost {
-  lhs: LinearCost { variable: v2.lens.cost.SizeVariable { source: leaf(id: ^outer) } },
-  rhs: LinearCost { variable: v2.lens.cost.SizeVariable { source: leaf(id: ^inner) } }
+data quadratic_cost: v2.lens.cost.SymbolicCost = v2.lens.cost.ProductCost {
+  lhs: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: leaf(id: ^outer) } },
+  rhs: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: leaf(id: ^inner) } }
 }
-data linear_cost: v2.lens.cost.SymbolicCost = LinearCost { variable: v2.lens.cost.SizeVariable { source: leaf(id: ^single) } }
-data sum_cost: v2.lens.cost.SymbolicCost = SumCost {
-  lhs: LinearCost { variable: v2.lens.cost.SizeVariable { source: leaf(id: ^a) } },
-  rhs: LinearCost { variable: v2.lens.cost.SizeVariable { source: leaf(id: ^b) } }
+data linear_cost: v2.lens.cost.SymbolicCost = v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: leaf(id: ^single) } }
+data sum_cost: v2.lens.cost.SymbolicCost = v2.lens.cost.SumCost {
+  lhs: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: leaf(id: ^a) } },
+  rhs: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: leaf(id: ^b) } }
 }
 
 test fn quadratic_is_lowerable() -> Bool {
@@ -32,7 +32,7 @@ test fn quadratic_minimizes_strictly_below_realized() -> Bool {
 }
 
 test fn lowerable_matches_before_class() -> Bool {
-  cost_class_is_lowerable(cls: ClassPolynomial { degree: polynomial_degree_two() })
+  cost_class_is_lowerable(cls: v2.lens.cost.ClassPolynomial { degree: polynomial_degree_two() })
 }
 test fn linear_class_not_lowerable() -> Bool {
   !cost_class_is_lowerable(cls: ClassLinear)

@@ -2,13 +2,13 @@ module v2.test.lens_cost.map_linear
 
 
 data map_linear_body_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^map_linear_body_atom } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^map_linear_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data map_linear_body: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: Transform },
   children: [
     v2.std.node.Edge { label: Positional, target: map_linear_body_leaf }
   ],
@@ -16,7 +16,7 @@ data map_linear_body: Node = v2.std.node.Node {
 }
 
 data map_linear_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: map_linear_body }
   ],
@@ -26,7 +26,7 @@ data map_linear_input: Node = v2.std.node.Node {
 fn map_linear_claim_holds() -> Bool {
   match cost_lens(n: map_linear_input) {
     Holds { value: actual } =>
-      actual == LinearCost { variable: v2.lens.cost.SizeVariable { source: map_linear_input } }
+      actual == v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: map_linear_input } }
     _ => false
   }
 }
@@ -36,14 +36,14 @@ fn map_linear_claim_rhs() -> Node {
     map_linear_input
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_map_linear: v2.std.verification.TestClaim = EqualsClaim {
+data claim_map_linear: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_cost/map_linear: cardinality projects to linear symbolic cost",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: map_linear_input,

@@ -15,7 +15,7 @@ fn normalized_tree_retention_diagnostic(root: Node) -> v2.std.diagnostic.Diagnos
   v2.std.diagnostic.Diagnostic {
     reason: ^normalized_tree_reason_wrapper_retention_not_normalized,
     at: node_locus(node: root),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

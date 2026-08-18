@@ -4,12 +4,12 @@ module v2.test.materialize.materialize_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn atom(sym: v2.std.node.Symbol) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [])
 }
 
 fn conj2(a: Node, b: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: ^left }, target: a },
       v2.std.node.Edge { label: Named { name: ^right }, target: b }
@@ -48,7 +48,7 @@ test fn distinct_fixture_all_distinct() -> Bool {
 
 fn witness_plan_schedule() -> List<List<std.realization_schedule.Runnable>> {
   [
-    [RunnableSingleClaim {
+    [std.realization_schedule.RunnableSingleClaim {
       entry: "src/v2/test/claim/materialize/materialize_witness_test.dag"
       function: "duplicate_subtree_flagged"
       profile: runnable_resource_profile_negligible()

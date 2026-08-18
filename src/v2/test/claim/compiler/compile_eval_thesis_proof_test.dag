@@ -54,7 +54,7 @@ fn compile_eval_thesis_medium_matches_expected(medium: Medium<Node>) -> Bool {
 test fn compile_eval_bool_reaches_node_value_holds() -> Bool {
   match compile_inferred(
     inferred: compile_eval_thesis_inferred(root: v2_eval_bool_literal_pin),
-    mode: Eval { runtime: v2_eval_bool_literal_pin }
+    mode: v2.compiler.compile.Eval { runtime: v2_eval_bool_literal_pin }
   ) {
     Accepted { value: EvalResult { value: actual }, diagnostics: _ } =>
       compile_eval_thesis_medium_matches_expected(medium: actual)
@@ -67,7 +67,7 @@ data compile_entry_refuses_underived_note: String = "BEHAVIOUR CHANGE, recorded 
 test fn compile_eval_bool_via_compile_entry_refuses_underived_holds() -> Bool {
   match compile(
     source: v2_eval_bool_literal_pin,
-    mode: Eval { runtime: v2_eval_bool_literal_pin }
+    mode: v2.compiler.compile.Eval { runtime: v2_eval_bool_literal_pin }
   ) {
     Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
     Accepted { value: _, diagnostics: _ } => false
@@ -77,7 +77,7 @@ test fn compile_eval_bool_via_compile_entry_refuses_underived_holds() -> Bool {
 test fn compile_eval_unit_unrepresentable_red_holds() -> Bool {
   match compile_inferred(
     inferred: compile_eval_thesis_inferred(root: v2_eval_unit_literal_pin),
-    mode: Eval { runtime: v2_eval_unit_literal_pin }
+    mode: v2.compiler.compile.Eval { runtime: v2_eval_unit_literal_pin }
   ) {
     Rejected { diagnostics: d } =>
       d.head.reason == ^eval_rejected_runtime_value_node_unrepresentable

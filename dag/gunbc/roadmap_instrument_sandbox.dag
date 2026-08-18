@@ -43,7 +43,7 @@ fn emission_shadow_value(m: gunbc.design.material.Material, spec: gunbc.design.s
 }
 
 fn no_emission_decl(i: gunbc.design.instrument_audition.AuditionIntensity) -> List<gunbc.design.material.CssDecl> {
-  [decl(prop: CustomProperty { name: audition_emission_var(i: i) }, value: "none")]
+  [decl(prop: extdeps.languages.css.properties.CustomProperty { name: audition_emission_var(i: i) }, value: "none")]
 }
 
 fn emission_decl_for(t: gunbc.design.theme.Theme, i: gunbc.design.instrument_audition.AuditionIntensity, role: gunbc.design.salience.SalienceRole) -> List<gunbc.design.material.CssDecl> {
@@ -51,7 +51,7 @@ fn emission_decl_for(t: gunbc.design.theme.Theme, i: gunbc.design.instrument_aud
     AuditionAdmitted { intensity, emission, attraction, displacement_px } => match emission {
       AuditionNoEmission => no_emission_decl(i: i)
       AuditionEmits { spec } => [decl(
-        prop: CustomProperty { name: audition_emission_var(i: i) },
+        prop: extdeps.languages.css.properties.CustomProperty { name: audition_emission_var(i: i) },
         value: emission_shadow_value(m: assignment_material(t: t, r: FocusRole), spec: spec),
       )]
     }
@@ -74,11 +74,11 @@ fn instrument_emission_root_css() -> String {
 }
 
 fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
-  ClassSelector { name: name }
+  extdeps.languages.css.selectors.ClassSelector { name: name }
 }
 
 fn audition_card_rule(i: gunbc.design.instrument_audition.AuditionIntensity) -> gunbc.design.material.BuildRule {
-  StaticRule {
+  gunbc.design.material.StaticRule {
     selector: cls(name: audition_card_class(i: i)),
     decls: [
       decl(prop: BoxShadow, value: concat("var(--", concat(audition_emission_var(i: i), ")"))),
@@ -98,7 +98,7 @@ fn impulse_translate_value(p: gunbc.design.instrument_physical.InstrumentPrefere
 }
 
 fn instrument_frame_rule(p: gunbc.design.instrument_physical.InstrumentPreference) -> gunbc.design.material.BuildRule {
-  ResponseRule {
+  gunbc.design.material.ResponseRule {
     subject: cls(name: instrument_frame_class),
     shape: SelfResponse,
     trigger: OnActive,
@@ -117,7 +117,7 @@ fn instrument_frame_rule(p: gunbc.design.instrument_physical.InstrumentPreferenc
 
 fn instrument_layout_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: instrument_row_class),
       decls: [
         decl(prop: Display, value: "flex"),
@@ -125,7 +125,7 @@ fn instrument_layout_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: Margin, value: join([scale_var(t: space_6), " 0"], "")),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: instrument_cell_class),
       decls: [
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
@@ -133,11 +133,11 @@ fn instrument_layout_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: Padding, value: scale_var(t: space_2)),
       ],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: instrument_note_class),
       decls: [decl(prop: Color, value: role_var(r: TextDimRole))],
     },
-    StaticRule {
+    gunbc.design.material.StaticRule {
       selector: cls(name: instrument_refusal_class),
       decls: [
         decl(prop: Color, value: role_var(r: TextRole)),
@@ -363,7 +363,7 @@ fn salience_section() -> std.markup.Fragment {
     salience_block(
       label: "selected, with three active refusals",
       camera: exemplar_camera(),
-      refusal: ActiveRefusals { refused_count: 3 },
+      refusal: gunbc.design.instrument_projection.ActiveRefusals { refused_count: 3 },
     ),
   ])
 }

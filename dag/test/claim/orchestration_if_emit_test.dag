@@ -9,7 +9,7 @@ fn orch_if_streq_empty_then_golden() -> String {
 
 fn orch_if_streq_empty_then_intent() -> v2.std.orchestration.PipelineStep {
   v2.std.orchestration.If {
-    cond: StrEmpty { operand: "\"$1\"" },
+    cond: v2.std.orchestration.StrEmpty { operand: "\"$1\"" },
     then_: v2.std.orchestration.Pipeline {
       steps: [
         Do {
@@ -29,7 +29,7 @@ fn orch_if_streq_empty_then_intent() -> v2.std.orchestration.PipelineStep {
 
 fn orch_if_streq_empty_then_perturbed_intent() -> v2.std.orchestration.PipelineStep {
   v2.std.orchestration.If {
-    cond: StrEmpty { operand: "\"$2\"" },
+    cond: v2.std.orchestration.StrEmpty { operand: "\"$2\"" },
     then_: v2.std.orchestration.Pipeline {
       steps: [
         Do {
@@ -53,7 +53,7 @@ fn orch_if_streq_else_golden() -> String {
 
 fn orch_if_streq_else_intent() -> v2.std.orchestration.PipelineStep {
   v2.std.orchestration.If {
-    cond: StrEq { lhs: "\"$1\"", rhs: "\"$2\"" },
+    cond: v2.std.orchestration.StrEq { lhs: "\"$1\"", rhs: "\"$2\"" },
     then_: v2.std.orchestration.Pipeline {
       steps: [
         Do {
@@ -92,7 +92,7 @@ fn orch_if_exit_zero_negated_golden() -> String {
 fn orch_if_exit_zero_negated_intent() -> v2.std.orchestration.PipelineStep {
   v2.std.orchestration.If {
     cond: Not {
-      inner: ExitZero {
+      inner: v2.std.orchestration.ExitZero {
         run: v2.std.orchestration.Run {
           command: "mkdir -p \"$7\"",
           env: [],
@@ -124,7 +124,7 @@ fn orch_if_run_redirect_ignore_fail_golden() -> String {
 
 fn orch_if_run_redirect_ignore_fail_intent() -> v2.std.orchestration.PipelineStep {
   v2.std.orchestration.If {
-    cond: ExitZero {
+    cond: v2.std.orchestration.ExitZero {
       run: v2.std.orchestration.Run {
         command: "(cd \"$checkout\" && git fetch --prune origin)",
         env: [],
@@ -155,7 +155,7 @@ fn orch_if_log_matches_golden() -> String {
 
 fn orch_if_log_matches_intent() -> v2.std.orchestration.PipelineStep {
   v2.std.orchestration.If {
-    cond: LogMatches {
+    cond: v2.std.orchestration.LogMatches {
       source: "\"$BUILD_LOG\"",
       pattern: "EAGAIN|Resource temporarily unavailable"
     },
@@ -183,8 +183,8 @@ fn orch_if_and_tests_golden() -> String {
 fn orch_if_and_tests_intent() -> v2.std.orchestration.PipelineStep {
   v2.std.orchestration.If {
     cond: v2.std.orchestration.And {
-      lhs: StrNonempty { operand: "\"$ctrl_pin\"" },
-      rhs: StrNonempty { operand: "\"$dag_pin\"" }
+      lhs: v2.std.orchestration.StrNonempty { operand: "\"$ctrl_pin\"" },
+      rhs: v2.std.orchestration.StrNonempty { operand: "\"$dag_pin\"" }
     },
     then_: v2.std.orchestration.Pipeline {
       steps: [

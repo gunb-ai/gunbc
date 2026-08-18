@@ -197,8 +197,8 @@ fn exact_reachability_refused_paths(
 fn product_reachability_witness_observation(
   tracked_paths: List<String>,
   cargo_bin_repo_paths: List<String>
-) -> RustManifestObserved {
-  RustManifestObserved {
+) -> gunbc.stage0_rust_host_observation.RustManifestObserved {
+  gunbc.stage0_rust_host_observation.RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: tracked_paths,

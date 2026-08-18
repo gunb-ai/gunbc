@@ -18,7 +18,7 @@ fn language_target_self_host_frontier_body() -> List<std.markdown.MarkdownBlock>
     p(text: "**The emit-only family can only stress the first axis** (you cannot run a compiler as a circuit or as bare SSA). The runnable family stresses both. Keeping these axes separate is what keeps the lane honest about what each language *proves*."),
     hr(),
     h2(text: "Shared foundation (Rust-built; the front-loaded cost — partly still owed)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "id"), cell(text: "foundation"), cell(text: "state")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -38,7 +38,7 @@ fn language_target_self_host_frontier_body() -> List<std.markdown.MarkdownBlock>
     ]),
     hr(),
     h2(text: "Per-target frontier table (grounded from the typed census, 2026-07-15)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "target"), cell(text: "family"), cell(text: "current bar (verified)"), cell(text: "honest end-state"), cell(text: "key deps"), cell(text: "stress axis")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -79,6 +79,6 @@ data language_target_self_host_frontier_plan: gunbc.plan.Plan = gunbc.plan.Plan 
   slug: "language-target-self-host-frontier",
   title: "Language-target self-host frontier — beginning-to-end dependency map",
   body: language_target_self_host_frontier_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "**Un-shelve is an operator decision (ROADMAP §4 → §1/§3 by PR, priced in displaced cost).** When it fires, this doc + the solve doc are the lane's charter; the typed `LanguageTargetFrontierRow` carrier + completeness/RED witnesses are authored (they do not exist today), the frontier table rows migrate onto per-target carrier rows, the OFFLINE C/Rust F5 smokes are enrolled, and this file dissolves.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "**Un-shelve is an operator decision (ROADMAP §4 → §1/§3 by PR, priced in displaced cost).** When it fires, this doc + the solve doc are the lane's charter; the typed `LanguageTargetFrontierRow` carrier + completeness/RED witnesses are authored (they do not exist today), the frontier table rows migrate onto per-target carrier rows, the OFFLINE C/Rust F5 smokes are enrolled, and this file dissolves.")
   }
 }

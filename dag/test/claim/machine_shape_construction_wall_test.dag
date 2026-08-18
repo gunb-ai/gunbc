@@ -7,7 +7,7 @@ data machine_shape_wall_witness_note: String = "RED/GREEN controls for MachineSh
 
 fn ms_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -19,7 +19,7 @@ fn ms_positional(target: Node) -> v2.std.node.Edge {
 
 fn ms_call(callee: v2.std.node.Symbol, arg: Node) -> Node {
   v2.std.node.Node {
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [ms_positional(target: ms_atom(id: callee)), ms_positional(target: arg)],
     occurrence_id: SyntheticOccurrence
   }
@@ -29,7 +29,7 @@ fn machine_shape_literal_fixture() -> Node {
   ms_call(
     callee: ^MachineShape,
     arg: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
     }

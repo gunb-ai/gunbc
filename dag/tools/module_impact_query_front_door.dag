@@ -16,11 +16,11 @@ data front_door_admissions_note: String = "The standing the front door reports i
 data front_door_dogfooding_cost_receipt_note: String = "MEASURED COST OF CONSUMING THIS READING PER PR, and why the per-PR CI consumer was withdrawn (2026-08-09). A PR-close delivery check was built on this front door and run on real pull requests; it is closed unmerged at gunbc#8064, branch head afc52ff39ffc5405e61ede484ceb32a31cd0288c, which is the quarry pointer for the mechanism and its witnesses. Three facts it measured are kept because they price the displaced cost that declaration-grain consumption would remove, and none of them is recoverable by re-reading this module. ONE: on ten ordinary subjects, eight modification-only diffs rendered DeclarationGrainUnavailable, so the module grain named in front_door_disclosure_note is not a rare edge but the common case for ordinary edits. TWO: the delivery step cost five minutes thirty-five seconds of wall on the ordinary PR path, measured as a CI step interval rather than locally (a full front-door resolve exceeds a session container lifetime, so a local timing is not obtainable and any local figure would be a guess). THREE: splitting the fold so that a diff with no added paths takes a declaration census and never builds the corpus-wide edge index is the correct shape and was not sufficient — the resolve of this module's own closure is paid before any census begins. The operator's criterion was that a non-negligible common-path cost closes the consumer rather than levying a permanent CI tax for a mostly-undecidable report, and five minutes thirty-five seconds fired it. What was withdrawn is the per-PR step, NOT the acceptance question it asked, which is whether anything consumes what a change built; that question survives for humans and for the eventual lens suite. Dissolve-on: a cheap exact-subject fact pack makes the reading consumable inside a warm budget, at which point these figures become the before side of its receipt rather than a standing caution."
 
 data front_door_admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> = [
-  ReferenceDerivedClosureUnavailable {
+  gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
     capability: UnrelatedLoadedFileExcluded,
     trigger: P2aPoolIndependentDependencyProjection7515
   },
-  ReferenceDerivedClosureUnavailable {
+  gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
     capability: RepeatedMentionsCollapseDependency,
     trigger: P2aReferenceDependencyProjection7515
   },
@@ -144,7 +144,7 @@ fn render_reading(
     xs: reading.reached,
     empty: no_lines,
     cons: fn(acc, m) {
-      Cons {
+      std.algebra.Cons {
         head: "    {m.name}   [{render_modules_paths(paths: impact_paths_for_module(nodes: nodes, module_id: m))}]",
         tail: acc
       }
@@ -153,13 +153,13 @@ fn render_reading(
   let cause_lines = list_reverse(xs: fold_list(
     xs: reading.causes,
     empty: no_lines,
-    cons: fn(acc, c) { Cons { head: render_cause(cause: c), tail: acc } }
+    cons: fn(acc, c) { std.algebra.Cons { head: render_cause(cause: c), tail: acc } }
   ))
   let analysis = module_cycle_analysis(reading: reading)
   let cycle_lines = list_reverse(xs: fold_list(
     xs: analysis.cycles,
     empty: no_lines,
-    cons: fn(acc, c) { Cons { head: render_cycle(cycle: c), tail: acc } }
+    cons: fn(acc, c) { std.algebra.Cons { head: render_cycle(cycle: c), tail: acc } }
   ))
   render_lines(lines: [
     "impact reading — dependents of {subject}",
@@ -260,7 +260,7 @@ fn render_outcome(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutco
         render_lines(lines: list_reverse(xs: fold_list(
           xs: reading.causes,
           empty: no_lines,
-          cons: fn(acc, c) { Cons { head: render_cause(cause: c), tail: acc } }
+          cons: fn(acc, c) { std.algebra.Cons { head: render_cause(cause: c), tail: acc } }
         ))),
       ])
     ChangedSurfacePartial { reading, unresolved_subjects } =>
@@ -273,13 +273,13 @@ fn render_outcome(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutco
         render_lines(lines: list_reverse(xs: fold_list(
           xs: unresolved_subjects,
           empty: no_lines,
-          cons: fn(acc, u) { Cons { head: render_unresolved_subject(subject: u), tail: acc } }
+          cons: fn(acc, u) { std.algebra.Cons { head: render_unresolved_subject(subject: u), tail: acc } }
         ))),
         "  causes ({count_text(xs: reading.causes)}):",
         render_lines(lines: list_reverse(xs: fold_list(
           xs: reading.causes,
           empty: no_lines,
-          cons: fn(acc, c) { Cons { head: render_cause(cause: c), tail: acc } }
+          cons: fn(acc, c) { std.algebra.Cons { head: render_cause(cause: c), tail: acc } }
         ))),
       ])
   }
@@ -287,7 +287,7 @@ fn render_outcome(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutco
 
 fn front_door_changed_surface_outcome() -> v2.lens.module_impact_query.ChangedSurfaceImpactOutcome {
   match floor_observe_git_diff_name_status_for_ci() {
-    NameStatusDiffFail { reason } => ChangedSurfaceRefused { reason: reason }
+    NameStatusDiffFail { reason } => v2.lens.module_impact_query.ChangedSurfaceRefused { reason: reason }
     NameStatusDiffOk { changed_paths, departed_paths } =>
       changed_surface_impact_outcome(
         changed_paths: changed_paths,

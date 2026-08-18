@@ -75,7 +75,7 @@ fn pos_edge(target: Node) -> v2.std.node.Edge {
 
 fn atom_node(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Atom { identity: sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: []
   )
 }
@@ -86,14 +86,14 @@ fn atom_node_name(name: String) -> Node {
 
 fn eq_conj(lhs: Node, rhs: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [pos_edge(target: lhs), pos_edge(target: rhs)]
   )
 }
 
 fn call_node(callee: v2.std.node.Symbol, args: List<Node>) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: fold(
       args,
       init: [pos_edge(target: atom_node(sym: callee))],

@@ -409,7 +409,7 @@ fn component_outcome_read_of_tag(tag: String, component: extdeps.languages.json.
   } else if tag == "final" {
     match receipt_natural_member_at(v: component, key: "shown_failures") {
       ReceiptNaturalFailed { decoding: _ } => ComponentOutcomeUnmodelled { detail: "final outcome carries no natural shown_failures count" }
-      ReceiptNaturalFound { value: n } => ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Final { shown_failures: n } } }
+      ReceiptNaturalFound { value: n } => ComponentOutcomeRecovered { read: ComponentConcluded { outcome: std.observation.Final { shown_failures: n } } }
     }
   } else if tag == "timed_out" {
     ComponentOutcomeUnmodelled { detail: "timed_out carries a ClockBasis the wire does not serialize" }

@@ -80,7 +80,7 @@ fn dependency_edges_from_import_facts(edges: List<ImportResolutionFact>) -> List
     xs: edges,
     empty: Empty,
     cons: fn(acc, edge) {
-      Cons { head: import_fact_to_dependency_edge(edge: edge), tail: acc }
+      std.algebra.Cons { head: import_fact_to_dependency_edge(edge: edge), tail: acc }
     }
   ))
 }
@@ -406,7 +406,7 @@ fn entry_affected_by_touched_paths(
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
 data reference_derived_edge_source_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the namespace terminal step (namespace-resolution-design section 8 step 5) makes container.member references the derived dependency authority, at which point this scaffold producer over parsed-tree use sites deletes")

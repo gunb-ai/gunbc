@@ -14,7 +14,7 @@ data command_runner_scaffold: std.disposition.Disposition = Scaffold {
 data command_runner_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue")
 
 func run_shell_command(command: extdeps.exec.command.ArgvCommand, transport: extdeps.exec.command.CommandTransport) -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
   let run = shell.Exec.Run(
@@ -41,7 +41,7 @@ type ShellCaptureResult {
 }
 
 func run_shell_command_capture(command: extdeps.exec.command.ArgvCommand, transport: extdeps.exec.command.CommandTransport) -> ShellCaptureResult
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
   let run = shell.Exec.Run(
@@ -63,7 +63,7 @@ fn stat_owner_name_capture(path: String) -> ShellCaptureResult {
 }
 
 func run_shell_commands(commands: List<extdeps.exec.command.ArgvCommand>, transport: extdeps.exec.command.CommandTransport) -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   fold(
     commands,

@@ -7,7 +7,7 @@ fn fixture_slice_property_knob() -> gunbc.host_converge.ConvergeKnob {
     slice: GunbcSlice,
     name: "fixture_slice_cap",
     desired: "100",
-    target: SliceProperty {
+    target: gunbc.host_converge.SliceProperty {
       unit: "fixture.slice",
       property: systemd_memory_max_property,
       apply_value: "100",

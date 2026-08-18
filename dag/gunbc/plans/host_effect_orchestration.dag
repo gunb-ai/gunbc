@@ -12,7 +12,7 @@ fn host_effect_orchestration_body() -> List<std.markdown.MarkdownBlock> {
     ]),
     h2(text: "1. The shape (the one thing to sign off)"),
     p(text: "Both lanes independently converged on this: today's \"emit a shell artifact + external runner\" and \"gunbc-run dispatches `shell.Exec.Run` over SSH\" are **not two regimes** — they are realizations of **one interface**, varying along **two orthogonal axes** (DESIGN §3b transport, §3c policy):"),
-    CodeBlock {
+    std.markdown.CodeBlock {
       code: "apply(target: NodeControlPlane, effect: HostEffect, policy: Policy) -> Receipt   # fail-closed, typed, located\n\n   NodeControlPlane = HostOs(node)        # in-band  — transport ∈ \{SshShell, LocalShell, SystemdUnit, EmitArtifactThenThinRun\}\n                    | BmcController(node)  # out-of-band — transport ∈ \{RedfishRest\}\n   HostEffect       = ShellCommand\{script\} | RedfishAction\{resource, verb, body\} | …   # COPRODUCT of effect-kinds\n   Policy (§3c)     = OneShotIdempotent | ConvergeToFixpoint\n   Receipt          = located/typed core + poll-until-converged task state (NOT just exit-0)"
     },
     p(text: "**One interface × N control-planes × N transports × N effect-kinds × N policies.** Dispatch (selecting transport+policy for a (control-plane, effect-kind)) is *itself* realization → it sits peripheral; only the agnostic effect shape + `apply()` stay central (DESIGN §3 \"the dispatch that selects a realization is itself realization\")."),
@@ -23,7 +23,7 @@ fn host_effect_orchestration_body() -> List<std.markdown.MarkdownBlock> {
       li(text: "**Async/polled Receipt.** Redfish `Reset` returns before the machine reboots; the real outcome is observed by **polling** (BootSourceOverrideEnabled flips `Once → Disabled` when firmware consumes it). So the Receipt carries poll-until-converged task state. This *reinforces* the policy axis: BMC ops are **intrinsically converge-shaped** even in a \"one-shot\" call — `ConvergeToFixpoint` is a property of the effect, not just of ssh-vs-drift."),
     ]),
     p(text: "**Layer split** (keeps the import arrow pointing toward std; std stays product-free per DESIGN open-decision #2):"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Part"), cell(text: "Layer"), cell(text: "Why")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -35,7 +35,7 @@ fn host_effect_orchestration_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "**Receipt:** generalize the converge lane's already-byte-locked receipt (#5725, fierce-carp) as the *single* `apply()` outcome — do **not** fork a second receipt grammar (§3 nickname trap). Confirm its located+typed core is **policy-agnostic** (carries `OneShotIdempotent` outcomes, not just drift-deltas); if it has converge-specific fields, generalize = common located/typed core + a policy-specific extension, never a parallel type. **Touch it WITH fierce-carp's lock, not around it.**"),
     h2(text: "1b. The effect-plan band — layer responsibilities + census decisions (operator, 2026-07-03)"),
     p(text: "Fork-census ruling: the orchestration layer is kept **only as the single effect-plan composition authority** — the composition algebra earns its keep (bounded composition over external effects is a real missing concept between pure computation and host-effect realization); the string/process leaves and duplicated neighbor vocabularies dissolve onto existing authorities. `v2.std.orchestration` renames to **`std.effect_plan`** at Phase B (\"orchestration\" reads shell/workflow-specific; the concept is broader)."),
-    CodeBlock {
+    std.markdown.CodeBlock {
       code: "substrate           — control-flow behaviors + termination authority (Loop/measure; dag/std/termination.dag)\nstd.effect_plan     — bounded composition over external effects:\n                        seq · If\{predicate\} · While\{measure → DERIVED DescentEvidence\} · Retry\{ladder, on_exhausted\} · FailurePolicy\n                        leaves = Do\{effect\} — never a command string\nextdeps operations  — typed operation contracts (argv/process ops, git/tmux/claude, Redfish/REST); argv lives in transport rows\ngunbc.host_effect   — target + effect + idempotency/convergence evidence; apply(...) -> Reconciliation<Intent, Evidence>\nstd.upsert_decision — observe → classify → plan/remedy (temporal, os-install, leases, media all instantiate)\nstd.temporal_effect — durable attempt/receipt/lease/grant/await-approval spine\nmedia               — grammar rows; render/ingest at realization edges only"
     },
     p(text: "**Governance (RED rule):** a new type in this band must declare which layer responsibility it inhabits; overlap with an existing responsibility without an explicit de-fork plan fails review. Any unit introducing a new command/process/evidence/policy type must first prove why it is not one of the existing authorities."),
@@ -85,6 +85,6 @@ data host_effect_orchestration_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "host-effect-orchestration",
   title: "Host-effect orchestration — interface + shell→.dag migration plan",
   body: host_effect_orchestration_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the `apply(target, effect, policy) -> Receipt` interface is minted in product (the `HostEffect` coproduct + `NodeControlPlane` co-owned as one unit), every `host_exec()` call is migrated onto it, the BMC `RedfishAction` arm over `RedfishRest` and the converge-lane `EmitArtifactThenThinRun` handler have landed, ctrl host-apply LOC (the `runner_host_reconcile.mjs` hash/fan-out + `defaultContainerResourceCaps`) is deleted, and the on-host self-converge policy + the decom reverse-fold are realized (or their fail-closed `Unimplemented` stubs are witnessed) — at which point the lifecycle is one tested interface and this design note is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the `apply(target, effect, policy) -> Receipt` interface is minted in product (the `HostEffect` coproduct + `NodeControlPlane` co-owned as one unit), every `host_exec()` call is migrated onto it, the BMC `RedfishAction` arm over `RedfishRest` and the converge-lane `EmitArtifactThenThinRun` handler have landed, ctrl host-apply LOC (the `runner_host_reconcile.mjs` hash/fan-out + `defaultContainerResourceCaps`) is deleted, and the on-host self-converge policy + the decom reverse-fold are realized (or their fail-closed `Unimplemented` stubs are witnessed) — at which point the lifecycle is one tested interface and this design note is redundant.")
   }
 }

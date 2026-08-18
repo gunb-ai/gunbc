@@ -112,11 +112,11 @@ test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bo
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let read = live_deploy_healthz_get_for_port(
     port: port,
-    transport: SshShell { ssh_host: "srv1" as std.types.NonEmptyStr },
+    transport: gunbc.host_effect.SshShell { ssh_host: "srv1" as std.types.NonEmptyStr },
   )
   !reconciliation_converged(
     r: reconcile_service_ready_read(
-      read: ReadObserved { value: read },
+      read: std.realization_reconcile.ReadObserved { value: read },
       expected_revision: deploy_witness_release_revision,
       expected_surface_identity: witness_expected_surface_identity(),
     )
@@ -190,7 +190,7 @@ test fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
     endpoint: live_deploy_service_ready_endpoint_authority,
     waited: live_deploy_service_ready_poll_bound,
     last_probe: "connection refused",
-    unit_diagnosis: UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code)" },
+    unit_diagnosis: gunbc.live_deploy.service_ready.UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code)" },
   })
   string_contains(s: reason, pattern: "ServiceNotReady")
     && string_contains(s: reason, pattern: "gunbc-roadmap.service")

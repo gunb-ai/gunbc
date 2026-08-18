@@ -20,7 +20,7 @@ fn verdict_is_evidence_refused(v: v2.compiler.self_host.parity_window.ParityMoni
 }
 
 fn observed(family: String, id: String, seq: Int, green: Bool, warm: Bool) -> v2.compiler.self_host.parity_window.ParityObservation {
-  WindowObserved {
+  v2.compiler.self_host.parity_window.WindowObserved {
     receipt: v2.compiler.self_host.parity_window.ParityWindowReceipt {
       family: family,
       cadence_window_id: id,
@@ -44,7 +44,7 @@ fn cold_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityO
 }
 
 fn ack_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
-  RevertAcknowledged { family: "add", ack_id: id, cadence_sequence: seq }
+  v2.compiler.self_host.parity_window.RevertAcknowledged { family: "add", ack_id: id, cadence_sequence: seq }
 }
 
 test fn witness_empty_history_is_unobserved() -> Bool {
@@ -160,7 +160,7 @@ test fn witness_cadence_violation_while_latched_refuses() -> Bool {
 test fn witness_ack_from_other_family_refuses_and_never_clears() -> Bool {
   let obs = [
     red_obs(id: "w1", seq: 1),
-    RevertAcknowledged { family: "other_family", ack_id: "foreign-ack", cadence_sequence: 2 },
+    v2.compiler.self_host.parity_window.RevertAcknowledged { family: "other_family", ack_id: "foreign-ack", cadence_sequence: 2 },
     green_obs(id: "w3", seq: 3)
   ]
   verdict_is_evidence_refused(v: parity_monitor_verdict(family: "add", observations: obs))

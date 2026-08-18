@@ -69,6 +69,6 @@ data v2_self_hosting_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "v2-self-hosting",
   title: "Plan — v2 self-hosting",
   body: v2_self_hosting_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when Wave 4 lands: pipeline on emitted Rust, import grammar deleted, v1 collapsed to pinned kernel, CI compile cone gone. Absent v1 compiler logic is the authority at that point; this tracker is redundant. (The frontier carrier this condition used to name was deleted 2026-08-17 — it is not a retirement input any more.)")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when Wave 4 lands: pipeline on emitted Rust, import grammar deleted, v1 collapsed to pinned kernel, CI compile cone gone. Absent v1 compiler logic is the authority at that point; this tracker is redundant. (The frontier carrier this condition used to name was deleted 2026-08-17 — it is not a retirement input any more.)")
   }
 }

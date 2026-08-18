@@ -191,41 +191,41 @@ fn ground_service_ready_from_healthz_with_bundle(
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
 ) -> Grounding<ServiceReadyEvidence> {
   if read.probe_error != "" {
-    DoesNotGround { reason: healthz_refusal_reason(cause: HealthzProbeFailed { detail: read.probe_error }) }
+    std.realization_reconcile.DoesNotGround { reason: healthz_refusal_reason(cause: HealthzProbeFailed { detail: read.probe_error }) }
   } else if !healthz_body_groundable(body: read.body) {
-    DoesNotGround { reason: healthz_refusal_reason(cause: HealthzBodyUnparseable { body: read.body }) }
+    std.realization_reconcile.DoesNotGround { reason: healthz_refusal_reason(cause: HealthzBodyUnparseable { body: read.body }) }
   } else {
     match observe_running_release_identity(healthz_body: read.body) {
       RunningReleaseUnidentified { cause: why } =>
-        DoesNotGround {
+        std.realization_reconcile.DoesNotGround {
           reason: healthz_refusal_reason(
             cause: healthz_release_identity_refusal(body: read.body, cause: why)
           )
         }
       RunningReleaseIdentified { observation: obs } =>
         if (obs.revision as String) != (expected_revision as String) {
-          DoesNotGround {
+          std.realization_reconcile.DoesNotGround {
             reason: healthz_refusal_reason(cause: ProcessRevisionMismatch {
               expected: expected_revision as String,
               observed: obs.revision as String,
             })
           }
         } else if (obs.surface_bundle_identity.digest as String) != (expected_surface_identity.digest as String) {
-          DoesNotGround {
+          std.realization_reconcile.DoesNotGround {
             reason: healthz_refusal_reason(cause: ProcessSurfaceMismatch {
               expected: expected_surface_identity.digest as String,
               observed: obs.surface_bundle_identity.digest as String,
             })
           }
         } else if !roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: read.body) {
-          DoesNotGround {
+          std.realization_reconcile.DoesNotGround {
             reason: healthz_refusal_reason(cause: ServedSurfaceStale {
               observed: read.body,
               expected: bundle.healthz_body,
             })
           }
         } else {
-          Grounds { evidence: ServiceReadyEvidence { body: read.body } }
+          std.realization_reconcile.Grounds { evidence: ServiceReadyEvidence { body: read.body } }
         }
     }
   }
@@ -254,14 +254,14 @@ fn show_healthz_read_for_deploy(
   let verdict = host_effect_privilege_verdict(access: access, fixture_actor: Absent)
   match verdict {
     Deny { refusal: _ } =>
-      ReadObserved {
+      std.realization_reconcile.ReadObserved {
         value: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
           body: "",
           probe_error: deploy_access_decision_reason(d: verdict),
         }
       }
     Permit =>
-      ReadObserved {
+      std.realization_reconcile.ReadObserved {
         value: live_deploy_healthz_get_for_port(
           port: deployment_plan_listen_port(spec: spec),
           transport: transport,
@@ -276,7 +276,7 @@ fn show_healthz_read_fixture_healthy(
   bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
   release_revision: std.types.CommitSha,
 ) -> ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead> {
-  ReadObserved {
+  std.realization_reconcile.ReadObserved {
     value: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
       body: healthz_body_with_release_identity(
         roadmap: bundle.roadmap_md,
@@ -315,7 +315,7 @@ fn reconcile_service_ready_read_for_bundle(
       reconcile_grounded(
         apply_effect: effect,
         show_read: read,
-        grounding: DoesNotGround { reason: why }
+        grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
     ReadObserved { value: observed } =>
       reconcile_grounded(
@@ -356,7 +356,7 @@ fn reconcile_service_ready_read_for_effect(
       reconcile_grounded(
         apply_effect: effect,
         show_read: read,
-        grounding: DoesNotGround { reason: why }
+        grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
     ReadObserved { value: observed } =>
       reconcile_grounded(
@@ -446,7 +446,7 @@ fn poll_bound_refusal(spec: gunbc.live_deploy.spec.DeploymentSpec, last_probe: S
 }
 
 fn refusal_to_reconciliation(refusal: gunbc.live_deploy.service_ready.ServiceNotReady) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  NotConverged {
+  std.realization_reconcile.NotConverged {
     reason: service_not_ready_reason(refusal: refusal),
     applied: ServiceReadyApplyEffect { unit: refusal.unit, endpoint: refusal.endpoint },
   }

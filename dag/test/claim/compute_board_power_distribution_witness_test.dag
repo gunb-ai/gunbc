@@ -68,7 +68,7 @@ test fn w_the_same_voltage_is_admissible_on_a_different_rail() -> Bool {
   let banks_18 = product.compute_board.power_distribution.BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [core_rail_ok, pll_rail_ok, bank_18, spi_rail_ok, nvcm_rail_ok],
-    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos18_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_1v8") }],
+    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos18_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_1v8") }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
   admits(i: banks_18)
@@ -82,7 +82,7 @@ test fn w_a_bank_standard_its_rail_cannot_reach_refuses() -> Bool {
   let mismatched = product.compute_board.power_distribution.BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [core_rail_ok, pll_rail_ok, bank_18, spi_rail_ok, nvcm_rail_ok],
-    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_1v8") }],
+    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_1v8") }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
   refuses_naming(i: mismatched, wanted: "BankStandard")
@@ -146,7 +146,7 @@ test fn w_unlike_voltage_rails_may_sit_on_separate_supplies() -> Bool {
   let mixed = product.compute_board.power_distribution.BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [core_rail_ok, pll_rail_ok, bank_18, spi_rail_ok, nvcm_rail_ok],
-    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos18_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_1v8") }],
+    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos18_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_1v8") }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
   admits(i: mixed)
@@ -159,7 +159,7 @@ test fn w_a_bank_on_an_undeclared_net_refuses() -> Bool {
   let orphan = product.compute_board.power_distribution.BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [core_rail_ok, pll_rail_ok, bank_rail_ok, spi_rail_ok, nvcm_rail_ok],
-    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_nowhere") }],
+    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_nowhere") }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
   refuses_naming(i: orphan, wanted: "BankUnsupplied")
@@ -173,7 +173,7 @@ test fn w_independent_power_defects_are_all_reported() -> Bool {
   let broken = product.compute_board.power_distribution.BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [bad_core, bank_rail_ok, spi_rail_ok, nvcm_rail_ok],
-    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_nowhere") }],
+    banks: [product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_nowhere") }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
   power_refusal_count(cs: power_causes(intent: broken)) == 3
@@ -201,7 +201,7 @@ fn with_ok_rails_and_banks(bs: List<product.compute_board.power_distribution.Ban
 // simply refusing every unused bank — which a refusal-only test could not distinguish.
 test fn w_an_unused_bank_tied_to_core_is_admitted() -> Bool {
   admits(i: with_ok_rails_and_banks(bs: [
-    product.compute_board.power_distribution.BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_3v3") },
+    product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_3v3") },
     product.compute_board.power_distribution.BankAssignment { bank: 1, use: BankUnused, supplied_by: net_identity(design: fixture_design, local_identity: "vcc_core") },
   ]))
 }
@@ -211,7 +211,7 @@ test fn w_an_unused_bank_tied_to_core_is_admitted() -> Bool {
 // change it was admitted.
 test fn w_an_unused_bank_not_tied_to_core_refuses() -> Bool {
   refuses_naming(i: with_ok_rails_and_banks(bs: [
-    product.compute_board.power_distribution.BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_3v3") },
+    product.compute_board.power_distribution.BankAssignment { bank: 0, use: product.compute_board.power_distribution.BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_3v3") },
     product.compute_board.power_distribution.BankAssignment { bank: 1, use: BankUnused, supplied_by: net_identity(design: fixture_design, local_identity: "vccio_3v3") },
   ]), wanted: "UnusedNotCore")
 }

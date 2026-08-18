@@ -98,7 +98,7 @@ test fn removing_storage_policy_flips_ready_to_boot_witness() -> Bool {
 test fn nocloud_net_seed_is_incomplete_for_actuator_path() -> Bool {
   let net_payload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
     autoinstall_version: 1,
-    delivery: NoCloudNet {
+    delivery: extdeps.os.ubuntu_autoinstall.NoCloudNet {
       seed_url: extdeps.uri.Uri {
         scheme: Https,
         locator: "install.srv3.lan/ubuntu-24.04/autoinstall/",

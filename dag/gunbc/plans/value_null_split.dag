@@ -8,7 +8,7 @@ fn value_null_split_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "0. Problem — one native carrier, four meanings"),
     p(text: "`Value::Null` overloads four distinct semantics today: (1) the `None`/`none` literal and `LitNull`, (2) `Optional::Absent` (bridged in `match_pattern` at `v1_interpreter.rs:2830`), (3) `Witness::Violates` on map miss (bridged at `:2808` with a fabricated diagnostic), (4) untyped lookup miss (`raw_map_lookup`, `list_get_at_or_null`, `get` on map/list). A blanket `CrossRepresentationEquality` guard cannot close the Optional/Witness straddle — `present == None → false` is *legitimate* at ~218 corpus sites — so the fix is **splitting**, not grounding onto one sentinel."),
     h2(text: "1. Target carriers (construction authority)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "meaning"), cell(text: "modeled form"), cell(text: "target native"), cell(text: "construction site"), cell(text: "status")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -22,7 +22,7 @@ fn value_null_split_body() -> List<std.markdown.MarkdownBlock> {
     },
     h2(text: "2. Emitter rows (v2 self-host lane — write down before emitting)"),
     p(text: "Grounded Rust realization targets (cited in `extdeps.languages.rust.types` + `witness_option_bridge_test.rs`; v2 `target_model` rows must match):"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "modeled"), cell(text: "Rust emission"), cell(text: "authority")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
@@ -57,6 +57,6 @@ data value_null_split_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "value-null-split",
   title: "Plan — Value::Null split (Optional / Witness / lookup-miss carriers)",
   body: value_null_split_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when `Value::Null` means only untyped lookup-miss, `Optional::Absent` and `Witness::Violates` are construction-reached only as their `Value::Variant` forms (no `match_pattern` Null bridges), the testgen `Optional`×`native_value_null` straddle row is removed, and `CrossRepresentationEquality` backstop for numerics is the only remaining guard.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when `Value::Null` means only untyped lookup-miss, `Optional::Absent` and `Witness::Violates` are construction-reached only as their `Value::Variant` forms (no `match_pattern` Null bridges), the testgen `Optional`×`native_value_null` straddle row is removed, and `CrossRepresentationEquality` backstop for numerics is the only remaining guard.")
   }
 }

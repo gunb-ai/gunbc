@@ -58,7 +58,7 @@ data env_scoping_note: String = "env_bind PREPENDS and lookup_bindings answers t
 
 fn env_bind(env: CostValuationEnv, binding: CostValuationBinding) -> CostValuationEnv {
   CostValuationEnv {
-    bindings: Cons { head: binding, tail: env.bindings }
+    bindings: std.algebra.Cons { head: binding, tail: env.bindings }
   }
 }
 
@@ -175,7 +175,7 @@ fn evaluate_summation(
     zero: SummationState { index: Zero, accumulated: ExactCost { value: Zero } },
     succ: fn(state) {
       SummationState {
-        index: Succ { prev: state.index },
+        index: v2.std.nat.Succ { prev: state.index },
         accumulated: match state.accumulated {
           CostEvaluationRefused { causes: c } => CostEvaluationRefused { causes: c }
           ExactCost { value: acc } => combine_evaluation(
@@ -201,10 +201,10 @@ fn evaluate_cost_log(
   argument: v2.lens.cost.expr.SizeExpr,
   env: CostValuationEnv
 ) -> CostEvaluation {
-  if nat_lte(a: base, b: Succ { prev: Zero }) {
+  if nat_lte(a: base, b: v2.std.nat.Succ { prev: Zero }) {
     refuse(
       cause: ExpressionRefused {
-        cause: InvalidLogBase {
+        cause: v2.lens.cost.expr.InvalidLogBase {
           base: base,
           at: cost_valuation_authority_locus()
         },
@@ -286,11 +286,11 @@ fn scan_bindings(bindings: List<CostValuationBinding>) -> BindingScan {
       if size_variable_in(xs: acc.seen, wanted: item.variable) {
         BindingScan {
           seen: acc.seen,
-          duplicates: Cons { head: item.variable, tail: acc.duplicates }
+          duplicates: std.algebra.Cons { head: item.variable, tail: acc.duplicates }
         }
       } else {
         BindingScan {
-          seen: Cons { head: item.variable, tail: acc.seen },
+          seen: std.algebra.Cons { head: item.variable, tail: acc.seen },
           duplicates: acc.duplicates
         }
       }

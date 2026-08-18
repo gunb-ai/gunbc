@@ -4,12 +4,12 @@ module v2.test.manual.structured_body_subsumption_set
 fn subsumption_bool_node(pass: Bool) -> Node {
   if pass {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^subsumption_pass } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^subsumption_pass } },
       children: []
     )
   } else {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^subsumption_fail } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^subsumption_fail } },
       children: []
     )
   }
@@ -17,7 +17,7 @@ fn subsumption_bool_node(pass: Bool) -> Node {
 
 fn int_pair_arrow_signature() -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: dag_pick_arrow_domain_conj_node() },
       v2.std.node.Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
@@ -48,7 +48,7 @@ fn subsumption_bind() -> Bool {
   subsumes(structured_body: dag_bind_let_body_node(), table_target: dag_bind_arrow_with_body_node())
 }
 
-data claim_subsumption_pick: v2.std.verification.TestClaim = EqualsClaim {
+data claim_subsumption_pick: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/subsumption-set: dispatch surface subsumes the pick_if flat-index table (byte-identical Arrow)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: subsumption_bool_node(pass: subsumption_pick()),
@@ -56,7 +56,7 @@ data claim_subsumption_pick: v2.std.verification.TestClaim = EqualsClaim {
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_subsumption_loop: v2.std.verification.TestClaim = EqualsClaim {
+data claim_subsumption_loop: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/subsumption-set: dispatch surface subsumes the loop flat-index table (byte-identical Arrow)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: subsumption_bool_node(pass: subsumption_loop()),
@@ -64,7 +64,7 @@ data claim_subsumption_loop: v2.std.verification.TestClaim = EqualsClaim {
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_subsumption_bind: v2.std.verification.TestClaim = EqualsClaim {
+data claim_subsumption_bind: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/subsumption-set: dispatch surface subsumes the bind flat-index table (byte-identical Arrow)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: subsumption_bool_node(pass: subsumption_bind()),

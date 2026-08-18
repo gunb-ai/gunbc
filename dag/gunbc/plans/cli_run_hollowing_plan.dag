@@ -15,7 +15,7 @@ fn cli_run_hollowing_plan_body() -> List<std.markdown.MarkdownBlock> {
       li(text: "**Sign-off order:** Chunk F runs **after** emitter chunks A–E and de-fork G per census §4 — orchestration dissolves once the compiler pipeline and host-effect spine can carry the floor without a hand-written driver."),
     ]),
     h2(text: "1. Area map (summary)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [
         cell(text: "Area"),
         cell(text: "v2 subsumption (authority)"),
@@ -173,6 +173,6 @@ data cli_run_hollowing_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "cli-run-hollowing-plan",
   title: "Plan — cli_run.rs hollowing map (Chunk F)",
   body: cli_run_hollowing_plan_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when `cli_run.rs` Chunk F is GENERATED or deleted — orchestration runs from workflow `.dag` + pinned bootstrap kernel only, and this high-level map is redundant with the frontier carrier + seed-shrink census.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when `cli_run.rs` Chunk F is GENERATED or deleted — orchestration runs from workflow `.dag` + pinned bootstrap kernel only, and this high-level map is redundant with the frontier carrier + seed-shrink census.")
   }
 }

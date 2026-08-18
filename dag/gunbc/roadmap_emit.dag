@@ -21,10 +21,10 @@ fn signoff_suffix_inlines(rn: gunbc.roadmap_model.RoadmapNode, merged: List<Int>
     []
   } else {
     if signoff_accepts(s: rn.signoff) {
-      [TextInline { text: concat(" — ✓ signed off: ", signoff_by(s: rn.signoff)) }]
+      [std.markdown.TextInline { text: concat(" — ✓ signed off: ", signoff_by(s: rn.signoff)) }]
     } else {
       if node_evidence_present(rn: rn, merged: merged) {
-        [TextInline { text: " — ⏳ awaiting sign-off" }]
+        [std.markdown.TextInline { text: " — ⏳ awaiting sign-off" }]
       } else {
         []
       }
@@ -34,8 +34,8 @@ fn signoff_suffix_inlines(rn: gunbc.roadmap_model.RoadmapNode, merged: List<Int>
 
 fn pointer_inlines(p: gunbc.roadmap_model.Pointer) -> List<std.markdown.MarkdownInline> {
   [
-    TextInline { text: " " },
-    LinkInline { inlines: [TextInline { text: p.label }], url: p.path },
+    std.markdown.TextInline { text: " " },
+    std.markdown.LinkInline { inlines: [std.markdown.TextInline { text: p.label }], url: p.path },
   ]
 }
 
@@ -48,11 +48,11 @@ fn refs_text(prs: List<Int>) -> String {
     if acc == "" { concat("#", to_string(p)) } else { concat(acc, concat("/#", to_string(p))) })
 }
 fn refs_inlines(prs: List<Int>) -> List<std.markdown.MarkdownInline> {
-  if count(prs) == 0 { [] } else { [TextInline { text: concat(" (", concat(refs_text(prs: prs), ")")) }] }
+  if count(prs) == 0 { [] } else { [std.markdown.TextInline { text: concat(" (", concat(refs_text(prs: prs), ")")) }] }
 }
 
 fn desc_inlines(description: String) -> List<std.markdown.MarkdownInline> {
-  if description == "" { [] } else { [TextInline { text: concat(" ", description) }] }
+  if description == "" { [] } else { [std.markdown.TextInline { text: concat(" ", description) }] }
 }
 
 data why_clause_note: String = "A reader of ROADMAP.md kept asking what a row actually accomplishes, and the answer was already on the row — displaced_cost, the pain that goes away — but the markdown projection never rendered it, so only the scope sentence showed. Rendering it here is a projection fix, not a new field: the authority still states the reason exactly once. An empty reason renders nothing rather than a dangling label, so a row that has not stated its why is visibly missing it instead of quietly padded."
@@ -65,14 +65,14 @@ fn line_inlines(line: gunbc.roadmap_status.RoadmapItem) -> List<std.markdown.Mar
   match line {
     DerivableLine { prs, title, description } =>
       concat(
-        concat([TextInline { text: title }], refs_inlines(prs: prs)),
+        concat([std.markdown.TextInline { text: title }], refs_inlines(prs: prs)),
         desc_inlines(description: description),
       )
-    AuthoredLine { done: _, content } => [TextInline { text: content }]
-    PlainLine { content } => [TextInline { text: content }]
-    SupersededLine { by, content } => [TextInline { text: concat(concat("~~", content), concat("~~ **superseded →** ", by)) }]
+    AuthoredLine { done: _, content } => [std.markdown.TextInline { text: content }]
+    PlainLine { content } => [std.markdown.TextInline { text: content }]
+    SupersededLine { by, content } => [std.markdown.TextInline { text: concat(concat("~~", content), concat("~~ **superseded →** ", by)) }]
     TicketLine { done: _, ticket } =>
-      [TextInline { text: join(["**", ticket.headline, "** — ", ticket.brief, why_clause(t: ticket)], "") }]
+      [std.markdown.TextInline { text: join(["**", ticket.headline, "** — ", ticket.brief, why_clause(t: ticket)], "") }]
   }
 }
 
@@ -90,7 +90,7 @@ fn dependency_inlines(rn: gunbc.roadmap_model.RoadmapNode, edges: List<gunbc.roa
   let parents = roadmap_parent_ids(edges: edges, node: rn.node)
   if count(parents) > 1 {
     [
-      TextInline {
+      std.markdown.TextInline {
         text: concat(
           " — requires all: ",
           join(map(parents, p => p as String), ", "),
@@ -128,11 +128,11 @@ fn task_item_with(done: Bool, blocks: List<std.markdown.MarkdownBlock>) -> std.m
 }
 
 fn plain_item_for(rn: gunbc.roadmap_model.RoadmapNode, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> std.markdown.MarkdownListItem {
-  std.markdown.MarkdownListItem { blocks: [ParagraphBlock { inlines: node_inlines(rn: rn, edges: edges) }] }
+  std.markdown.MarkdownListItem { blocks: [std.markdown.ParagraphBlock { inlines: node_inlines(rn: rn, edges: edges) }] }
 }
 
 fn task_item_for(rn: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>, fuel: Int) -> std.markdown.MarkdownTaskItem {
-  let para = ParagraphBlock { inlines: concat(node_inlines(rn: rn, edges: edges), signoff_suffix_inlines(rn: rn, merged: merged)) }
+  let para = std.markdown.ParagraphBlock { inlines: concat(node_inlines(rn: rn, edges: edges), signoff_suffix_inlines(rn: rn, merged: merged)) }
   let kids = if fuel > 0 { children_of(nodes: nodes, edges: edges, parent: rn.node) } else { [] }
   let blocks = if count(kids) > 0 {
     concat([para], nodes_to_blocks(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1))
@@ -144,10 +144,10 @@ fn task_item_for(rn: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_
 
 fn flush_run(acc: { blocks: List<std.markdown.MarkdownBlock>, mode: Int, tbuf: List<std.markdown.MarkdownTaskItem>, pbuf: List<std.markdown.MarkdownListItem> }) -> List<std.markdown.MarkdownBlock> {
   if acc.mode == 1 {
-    concat(acc.blocks, [TaskListBlock { items: acc.tbuf }])
+    concat(acc.blocks, [std.markdown.TaskListBlock { items: acc.tbuf }])
   } else {
     if acc.mode == 2 {
-      concat(acc.blocks, [UnorderedListBlock { items: acc.pbuf }])
+      concat(acc.blocks, [std.markdown.UnorderedListBlock { items: acc.pbuf }])
     } else {
       acc.blocks
     }
@@ -157,10 +157,10 @@ fn flush_run(acc: { blocks: List<std.markdown.MarkdownBlock>, mode: Int, tbuf: L
 fn nodes_to_blocks(items: List<gunbc.roadmap_model.RoadmapNode>, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>, fuel: Int) -> List<std.markdown.MarkdownBlock> {
   let acc = fold(items, init: { blocks: [], mode: 0, tbuf: [], pbuf: [] }, f: (a, rn) => {
     if node_is_plain(rn: rn) {
-      let flushed = if a.mode == 1 { concat(a.blocks, [TaskListBlock { items: a.tbuf }]) } else { a.blocks }
+      let flushed = if a.mode == 1 { concat(a.blocks, [std.markdown.TaskListBlock { items: a.tbuf }]) } else { a.blocks }
       { blocks: flushed, mode: 2, tbuf: [], pbuf: concat(a.pbuf, [plain_item_for(rn: rn, edges: edges)]) }
     } else {
-      let flushed = if a.mode == 2 { concat(a.blocks, [UnorderedListBlock { items: a.pbuf }]) } else { a.blocks }
+      let flushed = if a.mode == 2 { concat(a.blocks, [std.markdown.UnorderedListBlock { items: a.pbuf }]) } else { a.blocks }
       { blocks: flushed, mode: 1, tbuf: concat(a.tbuf, [task_item_for(rn: rn, nodes: nodes, edges: edges, merged: merged, fuel: fuel)]), pbuf: [] }
     }
   })
@@ -174,7 +174,7 @@ fn group_blocks(g: gunbc.roadmap_model.SectionGroup, merged: List<Int>) -> List<
     list_blocks
   } else {
     concat(
-      [ParagraphBlock { inlines: [StrongInline { inlines: [TextInline { text: concat(g.label, ":") }] }] }],
+      [std.markdown.ParagraphBlock { inlines: [std.markdown.StrongInline { inlines: [std.markdown.TextInline { text: concat(g.label, ":") }] }] }],
       list_blocks,
     )
   }
@@ -182,7 +182,7 @@ fn group_blocks(g: gunbc.roadmap_model.SectionGroup, merged: List<Int>) -> List<
 
 fn element_blocks(e: gunbc.roadmap_model.SectionElement, merged: List<Int>) -> List<std.markdown.MarkdownBlock> {
   match e {
-    Prose { prose } => [ParagraphBlock { inlines: [TextInline { text: prose.content }] }]
+    Prose { prose } => [std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: prose.content }] }]
     Group { group } => group_blocks(g: group, merged: merged)
   }
 }
@@ -190,7 +190,7 @@ fn element_blocks(e: gunbc.roadmap_model.SectionElement, merged: List<Int>) -> L
 fn project_roadmap_section(title: String, elements: List<gunbc.roadmap_model.SectionElement>, merged: List<Int>) -> std.markdown.MarkdownDocument {
   std.markdown.MarkdownDocument {
     blocks: fold(elements,
-      init: [HeadingBlock { level: H2, inlines: [TextInline { text: title }] }],
+      init: [std.markdown.HeadingBlock { level: H2, inlines: [std.markdown.TextInline { text: title }] }],
       f: fn(acc, e) { concat(acc, element_blocks(e: e, merged: merged)) })
   }
 }

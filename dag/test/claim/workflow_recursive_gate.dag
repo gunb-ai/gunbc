@@ -6,7 +6,7 @@ func main() -> std.process.ProcessExit {
   if workflow_kernel_all_verified(w) {
     ExitSuccess
   } else {
-    ExitFailure {
+    std.process.ExitFailure {
       code: exit_code_general_error,
       reason: "recursive VerdictTree fail-closed located fold witness failed — a descendant Unknown failed to latch its ancestors, lost its located axis, or the flat spine diverged from its linear instance",
     }

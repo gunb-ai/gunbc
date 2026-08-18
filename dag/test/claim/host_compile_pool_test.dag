@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data compile_pool_producer_doc: String = "THE DERIVATION'S ACCEPTANCE SET. The load-bearing witness is the first one: against the fleet's ACTUAL declared topology, the derivation refuses on every host, which is the correct answer today and the one a hand-written all-true receipt would have silently contradicted. The rest assert that each not-ready reason is reachable and distinct, because five reasons that cannot be told apart are one reason with five names."
 
 fn observed_slice(name: String) -> gunbc.host_compile_pool.CompilePoolObservation {
-  CompilePoolSliceObserved {
+  gunbc.host_compile_pool.CompilePoolSliceObserved {
     slice_unit: name as std.types.NonEmptyStr,
     limits: gunbc.build_cache_instance.CgroupMemoryLimits {
       memory_max: byte_size(4096),
@@ -16,7 +16,7 @@ fn observed_slice(name: String) -> gunbc.host_compile_pool.CompilePoolObservatio
 }
 
 fn sized() -> gunbc.fleet_host_budget.CompilePoolResolution {
-  CompilePoolDerived { bytes: byte_size(1024) }
+  gunbc.fleet_host_budget.CompilePoolDerived { bytes: byte_size(1024) }
 }
 
 fn readiness_for(
@@ -49,7 +49,7 @@ data live_topology_doc: String = "This reads the REAL gunbc_compile_pool_placeme
 
 test fn witness_a_declared_and_observed_slice_is_ready() -> Bool {
   readiness_for(
-    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
     sizing: sized(),
     observed: observed_slice(name: gunbc_managed_compile_pool_slice as String),
   )
@@ -57,25 +57,25 @@ test fn witness_a_declared_and_observed_slice_is_ready() -> Bool {
 
 test fn witness_an_absent_slice_on_a_declaring_fleet_is_not_ready() -> Bool {
   readiness_for(
-    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
     sizing: sized(),
-    observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
+    observed: gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
   ) == false
 }
 
 test fn witness_unresolved_sizing_refuses_rather_than_defaulting() -> Bool {
   readiness_for(
-    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: CompilePoolUnresolved { reason: "jobserver config citation absent" },
+    placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: gunbc.fleet_host_budget.CompilePoolUnresolved { reason: "jobserver config citation absent" },
     observed: observed_slice(name: gunbc_managed_compile_pool_slice as String),
   ) == false
 }
 
 test fn witness_an_unobservable_pool_is_not_ready() -> Bool {
   readiness_for(
-    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
     sizing: sized(),
-    observed: CompilePoolObservationUnavailable {
+    observed: gunbc.host_compile_pool.CompilePoolObservationUnavailable {
       reason: ReachRefused { detail: "Permission denied (publickey)" as std.types.NonEmptyStr },
     },
   ) == false
@@ -83,7 +83,7 @@ test fn witness_an_unobservable_pool_is_not_ready() -> Bool {
 
 test fn witness_a_differently_named_slice_is_not_the_intended_pool() -> Bool {
   readiness_for(
-    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
     sizing: sized(),
     observed: observed_slice(name: "some-other.slice"),
   ) == false
@@ -103,9 +103,9 @@ test fn witness_undeclared_and_unprovisioned_are_distinguishable_in_the_receipt(
   )
   let unprovisioned = compile_pool_ready_receipt(
     readiness: derive_compile_pool_readiness(
-      placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+      placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
       sizing: sized(),
-      observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
+      observed: gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
     ),
     intended_slice: gunbc_managed_compile_pool_slice,
       host: "srv1",
@@ -120,9 +120,9 @@ data undersized_slice_doc: String = "The control review 46655 forced. The previo
 
 test fn witness_a_slice_below_the_derived_size_is_not_ready() -> Bool {
   readiness_for(
-    placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    placement: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
     sizing: sized(),
-    observed: CompilePoolSliceObserved {
+    observed: gunbc.host_compile_pool.CompilePoolSliceObserved {
       slice_unit: gunbc_managed_compile_pool_slice,
       limits: gunbc.build_cache_instance.CgroupMemoryLimits {
         memory_max: byte_size(512),

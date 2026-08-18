@@ -234,9 +234,9 @@ fn lifecycle_decision_complete(receipt: LifecycleTotalityReceipt) -> Bool {
   }
 }
 
-fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> RustManifestObserved {
+fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> gunbc.stage0_rust_host_observation.RustManifestObserved {
   let classified = derived_file_grain_classified_repo_paths()
-  RustManifestObserved {
+  gunbc.stage0_rust_host_observation.RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: list_concat_unique(acc: classified, items: extra_paths),

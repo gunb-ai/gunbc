@@ -308,7 +308,7 @@ fn devboot_produce_with_toolchain(
       match admit_build_subject(
         tree_oid: tree_oid,
         package: devboot_program_package,
-        cargo_target: Bin { name: "gunbc" },
+        cargo_target: extdeps.cargo.Bin { name: "gunbc" },
         toolchain: toolchain,
         target: host,
         profile: "release",
@@ -501,16 +501,16 @@ fn observed_artifact_sha256(store_root: String, repo_root: String, oid: String) 
 fn corrupt_artifact_observation(expected_hex: String, observed_hex: String) -> gunbc.devboot.outcome.ArtifactAvailability {
   match sha256_hex_digest(hex: expected_hex) {
     Absent =>
-      ArtifactUnreadable {
+      gunbc.devboot.outcome.ArtifactUnreadable {
         detail: concat("the artifact bytes do not match their recorded digest, and the recorded digest is unusable: ", expected_hex),
       }
     Present { value: expected } =>
       match sha256_hex_digest(hex: observed_hex) {
         Absent =>
-          ArtifactUnreadable {
+          gunbc.devboot.outcome.ArtifactUnreadable {
             detail: concat("the artifact bytes do not match their recorded digest, and the observed digest is unusable: ", observed_hex),
           }
-        Present { value: observed } => ArtifactCorrupt { expected: expected, observed: observed }
+        Present { value: observed } => gunbc.devboot.outcome.ArtifactCorrupt { expected: expected, observed: observed }
       }
   }
 }
@@ -533,7 +533,7 @@ fn observe_artifact_availability(
   } else {
     let observed = observed_artifact_sha256(store_root: store_root, repo_root: repo_root, oid: oid)
     if observed == "" {
-      ArtifactUnreadable { detail: "the artifact blob could not be read back for verification" }
+      gunbc.devboot.outcome.ArtifactUnreadable { detail: "the artifact blob could not be read back for verification" }
     } else {
       if trim(s: recorded_artifact_digest(store_root: store_root, repo_root: repo_root, token: token)) == trim(s: observed) {
         observed_stored_artifact(
@@ -590,17 +590,17 @@ fn observed_stored_artifact(
   bytes_text: String,
 ) -> gunbc.devboot.outcome.ArtifactAvailability {
   match git_object_id_from_untagged_hex(hex: oid) {
-    Absent => ArtifactUnreadable { detail: concat("the store returned an unusable object id: ", oid) }
+    Absent => gunbc.devboot.outcome.ArtifactUnreadable { detail: concat("the store returned an unusable object id: ", oid) }
     Present { value: blob } =>
       match sha256_hex_digest(hex: sha256_hex) {
-        Absent => ArtifactUnreadable { detail: concat("the observed digest is not a sha256: ", sha256_hex) }
+        Absent => gunbc.devboot.outcome.ArtifactUnreadable { detail: concat("the observed digest is not a sha256: ", sha256_hex) }
         Present { value: digest } =>
           if !size_text_is_digits(text: trim(s: bytes_text)) {
-            ArtifactUnreadable {
+            gunbc.devboot.outcome.ArtifactUnreadable {
               detail: concat("the store did not report a usable object size: ", bytes_text),
             }
           } else {
-            ArtifactAvailable {
+            gunbc.devboot.outcome.ArtifactAvailable {
               artifact: gunbc.devboot.outcome.StoredArtifact {
                 subject_digest: build_subject_digest(subject: subject),
                 blob_oid: blob,
@@ -1434,6 +1434,6 @@ fn observe_platform_c_library(repo_root: String) -> extdeps.gnu.libc.PlatformCLi
     LibcUnobserved
   } else {
     let version = libc_version_from_ldd_text(text: reported.stdout)
-    if version == "" { LibcUnobserved } else { GnuLibc { version: version as std.types.NonEmptyStr } }
+    if version == "" { LibcUnobserved } else { extdeps.gnu.libc.GnuLibc { version: version as std.types.NonEmptyStr } }
   }
 }

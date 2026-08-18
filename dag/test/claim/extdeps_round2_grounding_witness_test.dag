@@ -51,7 +51,7 @@ test fn w_sigv4_grounded_region_service() -> Bool {
 }
 
 test fn w_sigv4_auth_scheme_carries_enums() -> Bool {
-  match SigV4 { region: UsEast1, service: S3 } {
+  match extdeps.cloud.cloud.SigV4 { region: UsEast1, service: S3 } {
     SigV4 => true
     Protocol => false
     OidcToken => false

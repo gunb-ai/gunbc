@@ -5,7 +5,7 @@ module v2.test.manual.validate_then_compile_public_terminal
 data rust_target_model_stub: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
 },
@@ -17,7 +17,7 @@ data rust_target_model_stub: v2.std.compilers.target_model.TargetModel = v2.std.
 }
 fn claim_symbol_node(s: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: s } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -43,7 +43,7 @@ fn anchor_validate_then_compile_empty_lenses() -> Outcome<Validated<v2.compiler.
   validate_then_compile(
     source: fixture_add_resolved_tree(),
     lenses: [],
-    mode: TranslateTo { target: rust_target_model_stub }
+    mode: v2.compiler.compile.TranslateTo { target: rust_target_model_stub }
   )
 }
 
@@ -51,7 +51,7 @@ fn anchor_validate_then_compile_rejecting_lens() -> Outcome<Validated<v2.compile
   validate_then_compile(
     source: fixture_add_resolved_tree(),
     lenses: [rejecting_lens],
-    mode: TranslateTo { target: rust_target_model_stub }
+    mode: v2.compiler.compile.TranslateTo { target: rust_target_model_stub }
   )
 }
 
@@ -78,7 +78,7 @@ fn claim_rejecting_lens_is_compile_lens_gate_rejected(
   }
 }
 
-data claim_validate_then_compile_module_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_validate_then_compile_module_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/validate_then_compile: validate_then_compile public terminal module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: claim_symbol_node(s: ^claim_validate_then_compile_module),
@@ -86,7 +86,7 @@ data claim_validate_then_compile_module_compiles: v2.std.verification.TestClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_empty_lenses_skips_gate: v2.std.verification.TestClaim = EqualsClaim {
+data claim_empty_lenses_skips_gate: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/validate_then_compile: empty lens list does not compile_lens_gate_reject (infer/compile-core Rejected OK)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_symbol_node(s: ^claim_validate_then_compile_module),
@@ -101,14 +101,14 @@ fn claim_validate_then_compile_skips_gate_passes() -> Node {
     claim_symbol_node(s: ^claim_validate_then_compile_module)
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_rejecting_lens_blocks_before_compile: v2.std.verification.TestClaim = EqualsClaim {
+data claim_rejecting_lens_blocks_before_compile: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/validate_then_compile: required lens Rejected blocks before compile-core",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_symbol_node(s: ^claim_validate_then_compile_module),
@@ -123,7 +123,7 @@ fn claim_rejecting_lens_blocks_passes() -> Node {
     claim_symbol_node(s: ^claim_validate_then_compile_module)
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }

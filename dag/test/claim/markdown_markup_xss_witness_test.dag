@@ -5,32 +5,32 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn sample_readme_doc() -> std.markdown.MarkdownDocument {
   std.markdown.MarkdownDocument {
     blocks: [
-      HeadingBlock {
+      std.markdown.HeadingBlock {
         level: H1,
-        inlines: [ TextInline { text: "README" } ],
+        inlines: [ std.markdown.TextInline { text: "README" } ],
       },
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          TextInline { text: "Visit " },
-          LinkInline {
-            inlines: [ TextInline { text: "home" } ],
+          std.markdown.TextInline { text: "Visit " },
+          std.markdown.LinkInline {
+            inlines: [ std.markdown.TextInline { text: "home" } ],
             url: "https://gunbc.dev",
           },
-          TextInline { text: " for docs." },
+          std.markdown.TextInline { text: " for docs." },
         ],
       },
-      UnorderedListBlock {
+      std.markdown.UnorderedListBlock {
         items: [
           std.markdown.MarkdownListItem {
             blocks: [
-              ParagraphBlock {
+              std.markdown.ParagraphBlock {
                 inlines: [
-                  StrongInline {
-                    inlines: [ TextInline { text: "bold" } ],
+                  std.markdown.StrongInline {
+                    inlines: [ std.markdown.TextInline { text: "bold" } ],
                   },
-                  TextInline { text: " and " },
-                  EmphasisInline {
-                    inlines: [ TextInline { text: "italic" } ],
+                  std.markdown.TextInline { text: " and " },
+                  std.markdown.EmphasisInline {
+                    inlines: [ std.markdown.TextInline { text: "italic" } ],
                   },
                 ],
               },
@@ -38,17 +38,17 @@ fn sample_readme_doc() -> std.markdown.MarkdownDocument {
           },
           std.markdown.MarkdownListItem {
             blocks: [
-              ParagraphBlock {
+              std.markdown.ParagraphBlock {
                 inlines: [
-                  TextInline { text: "inline " },
-                  CodeInline { text: "fn main()" },
+                  std.markdown.TextInline { text: "inline " },
+                  std.markdown.CodeInline { text: "fn main()" },
                 ],
               },
             ],
           },
         ],
       },
-      CodeBlock { code: "let x = 1;\n" },
+      std.markdown.CodeBlock { code: "let x = 1;\n" },
     ],
   }
 }
@@ -84,19 +84,19 @@ test fn witness_markdown_uses_one_serialize_fragment_fold() -> Bool {
 test fn witness_ordered_list_serializes() -> Bool {
   let doc = std.markdown.MarkdownDocument {
     blocks: [
-      OrderedListBlock {
+      std.markdown.OrderedListBlock {
         items: [
           std.markdown.MarkdownListItem {
             blocks: [
-              ParagraphBlock {
-                inlines: [ TextInline { text: "one" } ],
+              std.markdown.ParagraphBlock {
+                inlines: [ std.markdown.TextInline { text: "one" } ],
               },
             ],
           },
           std.markdown.MarkdownListItem {
             blocks: [
-              ParagraphBlock {
-                inlines: [ TextInline { text: "two" } ],
+              std.markdown.ParagraphBlock {
+                inlines: [ std.markdown.TextInline { text: "two" } ],
               },
             ],
           },
@@ -113,9 +113,9 @@ test fn witness_ordered_list_serializes() -> Bool {
 test fn witness_image_serializes() -> Bool {
   let doc = std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          ImageInline { alt: "logo", url: "/static/logo.png" },
+          std.markdown.ImageInline { alt: "logo", url: "/static/logo.png" },
         ],
       },
     ],
@@ -130,7 +130,7 @@ test fn witness_image_serializes() -> Bool {
 test fn witness_heading_levels_map_to_tags() -> Bool {
   let doc = std.markdown.MarkdownDocument {
     blocks: [
-      HeadingBlock { level: H2, inlines: [ TextInline { text: "sub" } ] },
+      std.markdown.HeadingBlock { level: H2, inlines: [ std.markdown.TextInline { text: "sub" } ] },
     ],
   }
   match try_serialize_markdown_document(doc: doc) {
@@ -142,10 +142,10 @@ test fn witness_heading_levels_map_to_tags() -> Bool {
 fn javascript_link_doc() -> std.markdown.MarkdownDocument {
   std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          LinkInline {
-            inlines: [ TextInline { text: "click" } ],
+          std.markdown.LinkInline {
+            inlines: [ std.markdown.TextInline { text: "click" } ],
             url: "javascript:alert(1)",
           },
         ],
@@ -157,9 +157,9 @@ fn javascript_link_doc() -> std.markdown.MarkdownDocument {
 fn data_image_doc() -> std.markdown.MarkdownDocument {
   std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          ImageInline {
+          std.markdown.ImageInline {
             alt: "x",
             url: "data:text/html,<script>alert(1)</script>",
           },
@@ -226,10 +226,10 @@ test fn witness_relative_link_accepted() -> Bool {
 test fn witness_https_link_serializes() -> Bool {
   let doc = std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          LinkInline {
-            inlines: [ TextInline { text: "home" } ],
+          std.markdown.LinkInline {
+            inlines: [ std.markdown.TextInline { text: "home" } ],
             url: "https://gunbc.dev",
           },
         ],
@@ -246,9 +246,9 @@ test fn witness_https_link_serializes() -> Bool {
 test fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
   let doc = std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          LinkInline {
+          std.markdown.LinkInline {
             inlines: [],
             url: "x\"&<y onmouseover=z",
           },

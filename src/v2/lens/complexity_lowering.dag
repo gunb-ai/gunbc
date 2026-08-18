@@ -19,7 +19,7 @@ fn strictly_lowers(r: ComplexityLowering) -> Bool {
 fn loop_invariant_hoist() -> ComplexityLowering {
   ComplexityLowering {
     name: ^loop_invariant_hoist,
-    before: ClassPolynomial { degree: polynomial_degree_two() },
+    before: v2.lens.cost.ClassPolynomial { degree: polynomial_degree_two() },
     after: ClassLinear
   }
 }
@@ -59,5 +59,5 @@ fn minimized_class(c: v2.lens.cost.SymbolicCost) -> v2.lens.cost.AsymptoticClass
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }

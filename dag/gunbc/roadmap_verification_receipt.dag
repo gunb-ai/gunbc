@@ -979,7 +979,7 @@ fn verification_validation_operation_decode(
               VerificationReceiptMemberUnreadable { reason: _ } => none
               VerificationReceiptMemberRead { value: function } =>
                 Present {
-                  value: GunbcClaimValidation {
+                  value: gunbc.roadmap_execution_contract.GunbcClaimValidation {
                     entry: entry as std.types.FilePath,
                     function: function as std.types.NonEmptyStr,
                   },
@@ -991,7 +991,7 @@ fn verification_validation_operation_decode(
           VerificationReceiptMemberUnreadable { reason: _ } => none
           VerificationReceiptMemberRead { value: filter } =>
             Present {
-              value: CargoTestValidation { filter: filter as std.types.NonEmptyStr },
+              value: gunbc.roadmap_execution_contract.CargoTestValidation { filter: filter as std.types.NonEmptyStr },
             }
         }
       } else if kind == "cargo-fmt" {
@@ -1129,7 +1129,7 @@ fn verification_verdict_decode(doc: extdeps.languages.json.emit.JsonValue) -> gu
                   Absent => none
                   Present { value: oracle_identity } =>
                     Present {
-                      value: ValidationPassed {
+                      value: gunbc.roadmap_validation_oracle.ValidationPassed {
                         command: command,
                         oracle_identity: oracle_identity,
                       },
@@ -1148,7 +1148,7 @@ fn verification_verdict_decode(doc: extdeps.languages.json.emit.JsonValue) -> gu
                   VerificationReceiptMemberUnreadable { reason: _ } => none
                   VerificationReceiptMemberRead { value: detail } =>
                     Present {
-                      value: ValidationFailed {
+                      value: gunbc.roadmap_validation_oracle.ValidationFailed {
                         command: command,
                         exit_code: exit_code,
                         detail: detail,
@@ -1171,7 +1171,7 @@ fn verification_verdict_decode(doc: extdeps.languages.json.emit.JsonValue) -> gu
                   Absent => none
                   Present { value: cause } =>
                     Present {
-                      value: ValidationRefused { cause: cause },
+                      value: gunbc.roadmap_validation_oracle.ValidationRefused { cause: cause },
                     }
                 }
             }

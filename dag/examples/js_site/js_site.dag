@@ -14,7 +14,7 @@ fn js_site_nav_link(href: String, label: String) -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "a",
     attributes: [ attr(name: "href", value: href ) ],
-    children: [ FragmentText { content: label } ],
+    children: [ std.markup.FragmentText { content: label } ],
   }
 }
 
@@ -26,7 +26,7 @@ fn js_site_header() -> std.markup.Fragment {
       extdeps.browser.Element {
         tag: "h1",
         attributes: [],
-        children: [ FragmentText { content: "gunbc" } ],
+        children: [ std.markup.FragmentText { content: "gunbc" } ],
       },
       extdeps.browser.Element {
         tag: "nav",
@@ -53,7 +53,7 @@ fn js_site_page_shell(title: String, main: std.markup.Fragment) -> std.markup.Fr
           extdeps.browser.Element {
             tag: "title",
             attributes: [],
-            children: [ FragmentText { content: title } ],
+            children: [ std.markup.FragmentText { content: title } ],
           },
         ],
       },
@@ -78,7 +78,7 @@ fn js_site_home_main() -> std.markup.Fragment {
     tag: "p",
     attributes: [],
     children: [
-      FragmentText { content: "DAG-modeled compiler. One Fragment source, two realizations.",
+      std.markup.FragmentText { content: "DAG-modeled compiler. One Fragment source, two realizations.",
       },
     ],
   }
@@ -89,7 +89,7 @@ fn js_site_about_main() -> std.markup.Fragment {
     tag: "p",
     attributes: [],
     children: [
-      FragmentText { content: "gunbc models programs as dependency graphs. Rust is bootstrap seed.",
+      std.markup.FragmentText { content: "gunbc models programs as dependency graphs. Rust is bootstrap seed.",
       },
     ],
   }
@@ -103,7 +103,7 @@ fn js_site_doc_link(name: String, path: String) -> std.markup.Fragment {
       extdeps.browser.Element {
         tag: "a",
         attributes: [ attr(name: "href", value: path ) ],
-        children: [ FragmentText { content: name } ],
+        children: [ std.markup.FragmentText { content: name } ],
       },
     ],
   }
@@ -165,7 +165,7 @@ fn js_site_interactivity_exhaustion_exemplar() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "button",
     attributes: [ attr(name: "onClick", value: "handleClick" ) ],
-    children: [ FragmentText { content: "Go" } ],
+    children: [ std.markup.FragmentText { content: "Go" } ],
   }
 }
 

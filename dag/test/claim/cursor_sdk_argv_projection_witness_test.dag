@@ -43,13 +43,13 @@ test fn argv_api_key_projection_refuses() -> Bool {
 test fn cli_argument_arm_leaks_key_into_argv_red_control() -> Bool {
   cursor_argv_contains(
     argv: shape_cursor_invocation(
-      inv: witness_invocation(auth: CursorApiKeyArgument { key: witness_key }),
+      inv: witness_invocation(auth: extdeps.llm.cursor_cli.CursorApiKeyArgument { key: witness_key }),
     ).argv,
     token: witness_key as String,
   )
     && cursor_argv_contains(
       argv: shape_cursor_invocation(
-        inv: witness_invocation(auth: CursorApiKeyArgument { key: witness_key }),
+        inv: witness_invocation(auth: extdeps.llm.cursor_cli.CursorApiKeyArgument { key: witness_key }),
       ).argv,
       token: "--api-key",
     )

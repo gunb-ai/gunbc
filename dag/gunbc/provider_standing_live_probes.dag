@@ -49,7 +49,7 @@ fn dashboard_codex_provider_probe_observation(
   ) {
     PathObservationRefused { reason } =>
       gunbc.provider_standing_probe_bridge.CodexProviderDashboardProbeObservation {
-        state_root: CodexStateRootProbeRefused {
+        state_root: gunbc.provider_standing_probe_bridge.CodexStateRootProbeRefused {
           reason: reason as std.types.NonEmptyStr,
         },
         runtime: provider_dashboard_exec_probe_transport_refused(),
@@ -103,20 +103,20 @@ fn codex_provider_instance_for_inventory(
 ) -> extdeps.llm.cli_lifecycle.ProviderInstance {
   extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: CodexCliProvider,
-    host: ProviderInstanceFieldUnobserved {
+    host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
     },
     executable: executable as std.types.NonEmptyStr,
-    observed_version: ProviderInstanceFieldUnobserved {
+    observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
     },
-    state_directory: ProviderInstanceFieldUnobserved {
+    state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "account_state_root is the credential reference" as std.types.NonEmptyStr,
     },
-    credential_storage_method: ProviderInstanceFieldUnobserved {
+    credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "codex stores credentials under account_state_root" as std.types.NonEmptyStr,
     },
-    service_identity: ProviderInstanceFieldUnobserved {
+    service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
     },
   }

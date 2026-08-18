@@ -81,6 +81,6 @@ fn reclassify_floor_failure(c: gunbc.ci_failure_class.FloorFailureClass, oom: Oo
 fn reclassify_floor_outcome(o: gunbc.ci_failure_class.FloorOutcome, oom: OomKillObservation, clustering: ClusteringEvidence) -> gunbc.ci_failure_class.FloorOutcome {
   match o {
     NoFailure => o
-    FloorFailed { class: c } => FloorFailed { class: reclassify_floor_failure(c: c, oom: oom, clustering: clustering) }
+    FloorFailed { class: c } => gunbc.ci_failure_class.FloorFailed { class: reclassify_floor_failure(c: c, oom: oom, clustering: clustering) }
   }
 }

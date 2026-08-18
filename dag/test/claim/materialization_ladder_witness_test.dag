@@ -8,7 +8,7 @@ data ladder_witness_note: String = "Each test is one cell of the operator's stat
 fn wf() -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: "workflow", kind: IsolatedChildrenFrame } }
 fn job(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: SharedStateFrame } }
 fn step(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: SharedStateFrame } }
-fn retry(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: ReplayedFrame { attempts: 3 } } }
+fn retry(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: std.materialization_ladder.ReplayedFrame { attempts: 3 } } }
 fn fleet() -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: "fleet", kind: UnboundedSiblingsFrame } }
 
 fn demand(identity: String, site: List<std.materialization_ladder.Frame>, nature: std.materialization_ladder.DemandNature) -> std.materialization_ladder.FrameDemand {
@@ -20,8 +20,8 @@ fn root_content_provider(id: String) -> std.materialization_ladder.CacheProvider
     id: id,
     scope: empty_frame_path,
     coverage: CoversAllComputations,
-    tier: CasTier { keying: ContentKeyed },
-    retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
+    tier: std.materialization_ladder.CasTier { keying: ContentKeyed },
+    retention: persistent_retention(capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed } })
   }
 }
 
@@ -119,7 +119,7 @@ test fn provider_scope_too_narrow_is_refused() -> Bool {
     id: "job-local-cache",
     scope: [wf(), job(name: "ci")],
     coverage: CoversAllComputations,
-    tier: MemoTier { keying: ContentKeyed },
+    tier: std.materialization_ladder.MemoTier { keying: ContentKeyed },
     retention: scope_released_retention(capacity: CapacityUnbounded)
   }
   let vs = materialization_ladder(
@@ -135,7 +135,7 @@ test fn existence_keyed_provider_is_refused() -> Bool {
     id: "build-if-absent",
     scope: empty_frame_path,
     coverage: CoversAllComputations,
-    tier: MemoTier { keying: ExistenceKeyed },
+    tier: std.materialization_ladder.MemoTier { keying: ExistenceKeyed },
     retention: scope_released_retention(capacity: CapacityUnbounded)
   }
   let vs = materialization_ladder(
@@ -207,8 +207,8 @@ test fn fresh_effect_duplication_is_exempt_not_cached() -> Bool {
 
 fn duplicated_world_read(declared: Bool) -> List<std.materialization_ladder.FrameDemand> {
   [
-    demand(identity: "dns-lookup", site: [wf(), job(name: "ci"), step(name: "resolve")], nature: WorldRead { staleness_envelope_declared: declared }),
-    demand(identity: "dns-lookup", site: [wf(), job(name: "rust_tests"), step(name: "resolve")], nature: WorldRead { staleness_envelope_declared: declared })
+    demand(identity: "dns-lookup", site: [wf(), job(name: "ci"), step(name: "resolve")], nature: std.materialization_ladder.WorldRead { staleness_envelope_declared: declared }),
+    demand(identity: "dns-lookup", site: [wf(), job(name: "rust_tests"), step(name: "resolve")], nature: std.materialization_ladder.WorldRead { staleness_envelope_declared: declared })
   ]
 }
 
@@ -392,7 +392,7 @@ fn unobserved_root_provider(id: String) -> std.materialization_ladder.CacheProvi
     id: id,
     scope: empty_frame_path,
     coverage: CoversAllComputations,
-    tier: CasTier { keying: ContentKeyed },
+    tier: std.materialization_ladder.CasTier { keying: ContentKeyed },
     retention: persistent_retention(capacity: CapacityUnobserved)
   }
 }
@@ -402,7 +402,7 @@ fn unbounded_root_provider(id: String) -> std.materialization_ladder.CacheProvid
     id: id,
     scope: empty_frame_path,
     coverage: CoversAllComputations,
-    tier: CasTier { keying: ContentKeyed },
+    tier: std.materialization_ladder.CasTier { keying: ContentKeyed },
     retention: persistent_retention(capacity: CapacityUnbounded)
   }
 }

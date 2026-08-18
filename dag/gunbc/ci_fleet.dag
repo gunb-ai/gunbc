@@ -111,14 +111,14 @@ data gunbc_ci_host_memory_deferral_disposition: std.disposition.Disposition = Sc
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_fleet",
     decl_name: "gunbc_ci_host",
-    field: NamedField { field_name: "memory" },
+    field: std.decl_ref.NamedField { field_name: "memory" },
   },
 }
 
 data gunbc_ci_host: gunbc.fleet_intent.ComputeHost = gunbc.fleet_intent.ComputeHost {
   identity: gunbc_ci_host_identity,
   baseboard: none,
-  processors: [CpuProcessor { cpu: gunbc_ci_cpu }],
+  processors: [gunbc.fleet_intent.CpuProcessor { cpu: gunbc_ci_cpu }],
   memory: [gunbc.fleet_intent.MemoryDevice { capacity: byte_size(134217728000), memory_kind: Dram, bandwidth: none }],
   storage: [],
   network_interfaces: [],

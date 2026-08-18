@@ -10,10 +10,10 @@ data migration_owned_causes_note: String = "Cause ownership (sharp-bee-290 + nim
 
 fn quad_qn_node(seg: v2.std.node.Symbol) -> Node {
   fold_list_node(
-    xs: Cons { head: seg, tail: Empty },
+    xs: std.algebra.Cons { head: seg, tail: Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: sym } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
@@ -23,7 +23,7 @@ fn quad_qn_node(seg: v2.std.node.Symbol) -> Node {
 
 fn quad_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -36,7 +36,7 @@ fn quad_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, exp
       v2.std.node.Edge {
         label: Named { name: export_sym },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: export_atom } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: export_atom } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -48,7 +48,7 @@ fn quad_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, exp
 
 fn quad_subject_with_import_use() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -61,7 +61,7 @@ fn quad_subject_with_import_use() -> Node {
       v2.std.node.Edge {
         label: Named { name: ^list_append },
         target: v2.std.node.Node {
-          kind: TypeNode { connective: Atom { identity: ^dag_c3_surface_sugar_service } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -73,9 +73,9 @@ fn quad_subject_with_import_use() -> Node {
 
 fn quad_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
-    roots: Cons {
+    roots: std.algebra.Cons {
     head: quad_subject_with_import_use(),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: quad_module_root(
         seg: ^minialg,
         export_sym: ^list_append,
@@ -91,11 +91,11 @@ fn quad_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree
 fn quad_admission() -> v2.compiler.name_resolve.Admission {
   v2.compiler.name_resolve.Admission {
     subject: v2.compiler.name_resolve.ResolutionSubject {
-      name: Cons { head: ^quadmod, tail: std.algebra.Empty }
+      name: std.algebra.Cons { head: ^quadmod, tail: std.algebra.Empty }
     },
-    imports: Cons {
+    imports: std.algebra.Cons {
       head: v2.compiler.name_resolve.Import {
-        target: Cons { head: ^minialg, tail: std.algebra.Empty },
+        target: std.algebra.Cons { head: ^minialg, tail: std.algebra.Empty },
         visibility: ImportVisible
       },
       tail: Empty

@@ -142,7 +142,7 @@ fn binding_candidates_from_supplied_declarations(
                 candidates: build.candidates,
                 seen_candidate_ids: build.seen_candidate_ids,
                 refusal: Present {
-                  value: UnknownOccurrenceIdentity {
+                  value: std.occurrence_identity.UnknownOccurrenceIdentity {
                     occurrence: candidate_occurrence,
                   },
                 },
@@ -157,7 +157,7 @@ fn binding_candidates_from_supplied_declarations(
                     candidates: build.candidates,
                     seen_candidate_ids: build.seen_candidate_ids,
                     refusal: Present {
-                      value: DuplicateSuppliedCandidateIdentity {
+                      value: std.occurrence_identity.DuplicateSuppliedCandidateIdentity {
                         occurrence: candidate_occurrence,
                         diagnostic_span: entry.projection.diagnostic_span,
                       },
@@ -178,7 +178,7 @@ fn binding_candidates_from_supplied_declarations(
                             candidates: build.candidates,
                             seen_candidate_ids: build.seen_candidate_ids,
                             refusal: Present {
-                              value: WrongOccurrenceRole {
+                              value: std.occurrence_identity.WrongOccurrenceRole {
                                 occurrence: candidate_occurrence,
                                 expected: DeclarationRole,
                                 observed: ReferenceRole,
@@ -191,7 +191,7 @@ fn binding_candidates_from_supplied_declarations(
                             candidates: build.candidates,
                             seen_candidate_ids: build.seen_candidate_ids,
                             refusal: Present {
-                              value: MissingAuthoredOccurrenceIdentity {
+                              value: std.occurrence_identity.MissingAuthoredOccurrenceIdentity {
                                 diagnostic_span: entry.projection.diagnostic_span,
                               },
                             },
@@ -260,13 +260,13 @@ fn resolve_reference_occurrence_binding_validated(
       match reference_occurrence_by_id(validated: validated, occurrence: occurrence) {
         Present { value: reference } =>
           OccurrenceReferenceBindingTransportRefused {
-            refusal: MissingAuthoredOccurrenceIdentity {
+            refusal: std.occurrence_identity.MissingAuthoredOccurrenceIdentity {
               diagnostic_span: reference.diagnostic_span,
             },
           }
         Absent =>
           OccurrenceReferenceBindingTransportRefused {
-            refusal: UnknownOccurrenceIdentity { occurrence: occurrence },
+            refusal: std.occurrence_identity.UnknownOccurrenceIdentity { occurrence: occurrence },
           }
       }
     Present { value: entry } =>
@@ -275,7 +275,7 @@ fn resolve_reference_occurrence_binding_validated(
           match map_get(validated.declarations_by_id, occurrence.value) {
             Present { value: observed_declaration } =>
               OccurrenceReferenceBindingTransportRefused {
-                refusal: WrongOccurrenceRole {
+                refusal: std.occurrence_identity.WrongOccurrenceRole {
                   occurrence: occurrence,
                   expected: ReferenceRole,
                   observed: DeclarationRole,
@@ -284,7 +284,7 @@ fn resolve_reference_occurrence_binding_validated(
               }
             Absent =>
               OccurrenceReferenceBindingTransportRefused {
-                refusal: MissingAuthoredOccurrenceIdentity {
+                refusal: std.occurrence_identity.MissingAuthoredOccurrenceIdentity {
                   diagnostic_span: entry.projection.diagnostic_span,
                 },
               }

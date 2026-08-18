@@ -44,7 +44,7 @@ test fn honest_frontier_projection_does_not_treat_hand_roster_as_disposition() -
 
 test fn honest_frontier_projection_propagates_observation_refusal() -> Bool {
   match tracked_rust_unclassified_projection(
-    observation: GitObservationRefused { detail: "git unavailable" }
+    observation: gunbc.stage0_rust_host_observation.GitObservationRefused { detail: "git unavailable" }
   ) {
     TrackedRustProjectionGitRefused { detail: detail } => detail == "git unavailable"
     _ => false
@@ -53,7 +53,7 @@ test fn honest_frontier_projection_propagates_observation_refusal() -> Bool {
 
 test fn honest_frontier_projection_refuses_observed_paths_without_revision() -> Bool {
   match tracked_rust_unclassified_projection(
-    observation: RustManifestObserved {
+    observation: gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: "",
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: ["synthetic/a.rs"],

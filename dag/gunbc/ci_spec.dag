@@ -234,12 +234,12 @@ fn ci_retry_exhausted_pipeline() -> v2.std.orchestration.Pipeline {
 
 fn ci_retry_escalation_level1() -> v2.std.orchestration.EscalationLevel {
   v2.std.orchestration.EscalationLevel {
-    detect: LogMatches { source: "BUILD_LOG", pattern: infra_retry_grep_alternation() },
+    detect: v2.std.orchestration.LogMatches { source: "BUILD_LOG", pattern: infra_retry_grep_alternation() },
     warning: v2.std.diagnostic.EmitDirective {
       severity: SeverityWarning,
       message: "cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
     },
-    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }]
+    env: [v2.std.orchestration.EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }]
   }
 }
 

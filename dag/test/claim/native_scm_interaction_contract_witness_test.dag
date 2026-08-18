@@ -18,33 +18,33 @@ fn fixture_compatibility_projection() -> gunbc.scm_compatibility_shape.Compatibi
     generation_evidence: "git-generation-fixture",
     projection: "git-projection-fixture",
     read_back: "git-readback-fixture",
-    advance: CompatibilityAdvanceUnavailable {
+    advance: gunbc.scm_compatibility_shape.CompatibilityAdvanceUnavailable {
       cause: "C0 witness does not establish an executing transition",
     },
     fidelity: gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
       endpoint_state: CompatibilityFidelityPreserved,
-      upstream_change_evidence: CompatibilityFidelityUnavailable {
+      upstream_change_evidence: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
         cause: "C0 fixture does not carry authored-change evidence",
       },
-      native_proposal_contract: CompatibilityFidelityUnavailable {
+      native_proposal_contract: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
         cause: "C0 fixture does not carry a proposal contract",
       },
-      history: CompatibilityFidelityUnavailable {
+      history: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
         cause: "C0 fixture does not carry history",
       },
-      publication: CompatibilityFidelityUnavailable {
+      publication: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
         cause: "C0 fixture does not carry publication facts",
       },
-      conflict_facts: CompatibilityFidelityUnavailable {
+      conflict_facts: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
         cause: "C0 fixture does not carry conflict facts",
       },
-      path_and_mode: CompatibilityFidelityUnavailable {
+      path_and_mode: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
         cause: "C0 fixture does not carry path or mode facts",
       },
-      availability: CompatibilityFidelityUnavailable {
+      availability: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
         cause: "C0 fixture does not carry availability facts",
       },
-      native_identity: CompatibilityFidelityUnavailable {
+      native_identity: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
         cause: "C0 fixture does not carry native identity",
       },
     },
@@ -157,7 +157,7 @@ test fn witness_equal_labels_keep_structurally_distinct_choices() -> Bool {
         check: receipt.check,
         operational: receipt.operational,
         projections: receipt.projections,
-        primary: ChoiceRequired {
+        primary: gunbc.native_scm_interaction_contract.ChoiceRequired {
           question: question,
           continuation: gunbc.native_scm_interaction_contract.NativeScmContinuation {
             proposal: continuation.proposal,

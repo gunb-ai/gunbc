@@ -27,14 +27,14 @@ fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> v2.std.diagnos
   v2.std.diagnostic.Diagnostic {
     reason: ^constraints_not_realized,
     at: node_locus(node: graph.root),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn constraints_ill_formed_root_diagnostic(graph: ConstraintGraph) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^constraints_ill_formed_root,
     at: node_locus(node: graph.root),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -43,7 +43,7 @@ fn grounding_evidence_is_source_diagnostic(node: Node) -> v2.std.diagnostic.Diag
   v2.std.diagnostic.Diagnostic {
     reason: ^grounding_evidence_is_source,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

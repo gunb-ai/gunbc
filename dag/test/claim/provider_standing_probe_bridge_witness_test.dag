@@ -4,24 +4,24 @@ module test.claim.provider_standing_probe_bridge_witness
 fn fixture_codex_provider_instance() -> extdeps.llm.cli_lifecycle.ProviderInstance {
   extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: CodexCliProvider,
-    host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
     executable: "codex" as std.types.NonEmptyStr,
-    observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-    state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-    credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
-    service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    state_directory: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
   }
 }
 
 fn witness_codex_bridge_successful_probe_observation() -> gunbc.provider_standing_probe_bridge.CodexProviderDashboardProbeObservation {
   gunbc.provider_standing_probe_bridge.CodexProviderDashboardProbeObservation {
     state_root: CodexStateRootPresent,
-    runtime: ProviderDashboardExecProbeReported {
+    runtime: gunbc.provider_standing_probe_bridge.ProviderDashboardExecProbeReported {
       succeeded: true,
       stdout: "codex-cli 0.145.0" as String,
       stderr: "" as String,
     },
-    auth: ProviderDashboardExecProbeReported {
+    auth: gunbc.provider_standing_probe_bridge.ProviderDashboardExecProbeReported {
       succeeded: true,
       stdout: "" as String,
       stderr: "Logged in using ChatGPT" as String,
@@ -53,12 +53,12 @@ test fn witness_bridge_codex_auth_failure_is_credentials_absent_not_authenticate
   let bundle = provider_standing_bundle_from_codex_dashboard_probes(
     observation: gunbc.provider_standing_probe_bridge.CodexProviderDashboardProbeObservation {
       state_root: CodexStateRootPresent,
-      runtime: ProviderDashboardExecProbeReported {
+      runtime: gunbc.provider_standing_probe_bridge.ProviderDashboardExecProbeReported {
         succeeded: true,
         stdout: "codex-cli 0.145.0" as String,
         stderr: "" as String,
       },
-      auth: ProviderDashboardExecProbeReported {
+      auth: gunbc.provider_standing_probe_bridge.ProviderDashboardExecProbeReported {
         succeeded: false,
         stdout: "" as String,
         stderr: "Not logged in" as String,
@@ -194,19 +194,19 @@ test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
 
 data codex_press_limit_bridge_witness_note: String = "The sibling-bucket case is the whole point: an exhausted `codex` bucket and an available `codex_bengalfox` bucket must produce DIFFERENT verdicts under draws that name them. A projection that routed either through ProviderAccountLimit would collapse both to one account verdict and refuse — or admit — work for the wrong reason."
 
-fn press_bucket_credential() -> LimitCredentialLabel {
-  LimitCredentialLabel { label: "srv1-codex" as std.types.NonEmptyStr }
+fn press_bucket_credential() -> gunbc.provider_standing.LimitCredentialLabel {
+  gunbc.provider_standing.LimitCredentialLabel { label: "srv1-codex" as std.types.NonEmptyStr }
 }
 
 fn draw_on(native_key: std.types.NonEmptyStr) -> gunbc.provider_standing.ProviderLimitDispatchDraw {
-  LimitDispatchDrawNativeBucket {
+  gunbc.provider_standing.LimitDispatchDrawNativeBucket {
     credential: press_bucket_credential(),
     native_key: native_key,
   }
 }
 
 fn exhausted_codex_bucket() -> gunbc.codex_app_server_press.CodexRateLimitBucketVerdict {
-  CodexBucketUnavailableUntilReset {
+  gunbc.codex_app_server_press.CodexBucketUnavailableUntilReset {
     limit_id: "codex" as std.types.NonEmptyStr,
     reached_type: none,
     resets_at: none,
@@ -214,7 +214,7 @@ fn exhausted_codex_bucket() -> gunbc.codex_app_server_press.CodexRateLimitBucket
 }
 
 fn available_bengalfox_bucket() -> gunbc.codex_app_server_press.CodexRateLimitBucketVerdict {
-  CodexBucketCapacityAvailable { limit_id: "codex_bengalfox" as std.types.NonEmptyStr }
+  gunbc.codex_app_server_press.CodexBucketCapacityAvailable { limit_id: "codex_bengalfox" as std.types.NonEmptyStr }
 }
 
 test fn witness_codex_bucket_projects_to_native_bucket_never_account_scope() -> Bool {
@@ -256,7 +256,7 @@ test fn witness_exhausted_codex_allows_a_sibling_bucket_draw() -> Bool {
 test fn witness_capacity_unknown_is_not_capacity() -> Bool {
   let unknown = provider_limit_observation_from_codex_bucket(
     credential: press_bucket_credential(),
-    verdict: CodexBucketCapacityUnknown { limit_id: "codex" as std.types.NonEmptyStr })
+    verdict: gunbc.codex_app_server_press.CodexBucketCapacityUnknown { limit_id: "codex" as std.types.NonEmptyStr })
   (match unknown {
     LimitSubjectUnobserved { subject: s, native_token: _, reason: _ } =>
       match s {
@@ -281,7 +281,7 @@ test fn witness_no_buckets_is_a_located_unobserved_not_an_empty_list() -> Bool {
 data mixed_decode_witness_note: String = "Over-refusal reads as caution while it prices out capacity the observation proved was there. The producer held the limit_id and threw it away; carrying it is the whole fix."
 
 fn undecoded_codex_bucket() -> gunbc.codex_app_server_press.CodexRateLimitBucketVerdict {
-  CodexBucketCapacityUnknown { limit_id: "codex" as std.types.NonEmptyStr }
+  gunbc.codex_app_server_press.CodexBucketCapacityUnknown { limit_id: "codex" as std.types.NonEmptyStr }
 }
 
 fn mixed_decode_observations() -> List<gunbc.provider_standing.ProviderLimitObservation> {
@@ -338,14 +338,14 @@ data entitlement_realm_witness_note: String = "THE TWO NEGATIVES ARE DIFFERENT N
 
 fn chatgpt_realm_on(plan_wire: String) -> gunbc.codex_app_server_press.CodexAccountRealm {
   match parse_json(s: plan_wire) {
-    Absent => CodexAccountRealmUnobserved { reason: "fixture did not parse" as std.types.NonEmptyStr }
+    Absent => gunbc.codex_app_server_press.CodexAccountRealmUnobserved { reason: "fixture did not parse" as std.types.NonEmptyStr }
     Present { value: v } => codex_account_realm_from_result(result: v)
   }
 }
 
 test fn witness_pro_subscription_is_the_only_arm_that_entitles() -> Bool {
   let entitled = provider_entitlement_from_codex_realm(
-    realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanPro } })
+    realm: gunbc.codex_app_server_press.CodexChatgptRealm { plan: gunbc.codex_app_server_press.CodexPlanTypeObserved { plan: CodexPlanPro } })
   let api_key = provider_entitlement_from_codex_realm(realm: CodexApiKeyRealm)
   let bedrock = provider_entitlement_from_codex_realm(realm: CodexAmazonBedrockRealm)
   (match entitled { EntitlementObservedAvailable => true _ => false })
@@ -355,7 +355,7 @@ test fn witness_pro_subscription_is_the_only_arm_that_entitles() -> Bool {
 
 test fn witness_upstream_unknown_plan_is_not_a_yes() -> Bool {
   let unknown = provider_entitlement_from_codex_realm(
-    realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanUnknown } })
+    realm: gunbc.codex_app_server_press.CodexChatgptRealm { plan: gunbc.codex_app_server_press.CodexPlanTypeObserved { plan: CodexPlanUnknown } })
   !codex_plan_is_entitling(plan: CodexPlanUnknown)
     && (match unknown { EntitlementObservationUnobserved { reason: _ } => true _ => false })
     && codex_plan_is_entitling(plan: CodexPlanPro)
@@ -374,7 +374,7 @@ test fn witness_deployed_profile_admits_exactly_the_observed_plan() -> Bool {
 
 test fn witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected() -> Bool {
   let unadmitted = provider_entitlement_from_codex_realm(
-    realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanEnterprise } })
+    realm: gunbc.codex_app_server_press.CodexChatgptRealm { plan: gunbc.codex_app_server_press.CodexPlanTypeObserved { plan: CodexPlanEnterprise } })
   let wrong_realm = provider_entitlement_from_codex_realm(realm: CodexApiKeyRealm)
   (match unadmitted { EntitlementObservationUnobserved { reason: _ } => true _ => false })
     && (match wrong_realm { EntitlementRejected { reason: _ } => true _ => false })
@@ -382,9 +382,9 @@ test fn witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected() -> B
 
 test fn witness_stale_pin_is_unobserved_while_wrong_realm_is_rejected() -> Bool {
   let stale_plan = provider_entitlement_from_codex_plan_reading(
-    reading: CodexPlanTypeUnrecognized { native: "quantum_max" as std.types.NonEmptyStr })
+    reading: gunbc.codex_app_server_press.CodexPlanTypeUnrecognized { native: "quantum_max" as std.types.NonEmptyStr })
   let stale_realm = provider_entitlement_from_codex_realm(
-    realm: CodexAccountRealmUnrecognizedType { native: "azureEntra" as std.types.NonEmptyStr })
+    realm: gunbc.codex_app_server_press.CodexAccountRealmUnrecognizedType { native: "azureEntra" as std.types.NonEmptyStr })
   let wrong_realm = provider_entitlement_from_codex_realm(realm: CodexAmazonBedrockRealm)
   (match stale_plan { EntitlementObservationUnobserved { reason: _ } => true _ => false })
     && (match stale_realm { EntitlementObservationUnobserved { reason: _ } => true _ => false })
@@ -394,7 +394,7 @@ test fn witness_stale_pin_is_unobserved_while_wrong_realm_is_rejected() -> Bool 
 test fn witness_absent_and_malformed_accounts_never_entitle() -> Bool {
   let absent = provider_entitlement_from_codex_realm(realm: CodexAccountRealmAbsent)
   let malformed = provider_entitlement_from_codex_plan_reading(
-    reading: CodexPlanTypeMalformed { cause: "no planType" as std.types.NonEmptyStr })
+    reading: gunbc.codex_app_server_press.CodexPlanTypeMalformed { cause: "no planType" as std.types.NonEmptyStr })
   (match absent { EntitlementObservationUnobserved { reason: _ } => true _ => false })
     && (match malformed { EntitlementObservationUnobserved { reason: _ } => true _ => false })
 }
@@ -424,7 +424,7 @@ test fn witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed() -> 
 data native_cause_fallback_witness_note: String = "THIS FILE USED TO ASSERT THE DEFECT. witness_codex_bucket_projects_to_native_bucket_never_account_scope checked `t == \"codex\"` against a fixture declaring `reached_type: none` — so the value it pinned was the projection substituting the bucket id for a cause the wire never gave. A green witness was holding the fallback in place as the contract, which is the shape DESIGN §5 names when a degradation gets enshrined by the test that was supposed to catch it.\n\nThe pair below is what the old fixture could not distinguish: one bucket reports a cause and a reset, one reports neither, and they must not project to the same thing."
 
 fn exhausted_codex_bucket_with_reported_cause() -> gunbc.codex_app_server_press.CodexRateLimitBucketVerdict {
-  CodexBucketUnavailableUntilReset {
+  gunbc.codex_app_server_press.CodexBucketUnavailableUntilReset {
     limit_id: "codex" as std.types.NonEmptyStr,
     reached_type: Present { value: "rate_limit_reached" as std.types.NonEmptyStr },
     resets_at: Present { value: 1786000000 },
@@ -490,17 +490,17 @@ test fn witness_plans_added_after_the_pinned_runtime_read_as_stale_pin() -> Bool
 
 test fn witness_credential_liveness_splits_from_realm() -> Bool {
   let live_auth = provider_authentication_from_codex_credential_liveness(
-    liveness: CodexCredentialLive { bucket_count: 2 })
+    liveness: gunbc.codex_app_server_press.CodexCredentialLive { bucket_count: 2 })
   let dead_auth = provider_authentication_from_codex_credential_liveness(
-    liveness: CodexCredentialDead {
+    liveness: gunbc.codex_app_server_press.CodexCredentialDead {
       reason: "account/rateLimits/read returned no decodable buckets" as std.types.NonEmptyStr,
     })
   let unobserved_auth = provider_authentication_from_codex_credential_liveness(
-    liveness: CodexCredentialLivenessUnobserved {
+    liveness: gunbc.codex_app_server_press.CodexCredentialLivenessUnobserved {
       reason: "account/rateLimits/read probe did not complete" as std.types.NonEmptyStr,
     })
   let realm_still_pro = provider_entitlement_from_codex_realm(
-    realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanPro } })
+    realm: gunbc.codex_app_server_press.CodexChatgptRealm { plan: gunbc.codex_app_server_press.CodexPlanTypeObserved { plan: CodexPlanPro } })
   (match live_auth { AuthenticationAuthenticated => true _ => false })
     && (match dead_auth { AuthenticationRefreshFailed { reason: _ } => true _ => false })
     && (match unobserved_auth { AuthenticationStandingUnobserved { reason: _ } => true _ => false })

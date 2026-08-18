@@ -17,7 +17,7 @@ data fixture_host: product.placement_supply.HostIdentity = "fixture-spark-unit"
 // witness authors it so the materialized path is exercised; nothing in the production tree
 // can construct this arm today.
 fn fixture_materialized(name: std.types.NonEmptyStr) -> gunbc.spark_bootstrap_credential.SparkCredentialStanding {
-  CredentialMaterialized { ref: spark_secret_ref(project: fixture_project, name: name) }
+  gunbc.spark_bootstrap_credential.CredentialMaterialized { ref: spark_secret_ref(project: fixture_project, name: name) }
 }
 
 fn fixture_credentials() -> gunbc.spark_bootstrap_credential.SparkProvisioningCredentials {
@@ -42,11 +42,11 @@ fn fixture_bootstrap() -> gunbc.spark_bootstrap_credential.SparkFactoryBootstrap
 }
 
 fn oobe_strategy() -> gunbc.spark_provisioning.SparkProvisioningStrategy {
-  FactoryOobe { bootstrap: fixture_bootstrap() }
+  gunbc.spark_provisioning.FactoryOobe { bootstrap: fixture_bootstrap() }
 }
 
 fn pxe_strategy() -> gunbc.spark_provisioning.SparkProvisioningStrategy {
-  PxeAutoinstall {
+  gunbc.spark_provisioning.PxeAutoinstall {
     environment: "fixture-boot-network" as gunbc.spark_provisioning.PxeEnvironmentIdentity,
     image: "fixture-base-os" as gunbc.spark_provisioning.InstallationImageIdentity,
     install_spec: gunbc.spark_provisioning.SparkAutoinstallSpec {
@@ -112,8 +112,8 @@ fn sample_intervention() -> std.human_intervention.HumanIntervention {
 
 fn complete_observation() -> gunbc.spark_provisioning.PostSetupObservation {
   gunbc.spark_provisioning.PostSetupObservation {
-    account: AccountObserved { name: "briansrls" },
-    lan_reach: LanReachObserved {
+    account: gunbc.spark_provisioning.AccountObserved { name: "briansrls" },
+    lan_reach: gunbc.spark_provisioning.LanReachObserved {
       address: fixture_address()
     },
     setup_surface: SetupSurfaceCompleted,
@@ -124,7 +124,7 @@ fn complete_observation() -> gunbc.spark_provisioning.PostSetupObservation {
 fn observation_missing_account() -> gunbc.spark_provisioning.PostSetupObservation {
   gunbc.spark_provisioning.PostSetupObservation {
     account: AccountNotObserved,
-    lan_reach: LanReachObserved {
+    lan_reach: gunbc.spark_provisioning.LanReachObserved {
       address: fixture_address()
     },
     setup_surface: SetupSurfaceCompleted,
@@ -134,8 +134,8 @@ fn observation_missing_account() -> gunbc.spark_provisioning.PostSetupObservatio
 
 fn observation_missing_software() -> gunbc.spark_provisioning.PostSetupObservation {
   gunbc.spark_provisioning.PostSetupObservation {
-    account: AccountObserved { name: "briansrls" },
-    lan_reach: LanReachObserved {
+    account: gunbc.spark_provisioning.AccountObserved { name: "briansrls" },
+    lan_reach: gunbc.spark_provisioning.LanReachObserved {
       address: fixture_address()
     },
     setup_surface: SetupSurfaceCompleted,
@@ -148,9 +148,9 @@ fn observation_missing_software() -> gunbc.spark_provisioning.PostSetupObservati
 // the arm it lands on is interrupted rather than refused — nothing rejected anything.
 // The receipt exists only on the far side of a complete observation.
 test fn spark_completion_requires_observation_never_intent() -> Bool {
-  let complete = classify_tag(progress: ProgressPostSetupObserved { observation: complete_observation() })
-  let no_account = classify_tag(progress: ProgressPostSetupObserved { observation: observation_missing_account() })
-  let no_software = classify_tag(progress: ProgressPostSetupObserved { observation: observation_missing_software() })
+  let complete = classify_tag(progress: gunbc.spark_provisioning.ProgressPostSetupObserved { observation: complete_observation() })
+  let no_account = classify_tag(progress: gunbc.spark_provisioning.ProgressPostSetupObserved { observation: observation_missing_account() })
+  let no_software = classify_tag(progress: gunbc.spark_provisioning.ProgressPostSetupObserved { observation: observation_missing_software() })
 
   complete == "provisioned"
     && no_account == "interrupted"
@@ -175,7 +175,7 @@ test fn spark_receipt_software_comes_from_the_device() -> Bool {
   let outcome = classify_spark_progress(
     intent: fixture_intent(),
     phase: PhasePostSetupAccess,
-    progress: ProgressPostSetupObserved { observation: complete_observation() }
+    progress: gunbc.spark_provisioning.ProgressPostSetupObserved { observation: complete_observation() }
   )
   let documented = update_tag(d: dgx_spark_documented_initial_update)
 
@@ -192,11 +192,11 @@ test fn spark_receipt_software_comes_from_the_device() -> Bool {
 
 // The four outcome arms stay four.
 test fn spark_outcome_arms_stay_distinct() -> Bool {
-  let success = classify_tag(progress: ProgressPostSetupObserved { observation: complete_observation() })
+  let success = classify_tag(progress: gunbc.spark_provisioning.ProgressPostSetupObserved { observation: complete_observation() })
   let reboot = classify_tag(progress: ProgressAwaitingDocumentedReboot)
-  let prerequisite = classify_tag(progress: ProgressPrerequisiteNotYetReached { prerequisite: "network join" })
+  let prerequisite = classify_tag(progress: gunbc.spark_provisioning.ProgressPrerequisiteNotYetReached { prerequisite: "network join" })
   let human = classify_tag(progress: ProgressAwaitingHuman { intervention: sample_intervention() })
-  let rejected = classify_tag(progress: ProgressDeviceRejectedField { field: "username" })
+  let rejected = classify_tag(progress: gunbc.spark_provisioning.ProgressDeviceRejectedField { field: "username" })
 
   success == "provisioned"
     && reboot == "interrupted"
@@ -414,7 +414,7 @@ fn sensitive_use() -> gunbc.spark_bootstrap_credential.SensitiveBrowserInputUse 
   gunbc.spark_bootstrap_credential.SensitiveBrowserInputUse {
     secret_ref: spark_secret_ref(project: fixture_project, name: "fixture-hotspot"),
     field_identity: "captive-portal-wifi-password" as gunbc.spark_bootstrap_credential.SensitiveFieldIdentity,
-    evidence_policy: RetainNoDomNoHarNoTrace { retain_transition_result_only: true },
+    evidence_policy: gunbc.spark_bootstrap_credential.RetainNoDomNoHarNoTrace { retain_transition_result_only: true },
   }
 }
 

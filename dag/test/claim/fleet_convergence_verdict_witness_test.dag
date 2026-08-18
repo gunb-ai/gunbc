@@ -60,7 +60,7 @@ test fn knob_standing_three_arms_discriminate() -> Bool {
         applied: 0,
         drifted: 1,
         verdict: Absent,
-        reason: Present { value: KnobFrontier { reason: "witness fixture" } },
+        reason: Present { value: gunbc.fleet_converge_cli.KnobFrontier { reason: "witness fixture" } },
       }],
     ) {
       KnobNotConverged { host: _, reason: _ } => true
@@ -72,11 +72,11 @@ test fn knob_standing_three_arms_discriminate() -> Bool {
 // different remedies and none of them is converged.
 test fn cell_standings_discriminate_and_only_converged_counts() -> Bool {
   let h = operator_host_srv1
-  cell_standing_is_converged(s: CellConverged { host: h, phase_label: "p" })
-    && !cell_standing_is_converged(s: CellUnobserved { host: h, phase_label: "p" })
-    && !cell_standing_is_converged(s: CellUnreachable { host: h, phase_label: "p" })
-    && !cell_standing_is_converged(s: CellDrifted { host: h, phase_label: "p" })
-    && !cell_standing_is_converged(s: CellConflict { host: h, phase_label: "p" })
+  cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellConverged { host: h, phase_label: "p" })
+    && !cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellUnobserved { host: h, phase_label: "p" })
+    && !cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellUnreachable { host: h, phase_label: "p" })
+    && !cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellDrifted { host: h, phase_label: "p" })
+    && !cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellConflict { host: h, phase_label: "p" })
 }
 
 // Machine-id hazard control (msg_1c4e0bce): two receipts claiming ONE host identity —

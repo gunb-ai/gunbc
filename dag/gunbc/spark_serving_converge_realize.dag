@@ -20,7 +20,7 @@ fn spark_serving_admit_portable_remote_argv(raws: List<String>) -> SparkServingI
   match portable_remote_words(raws: raws) {
     Present { value: words } =>
       SparkServingInstallRemoteCommandsPresent {
-        operations: [RemoteArgv { argv: portable_remote_words_strings(words: words) }],
+        operations: [gunbc.remote_operation.RemoteArgv { argv: portable_remote_words_strings(words: words) }],
       }
     Absent =>
       SparkServingInstallRemoteCommandsRefused {
@@ -103,8 +103,8 @@ fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommand
         Present { value: words } =>
           SparkServingInstallRemoteCommandsPresent {
             operations: [
-              RemoteArgv { argv: portable_remote_words_strings(words: words) },
-              RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite },
+              gunbc.remote_operation.RemoteArgv { argv: portable_remote_words_strings(words: words) },
+              gunbc.remote_operation.RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite },
             ],
           }
       }

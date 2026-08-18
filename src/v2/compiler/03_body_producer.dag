@@ -5,7 +5,7 @@ fn body_producer_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagn
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

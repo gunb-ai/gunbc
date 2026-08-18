@@ -232,7 +232,7 @@ fn exit_is_success(e: std.process.ProcessExit) -> Bool {
 
 test fn red_membership_arm_refuses_file_this_change_adds() -> Bool {
   let verdict = scope_placement_membership_verdict(
-    observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+    observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
   )
   !exit_is_success(e: verdict)
     && string_contains(s: exit_reason_of(e: verdict), pattern: "dag/extdeps/browser/opera.dag")
@@ -241,7 +241,7 @@ test fn red_membership_arm_refuses_file_this_change_adds() -> Bool {
 
 test fn membership_arm_admits_an_empty_change_set() -> Bool {
   exit_is_success(
-    e: scope_placement_membership_verdict(observation: AddedPathsObserved { paths: [] })
+    e: scope_placement_membership_verdict(observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: [] })
   )
 }
 
@@ -253,7 +253,7 @@ test fn red_membership_arm_refuses_unreadable_observation() -> Bool {
 test fn green_membership_arm_admits_rostered_addition() -> Bool {
   exit_is_success(
     e: scope_placement_membership_verdict(
-      observation: AddedPathsObserved { paths: ["dag/extdeps/vendor/microsoft.dag", "dag/extdeps/uri.dag"] }
+      observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/vendor/microsoft.dag", "dag/extdeps/uri.dag"] }
     )
   )
 }
@@ -267,7 +267,7 @@ test fn failure_reason_is_empty_only_on_success() -> Bool {
   exit_reason_of(e: ExitSuccess) == ""
     && exit_reason_of(
          e: scope_placement_membership_verdict(
-           observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+           observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
          )
        ) != ""
 }
@@ -406,7 +406,7 @@ test fn carriers_declare_scope_on_disk() -> Bool {
 test fn red_manifest_freeze_refuses_post_freeze_row() -> Bool {
   manifest_freeze_holds(
     manifest: ["dag/extdeps/a.dag", "dag/extdeps/smuggled_new_module.dag"],
-    observation: AddedPathsObserved { paths: ["dag/extdeps/smuggled_new_module.dag"] }
+    observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/smuggled_new_module.dag"] }
   ) == false
 }
 

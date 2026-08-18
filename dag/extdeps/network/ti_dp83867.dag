@@ -34,7 +34,7 @@ data dp83867_rgz0048b_body: extdeps.land_pattern.types.PackageBodyDimensions = e
 data dp83867_rgz0048b_land_pattern: extdeps.land_pattern.types.VendorRecommendedLandPattern = extdeps.land_pattern.types.VendorRecommendedLandPattern {
   package_designator: "RGZ0048B",
   drawing: dp83867_rgz0048b_drawing,
-  geometry: QuadRowLandGeometry {
+  geometry: extdeps.land_pattern.types.QuadRowLandGeometry {
     lands_per_side: 12,
     pitch: micrometer(count: 500),
     side_span_centre_to_centre: micrometer(count: 6800),

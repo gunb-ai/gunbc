@@ -2,13 +2,13 @@ module v2.test.lens_synthesis.synthesis_no_technique_diagnostic
 
 
 data synthesis_no_tech_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^synthesis_no_tech_atom_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^synthesis_no_tech_atom_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data synthesis_no_tech_body: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: Transform },
   children: [
     v2.std.node.Edge { label: Positional, target: synthesis_no_tech_leaf }
   ],
@@ -16,7 +16,7 @@ data synthesis_no_tech_body: Node = v2.std.node.Node {
 }
 
 data synthesis_no_tech_inner: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: synthesis_no_tech_body }
   ],
@@ -24,7 +24,7 @@ data synthesis_no_tech_inner: Node = v2.std.node.Node {
 }
 
 data synthesis_no_tech_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: synthesis_no_tech_inner }
   ],
@@ -32,7 +32,7 @@ data synthesis_no_tech_input: Node = v2.std.node.Node {
 }
 
 data synthesis_no_tech_sentinel: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^synthesis_no_tech_sentinel_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^synthesis_no_tech_sentinel_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -49,7 +49,7 @@ fn synthesis_no_tech_rhs() -> Node {
   }
 }
 
-data claim_synthesis_no_technique_diagnostic: v2.std.verification.TestClaim = EqualsClaim {
+data claim_synthesis_no_technique_diagnostic: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_synthesis/synthesis_no_technique_diagnostic: AlgebraicRank emits SynthesisNoTechnique diagnostic",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: synthesis_no_tech_input,

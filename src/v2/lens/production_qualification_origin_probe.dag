@@ -8,7 +8,7 @@ data production_qualification_origin_call_occurrence_frontier_note: String = "SC
 data production_qualification_construction_wall_path_frontier_note: String = "Construction-wall path split (wise-ram-22 addendum, royal-crab-235 lane): sole_constructor record-literal refusal executes on the v1 seed infer path only — v2.compiler.04_infer carries zero sole_constructor handling today. A construction site this probe discovers is NOT automatically in a guarded population; guard presence is a property of the compiler PATH, not the site. This probe classifies structural skeleton origin only — it never infers 'sole_constructor exists therefore this form is walled'."
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
 data production_qualification_counted_qualifications_note: String = "Axes derived_sites_for_decl can construct today at fn-arrow skeleton grain — SourceProduced and CargoGreen only. ProductionRouted and BehavioralEquivalent remain reserved for call-occurrence / dataflow grounding. Execution evidence is ProductionEvidenceGrounding, not an EmissionQualification axis."
@@ -404,7 +404,7 @@ fn production_qualification_origin_probe_admission_holds_for_decls(
 
 fn probe_mint_callee_atom_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: mint_written_callee) } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: symbol_intern_lexeme(lexeme: mint_written_callee) } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -415,7 +415,7 @@ fn unknown_origin_red_control_planted_decl() -> v2.std.fn_index.FnArrowDecl {
     qualified_name: "synthetic.production_qualification_origin_probe.unknown_origin_red_control",
     name: "unknown_origin_red_control_planted_decl",
     output: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge { label: Positional, target: probe_mint_callee_atom_node() }
       ],
@@ -429,7 +429,7 @@ data structural_red_control_planted_qualified_name: String = "synthetic.producti
 
 fn probe_mint_provenanced_callee_atom_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: mint_provenanced_callee) } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: symbol_intern_lexeme(lexeme: mint_provenanced_callee) } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -440,7 +440,7 @@ fn parameter_borne_fixture_mint_planted_decl() -> v2.std.fn_index.FnArrowDecl {
     qualified_name: "synthetic.production_qualification_origin_probe.parameter_borne_fixture_mint_red_control",
     name: "parameter_borne_fixture_mint_red_control_planted_decl",
     output: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge { label: Positional, target: probe_mint_provenanced_callee_atom_node() }
       ],
@@ -452,8 +452,8 @@ fn parameter_borne_fixture_mint_planted_decl() -> v2.std.fn_index.FnArrowDecl {
 
 fn probe_fixture_tree_atom_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
-      connective: Atom {
+    kind: v2.std.node.TypeNode {
+      connective: v2.std.node.Atom {
         identity: symbol_intern_lexeme(lexeme: direct_rust_door_inferred_tree_atom)
       }
     },
@@ -464,8 +464,8 @@ fn probe_fixture_tree_atom_node() -> Node {
 
 fn probe_target_model_callee_atom_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode {
-      connective: Atom {
+    kind: v2.std.node.TypeNode {
+      connective: v2.std.node.Atom {
         identity: symbol_intern_lexeme(lexeme: direct_rust_door_target_model_callee)
       }
     },
@@ -479,7 +479,7 @@ fn structural_red_control_planted_decl() -> v2.std.fn_index.FnArrowDecl {
     qualified_name: structural_red_control_planted_qualified_name,
     name: "structural_red_control_planted_decl",
     output: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge { label: Positional, target: probe_mint_callee_atom_node() },
         v2.std.node.Edge { label: Positional, target: probe_fixture_tree_atom_node() }
@@ -497,7 +497,7 @@ fn target_without_fixture_tree_red_control_planted_decl() -> v2.std.fn_index.FnA
     qualified_name: target_without_fixture_tree_red_control_qualified_name,
     name: "target_without_fixture_tree_red_control_planted_decl",
     output: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge { label: Positional, target: probe_mint_callee_atom_node() },
         v2.std.node.Edge { label: Positional, target: probe_target_model_callee_atom_node() }

@@ -14,7 +14,7 @@ fn compile_clean_forcecheck_body() -> List<std.markdown.MarkdownBlock> {
     ]),
     h2(text: "1. Execution-proven mechanism (receipts)"),
     p(text: "`gunbc` built from `src/v1/stage0`; each probe is a single-file `--source-root` compile."),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "Probe"), cell(text: "Input"), cell(text: "Result"), cell(text: "Reading")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -25,7 +25,7 @@ fn compile_clean_forcecheck_body() -> List<std.markdown.MarkdownBlock> {
       ],
     },
     p(text: "**The real on-main witness** — `extdeps.cloud.gcp.secret_manager` `utf8_secret_from_access_payload`:"),
-    CodeBlock { code: "fn utf8_secret_from_access_payload(payload: Bytes) -> Secret \{\n  utf8_decode_bytes(payload: payload) as Secret\n\}\n" },
+    std.markdown.CodeBlock { code: "fn utf8_secret_from_access_payload(payload: Bytes) -> Secret \{\n  utf8_decode_bytes(payload: payload) as Secret\n\}\n" },
     p(text: "In the captured run, `utf8_decode_bytes` resolved via the registry; the `as Secret` cast satisfied the return type. So the **literal witness was hole #1 alone** (return-type enforcement would not have caught it because of the cast)."),
     h2(text: "2. The seam — `builtin_function_registry`"),
     p(text: "At capture, `v1.compiler.infer_method` `builtin_function_registry` held 76 names → return-type `Node`s, including a `utf8_decode_bytes → string_type` row. That row is absent now, but the live registry remains a flat global map. `std.encoding` `utf8_decode_bytes_host_realization_marker` and `std.bytes` `bytes_seam_host_realization_marker` exist, but both carry a stale `DeclarationRef` to `std.bytes` `builtin_function_registry`, where no such declaration exists. They are unresolved scaffold debt, not verified bindings to the live v1 registry."),
@@ -66,7 +66,7 @@ fn compile_clean_forcecheck_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "6. Blast radius (MEASURE-FIRST) — execution-proven, 10 names / 102 sites"),
     p(text: "**Method (DESIGN §5, real consumer green-by-execution, not grep):** in a throwaway worktree off `origin/main`, `builtin_function_registry()` was replaced with an empty map (MEASURE-ONLY, uncommitted), `gunbc` rebuilt, and the **real gate compile** run — `gunbc compile --source-root dag --source-root src/v2 --dependency-pool-index primary-precedence --target rust`. Every registry name a substrate module **free-calls without a real `.dag` def** then surfaces as a \"function 'X' not found in scope\" diagnostic. (Grep over-counted ~50 — most registry names are invoked as *methods* and resolve via the structural method path, not the free-call registry.)"),
     p(text: "Result: **102 diagnostics, all \"not found in scope\", 10 distinct names** (all in `dag/`; none in `src/v2`):"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "builtin"), cell(text: "sites"), cell(text: "leaf area"), cell(text: "class")]),
       alignments: [AlignNone, AlignRight, AlignNone, AlignNone],
       rows: [
@@ -92,6 +92,6 @@ data compile_clean_forcecheck_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "compile-clean-forcecheck",
   title: "Plan — compile-clean gate force-check (ROADMAP §1 floor-coverage / §0 inference fail-open)",
   body: compile_clean_forcecheck_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when (A) lands as construction: the builtin registry carries a `SubstrateAvailable`/`SeedOnly` availability tag, a dag-substrate compile fails closed on a live seed-only name such as `scan_while` while the v1 seed admits it, and the stale `DeclarationRef`s in `utf8_decode_bytes_host_realization_marker` / `bytes_seam_host_realization_marker` are repaired onto a live authority or dissolve — at which point the leak is dead by construction (DESIGN §5).")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when (A) lands as construction: the builtin registry carries a `SubstrateAvailable`/`SeedOnly` availability tag, a dag-substrate compile fails closed on a live seed-only name such as `scan_while` while the v1 seed admits it, and the stale `DeclarationRef`s in `utf8_decode_bytes_host_realization_marker` / `bytes_seam_host_realization_marker` are repaired onto a live authority or dissolve — at which point the leak is dead by construction (DESIGN §5).")
   }
 }

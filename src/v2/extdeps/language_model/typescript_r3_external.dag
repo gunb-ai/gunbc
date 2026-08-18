@@ -2,16 +2,16 @@ module v2.test.language_model.typescript_r3_external
 
 fn typescript_r3_external_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^typescript_r3_external_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^typescript_r3_external_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^typescript_r3_external_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^typescript_r3_external_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_typescript_r3_external_fixture_pair_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_typescript_r3_external_fixture_pair_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/typescript_r3_external: fixture pair references ts_atom_realization_symbol fact",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: typescript_r3_external_claim_bool_atom(b: true),
@@ -27,8 +27,8 @@ data claim_typescript_r3_external_fixture_pair_wired: v2.std.verification.TestCl
 fn typescript_r3_external_pending_verification_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^typescript_r3_external_pending_verification_reason,
-    at: Textual { file: ^typescript_r3_external_pending_verification_reason, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: ^typescript_r3_external_pending_verification_reason, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -42,7 +42,7 @@ data typescript_r3_external_verification_run_receipt_default: v2.std.leaf_model_
   )
 }
 
-data claim_typescript_r3_external_verification_receipt_shape: v2.std.verification.TestClaim = EqualsClaim {
+data claim_typescript_r3_external_verification_receipt_shape: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/typescript_r3_external: verification receipt carriers happy + falsification verdict slots",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: typescript_r3_external_claim_bool_atom(
@@ -52,6 +52,6 @@ data claim_typescript_r3_external_verification_receipt_shape: v2.std.verificatio
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data typescript_r3_external_modeled_falsification_expectation: v2.std.leaf_model_verification.TargetTypeScriptCompileVerdict = TargetTypeScriptCompileRejected {
+data typescript_r3_external_modeled_falsification_expectation: v2.std.leaf_model_verification.TargetTypeScriptCompileVerdict = v2.std.leaf_model_verification.TargetTypeScriptCompileRejected {
   diagnostic_code: ^target_diagnostic_ts7009_new_expression_not_constructable
 }

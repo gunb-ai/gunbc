@@ -225,27 +225,27 @@ data gunbc_srv2_runner_unit_live_read_fixture_02: gunbc.runner_unit_live_read.Ru
   probed_at: "2026-07-03",
 }
 
-data gunbc_fleet_runner_slice_cap_show_effective_read: ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> = ReadAbsent {
+data gunbc_fleet_runner_slice_cap_show_effective_read: ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> = std.realization_reconcile.ReadAbsent {
   reason: "no live systemctl show -p MemoryMax on system-actions-runner.slice has run on the fleet yet; typed parse + transport live in gunbc.fleet_show_effective_read — bind ReadObserved at the apply increment"
 }
 
-data gunbc_fleet_runner_units_show_effective_read: ShowEffectiveRead<FleetRunnerUnitsLiveRead> = ReadAbsent {
+data gunbc_fleet_runner_units_show_effective_read: ShowEffectiveRead<FleetRunnerUnitsLiveRead> = std.realization_reconcile.ReadAbsent {
   reason: "no live per-instance systemctl show loop has run on the fleet runner units yet; typed rows + transport live in gunbc.fleet_show_effective_read"
 }
 
-data gunbc_fleet_runner_width_show_effective_read: ShowEffectiveRead<RunnerWidthLiveRead> = ReadAbsent {
+data gunbc_fleet_runner_width_show_effective_read: ShowEffectiveRead<RunnerWidthLiveRead> = std.realization_reconcile.ReadAbsent {
   reason: "no live systemctl list-units active-count read has run on the fleet runner glob yet; typed parse + transport live in gunbc.fleet_show_effective_read"
 }
 
-data gunbc_fleet_host_effective_read_show_effective_read: ShowEffectiveRead<FleetHostEffectiveReadReceipt> = ReadAbsent {
+data gunbc_fleet_host_effective_read_show_effective_read: ShowEffectiveRead<FleetHostEffectiveReadReceipt> = std.realization_reconcile.ReadAbsent {
   reason: "no full-host effective read receipt has been collected on srv1/srv2 yet; compose the three v0-blocking knob reads here"
 }
 
 fn fleet_host_control_plane(host: product.placement_supply.HostIdentity) -> gunbc.host_effect.NodeControlPlane? {
   if host == operator_host_srv1 {
-    Present { value: HostOs { node: srv1_host } }
+    Present { value: gunbc.host_effect.HostOs { node: srv1_host } }
   } else { if host == operator_host_srv2 {
-    Present { value: HostOs { node: srv2_host } }
+    Present { value: gunbc.host_effect.HostOs { node: srv2_host } }
   } else { none } }
 }
 
@@ -287,21 +287,21 @@ fn show_effective_read_from_slice_cap_row(row: RunnerSliceCapLiveReadRow) -> Sho
   let read = runner_slice_cap_live_read_typed(row: row)
   match read.memory_max {
     MemoryLimitAbsent =>
-      ReadAbsent { reason: "systemctl show MemoryMax returned empty (typed Absent); fail-closed, no fabricated cap" }
+      std.realization_reconcile.ReadAbsent { reason: "systemctl show MemoryMax returned empty (typed Absent); fail-closed, no fabricated cap" }
     _ =>
       match runner_slice_cap_to_effectiveness(read: read) {
-        Present { value: eff } => ReadObserved { value: eff }
+        Present { value: eff } => std.realization_reconcile.ReadObserved { value: eff }
         Absent =>
-          ReadAbsent { reason: "MemoryMax parse produced no RunnerSliceCapEffectiveness; fail-closed" }
+          std.realization_reconcile.ReadAbsent { reason: "MemoryMax parse produced no RunnerSliceCapEffectiveness; fail-closed" }
       }
   }
 }
 
 fn show_effective_read_from_runner_units(host: product.placement_supply.HostIdentity, rows: List<gunbc.runner_unit_live_read.RunnerUnitLiveReadRow>) -> ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
   if rows.length() == 0 {
-    ReadAbsent { reason: "no runner unit rows to read; fail-closed" }
+    std.realization_reconcile.ReadAbsent { reason: "no runner unit rows to read; fail-closed" }
   } else {
-    ReadObserved {
+    std.realization_reconcile.ReadObserved {
       value: FleetRunnerUnitsLiveRead {
         host: host,
         units: map(rows, f: fn(row) { runner_unit_live_read_typed(row: row) }),
@@ -312,8 +312,8 @@ fn show_effective_read_from_runner_units(host: product.placement_supply.HostIden
 
 fn show_effective_read_from_width_row(row: RunnerWidthLiveReadRow) -> ShowEffectiveRead<RunnerWidthLiveRead> {
   match runner_width_live_read_typed(row: row) {
-    Present { value: width } => ReadObserved { value: width }
-    Absent => ReadAbsent { reason: "runner width list-units count parse failed (empty or non-numeric); fail-closed" }
+    Present { value: width } => std.realization_reconcile.ReadObserved { value: width }
+    Absent => std.realization_reconcile.ReadAbsent { reason: "runner width list-units count parse failed (empty or non-numeric); fail-closed" }
   }
 }
 

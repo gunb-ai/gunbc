@@ -19,7 +19,7 @@ data tracked_rustfmt_pin: Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: rustfmt_cli_tool,
   version: "1.93.0" as extdeps.version.VersionIdentity,
   expected_identity: expected_rustfmt_identity,
-  selection: TrackedChannel {
+  selection: extdeps.pin.TrackedChannel {
     channel: "stable",
     refresh_window_days: 30,
   },
@@ -44,7 +44,7 @@ data tool_readiness_reconcile_family_note: String = "The executing consumer for 
 
 test fn matching_pinned_tool_is_admitted_with_zero_hunks() -> Bool {
   match tool_readiness(
-    request: PinnedToolReadinessRequest { pin: rustfmt_pin },
+    request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [ci_regen_rustfmt_unpinned_frontier],
     context: context(rows: [
       observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
@@ -61,7 +61,7 @@ test fn matching_pinned_tool_is_admitted_with_zero_hunks() -> Bool {
 
 test fn digest_mismatch_refuses_and_frontier_cannot_bypass_it() -> Bool {
   let readiness = tool_readiness(
-    request: PinnedToolReadinessRequest { pin: rustfmt_pin },
+    request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [ci_regen_rustfmt_unpinned_frontier],
     context: context(rows: [
       observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
@@ -96,7 +96,7 @@ test fn digest_mismatch_refuses_and_frontier_cannot_bypass_it() -> Bool {
 
 test fn unchanged_tracked_pin_still_refuses_integrity() -> Bool {
   match tool_readiness(
-    request: PinnedToolReadinessRequest { pin: tracked_rustfmt_pin },
+    request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: tracked_rustfmt_pin },
     frontier: [ci_regen_rustfmt_unpinned_frontier],
     context: context(rows: [
       observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
@@ -124,7 +124,7 @@ test fn unchanged_tracked_pin_still_refuses_integrity() -> Bool {
 
 test fn unrelated_tool_identity_does_not_change_rustfmt_readiness() -> Bool {
   let before = tool_readiness(
-    request: PinnedToolReadinessRequest { pin: rustfmt_pin },
+    request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [],
     context: context(rows: [
       observed(tool_name: "cargo", identity: unrelated_cargo_identity_a),
@@ -132,7 +132,7 @@ test fn unrelated_tool_identity_does_not_change_rustfmt_readiness() -> Bool {
     ]),
   )
   let after = tool_readiness(
-    request: PinnedToolReadinessRequest { pin: rustfmt_pin },
+    request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [],
     context: context(rows: [
       observed(tool_name: "cargo", identity: unrelated_cargo_identity_b),
@@ -160,7 +160,7 @@ data tool_observation_refusal_family_note: String = "Missing and Duplicate are n
 
 test fn missing_observed_tool_identity_refuses_located_and_counted() -> Bool {
   let readiness = tool_readiness(
-    request: PinnedToolReadinessRequest { pin: rustfmt_pin },
+    request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [],
     context: context(rows: []),
   )
@@ -182,7 +182,7 @@ test fn missing_observed_tool_identity_refuses_located_and_counted() -> Bool {
 
 test fn duplicate_observed_tool_identity_refuses_located_and_counted() -> Bool {
   let readiness = tool_readiness(
-    request: PinnedToolReadinessRequest { pin: rustfmt_pin },
+    request: gunbc.tool_readiness.PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [],
     context: context(rows: [
       observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
@@ -209,7 +209,7 @@ data tool_frontier_family_note: String = "The current rustfmt handler is retaine
 
 test fn declared_unpinned_rustfmt_frontier_is_explicit() -> Bool {
   match tool_readiness(
-    request: UnpinnedToolReadinessRequest { tool: rustfmt_cli_tool },
+    request: gunbc.tool_readiness.UnpinnedToolReadinessRequest { tool: rustfmt_cli_tool },
     frontier: [ci_regen_rustfmt_unpinned_frontier],
     context: context(rows: [
       observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
@@ -226,7 +226,7 @@ test fn declared_unpinned_rustfmt_frontier_is_explicit() -> Bool {
 
 test fn unlisted_unpinned_tool_refuses() -> Bool {
   match tool_readiness(
-    request: UnpinnedToolReadinessRequest { tool: rustfmt_cli_tool },
+    request: gunbc.tool_readiness.UnpinnedToolReadinessRequest { tool: rustfmt_cli_tool },
     frontier: [],
     context: context(rows: [
       observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
@@ -247,7 +247,7 @@ test fn unlisted_unpinned_tool_refuses() -> Bool {
 
 test fn duplicate_unpinned_frontier_rows_refuse() -> Bool {
   match tool_readiness(
-    request: UnpinnedToolReadinessRequest { tool: rustfmt_cli_tool },
+    request: gunbc.tool_readiness.UnpinnedToolReadinessRequest { tool: rustfmt_cli_tool },
     frontier: [
       ci_regen_rustfmt_unpinned_frontier,
       ci_regen_rustfmt_unpinned_frontier,

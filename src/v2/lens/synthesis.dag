@@ -32,7 +32,7 @@ fn synthesis_no_technique_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^synthesis_no_technique_reason_symbol,
     at: node_locus(node: n),
-    correction: Unavailable { reason: AmbiguousIntent }
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
@@ -113,7 +113,7 @@ fn assess_information_theoretic(n: Node, realization: v2.lens.complexity.Complex
 fn outcome_to_reports(outcome: SynthesisOutcome) -> List<v2.std.report.Report> {
   match outcome {
     SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
-      Cons { head: r, tail: std.algebra.Empty }
+      std.algebra.Cons { head: r, tail: std.algebra.Empty }
     SynthesisOptimal { realization_cost: _, lower_bound: _ } => std.algebra.Empty
     SynthesisNoTechnique { diagnostic: _ } => std.algebra.Empty
   }
@@ -123,7 +123,7 @@ fn outcome_to_diagnostics(outcome: SynthesisOutcome) -> List<v2.std.diagnostic.D
   match outcome {
     SynthesisGap { realization_cost: _, lower_bound: _, report: _ } => std.algebra.Empty
     SynthesisOptimal { realization_cost: _, lower_bound: _ } => std.algebra.Empty
-    SynthesisNoTechnique { diagnostic: d } => Cons { head: d, tail: std.algebra.Empty }
+    SynthesisNoTechnique { diagnostic: d } => std.algebra.Cons { head: d, tail: std.algebra.Empty }
   }
 }
 
@@ -187,7 +187,7 @@ fn synthesis_lens_known_diagnostics(n: Node, declared_technique: LowerBoundTechn
 fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) -> List<v2.std.diagnostic.Diagnostic> {
   let realization = complexity_lens(n: n)
   match realization {
-    UnknownComplexity { diagnostic: d } => Cons { head: d, tail: std.algebra.Empty }
+    UnknownComplexity { diagnostic: d } => std.algebra.Cons { head: d, tail: std.algebra.Empty }
     ConstantComplexity =>
       synthesis_lens_known_diagnostics(n: n, declared_technique: declared_technique, realization: realization)
     SizedComplexity { class: _, variables: _ } =>

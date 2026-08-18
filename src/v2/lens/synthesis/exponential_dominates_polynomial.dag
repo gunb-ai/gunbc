@@ -2,18 +2,18 @@ module v2.test.lens_synthesis.exponential_dominates_polynomial
 
 
 data synthesis_exp_x: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^synthesis_exp_x_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^synthesis_exp_x_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 fn exponential_dominates_polynomial_claim_holds() -> Bool {
   symbolic_cost_dominates(
-    a: ExponentialCost {
+    a: v2.lens.cost.ExponentialCost {
       variable: v2.lens.cost.SizeVariable { source: synthesis_exp_x },
       base: v2.lens.cost.ExponentialBase { predecessor_after_one: v2.std.cardinality.NonZeroNat { prev: Zero } }
     },
-    b: PolynomialCost {
+    b: v2.lens.cost.PolynomialCost {
       variable: v2.lens.cost.SizeVariable { source: synthesis_exp_x },
       degree: v2.lens.cost.PolynomialDegree { predecessor_after_linear: v2.std.cardinality.NonZeroNat { prev: Zero } }
     }
@@ -25,14 +25,14 @@ fn exponential_dominates_polynomial_claim_rhs() -> Node {
     synthesis_exp_x
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_exponential_dominates_polynomial: v2.std.verification.TestClaim = EqualsClaim {
+data claim_exponential_dominates_polynomial: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_synthesis/exponential_dominates_polynomial: exponential dominates polynomial",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: synthesis_exp_x,

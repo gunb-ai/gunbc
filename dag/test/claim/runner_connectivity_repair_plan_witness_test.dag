@@ -30,7 +30,7 @@ fn wedged_snapshot(act: std.types.Timestamp) -> gunbc.runner_connectivity_recove
       observed_at: act,
     },
     remote: gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
-      evidence: RemoteRegistrationObserved {
+      evidence: gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
         registration: RunnerRemoteOffline,
         registration_id: "",
         grade: ObservedEvidence,
@@ -38,11 +38,11 @@ fn wedged_snapshot(act: std.types.Timestamp) -> gunbc.runner_connectivity_recove
       observed_at: act,
       control_plane_error_burst: false,
     },
-    broker: BrokerProgressSilent {
+    broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
       silence_seconds: runner_broker_progress_silence_bound_seconds,
       grade: ObservedEvidence,
     },
-    worker: RunnerWorkerAbsent { grade: ObservedEvidence },
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
     registration_grace_elapsed: true,
     confirmed_at: act,
     last_restart_at: Absent,
@@ -97,8 +97,8 @@ test fn noop_action_projects_empty_repair_plan() -> Bool {
     slot: snap.slot,
     local: snap.local,
     remote: gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
-      evidence: RemoteRegistrationObserved {
-        registration: RunnerRemoteOnline {
+      evidence: gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
+        registration: gunbc.runner_broker_progress_watchdog.RunnerRemoteOnline {
           runner_name: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
           labels: ["self-hosted"],
         },

@@ -450,13 +450,13 @@ fn witness_cost_entry_resolve_event(
   std.observation.ObservationEvent {
     subject: std.observation.ObservationSubject {
       segments: [
-        EntrySegment { source_path: entry },
-        PhaseSegment { name: "resolve" as std.types.NonEmptyStr }
+        std.observation.EntrySegment { source_path: entry },
+        std.observation.PhaseSegment { name: "resolve" as std.types.NonEmptyStr }
       ]
     },
-    transition: Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: resolve),
-    rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
+    rss: std.observation.MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
 }
 
@@ -468,14 +468,14 @@ fn witness_cost_nested_resolve_under_declaration_event(
   std.observation.ObservationEvent {
     subject: std.observation.ObservationSubject {
       segments: [
-        EntrySegment { source_path: entry },
-        DeclarationSegment { declaration: declaration },
-        PhaseSegment { name: "resolve" as std.types.NonEmptyStr }
+        std.observation.EntrySegment { source_path: entry },
+        std.observation.DeclarationSegment { declaration: declaration },
+        std.observation.PhaseSegment { name: "resolve" as std.types.NonEmptyStr }
       ]
     },
-    transition: Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: resolve),
-    rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
+    rss: std.observation.MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
 }
 
@@ -487,14 +487,14 @@ fn witness_cost_module_resolve_event(
   std.observation.ObservationEvent {
     subject: std.observation.ObservationSubject {
       segments: [
-        EntrySegment { source_path: entry },
-        ModuleSegment { module_path: module_path },
-        PhaseSegment { name: "resolve" as std.types.NonEmptyStr }
+        std.observation.EntrySegment { source_path: entry },
+        std.observation.ModuleSegment { module_path: module_path },
+        std.observation.PhaseSegment { name: "resolve" as std.types.NonEmptyStr }
       ]
     },
-    transition: Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: resolve),
-    rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
+    rss: std.observation.MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
 }
 
@@ -507,13 +507,13 @@ fn witness_cost_declaration_event(
   std.observation.ObservationEvent {
     subject: std.observation.ObservationSubject {
       segments: [
-        EntrySegment { source_path: entry },
-        DeclarationSegment { declaration: declaration }
+        std.observation.EntrySegment { source_path: entry },
+        std.observation.DeclarationSegment { declaration: declaration }
       ]
     },
-    transition: Concluded { outcome: outcome },
+    transition: std.observation.Concluded { outcome: outcome },
     durations: eval,
-    rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
+    rss: std.observation.MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
 }
 

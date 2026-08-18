@@ -10,7 +10,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // refuses it. It dissolves into SubstrateMandatoryTag when that capability
 // exists, at which point the raw form has no constructor and the gate deletes.
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }
 
 // The field-name class this wall holds at zero. These are the spellings the
@@ -65,7 +65,7 @@ fn lifecycle_carrier_diagnostic(carrier: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^lifecycle_carrier_raw_prose_field,
     at: node_locus(node: carrier),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

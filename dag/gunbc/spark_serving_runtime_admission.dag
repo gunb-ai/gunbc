@@ -6,15 +6,15 @@ data spark_serving_runtime_admission_note: String = "HOST RUNTIME ADMISSION (SPA
 fn spark_serving_parse_nvidia_driver_version(stdout: String) -> gunbc.spark_serving_readback_parse.SparkServingReadbackField {
   let trimmed = trim(s: stdout)
   if trimmed == "" {
-    SparkServingReadbackRefused {
+    gunbc.spark_serving_readback_parse.SparkServingReadbackRefused {
       cause: "nvidia-smi driver_version query returned empty output" as std.types.NonEmptyStr,
     }
   } else {
     match ollama_nvidia_driver_version_from_wire_text(raw: trimmed) {
       Present { value: driver } =>
-        SparkServingReadbackPresent { value: to_string(driver.major) }
+        gunbc.spark_serving_readback_parse.SparkServingReadbackPresent { value: to_string(driver.major) }
       Absent =>
-        SparkServingReadbackRefused {
+        gunbc.spark_serving_readback_parse.SparkServingReadbackRefused {
           cause: join(["nvidia-smi driver_version output is not parseable: ", trimmed], "") as std.types.NonEmptyStr,
         }
     }

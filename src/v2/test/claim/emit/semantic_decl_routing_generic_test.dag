@@ -12,7 +12,7 @@ data semantic_pair_golden: String = concat(rust_struct_derives, "\nstruct Pair<K
 data semantic_pair_wrong_golden: String = concat(rust_struct_derives, "\nstruct Pair<K, V> { value: V, key: K }")
 
 fn sdrg_atom_type(name: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
 fn sdrg_field_edge(name: v2.std.node.Symbol, type_name: v2.std.node.Symbol) -> v2.std.node.Edge {
@@ -20,7 +20,7 @@ fn sdrg_field_edge(name: v2.std.node.Symbol, type_name: v2.std.node.Symbol) -> v
 }
 
 fn sdrg_record(edges: List<v2.std.node.Edge>) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: edges, occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: edges, occurrence_id: SyntheticOccurrence }
 }
 
 fn sdrg_variant_edge(name: v2.std.node.Symbol, payload: Node) -> v2.std.node.Edge {
@@ -29,7 +29,7 @@ fn sdrg_variant_edge(name: v2.std.node.Symbol, payload: Node) -> v2.std.node.Edg
 
 fn semantic_witness_coproduct() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: Disj },
     children: [
       sdrg_variant_edge(name: ^Holds, payload: sdrg_record(edges: [ sdrg_field_edge(name: ^value, type_name: ^C) ])),
       sdrg_variant_edge(name: ^Violates, payload: sdrg_record(edges: [ sdrg_field_edge(name: ^diagnostic, type_name: ^Diagnostic) ]))

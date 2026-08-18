@@ -2,19 +2,19 @@ module v2.test.lens_application.substitute_at_depth_two
 
 
 data substitute_original_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^substitute_original_leaf_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^substitute_original_leaf_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data substitute_replacement_leaf: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^substitute_replacement_leaf_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^substitute_replacement_leaf_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data substitute_middle: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^substitute_step_b },
@@ -25,7 +25,7 @@ data substitute_middle: Node = v2.std.node.Node {
 }
 
 data substitute_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^substitute_step_a },
@@ -36,12 +36,12 @@ data substitute_root: Node = v2.std.node.Node {
 }
 
 data substitute_expected_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
       label: Named { name: ^substitute_step_a },
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           v2.std.node.Edge {
             label: Named { name: ^substitute_step_b },
@@ -71,14 +71,14 @@ fn substitute_at_depth_two_claim_rhs() -> Node {
     substitute_expected_root
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_substitute_at_depth_two: v2.std.verification.TestClaim = EqualsClaim {
+data claim_substitute_at_depth_two: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_application/substitute_at_depth_two: path depth 2 preserves root ancestry",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: substitute_expected_root,

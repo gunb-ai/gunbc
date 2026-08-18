@@ -110,7 +110,7 @@ test fn w_openai_error_type_known_and_other() -> Bool {
 }
 
 test fn w_anthropic_image_media_type() -> Bool {
-  let source = Base64Image { media_type: ImageJpeg, data: "abc" }
+  let source = extdeps.llm.anthropic.Base64Image { media_type: ImageJpeg, data: "abc" }
   match source {
     Base64Image { media_type: mt, data: _ } =>
       mt == ImageJpeg
@@ -130,18 +130,18 @@ test fn w_anthropic_image_media_type_other() -> Bool {
 }
 
 test fn w_cache_control_type() -> Bool {
-  let row = extdeps.llm.anthropic.CacheControl { type: CacheEphemeral {} }
+  let row = extdeps.llm.anthropic.CacheControl { type: extdeps.llm.anthropic.CacheEphemeral {} }
   match row.type {
-    CacheEphemeral {} => cache_control_type_label(CacheEphemeral {}) == "ephemeral"
+    CacheEphemeral {} => cache_control_type_label(extdeps.llm.anthropic.CacheEphemeral {}) == "ephemeral"
   }
 }
 
 test fn w_anthropic_messages_object_type() -> Bool {
   let body = extdeps.llm.anthropic.AnthropicMessages200Body {
     id: "msg_01",
-    type: MessagesObjectMessage {},
+    type: extdeps.llm.anthropic.MessagesObjectMessage {},
     role: extdeps.llm.anthropic.Assistant {},
-    content: [MessagesTextBlock { text: "hi", citations: none }],
+    content: [extdeps.llm.anthropic.MessagesTextBlock { text: "hi", citations: none }],
     model: "claude-sonnet-4-6",
     stop_reason: EndTurn,
     stop_sequence: none,
@@ -156,14 +156,14 @@ test fn w_anthropic_messages_object_type() -> Bool {
   }
   match body.type {
     MessagesObjectMessage {} =>
-      anthropic_messages_object_type_label(MessagesObjectMessage {}) == "message"
+      anthropic_messages_object_type_label(extdeps.llm.anthropic.MessagesObjectMessage {}) == "message"
   }
 }
 
 test fn w_anthropic_error_envelope_and_detail_types() -> Bool {
   let envelope_ok = match anthropic_error_example.type {
     AnthropicErrorEnvelope {} =>
-      anthropic_error_envelope_type_label(AnthropicErrorEnvelope {}) == "error"
+      anthropic_error_envelope_type_label(extdeps.llm.anthropic_errors.AnthropicErrorEnvelope {}) == "error"
   }
   envelope_ok
     && anthropic_error_example.error.type == AnthropicAuthenticationError

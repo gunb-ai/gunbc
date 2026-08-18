@@ -12,13 +12,13 @@ type HostEffectPlanContext {
 data host_effect_plan_unsupported_step_reason: String = "host_effect_plan_apply: control-flow step refuses on the typed host_effect_apply spine until predicate interpretation lands; only Do-effect leaves are supported (Wave A2 keystone, host-effect-orchestration.md std.effect_plan band)"
 
 fn host_effect_plan_placeholder_effect() -> gunbc.host_effect.HostEffect {
-  ShellCommand { script: "" }
+  gunbc.host_effect.ShellCommand { script: "" }
 }
 
 fn host_effect_plan_unsupported_step_refusal(
   ctx: HostEffectPlanContext,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  NotConverged {
+  std.realization_reconcile.NotConverged {
     reason: host_effect_plan_unsupported_step_reason,
     applied: gunbc.host_effect.HostEffectIntent {
       target: ctx.target,
@@ -86,7 +86,7 @@ fn host_effect_plan_apply(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match v2.std.algebra.list_head(xs: plan.steps) {
     HeadAbsent =>
-      NotConverged {
+      std.realization_reconcile.NotConverged {
         reason: "host_effect_plan_apply: empty plan has no effect to apply",
         applied: gunbc.host_effect.HostEffectIntent {
           target: ctx.target,

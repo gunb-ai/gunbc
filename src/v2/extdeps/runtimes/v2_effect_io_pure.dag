@@ -30,7 +30,7 @@ type V4EffectIoPureRuntime {
 
 fn effect_io_pure_unit_type_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^effect_io_pure_unit_type } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^effect_io_pure_unit_type } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -38,7 +38,7 @@ fn effect_io_pure_unit_type_node() -> Node {
 
 fn effect_io_pure_operation_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^effect_io_pure_operation } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^effect_io_pure_operation } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -46,7 +46,7 @@ fn effect_io_pure_operation_node() -> Node {
 
 fn effect_io_pure_effect_signature_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^effect_io_pure_effect_signature } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^effect_io_pure_effect_signature } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -82,7 +82,7 @@ fn effect_io_pure_args_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^effect_io_pure_args_absent,
     at: node_locus(node: effect_io_pure_operation_node()),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -100,9 +100,9 @@ fn effect_io_pure_locator_from_args(
               identity: digest
             }
           }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -110,7 +110,7 @@ fn effect_io_pure_locator_unrepresentable_diagnostic() -> v2.std.diagnostic.Diag
   v2.std.diagnostic.Diagnostic {
     reason: ^effect_io_pure_locator_unrepresentable,
     at: node_locus(node: effect_io_pure_operation_node()),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -119,14 +119,14 @@ fn effect_io_pure_locator_identity(value: v2.std.runtime.RuntimeValue) -> Witnes
     RuntimeValueNodeProjected { node: reified } =>
       Holds { value: content_hash(n: reified) }
     RuntimeValueNodeUnrepresentable =>
-      Violates { diagnostic: effect_io_pure_locator_unrepresentable_diagnostic() }
+      v2.std.witness.Violates { diagnostic: effect_io_pure_locator_unrepresentable_diagnostic() }
   }
 }
 
 fn effect_io_pure_write_payload_from_args(args: List<v2.std.runtime.RuntimeValue>) -> Witness<v2.std.runtime.RuntimeValue> {
   match list_nth(xs: args, wanted: 1, absent: effect_io_pure_args_absent_diagnostic()) {
     Holds { value: payload } => Holds { value: payload }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -168,7 +168,7 @@ fn effect_io_pure_store_lookup(
               d: v2.std.diagnostic.Diagnostic {
                 reason: ^effect_io_pure_resource_absent,
                 at: node_locus(node: effect_io_pure_operation_node()),
-                correction: Unavailable { reason: ExternalContractUnknown }
+                correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
               }
             )
         }
@@ -179,7 +179,7 @@ fn effect_io_pure_store_lookup(
       d: v2.std.diagnostic.Diagnostic {
         reason: ^effect_io_pure_backend_mismatch,
         at: node_locus(node: effect_io_pure_operation_node()),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
     )
   }
@@ -210,7 +210,7 @@ fn effect_io_pure_handle_write(
               d: v2.std.diagnostic.Diagnostic {
                 reason: ^effect_io_pure_backend_mismatch,
                 at: node_locus(node: effect_io_pure_operation_node()),
-                correction: Unavailable { reason: ExternalContractUnknown }
+                correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
               }
             )
           }
@@ -287,7 +287,7 @@ fn effect_io_pure_append_receipt(
   result: Outcome<v2.std.runtime.RuntimeValue>
 ) -> v2.std.runtime.EffectReceiptLog {
   v2.std.runtime.EffectReceiptLog {
-    entries: Cons {
+    entries: std.algebra.Cons {
       head: v2.std.runtime.EffectReceipt { request: request, result: result },
       tail: log.entries
     }
@@ -332,7 +332,7 @@ fn effect_io_pure_read_write_roundtrip(
 ) -> Bool {
   match effect_io_pure_locator_from_args(
     backend: backend,
-    args: Cons { head: locator_arg, tail: Empty }
+    args: std.algebra.Cons { head: locator_arg, tail: Empty }
   ) {
     Holds { value: locator } =>
       effect_io_pure_roundtrip_through_store(
@@ -353,7 +353,7 @@ fn effect_io_pure_roundtrip_through_store(
 ) -> Bool {
   let store0 = effect_io_pure_empty_fixture_store(backend: backend)
   let bundle0 = effect_io_pure_handler_binding(store: store0)
-  let write_args = Cons { head: locator_arg, tail: Cons { head: payload, tail: Empty } }
+  let write_args = std.algebra.Cons { head: locator_arg, tail: std.algebra.Cons { head: payload, tail: Empty } }
   let write_request = effect_io_pure_write_request(args: write_args)
   let write_handler = effect_handler_for_kind(binding: bundle0.handlers, kind: WriteResource)
   match effect_io_pure_invoke_handler(handler: write_handler, request: write_request) {
@@ -365,7 +365,7 @@ fn effect_io_pure_roundtrip_through_store(
           payload: written
         )
         let bundle1 = effect_io_pure_handler_binding(store: store1)
-        let read_args = Cons { head: locator_arg, tail: Empty }
+        let read_args = std.algebra.Cons { head: locator_arg, tail: Empty }
         let read_request = effect_io_pure_read_request(args: read_args)
         let read_handler = effect_handler_for_kind(binding: bundle1.handlers, kind: ReadResource)
         match effect_io_pure_invoke_handler(handler: read_handler, request: read_request) {

@@ -3,10 +3,10 @@ module v2.test.manual.go_grammar_claim
 
 fn go_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^go_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^go_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^go_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^go_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
@@ -48,7 +48,7 @@ fn go_grammar_parse_fixture() -> Outcome<v2.std.grammar.ParseTree> {
   }
 }
 
-data claim_go_grammar_validates: v2.std.verification.TestClaim = EqualsClaim {
+data claim_go_grammar_validates: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "go_grammar_root passes grammar_validate_for_parse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_claim_bool_atom(b: go_grammar_validates_fixture()),
@@ -56,7 +56,7 @@ data claim_go_grammar_validates: v2.std.verification.TestClaim = EqualsClaim {
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_go_grammar_parses_tokens: v2.std.verification.TestClaim = EqualsClaim {
+data claim_go_grammar_parses_tokens: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "go production parse_production accepts lexer output for func-add source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_claim_bool_atom(b: go_grammar_parse_accepted()),

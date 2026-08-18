@@ -108,7 +108,7 @@ fn ci_heal_skew_fetch_argv(ref_spelling: String) -> List<String> {
 }
 
 fn ci_heal_skew_fetch_quiet_ok(ref_spelling: String) -> v2.std.orchestration.Predicate {
-  ExitZero {
+  v2.std.orchestration.ExitZero {
     run: ci_heal_skew_git_run_redirected(
       argv: ci_heal_skew_fetch_argv(ref_spelling: ref_spelling),
       r: DiscardErr
@@ -142,7 +142,7 @@ fn ci_heal_skew_provenance_fetch_step() -> v2.std.orchestration.PipelineStep {
 fn ci_heal_skew_unresolvable_provenance_step() -> v2.std.orchestration.PipelineStep {
   If {
     cond: Not {
-      inner: ExitZero {
+      inner: v2.std.orchestration.ExitZero {
         run: ci_heal_skew_git_run_redirected(
           argv: shape_git_rev_parse_verify_quiet_argv(target: ci_heal_skew_built_from_ref),
           r: DiscardOut
@@ -154,7 +154,7 @@ fn ci_heal_skew_unresolvable_provenance_step() -> v2.std.orchestration.PipelineS
         ci_heal_skew_diag(text: "heal refused: cannot resolve the revision the release binary was built from"),
         ci_heal_skew_diag(text: "  wanted: $BUILT_FROM (github.sha — the ref the build job compiled)"),
         ci_heal_skew_diag(text: "  without it this job cannot establish that its binary and its tree agree."),
-        Exit { status: "1" }
+        v2.std.orchestration.Exit { status: "1" }
       ],
       on_failure: FailFast
     },
@@ -165,7 +165,7 @@ fn ci_heal_skew_unresolvable_provenance_step() -> v2.std.orchestration.PipelineS
 fn ci_heal_skew_git_cmdsubst_bind(var_name: String, args: List<String>) -> v2.std.orchestration.PipelineStep {
   Let {
     name: var_name,
-    value: ExprCmdSubst { callee: "git", args: args }
+    value: v2.std.orchestration.ExprCmdSubst { callee: "git", args: args }
   }
 }
 
@@ -255,7 +255,7 @@ fn ci_heal_skew_authored_conflict_refusal() -> v2.std.orchestration.Pipeline {
       ci_heal_skew_diag_list(var_name: ci_heal_skew_authored_conflicts_var),
       ci_heal_skew_diag(text: "  a semantic conflict is the author's to resolve; this job will not guess."),
       ci_heal_skew_git_step(argv: shape_git_merge_abort_argv()),
-      Exit { status: "1" }
+      v2.std.orchestration.Exit { status: "1" }
     ],
     on_failure: FailFast
   }
@@ -301,7 +301,7 @@ fn ci_heal_skew_unmerged_index_refusal() -> v2.std.orchestration.Pipeline {
       ci_heal_skew_diag_list(var_name: ci_heal_skew_still_unmerged_var),
       ci_heal_skew_diag(text: "  a commit over an unmerged index is never fabricated; this job will not guess."),
       ci_heal_skew_git_step(argv: shape_git_merge_abort_argv()),
-      Exit { status: "1" }
+      v2.std.orchestration.Exit { status: "1" }
     ],
     on_failure: FailFast
   }
@@ -313,7 +313,7 @@ fn ci_heal_skew_conflict_arm() -> v2.std.orchestration.Pipeline {
       ci_heal_skew_conflicts_bind(),
       ci_heal_skew_authored_conflicts_bind(),
       If {
-        cond: StrNonempty { operand: concat("\"$", concat(ci_heal_skew_authored_conflicts_var, "\"")) },
+        cond: v2.std.orchestration.StrNonempty { operand: concat("\"$", concat(ci_heal_skew_authored_conflicts_var, "\"")) },
         then_: ci_heal_skew_authored_conflict_refusal(),
         else_: Absent
       },
@@ -323,7 +323,7 @@ fn ci_heal_skew_conflict_arm() -> v2.std.orchestration.Pipeline {
       ci_heal_skew_resolve_step(sink_argv: shape_git_add_argv()),
       ci_heal_skew_still_unmerged_bind(),
       If {
-        cond: StrNonempty { operand: concat("\"$", concat(ci_heal_skew_still_unmerged_var, "\"")) },
+        cond: v2.std.orchestration.StrNonempty { operand: concat("\"$", concat(ci_heal_skew_still_unmerged_var, "\"")) },
         then_: ci_heal_skew_unmerged_index_refusal(),
         else_: Absent
       },
@@ -345,7 +345,7 @@ fn ci_heal_skew_still_skewed_refusal() -> v2.std.orchestration.Pipeline {
     steps: [
       ci_heal_skew_diag(text: "heal refused: still skewed after merging $BUILT_FROM"),
       ci_heal_skew_diag(text: "  this arm should be unreachable — merging BUILT_FROM makes it an ancestor of HEAD, so the seed-ahead set is empty by construction. Reaching it means that invariant broke; do not re-run, investigate."),
-      Exit { status: "1" }
+      v2.std.orchestration.Exit { status: "1" }
     ],
     on_failure: FailFast
   }
@@ -365,7 +365,7 @@ fn ci_heal_skew_remedy_arm() -> v2.std.orchestration.Pipeline {
       ),
       If {
         cond: Not {
-          inner: ExitZero {
+          inner: v2.std.orchestration.ExitZero {
             run: ci_heal_skew_git_run(
               argv: shape_git_merge_no_edit_argv(ref: ci_heal_skew_built_from_ref)
             )
@@ -376,7 +376,7 @@ fn ci_heal_skew_remedy_arm() -> v2.std.orchestration.Pipeline {
       },
       ci_heal_skew_seed_ahead_bind(var_name: ci_heal_skew_ahead_after_var),
       If {
-        cond: StrNonempty { operand: concat("\"$", concat(ci_heal_skew_ahead_after_var, "\"")) },
+        cond: v2.std.orchestration.StrNonempty { operand: concat("\"$", concat(ci_heal_skew_ahead_after_var, "\"")) },
         then_: ci_heal_skew_still_skewed_refusal(),
         else_: Absent
       },
@@ -391,13 +391,13 @@ fn ci_heal_binary_source_skew_guard_intent() -> v2.std.orchestration.Pipeline {
     steps: [
       Let {
         name: "BUILT_FROM",
-        value: ExprLit { spelling: ci_heal_skew_built_from_binding }
+        value: v2.std.orchestration.ExprLit { spelling: ci_heal_skew_built_from_binding }
       },
       ci_heal_skew_provenance_fetch_step(),
       ci_heal_skew_unresolvable_provenance_step(),
       ci_heal_skew_seed_ahead_bind(var_name: ci_heal_skew_ahead_var),
       If {
-        cond: StrNonempty { operand: concat("\"$", concat(ci_heal_skew_ahead_var, "\"")) },
+        cond: v2.std.orchestration.StrNonempty { operand: concat("\"$", concat(ci_heal_skew_ahead_var, "\"")) },
         then_: ci_heal_skew_remedy_arm(),
         else_: Absent
       },

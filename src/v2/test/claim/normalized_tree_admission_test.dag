@@ -4,14 +4,14 @@ module v2.test.claim.normalized_tree_admission
 data normalized_tree_admission_witness_note: String = "BL-1's discriminating evidence. The invalid state is a root carrying wrapper-retention evidence presented to resolve as normalized -- which was reachable while NormalizedTree was an alias for Node, because the carrier had no door to refuse at. These controls execute the door: retention refuses, a clean tree admits, and retention is found ANYWHERE in the diagnostic list rather than at its head, because rejected_with_pending prepends outer diagnostics and a head-only read is systematically wrong."
 
 fn probe_shell() -> Node {
-  node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: [])
 }
 
 fn unrelated_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^normalized_tree_probe_unrelated_reason,
     at: node_locus(node: probe_shell()),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -19,7 +19,7 @@ fn retention_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^body_lowering_reason_wrapper_retained_emitted,
     at: node_locus(node: probe_shell()),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -33,7 +33,7 @@ fn is_rejected(o: Outcome<v2.compiler.normalized_tree.NormalizedTree>) -> Bool {
 test fn a_retained_root_is_refused_at_the_carrier_door() -> Bool {
   is_rejected(o: admit_normalized_tree(
     root: probe_shell(),
-    diagnostics: Some {
+    diagnostics: v2.std.diagnostic.Some {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: retention_diagnostic(), tail: [] }
     }
   ))
@@ -42,7 +42,7 @@ test fn a_retained_root_is_refused_at_the_carrier_door() -> Bool {
 test fn retention_is_found_past_the_diagnostic_head_RED() -> Bool {
   is_rejected(o: admit_normalized_tree(
     root: probe_shell(),
-    diagnostics: Some {
+    diagnostics: v2.std.diagnostic.Some {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics {
         head: unrelated_diagnostic(),
         tail: [retention_diagnostic()]
@@ -58,7 +58,7 @@ test fn a_clean_root_is_admitted_positive_control() -> Bool {
 test fn an_unrelated_diagnostic_does_not_refuse_RED() -> Bool {
   (is_rejected(o: admit_normalized_tree(
     root: probe_shell(),
-    diagnostics: Some {
+    diagnostics: v2.std.diagnostic.Some {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
     }
   )) == false)
@@ -72,13 +72,13 @@ test fn the_production_retention_producer_is_refused_by_the_door() -> Bool {
 }
 
 fn two_probe_roots() -> FreeMonoid<Node> {
-  Cons { head: probe_shell(), tail: Cons { head: probe_shell(), tail: Empty } }
+  std.algebra.Cons { head: probe_shell(), tail: std.algebra.Cons { head: probe_shell(), tail: Empty } }
 }
 
 test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool {
   match admit_normalized_roots(
     roots: two_probe_roots(),
-    diagnostics: Some {
+    diagnostics: v2.std.diagnostic.Some {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
     }
   ) {
@@ -86,7 +86,7 @@ test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool {
     Accepted { value: _, diagnostics: d } =>
       diagnostics_eq(
         a: d,
-        b: Some {
+        b: v2.std.diagnostic.Some {
           diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
         }
       )
@@ -96,7 +96,7 @@ test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool {
 test fn plural_admission_refuses_a_retained_batch() -> Bool {
   match admit_normalized_roots(
     roots: two_probe_roots(),
-    diagnostics: Some {
+    diagnostics: v2.std.diagnostic.Some {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: retention_diagnostic(), tail: [] }
     }
   ) {

@@ -131,7 +131,7 @@ test fn rust_literal_bind_string_rope_refusal_is_executed() -> Bool {
       match target_value_expression_tokens_from_target(
         expr: target_value_expression_string_literal(
           value: v2.std.node.Node {
-            kind: TypeNode { connective: Conj },
+            kind: v2.std.node.TypeNode { connective: Conj },
             children: [],
             occurrence_id: SyntheticOccurrence
           }

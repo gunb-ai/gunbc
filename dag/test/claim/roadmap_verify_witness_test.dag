@@ -27,7 +27,7 @@ test fn the_two_lab_instances_really_do_straddle_the_transport_split() -> Bool {
 data binding_law_note: String = "THE THREE-SITE DISAGREEMENT, pinned at the one authority that now decides it. gunbc.roadmap_authority read any ExecutionContract as bound; gunbc.roadmap_verify read an empty validation list as unbound; gunbc.roadmap_dispatch_environment refused it. Empty contracts are constructible, so the disagreement was reachable — a node bound to one would leave the acceptance frontier while remaining unverifiable and undispatchable.\\n\\nThe empty contract is the discriminating input, and the closure keeps it distinct from the unspecified one because their remedies differ: author a contract, versus fix the one you authored. A Bool-only authority would have collapsed them and taken dispatch_environment's located diagnostics with it."
 
 fn empty_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
-  ExecutionContract { validations: [], extra_capabilities: [] }
+  gunbc.roadmap_execution_contract.ExecutionContract { validations: [], extra_capabilities: [] }
 }
 
 fn one_validation_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
@@ -66,7 +66,7 @@ test fn a_real_contract_is_bound_and_carries_its_validations() -> Bool {
 // Both wet entries returned VerificationOutcome where a func must return ProcessExit, so the process boundary had no exit status to report and every outcome looked alike to a caller. These claims pin the mapping, and the arm that matters most is the refusal: a check that could not run exits FAILURE, because exiting success on an unanswered question is the absorbing fallback in its purest form.
 test fn passing_verification_exits_success() -> Bool {
   match verification_process_exit(
-    outcome: VerificationPassed { node_id: "n", validations_run: 1 },
+    outcome: gunbc.roadmap_verify.VerificationPassed { node_id: "n", validations_run: 1 },
   ) {
     ExitSuccess => true
     ExitFailure { code: _, reason: _ } => false
@@ -75,7 +75,7 @@ test fn passing_verification_exits_success() -> Bool {
 
 test fn refusal_and_failure_and_unbound_all_exit_failure() -> Bool {
   let refused = match verification_process_exit(
-    outcome: VerificationRefused {
+    outcome: gunbc.roadmap_verify.VerificationRefused {
       node_id: "n",
       label: "gunbc-claim" as std.types.NonEmptyStr,
       reason: "transport refused",
@@ -85,7 +85,7 @@ test fn refusal_and_failure_and_unbound_all_exit_failure() -> Bool {
     ExitSuccess => false
   }
   let failed = match verification_process_exit(
-    outcome: VerificationFailed {
+    outcome: gunbc.roadmap_verify.VerificationFailed {
       node_id: "n",
       label: "gunbc-claim" as std.types.NonEmptyStr,
       detail: "exited 1",
@@ -95,7 +95,7 @@ test fn refusal_and_failure_and_unbound_all_exit_failure() -> Bool {
     ExitSuccess => false
   }
   let unbound = match verification_process_exit(
-    outcome: VerificationUnbound { node_id: "n" },
+    outcome: gunbc.roadmap_verify.VerificationUnbound { node_id: "n" },
   ) {
     ExitFailure { code: _, reason: _ } => true
     ExitSuccess => false
@@ -114,7 +114,7 @@ fn sample_receipt() -> gunbc.roadmap_verify.LegacySingleValidationVerificationRe
     revision: "deadbeefcafe" as std.types.NonEmptyStr,
     validation_label: "gunbc-claim" as std.types.NonEmptyStr,
     command_wire: "/opt/gunbc/bin/gunbc run --claim-run",
-    exit: ExitObserved { code: 0 },
+    exit: gunbc.roadmap_verify.ExitObserved { code: 0 },
     evidence: "true",
   }
 }
@@ -141,7 +141,7 @@ test fn unobserved_exit_never_serializes_as_zero() -> Bool {
       revision: "r" as std.types.NonEmptyStr,
       validation_label: "gunbc-claim" as std.types.NonEmptyStr,
       command_wire: "gunbc run",
-      exit: ExitNotObserved { reason: "transport refused" },
+      exit: gunbc.roadmap_verify.ExitNotObserved { reason: "transport refused" },
       evidence: "",
     },
   )
@@ -153,7 +153,7 @@ test fn unobserved_exit_never_serializes_as_zero() -> Bool {
 // A refusal dispatches NOTHING, which the wrong-host defect made load-bearing rather than theoretical: an unreachable srv1 now lands in EnvironmentBlocked instead of arriving as a failure that reads as incomplete work and warrants an agent.
 test fn refusal_blocks_the_environment_and_does_not_warrant_dispatch() -> Bool {
   let blocked = match dispatch_disposition_for(
-    outcome: VerificationRefused {
+    outcome: gunbc.roadmap_verify.VerificationRefused {
       node_id: "n",
       label: "gunbc-claim" as std.types.NonEmptyStr,
       reason: "transport to srv1 refused",
@@ -164,7 +164,7 @@ test fn refusal_blocks_the_environment_and_does_not_warrant_dispatch() -> Bool {
     _ => false
   }
   let warranted = match dispatch_disposition_for(
-    outcome: VerificationFailed {
+    outcome: gunbc.roadmap_verify.VerificationFailed {
       node_id: "n",
       label: "gunbc-claim" as std.types.NonEmptyStr,
       detail: "exited 1",
@@ -174,7 +174,7 @@ test fn refusal_blocks_the_environment_and_does_not_warrant_dispatch() -> Bool {
     _ => false
   }
   let acceptance = match dispatch_disposition_for(
-    outcome: VerificationPassed { node_id: "n", validations_run: 2 },
+    outcome: gunbc.roadmap_verify.VerificationPassed { node_id: "n", validations_run: 2 },
   ) {
     ReadyForAcceptance { node_id: _, validations_run } => validations_run == 2
     _ => false

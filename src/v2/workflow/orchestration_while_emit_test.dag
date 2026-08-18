@@ -13,24 +13,24 @@ data orch_while_assign_cgroup_dir_command: String = "d=\"/sys/fs/cgroup$(awk -F:
 
 data orch_while_path_ref: std.path_intent.PathIntent = PathRef { name: "d" as std.types.NonEmptyStr }
 
-data orch_while_root_path: std.path_intent.PathIntent = PathLiteral {
+data orch_while_root_path: std.path_intent.PathIntent = std.path_intent.PathLiteral {
   parts: std.types.FilePathParts { segments: ["sys", "fs", "cgroup"] }
 }
 
-data orch_while_memory_peak_path: std.path_intent.PathIntent = PathJoin {
+data orch_while_memory_peak_path: std.path_intent.PathIntent = std.path_intent.PathJoin {
   base: orch_while_path_ref,
   suffix: std.types.FilePathParts { segments: ["memory.peak"] }
 }
 
 data orch_while_predicate: std.path_intent.PathPredicate = And {
-  lhs: PathNonempty { path: orch_while_path_ref },
+  lhs: std.path_intent.PathNonempty { path: orch_while_path_ref },
   rhs: And {
-    lhs: PathNotEq {
+    lhs: std.path_intent.PathNotEq {
       lhs: orch_while_path_ref,
       rhs: orch_while_root_path
     },
     rhs: Not {
-      inner: PathEntryKind {
+      inner: std.path_intent.PathEntryKind {
         path: orch_while_memory_peak_path,
         kind: RegularFile
       }
@@ -70,7 +70,7 @@ data orch_while_cond_command: String = orch_while_cond_model_text()
 data orch_while_body_command: String = orch_while_body_model_text()
 
 data orch_while_locate_intent: v2.std.orchestration.PipelineStep = While {
-  cond: ExitZero {
+  cond: v2.std.orchestration.ExitZero {
     run: v2.std.orchestration.Run {
       command: orch_while_cond_command,
       env: [],
@@ -94,7 +94,7 @@ data orch_while_locate_intent: v2.std.orchestration.PipelineStep = While {
 }
 
 data orch_while_locate_perturbed_intent: v2.std.orchestration.PipelineStep = While {
-  cond: ExitZero {
+  cond: v2.std.orchestration.ExitZero {
     run: v2.std.orchestration.Run {
       command: concat(orch_while_cond_command, " # perturbed"),
       env: [],
@@ -118,7 +118,7 @@ data orch_while_locate_perturbed_intent: v2.std.orchestration.PipelineStep = Whi
 }
 
 data orch_while_locate_body_perturbed_intent: v2.std.orchestration.PipelineStep = While {
-  cond: ExitZero {
+  cond: v2.std.orchestration.ExitZero {
     run: v2.std.orchestration.Run {
       command: orch_while_cond_command,
       env: [],
@@ -194,7 +194,7 @@ data orch_while_raw_while_deferred_note: String = "Raw While construction refusa
 test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
   match orch_emit_step(
     s: While {
-      cond: ExitZero {
+      cond: v2.std.orchestration.ExitZero {
         run: v2.std.orchestration.Run {
           command: concat(orch_while_cond_command, " # raw-while"),
           env: [],
@@ -226,7 +226,7 @@ test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
 
 test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> Bool {
   let regular = match bash_path_predicate_target_model(
-    predicate: PathEntryKind {
+    predicate: std.path_intent.PathEntryKind {
       path: orch_while_memory_peak_path,
       kind: RegularFile
     }
@@ -235,7 +235,7 @@ test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> 
     Rejected { diagnostics: _ } => ""
   }
   let directory = match bash_path_predicate_target_model(
-    predicate: PathEntryKind {
+    predicate: std.path_intent.PathEntryKind {
       path: orch_while_memory_peak_path,
       kind: Directory
     }
@@ -244,7 +244,7 @@ test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> 
     Rejected { diagnostics: _ } => ""
   }
   let missing = match bash_path_predicate_target_model(
-    predicate: PathEntryKind {
+    predicate: std.path_intent.PathEntryKind {
       path: orch_while_memory_peak_path,
       kind: Missing
     }

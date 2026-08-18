@@ -44,7 +44,7 @@ fn refine<B>(base: B, by: Validation<B>, at: v2.std.diagnostic.Locus) -> Outcome
         d: v2.std.diagnostic.Diagnostic {
           reason: by.reason,
           at: at,
-          correction: Unavailable { reason: UserInputBoundary }
+          correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
         }
       )
     }
@@ -269,7 +269,7 @@ fn refine_ordered_iteration<B>(base: B, by: IterationClassifier<B>, at: v2.std.d
           d: v2.std.diagnostic.Diagnostic {
             reason: ^naming_the_leak,
             at: at,
-            correction: Unavailable { reason: UserInputBoundary }
+            correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
           }
         )
       }

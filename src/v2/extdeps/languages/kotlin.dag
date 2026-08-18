@@ -201,33 +201,33 @@ data kotlin_nonnumeric_facts_catalog: List<KotlinNonNumericPrimitiveFacts> = [
   kotlin_facts_nothing
 ]
 
-data kotlin_concrete_token_head: v2.std.compilers.target_model.ConcreteSyntaxToken = FixedToken { token_class: ^kotlin_token_kw_fun }
+data kotlin_concrete_token_head: v2.std.compilers.target_model.ConcreteSyntaxToken = v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_kw_fun }
 
 fn kotlin_concrete_token_tail() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_fn_add },
-    FixedToken { token_class: ^kotlin_token_lparen },
-    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_x },
-    FixedToken { token_class: ^kotlin_token_colon },
-    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_type_int },
-    FixedToken { token_class: ^kotlin_token_comma },
-    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_y },
-    FixedToken { token_class: ^kotlin_token_colon },
-    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_type_int },
-    FixedToken { token_class: ^kotlin_token_rparen },
-    FixedToken { token_class: ^kotlin_token_colon },
-    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_type_int },
-    FixedToken { token_class: ^kotlin_token_lbrace },
-    FixedToken { token_class: ^kotlin_token_kw_return },
-    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_x },
-    FixedToken { token_class: ^kotlin_token_plus },
-    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_y },
-    FixedToken { token_class: ^kotlin_token_rbrace }
+    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_fn_add },
+    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_comma },
+    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_colon },
+    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_type_int },
+    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_lbrace },
+    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_kw_return },
+    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_plus },
+    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_rbrace }
   ]
 }
 
 fn kotlin_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
-  Cons {
+  std.algebra.Cons {
     head: kotlin_concrete_token_head,
     tail: kotlin_concrete_token_tail()
   }
@@ -239,7 +239,7 @@ data kotlin_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn kotlin_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -302,7 +302,7 @@ fn kotlin_float_value_format_node(value_format: KotlinFloatValueFormat) -> Node 
 fn kotlin_scalar_node(scalar: KotlinScalar) -> Node {
   match scalar {
     IntScalar { width } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         kotlin_named_edge(
           name: ^kotlin_facts_field_scalar_classifier,
@@ -313,7 +313,7 @@ fn kotlin_scalar_node(scalar: KotlinScalar) -> Node {
       occurrence_id: SyntheticOccurrence
 }
     FloatScalar { width } => v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         kotlin_named_edge(
           name: ^kotlin_facts_field_scalar_classifier,
@@ -333,7 +333,7 @@ fn kotlin_scalar_node(scalar: KotlinScalar) -> Node {
 
 fn kotlin_integer_facts_node(facts: KotlinIntegerPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_facts_field_surface_spelling,
@@ -360,7 +360,7 @@ fn kotlin_integer_facts_node(facts: KotlinIntegerPrimitiveFacts) -> Node {
 
 fn kotlin_float_facts_node(facts: KotlinFloatPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_facts_field_surface_spelling,
@@ -386,7 +386,7 @@ fn kotlin_float_facts_node(facts: KotlinFloatPrimitiveFacts) -> Node {
 
 fn kotlin_nonnumeric_facts_node(facts: KotlinNonNumericPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_facts_field_surface_spelling,
@@ -463,13 +463,13 @@ fn kotlin_nonnumeric_value_fact_node(value_fact: KotlinNonNumericValueFact) -> N
 fn kotlin_integer_spec_facts(facts: KotlinIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: kotlin_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
           v2.std.optional.Present { value: kotlin_int_width_node(width: facts.width) }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}) {
           v2.std.optional.Present { value: kotlin_atom(id: ^kotlin_tag_signed) }
-      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}) {
           v2.std.optional.Present { value: kotlin_overflow_node(overflow: facts.overflow) }
       } else if axis == ^kotlin_primitive_fact_axis_runtime_representation {
           v2.std.optional.Present { value: kotlin_runtime_representation_node(representation: facts.representation) }
@@ -485,9 +485,9 @@ fn kotlin_integer_spec_facts(facts: KotlinIntegerPrimitiveFacts) -> Map<v2.std.n
 fn kotlin_float_spec_facts(facts: KotlinFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: kotlin_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
           v2.std.optional.Present { value: kotlin_float_width_node(width: facts.width) }
       } else if axis == ^kotlin_primitive_fact_axis_value_format {
           v2.std.optional.Present { value: kotlin_float_value_format_node(value_format: facts.value_format) }
@@ -505,7 +505,7 @@ fn kotlin_float_spec_facts(facts: KotlinFloatPrimitiveFacts) -> Map<v2.std.node.
 fn kotlin_nonnumeric_spec_facts(facts: KotlinNonNumericPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: kotlin_atom(id: facts.surface_spelling) }
       } else {
           if axis == kotlin_nonnumeric_value_fact_axis(value_fact: facts.value_fact) {
@@ -642,7 +642,7 @@ fn kotlin_ordered_ring_integer_algebra_witness_body(
   representation: KotlinRuntimeRepresentation
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_witness_integer_ordered_ring,
@@ -678,7 +678,7 @@ fn kotlin_integer_algebra_witness_node(facts: KotlinOrderedRingIntegerFacts) -> 
 
 fn kotlin_float_algebra_witness_node(facts: KotlinFloatPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_witness_float_approximate_field,
@@ -699,7 +699,7 @@ fn kotlin_float_algebra_witness_node(facts: KotlinFloatPrimitiveFacts) -> Node {
 
 fn kotlin_bool_algebra_witness_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_witness_bool_boolean_algebra,
@@ -841,7 +841,7 @@ fn kotlin_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
 
 fn kotlin_integer_inhabitant_node(id: v2.std.node.Symbol, facts: KotlinIntegerPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(name: ^kotlin_inhabitant_field_atom, target: kotlin_atom(id: id)),
       kotlin_named_edge(
@@ -859,7 +859,7 @@ fn kotlin_inhabitant_int_node() -> Node {
 
 fn kotlin_declared_inhabitants_root() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(name: ^kotlin_inhabitant_field_int, target: kotlin_inhabitant_int_node())
     ],
@@ -873,7 +873,7 @@ fn kotlin_selection_policy_node() -> Node {
 
 fn kotlin_param_binding_node(binding: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_emitted_field_binding,
@@ -890,7 +890,7 @@ fn kotlin_param_binding_node(binding: v2.std.node.Symbol) -> Node {
 
 fn kotlin_add_fn_signature_arrow() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: kotlin_inhabitant_int_node() },
       v2.std.node.Edge { label: Positional, target: kotlin_inhabitant_int_node() },
@@ -902,7 +902,7 @@ fn kotlin_add_fn_signature_arrow() -> Node {
 
 fn kotlin_return_add_expr_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(name: ^kotlin_token_plus, target: kotlin_atom(id: ^kotlin_token_plus)),
       kotlin_named_edge(
@@ -920,7 +920,7 @@ fn kotlin_return_add_expr_node() -> Node {
 
 fn kotlin_emitted_add_fn_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_surface_fn_item,
@@ -961,12 +961,12 @@ fn kotlin_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSynta
 }
 
 fn kotlin_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
-  Cons {
+  std.algebra.Cons {
     head: kotlin_named_edge(
       name: ^serialize_source_field_source_text,
       target: kotlin_atom(id: ^kotlin_source_literal)
     ),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: kotlin_named_edge(
         name: ^serialize_source_field_source_grammar,
         target: kotlin_atom(id: ^kotlin_production_fn_add)
@@ -994,7 +994,7 @@ fn kotlin_serialize_source_children() -> List<v2.std.node.Edge> {
 fn kotlin_serialize_source_node() -> Node {
   let _authority = kotlin_source_text_authority()
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: kotlin_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
@@ -1008,7 +1008,7 @@ fn kotlin_concrete_tokens_list(
   head: v2.std.compilers.target_model.ConcreteSyntaxToken,
   tail: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 ) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
-  Cons { head: head, tail: tail }
+  std.algebra.Cons { head: head, tail: tail }
 }
 
 fn kotlin_grammar_sequence_from_nonempty(
@@ -1019,7 +1019,7 @@ fn kotlin_grammar_sequence_from_nonempty(
     xs: tail,
     empty: kotlin_grammar_terminal(token_class: concrete_syntax_token_class(token: head)),
     cons: fn(acc, token) {
-      Sequence {
+      v2.std.grammar.Sequence {
         left: acc,
         right: kotlin_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
       }
@@ -1200,7 +1200,7 @@ fn kotlin_grammar_relation_row_node(row: KotlinGrammarRelationRow) -> Node {
   let production = kotlin_grammar_production_from_nonempty(head: row.head, tail: row.tail)
   let tokens = kotlin_concrete_tokens_list(head: row.head, tail: row.tail)
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^grammar_relation_field_production,
@@ -1224,7 +1224,7 @@ fn kotlin_grammar_relation_row_node(row: KotlinGrammarRelationRow) -> Node {
 
 fn kotlin_translation_rules_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_relation_rule_fn_add,
@@ -1237,7 +1237,7 @@ fn kotlin_translation_rules_node() -> Node {
 
 fn kotlin_target_model_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^target_model_edge_selection_policy,
@@ -1289,73 +1289,73 @@ fn kotlin_target_model() -> v2.std.compilers.target_model.TargetModel {
 }
 
 fn kotlin_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: v2.std.compilers.lexing.LiteralPattern { text: text }
   }
 }
 
 fn kotlin_keyword_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: token_class,
-    pattern: KeywordPattern { text: text }
+    pattern: v2.std.compilers.lexing.KeywordPattern { text: text }
   }
 }
 
 fn kotlin_whitespace_trivia_rule() -> v2.std.compilers.lexing.LexRule {
-  TriviaRule {
-    pattern: OneOrMorePattern {
-      element: ChoicePattern {
-        left: LiteralPattern { text: " " },
-        right: LiteralPattern { text: "\t" }
+  v2.std.compilers.lexing.TriviaRule {
+    pattern: v2.std.compilers.lexing.OneOrMorePattern {
+      element: v2.std.compilers.lexing.ChoicePattern {
+        left: v2.std.compilers.lexing.LiteralPattern { text: " " },
+        right: v2.std.compilers.lexing.LiteralPattern { text: "\t" }
       }
     }
   }
 }
 
 fn kotlin_newline_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^kotlin_token_nl,
-    pattern: ChoicePattern {
-      left: LiteralPattern { text: "\r\n" },
-      right: ChoicePattern {
-        left: LiteralPattern { text: "\n" },
-        right: LiteralPattern { text: "\r" }
+    pattern: v2.std.compilers.lexing.ChoicePattern {
+      left: v2.std.compilers.lexing.LiteralPattern { text: "\r\n" },
+      right: v2.std.compilers.lexing.ChoicePattern {
+        left: v2.std.compilers.lexing.LiteralPattern { text: "\n" },
+        right: v2.std.compilers.lexing.LiteralPattern { text: "\r" }
       }
     }
   }
 }
 
 fn kotlin_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: CharClassPattern { class: IdentStartChar },
-    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
   }
 }
 
 fn kotlin_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^kotlin_token_ident,
     pattern: kotlin_ident_lex_pattern()
   }
 }
 
 fn kotlin_int_suffix_pattern() -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern {
-    left: LiteralPattern { text: "UL" },
-    right: ChoicePattern {
-      left: LiteralPattern { text: "uL" },
-      right: ChoicePattern {
-        left: LiteralPattern { text: "Ul" },
-        right: ChoicePattern {
-          left: LiteralPattern { text: "ul" },
-          right: ChoicePattern {
-            left: LiteralPattern { text: "U" },
-            right: ChoicePattern {
-              left: LiteralPattern { text: "u" },
-              right: ChoicePattern {
-                left: LiteralPattern { text: "L" },
-                right: LiteralPattern { text: "l" }
+  v2.std.compilers.lexing.ChoicePattern {
+    left: v2.std.compilers.lexing.LiteralPattern { text: "UL" },
+    right: v2.std.compilers.lexing.ChoicePattern {
+      left: v2.std.compilers.lexing.LiteralPattern { text: "uL" },
+      right: v2.std.compilers.lexing.ChoicePattern {
+        left: v2.std.compilers.lexing.LiteralPattern { text: "Ul" },
+        right: v2.std.compilers.lexing.ChoicePattern {
+          left: v2.std.compilers.lexing.LiteralPattern { text: "ul" },
+          right: v2.std.compilers.lexing.ChoicePattern {
+            left: v2.std.compilers.lexing.LiteralPattern { text: "U" },
+            right: v2.std.compilers.lexing.ChoicePattern {
+              left: v2.std.compilers.lexing.LiteralPattern { text: "u" },
+              right: v2.std.compilers.lexing.ChoicePattern {
+                left: v2.std.compilers.lexing.LiteralPattern { text: "L" },
+                right: v2.std.compilers.lexing.LiteralPattern { text: "l" }
               }
             }
           }
@@ -1366,30 +1366,30 @@ fn kotlin_int_suffix_pattern() -> v2.std.compilers.lexing.LexPattern {
 }
 
 fn kotlin_decimal_digit_or_separator_pattern() -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern {
-    left: CharClassPattern { class: DigitChar },
-    right: LiteralPattern { text: "_" }
+  v2.std.compilers.lexing.ChoicePattern {
+    left: v2.std.compilers.lexing.CharClassPattern { class: DigitChar },
+    right: v2.std.compilers.lexing.LiteralPattern { text: "_" }
   }
 }
 
 fn kotlin_nonzero_decimal_digit_pattern() -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern {
-    left: LiteralPattern { text: "1" },
-    right: ChoicePattern {
-      left: LiteralPattern { text: "2" },
-      right: ChoicePattern {
-        left: LiteralPattern { text: "3" },
-        right: ChoicePattern {
-          left: LiteralPattern { text: "4" },
-          right: ChoicePattern {
-            left: LiteralPattern { text: "5" },
-            right: ChoicePattern {
-              left: LiteralPattern { text: "6" },
-              right: ChoicePattern {
-                left: LiteralPattern { text: "7" },
-                right: ChoicePattern {
-                  left: LiteralPattern { text: "8" },
-                  right: LiteralPattern { text: "9" }
+  v2.std.compilers.lexing.ChoicePattern {
+    left: v2.std.compilers.lexing.LiteralPattern { text: "1" },
+    right: v2.std.compilers.lexing.ChoicePattern {
+      left: v2.std.compilers.lexing.LiteralPattern { text: "2" },
+      right: v2.std.compilers.lexing.ChoicePattern {
+        left: v2.std.compilers.lexing.LiteralPattern { text: "3" },
+        right: v2.std.compilers.lexing.ChoicePattern {
+          left: v2.std.compilers.lexing.LiteralPattern { text: "4" },
+          right: v2.std.compilers.lexing.ChoicePattern {
+            left: v2.std.compilers.lexing.LiteralPattern { text: "5" },
+            right: v2.std.compilers.lexing.ChoicePattern {
+              left: v2.std.compilers.lexing.LiteralPattern { text: "6" },
+              right: v2.std.compilers.lexing.ChoicePattern {
+                left: v2.std.compilers.lexing.LiteralPattern { text: "7" },
+                right: v2.std.compilers.lexing.ChoicePattern {
+                  left: v2.std.compilers.lexing.LiteralPattern { text: "8" },
+                  right: v2.std.compilers.lexing.LiteralPattern { text: "9" }
                 }
               }
             }
@@ -1401,66 +1401,66 @@ fn kotlin_nonzero_decimal_digit_pattern() -> v2.std.compilers.lexing.LexPattern 
 }
 
 fn kotlin_binary_digit_or_separator_pattern() -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern {
-    left: LiteralPattern { text: "0" },
-    right: ChoicePattern {
-      left: LiteralPattern { text: "1" },
-      right: LiteralPattern { text: "_" }
+  v2.std.compilers.lexing.ChoicePattern {
+    left: v2.std.compilers.lexing.LiteralPattern { text: "0" },
+    right: v2.std.compilers.lexing.ChoicePattern {
+      left: v2.std.compilers.lexing.LiteralPattern { text: "1" },
+      right: v2.std.compilers.lexing.LiteralPattern { text: "_" }
     }
   }
 }
 
 fn kotlin_decimal_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern {
-    left: SequencePattern {
-      left: LiteralPattern { text: "0" },
-      right: OptionalPattern { element: kotlin_int_suffix_pattern() }
+  v2.std.compilers.lexing.ChoicePattern {
+    left: v2.std.compilers.lexing.SequencePattern {
+      left: v2.std.compilers.lexing.LiteralPattern { text: "0" },
+      right: v2.std.compilers.lexing.OptionalPattern { element: kotlin_int_suffix_pattern() }
     },
-    right: SequencePattern {
+    right: v2.std.compilers.lexing.SequencePattern {
       left: kotlin_nonzero_decimal_digit_pattern(),
-      right: SequencePattern {
-        left: RepeatPattern { element: kotlin_decimal_digit_or_separator_pattern() },
-        right: OptionalPattern { element: kotlin_int_suffix_pattern() }
+      right: v2.std.compilers.lexing.SequencePattern {
+        left: v2.std.compilers.lexing.RepeatPattern { element: kotlin_decimal_digit_or_separator_pattern() },
+        right: v2.std.compilers.lexing.OptionalPattern { element: kotlin_int_suffix_pattern() }
       }
     }
   }
 }
 
 fn kotlin_hex_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: ChoicePattern {
-      left: LiteralPattern { text: "0x" },
-      right: LiteralPattern { text: "0X" }
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.ChoicePattern {
+      left: v2.std.compilers.lexing.LiteralPattern { text: "0x" },
+      right: v2.std.compilers.lexing.LiteralPattern { text: "0X" }
     },
-    right: SequencePattern {
-      left: OneOrMorePattern {
-        element: ChoicePattern {
-          left: CharClassPattern { class: HexDigitChar },
-          right: LiteralPattern { text: "_" }
+    right: v2.std.compilers.lexing.SequencePattern {
+      left: v2.std.compilers.lexing.OneOrMorePattern {
+        element: v2.std.compilers.lexing.ChoicePattern {
+          left: v2.std.compilers.lexing.CharClassPattern { class: HexDigitChar },
+          right: v2.std.compilers.lexing.LiteralPattern { text: "_" }
         }
       },
-      right: OptionalPattern { element: kotlin_int_suffix_pattern() }
+      right: v2.std.compilers.lexing.OptionalPattern { element: kotlin_int_suffix_pattern() }
     }
   }
 }
 
 fn kotlin_binary_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
-  SequencePattern {
-    left: ChoicePattern {
-      left: LiteralPattern { text: "0b" },
-      right: LiteralPattern { text: "0B" }
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.ChoicePattern {
+      left: v2.std.compilers.lexing.LiteralPattern { text: "0b" },
+      right: v2.std.compilers.lexing.LiteralPattern { text: "0B" }
     },
-    right: SequencePattern {
-      left: OneOrMorePattern { element: kotlin_binary_digit_or_separator_pattern() },
-      right: OptionalPattern { element: kotlin_int_suffix_pattern() }
+    right: v2.std.compilers.lexing.SequencePattern {
+      left: v2.std.compilers.lexing.OneOrMorePattern { element: kotlin_binary_digit_or_separator_pattern() },
+      right: v2.std.compilers.lexing.OptionalPattern { element: kotlin_int_suffix_pattern() }
     }
   }
 }
 
 fn kotlin_int_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
-  ChoicePattern {
+  v2.std.compilers.lexing.ChoicePattern {
     left: kotlin_hex_literal_pattern(),
-    right: ChoicePattern {
+    right: v2.std.compilers.lexing.ChoicePattern {
       left: kotlin_binary_literal_pattern(),
       right: kotlin_decimal_literal_pattern()
     }
@@ -1468,19 +1468,19 @@ fn kotlin_int_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
 }
 
 fn kotlin_int_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^kotlin_token_int_literal,
     pattern: kotlin_int_literal_pattern()
   }
 }
 
 fn kotlin_string_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  TokenRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^kotlin_token_string_literal,
-    pattern: DelimitedPattern {
-      open: LiteralPattern { text: "\"" },
-      body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
-      close: LiteralPattern { text: "\"" }
+    pattern: v2.std.compilers.lexing.DelimitedPattern {
+      open: v2.std.compilers.lexing.LiteralPattern { text: "\"" },
+      body: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: StringTextChar } },
+      close: v2.std.compilers.lexing.LiteralPattern { text: "\"" }
     }
   }
 }
@@ -1529,7 +1529,7 @@ fn kotlin_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
 }
 
 fn kotlin_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules { root: kotlin_lex_rules() }
+  v2.std.compilers.lexing.ModeledLexRules { root: kotlin_lex_rules() }
 }
 
 fn kotlin_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
@@ -2027,15 +2027,15 @@ fn kotlin_grammar_atom(id: v2.std.node.Symbol) -> Node {
 }
 
 fn kotlin_grammar_nonterminal(production: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  Nonterminal { production: production }
+  v2.std.grammar.Nonterminal { production: production }
 }
 
 fn kotlin_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  Sequence { left: left, right: right }
+  v2.std.grammar.Sequence { left: left, right: right }
 }
 
 fn kotlin_grammar_choice(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  Choice { left: left, right: right }
+  v2.std.grammar.Choice { left: left, right: right }
 }
 
 fn kotlin_grammar_optional(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
@@ -2426,7 +2426,7 @@ fn kotlin_grammar_root() -> v2.std.grammar.GrammarRoot {
 }
 
 fn kotlin_grammar() -> v2.std.grammar.ParseGrammar {
-  ModeledGrammar { root: kotlin_grammar_root() }
+  v2.std.grammar.ModeledGrammar { root: kotlin_grammar_root() }
 }
 
 fn kotlin_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {

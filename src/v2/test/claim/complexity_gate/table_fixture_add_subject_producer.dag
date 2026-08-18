@@ -17,7 +17,7 @@ fn table_fixture_add_decl_node(fn_name: v2.std.node.Symbol) -> Outcome<Node> {
     f: fn(arrow_with_body) {
       outcome_accepted(
         value: node_synthetic(
-          kind: TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             v2.std.node.Edge {
               label: Named { name: fn_name },

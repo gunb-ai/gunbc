@@ -9,11 +9,11 @@ fn coverage_witness_decl(name: String) -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "test.claim.repository_census_coverage_witness", decl_name: name)
 }
 
-data coverage_witness_revision: gunbc.guarantee_measurement.MeasurementRevision = GitRevision {
+data coverage_witness_revision: gunbc.guarantee_measurement.MeasurementRevision = gunbc.guarantee_measurement.GitRevision {
   commit: "ca75137ee30000000000000000000000000000ff",
 }
 
-data coverage_witness_other_revision: gunbc.guarantee_measurement.MeasurementRevision = GitRevision {
+data coverage_witness_other_revision: gunbc.guarantee_measurement.MeasurementRevision = gunbc.guarantee_measurement.GitRevision {
   commit: "ca75137ee30000000000000000000000000000aa",
 }
 
@@ -434,7 +434,7 @@ test fn witness_two_distinct_classifiers_establish_independence() -> Bool {
 data coverage_blocker_four_note: String = "BLOCKER 4 WITNESSES. A capability receipt exists only when its contract names the classifier that actually ran, checked at identity grain, and when any conformance control it carries names the same classifier at the same revision under a DIFFERENT invocation. Each of those three refusals gets its own witness."
 
 fn coverage_witness_capability_for(contract_name: String) -> gunbc.repository_census_coverage.CensusMethodCapability {
-  ClassifiesDeclaredStructure { contract: coverage_witness_decl(name: contract_name) }
+  gunbc.repository_census_coverage.ClassifiesDeclaredStructure { contract: coverage_witness_decl(name: contract_name) }
 }
 
 // THE CONFORMANCE FIXTURES BUILD REAL CONTROL OUTCOMES, because the carrier no longer accepts an assertion about them. Each control here is an actual census_establish_coverage run against a denominator: the discriminating control observes rows that do NOT reconcile with the declared subjects and must come back CoverageRefused, the positive control observes rows that DO and must come back CoverageEstablished. A fixture that simply claimed those two results is no longer expressible, which is the point of the recut.
@@ -1131,7 +1131,7 @@ fn coverage_witness_textual_ceiling(rows: List<gunbc.repository_census_observati
   let observation = coverage_witness_observation(rows: rows)
   match census_method_capability_receipt(
     observation: observation,
-    capability: MatchesSourceText {
+    capability: gunbc.repository_census_coverage.MatchesSourceText {
       contract: coverage_witness_decl(name: "coverage_witness_classifier"),
     },
     conformance: coverage_witness_conforming_control(),

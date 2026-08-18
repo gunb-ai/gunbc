@@ -2,13 +2,13 @@ module v2.test.lens_cost.nested_product
 
 
 data nested_product_body: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: Transform },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data nested_product_inner: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: nested_product_body }
   ],
@@ -16,7 +16,7 @@ data nested_product_inner: Node = v2.std.node.Node {
 }
 
 data nested_product_input: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: nested_product_inner }
   ],
@@ -26,9 +26,9 @@ data nested_product_input: Node = v2.std.node.Node {
 fn nested_product_claim_holds() -> Bool {
   match cost_lens(n: nested_product_input) {
     Holds { value: actual } =>
-      actual == ProductCost {
-        lhs: LinearCost { variable: v2.lens.cost.SizeVariable { source: nested_product_input } },
-        rhs: LinearCost { variable: v2.lens.cost.SizeVariable { source: nested_product_inner } }
+      actual == v2.lens.cost.ProductCost {
+        lhs: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: nested_product_input } },
+        rhs: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: nested_product_inner } }
       }
     _ => false
   }
@@ -39,14 +39,14 @@ fn nested_product_claim_rhs() -> Node {
     nested_product_input
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_nested_product: v2.std.verification.TestClaim = EqualsClaim {
+data claim_nested_product: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_cost/nested_product: nested cardinality composes as product cost",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: nested_product_input,

@@ -4,7 +4,7 @@ module test.claim.markup_medium_convergence
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn em_hi() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "em", attributes: [], children: [ FragmentText { content: "hi" } ] }
+  extdeps.browser.Element { tag: "em", attributes: [], children: [ std.markup.FragmentText { content: "hi" } ] }
 }
 
 fn md_medium() -> std.markup.MarkupMedium {
@@ -38,7 +38,7 @@ fn button_node() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "button",
     attributes: [ attr(name: "class", value: "primary" ) ],
-    children: [ FragmentText { content: "Go" } ],
+    children: [ std.markup.FragmentText { content: "Go" } ],
   }
 }
 
@@ -71,11 +71,11 @@ test fn witness_third_medium_is_one_row() -> Bool {
 fn md_mixed_doc() -> std.markdown.MarkdownDocument {
   std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          StrongInline { inlines: [ TextInline { text: "bold" } ] },
-          TextInline { text: " and " },
-          EmphasisInline { inlines: [ TextInline { text: "em" } ] },
+          std.markdown.StrongInline { inlines: [ std.markdown.TextInline { text: "bold" } ] },
+          std.markdown.TextInline { text: " and " },
+          std.markdown.EmphasisInline { inlines: [ std.markdown.TextInline { text: "em" } ] },
         ],
       },
     ],
@@ -90,9 +90,9 @@ test fn witness_md_inline_emission_bytes() -> Bool {
 fn md_link_doc() -> std.markdown.MarkdownDocument {
   std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          LinkInline { inlines: [ TextInline { text: "text" } ], url: "https://x.com" },
+          std.markdown.LinkInline { inlines: [ std.markdown.TextInline { text: "text" } ], url: "https://x.com" },
         ],
       },
     ],
@@ -108,7 +108,7 @@ fn hostile_href_node() -> std.markup.Fragment {
   extdeps.browser.Element {
     tag: "a",
     attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
-    children: [ FragmentText { content: "x" } ],
+    children: [ std.markup.FragmentText { content: "x" } ],
   }
 }
 

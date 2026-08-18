@@ -46,8 +46,8 @@ fn effect_signature_deferred_unresolved(fact: EffectFact) -> Bool {
 fn effect_witness_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^effect_reason_unresolved_projection,
-    at: Textual { file: ^effect_projection_virtual_file, extent: WholeFile },
-    correction: Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^effect_projection_virtual_file, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
   }
 }
 
@@ -56,10 +56,10 @@ fn effect_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.st
   let upstream = effect_first_upstream_diagnostic(tree: tree, fact: fact)
   match optional_present_witness(opt: upstream) {
     Holds { value: d } =>
-      Violates { diagnostic: d }
+      v2.std.witness.Violates { diagnostic: d }
     Violates { diagnostic: _ } =>
       if effect_signature_deferred_unresolved(fact: fact) {
-        Violates { diagnostic: effect_witness_diagnostic() }
+        v2.std.witness.Violates { diagnostic: effect_witness_diagnostic() }
       } else {
         Holds { value: fact }
       }
@@ -82,5 +82,5 @@ fn effect_fact_eq(a: EffectFact, b: EffectFact) -> Bool {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
 }

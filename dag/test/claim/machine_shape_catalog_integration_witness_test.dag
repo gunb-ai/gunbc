@@ -14,7 +14,7 @@ data ampere_l3_bytes: std.nat.Nat = 16777216
 data ampere_cache_line_bytes: std.nat.Nat = 64
 
 fn cpu_catalog_shape() -> std.machine_shape.MachineShape {
-  match cpu_shape_from_catalog(input: FromCpuModelCatalog {
+  match cpu_shape_from_catalog(input: extdeps.cpu.machine_shape.FromCpuModelCatalog {
     domain: ampere_domain,
     l1_level: ampere_l1_level,
     l2_level: ampere_l2_level,

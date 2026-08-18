@@ -9,7 +9,7 @@ data sample_wall_time: std.verification.NanosecondDuration = nanosecond_duration
 data sample_space_a: std.measure.ByteSize = byte_size(count: 1024)
 data sample_space_b: std.measure.ByteSize = byte_size(count: 2048)
 
-data sample_measure_effect: std.realization_measurement.RealizationMeasureEffect = ObserveElapsedAtSubject {
+data sample_measure_effect: std.realization_measurement.RealizationMeasureEffect = std.realization_measurement.ObserveElapsedAtSubject {
   subject: sample_subject
   work_shape: "realization_measurement_keystone_witnesses"
 }

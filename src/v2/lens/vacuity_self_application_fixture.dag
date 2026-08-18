@@ -2,7 +2,7 @@ module v2.lens.vacuity_self_application_fixture
 
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
 
 data vacuity_self_application_fixture_construction_justification_note: String = "This module is a parse-reachable fixture, not an enforcement wall: it exists solely because normalize()'s general-body-producer ceiling (documented in v2.lens.vacuity's vacuity_bool_witness_body_lowering_ceiling_note and vacuity_bool_witness_fn_decl_collection_ceiling_note) prevents a real `test fn` or a bare-equality body from surviving the parse/normalize pipeline, so no genuine corpus test fn can serve as the self-application witness directly. The bad-state class this module's classification concerns — a fabricated or unreachable self-application proof — is not made unwritable here by construction, because the underlying grounding (a general body producer, DESIGN.md open thread) does not exist yet; it inherits the SAME dissolve trigger as v2.lens.vacuity's own construction_justification (§3 single authority — one ceiling, not a second one restated per file). Once the general body producer lands, this fixture dissolves in favor of a real test fn exercising the classifier end to end."

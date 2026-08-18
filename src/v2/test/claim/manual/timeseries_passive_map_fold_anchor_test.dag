@@ -45,7 +45,7 @@ data timeseries_anchor_tick0: v2.std.timeseries_signal.TimeSeriesSample = v2.std
   microvolts: voltage(0)
 }
 
-data timeseries_anchor_signal: v2.std.timeseries_signal.TimeSeriesSignal = Cons {
+data timeseries_anchor_signal: v2.std.timeseries_signal.TimeSeriesSignal = std.algebra.Cons {
   head: timeseries_anchor_tick0,
   tail: Empty
 }
@@ -110,9 +110,9 @@ data timeseries_anchor_current_high: v2.std.timeseries_signal.StepCurrent = v2.s
   microamperes: current(4)
 }
 
-data timeseries_anchor_current_pair: List<v2.std.timeseries_signal.StepCurrent> = Cons {
+data timeseries_anchor_current_pair: List<v2.std.timeseries_signal.StepCurrent> = std.algebra.Cons {
   head: timeseries_anchor_current_low,
-  tail: Cons { head: timeseries_anchor_current_high, tail: Empty }
+  tail: std.algebra.Cons { head: timeseries_anchor_current_high, tail: Empty }
 }
 
 test fn timeseries_anchor_capacitor_fold_chronological_holds() -> Bool {
@@ -159,7 +159,7 @@ test fn timeseries_anchor_inductor_fold_holds() -> Bool {
   }
 }
 
-data claim_timeseries_passive_map_fold_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_timeseries_passive_map_fold_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/timeseries_passive_map_fold_anchor: S1 map/fold passives compile",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: timeseries_anchor_resistor,

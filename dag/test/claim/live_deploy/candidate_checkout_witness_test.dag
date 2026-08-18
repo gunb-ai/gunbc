@@ -206,7 +206,7 @@ data ignored_deployed_wet_receipt: String = "EXECUTED 2026-08-07 AGAINST HEAD 09
 // ---------------------------------------------------------------- the refusal carries the location
 
 test fn the_not_clean_refusal_names_every_axis_and_its_paths() -> Bool {
-  let d = candidate_unobservable_detail(cause: CandidateCheckoutNotClean {
+  let d = candidate_unobservable_detail(cause: gunbc.live_deploy.candidate.CandidateCheckoutNotClean {
     tracked_changes: ["dag/a.dag"],
     staged_changes: ["dag/b.dag"],
     untracked_deployed_paths: ["dag/c.dag"],
@@ -226,7 +226,7 @@ test fn the_not_clean_refusal_names_every_axis_and_its_paths() -> Bool {
 // An empty axis renders as (none) rather than as nothing at all, so a reader can tell "no staged changes"
 // from "the staged list was omitted".
 test fn an_empty_axis_is_named_rather_than_dropped() -> Bool {
-  let d = candidate_unobservable_detail(cause: CandidateCheckoutNotClean {
+  let d = candidate_unobservable_detail(cause: gunbc.live_deploy.candidate.CandidateCheckoutNotClean {
     tracked_changes: [],
     staged_changes: ["dag/b.dag"],
     untracked_deployed_paths: [],
@@ -239,7 +239,7 @@ test fn an_empty_axis_is_named_rather_than_dropped() -> Bool {
 }
 
 test fn the_status_refusal_is_distinct_from_the_not_clean_refusal() -> Bool {
-  let refused = candidate_unobservable_detail(cause: CandidateCheckoutStatusRefused { detail: "boom" })
+  let refused = candidate_unobservable_detail(cause: gunbc.live_deploy.candidate.CandidateCheckoutStatusRefused { detail: "boom" })
   let head = candidate_unobservable_detail(cause: CandidateHeadCommitRefused)
   string_contains(s: refused, pattern: "CandidateCheckoutStatusRefused")
     && string_contains(s: refused, pattern: "boom")

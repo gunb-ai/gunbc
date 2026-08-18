@@ -17,7 +17,7 @@ data gha_actions_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   transport_encoding: CatalogOpaqueStringEncoding
   key_derivation: {
 
-    key_inputs: HandAuthored { cited_inputs: [UpsertSubject, FilePaths] }
+    key_inputs: extdeps.cache.types.HandAuthored { cited_inputs: [UpsertSubject, FilePaths] }
     overwritable: true
     prefix_fallback_allowed: true
     content_verified_on_read: false
@@ -25,7 +25,7 @@ data gha_actions_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
     invalidation_triggers: [ManualPurge, ToolchainChange, DependencyChange]
   }
   io: {
-    lookup_semantics: PrefixFallback {
+    lookup_semantics: std.cache_interface.PrefixFallback {
       ordered_prefixes: [
         "exact-subject-digest",
         "toolchain-pinned",
@@ -39,7 +39,7 @@ data gha_actions_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: TarArchive
     locality: CrossHostNetwork
-    retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } } }
+    retention: { release_policy: ReleasedNever, capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed } } }
     atomicity: WriteThenCommit
     auth: std.cache_interface.ApiKey
     read_latency: WanTensMs
@@ -48,14 +48,14 @@ data gha_actions_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   evidence: [
     {
       field: "lookup_semantics"
-      evidence: VendorCitation {
+      evidence: std.cache_interface.VendorCitation {
         source: "GitHub Actions cache restore-key behavior"
         url: "https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows"
       }
     },
     {
       field: "key_derivation"
-      evidence: VendorCitation {
+      evidence: std.cache_interface.VendorCitation {
         source: "GitHub Actions cache key input"
         url: "https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#usage-limits-and-eviction-policy"
       }

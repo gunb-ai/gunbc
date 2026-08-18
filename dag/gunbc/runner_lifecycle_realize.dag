@@ -27,7 +27,7 @@ fn runner_lifecycle_realize_scaffold(
   effect_label: String,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  NotConverged {
+  std.realization_reconcile.NotConverged {
     reason: join(
       [
         "host_effect_apply: ",

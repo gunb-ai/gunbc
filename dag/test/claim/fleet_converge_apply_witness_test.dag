@@ -10,10 +10,10 @@ fn fixture_srv3_host_converge() -> gunbc.host_converge.HostConverge {
         slice: GunbcSlice,
         name: "pinned_tree_sha",
         desired: gunbc_pinned_tree_desired_label,
-        target: GunbcPinnedTree {
+        target: gunbc.host_converge.GunbcPinnedTree {
           gunbc_root_env_key: gunbc_root_env_key,
           gunbc_root_path: gunbc_host_gunbc_root_path,
-          dag_root: DeferToSubmodule { submodule_path: gunbc_dag_root_submodule_path },
+          dag_root: gunbc.host_converge.DeferToSubmodule { submodule_path: gunbc_dag_root_submodule_path },
           ctrl_checkout_path: gunbc_host_ctrl_checkout_path,
           binary: gunbc_pinned_binary_provenance_policy(),
           pin_read_script: gunbc_ctrl_read_pin_script,
@@ -30,7 +30,7 @@ fn fixture_srv3_host_converge() -> gunbc.host_converge.HostConverge {
 
 test fn witness_unsound_policy_refused() -> Bool {
   match converge_apply(
-    policy: ConvergePolicyUnsound { reason: "fixture" },
+    policy: gunbc.host_converge.ConvergePolicyUnsound { reason: "fixture" },
     transport: LocalShell
   ) {
     FleetConvergeApplyRefused { reason: why } => string_contains(s: why, pattern: "policy unsound")
@@ -40,7 +40,7 @@ test fn witness_unsound_policy_refused() -> Bool {
 
 test fn witness_converge_apply_fail_closed_on_knob_frontier() -> Bool {
   match converge_apply(
-    policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
+    policy: gunbc.host_converge.ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
     transport: LocalShell
   ) {
     FleetConvergeApplied { host_count: n, all_converged: ok } =>
@@ -71,8 +71,8 @@ test fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
 
 test fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {
   !fleet_converge_apply_result_converged(r: converge_apply(
-    policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
-    transport: EmitArtifactThenThinRun {
+    policy: gunbc.host_converge.ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
+    transport: gunbc.host_effect.EmitArtifactThenThinRun {
       bootstrap: gunbc.host_effect.BootstrapFragment { script: "true" },
       invocation: fleet_converge_thin_invocation(host: operator_host_srv3),
     }

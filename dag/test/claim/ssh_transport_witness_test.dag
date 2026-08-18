@@ -8,7 +8,7 @@ data ssh_exec_script_remote_receiver: std.types.NonEmptyStr = "bash -s"
 data ssh_apply_script_budget_flip_note: String = "FLIPPED with belt B (PR 6940), same move as test.claim.shell_exec_run_argv_embed_witness: the live apply script no longer embeds a frozen program (server.js is gone; gunbc serve renders live), so the pre-B exceedance receipt is dissolved and the clause becomes the regression wall — apply must stay UNDER the argv embed budget. The ssh ExecScript stdin transport stays pinned by the sibling witnesses regardless of script size."
 
 test fn witness_apply_script_stays_under_argv_embed_budget() -> Bool {
-  let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
+  let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
   let budget = byte_size_count(b: host_exec_arg_max_strlen)
   script_len > 0 && script_len < budget
 }

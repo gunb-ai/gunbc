@@ -88,12 +88,12 @@ fn fleet_listening_check_reason(verdicts: List<SlotListeningVerdict>) -> String?
 fn ground_fleet_listening(verdicts: List<SlotListeningVerdict>) -> Grounding<FleetListeningEvidence> {
   match fleet_listening_check_reason(verdicts: verdicts) {
     Absent =>
-      Grounds {
+      std.realization_reconcile.Grounds {
         evidence: FleetListeningEvidence {
           slot_count: verdicts.length(),
         }
       }
-    Present { value: reason } => DoesNotGround { reason: reason }
+    Present { value: reason } => std.realization_reconcile.DoesNotGround { reason: reason }
   }
 }
 
@@ -105,7 +105,7 @@ fn reconcile_fleet_listening(
       reconcile_grounded(
         apply_effect: "host_hygiene_liveness.timer",
         show_read: read,
-        grounding: DoesNotGround { reason: why }
+        grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
     ReadObserved { value: verdicts } =>
       reconcile_grounded(
@@ -118,7 +118,7 @@ fn reconcile_fleet_listening(
 
 data gunbc_host_hygiene_liveness_bound: std.measure.Second = second(1800)
 
-data gunbc_host_hygiene_liveness_show_effective_read: ShowEffectiveRead<List<SlotListeningVerdict>> = ReadAbsent {
+data gunbc_host_hygiene_liveness_show_effective_read: ShowEffectiveRead<List<SlotListeningVerdict>> = std.realization_reconcile.ReadAbsent {
   reason: "no live per-slot journal read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"
 }
 

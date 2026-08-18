@@ -2,13 +2,13 @@ module v2.test.manual.connective_anchors
 
 
 data stub_empty_conj: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data stub_arrow_pair: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Arrow },
+  kind: v2.std.node.TypeNode { connective: Arrow },
   children: [
     v2.std.node.Edge { label: Positional, target: stub_empty_conj },
     v2.std.node.Edge { label: Positional, target: stub_empty_conj }
@@ -17,55 +17,55 @@ data stub_arrow_pair: Node = v2.std.node.Node {
 }
 
 data stub_empty_disj: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Disj },
+  kind: v2.std.node.TypeNode { connective: Disj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data stub_empty_cardinality: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: Cardinality },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data stub_empty_instantiation: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Instantiation },
+  kind: v2.std.node.TypeNode { connective: Instantiation },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data stub_empty_arrow: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Arrow },
+  kind: v2.std.node.TypeNode { connective: Arrow },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data stub_empty_transform: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: Transform },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data stub_empty_branch: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Branch },
+  kind: v2.std.node.ComputationNode { behavior: Branch },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data stub_empty_loop: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Loop },
+  kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data stub_bind_zero_children: Node = v2.std.node.Node {
-  kind: ComputationNode { behavior: Bind },
+  kind: v2.std.node.ComputationNode { behavior: Bind },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 fn arity_rejection_claim(label: String, input: Node, anchor: v2.std.verification.ManualAnchorKey) -> v2.std.verification.TestClaim {
-  DiagnosticClaim {
+  v2.std.verification.DiagnosticClaim {
     label: label,
     anchor: manual_claim_anchor(anchor: anchor),
     input: input,
@@ -76,7 +76,7 @@ fn arity_rejection_claim(label: String, input: Node, anchor: v2.std.verification
   }
 }
 
-data claim_conj_empty_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_conj_empty_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/connective: empty Conj type-node is structurally inhabitable",
   anchor: manual_claim_anchor(anchor: ManualTcConjEmpty),
   input: stub_empty_conj,
@@ -84,7 +84,7 @@ data claim_conj_empty_compiles: v2.std.verification.TestClaim = CompilesClaim {
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_disj_empty_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_disj_empty_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/connective: empty Disj type-node is structurally inhabitable",
   anchor: manual_claim_anchor(anchor: ManualTcDisjEmpty),
   input: stub_empty_disj,
@@ -92,7 +92,7 @@ data claim_disj_empty_compiles: v2.std.verification.TestClaim = CompilesClaim {
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_arrow_two_conj_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_arrow_two_conj_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/connective: Arrow with two positional Conj leaves (no Atom)",
   anchor: manual_claim_anchor(anchor: ManualTcArrowTwoConj),
   input: stub_arrow_pair,
@@ -142,7 +142,7 @@ data claim_bind_zero_children_rejected: v2.std.verification.TestClaim = arity_re
   anchor: ManualTcBindZeroChildren
 )
 
-data claim_conj_equals_refl: v2.std.verification.TestClaim = EqualsClaim {
+data claim_conj_equals_refl: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/connective: Equals reflexivity on empty Conj stub",
   anchor: manual_claim_anchor(anchor: ManualTcConjEqualsRefl),
   lhs: stub_empty_conj,

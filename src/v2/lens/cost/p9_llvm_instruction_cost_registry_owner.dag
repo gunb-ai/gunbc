@@ -2,7 +2,7 @@ module v2.test.lens_cost.p9_llvm_instruction_cost_registry_owner
 
 
 data p9_registry_owner_authority_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^symbol_llvm_instruction_cost } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^symbol_llvm_instruction_cost } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -36,14 +36,14 @@ fn p9_registry_owner_receipt_rhs() -> Node {
     p9_registry_owner_authority_node
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_p9_llvm_instruction_cost_registry_owner: v2.std.verification.TestClaim = EqualsClaim {
+data claim_p9_llvm_instruction_cost_registry_owner: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "P9: llvm_instruction_cost registry has exactly one canonical LensOwnedFnV0 row (fn + owner)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: p9_registry_owner_authority_node,

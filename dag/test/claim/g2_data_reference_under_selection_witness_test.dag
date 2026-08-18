@@ -56,7 +56,7 @@ fn specimen_projection() -> v2.std.live_read.LiveReadSelectionProjection {
   ) {
     HeadFound { value: row } => row.projection
     HeadAbsent =>
-      LiveReadSelectionRefused {
+      v2.std.live_read.LiveReadSelectionRefused {
         cause: "manifest produced no rows for the specimen request"
       }
   }

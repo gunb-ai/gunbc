@@ -11,7 +11,7 @@ fn dispatch_terminal_state(wire_label: String) -> gunbc.design.component.Compone
   let ok = belt_dispatch_label_is_ok(wire_label: wire_label)
   gunbc.design.component.ComponentState {
     key: wire_label,
-    kind: TerminalState { wire_label: wire_label, ok: ok },
+    kind: gunbc.design.component.TerminalState { wire_label: wire_label, ok: ok },
     role: dispatch_terminal_role(ok: ok),
   }
 }

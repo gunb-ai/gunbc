@@ -4,7 +4,7 @@ module v2.test.manual.target_operation_grounding_emit_typescript
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn op_grounding_test_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules {
+  v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
         ts_lex_rule(token_class: ^op_grounding_token_plus, text: " + "),
@@ -18,7 +18,7 @@ fn op_grounding_test_lex() -> v2.std.compilers.lexing.LexRules {
 
 fn op_grounding_test_bundle() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -39,7 +39,7 @@ fn op_grounding_test_model() -> v2.std.compilers.target_model.TargetModel {
 fn op_grounding_realization_row(operation: v2.std.compilers.target_model.CanonicalOperation, token: v2.std.node.Symbol) -> Node {
   target_operator_realization_node(
     operation: operation,
-    shape: InfixToken { token: token }
+    shape: v2.std.compilers.target_model.InfixToken { token: token }
   )
 }
 

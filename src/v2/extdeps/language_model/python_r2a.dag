@@ -2,16 +2,16 @@ module v2.test.language_model.python_r2a
 
 fn python_r2a_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^python_r2a_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^python_r2a_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^python_r2a_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^python_r2a_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_python_r2a_fixture_pair_wired: v2.std.verification.TestClaim = EqualsClaim {
+data claim_python_r2a_fixture_pair_wired: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/python_r2a: fixture pair references python_integer_algebra_inhabitance_python_facts_int",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_r2a_claim_bool_atom(b: true),
@@ -27,8 +27,8 @@ data claim_python_r2a_fixture_pair_wired: v2.std.verification.TestClaim = Equals
 fn python_r2a_pending_verification_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^python_r2a_pending_verification_reason,
-    at: Textual { file: ^python_r2a_pending_verification_reason, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: ^python_r2a_pending_verification_reason, extent: WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -42,7 +42,7 @@ data python_r2a_verification_run_receipt_default: v2.std.leaf_model_verification
   )
 }
 
-data claim_python_r2a_verification_receipt_shape: v2.std.verification.TestClaim = EqualsClaim {
+data claim_python_r2a_verification_receipt_shape: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "language_model/python_r2a: verification receipt carriers happy + falsification verdict slots",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_r2a_claim_bool_atom(
@@ -52,6 +52,6 @@ data claim_python_r2a_verification_receipt_shape: v2.std.verification.TestClaim 
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data python_r2a_modeled_falsification_expectation: v2.std.leaf_model_verification.TargetPythonExerciseVerdict = TargetPythonExecRejected {
+data python_r2a_modeled_falsification_expectation: v2.std.leaf_model_verification.TargetPythonExerciseVerdict = v2.std.leaf_model_verification.TargetPythonExecRejected {
   diagnostic_code: ^target_diagnostic_python_attribute_error_method_not_found
 }

@@ -203,7 +203,7 @@ fn role_decl(prop: extdeps.languages.css.properties.CssPropertyName, r: ThemeRol
 
 fn theme_var_decls(t: Theme) -> List<gunbc.design.material.CssDecl> {
   concat(
-    map(t.assignments, a => decl(prop: CustomProperty { name: role_key(r: a.role) }, value: assignment_paint(a: a))),
+    map(t.assignments, a => decl(prop: extdeps.languages.css.properties.CustomProperty { name: role_key(r: a.role) }, value: assignment_paint(a: a))),
     [decl(prop: ColorScheme, value: t.scheme)])
 }
 

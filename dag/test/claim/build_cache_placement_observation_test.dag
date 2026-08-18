@@ -17,7 +17,7 @@ fn owner_fixture() -> gunbc.build_cache_instance.ProcessIdentity {
 }
 
 fn observed_with_context(ctx: gunbc.build_cache_instance.EndpointOwnerContext) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
-  EndpointOwnerObserved {
+  gunbc.build_cache_instance.EndpointOwnerObserved {
     instance: srv1_ci_instance_fixture(),
     owner: owner_fixture(),
     executable: "/usr/local/bin/sccache" as std.types.NonEmptyStr,
@@ -30,7 +30,7 @@ fn observed_with_context(ctx: gunbc.build_cache_instance.EndpointOwnerContext) -
 
 fn observed_in_slot(slot: gunbc.build_cache_instance.RunnerSlotIdentity, lifecycle: gunbc.build_cache_instance.RunnerSlotLifecycle) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
   observed_with_context(
-    ctx: OwnerInRunnerSlot {
+    ctx: gunbc.build_cache_instance.OwnerInRunnerSlot {
       slot: slot,
       lifecycle: lifecycle,
       observed_cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-10.service" as std.types.NonEmptyStr,
@@ -40,7 +40,7 @@ fn observed_in_slot(slot: gunbc.build_cache_instance.RunnerSlotIdentity, lifecyc
 
 fn observed_owned_by_unit(unit: std.types.NonEmptyStr) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
   observed_with_context(
-    ctx: OwnerInSystemdUnit {
+    ctx: gunbc.build_cache_instance.OwnerInSystemdUnit {
       unit: unit,
       observed_cgroup: "/system.slice/some.service" as std.types.NonEmptyStr,
     },
@@ -107,7 +107,7 @@ test fn witness_managed_unit_owner_converges_only_on_the_intended_unit() -> Bool
 }
 
 test fn witness_absent_endpoint_is_absent_not_unknown() -> Bool {
-  match placement_of_endpoint_observation(observed: EndpointAbsent { instance: srv1_ci_instance_fixture() }) {
+  match placement_of_endpoint_observation(observed: gunbc.build_cache_instance.EndpointAbsent { instance: srv1_ci_instance_fixture() }) {
     ServerPlacementAbsent => true
     ServerPlacementUnknown { detail: _ } => false
     ServerManagedUnitOwned { unit: _ } => false
@@ -118,7 +118,7 @@ test fn witness_absent_endpoint_is_absent_not_unknown() -> Bool {
 
 test fn witness_ambiguous_ownership_refuses() -> Bool {
   let p = placement_of_endpoint_observation(
-    observed: EndpointOwnershipAmbiguous { instance: srv1_ci_instance_fixture(), candidate_count: 2 },
+    observed: gunbc.build_cache_instance.EndpointOwnershipAmbiguous { instance: srv1_ci_instance_fixture(), candidate_count: 2 },
   )
   match p {
     ServerPlacementUnknown { detail: _ } => refuses(placement: p)
@@ -133,7 +133,7 @@ data unreachable_is_not_absent_doc: String = "THE srv4 CONTROL, and the one most
 
 test fn witness_unreachable_host_is_unknown_never_absent() -> Bool {
   let p = placement_of_endpoint_observation(
-    observed: EndpointObservationUnavailable {
+    observed: gunbc.build_cache_instance.EndpointObservationUnavailable {
       instance: srv1_ci_instance_fixture(),
       reason: ReachRefused { detail: "ssh 192.168.1.196: Permission denied (publickey)" as std.types.NonEmptyStr },
     },
@@ -153,7 +153,7 @@ test fn witness_undecided_owner_context_refuses_and_keeps_the_located_reason() -
   let detail = "cgroup names actions-runner@srv1-XX.service; slot index did not parse" as std.types.NonEmptyStr
   let p = placement_of_endpoint_observation(
     observed: observed_with_context(
-      ctx: OwnerContextUndecided {
+      ctx: gunbc.build_cache_instance.OwnerContextUndecided {
         detail: detail,
         observed_cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-XX.service" as std.types.NonEmptyStr,
       },

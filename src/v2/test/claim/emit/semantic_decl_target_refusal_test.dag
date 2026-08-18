@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data semantic_decl_target_refusal_enrollment_note: String = "Enrolled via witness_discovery_scan_dirs (src/v2/test/claim/emit/) at F7 Inc1 ready — CI-gated fail-closed refusal receipt for unwired targets."
 
 fn sdtr_empty_conj() -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
 fn sdtr_variant_edge(name: v2.std.node.Symbol) -> v2.std.node.Edge {
@@ -15,7 +15,7 @@ fn sdtr_variant_edge(name: v2.std.node.Symbol) -> v2.std.node.Edge {
 
 fn sdtr_bool_coproduct() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: Disj },
     children: [ sdtr_variant_edge(name: ^True), sdtr_variant_edge(name: ^False) ],
     occurrence_id: SyntheticOccurrence
   }

@@ -71,8 +71,8 @@ test fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
 }
 
 test fn witness_converge_cli_unknown_host_and_compute_inventory_absent_are_distinct_causes() -> Bool {
-  let unknown = UnknownHost { host: "no-such-fleet-host" }
-  let inventory_absent = ComputeInventoryAbsent { host: "gunbc-ci-fleet" }
+  let unknown = gunbc.fleet_converge_cli.UnknownHost { host: "no-such-fleet-host" }
+  let inventory_absent = gunbc.fleet_converge_cli.ComputeInventoryAbsent { host: "gunbc-ci-fleet" }
   match unknown {
     UnknownHost { host: _ } =>
       match inventory_absent {
@@ -133,7 +133,7 @@ test fn witness_converge_cli_receipt_line_matches_byte_locked_grammar() -> Bool 
     applied: 0,
     drifted: 0,
     verdict: converge_verdict(effective: "", expected: "refused"),
-    reason: Present { value: KnobFrontier { reason: "refused" } },
+    reason: Present { value: gunbc.fleet_converge_cli.KnobFrontier { reason: "refused" } },
   }
   converge_cli_receipt_line(r: converged) == "converge-receipt host=srv9 applied=3 drifted=0 verdict=converged"
     && converge_cli_receipt_line(r: refused) == "converge-receipt host=srv1 applied=0 drifted=0 verdict=absent"
@@ -180,9 +180,9 @@ test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
   let a = revision_fixture_oid(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
   let b = revision_fixture_oid(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
   let knob = gunbc.fleet_converge_cli.ConvergeCliReceipt { host: "srv1", applied: 0, drifted: 0, verdict: VerdictConverged, reason: none }
-  let joint_ok = converge_cli_receipt_join_revision(r: knob, standing: RevisionConverged { revision: a })
-  let joint_drift = converge_cli_receipt_join_revision(r: knob, standing: RevisionDrifted { desired: a, local: b })
-  let joint_unobs = converge_cli_receipt_join_revision(r: knob, standing: RevisionUnobserved { cause: "ls-remote refused: no route" })
+  let joint_ok = converge_cli_receipt_join_revision(r: knob, standing: gunbc.fleet_desired_observe.RevisionConverged { revision: a })
+  let joint_drift = converge_cli_receipt_join_revision(r: knob, standing: gunbc.fleet_desired_observe.RevisionDrifted { desired: a, local: b })
+  let joint_unobs = converge_cli_receipt_join_revision(r: knob, standing: gunbc.fleet_desired_observe.RevisionUnobserved { cause: "ls-remote refused: no route" })
   converge_verdict_label(v: joint_ok.verdict) == "converged"
     && converge_cli_receipt_converged(r: joint_ok)
     && string_contains(s: converge_cli_receipt_line(r: joint_ok), pattern: "verdict=converged")
@@ -197,10 +197,10 @@ test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
       Present { value: parsed } => !converge_cli_receipt_converged(r: parsed)
       Absent => false
     }
-    && string_contains(s: converge_cli_revision_line(standing: RevisionConverged { revision: a }), pattern: "observed=")
-    && string_contains(s: converge_cli_revision_line(standing: RevisionDrifted { desired: a, local: b }), pattern: "drift desired=")
-    && string_contains(s: converge_cli_revision_line(standing: RevisionUnobserved { cause: "x" }), pattern: "unobserved cause=")
-    && !string_contains(s: converge_cli_revision_line(standing: RevisionUnobserved { cause: "x" }), pattern: "verdict=")
+    && string_contains(s: converge_cli_revision_line(standing: gunbc.fleet_desired_observe.RevisionConverged { revision: a }), pattern: "observed=")
+    && string_contains(s: converge_cli_revision_line(standing: gunbc.fleet_desired_observe.RevisionDrifted { desired: a, local: b }), pattern: "drift desired=")
+    && string_contains(s: converge_cli_revision_line(standing: gunbc.fleet_desired_observe.RevisionUnobserved { cause: "x" }), pattern: "unobserved cause=")
+    && !string_contains(s: converge_cli_revision_line(standing: gunbc.fleet_desired_observe.RevisionUnobserved { cause: "x" }), pattern: "verdict=")
 }
 
 // The meet's FULL table, all nine pairs. The joint-verdict witness above drives only the
@@ -230,7 +230,7 @@ fn revision_fixture_oid(hex: String) -> extdeps.git.object_store.GitObjectId {
   match git_sha1_object_id(hex: hex) {
     Present { value: oid } => oid
     Absent =>
-      GitSha1ObjectId {
+      extdeps.git.object_store.GitSha1ObjectId {
         digest: std.content_hash.Sha1Digest { hex: hex as std.content_hash.Sha1DigestHex },
       }
   }

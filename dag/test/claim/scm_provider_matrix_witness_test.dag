@@ -4,7 +4,7 @@ module test.claim.scm_provider_matrix_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // The provider x magnitude matrix. One profile (100 MB stored, 500 MB egress, 200 reads, 20 writes per user-month) scaled to 10k / 100k / 1M users against every provider whose storage AND egress AND request pricing is cited, with progressive tier application so the crossings are real: at 1M users the workload holds 100 TB (past the 50 TB storage step) and moves 500 TB a month (past all three egress steps).
-data matrix_basis_assumption: gunbc.econ.scm_serving_model.ByteBasisAssumption = BasisAssumed {
+data matrix_basis_assumption: gunbc.econ.scm_serving_model.ByteBasisAssumption = gunbc.econ.scm_serving_model.BasisAssumed {
   basis: DecimalGigabyte,
   rationale: "Declared for the vendors that do not state a basis (AWS, Azure, Cloudflare, Wasabi, Storj). Google states gibibyte and is therefore priced on its own stated basis regardless of this assumption.",
 }
@@ -22,7 +22,7 @@ data aws_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_serv
   quote_label: "AWS S3 Standard, us-east-1",
   storage_rows: [s3_standard_first_50tb, s3_standard_next_450tb, s3_standard_over_500tb],
   egress_rows: [s3_egress_first_10tb, s3_egress_next_40tb, s3_egress_next_100tb, s3_egress_over_150tb],
-  requests: RequestsBilled { read_row: s3_tier2_requests, write_row: s3_tier1_requests },
+  requests: gunbc.econ.scm_serving_model.RequestsBilled { read_row: s3_tier2_requests, write_row: s3_tier1_requests },
   quoted_basis: ByteBasisUnstated,
 }
 
@@ -31,7 +31,7 @@ data azure_lrs_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.sc
   quote_label: "Azure Blob Hot LRS (locally redundant), eastus",
   storage_rows: [azure_hot_lrs_tier0, azure_hot_lrs_tier_50tb, azure_hot_lrs_tier_500tb],
   egress_rows: [azure_egress_first_10tb, azure_egress_next_40tb, azure_egress_next_100tb, azure_egress_over_150tb],
-  requests: RequestsBilled { read_row: azure_hot_read_operations, write_row: azure_hot_lrs_write_operations },
+  requests: gunbc.econ.scm_serving_model.RequestsBilled { read_row: azure_hot_read_operations, write_row: azure_hot_lrs_write_operations },
   quoted_basis: ByteBasisUnstated,
 }
 
@@ -40,7 +40,7 @@ data azure_gzrs_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.s
   quote_label: "Azure Blob Hot GZRS (geo-zone redundant), eastus",
   storage_rows: [azure_hot_gzrs_tier0, azure_hot_gzrs_tier_50tb, azure_hot_gzrs_tier_500tb],
   egress_rows: [azure_egress_first_10tb, azure_egress_next_40tb, azure_egress_next_100tb, azure_egress_over_150tb],
-  requests: RequestsBilled { read_row: azure_hot_read_operations, write_row: azure_hot_gzrs_write_operations },
+  requests: gunbc.econ.scm_serving_model.RequestsBilled { read_row: azure_hot_read_operations, write_row: azure_hot_gzrs_write_operations },
   quoted_basis: ByteBasisUnstated,
 }
 
@@ -49,7 +49,7 @@ data r2_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_servi
   quote_label: "Cloudflare R2 Standard",
   storage_rows: [r2_standard],
   egress_rows: [r2_egress_free],
-  requests: RequestsBilled { read_row: r2_class_b_operations, write_row: r2_class_a_operations },
+  requests: gunbc.econ.scm_serving_model.RequestsBilled { read_row: r2_class_b_operations, write_row: r2_class_a_operations },
   quoted_basis: ByteBasisUnstated,
 }
 
@@ -58,7 +58,7 @@ data wasabi_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_s
   quote_label: "Wasabi Hot Cloud Storage (pay as you go)",
   storage_rows: [wasabi_hot_storage],
   egress_rows: [wasabi_egress_free],
-  requests: RequestsIncludedAtNoCharge { terms: "No fees for egress or API requests." },
+  requests: gunbc.econ.scm_serving_model.RequestsIncludedAtNoCharge { terms: "No fees for egress or API requests." },
   quoted_basis: ByteBasisUnstated,
 }
 
@@ -67,7 +67,7 @@ data storj_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_se
   quote_label: "Storj Standard (distributed)",
   storage_rows: [storj_standard_storage],
   egress_rows: [storj_egress],
-  requests: RequestsIncludedAtNoCharge { terms: "No API fees." },
+  requests: gunbc.econ.scm_serving_model.RequestsIncludedAtNoCharge { terms: "No API fees." },
   quoted_basis: ByteBasisUnstated,
 }
 

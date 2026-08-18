@@ -8,7 +8,7 @@ fn qmpr_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> Node {
     xs: segments,
     item_node: fn(sym) {
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: sym } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
@@ -21,7 +21,7 @@ data qmpr_provider_qn: FreeMonoid<v2.std.node.Symbol> = qualified_name_from_dott
 )
 
 data qmpr_provider_root: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     dag_named_edge(
       name: ^dag_surface_module_header,
@@ -34,7 +34,7 @@ data qmpr_provider_root: Node = v2.std.node.Node {
     v2.std.node.Edge {
       label: Named { name: ^ProviderType },
       target: v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: ^ProviderType } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ProviderType } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }

@@ -726,7 +726,7 @@ fn openbmc_read_file(
   session: extdeps.ssh.password_session.PasswordSshSession,
   path: std.types.NonEmptyStr,
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcReadFile { path: path })
+  openbmc_execute(session: session, operation: extdeps.bmc.openbmc_operation.OpenBmcReadFile { path: path })
 }
 
 fn openbmc_resolve_path(
@@ -735,7 +735,7 @@ fn openbmc_resolve_path(
 ) -> OpenBmcPathResult {
   let remote = openbmc_execute(
     session: session,
-    operation: OpenBmcResolvePath { path: path },
+    operation: extdeps.bmc.openbmc_operation.OpenBmcResolvePath { path: path },
   )
   openbmc_path_result(remote: remote)
 }
@@ -746,7 +746,7 @@ fn openbmc_parent_directory(
 ) -> OpenBmcPathResult {
   let remote = openbmc_execute(
     session: session,
-    operation: OpenBmcParentDirectory { path: path },
+    operation: extdeps.bmc.openbmc_operation.OpenBmcParentDirectory { path: path },
   )
   openbmc_path_result(remote: remote)
 }
@@ -758,7 +758,7 @@ fn openbmc_systemd_is_active(
   openbmc_service_active_result(
     remote: openbmc_execute(
       session: session,
-      operation: OpenBmcSystemdIsActive { service: service },
+      operation: extdeps.bmc.openbmc_operation.OpenBmcSystemdIsActive { service: service },
     ),
   )
 }
@@ -767,7 +767,7 @@ fn openbmc_systemd_restart(
   session: extdeps.ssh.password_session.PasswordSshSession,
   service: std.types.NonEmptyStr,
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcSystemdRestart { service: service })
+  openbmc_execute(session: session, operation: extdeps.bmc.openbmc_operation.OpenBmcSystemdRestart { service: service })
 }
 
 fn openbmc_zone_failsafe(
@@ -776,7 +776,7 @@ fn openbmc_zone_failsafe(
 ) -> OpenBmcBoolResult {
   let remote = openbmc_execute(
     session: session,
-    operation: OpenBmcZoneFailsafe { zone_path: zone_path },
+    operation: extdeps.bmc.openbmc_operation.OpenBmcZoneFailsafe { zone_path: zone_path },
   )
   openbmc_zone_failsafe_result(remote: remote)
 }
@@ -885,7 +885,7 @@ fn openbmc_sensor_service(
 ) -> OpenBmcSensorServicesResult {
   let remote = openbmc_execute(
     session: session,
-    operation: OpenBmcSensorServices { sensor_path: sensor_path },
+    operation: extdeps.bmc.openbmc_operation.OpenBmcSensorServices { sensor_path: sensor_path },
   )
   if !remote.success {
     OpenBmcSensorServicesRefused { reason: remote.stderr }
@@ -928,7 +928,7 @@ fn openbmc_sensor_value(
 ) -> OpenBmcSensorValueResult {
   let remote = openbmc_execute(
     session: session,
-    operation: OpenBmcSensorValue {
+    operation: extdeps.bmc.openbmc_operation.OpenBmcSensorValue {
       service: service,
       sensor_path: sensor_path,
     },
@@ -955,7 +955,7 @@ fn openbmc_sensor_threshold_value(
 ) -> OpenBmcSensorValueResult {
   let remote = openbmc_execute(
     session: session,
-    operation: OpenBmcSensorThreshold {
+    operation: extdeps.bmc.openbmc_operation.OpenBmcSensorThreshold {
       service: service,
       sensor_path: sensor_path,
       threshold: threshold,
@@ -1120,7 +1120,7 @@ fn openbmc_file_sha256(
 ) -> OpenBmcDigestResult {
   let result = openbmc_execute(
     session: session,
-    operation: OpenBmcFileSha256 { path: path },
+    operation: extdeps.bmc.openbmc_operation.OpenBmcFileSha256 { path: path },
   )
   if !result.success {
     OpenBmcDigestRefused { reason: result.stderr }
@@ -1161,7 +1161,7 @@ fn openbmc_fan_config_raw(
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
   openbmc_execute(
     session: session,
-    operation: OpenBmcFanConfigScalar {
+    operation: extdeps.bmc.openbmc_operation.OpenBmcFanConfigScalar {
       config_path: config_path,
       query: query,
     },
@@ -1207,8 +1207,8 @@ fn openbmc_fan_config_string(
 
 fn openbmc_fan_series_query(series: OpenBmcFanSeries, index: Int) -> extdeps.bmc.openbmc_operation.OpenBmcFanConfigQuery {
   match series {
-    OpenBmcReadings => OpenBmcReadingAt { index: index }
-    OpenBmcOutputs => OpenBmcOutputAt { index: index }
+    OpenBmcReadings => extdeps.bmc.openbmc_operation.OpenBmcReadingAt { index: index }
+    OpenBmcOutputs => extdeps.bmc.openbmc_operation.OpenBmcOutputAt { index: index }
   }
 }
 
@@ -1285,7 +1285,7 @@ fn openbmc_fan_input_list_rec(
     match openbmc_fan_config_string(
       session: session,
       config_path: config_path,
-      query: OpenBmcFanControllerNameAt { index: fan_index },
+      query: extdeps.bmc.openbmc_operation.OpenBmcFanControllerNameAt { index: fan_index },
     ) {
       OpenBmcStringRefused { reason } => OpenBmcFanControllerListRefused { reason: reason }
       OpenBmcStringObserved { value: name } =>
@@ -1297,7 +1297,7 @@ fn openbmc_fan_input_list_rec(
     match openbmc_fan_config_string(
       session: session,
       config_path: config_path,
-      query: OpenBmcFanInputAt {
+      query: extdeps.bmc.openbmc_operation.OpenBmcFanInputAt {
         fan_index: fan_index,
         input_index: input_index,
       },
@@ -1324,7 +1324,7 @@ fn openbmc_fan_controller_at(
   match openbmc_fan_config_integer(
     session: session,
     config_path: config_path,
-    query: OpenBmcFanInputCountAt { fan_index: fan_index },
+    query: extdeps.bmc.openbmc_operation.OpenBmcFanInputCountAt { fan_index: fan_index },
   ) {
     OpenBmcIntegerRefused { reason } => OpenBmcFanControllerListRefused { reason: reason }
     OpenBmcIntegerObserved { value: count } =>
@@ -1557,7 +1557,7 @@ fn openbmc_fan_config_validate(
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
   openbmc_execute(
     session: session,
-    operation: OpenBmcFanConfigValidate { config_path: config_path },
+    operation: extdeps.bmc.openbmc_operation.OpenBmcFanConfigValidate { config_path: config_path },
   )
 }
 
@@ -1568,7 +1568,7 @@ fn openbmc_fan_config_verify(
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
   openbmc_execute(
     session: session,
-    operation: OpenBmcFanConfigVerify {
+    operation: extdeps.bmc.openbmc_operation.OpenBmcFanConfigVerify {
       config_path: config_path,
       desired: desired,
     },
@@ -1598,7 +1598,7 @@ fn openbmc_path_is_writable(
   openbmc_path_probe_result(
     remote: openbmc_execute(
       session: session,
-      operation: OpenBmcPathIsWritable { path: path },
+      operation: extdeps.bmc.openbmc_operation.OpenBmcPathIsWritable { path: path },
     ),
   )
 }
@@ -1610,7 +1610,7 @@ fn openbmc_path_exists(
   openbmc_path_probe_result(
     remote: openbmc_execute(
       session: session,
-      operation: OpenBmcPathExists { path: path },
+      operation: extdeps.bmc.openbmc_operation.OpenBmcPathExists { path: path },
     ),
   )
 }
@@ -1619,7 +1619,7 @@ fn openbmc_path_is_nonempty_file(
   session: extdeps.ssh.password_session.PasswordSshSession,
   path: std.types.NonEmptyStr,
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcPathIsNonemptyFile { path: path })
+  openbmc_execute(session: session, operation: extdeps.bmc.openbmc_operation.OpenBmcPathIsNonemptyFile { path: path })
 }
 
 fn openbmc_disk_usage_kib(
@@ -1628,7 +1628,7 @@ fn openbmc_disk_usage_kib(
 ) -> OpenBmcByteSizeResult {
   let remote = openbmc_execute(
     session: session,
-    operation: OpenBmcDiskUsageKib { path: path },
+    operation: extdeps.bmc.openbmc_operation.OpenBmcDiskUsageKib { path: path },
   )
   openbmc_disk_usage_result(remote: remote)
 }
@@ -1647,7 +1647,7 @@ fn openbmc_make_directory(
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
   openbmc_execute(
     session: session,
-    operation: OpenBmcMakeDirectory { path: path, parents: parents },
+    operation: extdeps.bmc.openbmc_operation.OpenBmcMakeDirectory { path: path, parents: parents },
   )
 }
 
@@ -1655,14 +1655,14 @@ fn openbmc_remove_directory(
   session: extdeps.ssh.password_session.PasswordSshSession,
   path: std.types.NonEmptyStr,
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcRemoveDirectory { path: path })
+  openbmc_execute(session: session, operation: extdeps.bmc.openbmc_operation.OpenBmcRemoveDirectory { path: path })
 }
 
 fn openbmc_remove_file(
   session: extdeps.ssh.password_session.PasswordSshSession,
   path: std.types.NonEmptyStr,
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcRemoveFile { path: path })
+  openbmc_execute(session: session, operation: extdeps.bmc.openbmc_operation.OpenBmcRemoveFile { path: path })
 }
 
 fn openbmc_copy_file_preserving_metadata(
@@ -1672,7 +1672,7 @@ fn openbmc_copy_file_preserving_metadata(
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
   openbmc_execute(
     session: session,
-    operation: OpenBmcCopyFilePreservingMetadata {
+    operation: extdeps.bmc.openbmc_operation.OpenBmcCopyFilePreservingMetadata {
       source_path: source_path,
       destination_path: destination_path,
     },
@@ -1686,7 +1686,7 @@ fn openbmc_rename_replace(
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
   openbmc_execute(
     session: session,
-    operation: OpenBmcRenameReplace {
+    operation: extdeps.bmc.openbmc_operation.OpenBmcRenameReplace {
       source_path: source_path,
       destination_path: destination_path,
     },
@@ -1703,7 +1703,7 @@ fn openbmc_wait_seconds(
   session: extdeps.ssh.password_session.PasswordSshSession,
   duration: std.measure.Second,
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcWaitSeconds { duration: duration })
+  openbmc_execute(session: session, operation: extdeps.bmc.openbmc_operation.OpenBmcWaitSeconds { duration: duration })
 }
 
 fn openbmc_upload_file(

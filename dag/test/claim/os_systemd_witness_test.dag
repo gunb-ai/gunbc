@@ -30,7 +30,7 @@ test fn witness_memory_limit_bytes_roundtrip() -> Bool {
   let raw = to_string(byte_size_count(b: cap))
   match parse_systemd_memory_limit_show(raw: raw) {
     MemoryLimitBytes { bytes: b } =>
-      systemd_memory_limit_wire_label(lim: MemoryLimitBytes { bytes: b }) == raw
+      systemd_memory_limit_wire_label(lim: extdeps.systemd.MemoryLimitBytes { bytes: b }) == raw
     _ => false
   }
 }

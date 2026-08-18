@@ -7,11 +7,11 @@ fn census_witness_decl(name: String) -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "test.claim.repository_census_observation_witness", decl_name: name)
 }
 
-data census_witness_revision: gunbc.guarantee_measurement.MeasurementRevision = GitRevision {
+data census_witness_revision: gunbc.guarantee_measurement.MeasurementRevision = gunbc.guarantee_measurement.GitRevision {
   commit: "64aed6007e0000000000000000000000000000ff",
 }
 
-data census_witness_later_revision: gunbc.guarantee_measurement.MeasurementRevision = GitRevision {
+data census_witness_later_revision: gunbc.guarantee_measurement.MeasurementRevision = gunbc.guarantee_measurement.GitRevision {
   commit: "b12027cd940000000000000000000000000000ff",
 }
 
@@ -317,7 +317,7 @@ test fn witness_a_declaration_field_selector_reaches_the_identity() -> Bool {
 test fn witness_a_git_revision_and_a_content_fingerprint_are_not_interchangeable() -> Bool {
   let git = census_revision_identity(revision: census_witness_revision)
   let fingerprint = census_revision_identity(
-    revision: ContentFingerprint { digest: census_witness_digest(seed: "subject-material") },
+    revision: gunbc.guarantee_measurement.ContentFingerprint { digest: census_witness_digest(seed: "subject-material") },
   )
   !content_hash_eq_structural(left: git, right: fingerprint)
 }

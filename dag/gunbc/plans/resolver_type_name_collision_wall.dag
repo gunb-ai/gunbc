@@ -20,7 +20,7 @@ fn resolver_type_name_collision_wall_body() -> List<std.markdown.MarkdownBlock> 
     hr(),
     h2(text: "2. Mechanism (the model)"),
     p(text: "Replace the blind `rc_map_merge` of type bindings, at **both** import-binding assembly sites (`v1_compiler_infer.rs` ~11761 and ~12355 — themselves a §2 duplication this work should dissolve into **one** shared helper), with a **collision-checking merge**:"),
-    CodeBlock { code: "merge_type_bindings(acc, incoming, policy) -> \{ bindings, collisions \}\n  for each (name_id, incoming_binding) in incoming:\n    case acc.get(name_id):\n      None            -> insert\n      Some(existing)  ->\n        if same_authority(existing, incoming):        # re-export of ONE authority\n            keep existing (no flag)\n        else if policy.flags(existing, incoming):      # TWO authorities, one name\n            emit TypeNameCollision\{ name, module_a, module_b, span \}\n            keep existing (deterministic) — fail-closed downstream\n        else:\n            keep existing (policy excused it)\n" },
+    std.markdown.CodeBlock { code: "merge_type_bindings(acc, incoming, policy) -> \{ bindings, collisions \}\n  for each (name_id, incoming_binding) in incoming:\n    case acc.get(name_id):\n      None            -> insert\n      Some(existing)  ->\n        if same_authority(existing, incoming):        # re-export of ONE authority\n            keep existing (no flag)\n        else if policy.flags(existing, incoming):      # TWO authorities, one name\n            emit TypeNameCollision\{ name, module_a, module_b, span \}\n            keep existing (deterministic) — fail-closed downstream\n        else:\n            keep existing (policy excused it)\n" },
     p(text: "Where:"),
     ul(items: [
       li(text: "`same_authority(a, b)` ≡ `a.resolved.span.file == b.resolved.span.file` (one declaring file reached via multiple import paths is the SAME authority — a benign re-export, must NOT flag). `TypeBinding` is `\{ name, resolved: Rc<Node>, provenance \}` and `Node.span.file` carries the declaring file, so two-authorities-vs-one-re-export is distinguishable today — **no new field required.**"),
@@ -37,7 +37,7 @@ fn resolver_type_name_collision_wall_body() -> List<std.markdown.MarkdownBlock> 
     ]),
     p(text: "`structural_inequality` is a normalized structural compare of the two resolved type Nodes (connective + children names + field types), modulo span/occurrence — the same shape the emitter's coercion homomorphism check already walks; no new comparison primitive needed."),
     h3(text: "Trade-off (parent rules on the real distribution)"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [
         cell(text: ""),
         cell(text: "flag-ANY"),
@@ -116,6 +116,6 @@ data resolver_type_name_collision_wall_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "resolver-type-name-collision-wall",
   title: "Resolver type-name-collision wall (§5 construction wall) — model-before-implement",
   body: resolver_type_name_collision_wall_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this model-only DESIGN doc once the resolver type-name-collision wall is implemented and merged — the flag-ANY guard fires fail-closed on any same-name cross-authority type pair (TypeNameCollision diagnostic), the floor closure lands already-green after the de-fork, and the discriminating RED witness (synthetic divergent + byte-identical-mirror pairs both fire) is proven by execution — so this model is realized in the resolver.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this model-only DESIGN doc once the resolver type-name-collision wall is implemented and merged — the flag-ANY guard fires fail-closed on any same-name cross-authority type pair (TypeNameCollision diagnostic), the floor closure lands already-green after the de-fork, and the discriminating RED witness (synthetic divergent + byte-identical-mirror pairs both fire) is proven by execution — so this model is realized in the resolver.")
   }
 }

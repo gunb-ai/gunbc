@@ -4,11 +4,11 @@ module v2.test.intent_linearity.lens_unit.runtime_axis
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn transform_leaf() -> Node {
-  node_synthetic(kind: ComputationNode { behavior: Transform }, children: [])
+  node_synthetic(kind: v2.std.node.ComputationNode { behavior: Transform }, children: [])
 }
 fn cardinality_over(child: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Cardinality },
+    kind: v2.std.node.TypeNode { connective: Cardinality },
     children: [ v2.std.node.Edge { label: Positional, target: child } ]
   )
 }

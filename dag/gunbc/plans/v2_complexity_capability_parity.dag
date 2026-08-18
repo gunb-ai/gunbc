@@ -3,14 +3,14 @@ module gunbc.plans.v2_complexity_capability_parity
 
 fn v2_complexity_capability_parity_body() -> List<std.markdown.MarkdownBlock> {
   [
-    BlockquoteBlock { blocks: [
+    std.markdown.BlockquoteBlock { blocks: [
       p(text: "**Status: DRAFT for operator review (2026-08-04).** Design-note-first: **no code lands from this note.** It answers one question — *is v2 complexity analysis anemic compared to v1?* — with a verdict grounded in the tree's own status carriers, and declares the migration program that closes the gap."),
       p(text: "**Verdict: yes, and the tree already says so in its own enforcement model.** The anemia is real, it is localized (see §2 — it is *not* the whole cost stack), and one carrier declared it **permanent**, which was the finding acted on first (§4) — since RESOLVED by splitting that permanence claim rather than flipping it."),
     ] },
 
     h2(text: "1. Scope seam with the sibling note (DESIGN §3 — do not fork)"),
     p(text: "This note and [`discrete-cost-derivation.md`](discrete-cost-derivation.md) are two halves of one program and must not restate each other. The split is by *question*:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [
         cell(text: "Question"),
         cell(text: "Owner"),
@@ -31,7 +31,7 @@ fn v2_complexity_capability_parity_body() -> List<std.markdown.MarkdownBlock> {
 
     h2(text: "2. The verdict, and its exact boundary"),
     p(text: "**The cost half is live; the complexity half is not.** This distinction matters, because over-scoping the fix would be a second error. From `v2.lens.enforcement.contract`:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [
         cell(text: "Contract"),
         cell(text: "Mode"),
@@ -81,12 +81,12 @@ fn v2_complexity_capability_parity_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "**Table corrected 2026-08-05 (operator review).** Two rows were wrong in the merged revision and are fixed above, read off the live contract rather than recalled: `lens_contract_complexity_linearity_audit` showed no boundary when it carries a real `WallAfterGrounding` dissolving to `SubstrateMandatoryTag`, and `lens_contract_complexity_lowering` was omitted entirely though it carries `WallAfterGrounding` dissolving to `SingleAuthority` — a *distinct* dissolution mechanism, which matters because it means the specialized layer is not one undifferentiated block. Understating these boundaries understated how much of the complexity layer is already classified as decidable-but-unbuilt, which is the same direction of error as the `RatchetForever` mis-declaration below."),
     p(text: "So the generic structural engine `v2.lens.cost` is a real, enrolled, blocking wall — it is not a stub, and this program does not touch its kernel. Everything *above* it is audit-only with no consumer: the projection lens and all three specialized complexity lenses. That is the DESIGN §6 **coverage-by-illusion tier**, stated by the repo about itself."),
     p(text: "A second, sharper tell sits inside the projection lens: `v2.lens.complexity` `complexity_variables_admits` is"),
-    CodeBlock { code: "fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool \{\n  true\n\}\n" },
+    std.markdown.CodeBlock { code: "fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool \{\n  true\n\}\n" },
     p(text: "— a `Validation` whose admission predicate is the constant `true`. It refines nothing; the `Refined<List<SizeVariable>>` carrier it feeds is a type name standing where a constraint was supposed to be. DESIGN §4b names this class exactly: *'richer type names are not safety — a brand, wrapper, or `Validated<T>` is cosmetic until construction and acceptance enforce the distinction.'*"),
 
     h2(text: "3. Capability comparison (verified, not recalled)"),
     p(text: "`src/v1/complexity.dag` is 4,857 lines and **171 top-level `fn` declarations** — the method matters and was previously unstated: counting `fn` + `type` + `data` + `let` gives **201** (26 `type`, 4 `data`), which is why a sibling artifact quoted a different figure. Neither number was wrong; the missing method made them read as a contradiction. C0(b2) replaces both with a population derived from `DeclFact`. What v1 carries that v2 does not:"),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [
         cell(text: "Capability"),
         cell(text: "v1"),
@@ -114,7 +114,7 @@ fn v2_complexity_capability_parity_body() -> List<std.markdown.MarkdownBlock> {
 
     h2(text: "4. The finding to act on first: `RatchetForever` is very likely mis-declared"),
     p(text: "**RESOLVED — kept as the finding that produced C0(c), not a live defect.** The row described here no longer exists: it was split into `lens_contract_complexity_derived_kernel` and `lens_contract_complexity_optimality`. The argument is retained because the split rests on it. As written then, `lens_contract_complexity` carried `ConstructionJustification { class: RatchetForever }`. That is a **permanence claim**: this class is undecidable, so it can never become a wall and will always be a validating ratchet. DESIGN §5 is explicit that this is the trap to check rather than the safe default:"),
-    BlockquoteBlock { blocks: [
+    std.markdown.BlockquoteBlock { blocks: [
       p(text: "*'The word \"never\" is the trap: it lets a ratchet masquerade as a wall, so check decidability before claiming one.'*"),
     ] },
     p(text: "Applied here the claim does not survive contact with its own contents. **Optimality is undecidable by Rice — but most of what is missing is not optimality.** Work and span composition over a closed kernel is decidable. Summation over a *bounded* collection is decidable — that is what the modeled loop bound exists to provide. Output size and peak space over the same bounded fragment are decidable. Interprocedural summaries over an acyclic declaration graph are decidable, and the cyclic case is exactly what SCC plus `DescentEvidence` already decides fail-closed. So `RatchetForever` on the whole contract is a single permanence verdict standing over a **mixed** population, and its effect is to make the anemia unrankable: a class declared permanently undecidable never appears on anyone's list of things to climb."),
@@ -122,7 +122,7 @@ fn v2_complexity_capability_parity_body() -> List<std.markdown.MarkdownBlock> {
 
     h2(text: "5. The authority ruling (content; signed as C0's first deliverable — §7)"),
     p(text: "Do **not** port `src/v1/complexity.dag` wholesale. It is powerful but coupled to the v1 AST, to parser implementation details, and to string-keyed identity throughout — porting it would cement the seed into the new architecture, which is the one move the project spirit forbids. The split:"),
-    CodeBlock { code: "v2.lens.cost              cost + size expressions, work/span composition,\n                          output-size and space expressions, effect demand\n\nv2.lens.complexity        asymptotic projection of cost; dominance and\n                          complexity-class comparison. Nothing else.\n\nstd.realization_schedule  predicted / derived / measured resource accounts\n                          and scheduling consumption\n\nv1.compiler.complexity    legacy realization, capability inventory,\n                          parity oracle, deletion target\n" },
+    std.markdown.CodeBlock { code: "v2.lens.cost              cost + size expressions, work/span composition,\n                          output-size and space expressions, effect demand\n\nv2.lens.complexity        asymptotic projection of cost; dominance and\n                          complexity-class comparison. Nothing else.\n\nstd.realization_schedule  predicted / derived / measured resource accounts\n                          and scheduling consumption\n\nv1.compiler.complexity    legacy realization, capability inventory,\n                          parity oracle, deletion target\n" },
     p(text: "**`SymbolicCost` stays** as the normalized asymptotic projection of the richer `CostExpr` — one authority with two levels of detail, never two competing cost types. The existing `Blocking` cost wall and its bound consumer witness keep working throughout; no phase below may regress them."),
 
     h2(text: "6. What must NOT be carried across"),
@@ -182,6 +182,6 @@ data v2_complexity_capability_parity_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "v2-complexity-capability-parity",
   title: "v2 complexity capability parity — restoring the engine, not porting the seed",
   body: v2_complexity_capability_parity_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the capability census is closed with every v1 row dispositioned, the boundary class distinguishes the genuinely undecidable residue from the decidable capability (SATISFIED: `lens_contract_complexity_derived_kernel` and `lens_contract_complexity_optimality` replaced the mixed row), v2.lens.cost carries grounded SizeExpr/CostExpr with work/span/output-size/peak-space/certainty on a restored ComplexitySummary, interprocedural summaries and descent bounds derive over declaration-keyed identities, the parity corpus reproduces or dispositions every meaningful v1 conclusion, `lens_contract_complexity_derived_kernel` has a live consumer witness and has flipped off AuditOnly — and this clause deliberately does NOT name `lens_contract_complexity_optimality`, which is `RatchetForever` and stays permanently AuditOnly by ruling, so requiring IT to flip would make this doc unretirable by construction, and v1.compiler.complexity is deleted or dispositioned — at which point the carriers state the capability and this note retires.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the capability census is closed with every v1 row dispositioned, the boundary class distinguishes the genuinely undecidable residue from the decidable capability (SATISFIED: `lens_contract_complexity_derived_kernel` and `lens_contract_complexity_optimality` replaced the mixed row), v2.lens.cost carries grounded SizeExpr/CostExpr with work/span/output-size/peak-space/certainty on a restored ComplexitySummary, interprocedural summaries and descent bounds derive over declaration-keyed identities, the parity corpus reproduces or dispositions every meaningful v1 conclusion, `lens_contract_complexity_derived_kernel` has a live consumer witness and has flipped off AuditOnly — and this clause deliberately does NOT name `lens_contract_complexity_optimality`, which is `RatchetForever` and stays permanently AuditOnly by ruling, so requiring IT to flip would make this doc unretirable by construction, and v1.compiler.complexity is deleted or dispositioned — at which point the carriers state the capability and this note retires.")
   }
 }

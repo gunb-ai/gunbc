@@ -120,17 +120,17 @@ fn witness_path_policy_execution_standing_in(
   frozen: List<gunbc.witness_deferral_freeze.FrozenPathDeferral>
 ) -> std.witness_admission.WitnessExecutionStanding {
   if !excluded_from_discovery {
-    WitnessHasExecutingConsumer { cadence: DiscoverySelection }
+    std.witness_admission.WitnessHasExecutingConsumer { cadence: DiscoverySelection }
   } else if path_matches_any_substring(path: entry, subs: offline) {
     if frozen_path_deferral_covers_in(rows: frozen, entry: entry, function: function) {
-      LegacyFrozenPathDeferral { entry: entry, function: function }
+      std.witness_admission.LegacyFrozenPathDeferral { entry: entry, function: function }
     } else {
-      UnclassifiedPathDeferral { entry: entry, function: function }
+      std.witness_admission.UnclassifiedPathDeferral { entry: entry, function: function }
     }
   } else if path_matches_any_substring(path: entry, subs: fixture) {
-    WitnessHasExecutingConsumer { cadence: FixtureExplicitRoster }
+    std.witness_admission.WitnessHasExecutingConsumer { cadence: FixtureExplicitRoster }
   } else {
-    UnexecutedDeferredWitness { entry: entry, function: function }
+    std.witness_admission.UnexecutedDeferredWitness { entry: entry, function: function }
   }
 }
 
@@ -177,7 +177,7 @@ fn witness_execution_standing_for_row(
   match explicit {
     NoConsumer =>
       if witness_commit_roster_enrolled(entry: entry, function: function) {
-        WitnessHasExecutingConsumer { cadence: DiscoverySelection }
+        std.witness_admission.WitnessHasExecutingConsumer { cadence: DiscoverySelection }
       } else {
         witness_path_policy_execution_standing(
           entry: entry,
@@ -185,7 +185,7 @@ fn witness_execution_standing_for_row(
           excluded_from_discovery: excluded_from_discovery
         )
       }
-    _ => WitnessHasExecutingConsumer { cadence: explicit }
+    _ => std.witness_admission.WitnessHasExecutingConsumer { cadence: explicit }
   }
 }
 

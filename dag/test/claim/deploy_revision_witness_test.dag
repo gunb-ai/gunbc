@@ -11,7 +11,7 @@ data all_relations: List<gunbc.live_deploy.revision.DeployRevisionRelation> = [
   DeployedIsAncestor,
   CandidateIsAncestor,
   UnrelatedHistories,
-  RelationUnverifiable { cause: "probe failed" as std.types.NonEmptyStr },
+  gunbc.live_deploy.revision.RelationUnverifiable { cause: "probe failed" as std.types.NonEmptyStr },
 ]
 
 test fn deployed_ancestor_of_candidate_advances() -> Bool {
@@ -51,7 +51,7 @@ test fn unrelated_histories_refuse() -> Bool {
 
 test fn unverifiable_relation_refuses_and_keeps_its_cause() -> Bool {
   let why = "no persisted revision on host" as std.types.NonEmptyStr
-  match classify_deploy_revision(relation: RelationUnverifiable { cause: why }) {
+  match classify_deploy_revision(relation: gunbc.live_deploy.revision.RelationUnverifiable { cause: why }) {
     RevisionRefused { cause: c } => c == why
     _ => false
   }

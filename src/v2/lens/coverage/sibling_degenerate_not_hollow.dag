@@ -2,7 +2,7 @@ module v2.test.lens_coverage.sibling_degenerate_not_hollow
 
 
 data sibling_degenerate_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^sibling_degenerate_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sibling_degenerate_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -16,14 +16,14 @@ fn sibling_degenerate_not_hollow_claim_rhs() -> Node {
     sibling_degenerate_node
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_sibling_degenerate_not_hollow: v2.std.verification.TestClaim = EqualsClaim {
+data claim_sibling_degenerate_not_hollow: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_coverage/sibling_degenerate_not_hollow: DegenerateType distinct from HollowType",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sibling_degenerate_node,

@@ -14,7 +14,7 @@ data reach_repair_surgical_body_diff: v2.std.node.Diff = v2.std.node.Diff {
 
 fn rr_atom(identity: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -134,7 +134,7 @@ test fn witness_suggested_correction_matches_add_edge_repair() -> Bool {
   let d = rr_dead_wire_diagnostic()
   correction_eq(
     a: d.correction,
-    b: Suggested { node: rr_repaired_root() }
+    b: v2.std.diagnostic.Suggested { node: rr_repaired_root() }
   )
 }
 

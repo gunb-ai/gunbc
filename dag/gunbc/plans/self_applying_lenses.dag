@@ -35,7 +35,7 @@ fn self_applying_lenses_body() -> List<std.markdown.MarkdownBlock> {
       li(text: "**redundant intent = change-time** (§1 *complexity* axis — time to change; §2 \"redundant work defers cost into the future\")."),
     ]),
     p(text: "Both are §2 *minimize redundancy*: DRY on the **execution** (don't compute the same thing twice) vs DRY on the **source** (don't write the same shape twice). So the unification is one engine:"),
-    BlockquoteBlock { blocks: [
+    std.markdown.BlockquoteBlock { blocks: [
       p(text: "**redundancy = (actual − minimal) along a §1 time-axis, computed by a catamorphism, closed by an anti-unification `(pattern → minimal-form)` rewrite catalog, applied via the write API.**"),
     ] },
     p(text: "Parameterized by: (a) the **representation walked** — source-AST (redundant intent) vs cost-recurrence (complexity, the `SumCost`/`ProductCost` shape); (b) the **§1-axis minimized** — change-time vs run-time. Instances: `simulated_relationship` (unroll→fold) · `structural_similarity` (dup type→generic) · the §5 `O(n²)→O(n)` catalog (redundant *computation* → memo / single-pass). One engine, N catalog rows (§2-horizontal) — not the N×M \"per-idiom rules\" §5 feared."),
@@ -79,7 +79,7 @@ fn self_applying_lenses_body() -> List<std.markdown.MarkdownBlock> {
     h3(text: "The audit (every `src/v2/lens/*.dag`, classified)"),
     p(text: "Surveyed all 39 top-level lens modules. Each falls into one of four buckets. The discriminator is **how the corrected `Node` is obtained**: *computed* by anti-unification (A) · a single *mechanical deletion* (B) · *chosen* by human design or unknowable (C) · or *not a detector at all* (D). The load-bearing finding: **produce-and-apply has real leverage almost only on bucket A** — that is the one family where the same read that *measures* the redundancy *computes* the fix (anti-unify → template + substitution). Everywhere else the \"fix\" is either picked (ambiguous), researched (the real authority), or — per §5 construction-first — should be dissolved by making the bad state *unwritable at the substrate*, not patched by a validation lens. So most non-A walls stay **detect-only until their construction lands**; upgrading them to produce-and-apply would cement a validator where a wall was the right end-state."),
     p(text: "**A — redundancy / anti-unification → fold into the `v2.lens.intent_linearity` registry as a ROW** (one engine, N rows; the producer *is* the anti-unify generalization). These do not get a standalone produce-and-apply upgrade — they get *consumed* by the registry's producer-and-applier."),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "lens"), cell(text: "redundancy detected"), cell(text: "binder of the minimal form"), cell(text: "state")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -94,7 +94,7 @@ fn self_applying_lenses_body() -> List<std.markdown.MarkdownBlock> {
       ],
     },
     p(text: "**B — decidable non-redundancy wall whose corrected `Node` is a single mechanical deletion** → the thin genuine produce-and-apply set. Even here the apply-half carries a *delete-vs-repair* judgment (an unused param may signal a body bug, and deletion cascades to call sites), so it ships behind a flag with the detect-only form retained."),
-    TableBlock {
+    std.markdown.TableBlock {
       header: row(cells: [cell(text: "lens"), cell(text: "bad state"), cell(text: "corrected Node"), cell(text: "caveat")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
@@ -125,6 +125,6 @@ data self_applying_lenses_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "self-applying-lenses",
   title: "Self-applying lenses — detect → generalize → emit → write",
   body: self_applying_lenses_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the `v2.lens.intent_linearity` registry's single producer-and-applier is built over the shared anti-unify kernel and the bucket-A rows (`structural_similarity`, `identical_variant_payload`, `table_decision_tree`, `cost`'s RunTime entries) are realized as registry rows wired green through emit + the filesystem-write effect — at which point the consolidation map and audit classification are witnessed properties of the registry and this tracker is redundant (DESIGN §6: the mark on the carrier is the authority).")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the `v2.lens.intent_linearity` registry's single producer-and-applier is built over the shared anti-unify kernel and the bucket-A rows (`structural_similarity`, `identical_variant_payload`, `table_decision_tree`, `cost`'s RunTime entries) are realized as registry rows wired green through emit + the filesystem-write effect — at which point the consolidation map and audit classification are witnessed properties of the registry and this tracker is redundant (DESIGN §6: the mark on the carrier is the authority).")
   }
 }

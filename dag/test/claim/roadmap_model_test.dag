@@ -51,7 +51,7 @@ fn node_with_carriers(cs: List<gunbc.roadmap_model.Pointer>) -> gunbc.roadmap_mo
   gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_P8CGH3E7ERD8M55W9X49" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_node,
-    line: AuthoredLine { done: false, content: "PR→checkbox status" },
+    line: gunbc.roadmap_status.AuthoredLine { done: false, content: "PR→checkbox status" },
     carriers: cs,
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
@@ -82,7 +82,7 @@ test fn witness_node_status_drifts() -> Bool {
   let rn = gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_WZ1MVE2JJZ2CCAWP2TVM" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_node,
-    line: DerivableLine { prs: [5491], title: "stale", description: "" },
+    line: gunbc.roadmap_status.DerivableLine { prs: [5491], title: "stale", description: "" },
     carriers: [],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
@@ -96,7 +96,7 @@ test fn witness_node_unsigned_box_clean() -> Bool {
   let rn = gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_Q203PA6K5BSTTSCXR7JB" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_node,
-    line: AuthoredLine { done: false, content: "partial evidence" },
+    line: gunbc.roadmap_status.AuthoredLine { done: false, content: "partial evidence" },
     carriers: [],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,

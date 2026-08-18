@@ -15,7 +15,7 @@ type HardwareProcurementIntent {
 data spark_a3ee_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow = extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow {
   mac_address: "4C:BB:47:E8:A3:EE" as extdeps.dhcp.v4.MacAddress,
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
-  lease: StaticDhcpReservation {
+  lease: extdeps.dhcp.v4.StaticDhcpReservation {
     reservation_label: "spark-a3ee" as std.types.NonEmptyStr,
     status: Active,
   },
@@ -24,7 +24,7 @@ data spark_a3ee_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow 
 data spark_3bd5_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow = extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow {
   mac_address: "4C:BB:47:E8:3B:D5" as extdeps.dhcp.v4.MacAddress,
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223),
-  lease: StaticDhcpReservation {
+  lease: extdeps.dhcp.v4.StaticDhcpReservation {
     reservation_label: "spark-3bd5" as std.types.NonEmptyStr,
     status: Active,
   },

@@ -2,17 +2,17 @@ module v2.test.qualified_name.from_module_node
 
 
 fn fmn_sym_node(sym: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
 fn fmn_bool_atom(b: Bool) -> Node {
   match b {
-    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^fmn_bool_true_sym } }, children: [],
+    true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fmn_bool_true_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^fmn_bool_false_sym } }, children: [],
+    false => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fmn_bool_false_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
@@ -33,40 +33,40 @@ fn fmn_value_eq(out: Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.
 }
 
 data fmn_qn_node: Node = fold_list_node(
-  xs: Cons { head: ^fmn_sym_a, tail: Cons { head: ^fmn_sym_b, tail: Empty } },
+  xs: std.algebra.Cons { head: ^fmn_sym_a, tail: std.algebra.Cons { head: ^fmn_sym_b, tail: Empty } },
   item_node: fn(sym) { fmn_sym_node(sym: sym) }
 )
 
 data fmn_module_header_node: Node = emit_module_header_emitted_node(qualified_name: fmn_qn_node)
 
-data fmn_bare_conj_node: Node = v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [],
+data fmn_bare_conj_node: Node = v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 
-data fmn_qn_empty_node: Node = v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [],
+data fmn_qn_empty_node: Node = v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 data fmn_module_header_empty_qn_node: Node = emit_module_header_emitted_node(qualified_name: fmn_qn_empty_node)
 
 data fmn_qn_gated_node: Node = fold_list_node(
-  xs: Cons { head: ^dag_token_ident, tail: Empty },
+  xs: std.algebra.Cons { head: ^dag_token_ident, tail: Empty },
   item_node: fn(sym) { fmn_sym_node(sym: sym) }
 )
 
 data fmn_module_header_gated_node: Node = emit_module_header_emitted_node(qualified_name: fmn_qn_gated_node)
 
-data claim_from_module_node_accepted: v2.std.verification.TestClaim = EqualsClaim {
+data claim_from_module_node_accepted: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "qualified_name_from_module_node returns Accepted with [^fmn_sym_a, ^fmn_sym_b] for a well-formed module header emitted node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: fmn_bool_atom(b: fmn_value_eq(
     out: qualified_name_from_module_node(root: fmn_module_header_node),
-    expected: Cons { head: ^fmn_sym_a, tail: Cons { head: ^fmn_sym_b, tail: Empty } }
+    expected: std.algebra.Cons { head: ^fmn_sym_a, tail: std.algebra.Cons { head: ^fmn_sym_b, tail: Empty } }
   )),
   rhs: fmn_bool_atom(b: true),
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_from_module_node_missing_edge_rejected: v2.std.verification.TestClaim = EqualsClaim {
+data claim_from_module_node_missing_edge_rejected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "qualified_name_from_module_node returns Rejected when dag_surface_module_header_qualified_name edge is absent",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: fmn_bool_atom(b: fmn_outcome_accepted(out: qualified_name_from_module_node(root: fmn_bare_conj_node))),
@@ -74,7 +74,7 @@ data claim_from_module_node_missing_edge_rejected: v2.std.verification.TestClaim
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_from_module_node_empty_qn_rejected: v2.std.verification.TestClaim = EqualsClaim {
+data claim_from_module_node_empty_qn_rejected: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "qualified_name_from_module_node returns Rejected for a module header whose QN edge is an empty fold_list_node (vacuous for_all must not accept)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: fmn_bool_atom(b: fmn_outcome_accepted(out: qualified_name_from_module_node(root: fmn_module_header_empty_qn_node))),
@@ -82,7 +82,7 @@ data claim_from_module_node_empty_qn_rejected: v2.std.verification.TestClaim = E
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_from_module_node_t8_gated: v2.std.verification.TestClaim = EqualsClaim {
+data claim_from_module_node_t8_gated: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "qualified_name_from_module_node returns Rejected when QN segment is dag_token_ident (T-8 gate)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: fmn_bool_atom(b: fmn_outcome_accepted(out: qualified_name_from_module_node(root: fmn_module_header_gated_node))),

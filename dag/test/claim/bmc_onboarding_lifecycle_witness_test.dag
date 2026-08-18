@@ -170,14 +170,14 @@ test fn credential_probe_maps_to_correct_phase() -> Bool {
       Absent => false
     }
     && match bmc_credential_probe_to_phase(
-      probe: CredentialAccessUpsertRequired {
+      probe: gunbc.bmc_onboarding.CredentialAccessUpsertRequired {
         plan: gunbc.auth.access_token_source.GoogleCloudInteractiveAuthenticationRequired {},
       },
     ) {
       Absent => true
       Present { value: _ } => false
     }
-    && match bmc_credential_probe_to_phase(probe: CredentialStateUnknown { reason: "test" }) {
+    && match bmc_credential_probe_to_phase(probe: gunbc.bmc_onboarding.CredentialStateUnknown { reason: "test" }) {
       Absent => true
       Present { value: _ } => false
     }

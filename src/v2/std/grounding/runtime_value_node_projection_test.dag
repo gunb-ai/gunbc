@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn rvnp_test_type_node(sym: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: sym } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -16,7 +16,7 @@ fn rvnp_test_byte() -> Byte {
 }
 
 fn rvnp_test_primitive_value() -> v2.std.runtime.RuntimeValue {
-  RuntimePrimitive {
+  v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: rvnp_test_type_node(sym: ^rvnp_test_i64_sym),
       bytes: [rvnp_test_byte()]
@@ -25,7 +25,7 @@ fn rvnp_test_primitive_value() -> v2.std.runtime.RuntimeValue {
 }
 
 fn rvnp_test_aggregate_value() -> v2.std.runtime.RuntimeValue {
-  RuntimeAggregate {
+  v2.std.runtime.RuntimeAggregate {
     value: v2.std.runtime.RuntimeAggregateValue {
       aggregate_type: rvnp_test_type_node(sym: ^rvnp_test_pair_sym),
       fields: [
@@ -43,13 +43,13 @@ fn rvnp_test_aggregate_value() -> v2.std.runtime.RuntimeValue {
 }
 
 fn rvnp_test_aggregate_with_reference_field() -> v2.std.runtime.RuntimeValue {
-  RuntimeAggregate {
+  v2.std.runtime.RuntimeAggregate {
     value: v2.std.runtime.RuntimeAggregateValue {
       aggregate_type: rvnp_test_type_node(sym: ^rvnp_test_pair_sym),
       fields: [
         v2.std.runtime.RuntimeFieldValue {
           field: ^rvnp_test_left_field,
-          value: RuntimeReference {
+          value: v2.std.runtime.RuntimeReference {
             value: v2.std.runtime.RuntimeReferenceValue {
               reference_type: rvnp_test_type_node(sym: ^rvnp_test_ref_sym),
               identity: v2.std.runtime.RuntimeIdentity { identity: ^rvnp_test_ref_id },
@@ -63,7 +63,7 @@ fn rvnp_test_aggregate_with_reference_field() -> v2.std.runtime.RuntimeValue {
 }
 
 fn rvnp_test_reference_value() -> v2.std.runtime.RuntimeValue {
-  RuntimeReference {
+  v2.std.runtime.RuntimeReference {
     value: v2.std.runtime.RuntimeReferenceValue {
       reference_type: rvnp_test_type_node(sym: ^rvnp_test_ref_sym),
       identity: v2.std.runtime.RuntimeIdentity { identity: ^rvnp_test_ref_id },
@@ -73,7 +73,7 @@ fn rvnp_test_reference_value() -> v2.std.runtime.RuntimeValue {
 }
 
 fn rvnp_test_closure_value() -> v2.std.runtime.RuntimeValue {
-  RuntimeClosure {
+  v2.std.runtime.RuntimeClosure {
     value: v2.std.runtime.RuntimeClosureValue {
       arrow_type: rvnp_test_type_node(sym: ^rvnp_test_arrow_sym),
       arrow: rvnp_test_type_node(sym: ^rvnp_test_arrow_body_sym),
@@ -83,7 +83,7 @@ fn rvnp_test_closure_value() -> v2.std.runtime.RuntimeValue {
 }
 
 fn rvnp_test_unit_value() -> v2.std.runtime.RuntimeValue {
-  RuntimeUnit {
+  v2.std.runtime.RuntimeUnit {
     value: v2.std.runtime.RuntimeUnitValue {
       unit_type: rvnp_test_type_node(sym: ^rvnp_test_unit_sym)
     }

@@ -12,7 +12,7 @@ fn planted_oid(hex: String) -> extdeps.git.object_store.GitObjectId {
   match git_sha1_object_id(hex: hex) {
     Present { value: oid } => oid
     Absent =>
-      GitSha1ObjectId {
+      extdeps.git.object_store.GitSha1ObjectId {
         digest: std.content_hash.Sha1Digest {
           hex: planted_base_hex as std.content_hash.Sha1DigestHex
         }
@@ -53,7 +53,7 @@ test fn witness_verification_window_emits_exact_replay_argv() -> Bool {
   match git_diff_window_from_json(text: json) {
     GitDiffWindowObserved { window: window } =>
       match resolve_with_diff_window(
-        diff_window: Present { value: GitDiffWindowObserved { window: window } },
+        diff_window: Present { value: gunbc.git_diff_change_window.GitDiffWindowObserved { window: window } },
         base_ref: Present { value: "main" },
         override_ref: none
       ) {
@@ -101,7 +101,7 @@ test fn witness_malformed_window_refuses_before_diff() -> Bool {
   match git_diff_window_from_json(text: "{\"schema\":\"gunbc-git-diff-window/v2\"}") {
     GitDiffWindowMalformed { detail: _ } =>
       match resolve_with_diff_window(
-        diff_window: Present { value: GitDiffWindowMalformed { detail: "missing members" } },
+        diff_window: Present { value: gunbc.git_diff_change_window.GitDiffWindowMalformed { detail: "missing members" } },
         base_ref: Present { value: "main" },
         override_ref: none
       ) {
@@ -150,7 +150,7 @@ test fn witness_baseline_source_conflict_refuses_both_authorities() -> Bool {
   match git_diff_window_from_json(text: json) {
     GitDiffWindowObserved { window: window } =>
       match resolve_with_diff_window(
-        diff_window: Present { value: GitDiffWindowObserved { window: window } },
+        diff_window: Present { value: gunbc.git_diff_change_window.GitDiffWindowObserved { window: window } },
         base_ref: Present { value: "main" },
         override_ref: Present { value: "origin/main" }
       ) {
@@ -180,7 +180,7 @@ test fn witness_persisted_window_selects_floor_two_dot_mode() -> Bool {
   match git_diff_window_from_json(text: json) {
     GitDiffWindowObserved { window: window } =>
       match resolve_with_diff_window(
-        diff_window: Present { value: GitDiffWindowObserved { window: window } },
+        diff_window: Present { value: gunbc.git_diff_change_window.GitDiffWindowObserved { window: window } },
         base_ref: Present { value: "main" },
         override_ref: none
       ) {

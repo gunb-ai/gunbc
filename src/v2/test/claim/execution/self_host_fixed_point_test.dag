@@ -42,14 +42,14 @@ fn self_host_fixture_source_models_unready() -> v2.compiler.self_host.SourceMode
 
 fn stage_emission_leaf() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^stage_emission_fixture_leaf } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^stage_emission_fixture_leaf } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 fn stage_reference_emitted() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: stage_emission_leaf() },
       v2.std.node.Edge { label: Positional, target: stage_emission_leaf() },
@@ -60,7 +60,7 @@ fn stage_reference_emitted() -> Node {
 }
 fn stage_candidate_equal_emitted() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: stage_emission_leaf() },
       v2.std.node.Edge { label: Positional, target: stage_emission_leaf() },
@@ -72,7 +72,7 @@ fn stage_candidate_equal_emitted() -> Node {
 
 fn stage_candidate_perturbed_emitted() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: stage_emission_leaf() },
       v2.std.node.Edge { label: Positional, target: stage_emission_leaf() }

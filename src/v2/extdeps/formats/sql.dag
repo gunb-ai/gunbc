@@ -176,7 +176,7 @@ data sql_nonnumeric_facts_catalog: List<SqlNonNumericPrimitiveFacts> = [
 
 fn sql_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -184,10 +184,10 @@ fn sql_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
 
 fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
-        name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+        name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
     ],
@@ -197,10 +197,10 @@ fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {
 
 fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
-        name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+        name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
     ],
@@ -210,14 +210,14 @@ fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> Node {
 
 fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
-        name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+        name: discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
       dag_named_edge(
-        name: discriminant(v: ModelCoreFactAxisEncoding {}),
+        name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
         target: sql_inhabitant_atom(id: facts.representation),
       ),
     ],
@@ -228,9 +228,9 @@ fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
 fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}) {
           v2.std.optional.Present { value: sql_inhabitant_atom(id: ^sql_tag_signed) }
       } else {
           v2.std.optional.Absent
@@ -242,7 +242,7 @@ fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<v2.std.node.Sy
 fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
       } else {
           v2.std.optional.Absent
@@ -254,9 +254,9 @@ fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<v2.std.node.Symbol
 fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.representation) }
       } else {
           v2.std.optional.Absent
@@ -293,7 +293,7 @@ fn sql_list_reverse<T>(xs: List<T>) -> List<T> {
     xs: xs,
     empty: Empty,
     cons: fn(acc, item) {
-      Cons { head: item, tail: acc }
+      std.algebra.Cons { head: item, tail: acc }
     }
   )
 }
@@ -304,7 +304,7 @@ fn sql_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
       xs: xs,
       empty: Empty,
       cons: fn(acc, item) {
-        Cons { head: f(item), tail: acc }
+        std.algebra.Cons { head: f(item), tail: acc }
       }
     )
   )
@@ -356,7 +356,7 @@ fn sql_join_strings(separator: String, parts: List<String>) -> String {
 }
 
 data sql_serialize_diagnostic_anchor: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -365,7 +365,7 @@ fn sql_serialize_unsupported_operation_diagnostic(variant: v2.std.node.Symbol) -
   v2.std.diagnostic.Diagnostic {
     reason: variant,
     at: node_locus(node: sql_serialize_diagnostic_anchor),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -373,7 +373,7 @@ fn sql_serialize_unsupported_data_type_diagnostic(variant: v2.std.node.Symbol) -
   v2.std.diagnostic.Diagnostic {
     reason: variant,
     at: node_locus(node: sql_serialize_diagnostic_anchor),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 

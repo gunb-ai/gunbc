@@ -48,10 +48,10 @@ fn cache_key_projection_provider_key<T>(
   backend: extdeps.cache.types.CacheInterfaceCatalogFacts,
 ) -> extdeps.cache.types.CatalogProviderKey {
   match backend.transport_encoding {
-    CatalogOpaqueStringEncoding => CatalogOpaqueStringKey { key: artifact.subject_digest }
-    SccacheInternalEncoding => SccacheInternalHash { digest: artifact.subject_digest }
-    CatalogCasContentEncoding => CatalogCasContentDigest { digest: artifact.subject_digest }
-    CargoFingerprintEncoding => CargoFingerprint { digest: artifact.subject_digest }
+    CatalogOpaqueStringEncoding => extdeps.cache.types.CatalogOpaqueStringKey { key: artifact.subject_digest }
+    SccacheInternalEncoding => extdeps.cache.types.SccacheInternalHash { digest: artifact.subject_digest }
+    CatalogCasContentEncoding => extdeps.cache.types.CatalogCasContentDigest { digest: artifact.subject_digest }
+    CargoFingerprintEncoding => extdeps.cache.types.CargoFingerprint { digest: artifact.subject_digest }
   }
 }
 

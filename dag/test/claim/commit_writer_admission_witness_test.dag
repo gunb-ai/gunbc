@@ -27,7 +27,7 @@ fn fixture_path() -> extdeps.git.object_store.GitPath {
 fn fallback_path() -> extdeps.git.object_store.GitPath {
   extdeps.git.object_store.GitPath {
     first: extdeps.git.object_store.GitTreeEntryName {
-      first: GitTreeEntryNameOctetAfterSlash {
+      first: extdeps.git.object_store.GitTreeEntryNameOctetAfterSlash {
         value: 120 as extdeps.git.object_store.GitTreeEntryNameAfterSlashValue,
       },
       rest: [],
@@ -37,11 +37,11 @@ fn fallback_path() -> extdeps.git.object_store.GitPath {
 }
 
 fn blob_oid() -> extdeps.git.object_store.GitObjectId {
-  GitSha1ObjectId { digest: std.content_hash.Sha1Digest { hex: "1111111111111111111111111111111111111111" as std.content_hash.Sha1DigestHex } }
+  extdeps.git.object_store.GitSha1ObjectId { digest: std.content_hash.Sha1Digest { hex: "1111111111111111111111111111111111111111" as std.content_hash.Sha1DigestHex } }
 }
 
 fn other_blob_oid() -> extdeps.git.object_store.GitObjectId {
-  GitSha1ObjectId { digest: std.content_hash.Sha1Digest { hex: "2222222222222222222222222222222222222222" as std.content_hash.Sha1DigestHex } }
+  extdeps.git.object_store.GitSha1ObjectId { digest: std.content_hash.Sha1Digest { hex: "2222222222222222222222222222222222222222" as std.content_hash.Sha1DigestHex } }
 }
 
 fn source_artifact() -> v2.std.artifact.Artifact {
@@ -63,7 +63,7 @@ fn fixture_artifact() -> v2.std.artifact.Artifact {
 fn module_storage_for(artifact: v2.std.artifact.Artifact) -> List<v2.compiler.source_authority.ModuleStorageBinding> {
   [v2.compiler.source_authority.ModuleStorageBinding {
     module: [^commit_writer_fixture_module],
-    provenance: ParsedFromSource {
+    provenance: v2.compiler.source_authority.ParsedFromSource {
       artifact: artifact,
       span_index: v2.std.provenance.span_index_empty(),
     },

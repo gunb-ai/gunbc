@@ -79,7 +79,7 @@ fn s1_closure_failures() -> List<String> {
             cons: fn(acc, path) {
               match s1_file_parses(lex: lm.lex, validated: validated, path: path) {
                 true => acc
-                false => Cons { head: path, tail: acc }
+                false => std.algebra.Cons { head: path, tail: acc }
               }
             }
           )

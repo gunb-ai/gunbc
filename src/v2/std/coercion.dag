@@ -35,7 +35,7 @@ fn coercion_not_realized_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: discriminant(v: kind),
     at: node_locus(node: source.node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn declared_candidates_for_algebra(
@@ -69,7 +69,7 @@ fn coercion_candidate_set_not_closed_diagnostic(inhabitants_root: Node) -> v2.st
   v2.std.diagnostic.Diagnostic {
     reason: ^coercion_mismatch_candidate_set_not_closed,
     at: node_locus(node: inhabitants_root),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn coercion_candidate_set_from_declared_inhabitants(
@@ -102,7 +102,7 @@ fn coercion_homomorphism_evidence_for_node(
   fw: v2.std.find_witness.FindWitnessResult,
 ) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge { label: Named { name: ^coercion_homomorphism_evidence_source }, target: source },
       v2.std.node.Edge { label: Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
@@ -138,8 +138,8 @@ fn coercion_identity_from_target_model(
                   algebra: source,
                   preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
                 },
-                multiplicity_policy: TargetSelection {
-                  policy: TargetDeclaredPriority { priority: priority }
+                multiplicity_policy: v2.std.find_witness.TargetSelection {
+                  policy: v2.std.find_witness.TargetDeclaredPriority { priority: priority }
                 }
               ) {
                 Accepted { value: fw, diagnostics: fw_d } =>
@@ -184,7 +184,7 @@ fn coercion_find_witness_reason_unmapped_diagnostic(
   v2.std.diagnostic.Diagnostic {
     reason: ^coercion_find_witness_reason_unmapped,
     at: node_locus(node: source.node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_rejection_kind_from_reason(
@@ -281,7 +281,7 @@ fn coercion_fold_exact_structural(
       algebra: source.node,
       preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
     },
-    multiplicity_policy: TargetSelection { policy: policy }
+    multiplicity_policy: v2.std.find_witness.TargetSelection { policy: policy }
   ) {
     Accepted { value: fw, diagnostics: fw_d } =>
       Accepted {
@@ -326,7 +326,7 @@ fn coercion_fold_refinement_widening(
     source_facts: source.node,
     candidates: candidates.set,
     predicate: predicate,
-    multiplicity_policy: TargetSelection { policy: policy }
+    multiplicity_policy: v2.std.find_witness.TargetSelection { policy: policy }
   ) {
     Accepted { value: fw, diagnostics: fw_d } =>
       Accepted {
@@ -362,7 +362,7 @@ fn coercion_fold_with_declared_priority(
   coercion_fold(
     source: source,
     candidates: candidates,
-    policy: TargetDeclaredPriority { priority: priority }
+    policy: v2.std.find_witness.TargetDeclaredPriority { priority: priority }
   )
 }
 fn coercion_fold_refinement_widening_with_declared_priority(
@@ -374,7 +374,7 @@ fn coercion_fold_refinement_widening_with_declared_priority(
   coercion_fold_refinement_widening(
     source: source,
     candidates: candidates,
-    policy: TargetDeclaredPriority { priority: priority },
+    policy: v2.std.find_witness.TargetDeclaredPriority { priority: priority },
     predicate: predicate
   )
 }

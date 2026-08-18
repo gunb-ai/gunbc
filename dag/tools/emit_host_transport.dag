@@ -63,7 +63,7 @@ fn run_node_http_serve_smoke() -> Bool {
 
 fn c_run_probe_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^c_emit_host_run_probe } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^c_emit_host_run_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }

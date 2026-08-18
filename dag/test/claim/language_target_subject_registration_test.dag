@@ -143,7 +143,7 @@ test fn red_unregistered_subject_ref_is_not_reported_as_present() -> Bool {
 }
 
 test fn red_empty_cause_fields_are_detected() -> Bool {
-  let empty_cause = UpstreamAuthorityUnreadable { attempted_locator: "", observed: "" }
+  let empty_cause = gunbc.language_target_registry.UpstreamAuthorityUnreadable { attempted_locator: "", observed: "" }
   !match empty_cause {
     UpstreamAuthorityUnreadable { attempted_locator: l, observed: o } => l != "" && o != ""
     SurfaceFusesIndependentSubjects { surface_module: m, fused_subjects: fs } => m != "" && fs != ""

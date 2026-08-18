@@ -215,7 +215,7 @@ fn provision_build_cache_verdict(
 }
 
 fn provision_build_cache_effect_for_catalog(catalog_id: std.cache_identity.CacheInterfaceId) -> gunbc.host_effect.HostEffect {
-  ProvisionBuildCache { catalog_id: catalog_id }
+  gunbc.host_effect.ProvisionBuildCache { catalog_id: catalog_id }
 }
 
 fn provision_build_cache_default_effect() -> gunbc.host_effect.HostEffect {
@@ -250,7 +250,7 @@ fn stats_ok_lazy_spawned_refuses() -> Bool {
     catalog_id: sccache_local_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
+      placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
     },
   ) {
     ProvisionRefused { cause: RefusalServerRunnerOwned, reason: _ } => true
@@ -264,7 +264,7 @@ fn stats_ok_placement_unknown_refuses() -> Bool {
     catalog_id: sccache_local_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: ServerPlacementUnknown { detail: "cgroup read unavailable" },
+      placement: gunbc.build_cache_instance.ServerPlacementUnknown { detail: "cgroup read unavailable" },
     },
   ) {
     ProvisionRefused { cause: RefusalPlacementUnknown, reason: _ } => true
@@ -278,7 +278,7 @@ fn stats_ok_unit_owned_converges() -> Bool {
     catalog_id: sccache_local_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
+      placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
     },
   ) {
     ProvisionConverged { catalog_id: id, stats_line: _ } => id == sccache_local_id
@@ -294,7 +294,7 @@ fn misconfigured_matches_cited_fragment() -> Bool {
 }
 
 func provision_build_cache(host: product.placement_supply.HostIdentity, catalog_id: std.cache_identity.CacheInterfaceId) -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
     ProvisionBuildCacheCatalogRefused { reason: reason } => exit_failure(reason: reason as String)

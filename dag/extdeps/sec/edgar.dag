@@ -42,8 +42,8 @@ type CompanyFactsResponse {
 data structural_coverage_gap_company_facts_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "CompanyFactsResponse" },
-      JsonPending { field: ".facts.* (full taxonomy map depth)" }
+      extdeps.coverage.Subject { path: "CompanyFactsResponse" },
+      extdeps.coverage.JsonPending { field: ".facts.* (full taxonomy map depth)" }
     ],
     trigger: "consumer needs full taxonomy/concept enumeration beyond the top-level entityName projection"
   }
@@ -52,8 +52,8 @@ data structural_coverage_gap_company_facts_residual: List<extdeps.coverage.Cover
 data structural_coverage_gap_company_concept_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      Subject { path: "CompanyConceptResponse" },
-      JsonPending { field: ".units (all measure axes)" }
+      extdeps.coverage.Subject { path: "CompanyConceptResponse" },
+      extdeps.coverage.JsonPending { field: ".units (all measure axes)" }
     ],
     trigger: "consumer needs every unit-of-measure axis, not the first-fact projection"
   }

@@ -9,14 +9,14 @@ fn named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
 }
 
 fn conj_record(children: FreeMonoid<v2.std.node.Edge>) -> Node {
-  node_synthetic(kind: TypeNode { connective: Conj }, children: children)
+  node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: children)
 }
 
 fn fold_decode_reject(node: Node, reason: v2.std.node.Symbol) -> Outcome<FreeMonoid<Node>> {
   outcome_rejected(d: v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   })
 }
 
@@ -199,12 +199,12 @@ fn fold_template_of(fold_form: Node) -> Outcome<Node> {
     Absent => outcome_rejected(d: v2.std.diagnostic.Diagnostic {
       reason: ^fold_form_template_edge_absent,
       at: node_locus(node: fold_form),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     })
     Ambiguous => outcome_rejected(d: v2.std.diagnostic.Diagnostic {
       reason: ^fold_form_template_edge_ambiguous,
       at: node_locus(node: fold_form),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
     })
   }
 }

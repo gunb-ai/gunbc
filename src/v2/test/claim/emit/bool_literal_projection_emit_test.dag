@@ -14,7 +14,7 @@ data bool_literal_true_upper_golden: String = "TRUE"
 
 fn blp_probe_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^blp_emit_probe } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^blp_emit_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -76,7 +76,7 @@ fn blp_projection_with(bool_form: v2.std.compilers.target_model.TargetBoolLitera
 }
 
 fn blp_lex() -> v2.std.compilers.lexing.LexRules {
-  ModeledLexRules {
+  v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
       rules: list_append(
         left: rust_fn_add_lex_rules().rules,

@@ -92,7 +92,7 @@ test fn w_host_resource_address_changed_is_staged_replacement() -> Bool {
       subject_label: "srv4/build-cache" as std.types.NonEmptyStr,
       continuity: address_continuity(from: "gunbc-cache.service", to: "gunbc-buildcache.service", address_eq: str_eq),
       declared_intermediates: Present {
-        value: one_intermediate(step: RetirePriorEndpoint { endpoint: "/run/sccache.sock" as std.types.NonEmptyStr })
+        value: one_intermediate(step: gunbc.change_realization.RetirePriorEndpoint { endpoint: "/run/sccache.sock" as std.types.NonEmptyStr })
       },
     )
   )
@@ -119,12 +119,12 @@ test fn w_staged_replacement_without_declared_intermediates_refuses() -> Bool {
 data w_intermediates_nonempty_by_construction_note: String = "StagedIntermediates is head + tail, not a List that could be []. So the srv4 state — a staged replacement that believed it had nothing to retire — is UNREPRESENTABLE rather than validated against (DESIGN §5 construction-over-validation, §4b: the invalid state has no constructor). This row asserts the floor that construction guarantees: every StagedIntermediates yields at least one step, so a count of zero cannot be built to be tested for."
 
 test fn w_staged_intermediates_are_never_empty() -> Bool {
-  let single = one_intermediate(step: StopPriorUnit { unit: "sccache.service" as std.types.NonEmptyStr })
+  let single = one_intermediate(step: gunbc.change_realization.StopPriorUnit { unit: "sccache.service" as std.types.NonEmptyStr })
   let many = gunbc.change_realization.StagedIntermediates {
-    first: StopPriorUnit { unit: "sccache.service" as std.types.NonEmptyStr },
+    first: gunbc.change_realization.StopPriorUnit { unit: "sccache.service" as std.types.NonEmptyStr },
     rest: [
-      UnlinkStalePath { path: "/run/sccache.sock" as std.types.NonEmptyStr },
-      DrainPriorConsumers { description: "in-flight compiles" as std.types.NonEmptyStr },
+      gunbc.change_realization.UnlinkStalePath { path: "/run/sccache.sock" as std.types.NonEmptyStr },
+      gunbc.change_realization.DrainPriorConsumers { description: "in-flight compiles" as std.types.NonEmptyStr },
     ],
   }
   staged_intermediates_count(steps: single) == 1

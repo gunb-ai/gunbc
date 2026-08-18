@@ -4,12 +4,12 @@ module v2.test.manual.add_body_producer_claim
 fn add_body_bool_node(pass: Bool) -> Node {
   if pass {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^add_body_producer_pass } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^add_body_producer_pass } },
       children: []
     )
   } else {
     node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^add_body_producer_fail } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^add_body_producer_fail } },
       children: []
     )
   }
@@ -33,26 +33,26 @@ fn add_body_table_fixture_arrow_accepts() -> Bool {
 
 fn add_arrow_swapped_operand_body() -> Node {
   node_synthetic(
-    kind: ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: Transform },
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: node_synthetic(
-          kind: TypeNode { connective: Atom { identity: ^dag_token_plus } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_plus } },
           children: []
         )
       },
       v2.std.node.Edge {
         label: Positional,
         target: node_synthetic(
-          kind: TypeNode { connective: Atom { identity: ^dag_binding_param_y } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_param_y } },
           children: []
         )
       },
       v2.std.node.Edge {
         label: Positional,
         target: node_synthetic(
-          kind: TypeNode { connective: Atom { identity: ^dag_binding_param_x } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_param_x } },
           children: []
         )
       }
@@ -68,33 +68,33 @@ fn add_body_operand_order_differs() -> Bool {
 
 fn add_body_arrow_with_atom_body_rejects() -> Bool {
   let arrow = node_synthetic(
-    kind: TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: node_synthetic(
-          kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
           children: []
         )
       },
       v2.std.node.Edge {
         label: Positional,
         target: node_synthetic(
-          kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
           children: []
         )
       },
       v2.std.node.Edge {
         label: Positional,
         target: node_synthetic(
-          kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
           children: []
         )
       },
       v2.std.node.Edge {
         label: Named { name: ^arrow_body_edge },
         target: node_synthetic(
-          kind: TypeNode { connective: Atom { identity: ^add_body_producer_fail } },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^add_body_producer_fail } },
           children: []
         )
       }
@@ -118,7 +118,7 @@ fn add_body_edge_targets_binary_transform() -> Bool {
   }
 }
 
-data claim_add_body_producer_well_formed: v2.std.verification.TestClaim = EqualsClaim {
+data claim_add_body_producer_well_formed: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/add_arrow: table_fixture_add_arrow_with_body is well-formed with Arrow.body Behavior subtree",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: add_body_bool_node(pass: add_body_table_fixture_arrow_accepts()),
@@ -126,7 +126,7 @@ data claim_add_body_producer_well_formed: v2.std.verification.TestClaim = Equals
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_add_body_operand_order_discriminates: v2.std.verification.TestClaim = EqualsClaim {
+data claim_add_body_operand_order_discriminates: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/add_arrow: swapped operand param refs change body subtree (discriminating red for eval follow-up)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: add_body_bool_node(pass: add_body_operand_order_differs()),
@@ -134,7 +134,7 @@ data claim_add_body_operand_order_discriminates: v2.std.verification.TestClaim =
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_add_body_is_transform: v2.std.verification.TestClaim = EqualsClaim {
+data claim_add_body_is_transform: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/add_arrow: Arrow.body target is ComputationNode Transform for add",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: add_body_bool_node(pass: add_body_edge_targets_binary_transform()),
@@ -142,7 +142,7 @@ data claim_add_body_is_transform: v2.std.verification.TestClaim = EqualsClaim {
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_add_body_arrow_body_rejects_non_computation_target: v2.std.verification.TestClaim = EqualsClaim {
+data claim_add_body_arrow_body_rejects_non_computation_target: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/add_arrow: Arrow.body with TypeNode atom target rejects well_formed (E-9 target-shape authority)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: add_body_bool_node(pass: add_body_arrow_with_atom_body_rejects()),

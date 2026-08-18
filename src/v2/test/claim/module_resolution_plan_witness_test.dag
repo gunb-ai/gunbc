@@ -2,25 +2,25 @@ module v2.test.claim.module_resolution_plan_witness
 
 
 data module_fixture_a_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^module_fixture_a } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^module_fixture_a } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data module_fixture_b_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^module_fixture_b } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^module_fixture_b } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data module_fixture_c_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^module_fixture_c } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^module_fixture_c } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data module_fixture_d_node: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^module_fixture_d } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^module_fixture_d } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }

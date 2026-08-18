@@ -26,7 +26,7 @@ fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<extdeps.comm
           v2.std.diagnostic.Diagnostic {
             reason: ^target_carriers_fidelity_disposition_malformed,
             at: node_locus(node: node),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           }
         )
       }
@@ -44,7 +44,7 @@ fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<extdeps.comm
           v2.std.diagnostic.Diagnostic {
             reason: ^target_carriers_fidelity_disposition_malformed,
             at: node_locus(node: node),
-            correction: Unavailable { reason: ExternalContractUnknown }
+            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
           }
         )
       }
@@ -53,7 +53,7 @@ fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<extdeps.comm
         v2.std.diagnostic.Diagnostic {
           reason: ^target_carriers_fidelity_disposition_malformed,
           at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
   }
@@ -89,7 +89,7 @@ fn fidelity_quotient_decode_fidelity(quotient: Node) -> Outcome<extdeps.communic
         v2.std.diagnostic.Diagnostic {
           reason: ^target_carriers_fidelity_quotient_malformed,
           at: node_locus(node: quotient),
-          correction: Unavailable { reason: ExternalContractUnknown }
+          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
         }
       )
   }

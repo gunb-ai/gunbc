@@ -25,10 +25,10 @@ data pr_a_healed: gunbc.merge_lifecycle.PrIdentity = gunbc.merge_lifecycle.PrIde
 
 fn incident_trace() -> List<gunbc.merge_lifecycle.LifecycleEvent> {
   [
-    RunPrCi { pr: pr_a },
-    RunPrCi { pr: pr_b },
-    MergePr { pr: pr_b },
-    MergePr { pr: pr_a },
+    gunbc.merge_lifecycle.RunPrCi { pr: pr_a },
+    gunbc.merge_lifecycle.RunPrCi { pr: pr_b },
+    gunbc.merge_lifecycle.MergePr { pr: pr_b },
+    gunbc.merge_lifecycle.MergePr { pr: pr_a },
   ]
 }
 
@@ -44,11 +44,11 @@ test fn incident_trace_final_merge_refused_under_keyed_receipt() -> Bool {
 
 test fn incident_trace_lands_verified_when_pr_a_reruns_ci_first() -> Bool {
   let refreshed = [
-    RunPrCi { pr: pr_a },
-    RunPrCi { pr: pr_b },
-    MergePr { pr: pr_b },
-    RunPrCi { pr: pr_a },
-    MergePr { pr: pr_a },
+    gunbc.merge_lifecycle.RunPrCi { pr: pr_a },
+    gunbc.merge_lifecycle.RunPrCi { pr: pr_b },
+    gunbc.merge_lifecycle.MergePr { pr: pr_b },
+    gunbc.merge_lifecycle.RunPrCi { pr: pr_a },
+    gunbc.merge_lifecycle.MergePr { pr: pr_a },
   ]
   let end_state = simulate_lifecycle(policy: KeyedReceipt, events: refreshed)
   let tip_b = squash_result_tree(pr: pr_b, base: initial_lifecycle_state().main_tip)
@@ -57,8 +57,8 @@ test fn incident_trace_lands_verified_when_pr_a_reruns_ci_first() -> Bool {
 
 test fn healed_head_cannot_reuse_old_head_evidence() -> Bool {
   let events = [
-    RunPrCi { pr: pr_a },
-    MergePr { pr: pr_a_healed },
+    gunbc.merge_lifecycle.RunPrCi { pr: pr_a },
+    gunbc.merge_lifecycle.MergePr { pr: pr_a_healed },
   ]
   let end_state = simulate_lifecycle(policy: KeyedReceipt, events: events)
   !end_state.unverified_tip_seen && end_state.main_tip == initial_lifecycle_state().main_tip
@@ -66,9 +66,9 @@ test fn healed_head_cannot_reuse_old_head_evidence() -> Bool {
 
 test fn healed_head_lands_after_exact_head_revalidation() -> Bool {
   let events = [
-    RunPrCi { pr: pr_a },
-    RunPrCi { pr: pr_a_healed },
-    MergePr { pr: pr_a_healed },
+    gunbc.merge_lifecycle.RunPrCi { pr: pr_a },
+    gunbc.merge_lifecycle.RunPrCi { pr: pr_a_healed },
+    gunbc.merge_lifecycle.MergePr { pr: pr_a_healed },
   ]
   let end_state = simulate_lifecycle(policy: KeyedReceipt, events: events)
   !end_state.unverified_tip_seen
@@ -81,11 +81,11 @@ data interleaving_alphabet_note: String = "Alphabet = both incident PRs' RunPrCi
 
 fn interleaving_alphabet() -> List<gunbc.merge_lifecycle.LifecycleEvent> {
   [
-    RunPrCi { pr: pr_a },
-    RunPrCi { pr: pr_b },
-    MergePr { pr: pr_a },
-    MergePr { pr: pr_b },
-    MergePr { pr: pr_a_healed },
+    gunbc.merge_lifecycle.RunPrCi { pr: pr_a },
+    gunbc.merge_lifecycle.RunPrCi { pr: pr_b },
+    gunbc.merge_lifecycle.MergePr { pr: pr_a },
+    gunbc.merge_lifecycle.MergePr { pr: pr_b },
+    gunbc.merge_lifecycle.MergePr { pr: pr_a_healed },
     RosterBump,
   ]
 }

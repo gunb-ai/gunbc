@@ -6,15 +6,15 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data witness_note: String = "P0 acceptance for the observation model (docs/plans/progress-observation-design.md section 5): presentation totality over the class roster, the derived attention assignment, the derived BlockedOn, the recursive dwell escalation, the orphaned-begin watchdog, and the single-authority glyph perturbation. Every check here runs against the model itself; no renderer exists in this phase. Discrimination is built in rather than asserted: the Refused-versus-Failed check reds if the two ever collapse onto one glyph, the perturbation check reds if a presentation glyph is hardcoded instead of read from the glyph table, and the attention checks red if a threshold is smuggled into this module instead of taken from the supplied basis."
 
 fn obs_run_subject() -> std.observation.ObservationSubject {
-  std.observation.ObservationSubject { segments: [RunSegment { id: "30044816605" as std.types.NonEmptyStr }] }
+  std.observation.ObservationSubject { segments: [std.observation.RunSegment { id: "30044816605" as std.types.NonEmptyStr }] }
 }
 
 fn obs_entry_subject() -> std.observation.ObservationSubject {
   std.observation.ObservationSubject {
     segments: [
-      RunSegment { id: "30044816605" as std.types.NonEmptyStr },
-      BatchSegment { index: 3, label: "discovery" as std.types.NonEmptyStr },
-      EntrySegment { source_path: "dag/test/claim/effect_reach_test.dag" as std.types.NonEmptyStr }
+      std.observation.RunSegment { id: "30044816605" as std.types.NonEmptyStr },
+      std.observation.BatchSegment { index: 3, label: "discovery" as std.types.NonEmptyStr },
+      std.observation.EntrySegment { source_path: "dag/test/claim/effect_reach_test.dag" as std.types.NonEmptyStr }
     ]
   }
 }
@@ -22,11 +22,11 @@ fn obs_entry_subject() -> std.observation.ObservationSubject {
 fn obs_leaf_subject() -> std.observation.ObservationSubject {
   std.observation.ObservationSubject {
     segments: [
-      RunSegment { id: "30044816605" as std.types.NonEmptyStr },
-      BatchSegment { index: 3, label: "discovery" as std.types.NonEmptyStr },
-      EntrySegment { source_path: "dag/test/claim/effect_reach_test.dag" as std.types.NonEmptyStr },
-      ModuleSegment { module_path: "v2.compiler.normalized_tree" as std.types.NonEmptyStr },
-      PhaseSegment { name: "typecheck" as std.types.NonEmptyStr }
+      std.observation.RunSegment { id: "30044816605" as std.types.NonEmptyStr },
+      std.observation.BatchSegment { index: 3, label: "discovery" as std.types.NonEmptyStr },
+      std.observation.EntrySegment { source_path: "dag/test/claim/effect_reach_test.dag" as std.types.NonEmptyStr },
+      std.observation.ModuleSegment { module_path: "v2.compiler.normalized_tree" as std.types.NonEmptyStr },
+      std.observation.PhaseSegment { name: "typecheck" as std.types.NonEmptyStr }
     ]
   }
 }
@@ -36,7 +36,7 @@ fn obs_event(transition: std.observation.ObservationTransition, wall_ms: Int) ->
     subject: obs_entry_subject(),
     transition: transition,
     durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: wall_ms))),
-    rss: MeasuredUnavailable { cause: "cgroup memory.current unreadable in this fixture" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "cgroup memory.current unreadable in this fixture" as std.types.NonEmptyStr }
   }
 }
 
@@ -45,7 +45,7 @@ fn obs_event_ns(transition: std.observation.ObservationTransition, wall: std.mea
     subject: obs_entry_subject(),
     transition: transition,
     durations: observation_durations_wall(elapsed: wall),
-    rss: MeasuredUnavailable { cause: "cgroup memory.current unreadable in this fixture" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "cgroup memory.current unreadable in this fixture" as std.types.NonEmptyStr }
   }
 }
 
@@ -79,11 +79,11 @@ test fn w_class_roster_covers_every_constructed_class() -> Bool {
   count(observation_event_classes) == 10 &&
   observation_event_class(event: obs_event(transition: Begin, wall_ms: 1)) == ClassBegin &&
   observation_event_class(event: obs_event(transition: extdeps.github.actions.Step { k: 34, n: 61 }, wall_ms: 1)) == ClassStep &&
-  observation_event_class(event: obs_event(transition: Concluded { outcome: Done }, wall_ms: 1)) == ClassDone &&
-  observation_event_class(event: obs_event(transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr } }, wall_ms: 1)) == ClassRefused &&
-  observation_event_class(event: obs_event(transition: Concluded { outcome: Failed { error: "panic" as std.types.NonEmptyStr, output: "" } }, wall_ms: 1)) == ClassFailed &&
-  observation_event_class(event: obs_event(transition: Concluded { outcome: Skipped { reason: "unaffected" as std.types.NonEmptyStr } }, wall_ms: 1)) == ClassSkipped &&
-  observation_event_class(event: obs_event(transition: Concluded { outcome: Final { shown_failures: 0 } }, wall_ms: 1)) == ClassFinal
+  observation_event_class(event: obs_event(transition: std.observation.Concluded { outcome: Done }, wall_ms: 1)) == ClassDone &&
+  observation_event_class(event: obs_event(transition: std.observation.Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr } }, wall_ms: 1)) == ClassRefused &&
+  observation_event_class(event: obs_event(transition: std.observation.Concluded { outcome: Failed { error: "panic" as std.types.NonEmptyStr, output: "" } }, wall_ms: 1)) == ClassFailed &&
+  observation_event_class(event: obs_event(transition: std.observation.Concluded { outcome: Skipped { reason: "unaffected" as std.types.NonEmptyStr } }, wall_ms: 1)) == ClassSkipped &&
+  observation_event_class(event: obs_event(transition: std.observation.Concluded { outcome: std.observation.Final { shown_failures: 0 } }, wall_ms: 1)) == ClassFinal
 }
 
 test fn w_refused_is_distinct_from_failed() -> Bool {
@@ -149,16 +149,16 @@ test fn w_routine_progress_collapses_but_the_summary_always_shows() -> Bool {
 }
 
 test fn w_refusal_is_anomaly_on_any_basis() -> Bool {
-  let refused = obs_event(transition: Concluded { outcome: Refused { diagnostic: "budget" as std.types.NonEmptyStr } }, wall_ms: 1)
+  let refused = obs_event(transition: std.observation.Concluded { outcome: Refused { diagnostic: "budget" as std.types.NonEmptyStr } }, wall_ms: 1)
   let generous = std.observation.AttentionBasis { average: millisecond(count: 999999), maximum: millisecond(count: 999999) }
   observation_attention(event: refused, basis: generous) == Anomaly &&
   observation_attention(event: refused, basis: obs_basis()) == Anomaly
 }
 
 test fn w_attention_grounds_on_supplied_basis() -> Bool {
-  let quick = obs_event(transition: Concluded { outcome: Done }, wall_ms: 500)
-  let over_average = obs_event(transition: Concluded { outcome: Done }, wall_ms: 2000)
-  let over_maximum = obs_event(transition: Concluded { outcome: Done }, wall_ms: 9000)
+  let quick = obs_event(transition: std.observation.Concluded { outcome: Done }, wall_ms: 500)
+  let over_average = obs_event(transition: std.observation.Concluded { outcome: Done }, wall_ms: 2000)
+  let over_maximum = obs_event(transition: std.observation.Concluded { outcome: Done }, wall_ms: 9000)
   observation_attention(event: quick, basis: obs_basis()) == Ambient &&
   observation_attention(event: over_average, basis: obs_basis()) == Notable &&
   observation_attention(event: over_maximum, basis: obs_basis()) == Anomaly
@@ -170,29 +170,29 @@ test fn w_attention_compares_exact_nanoseconds_to_millisecond_policy() -> Bool {
     maximum: millisecond(count: 2)
   }
   observation_attention(
-    event: obs_event_ns(transition: Concluded { outcome: Done }, wall: nanosecond(count: 1)),
+    event: obs_event_ns(transition: std.observation.Concluded { outcome: Done }, wall: nanosecond(count: 1)),
     basis: basis
   ) == Ambient &&
   observation_attention(
-    event: obs_event_ns(transition: Concluded { outcome: Done }, wall: nanosecond(count: 999999)),
+    event: obs_event_ns(transition: std.observation.Concluded { outcome: Done }, wall: nanosecond(count: 999999)),
     basis: basis
   ) == Ambient &&
   observation_attention(
-    event: obs_event_ns(transition: Concluded { outcome: Done }, wall: nanosecond(count: 1000000)),
+    event: obs_event_ns(transition: std.observation.Concluded { outcome: Done }, wall: nanosecond(count: 1000000)),
     basis: basis
   ) == Ambient &&
   observation_attention(
-    event: obs_event_ns(transition: Concluded { outcome: Done }, wall: nanosecond(count: 1000001)),
+    event: obs_event_ns(transition: std.observation.Concluded { outcome: Done }, wall: nanosecond(count: 1000001)),
     basis: basis
   ) == Notable &&
   observation_attention(
-    event: obs_event_ns(transition: Concluded { outcome: Done }, wall: nanosecond(count: 2000001)),
+    event: obs_event_ns(transition: std.observation.Concluded { outcome: Done }, wall: nanosecond(count: 2000001)),
     basis: basis
   ) == Anomaly
 }
 
 test fn w_attention_moves_with_the_basis_not_a_local_constant() -> Bool {
-  let event = obs_event(transition: Concluded { outcome: Done }, wall_ms: 2000)
+  let event = obs_event(transition: std.observation.Concluded { outcome: Done }, wall_ms: 2000)
   let strict = std.observation.AttentionBasis { average: millisecond(count: 100), maximum: millisecond(count: 200) }
   let loose = std.observation.AttentionBasis { average: millisecond(count: 10000), maximum: millisecond(count: 20000) }
   perturbation_consistent(
@@ -203,43 +203,43 @@ test fn w_attention_moves_with_the_basis_not_a_local_constant() -> Bool {
 
 test fn w_attention_availability_precedence_and_causes_hold() -> Bool {
   let basis_cause = "cost basis absent for this subject" as std.types.NonEmptyStr
-  let no_basis = MeasuredUnavailable { cause: basis_cause }
+  let no_basis = std.observation.MeasuredUnavailable { cause: basis_cause }
   let no_wall = std.observation.ObservationEvent {
     subject: obs_entry_subject(),
     transition: extdeps.github.actions.Step { k: 1, n: 2 },
     durations: observation_durations_wall_unavailable(cause: "clock absent" as std.types.NonEmptyStr),
-    rss: MeasuredUnavailable { cause: "rss absent" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "rss absent" as std.types.NonEmptyStr }
   }
   let done_no_wall = std.observation.ObservationEvent {
     subject: obs_entry_subject(),
-    transition: Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: Done },
     durations: observation_durations_wall_unavailable(cause: "clock absent" as std.types.NonEmptyStr),
-    rss: MeasuredUnavailable { cause: "rss absent" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "rss absent" as std.types.NonEmptyStr }
   }
   let refused_no_wall = std.observation.ObservationEvent {
     subject: obs_entry_subject(),
-    transition: Concluded { outcome: Refused { diagnostic: "policy" as std.types.NonEmptyStr } },
+    transition: std.observation.Concluded { outcome: Refused { diagnostic: "policy" as std.types.NonEmptyStr } },
     durations: observation_durations_wall_unavailable(cause: "clock absent" as std.types.NonEmptyStr),
-    rss: MeasuredUnavailable { cause: "rss absent" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "rss absent" as std.types.NonEmptyStr }
   }
   let begin = std.observation.ObservationEvent {
     subject: obs_entry_subject(),
     transition: Begin,
     durations: observation_durations_wall_unavailable(cause: "clock absent" as std.types.NonEmptyStr),
-    rss: MeasuredUnavailable { cause: "rss absent" as std.types.NonEmptyStr }
+    rss: std.observation.MeasuredUnavailable { cause: "rss absent" as std.types.NonEmptyStr }
   }
-  let refused = obs_event(transition: Concluded { outcome: Refused { diagnostic: "policy" as std.types.NonEmptyStr } }, wall_ms: 1)
-  let failed = obs_event(transition: Concluded { outcome: Failed { error: "broken" as std.types.NonEmptyStr, output: "" } }, wall_ms: 1)
+  let refused = obs_event(transition: std.observation.Concluded { outcome: Refused { diagnostic: "policy" as std.types.NonEmptyStr } }, wall_ms: 1)
+  let failed = obs_event(transition: std.observation.Concluded { outcome: Failed { error: "broken" as std.types.NonEmptyStr, output: "" } }, wall_ms: 1)
   let timed_out = obs_event(
-    transition: Concluded { outcome: TimedOut { basis: WallClock, budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
+    transition: std.observation.Concluded { outcome: TimedOut { basis: WallClock, budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
     wall_ms: 2
   )
-  let done = obs_event(transition: Concluded { outcome: Done }, wall_ms: 500)
+  let done = obs_event(transition: std.observation.Concluded { outcome: Done }, wall_ms: 500)
   let measured_routine = [
     obs_event(transition: extdeps.github.actions.Step { k: 1, n: 2 }, wall_ms: 500),
     done,
-    obs_event(transition: Concluded { outcome: Skipped { reason: "unaffected" as std.types.NonEmptyStr } }, wall_ms: 500),
-    obs_event(transition: Concluded { outcome: Final { shown_failures: 0 } }, wall_ms: 500)
+    obs_event(transition: std.observation.Concluded { outcome: Skipped { reason: "unaffected" as std.types.NonEmptyStr } }, wall_ms: 500),
+    obs_event(transition: std.observation.Concluded { outcome: std.observation.Final { shown_failures: 0 } }, wall_ms: 500)
   ]
   match observation_attention_under(event: begin, basis: no_basis) {
     AttentionAssigned { level: l } => l == Ambient
@@ -281,18 +281,18 @@ test fn w_attention_strict_facade_equals_measured_value_projection() -> Bool {
   let events = [
     obs_event(transition: Begin, wall_ms: 1),
     obs_event(transition: extdeps.github.actions.Step { k: 1, n: 2 }, wall_ms: 2000),
-    obs_event(transition: Concluded { outcome: Done }, wall_ms: 9000),
-    obs_event(transition: Concluded { outcome: Refused { diagnostic: "policy" as std.types.NonEmptyStr } }, wall_ms: 1),
-    obs_event(transition: Concluded { outcome: Failed { error: "broken" as std.types.NonEmptyStr, output: "" } }, wall_ms: 1),
+    obs_event(transition: std.observation.Concluded { outcome: Done }, wall_ms: 9000),
+    obs_event(transition: std.observation.Concluded { outcome: Refused { diagnostic: "policy" as std.types.NonEmptyStr } }, wall_ms: 1),
+    obs_event(transition: std.observation.Concluded { outcome: Failed { error: "broken" as std.types.NonEmptyStr, output: "" } }, wall_ms: 1),
     obs_event(
-      transition: Concluded { outcome: TimedOut { basis: WallClock, budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
+      transition: std.observation.Concluded { outcome: TimedOut { basis: WallClock, budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
       wall_ms: 2
     ),
-    obs_event(transition: Concluded { outcome: Skipped { reason: "unaffected" as std.types.NonEmptyStr } }, wall_ms: 1),
-    obs_event(transition: Concluded { outcome: Final { shown_failures: 0 } }, wall_ms: 1)
+    obs_event(transition: std.observation.Concluded { outcome: Skipped { reason: "unaffected" as std.types.NonEmptyStr } }, wall_ms: 1),
+    obs_event(transition: std.observation.Concluded { outcome: std.observation.Final { shown_failures: 0 } }, wall_ms: 1)
   ]
   fold(events, init: true, f: (acc, event) =>
-    acc && match observation_attention_under(event: event, basis: MeasuredValue { value: obs_basis() }) {
+    acc && match observation_attention_under(event: event, basis: std.observation.MeasuredValue { value: obs_basis() }) {
       AttentionAssigned { level: l } => l == observation_attention(event: event, basis: obs_basis())
       AttentionRefused { cause: _ } => false
     }
@@ -300,7 +300,7 @@ test fn w_attention_strict_facade_equals_measured_value_projection() -> Bool {
 }
 
 test fn w_unavailable_measurement_carries_a_cause() -> Bool {
-  let event = obs_event(transition: Concluded { outcome: Done }, wall_ms: 1)
+  let event = obs_event(transition: std.observation.Concluded { outcome: Done }, wall_ms: 1)
   match event.rss {
     MeasuredValue { value: _ } => false
     MeasuredUnavailable { cause: c } => c != ""
@@ -308,20 +308,20 @@ test fn w_unavailable_measurement_carries_a_cause() -> Bool {
 }
 
 test fn w_blocked_on_resource_is_derived_for_every_hold() -> Bool {
-  observation_hold_resource(hold: WindowFull { active: 4, target: 4 }) == AdmissionWindow &&
-  observation_hold_resource(hold: CurrentHighWater { current: byte_size(1), high_water: byte_size(2) }) == MemoryBudget &&
-  observation_hold_resource(hold: PsiPressure { avg10: basis_point(count: 900) }) == MemoryBudget &&
-  observation_hold_resource(hold: SwapGrowth { delta: byte_size(1) }) == MemoryBudget &&
-  observation_hold_resource(hold: AwaitFirstCost { undigested: 2 }) == MaturationReserve &&
-  observation_hold_resource(hold: InsufficientHeadroom { current: byte_size(1), share: byte_size(1), high_water: byte_size(2) }) == MemoryBudget &&
-  observation_hold_resource(hold: AdmissionCeiling { current: byte_size(1), ceiling: byte_size(2) }) == MaturationReserve
+  observation_hold_resource(hold: std.observation.WindowFull { active: 4, target: 4 }) == AdmissionWindow &&
+  observation_hold_resource(hold: std.observation.CurrentHighWater { current: byte_size(1), high_water: byte_size(2) }) == MemoryBudget &&
+  observation_hold_resource(hold: std.observation.PsiPressure { avg10: basis_point(count: 900) }) == MemoryBudget &&
+  observation_hold_resource(hold: std.observation.SwapGrowth { delta: byte_size(1) }) == MemoryBudget &&
+  observation_hold_resource(hold: std.observation.AwaitFirstCost { undigested: 2 }) == MaturationReserve &&
+  observation_hold_resource(hold: std.observation.InsufficientHeadroom { current: byte_size(1), share: byte_size(1), high_water: byte_size(2) }) == MemoryBudget &&
+  observation_hold_resource(hold: std.observation.AdmissionCeiling { current: byte_size(1), ceiling: byte_size(2) }) == MaturationReserve
 }
 
 test fn w_blocked_on_carries_holders_and_named_remaining() -> Bool {
   let b = observation_blocked_on(
-    hold: PsiPressure { avg10: basis_point(count: 900) },
+    hold: std.observation.PsiPressure { avg10: basis_point(count: 900) },
     holders: [obs_leaf_subject()],
-    remaining: RemainingUnknown { cause: "governor exposes no bound for reclaim" as std.types.NonEmptyStr }
+    remaining: std.observation.RemainingUnknown { cause: "governor exposes no bound for reclaim" as std.types.NonEmptyStr }
   )
   count(b.holders) == 1 &&
   b.resource == MemoryBudget &&
@@ -352,7 +352,7 @@ test fn w_escalation_surfaces_deeper_subject_over_time() -> Bool {
 
 test fn w_escalation_refuses_to_surface_an_unrelated_subject() -> Bool {
   let t = observation_dwell_threshold
-  let unrelated = std.observation.ObservationSubject { segments: [RunSegment { id: "other-run" as std.types.NonEmptyStr }] }
+  let unrelated = std.observation.ObservationSubject { segments: [std.observation.RunSegment { id: "other-run" as std.types.NonEmptyStr }] }
   let surfaced = observation_escalation_subject(
     quiet_subject: obs_entry_subject(),
     active_leaf: unrelated,
@@ -406,13 +406,13 @@ test fn w_declaration_segment_key_and_grain_totality_holds() -> Bool {
   let fielded = std.decl_ref.DeclarationRef {
     module_path: "test.claim.observation_model_witness_test" as std.types.NonEmptyStr,
     decl_name: "observation_model_witnesses" as std.types.NonEmptyStr,
-    field: NamedField { field_name: "body" as std.types.NonEmptyStr }
+    field: std.decl_ref.NamedField { field_name: "body" as std.types.NonEmptyStr }
   }
-  let whole_seg = DeclarationSegment { declaration: whole }
-  let field_seg = DeclarationSegment { declaration: fielded }
+  let whole_seg = std.observation.DeclarationSegment { declaration: whole }
+  let field_seg = std.observation.DeclarationSegment { declaration: fielded }
   let decl_subject = std.observation.ObservationSubject {
     segments: [
-      EntrySegment { source_path: "dag/test/claim/observation_model_witness_test.dag" as std.types.NonEmptyStr },
+      std.observation.EntrySegment { source_path: "dag/test/claim/observation_model_witness_test.dag" as std.types.NonEmptyStr },
       whole_seg
     ]
   }
@@ -495,9 +495,9 @@ test fn w_every_law_is_stated_and_bound_to_an_enforcer() -> Bool {
 }
 
 test fn w_change_kind_projects_from_the_one_diff_carrier() -> Bool {
-  let added = observation_change_presentation(hunk: KeyedDiffAddedHunk { hunk_key: "a", to: 1 })
-  let removed = observation_change_presentation(hunk: KeyedDiffRemovedHunk { hunk_key: "a", from: 1 })
-  let modified = observation_change_presentation(hunk: KeyedDiffModifiedHunk { hunk_key: "a", from: 1, to: 2 })
+  let added = observation_change_presentation(hunk: std.change.KeyedDiffAddedHunk { hunk_key: "a", to: 1 })
+  let removed = observation_change_presentation(hunk: std.change.KeyedDiffRemovedHunk { hunk_key: "a", from: 1 })
+  let modified = observation_change_presentation(hunk: std.change.KeyedDiffModifiedHunk { hunk_key: "a", from: 1, to: 2 })
   added.tag == "new" &&
   removed.tag == "removed" &&
   modified.tag == "edited" &&
@@ -522,9 +522,9 @@ test fn w_change_kind_colour_follows_git_diff_convention() -> Bool {
 }
 
 test fn w_change_kind_degrades_losslessly_without_colour() -> Bool {
-  let added = observation_change_presentation(hunk: KeyedDiffAddedHunk { hunk_key: "a", to: 1 })
-  let removed = observation_change_presentation(hunk: KeyedDiffRemovedHunk { hunk_key: "a", from: 1 })
-  let modified = observation_change_presentation(hunk: KeyedDiffModifiedHunk { hunk_key: "a", from: 1, to: 2 })
+  let added = observation_change_presentation(hunk: std.change.KeyedDiffAddedHunk { hunk_key: "a", to: 1 })
+  let removed = observation_change_presentation(hunk: std.change.KeyedDiffRemovedHunk { hunk_key: "a", from: 1 })
+  let modified = observation_change_presentation(hunk: std.change.KeyedDiffModifiedHunk { hunk_key: "a", from: 1, to: 2 })
   added.tag != "" && removed.tag != "" && modified.tag != "" &&
   added.tag != removed.tag && added.tag != modified.tag && removed.tag != modified.tag
 }
@@ -535,7 +535,7 @@ test fn w_no_op_kinds_each_explain_themselves() -> Bool {
     Uncovered { declaration: "std.observation.observation_attention" as std.types.NonEmptyStr },
     NoDeclsTouched,
     selection_noop_generated_artifact(drift_gate_authority: "gunbc.ci_workflow" as std.types.NonEmptyStr),
-    DepartedPath { cause: "src/v1/stage0/src/gone.rs" as std.types.NonEmptyStr }
+    std.observation.DepartedPath { cause: "src/v1/stage0/src/gone.rs" as std.types.NonEmptyStr }
   ]
   count(kinds) == 5 &&
   fold(kinds, init: true, f: (acc, n) => {
@@ -555,16 +555,16 @@ test fn w_uncovered_is_a_nudge_not_a_comfort() -> Bool {
 }
 
 test fn w_departed_path_is_not_a_no_op() -> Bool {
-  observation_no_op_is_actually_a_widen(n: DepartedPath { cause: "deleted module" as std.types.NonEmptyStr }) &&
+  observation_no_op_is_actually_a_widen(n: std.observation.DepartedPath { cause: "deleted module" as std.types.NonEmptyStr }) &&
   !observation_no_op_is_actually_a_widen(n: DocsPolicy) &&
   !observation_no_op_is_actually_a_widen(n: NoDeclsTouched) &&
   !observation_no_op_is_actually_a_widen(n: selection_noop_generated_artifact(drift_gate_authority: "x" as std.types.NonEmptyStr)) &&
   !observation_no_op_is_actually_a_widen(n: Uncovered { declaration: "x" as std.types.NonEmptyStr }) &&
-  observation_no_op_attention(n: DepartedPath { cause: "deleted module" as std.types.NonEmptyStr }) == Notable
+  observation_no_op_attention(n: std.observation.DepartedPath { cause: "deleted module" as std.types.NonEmptyStr }) == Notable
 }
 
 test fn w_psi_pressure_carries_a_scaled_magnitude_not_a_scalar() -> Bool {
-  let hold = PsiPressure { avg10: basis_point(count: 3750) }
+  let hold = std.observation.PsiPressure { avg10: basis_point(count: 3750) }
   match hold {
     PsiPressure { avg10: r } => basis_point_count(bp: r) == 3750
     _ => false

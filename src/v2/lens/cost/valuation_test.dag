@@ -3,20 +3,20 @@ module v2.test.lens_cost.valuation
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data nat_1: v2.std.nat.Nat = Succ { prev: Zero }
-data nat_2: v2.std.nat.Nat = Succ { prev: nat_1 }
-data nat_3: v2.std.nat.Nat = Succ { prev: nat_2 }
-data nat_4: v2.std.nat.Nat = Succ { prev: nat_3 }
-data nat_5: v2.std.nat.Nat = Succ { prev: nat_4 }
-data nat_6: v2.std.nat.Nat = Succ { prev: nat_5 }
-data nat_7: v2.std.nat.Nat = Succ { prev: nat_6 }
-data nat_8: v2.std.nat.Nat = Succ { prev: nat_7 }
-data nat_9: v2.std.nat.Nat = Succ { prev: nat_8 }
-data nat_10: v2.std.nat.Nat = Succ { prev: nat_9 }
+data nat_1: v2.std.nat.Nat = v2.std.nat.Succ { prev: Zero }
+data nat_2: v2.std.nat.Nat = v2.std.nat.Succ { prev: nat_1 }
+data nat_3: v2.std.nat.Nat = v2.std.nat.Succ { prev: nat_2 }
+data nat_4: v2.std.nat.Nat = v2.std.nat.Succ { prev: nat_3 }
+data nat_5: v2.std.nat.Nat = v2.std.nat.Succ { prev: nat_4 }
+data nat_6: v2.std.nat.Nat = v2.std.nat.Succ { prev: nat_5 }
+data nat_7: v2.std.nat.Nat = v2.std.nat.Succ { prev: nat_6 }
+data nat_8: v2.std.nat.Nat = v2.std.nat.Succ { prev: nat_7 }
+data nat_9: v2.std.nat.Nat = v2.std.nat.Succ { prev: nat_8 }
+data nat_10: v2.std.nat.Nat = v2.std.nat.Succ { prev: nat_9 }
 
 fn synthetic_leaf(identity: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: identity } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -33,10 +33,10 @@ fn bind(variable: v2.lens.cost.SizeVariable, value: v2.std.nat.Nat) -> v2.lens.c
 }
 
 fn unit_loop_over(variable: v2.lens.cost.SizeVariable) -> v2.lens.cost.expr.CostExpr {
-  CostSum {
+  v2.lens.cost.expr.CostSum {
     binder: inner_variable,
     upper: size_of(variable: variable),
-    body: CostConst { value: nat_1 }
+    body: v2.lens.cost.expr.CostConst { value: nat_1 }
   }
 }
 
@@ -74,13 +74,13 @@ test fn changing_the_bound_size_changes_the_derived_work() -> Bool {
 }
 
 fn binder_dependent_loop() -> v2.lens.cost.expr.CostExpr {
-  CostSum {
+  v2.lens.cost.expr.CostSum {
     binder: outer_variable,
     upper: size_of(variable: outer_variable),
-    body: CostSum {
+    body: v2.lens.cost.expr.CostSum {
       binder: inner_variable,
       upper: size_of(variable: outer_variable),
-      body: CostConst { value: nat_1 }
+      body: v2.lens.cost.expr.CostConst { value: nat_1 }
     }
   }
 }
@@ -98,10 +98,10 @@ test fn binder_dependent_body_is_summed_not_treated_as_invariant() -> Bool {
 test fn invariant_body_control_does_not_produce_the_summed_answer() -> Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
-      expr: CostSum {
+      expr: v2.lens.cost.expr.CostSum {
         binder: outer_variable,
         upper: size_of(variable: outer_variable),
-        body: CostConst { value: nat_1 }
+        body: v2.lens.cost.expr.CostConst { value: nat_1 }
       },
       bindings: [bind(variable: outer_variable, value: nat_5)]
     ),
@@ -154,10 +154,10 @@ test fn distinct_bindings_control_does_not_refuse() -> Bool {
 }
 
 fn shadowing_expr() -> v2.lens.cost.expr.CostExpr {
-  CostAdd {
-    left: CostSum {
+  v2.lens.cost.expr.CostAdd {
+    left: v2.lens.cost.expr.CostSum {
       binder: outer_variable,
-      upper: SizeConst { value: nat_2 },
+      upper: v2.lens.cost.expr.SizeConst { value: nat_2 },
       body: unit_loop_over(variable: outer_variable)
     },
     right: unit_loop_over(variable: outer_variable)
@@ -187,10 +187,10 @@ test fn shadowing_control_rejects_the_unshadowed_reading() -> Bool {
 test fn zero_iterations_produce_exact_zero() -> Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
-      expr: CostSum {
+      expr: v2.lens.cost.expr.CostSum {
         binder: inner_variable,
-        upper: SizeConst { value: Zero },
-        body: CostConst { value: nat_1 }
+        upper: v2.lens.cost.expr.SizeConst { value: Zero },
+        body: v2.lens.cost.expr.CostConst { value: nat_1 }
       },
       bindings: []
     ),
@@ -206,7 +206,7 @@ data effect_operation: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef
 
 test fn cost_effect_refuses_until_an_effect_model_exists() -> Bool {
   match evaluate_cost_expr(
-    expr: CostEffect { operation: effect_operation },
+    expr: v2.lens.cost.expr.CostEffect { operation: effect_operation },
     bindings: []
   ) {
     CostEvaluationRefused { causes: c } =>
@@ -222,7 +222,7 @@ data log_cause_separation_note: String = "Four witnesses for one construct, beca
 
 test fn log_base_zero_refuses_as_an_invalid_base() -> Bool {
   match evaluate_cost_expr(
-    expr: CostLog { base: Zero, argument: size_of(variable: outer_variable) },
+    expr: v2.lens.cost.expr.CostLog { base: Zero, argument: size_of(variable: outer_variable) },
     bindings: [bind(variable: outer_variable, value: nat_8)]
   ) {
     CostEvaluationRefused { causes: c } =>
@@ -240,7 +240,7 @@ test fn log_base_zero_refuses_as_an_invalid_base() -> Bool {
 
 test fn log_base_one_refuses_as_an_invalid_base() -> Bool {
   match evaluate_cost_expr(
-    expr: CostLog { base: nat_1, argument: size_of(variable: outer_variable) },
+    expr: v2.lens.cost.expr.CostLog { base: nat_1, argument: size_of(variable: outer_variable) },
     bindings: [bind(variable: outer_variable, value: nat_8)]
   ) {
     CostEvaluationRefused { causes: c } =>
@@ -258,7 +258,7 @@ test fn log_base_one_refuses_as_an_invalid_base() -> Bool {
 
 test fn log_of_a_grounded_argument_names_the_missing_authority_not_the_argument() -> Bool {
   match evaluate_cost_expr(
-    expr: CostLog { base: nat_2, argument: size_of(variable: outer_variable) },
+    expr: v2.lens.cost.expr.CostLog { base: nat_2, argument: size_of(variable: outer_variable) },
     bindings: [bind(variable: outer_variable, value: nat_8)]
   ) {
     CostEvaluationRefused { causes: c } =>
@@ -272,7 +272,7 @@ test fn log_of_a_grounded_argument_names_the_missing_authority_not_the_argument(
 
 test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> Bool {
   match evaluate_cost_expr(
-    expr: CostLog { base: nat_2, argument: size_of(variable: outer_variable) },
+    expr: v2.lens.cost.expr.CostLog { base: nat_2, argument: size_of(variable: outer_variable) },
     bindings: []
   ) {
     CostEvaluationRefused { causes: c } =>
@@ -288,10 +288,10 @@ data refusing_body_cause_count_note: String = "Ten iterations of a body that ref
 
 test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> Bool {
   match evaluate_cost_expr(
-    expr: CostSum {
+    expr: v2.lens.cost.expr.CostSum {
       binder: inner_variable,
       upper: size_of(variable: outer_variable),
-      body: CostEffect { operation: effect_operation }
+      body: v2.lens.cost.expr.CostEffect { operation: effect_operation }
     },
     bindings: [bind(variable: outer_variable, value: nat_10)]
   ) {
@@ -309,9 +309,9 @@ data zero_multiplicity_note: String = "Three discriminators, and the third is wh
 test fn zero_times_an_unmodelled_effect_is_exactly_zero() -> Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
-      expr: CostMul {
-        left: CostConst { value: Zero },
-        right: CostEffect { operation: effect_operation }
+      expr: v2.lens.cost.expr.CostMul {
+        left: v2.lens.cost.expr.CostConst { value: Zero },
+        right: v2.lens.cost.expr.CostEffect { operation: effect_operation }
       },
       bindings: []
     ),
@@ -322,9 +322,9 @@ test fn zero_times_an_unmodelled_effect_is_exactly_zero() -> Bool {
 test fn an_unmodelled_effect_times_zero_is_exactly_zero() -> Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
-      expr: CostMul {
-        left: CostEffect { operation: effect_operation },
-        right: CostConst { value: Zero }
+      expr: v2.lens.cost.expr.CostMul {
+        left: v2.lens.cost.expr.CostEffect { operation: effect_operation },
+        right: v2.lens.cost.expr.CostConst { value: Zero }
       },
       bindings: []
     ),
@@ -334,9 +334,9 @@ test fn an_unmodelled_effect_times_zero_is_exactly_zero() -> Bool {
 
 test fn one_times_an_unmodelled_effect_still_refuses() -> Bool {
   match evaluate_cost_expr(
-    expr: CostMul {
-      left: CostConst { value: nat_1 },
-      right: CostEffect { operation: effect_operation }
+    expr: v2.lens.cost.expr.CostMul {
+      left: v2.lens.cost.expr.CostConst { value: nat_1 },
+      right: v2.lens.cost.expr.CostEffect { operation: effect_operation }
     },
     bindings: []
   ) {
@@ -352,7 +352,7 @@ test fn one_times_an_unmodelled_effect_still_refuses() -> Bool {
 data symbolic_product_commutativity_note: String = "Every arm is asserted in BOTH operand orders - the zero absorption AND the one-times-unknown non-absorption - because the defect being fixed was precisely that operand order changed the answer, so a one-sided assertion is the shape that missed it in the first place. The projection authority is asserted in both orders, because it previously answered zero in one and unknown in the other. The unknown-times-zero direction is the one that was wrong and is the regression control for the reorder; the zero-times-unknown direction must keep working and is the control that the reorder did not simply swap the bug to the other side."
 
 fn unknown_symbolic_cost() -> v2.lens.cost.SymbolicCost {
-  normalize_cost_expr_to_symbolic(expr: CostEffect { operation: effect_operation })
+  normalize_cost_expr_to_symbolic(expr: v2.lens.cost.expr.CostEffect { operation: effect_operation })
 }
 
 test fn symbolic_product_absorbs_zero_from_the_left() -> Bool {
@@ -411,7 +411,7 @@ test fn every_valuation_witness_holds() -> Bool {
     && symbolic_product_one_times_unknown_stays_unknown()
 }
 
-data claim_cost_valuation: v2.std.verification.TestClaim = EqualsClaim {
+data claim_cost_valuation: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_cost/valuation: CostExpr evaluated at a complete SizeVariable valuation yields exact semantic work, refuses a missing or duplicated binding rather than answering zero, scopes a CostSum binder to its body, and separates the three ways a logarithm fails - every leaf witness in this file enrolled in the conjunction",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: outer_leaf,

@@ -38,10 +38,10 @@ fn catalog_keying(kd: extdeps.cache.types.CatalogKeyDerivationFacts) -> std.mate
 
 fn catalog_tier(p: extdeps.cache.catalog_placement.CacheInterfaceCatalogPlacement, keying: std.materialization_ladder.CacheKeying) -> std.materialization_ladder.ProviderTier {
   match p.locality {
-    InProcess => MemoTier { keying: keying }
-    PerRunnerFilesystem => ArtifactTier { keying: keying }
-    PerHostFilesystem => ArtifactTier { keying: keying }
-    CrossHostNetwork => CasTier { keying: keying }
+    InProcess => std.materialization_ladder.MemoTier { keying: keying }
+    PerRunnerFilesystem => std.materialization_ladder.ArtifactTier { keying: keying }
+    PerHostFilesystem => std.materialization_ladder.ArtifactTier { keying: keying }
+    CrossHostNetwork => std.materialization_ladder.CasTier { keying: keying }
   }
 }
 

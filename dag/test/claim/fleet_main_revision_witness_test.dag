@@ -60,13 +60,13 @@ test fn admitted_advance_is_cas_carrying_expected_prior() -> Bool {
 // An unobserved desired ref yields NO converge target — never a fabricated one, never
 // the invoking tree. Admitted yields exactly the admitted revision.
 test fn converge_target_derives_only_from_admitted_ref() -> Bool {
-  match converge_target_revision(observed: FleetDesiredUnobserved { cause: "ref unreadable" }) {
+  match converge_target_revision(observed: gunbc.fleet_main_revision.FleetDesiredUnobserved { cause: "ref unreadable" }) {
     Present { value: _ } => false
     _ => true
   }
     && match fixture_rev(hex_char: "c") {
       Present { value: rev } =>
-        match converge_target_revision(observed: FleetDesiredAdmitted { revision: rev }) {
+        match converge_target_revision(observed: gunbc.fleet_main_revision.FleetDesiredAdmitted { revision: rev }) {
           Present { value: _ } => true
           _ => false
         }

@@ -19,7 +19,7 @@ fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: v2.std.diagnostic.Locus) 
   v2.std.diagnostic.Diagnostic {
     reason: ^tokenize_lex_e0_source_not_exhausted,
     at: at,
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -27,7 +27,7 @@ fn tokenize_lex_e1_unrecognized_char_diagnostic(at: v2.std.diagnostic.Locus) -> 
   v2.std.diagnostic.Diagnostic {
     reason: ^tokenize_lex_e1_unrecognized_char,
     at: at,
-    correction: Unavailable { reason: UserInputBoundary }
+    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -62,7 +62,7 @@ fn char_in_class(c: std.types.Char, class: v2.std.compilers.lexing.LexCharClass)
 fn lex_strip_prefix(prefix: String, source: String) -> ListTailResult<std.types.Char> {
   fold_list(
     xs: prefix,
-    empty: TailFound { tail: source },
+    empty: v2.std.algebra.TailFound { tail: source },
     cons: fn(acc, _) {
       match acc {
         TailAbsent => TailAbsent
@@ -115,7 +115,7 @@ fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> LexMatchResult
             true =>
               match string_tail(s: source) {
                 TailFound { tail: rest } =>
-                  LexMatchAccepted { remaining: rest, lexeme: Cons { head: c, tail: std.algebra.Empty } }
+                  LexMatchAccepted { remaining: rest, lexeme: std.algebra.Cons { head: c, tail: std.algebra.Empty } }
                 TailAbsent => LexMatchRejected
               }
             false => LexMatchRejected
@@ -327,7 +327,7 @@ fn lex_compile_rules(rules: List<v2.std.compilers.lexing.LexRule>) -> List<Compi
     xs: rules,
     empty: std.algebra.Empty,
     cons: fn(acc, rule) {
-      Cons { head: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) }, tail: acc }
+      std.algebra.Cons { head: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) }, tail: acc }
     }
   )
   reversed.reverse()
@@ -481,7 +481,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
             false =>
               LexWalkAcc {
                 remaining: remaining,
-                tokens: Cons {
+                tokens: std.algebra.Cons {
                   head: v2.std.compilers.lexing.Token {
                     class: class,
                     lexeme: lexeme,
@@ -518,7 +518,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
               LexWalkAcc {
                 remaining: remaining,
                 tokens: acc.tokens,
-                annotations: Cons {
+                annotations: std.algebra.Cons {
                   head: v2.std.compilers.lexing.UnboundSourceAnnotation {
                     annotation_class: class,
                     lexeme: lexeme,
@@ -555,7 +555,7 @@ fn lex_walk_artifact(source: String, file: v2.std.node.Symbol, rules: v2.std.com
     src: source,
     algebra: lex_walk_source_algebra(file: file, rules: rules)
   )
-  let at = Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
+  let at = v2.std.diagnostic.Textual { file: file, extent: v2.std.diagnostic.ByteRange { start: result.pos, end: result.pos } }
   if result.error {
     v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
   } else {
@@ -579,7 +579,7 @@ fn lex_walk(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.le
 }
 
 fn tokenize(text: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRules) -> Outcome<v2.std.compilers.lexing.TokenStream> {
-  let at = Textual {
+  let at = v2.std.diagnostic.Textual {
     file: file,
     extent: WholeFile
   }

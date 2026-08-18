@@ -261,10 +261,10 @@ test fn spark_target_named_selects_exactly_that_host_under_execution() -> Bool {
 // plan from an observation that was never made.
 test fn observed_linger_renders_unobserved_distinctly_from_disabled() -> Bool {
   render_observed_linger(state: LingerUnobserved) == "unobserved"
-    && render_observed_linger(state: LingerObserved { enabled: false }) == "no"
-    && render_observed_linger(state: LingerObserved { enabled: true }) == "yes"
+    && render_observed_linger(state: gunbc.spark_serving_converge_slice_wet.LingerObserved { enabled: false }) == "no"
+    && render_observed_linger(state: gunbc.spark_serving_converge_slice_wet.LingerObserved { enabled: true }) == "yes"
     && render_observed_linger(state: LingerUnobserved)
-         != render_observed_linger(state: LingerObserved { enabled: false })
+         != render_observed_linger(state: gunbc.spark_serving_converge_slice_wet.LingerObserved { enabled: false })
 }
 
 // THE ACTUATION BOUNDARY FAILS CLOSED. Before review 52578, the wet entry returned
@@ -296,7 +296,7 @@ test fn slice_host_report_carries_converged_as_data_matching_its_verdict() -> Bo
   let converged = spark_serving_converge_slice_host_line(
     host: operator_host_srv5,
     endpoint: "192.168.1.222",
-    observed_linger: LingerObserved { enabled: true },
+    observed_linger: gunbc.spark_serving_converge_slice_wet.LingerObserved { enabled: true },
     typed_row_count: 0,
     apply_effect_count: 0,
     apply_command_count: 0,

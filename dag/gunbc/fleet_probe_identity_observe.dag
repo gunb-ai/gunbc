@@ -35,7 +35,7 @@ fn observe_authorized_keys_line(home: String) -> String {
 }
 
 func fleet_probe_identity_observe_wet() -> std.process.ProcessExit
-  uses net: Network
+  uses net: std.cache_interface.Network
 {
   let user = run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["whoami"] }, transport: LocalExec)
   let passwd_home = run_shell_command_capture(

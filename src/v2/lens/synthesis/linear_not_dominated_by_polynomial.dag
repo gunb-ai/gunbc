@@ -2,7 +2,7 @@ module v2.test.lens_synthesis.linear_not_dominated_by_polynomial
 
 
 data synthesis_lin_poly_x: Node = v2.std.node.Node {
-  kind: TypeNode { connective: Atom { identity: ^synthesis_lin_poly_x_symbol } },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^synthesis_lin_poly_x_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -13,8 +13,8 @@ data synthesis_polynomial_degree_two: v2.lens.cost.PolynomialDegree = v2.lens.co
 
 fn linear_not_dominated_by_polynomial_claim_holds() -> Bool {
   !symbolic_cost_dominates(
-    a: LinearCost { variable: v2.lens.cost.SizeVariable { source: synthesis_lin_poly_x } },
-    b: PolynomialCost {
+    a: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: synthesis_lin_poly_x } },
+    b: v2.lens.cost.PolynomialCost {
       variable: v2.lens.cost.SizeVariable { source: synthesis_lin_poly_x },
       degree: synthesis_polynomial_degree_two
     }
@@ -26,14 +26,14 @@ fn linear_not_dominated_by_polynomial_claim_rhs() -> Node {
     synthesis_lin_poly_x
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_linear_not_dominated_by_polynomial: v2.std.verification.TestClaim = EqualsClaim {
+data claim_linear_not_dominated_by_polynomial: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_synthesis/linear_not_dominated_by_polynomial: ClassLinear does not dominate ClassPolynomial",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: synthesis_lin_poly_x,

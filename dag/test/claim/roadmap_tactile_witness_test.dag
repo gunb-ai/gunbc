@@ -132,18 +132,18 @@ test fn witness_per_edge_weights_ride_their_own_selectors() -> Bool {
 }
 
 test fn witness_state_class_trigger_selects_by_class_not_pseudo() -> Bool {
-  trigger_selector_suffix(t: OnStateClass { class_name: dispatch_class_ok }) == join([".", dispatch_class_ok], "")
-    && trigger_is_state_class(t: OnStateClass { class_name: dispatch_class_ok })
+  trigger_selector_suffix(t: gunbc.design.material.OnStateClass { class_name: dispatch_class_ok }) == join([".", dispatch_class_ok], "")
+    && trigger_is_state_class(t: gunbc.design.material.OnStateClass { class_name: dispatch_class_ok })
     && !trigger_is_state_class(t: OnHover)
     && trigger_selector_suffix(t: OnHover) == ":hover"
 }
 
 test fn witness_state_transitions_carry_on_the_state_selector() -> Bool {
-  let subject = ClassSelector { name: "dispatch-btn" }
+  let subject = extdeps.languages.css.selectors.ClassSelector { name: "dispatch-btn" }
   let on_state = transition_carrier_selector(
     subject: subject,
     shape: SelfResponse,
-    trigger: OnStateClass { class_name: dispatch_class_ok })
+    trigger: gunbc.design.material.OnStateClass { class_name: dispatch_class_ok })
   let on_pseudo = transition_carrier_selector(subject: subject, shape: SelfResponse, trigger: OnActive)
   on_state == join([".dispatch-btn.", dispatch_class_ok], "")
     && on_pseudo == ".dispatch-btn"

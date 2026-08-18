@@ -67,7 +67,7 @@ data rustup_component_list_probe: gunbc.readback_independence.ReadBackProbe = gu
 data rustup_component_add_on_miss_probe_sketch: gunbc.readback_independence.ReadBackProbe = gunbc.readback_independence.ReadBackProbe {
   label: "list components, adding any missing one before reporting",
   subject: "the components carried by the toolchain the job principal's shim resolves",
-  effect_on_subject: ProbeMayEstablish {
+  effect_on_subject: gunbc.readback_independence.ProbeMayEstablish {
     mechanism: "the repair arm installs the component it is checking for, so a Converged result may report the component the probe itself just added — and the deficit can then never be counted",
   },
 }

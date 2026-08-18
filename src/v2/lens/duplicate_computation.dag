@@ -185,7 +185,7 @@ fn duplicate_computation_violations(facts: List<ComputationDemandFact>) -> List<
       if computation_demand_group_admissible(group: group) {
         acc
       } else {
-        list_snoc_item(xs: acc, item: AuthoredDuplication {
+        list_snoc_item(xs: acc, item: std.materialization_ladder.AuthoredDuplication {
           identity: key,
           lca: authored_duplication_lca(key: key),
           site_count: length(xs: group)
@@ -204,5 +204,5 @@ fn duplicate_computation_clean_holds(facts: List<ComputationDemandFact>) -> Bool
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

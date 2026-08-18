@@ -130,7 +130,7 @@ fn ci_sccache_eligibility() -> extdeps.cache.materialization.CatalogProviderElig
   provider_for_capacity_bounded_role(
     facts: sccache_local_facts,
     scope: empty_frame_path,
-    coverage: CoversIdentities { identities: [ci_release_build_script()] }
+    coverage: std.materialization_ladder.CoversIdentities { identities: [ci_release_build_script()] }
   )
 }
 

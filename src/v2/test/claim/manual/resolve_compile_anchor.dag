@@ -2,13 +2,13 @@ module v2.test.manual.resolve_compile_anchor
 
 fn service_atom_conj_tree() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: TypeNode {
-            connective: Atom { identity: ^dag_c3_surface_sugar_service }
+          kind: v2.std.node.TypeNode {
+            connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -36,13 +36,13 @@ fn anchor_resolve_empty_prelude_service_atom() -> Outcome<v2.compiler.resolve.Re
 fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<v2.compiler.resolve.ResolvedTree> {
   match admit_normalized_tree(
     root: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge {
           label: Named { name: ^anchor_decl_first },
           target: v2.std.node.Node {
-            kind: TypeNode {
-              connective: Atom { identity: ^dag_c3_surface_sugar_service }
+            kind: v2.std.node.TypeNode {
+              connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service }
             },
             children: [],
             occurrence_id: SyntheticOccurrence
@@ -51,8 +51,8 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<v2.compiler
         v2.std.node.Edge {
           label: Named { name: ^anchor_decl_second },
           target: v2.std.node.Node {
-            kind: TypeNode {
-              connective: Atom { identity: ^dag_c3_surface_sugar_type }
+            kind: v2.std.node.TypeNode {
+              connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_type }
             },
             children: [],
             occurrence_id: SyntheticOccurrence
@@ -71,18 +71,18 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<v2.compiler
 fn anchor_resolve_bind_binder_use() -> Outcome<v2.compiler.resolve.ResolvedTree> {
   match admit_normalized_tree(
     root: v2.std.node.Node {
-      kind: TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge {
           label: Named { name: ^anchor_decl_first },
           target: v2.std.node.Node {
-            kind: ComputationNode { behavior: Bind },
+            kind: v2.std.node.ComputationNode { behavior: Bind },
             children: [
               v2.std.node.Edge {
                 label: Positional,
                 target: v2.std.node.Node {
-                  kind: TypeNode {
-                    connective: Atom { identity: ^dag_c3_surface_sugar_fn }
+                  kind: v2.std.node.TypeNode {
+                    connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_fn }
                   },
                   children: [],
                   occurrence_id: SyntheticOccurrence
@@ -91,8 +91,8 @@ fn anchor_resolve_bind_binder_use() -> Outcome<v2.compiler.resolve.ResolvedTree>
               v2.std.node.Edge {
                 label: Positional,
                 target: v2.std.node.Node {
-                  kind: TypeNode {
-                    connective: Atom { identity: ^dag_c3_surface_sugar_service }
+                  kind: v2.std.node.TypeNode {
+                    connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service }
                   },
                   children: [],
                   occurrence_id: SyntheticOccurrence
@@ -101,8 +101,8 @@ fn anchor_resolve_bind_binder_use() -> Outcome<v2.compiler.resolve.ResolvedTree>
               v2.std.node.Edge {
                 label: Positional,
                 target: v2.std.node.Node {
-                  kind: TypeNode {
-                    connective: Atom { identity: ^dag_c3_surface_sugar_fn }
+                  kind: v2.std.node.TypeNode {
+                    connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_fn }
                   },
                   children: [],
                   occurrence_id: SyntheticOccurrence
@@ -125,13 +125,13 @@ fn anchor_resolve_bind_binder_use() -> Outcome<v2.compiler.resolve.ResolvedTree>
 fn resolve_roots_claim_node(ok: Bool) -> Node {
   if ok {
     v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: ^anchor_resolve_roots_pass } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^anchor_resolve_roots_pass } },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
   } else {
     v2.std.node.Node {
-      kind: TypeNode { connective: Atom { identity: ^anchor_resolve_roots_fail } },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^anchor_resolve_roots_fail } },
       children: [],
       occurrence_id: SyntheticOccurrence
 }
@@ -140,10 +140,10 @@ fn resolve_roots_claim_node(ok: Bool) -> Node {
 
 fn resolve_imported_qn_node() -> Node {
   fold_list_node(
-    xs: Cons { head: ^anchor_imported_path_segment, tail: Empty },
+    xs: std.algebra.Cons { head: ^anchor_imported_path_segment, tail: Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: sym } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
 }
@@ -153,7 +153,7 @@ fn resolve_imported_qn_node() -> Node {
 
 fn resolve_imported_module_root() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -166,8 +166,8 @@ fn resolve_imported_module_root() -> Node {
       v2.std.node.Edge {
         label: Named { name: ^anchor_imported_decl },
         target: v2.std.node.Node {
-          kind: TypeNode {
-            connective: Atom { identity: ^dag_c3_surface_sugar_service }
+          kind: v2.std.node.TypeNode {
+            connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -180,10 +180,10 @@ fn resolve_imported_module_root() -> Node {
 
 fn resolve_subject_qn_node() -> Node {
   fold_list_node(
-    xs: Cons { head: ^anchor_subject_path_segment, tail: Empty },
+    xs: std.algebra.Cons { head: ^anchor_subject_path_segment, tail: Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
-        kind: TypeNode { connective: Atom { identity: sym } },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
 }
@@ -193,7 +193,7 @@ fn resolve_subject_qn_node() -> Node {
 
 fn resolve_subject_module_root() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -210,7 +210,7 @@ fn resolve_subject_module_root() -> Node {
 
 fn resolve_subject_module_root_with_import_use() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -230,14 +230,14 @@ fn resolve_subject_module_root_with_import_use() -> Node {
 }
 
 fn resolve_subject_name() -> v2.std.qualified_name.QualifiedName {
-  Cons { head: ^anchor_subject_path_segment, tail: Empty }
+  std.algebra.Cons { head: ^anchor_subject_path_segment, tail: Empty }
 }
 
 fn resolve_roots_single_import() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
-    roots: Cons {
+    roots: std.algebra.Cons {
     head: resolve_subject_module_root_with_import_use(),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: resolve_imported_module_root(),
       tail: Empty
     }
@@ -248,14 +248,14 @@ fn resolve_roots_single_import() -> Outcome<FreeMonoid<v2.compiler.normalized_tr
 
 fn resolve_imported_use_tree() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^anchor_imported_decl } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^anchor_imported_decl } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
 fn resolve_import_target() -> v2.std.qualified_name.QualifiedName {
-  Cons { head: ^anchor_imported_path_segment, tail: Empty }
+  std.algebra.Cons { head: ^anchor_imported_path_segment, tail: Empty }
 }
 
 fn resolve_with_admission_imported_binding_accepts() -> Bool {
@@ -269,7 +269,7 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
         subject: v2.compiler.name_resolve.ResolutionSubject {
           name: resolve_subject_name()
         },
-        imports: Cons {
+        imports: std.algebra.Cons {
           head: v2.compiler.name_resolve.Import {
             target: resolve_import_target(),
             visibility: ImportVisible
@@ -287,7 +287,7 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
   }
 }
 
-data claim_resolve_with_admission_imported_binding_accepts: v2.std.verification.TestClaim = CompilesClaim {
+data claim_resolve_with_admission_imported_binding_accepts: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "resolve/with_admission: visible imported module named export resolves via module-root projection",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: resolve_roots_claim_node(ok: resolve_with_admission_imported_binding_accepts()),

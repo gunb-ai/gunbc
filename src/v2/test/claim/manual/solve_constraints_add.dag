@@ -24,7 +24,7 @@ data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraint
 }
 fn solve_constraints_witness_fail_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^solve_constraints_witness_fail_atom } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^solve_constraints_witness_fail_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -37,7 +37,7 @@ fn solve_constraints_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_solve_constraints_add_compiles: v2.std.verification.TestClaim = CompilesClaim {
+data claim_solve_constraints_add_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/solve_constraints_add: constraint path module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fixture_add_resolved_node(),
@@ -45,7 +45,7 @@ data claim_solve_constraints_add_compiles: v2.std.verification.TestClaim = Compi
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_solve_constraints_add_accepts: v2.std.verification.TestClaim = CompilesClaim {
+data claim_solve_constraints_add_accepts: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/solve_constraints_add: solve_constraints Accepted on add graph root",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: solve_constraints_claim_input(ok: witness_solve_constraints_add_accepts),
