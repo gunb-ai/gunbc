@@ -490,3 +490,49 @@ gunbc#8146; CI does not run `cargo test`. A `#[test]` here is retained evidence,
 (b) this control is re-expressed as a floor witness the current roots reach, or (c) the v1 seed
 regains an executing test home. Until then the match-pattern walk is landed and UNWITNESSED,
 and this row is the receipt for that gap.
+
+## Sizing the resolver-correction fallout: 2,373 diagnostics are 578 edits (2026-08-18)
+
+The visibility-before-cardinality correction (`f22bac0`) took regen from 27 to 2,373
+diagnostics. That is the expected direction -- it converts silently wrong bindings into loud
+refusals -- but the raw count is the wrong denominator for deciding anything.
+
+Measured on regen run 11's output:
+
+    2,373  diagnostic rows
+      578  distinct (unresolved name, file) pairs      <- the actual edit population
+      250  distinct names
+
+A 40-pair sample against the pre-cut import ledger at merge-base `616d3460`:
+
+    33 / 40   the file's own pre-cut import block names the symbol   -> mechanical
+     7 / 40   no pre-cut import entry                                -> inspected below
+     0 / 40   file did not exist pre-cut
+
+Inspecting all seven misses: six have a findable declarer (`ErrorNode` and `Node` from
+`src/v1/00_core.dag`, `OperatorSpec` and `ItemForm` from `dag/std/syntax.dag`,
+`DescentEvidence` from `dag/std/termination.dag`), so they are qualification targets reached by
+declarer search rather than by the ledger. One, `TextInline` in `md_helpers.dag`, has **no
+declarer anywhere in the tree** -- a genuine modeling gap, not a namespace consequence.
+
+So the fallout is roughly: ~82% mechanical from the ledger, ~15% mechanical from a declarer
+lookup, ~3% real defects needing a decision each.
+
+### The correction is not over-refusing
+
+Worth stating because it was the live risk. One sampled row looked like a module failing to
+resolve its OWN declaration, which would have meant the chain predicate was too strict. It was
+not: `OperatorSpec` is declared in `dag/std/syntax.dag` (`module std.syntax`) and referenced
+from `dag/extdeps/languages/dag/syntax.dag` (`module extdeps.languages.dag.syntax`). `std.syntax`
+is not an ancestor of that module, so the refusal is correct and the repair is qualification.
+
+**Method caution recorded with it:** the sample matched files by BASENAME, and six distinct
+`syntax.dag` files exist across `dag/std` and five language directories. A basename match
+silently conflates them, which is how a correct refusal briefly read as a self-reference bug.
+Any census over this corpus keys on module path, never on file name.
+
+### What this means for the open decision
+
+The choice is not "27 diagnostics versus 2,373". It is "27 diagnostics, of which an unknown
+number are silently wrong bindings that regen cannot see" versus "578 located edits, ~97% of
+them mechanically derivable, plus 3 or so genuine modeling gaps that were previously invisible".
