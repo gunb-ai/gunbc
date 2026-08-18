@@ -100,6 +100,10 @@ fn duplicated_names(names: List<NonEmptyStr>) -> List<NonEmptyStr> {
   })
 }
 
+fn empty_board_article_refusals() -> List<BoardArticleRefusal> {
+  []
+}
+
 fn article_terminals(intent: AnalogCircuitIntent) -> List<ElectricalTerminalRef> {
   fold(intent.components, init: [], f: fn(acc, c) { concat(acc, component_terminals(c: c)) })
 }
@@ -116,14 +120,14 @@ fn net_declared(intent: AnalogCircuitIntent, n: NetIdentity) -> Bool {
 
 fn duplicate_component_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
   let names = fold(intent.components, init: [], f: fn(acc, c) { concat(acc, [component_local_label(c: component_identity(c: c))]) })
-  fold(duplicated_names(names: names), init: [], f: fn(acc, n) {
+  fold(duplicated_names(names: names), init: empty_board_article_refusals(), f: fn(acc, n) {
     concat(acc, [DuplicateComponentIdentity { component: n }])
   })
 }
 
 fn duplicate_net_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
   let names = fold(intent.nets, init: [], f: fn(acc, net) { concat(acc, [net_local_label(n: net.identity)]) })
-  fold(duplicated_names(names: names), init: [], f: fn(acc, n) {
+  fold(duplicated_names(names: names), init: empty_board_article_refusals(), f: fn(acc, n) {
     concat(acc, [DuplicateNetIdentity { net: n }])
   })
 }
@@ -146,7 +150,7 @@ fn duplicate_net_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefus
 // so reporting both would name one problem twice and send the author hunting a typo that is not
 // there. One cause per problem, which is the same rule the net-grain causes already follow.
 fn foreign_design_net_member_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
-  fold(intent.nets, init: [], f: fn(acc, net) {
+  fold(intent.nets, init: empty_board_article_refusals(), f: fn(acc, net) {
     fold(net.members, init: acc, f: fn(inner, m) {
       if design_identity_eq(a: net.identity.design, b: m.component.design) {
         inner
@@ -162,7 +166,7 @@ fn foreign_design_net_member_refusals(intent: AnalogCircuitIntent) -> List<Board
 }
 
 fn dangling_net_member_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
-  fold(intent.nets, init: [], f: fn(acc, net) {
+  fold(intent.nets, init: empty_board_article_refusals(), f: fn(acc, net) {
     fold(net.members, init: acc, f: fn(inner, m) {
       if terminal_exists(intent: intent, t: m)
         || !design_identity_eq(a: net.identity.design, b: m.component.design) {
@@ -191,7 +195,7 @@ fn bond_refusal(intent: AnalogCircuitIntent, b: ElectricalBond) -> List<BoardArt
 }
 
 fn bond_refusals(intent: AnalogCircuitIntent, bonds: List<ElectricalBond>) -> List<BoardArticleRefusal> {
-  fold(bonds, init: [], f: fn(acc, b) { concat(acc, bond_refusal(intent: intent, b: b)) })
+  fold(bonds, init: empty_board_article_refusals(), f: fn(acc, b) { concat(acc, bond_refusal(intent: intent, b: b)) })
 }
 
 fn net_refusal(intent: AnalogCircuitIntent, n: NetIdentity) -> List<BoardArticleRefusal> {
@@ -218,7 +222,7 @@ fn reference_net_refusals(intent: AnalogCircuitIntent, reference: NetIdentity) -
 
 fn duplicate_signal_refusals(control: DigitalControlIntent) -> List<BoardArticleRefusal> {
   let names = fold(control.signals, init: [], f: fn(acc, s) { concat(acc, [s.name as NonEmptyStr]) })
-  fold(duplicated_names(names: names), init: [], f: fn(acc, n) {
+  fold(duplicated_names(names: names), init: empty_board_article_refusals(), f: fn(acc, n) {
     concat(acc, [DuplicateSignalName { signal: n }])
   })
 }
@@ -236,7 +240,7 @@ fn driver_count(control: DigitalControlIntent, name: SignalName) -> Nat {
 }
 
 fn equation_refusals(control: DigitalControlIntent) -> List<BoardArticleRefusal> {
-  fold(control.equations, init: [], f: fn(acc, e) {
+  fold(control.equations, init: empty_board_article_refusals(), f: fn(acc, e) {
     let undeclared = if intent_declares_signal(intent: control, name: e.driven) {
       []
     } else {
@@ -261,7 +265,7 @@ fn equation_refusals(control: DigitalControlIntent) -> List<BoardArticleRefusal>
 // means one is surplus. A single "wrong driver count" cause would report both as the same defect
 // and leave the reader to work out which direction to edit in.
 fn output_driver_refusals(control: DigitalControlIntent) -> List<BoardArticleRefusal> {
-  fold(control.signals, init: [], f: fn(acc, s) {
+  fold(control.signals, init: empty_board_article_refusals(), f: fn(acc, s) {
     if signal_direction_is_output(s: s) {
       let n = driver_count(control: control, name: s.name)
       if n == 0 {
@@ -301,7 +305,7 @@ fn precondition_refusal(
 }
 
 fn precondition_refusals(a: BoardPowerInterfaceArticle) -> List<BoardArticleRefusal> {
-  fold(a.platform_firmware.start_preconditions, init: [], f: fn(acc, p) {
+  fold(a.platform_firmware.start_preconditions, init: empty_board_article_refusals(), f: fn(acc, p) {
     concat(acc, precondition_refusal(control: a.digital_control, p: p))
   })
 }
@@ -332,36 +336,6 @@ fn push_refusal(acc: BoardArticleRefusalSet?, r: BoardArticleRefusal) -> BoardAr
 
 fn refusal_set_count(s: BoardArticleRefusalSet) -> Nat {
   1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
-}
-
-// Match on BoardArticleRefusal in the module that owns the coproduct — imported variant
-// patterns in witness modules do not reconcile at runtime (non-exhaustive on every arm).
-fn refusal_matches_name(r: BoardArticleRefusal, wanted: String) -> Bool {
-  match r {
-    DuplicateComponentIdentity { component: _ } => wanted == "DuplicateComponentIdentity"
-    DuplicateNetIdentity { net: _ } => wanted == "DuplicateNetIdentity"
-    NetMemberBelongsToAnotherDesign { net: _, net_design: _, member_design: _ } => wanted == "NetMemberBelongsToAnotherDesign"
-    DuplicateSignalName { signal: _ } => wanted == "DuplicateSignalName"
-    NetMemberNamesNoTerminal { net: _, component: _, terminal: _ } => wanted == "NetMemberNamesNoTerminal"
-    BondTerminalNamesNoTerminal { component: _, terminal: _ } => wanted == "BondTerminalNamesNoTerminal"
-    BondNamesUndeclaredNet { net: _ } => wanted == "BondNamesUndeclaredNet"
-    ReferenceNetNotDeclared { net: _ } => wanted == "ReferenceNetNotDeclared"
-    DrivenSignalUndeclared { signal: _ } => wanted == "DrivenSignalUndeclared"
-    DrivenSignalIsAnInput { signal: _ } => wanted == "DrivenSignalIsAnInput"
-    EquationReferencesUndeclaredSignal { driven: _ } => wanted == "EquationReferencesUndeclaredSignal"
-    OutputWithNoDriver { signal: _ } => wanted == "OutputWithNoDriver"
-    OutputWithMultipleDrivers { signal: _ } => wanted == "OutputWithMultipleDrivers"
-    PreconditionSignalUndeclared { signal: _ } => wanted == "PreconditionSignalUndeclared"
-    PreconditionSignalIsNotAnOutput { signal: _ } => wanted == "PreconditionSignalIsNotAnOutput"
-  }
-}
-
-fn refuses_with_exactly_named_cause(a: BoardPowerInterfaceArticle, wanted: String) -> Bool {
-  match admit_board_article(a: a) {
-    BoardArticleAdmitted { article: _ } => false
-    BoardArticleRefused { causes: s } =>
-      refusal_set_count(s: s) == 1 && refusal_matches_name(r: s.first, wanted: wanted)
-  }
 }
 
 fn admit_board_article(a: BoardPowerInterfaceArticle) -> BoardArticleAdmission {

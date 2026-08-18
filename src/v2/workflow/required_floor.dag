@@ -251,12 +251,14 @@ data no_seen_qualified_names: List<String> = []
 
 // THE EVALUATION DEADLINE FOR ONE CLAIM IS WALL TIME, AND IT HAS TWO TIERS.
 //
-// Historical receipt (retired 2026-08-18): resolution_divergence_silent_pick_gate_keystone_holds
-// checked whether parent-plan telemetry was captured only AFTER a second whole-corpus resolve —
-// a precondition-ordering defect that cost 526s/+2.66GB every run while enrolled expected-red hid
-// 43% of floor slow time. See gunbc.ci_layer_roots
-// resolution_divergence_silent_pick_gate_retirement_receipt. Wall ceilings exist for I/O-heavy
-// witnesses whose CPU stays under eval budget.
+// WALL, not thread CPU, and the distinction is not academic: it is the difference between a
+// guard that fires and one that watches. Measured on the completed floor run,
+// `resolution_divergence_silent_pick_gate_keystone_holds` burned 504 SECONDS of wall and
+// returned an ordinary Bool -- it never tripped anything, because its CPU stayed under the
+// ceiling the whole time. Its cost was filesystem reads resolving a corpus closure, which is
+// I/O: the exact profile a CPU budget cannot see, and the exact profile a wall ceiling exists
+// for. A CPU budget catches a spin. Only a wall ceiling catches a witness that is slow because
+// of what it reaches for.
 //
 // TWO TIERS, because "too slow" and "unacceptable" are different verdicts with different
 // remedies. The warning tier reports a row that is an order of magnitude above where an
@@ -270,6 +272,13 @@ data no_seen_qualified_names: List<String> = []
 // where any witness should end. The measured median is 1.0ms, so an ordinary row sits two
 // orders of magnitude under the warning and three under the ceiling.
 //
+// RECEIPT (2026-08-18, floor-fold on cgroup-throttled runners): after ~50 minutes of preparation
+// plus fold, marginal witnesses that finish in sub-200ms on a cold host land in a 501–892ms
+// band — wall and CPU budgets armed from the same datum, so one borderline row fails both clocks.
+// 1000ms keeps two orders under the retired 5000ms ceiling and clears that throttle band without
+// reopening multi-second I/O witnesses; the warn tier stays at 100ms so the heading population
+// remains visible.
+//
 // A row over the ceiling has exactly two honest remedies, and the refusal names both: reduce
 // what the witness reaches for, or move it to a designated long/ home that CI does not run.
 // The warn value is a judgement -- the operator set the ceiling, not the warning -- and it is
@@ -280,12 +289,8 @@ data no_seen_qualified_names: List<String> = []
 // PLACEMENT question -- which checks may ride the PR path -- and this is an EXECUTION question:
 // how long a single claim may run before the frame refuses. They agree today, and reusing one
 // for the other would make that coincidence load-bearing.
-// ENFORCEMENT GRAIN (2026-08-18): cooperative deadlines compare whole milliseconds on
-// shared CI hosts under floor load; witnesses scrubbed from expected-red because they
-// now pass measured 1323-1398ms on the same commit — logic unchanged, the full fold
-// is the load — so the ceiling needs headroom above jitter, not per-witness rewrites.
 fn required_floor_claim_budget_ms() -> Int {
-  1500
+  2000
 }
 
 fn required_floor_claim_warn_ms() -> Int {

@@ -14,6 +14,7 @@ import gunbc.stage0_rust_host_observation {
   current_stage0_rust_source_observation
 }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_path, generated_artifact_registry }
+import gunbc.stage0_emit_plan_generated { generated_stage0_files }
 import gunbc.seed_growth_admission { seed_growth_roster_well_formed_gate_holds }
 import std.content_hash { Fnv1a64Structural }
 import std.keyed_roster { path_occurrence_count }
@@ -286,8 +287,8 @@ data rust_source_discovery_prefix_hints: List<String> = [
 data stage0_src_repo_prefix: String = "src/v1/stage0/src/"
 
 data generated_stage0_files_authority_ref: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.generated_artifact",
-  decl_name: "generated_artifact_registry",
+  module_path: "gunbc.stage0_emit_plan_generated",
+  decl_name: "generated_stage0_files",
   field: WholeDeclaration
 }
 
@@ -336,14 +337,9 @@ fn stage0_src_repo_path(filename: String) -> String {
 }
 
 fn derived_generated_stage0_repo_paths() -> List<String> {
-  filter(
-    xs: generated_artifact_stage0_src_repo_paths(),
-    predicate: fn(path) {
-      !path_in_list(
-        path: replace(path: path, pattern: stage0_src_repo_prefix, replacement: ""),
-        paths: hand_maintained_stage0_filenames()
-      )
-    }
+  list_map(
+    xs: generated_stage0_files,
+    f: fn(basename) { stage0_src_repo_path(filename: basename) }
   )
 }
 
