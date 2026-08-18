@@ -31,10 +31,19 @@ import v2.std.text { String }
 // roster is admissible because it is temporary, visible at identity grain, and self-emptying —
 // remove any of those three and it is the skip list it is carefully not.
 //
-// POPULATION: 361 identities, after the declared rung drop below took 108 out by relocation
-// (469 -> 361). The count is NOT the whole population affected: 78 healthy passing witnesses
-// left the floor with them as collateral and are enrolled nowhere, so no number in this file
-// counts them. Read the rung drop, not this line, for what left.
+// POPULATION: the rows below are the authority for how many there are, and this line deliberately
+// no longer restates it. It said 361 while the file carried 358 — the rung drop recorded 361 -> 358
+// three lines further down and this header was not updated with it, so the canonical statement of
+// the population was false by 3 without a single edit to the population itself. That is the shape
+// the freeze roster already forbids for exactly this reason (gunbc.witness_deferral_freeze
+// frozen_path_deferral_count_is_a_receipt_note): a hand-maintained count of a hand-authored roster
+// is a copy of a measurement, so it rots silently and no mechanism can tell. Count the Cons heads
+// if you need the number; do not re-author one here.
+//
+// WHAT NO NUMBER IN THIS FILE COUNTS, which is the fact the header was carrying that was worth
+// keeping: the roster is not the whole population affected by a relocation. 78 healthy passing
+// witnesses left the floor as collateral of the drop below and are enrolled nowhere, so they are
+// invisible to this file at any size. Read the rung drop, not this header, for what left.
 //
 // HISTORY: cut at 820 on tree 380c242c79a; 25 were removed after the first complete
 // run on main (611fd027708) observed them PASSING and red the build naming themselves, which is the
