@@ -111,7 +111,15 @@ test fn w_member_realization_runtime_change_is_install_owned_closure_only() -> B
     && !spark_serving_install_effects_include(effects: effects, needle: WriteSystemUnitFile)
 }
 
-test fn w_member_realization_user_unit_change_includes_write_reload_enable() -> Bool {
+// RETIRED AND REPLACED, with its receipt: this required the CONTENT change to include
+// EnableUserUnit, which was the bundled remedy that survived underneath the address split and made
+// a bare host freeze TWO enables for one unit. A test asserting the old bundle would have kept it
+// alive through the fix.
+//
+// The claim it protected is real and survives at its own address: a unit must end up enabled. What
+// changed is who owns that -- content owns the bytes and making the manager read them; enablement
+// owns surviving a reboot. So the content change writes and reloads, and NO LONGER enables.
+test fn w_member_realization_user_unit_content_change_writes_and_reloads_without_enabling() -> Bool {
   let effect = EffectReplace {
     from: w_unit_member(state: "unit-v1" as NonEmptyStr),
     to: w_unit_member(state: "unit-v2" as NonEmptyStr),
@@ -119,7 +127,7 @@ test fn w_member_realization_user_unit_change_includes_write_reload_enable() -> 
   let effects = spark_serving_install_effects_for_member_effect(effect: effect)
   spark_serving_install_effects_include(effects: effects, needle: WriteUserUnitFile)
     && spark_serving_install_effects_include(effects: effects, needle: ReloadUserManager)
-    && spark_serving_install_effects_include(effects: effects, needle: EnableUserUnit)
+    && !spark_serving_install_effects_include(effects: effects, needle: EnableUserUnit)
     && !spark_serving_install_effects_include(effects: effects, needle: WriteSystemUnitFile)
 }
 

@@ -30,8 +30,17 @@ import gunbc.spark_serving_realization {
 
 data spark_serving_member_realization_authority_note: String = "Per-member-type realization bundle for Spark serving: maps membership_reconcile actions/effects onto the EXISTING gunbc.spark_serving_realization ServingInstallEffect vocabulary (UserUnitRealization scope only — never live_deploy SystemdUnit/system-scoped handlers). MemberEffect<M> classifies change; this module supplies how to realize each action for SparkServingMember addresses. Admission boundaries and API readiness observations stay outside this bundle."
 
+// THE CONTENT ADDRESS NO LONGER ENABLES. Splitting enablement into its own resource changed the
+// decomposition but left the old bundled remedy underneath it: content mapped to write-reload-ENABLE
+// while enablement also mapped to enable, so a bare host -- where BOTH members drift -- froze TWO
+// enable operations for one unit.
+//
+// Adding an address does not divide a responsibility; removing it from the old owner does. Content
+// owns getting the right bytes in place and making the manager read them; enablement owns whether
+// the unit survives a reboot. The reload stays here because it is what makes NEW BYTES visible to
+// the manager, which is a fact about the content having changed.
 fn spark_serving_user_unit_install_effects() -> List<ServingInstallEffect> {
-  [WriteUserUnitFile, ReloadUserManager, EnableUserUnit]
+  [WriteUserUnitFile, ReloadUserManager]
 }
 
 fn spark_serving_install_effects_for_address(address: SparkServingResourceAddress) -> List<ServingInstallEffect> {

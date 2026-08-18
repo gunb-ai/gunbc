@@ -50,6 +50,16 @@ import gunbc.spark_serving_converge_plan {
   SparkServingPlanArtifactRefused,
   spark_serving_fleet_converge_plan_artifact,
 }
+import gunbc.spark_serving_member_realization {
+  spark_serving_install_effects_for_add,
+  spark_serving_user_unit_install_effects,
+}
+import gunbc.spark_serving_realization {
+  ServingInstallEffect,
+  EnableUserUnit,
+  WriteUserUnitFile,
+  ReloadUserManager,
+}
 import gunbc.spark_serving_desired {
   SparkServingDesiredAdmission,
   SparkServingDesiredAdmitted,
@@ -692,4 +702,30 @@ test fn an_observed_disabled_enablement_still_plans_through_the_artifact() -> Bo
         ),
       ) == 1
   }
+}
+
+// A BARE HOST ENABLES ONCE, NOT TWICE. The content address used to carry EnableUserUnit alongside
+// write and reload, and the enablement address carries it too -- so a host where both members drift
+// froze two enables for one unit. Adding an address does not divide a responsibility; removing it
+// from the old owner does.
+test fn a_bare_host_freezes_exactly_one_enable_operation() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      length(flat_map(
+        spark_serving_desired_members(
+          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
+          serving_release: r,
+        ),
+        m => spark_serving_install_effects_for_add(member: m),
+      ).filter(e => e == EnableUserUnit)) == 1
+  }
+}
+
+// And the content member no longer claims the enable at all, which is what makes the count above a
+// consequence of the decomposition rather than an accident of ordering.
+test fn the_unit_content_member_does_not_enable() -> Bool {
+  !any(spark_serving_user_unit_install_effects(), e => e == EnableUserUnit)
+    && any(spark_serving_user_unit_install_effects(), e => e == WriteUserUnitFile)
+    && any(spark_serving_user_unit_install_effects(), e => e == ReloadUserManager)
 }
