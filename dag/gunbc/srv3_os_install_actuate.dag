@@ -50,6 +50,13 @@ func srv3_bmcweb_session_login() -> ProcessExit
   }
 }
 
+// THE EMPTY-TOKEN CHECK THAT STOOD IN THIS FOLD IS DELETED, NOT MOVED (DESIGN §4b,
+// dissolution on climb). It ran shell.Test.IsNonEmpty on srv3_bmcweb_token_path — the file
+// the extract step had just written — so it conceded that writing an empty credential file
+// was a reachable state and merely reported it afterwards. gunbc.host_effect_realize
+// `bmcweb_token_extraction_verdict` now refuses an absent, null or blank token BEFORE
+// Filesystem.Write, so a converged extract cannot have produced an empty file and a second
+// reading of that file has nothing left to discover.
 func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> ProcessExit
   uses net: std.resources.Network
 {
@@ -97,13 +104,6 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
     _ => return extract_exit
   }
 
-  // The empty-token check that stood here is DELETED, not moved (DESIGN §4b,
-  // dissolution on climb). It read shell.Test.IsNonEmpty on the file the extract
-  // had just written, which conceded that writing an empty credential file was a
-  // reachable state and merely reported it afterwards. gunbc.host_effect_realize
-  // `bmcweb_token_extraction_verdict` now refuses an absent, null or blank token
-  // BEFORE Filesystem.Write, so a converged extract cannot have written an empty
-  // file and there is nothing left for a second reading of the file to discover.
   ExitSuccess
 }
 
