@@ -52,10 +52,9 @@ Environment:
 - `GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY=1` — evaluate only enrolled identities present in
   the manifest (set by the bin)
 
-**Sequencing:** open branches may still classify rows as `not_evaluated` with
-`host_tool_unresolved` because PR workflows run from the branch tip (rust-cache cleanup
-distortion; fixed on main at #8420). Do not use a join run from that window as the basis
-for roster pruning.
+**Sequencing:** eight identities that passed on CI run 32103473552 were removed from
+`v2.workflow.floor_expected_red` (2026-08-18). Further pruning waits until host-tool
+verdicts are trustworthy post-rebase (#8420).
 
 ## Authority
 
