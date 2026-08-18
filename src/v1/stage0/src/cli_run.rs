@@ -38743,6 +38743,8 @@ pub fn claim_scope_for(
         .filter(|m| in_scope.contains(m.func_env.name.as_str()))
         .map(|m| (m.func_env.name.as_str(), m.clone()))
         .collect();
+    // `in_scope` is collected from `order` immediately above, so this cannot drop a
+    // member that was in the scope: every in-graph name in `order` is in the map.
     let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = order
         .iter()
         .filter_map(|name| module_by_name.get(name.as_str()).cloned())

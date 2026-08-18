@@ -1870,6 +1870,12 @@ impl InterpContext {
     /// visited in that precedence order and bare `fn_nodes` keys use first-write-wins — the same
     /// resolution `claim_scope_for` already applies to `item_registry`. Without an order the walk
     /// follows `graph.modules` and bare keys keep last-write-wins for entry-major callers.
+    ///
+    /// THIS IS STILL NAME-BASED RESOLUTION WITH A PRECEDENCE RULE, not a wall. An entry module
+    /// now wins its own colliding helper, which makes the compute_board `refusal_is` theft
+    /// unwritable for that caller. A non-entry homonym in the same scope still binds by order.
+    /// Next rung: DESIGN §3 namespace-only — a qualified reference has exactly one declarer, so
+    /// ambiguous bare binding has no constructor (`floor_bare_name_ambiguity_next_rung_trigger`).
     pub fn build_scope_indexes_with_module_order(
         graph: &ResolvedGraph,
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1886,6 +1892,9 @@ impl InterpContext {
                             .iter()
                             .map(|m| (m.func_env.name.as_str(), m))
                             .collect();
+                    // Walk `order`, not the graph. `claim_scope_for` built this graph's
+                    // `modules` from the same `order` (`in_scope` is that list), so the
+                    // filter_map cannot drop a scoped member.
                     order
                         .iter()
                         .filter_map(|name| by_name.get(name.as_str()).copied())
