@@ -1,32 +1,15 @@
 module test.claim.fabric_terminal_contract_witness
 
-import std.types { NonEmptyStr, String, Bool, Timestamp, Int }
-import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count, hardware_thread_count, second, MoneyRate }
-import std.content_hash { ContentHash, content_hash_of_value }
-import std.currency { CurrencyCode, Usd }
+import std.types { NonEmptyStr, String, Bool, Int }
+import std.measure { money_amount_micro, money_amount_micro_count, hardware_thread_count, second, MoneyRate }
+import std.content_hash { content_hash_of_value }
+import std.currency { Usd }
 import product.compute_fabric { Shape, HardRequirements }
-import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey, ReceiptKey }
-import product.fabric.work {
-  Work, WorkContract, ExecutionRequirements, WorkStep, ResumabilityTier,
-  derive_work_key, work_for,
-  ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects,
-}
-import product.fabric.demand {
-  Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work,
-  demand_reservation_price, demand_maximum_buy_order,
-}
-import product.fabric.supply {
-  Offer, OfferQuote, QuotedPerSecond, offer_quote_amount, offer_quote_currency, OfferEvidence,
-  ObservedSupply, QuotedSupply,
-}
-import product.fabric.execution {
-  Attempt, ExecutionAttemptLineage, InitialAttempt, InfrastructureRetry, LeaseIdentity,
-  Receipt, ReceiptPayload, ExecutionReceipt, receipt_lease_generation,
-  ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence,
-  ReceiptAdmission, ReceiptAdmissible, ReceiptFromDifferentLease,
-  ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable,
-  ReceiptGenerationStale, admit_receipt_for_grant,
-}
+import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey }
+import product.fabric.work { Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work, demand_reservation_price, demand_maximum_buy_order }
+import product.fabric.supply { Offer, QuotedPerSecond, offer_quote_amount, offer_quote_currency, ObservedSupply, QuotedSupply }
+import product.fabric.execution { Attempt, InitialAttempt, InfrastructureRetry, LeaseIdentity, Receipt, ExecutionReceipt, ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, ReceiptAdmissible, ReceiptFromDifferentLease, ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable, ReceiptGenerationStale, admit_receipt_for_grant }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -86,6 +69,17 @@ data other_source_contract: WorkContract = WorkContract {
   runtime_closure: "toolchain-rust-1.89",
   effect_contract: "effects-read-only",
   output_contract: "outputs-verdict",
+}
+
+// Same contract, same capabilities and trust domain, DIFFERENT shape. Before
+// the shape fed the digest these derived one key while carrying different
+// machine requirements, and fungibility compares shape - so dedup identity and
+// matching constraints disagreed about whether two things were the same work.
+
+data bigger_shape_requirements: ExecutionRequirements = ExecutionRequirements {
+  shape: Shape { hard: HardRequirements { threads: hardware_thread_count(64) } },
+  capabilities: "linux-arm64",
+  trust_domain: "fleet-owned",
 }
 
 data other_runtime_requirements: ExecutionRequirements = ExecutionRequirements {
@@ -191,6 +185,14 @@ test fn identical_contracts_derive_one_key_regardless_of_who_asked() -> Bool {
 
 // Cost differs between the two demands while the Work they attach to does not.
 // This is the structural form of cost does not enter the work key.
+
+// A machine that cannot run one of them is not an interchangeable executor for
+// both, so a differing shape must derive a differing key.
+
+test fn a_different_machine_shape_changes_the_work_key() -> Bool {
+  derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
+    != derive_work_key(contract: fixture_contract, requirements: bigger_shape_requirements)
+}
 
 test fn cost_terms_differ_without_forking_work() -> Bool {
   money_amount_micro_count(m: demand_reservation_price(d: github_binding_demand)) == 500
@@ -316,7 +318,6 @@ data stale_receipt: Receipt<NonEmptyStr> = Receipt {
     completed_at: "2026-08-18T01:00:00Z",
   },
 }
-
 
 data fixture_grant: ExecutionGrant<NonEmptyStr> = ExecutionGrant {
   id: FabricIdentity { principal: "operator", key: "grant-1" },

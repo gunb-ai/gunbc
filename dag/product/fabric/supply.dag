@@ -1,7 +1,7 @@
 module product.fabric.supply
 
 import std.types { Timestamp, Int }
-import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce, MoneyRate }
+import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce }
 import std.currency { CurrencyCode }
 import product.compute_fabric { Shape }
 import product.fabric.identity { FabricIdentity, OfferKey }

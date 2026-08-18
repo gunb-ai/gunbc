@@ -1,23 +1,12 @@
 module test.claim.fabric_budget_encumbrance_witness
 
-import std.types { NonEmptyStr, String, Bool, Int, Timestamp, List }
-import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count, measure_le }
-import std.currency { CurrencyCode, Usd, Eur }
+import std.types { NonEmptyStr, Bool, Int, List }
+import std.measure { money_amount_micro, money_amount_micro_count }
+import std.currency { Usd, Eur }
 import std.nat { Nat }
 import extdeps.accounting.budget { Appropriation }
-import extdeps.accounting.encumbrance {
-  EncumbranceLedger, Encumbrance, EncumbranceState, Held, Expended, Released,
-  EncumbranceOutcome, LedgerAdvanced, EncumbranceRefused,
-  ExceedsAppropriation, UnknownEncumbrance,
-  ExpenditureExceedsEncumbrance, AlreadyTerminal, DuplicateReference,
-  committed_total,
-}
-import product.fabric.budget {
-  MoneyAccount, MoneyReservationRequest, MoneySettlementRequest,
-  MoneyOutcome, AccountAdvanced, MoneyRefused, MoneyRefusal,
-  CurrencyMismatch, LedgerRefused, StaleLeaseGeneration,
-  reserve_money, settle_money, release_money, account_committed,
-}
+import extdeps.accounting.encumbrance { EncumbranceLedger, ExceedsAppropriation, UnknownEncumbrance, ExpenditureExceedsEncumbrance, AlreadyTerminal, DuplicateReference }
+import product.fabric.budget { MoneyAccount, MoneyReservationRequest, MoneySettlementRequest, MoneyOutcome, AccountAdvanced, MoneyRefused, CurrencyMismatch, LedgerRefused, StaleLeaseGeneration, reserve_money, settle_money, release_money, account_committed }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

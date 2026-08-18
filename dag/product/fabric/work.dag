@@ -3,6 +3,7 @@ module product.fabric.work
 import std.types { NonEmptyStr, List }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import product.compute_fabric { Shape }
+import std.measure { hardware_thread_count_value }
 import product.fabric.identity { FabricIdentity, WorkKey }
 
 // Work is WHAT is computed, and it is provider-neutral by construction: no field
@@ -136,7 +137,27 @@ fn work_identity_material(contract: WorkContract, requirements: ExecutionRequire
     contract.effect_contract, "\u{1f}",
     contract.output_contract, "\u{1f}",
     requirements.capabilities, "\u{1f}",
-    requirements.trust_domain
+    requirements.trust_domain, "\u{1f}",
+    shape_material(shape: requirements.shape)
+  )
+}
+
+// The shape feeds the digest, and leaving it out was a real divergence rather
+// than an omission of a decorative field. Two works needing different thread
+// counts would have derived the SAME key while carrying different shapes --
+// and fungibility in product.fabric.supply compares shape, so deduplication
+// identity and matching constraints would have disagreed about whether two
+// things were the same work. A machine that cannot run one of them is not an
+// interchangeable executor for both.
+//
+// It is rendered through the cited accessor rather than by reaching into the
+// record, so a shape that grows an axis fails to compile here instead of
+// silently dropping the new axis out of the identity.
+
+fn shape_material(shape: Shape) -> NonEmptyStr {
+  concat(
+    "threads:",
+    to_string(hardware_thread_count_value(t: shape.hard.threads))
   )
 }
 

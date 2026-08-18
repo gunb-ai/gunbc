@@ -2,7 +2,7 @@ module extdeps.accounting.encumbrance
 
 import std.measure { Measure, measure_add, measure_le }
 import std.nat { Nat }
-import std.types { NonEmptyStr, List, Int, Timestamp }
+import std.types { NonEmptyStr, List, Timestamp }
 import extdeps.accounting.budget { Appropriation }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
