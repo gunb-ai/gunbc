@@ -51,12 +51,19 @@ test fn residue_table_present_string_bypasses_identity() -> Bool {
     != none
 }
 
-// The one that costs a GUARANTEE rather than a representation: the Hash row
-// targets v1_rt::Hash (`pub type Hash = String` in the seed) while the v2
-// declaration is Fnv1a64Structural, a record whose digest field carries a
-// `where lower_hex_16` refinement. Realizing that as a bare String alias renders
-// away the carrier the construction wall is attached to.
-test fn residue_table_present_hash_bypasses_identity() -> Bool {
+// PERMANENT REGRESSION CONTROL. This row formerly asserted the BYPASS -- that a bare
+// "Hash" spelling received a realization however it was declared -- so the gap would be
+// counted rather than assumed closed. The Hash checkpoint row is now retired
+// (rust_checkpoint_hash_row_retired_note), so the assertion is inverted and stays enrolled
+// rather than being deleted with the row: per DESIGN 4b, a climb deletes the redundant
+// production handling, never the executing evidence that the higher rung is still real.
+//
+// What it guards: v2.std.node.Hash is Fnv1a64Structural, whose public constructors are
+// deleted so the `where lower_hex_16` refinement IS its construction wall. Any future row
+// re-binding this spelling to v1_rt::Hash (`pub type Hash = String`) would render that
+// carrier away as a bare String alias and silently demote a construction rung. This goes
+// red the moment that happens.
+test fn hash_spelling_receives_no_realization_and_renders_structurally() -> Bool {
   rust_scalar_checkpoint_render_base(dag_name: "Hash", decl_file: "src/v2/std/node.dag")
-    != none
+    == none
 }
