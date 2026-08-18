@@ -9,6 +9,9 @@ import v1.std.core {
   NoConnective
 }
 import std.trait_derive_shape {
+  ReprGroundingDeriveTrait,
+  map_key_required_derive_traits,
+  derive_traits_union,
   ReprGroundingDeriveElemShape,
   ReprDeriveElemNullaryEnumCopy,
   ReprDeriveElemPayloadCoproduct,
@@ -31,7 +34,7 @@ import extdeps.languages.rust.emit {
   rust_supplemental_impls_group_completion,
   rust_supplemental_impls_bool_coproduct
 }
-import std.types { is_container_type }
+import std.types { is_container_type, container_template_algebra }
 
 data trait_derive_emit_scope_note: String = "Root-4 arm (b): v1 seed emit selects trait surface from the capability table — #[derive] attrs for shape-eligible traits, and (for GroupCompletion) pair-completion impl bodies as the realization of KernelInt arithmetic traits that cannot be #[derive]. Bool↔bool host bridge remains a separate enum-arm door (see bool dissolve-on). Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums."
 
@@ -110,43 +113,227 @@ fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
   }
 }
 
+// USAGE-DERIVED derive selection, the second axis beside the SHAPE-derived rosters this module already
+// consulted. A record's structure says what it CAN derive; it cannot say what its USE demands, so a
+// type reaching a keyed-collection key position needed Eq + Hash that no shape classification would
+// ever produce — and std.trait_derive_shape could not even name Hash until this landed, which is why
+// the gap was structural rather than an oversight in the table. The requirement is one row,
+// map_key_required_derive_traits, grounded on im 15.1.0 HashMap<K, V> declaring K: Hash + Eq (the
+// container Map lowers to, via std.types container_template_algebra PartialFunction).
+// v1_map_key_required_type_names computes the subject population as a LEAST FIXPOINT over the
+// declared-type graph, the same shape as the Clone-bound fixpoint above and for the same reason:
+// derive(Hash) on a record emits an impl requiring every FIELD type to be Hash, so a required type
+// propagates the requirement to every declared type its fields mention, and a recursive type saturates
+// instead of diverging. The union is append-only and idempotent (derive_traits_union), so a type
+// already deriving Eq from its shape roster gains only Hash and every type outside the population
+// emits byte-identical bytes. WHAT THIS DOES NOT DO, stated rather than implied: the seed reads type-
+// expression positions (declared fields, fn value params, fn return types, alias right-hand sides),
+// NOT inferred types of arbitrary expressions, so a map keyed by a type that appears in NO such
+// position is not discovered. That residue is loud, not silent — the emitted crate fails the same
+// rustc E0277 it fails today — and it is a may-miss, never a may-fabricate. NOT the Ord axis: Set
+// elements carry an Ord requirement answered today by refusing at the use site
+// (rust_btree_set_element_ord_eligible) rather than by propagating to the declaration; folding that
+// onto this fixpoint is the named next step and is deliberately not taken here, because it would move
+// emitted bytes for a population this change has not measured.
+fn v1_with_map_key_requirement(
+  base: List<ReprGroundingDeriveTrait>,
+  map_key_required: Bool
+) -> List<ReprGroundingDeriveTrait> {
+  if map_key_required {
+    derive_traits_union(base: base, extra: map_key_required_derive_traits())
+  } else {
+    base
+  }
+}
+
+fn v1_type_expr_is_keyed_map(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match container_template_algebra(name: authored_name_at(source_indices: source_indices, node: type_expr)) {
+    Present { value: algebra } => algebra == "PartialFunction"
+    Absent => false
+  }
+}
+
+fn v1_map_key_head_names_in_type_expr(
+  type_expr: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  let own = if v1_type_expr_is_keyed_map(type_expr: type_expr, source_indices: source_indices) {
+    match type_expr.children |> first {
+      Present { value: key_child } =>
+        [authored_name_at(source_indices: source_indices, node: child_type_node(ch: key_child))]
+      Absent => []
+    }
+  } else { [] }
+  concat(
+    own,
+    type_expr.children |> flat_map(ch =>
+      v1_map_key_head_names_in_type_expr(
+        type_expr: child_type_node(ch: ch),
+        source_indices: source_indices
+      )
+    )
+  )
+}
+
+fn v1_type_expr_head_names(
+  type_expr: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  concat(
+    [authored_name_at(source_indices: source_indices, node: type_expr)],
+    type_expr.children |> flat_map(ch =>
+      v1_type_expr_head_names(type_expr: child_type_node(ch: ch), source_indices: source_indices)
+    )
+  )
+}
+
+type MapKeyRequirementRound {
+  names: Set<String>
+  added: Int
+}
+
+fn v1_map_key_round_add(round: MapKeyRequirementRound, name: String) -> MapKeyRequirementRound {
+  if name == "" || set_contains(round.names, name) {
+    round
+  } else {
+    MapKeyRequirementRound { names: set_insert(round.names, name), added: round.added + 1 }
+  }
+}
+
+fn v1_map_key_propagate_round(
+  round: MapKeyRequirementRound,
+  declared_type_names: List<String>,
+  type_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> MapKeyRequirementRound {
+  declared_type_names |> fold(init: round, f: (acc, type_name) =>
+    if !set_contains(acc.names, type_name) { acc }
+    else {
+      match map_get(type_decl_items, type_name) {
+        Present { value: item } =>
+          v1_item_field_type_exprs(item: item) |> fold(init: acc, f: (inner, te) =>
+            v1_type_expr_head_names(type_expr: te, source_indices: source_indices)
+              |> fold(init: inner, f: (deep, head) =>
+                if map_has_declared_type(type_decl_items: type_decl_items, name: head) {
+                  v1_map_key_round_add(round: deep, name: head)
+                } else { deep }
+              )
+          )
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn map_has_declared_type(type_decl_items: Map<String, Node>, name: String) -> Bool {
+  match map_get(type_decl_items, name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn v1_map_key_fixpoint_loop(
+  round: MapKeyRequirementRound,
+  declared_type_names: List<String>,
+  type_decl_items: Map<String, Node>,
+  remaining: Int,
+  source_indices: Map<String, NewlineIndex>
+) -> Set<String> {
+  if remaining <= 0 {
+    round.names
+  } else {
+    let next = v1_map_key_propagate_round(
+      round: MapKeyRequirementRound { names: round.names, added: 0 },
+      declared_type_names: declared_type_names,
+      type_decl_items: type_decl_items,
+      source_indices: source_indices
+    )
+    if next.added == 0 {
+      next.names
+    } else {
+      v1_map_key_fixpoint_loop(
+        round: next,
+        declared_type_names: declared_type_names,
+        type_decl_items: type_decl_items,
+        remaining: remaining - 1,
+        source_indices: source_indices
+      )
+    }
+  }
+}
+
+fn v1_map_key_required_type_names(
+  seed_type_exprs: List<Node>,
+  type_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Set<String> {
+  let declared_type_names = map_keys(type_decl_items)
+  let seeded = seed_type_exprs |> fold(init: MapKeyRequirementRound { names: empty_set(), added: 0 }, f: (acc, te) =>
+    v1_map_key_head_names_in_type_expr(type_expr: te, source_indices: source_indices)
+      |> fold(init: acc, f: (inner, key_name) =>
+        if map_has_declared_type(type_decl_items: type_decl_items, name: key_name) {
+          v1_map_key_round_add(round: inner, name: key_name)
+        } else { inner }
+      )
+  )
+  v1_map_key_fixpoint_loop(
+    round: seeded,
+    declared_type_names: declared_type_names,
+    type_decl_items: type_decl_items,
+    remaining: (declared_type_names |> count) + 1,
+    source_indices: source_indices
+  )
+}
+
 fn v1_emit_struct_derives(
   name: String,
   children: List<Node>,
   shared_types: Set<String>,
   has_fn_fields: Bool,
+  map_key_required: Bool,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
   if has_fn_fields {
-    rust_trait_derive_attr_from_traits(fn_field_derive_traits())
+    if map_key_required {
+      v1_trait_derive_refuse(concat("trait_derive_emit: '", name, "' reaches a map-key position and so requires Eq + Hash, but it carries function fields whose only derivable trait is Clone — Rc<dyn Fn> is neither Eq nor Hash, so the key position is the defect, not the roster"))
+    } else {
+      rust_trait_derive_attr_from_traits(fn_field_derive_traits())
+    }
   } else if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
     let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(children: children, source_indices: source_indices)
-    if repr_grounding_derive_completeness_predicate(symbol_wrapped_ord_carrier_derive_traits(), shape) {
-      rust_trait_derive_attr_from_traits(symbol_wrapped_ord_carrier_derive_traits())
+    let traits = v1_with_map_key_requirement(base: symbol_wrapped_ord_carrier_derive_traits(), map_key_required: map_key_required)
+    if repr_grounding_derive_completeness_predicate(traits, shape) {
+      rust_trait_derive_attr_from_traits(traits)
     } else {
       v1_trait_derive_refuse("trait_derive_emit: symbol-wrapped ord carrier refused")
     }
   } else {
     if set_contains(shared_types, name) {
-      rust_trait_derive_attr_from_traits(record_derive_traits_heap())
+      rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: record_derive_traits_heap(), map_key_required: map_key_required))
     } else {
-      rust_trait_derive_attr_from_traits(record_derive_traits_copy())
+      rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: record_derive_traits_copy(), map_key_required: map_key_required))
     }
   }
 }
 
-fn v1_emit_enum_derives(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+fn v1_emit_enum_derives(
+  children: List<Node>,
+  map_key_required: Bool,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
   let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(children: children, source_indices: source_indices)
+  let nullary_traits = v1_with_map_key_requirement(base: nullary_coproduct_derive_traits(), map_key_required: map_key_required)
+  let payload_traits = v1_with_map_key_requirement(base: payload_coproduct_derive_traits(), map_key_required: map_key_required)
   match shape {
     ReprDeriveElemNullaryEnumCopy =>
-      if repr_grounding_derive_completeness_predicate(nullary_coproduct_derive_traits(), shape) {
-        rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+      if repr_grounding_derive_completeness_predicate(nullary_traits, shape) {
+        rust_trait_derive_attr_from_traits(nullary_traits)
       } else {
         v1_trait_derive_refuse("trait_derive_emit: nullary coproduct derive completeness refused")
       }
     ReprDeriveElemPayloadCoproduct =>
-      if repr_grounding_derive_completeness_predicate(payload_coproduct_derive_traits(), shape) {
-        rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
+      if repr_grounding_derive_completeness_predicate(payload_traits, shape) {
+        rust_trait_derive_attr_from_traits(payload_traits)
       } else {
         v1_trait_derive_refuse("trait_derive_emit: payload coproduct derive completeness refused")
       }
@@ -1049,6 +1236,65 @@ fn v1_clone_bounded_type_params(
   )
 }
 
+data clone_impl_required_type_params_note: String = "THE SECOND RECORD, and the reason there must be two. v1_clone_bounded_type_params answers 'does naming G<A..> require P: Clone' — well-formedness, which is what a DECLARATION must print, because naming an ill-formed type is an error whether or not you clone. This one answers 'does CLONING G<A..> require P: Clone' — the derive-impl fact, because derive(Clone) on G emits impl<P: Clone> Clone for G<P>.
+
+They differ exactly on generic coproducts. An enum's declaration must NOT print a bound it earns from derive (derive supplies it per-impl, and w_coproduct_bare_payload_param_stays_bare pins that), while a CONSUMER cloning that enum must still be told the parameter is required. One map cannot hold both answers: seeding coproducts into the declaration record would print spurious enum bounds, and not seeding them anywhere leaves consumers with nothing to propagate from. So the seed differs and the fixpoint is shared.
+
+WHY THE GAP WAS INVISIBLE. The two axes have complementary blind spots. v1_type_expr_wf_needs_clone_param opens on a zero-children test, so well-formedness structurally cannot bound a BARE parameter — it only fires on a parameter occupying an argument position of an already-bounded declared type. The seed exists to cover the bare case and was switched off for coproducts. A generic coproduct with a bare payload fell between them and was bounded by nothing. Neither predicate is wrong read alone; the defect is the relation.
+
+MEASURED, at distinct-site grain over eleven entries. 142 A-class sites, of which 104 are fn signatures and only 6 are type declarations — so this is a fn-bound defect, not a declaration one. Thirteen signatures fail PARTIALLY, and they discriminate the mechanism: fold_list<T, A: Clone> misses T via Rc<im::Vector<T>>, resolve_probe<A: Clone, B> misses B via CacheProbe<B>, reconcile_grounded<A: Clone, R, E> misses R via ShowEffectiveRead<R>. Every parameter that earned its bound flows through a carrier that has one; every parameter that missed flows through a carrier that has none.
+
+WHY NO USAGE GATE. Bounding a fn that names Outcome<T> and never clones it would fabricate a requirement, since enum Outcome<T> declares no bound and the well-formedness justification does not transfer. Measured over the 03_ingest closure: of 21 generic fns taking one of these carriers in PARAMETER position, 21 clone that parameter. Zero would be spuriously bounded. The proxy is exact rather than approximate — derive emits impl<T: Clone>, so cloning the carrier IS the obligation. The one fn with no clone in its body has the carrier in return position only. A usage gate is therefore a later refinement, not a prerequisite; re-open it if the return-position population grows.
+
+NOT CLOSED BY THIS: a carrier whose declaration is UPSTREAM. im::Vector<T> has no corpus declaration to seed from, so its Clone requirement must come from the target API's own impl requirements — trait_derive_emit_item_clone_bound_contract_fork_note, whose dissolution is that grounding. Of A's 64 generic-receiver sites, 30 are im::Vector and stay standing."
+
+fn v1_clone_impl_seed_for_item(
+  round: CloneBoundRound,
+  type_name: String,
+  item: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> CloneBoundRound {
+  let field_type_exprs = v1_item_field_type_exprs(item: item)
+  item.params |> fold(init: round, f: (acc, p) =>
+    let param_name = generic_param_name_at(n: p, source_indices: source_indices)
+    if v1_item_type_param_needs_clone_bound_struct(
+      param_name: param_name,
+      field_type_exprs: field_type_exprs,
+      source_indices: source_indices
+    ) {
+      v1_clone_bound_round_add(round: acc, type_name: type_name, param_name: param_name)
+    } else {
+      acc
+    }
+  )
+}
+
+fn v1_clone_impl_required_type_params(
+  type_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Map<String, Set<String>> {
+  let generic_type_names = v1_generic_declared_type_names(type_decl_items: type_decl_items)
+  let seeded = generic_type_names |> fold(init: CloneBoundRound { bounds: empty_map(), added: 0 }, f: (acc, type_name) =>
+    match map_get(type_decl_items, type_name) {
+      Present { value: item } =>
+        v1_clone_impl_seed_for_item(
+          round: acc,
+          type_name: type_name,
+          item: item,
+          source_indices: source_indices
+        )
+      Absent => acc
+    }
+  )
+  v1_clone_bound_fixpoint_loop(
+    generic_type_names: generic_type_names,
+    type_decl_items: type_decl_items,
+    bounds: seeded.bounds,
+    remaining: (generic_type_names |> count) + 1,
+    source_indices: source_indices
+  )
+}
+
 fn v1_item_clone_bounded_param_names(
   item_name: String,
   generic_param_names: List<String>,
@@ -1086,6 +1332,7 @@ fn v1_emit_struct_from_capability_table(
   children: List<Node>,
   shared_types: Set<String>,
   has_fn_fields: Bool,
+  map_key_required: Bool,
   source_indices: Map<String, NewlineIndex>
 ) -> StructCapabilityEmit {
   let derive_attr = v1_emit_struct_derives(
@@ -1093,6 +1340,7 @@ fn v1_emit_struct_from_capability_table(
     children: children,
     shared_types: shared_types,
     has_fn_fields: has_fn_fields,
+    map_key_required: map_key_required,
     source_indices: source_indices
   )
   let impl_bodies = if repr_grounding_group_completion_carrier(module_path: module_path, name: name)

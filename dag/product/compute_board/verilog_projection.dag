@@ -1,6 +1,28 @@
 module product.compute_board.verilog_projection
 
 import std.types { String, NonEmptyStr, List, list_length }
+import v2.std.node { Node, Symbol }
+import v2.std.collection { Map, map_insert }
+import v2.extdeps.languages.verilog {
+  VerilogEmission,
+  VerilogEmitted,
+  VerilogEmissionRefused,
+  verilog_ansi_port,
+  verilog_assign_list_cons,
+  verilog_assign_list_one,
+  verilog_base_spellings,
+  verilog_binary_application,
+  verilog_conj,
+  verilog_continuous_assign,
+  verilog_emit_module,
+  verilog_identifier_is_admissible,
+  verilog_module_declaration,
+  verilog_port_list_cons,
+  verilog_port_list_one,
+  verilog_signal_reference,
+  verilog_unary_application,
+}
+import std.nat { Nat }
 import product.compute_board.digital_control {
   board_power_interlock_intent,
   conditioned_good_signal,
@@ -22,12 +44,16 @@ import product.compute_board.digital_control {
   intent_declares_signal,
   signal_direction_is_output,
 }
+import product.compute_board.admission {
+  AdmittedBoardPowerInterfaceArticle,
+  admitted_article,
+}
 import product.compute_board.article {
   BoardArticleIdentity,
   BoardPowerInterfaceArticle,
 }
 
-data verilog_projection_note: String = "THE VERILOG PROJECTION: language-neutral digital intent to Verilog bytes. ALL Verilog spelling lives here and nothing upstream carries any of it — the intent has no constructor for a target string, so this module is the only place 'assign', '&', '~' or 'endmodule' appear for this article. WHAT THIS PROFILE COVERS, declared rather than discovered at emission: module framing, ANSI scalar input and output ports, continuous assignment, signal references, and the three boolean operators. WHAT IT DOES NOT COVER is not a gap to be filled by rendering something approximate — sequential behaviour has no constructor in DigitalControlIntent at all, so an always block cannot be requested here and then quietly emitted as combinational logic. The refusals this module DOES carry are for the conditions the intent can still express wrongly: a driven signal that is not an output, and a reference to a signal the intent never declared. A NOTE ON WHY THIS DOES NOT ROUTE THROUGH v2.extdeps.languages.verilog's VerilogModule AST: that AST names every construct with a substrate Symbol, and the substrate has no general Symbol-to-text projection — which is exactly why the sibling SPICE module carries a hand-written five-entry spelling table. Binding this profile onto that AST is the right end state and is blocked on that projection, not on appetite; until then the identifiers here are branded names that carry their own spelling and the emitted bytes are not bounded by a lookup table."
+data verilog_projection_note: String = "THE VERILOG PROJECTION, NOW A MAPPING RATHER THAN A PRINTER. This module names no Verilog keyword, no punctuation and no layout: it folds board vocabulary onto the target AST and v2.extdeps.languages.verilog renders it through the generic serializer. An earlier revision of this note said ALL Verilog spelling lived here and explained why routing through the target AST was blocked on a general Symbol-to-text projection. That premise was wrong twice over. No such projection is needed — a target resolves a Symbol through its own binding spellings, which is why VerilogBinding now carries the symbol beside the spelling — and the emitter was never the obstacle: relation rows derive from formal productions, and emission is their backward reading. WHAT THIS MODULE STILL OWNS is the semantics the intent can still get wrong: a driven signal that is not an output, a reference to a signal never declared, a signal with no binding or two, and a spelling the target refuses. Those are facts about the BOARD and its binding table. Identifier admissibility moved to the target, because what may be a Verilog identifier is a fact about Verilog. WHAT IT DOES NOT COVER remains a bound rather than a gap: sequential behaviour has no constructor in DigitalControlIntent, so an always block cannot be requested here and quietly emitted as combinational logic."
 
 // VERILOG LEXICAL ADMISSION LIVES HERE, with the target, because legality is a target fact and
 // not a property of a logical signal. A logical SignalName is a nominal brand that validates
@@ -47,10 +73,10 @@ data verilog_projection_note: String = "THE VERILOG PROJECTION: language-neutral
 // still be illegal downstream. Dissolve-on: a substrate string-to-character projection, at which
 // point this becomes the positive grammar test and the forbidden roster is deleted.
 type VerilogProjectionRefusal
-  = DrivenSignalIsNotAnOutput { signal: NonEmptyStr }
-  | ReferencedSignalUndeclared { equation_driven: NonEmptyStr }
-  | SignalSpellingUnbound { signal: NonEmptyStr }
+  = SignalSpellingUnbound { signal: NonEmptyStr }
   | SignalSpellingNotAdmissible { signal: NonEmptyStr, spelling: String }
+  | DuplicateSignalBinding { signal: NonEmptyStr }
+  | TargetEmissionRefused { reason: Symbol }
 
 // The receipt carries the article identity so an emission is traceable to the root that produced
 // it, rather than being an anonymous string two different articles could both have produced.
@@ -63,36 +89,20 @@ type VerilogProjection
   = VerilogModuleEmitted { receipt: VerilogEmissionReceipt }
   | VerilogProjectionRefused { cause: VerilogProjectionRefusal }
 
+// THE BINDING CARRIES A TARGET SYMBOL, not only a spelling. An emitted target node identifies a
+// name by Symbol and the target resolves that Symbol to text, so a product that supplied only a
+// string would have nothing to put in the tree. Logical identity, target identity and target
+// spelling are three facts and this row is where they are joined.
 type VerilogBinding {
   signal: SignalName
+  symbol: Symbol
   spelling: String
 }
 
-data verilog_reserved_words: List<String> = [
-  "module", "endmodule", "input", "output", "inout", "wire", "reg", "assign",
-  "always", "initial", "begin", "end", "if", "else", "case", "endcase",
-  "posedge", "negedge", "parameter", "localparam", "function", "endfunction",
-  "integer", "real", "time", "genvar", "generate", "endgenerate", "task", "endtask",
-]
-
-data verilog_forbidden_characters: List<String> = [
-  " ", "\t", "\n", "-", ".", ",", ";", ":", "(", ")", "[", "]", "{", "}",
-  "\"", "'", "/", "\\", "+", "*", "&", "|", "~", "^", "%", "!", "=", "<", ">",
-  "?", "#", "@", "`",
-]
-
-fn is_reserved(spelling: String) -> Bool {
-  fold(verilog_reserved_words, init: false, f: fn(acc, w) { acc || w == spelling })
-}
-
-fn contains_forbidden(spelling: String) -> Bool {
-  fold(verilog_forbidden_characters, init: false, f: fn(acc, ch) {
-    acc || list_length(items: split(s: spelling, delimiter: ch)) > 1
+fn spelling_count(bindings: List<VerilogBinding>, name: SignalName) -> Nat {
+  fold(bindings, init: 0, f: fn(acc, b) {
+    if (b.signal as String) == (name as String) { acc + 1 } else { acc }
   })
-}
-
-fn spelling_is_admissible(spelling: String) -> Bool {
-  spelling != "" && !is_reserved(spelling) && !contains_forbidden(spelling: spelling)
 }
 
 fn spelling_for(bindings: List<VerilogBinding>, name: SignalName) -> String? {
@@ -104,66 +114,13 @@ fn spelling_for(bindings: List<VerilogBinding>, name: SignalName) -> String? {
   })
 }
 
-fn vl_join(left: String, right: String) -> String {
-  concat(left, right)
-}
 
-fn vl_line(text: String) -> String {
-  concat(text, "\n")
-}
 
-// Expression rendering is fully parenthesised on the binary operators rather than relying on
-// Verilog's precedence table. A projection that leans on precedence is one edit away from
-// emitting a different circuit than the tree says, and the parentheses cost nothing.
-// The unbound arm renders a poison marker rather than the logical name. It is unreachable — the
-// projection refuses every unbound and inadmissible signal before a byte is rendered — and it is
-// deliberately not valid Verilog, so were the gate ever removed the failure would be loud at the
-// next consumer instead of silently emitting a differently-named circuit.
-fn rendered_signal(bindings: List<VerilogBinding>, name: SignalName) -> String {
-  match spelling_for(bindings: bindings, name: name) {
-    Present { value: sp } => sp
-    Absent => "<<unbound-signal>>"
-  }
-}
 
-fn render_expr(bindings: List<VerilogBinding>, e: DigitalExpr) -> String {
-  match e {
-    SignalRef { signal: s } => rendered_signal(bindings: bindings, name: s)
-    Negation { operand: o } => concat("~", render_expr(bindings: bindings, e: o))
-    Conjunction { left: l, right: r } =>
-      concat(concat(concat(concat("(", render_expr(bindings: bindings, e: l)), " & "), render_expr(bindings: bindings, e: r)), ")")
-    Disjunction { left: l, right: r } =>
-      concat(concat(concat(concat("(", render_expr(bindings: bindings, e: l)), " | "), render_expr(bindings: bindings, e: r)), ")")
-  }
-}
 
-fn render_port(bindings: List<VerilogBinding>, s: DigitalSignal) -> String {
-  match s.direction {
-    DigitalInput => concat("  input  wire ", rendered_signal(bindings: bindings, name: s.name))
-    DigitalOutput => concat("  output wire ", rendered_signal(bindings: bindings, name: s.name))
-  }
-}
 
-fn render_ports(bindings: List<VerilogBinding>, signals: List<DigitalSignal>) -> String {
-  fold(signals, init: "", f: fn(acc, s) {
-    if acc == "" {
-      render_port(bindings: bindings, s: s)
-    } else {
-      concat(concat(acc, ",\n"), render_port(bindings: bindings, s: s))
-    }
-  })
-}
 
-fn render_assign(bindings: List<VerilogBinding>, eq: DigitalEquation) -> String {
-  vl_line(text: concat(
-    concat(concat("  assign ", rendered_signal(bindings: bindings, name: eq.driven)), " = "),
-    concat(render_expr(bindings: bindings, e: eq.expression), ";")
-  ))
-}
 
-fn render_assigns(bindings: List<VerilogBinding>, equations: List<DigitalEquation>) -> String {
-  fold(equations, init: "", f: fn(acc, eq) { concat(acc, render_assign(bindings: bindings, eq: eq)) })
-}
 
 fn signal_is_declared_output(intent: DigitalControlIntent, name: SignalName) -> Bool {
   fold(intent.signals, init: false, f: fn(acc, s) {
@@ -171,57 +128,20 @@ fn signal_is_declared_output(intent: DigitalControlIntent, name: SignalName) -> 
   })
 }
 
-fn first_non_output_driven(intent: DigitalControlIntent) -> NonEmptyStr? {
-  fold(intent.equations, init: none, f: fn(acc, eq) {
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent =>
-        if signal_is_declared_output(intent: intent, name: eq.driven) {
-          none
-        } else {
-          Present { value: eq.driven as NonEmptyStr }
-        }
-    }
-  })
-}
-
-fn first_undeclared_reference(intent: DigitalControlIntent) -> NonEmptyStr? {
-  fold(intent.equations, init: none, f: fn(acc, eq) {
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent =>
-        if expr_references_undeclared(intent: intent, e: eq.expression) {
-          Present { value: eq.driven as NonEmptyStr }
-        } else {
-          none
-        }
-    }
-  })
-}
-
-fn render_module(bindings: List<VerilogBinding>, intent: DigitalControlIntent) -> String {
-  concat(
-    concat(
-      concat(
-        concat(concat("module ", rendered_signal(bindings: bindings, name: intent.block_name)), " (\n"),
-        render_ports(bindings: bindings, signals: intent.signals)
-      ),
-      "\n);\n"
-    ),
-    concat(render_assigns(bindings: bindings, equations: intent.equations), "endmodule\n")
-  )
-}
-
 // Every signal the module names, including the module name itself, must be bound and admissible.
 fn signal_admission_refusal(bindings: List<VerilogBinding>, name: SignalName) -> VerilogProjectionRefusal? {
+  if spelling_count(bindings: bindings, name: name) > 1 {
+    Present { value: DuplicateSignalBinding { signal: name as NonEmptyStr } }
+  } else {
   match spelling_for(bindings: bindings, name: name) {
     Absent => Present { value: SignalSpellingUnbound { signal: name as NonEmptyStr } }
     Present { value: sp } =>
-      if spelling_is_admissible(spelling: sp) {
+      if verilog_identifier_is_admissible(spelling: sp) {
         none
       } else {
         Present { value: SignalSpellingNotAdmissible { signal: name as NonEmptyStr, spelling: sp } }
       }
+  }
   }
 }
 
@@ -241,31 +161,150 @@ fn first_admission_refusal(
   }
 }
 
-// The projection. Both refusals are conditions the INTENT can express and the target cannot
-// honour, checked before a byte is rendered — never after, and never by emitting something
-// approximate and noting the problem beside it.
+// WHAT THIS MODULE REFUSES, AND WHAT IT NO LONGER DUPLICATES. Two of its refusals were deleted:
+// it used to check that every driven signal is a declared output and that no equation references
+// an undeclared one, which are ARTICLE-level facts that product.compute_board.admission already
+// refuses as DrivenSignalIsAnInput and EquationReferencesUndeclaredSignal. Two names for one
+// concept in two modules is the fork DESIGN section 3 forbids, and once the production entry
+// point took the sealed admitted article the projection arms were also unreachable — validation
+// standing where construction already held. What is left here is genuinely target-specific: a
+// signal with no Verilog spelling, two spellings claiming one signal, and a spelling this
+// target's lexer will not admit. None of those is a fact about the board.
+// MAPPING INTENT ONTO TARGET STRUCTURE. This is what remains of the projection once the target
+// owns its own syntax: a fold from board vocabulary onto the Verilog AST, naming no keyword, no
+// punctuation and no layout. If a Verilog spelling ever reappears in this module, the language
+// has leaked back into the product and the wall this lane built has come down.
+fn symbol_for(bindings: List<VerilogBinding>, name: SignalName) -> Symbol? {
+  fold(bindings, init: none, f: fn(acc, b) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if (b.signal as String) == (name as String) { Present { value: b.symbol } } else { none }
+    }
+  })
+}
+
+fn binding_spellings_for(bindings: List<VerilogBinding>) -> Map<Symbol, String> {
+  fold(bindings, init: verilog_base_spellings(), f: fn(acc, b) {
+    map_insert(acc, b.symbol, b.spelling)
+  })
+}
+
+fn direction_symbol(s: DigitalSignal) -> Symbol {
+  match s.direction {
+    DigitalInput => ^verilog_dir_input
+    DigitalOutput => ^verilog_dir_output
+  }
+}
+
+fn expr_node(bindings: List<VerilogBinding>, e: DigitalExpr) -> Node {
+  match e {
+    SignalRef { signal: n } =>
+      verilog_signal_reference(name: symbol_or_unbound(bindings: bindings, name: n))
+    Negation { operand: inner } =>
+      verilog_unary_application(operator: ^verilog_op_not, operand: expr_node(bindings: bindings, e: inner))
+    Conjunction { left: l, right: r } =>
+      verilog_binary_application(
+        left: expr_node(bindings: bindings, e: l),
+        operator: ^verilog_op_and,
+        right: expr_node(bindings: bindings, e: r)
+      )
+    Disjunction { left: l, right: r } =>
+      verilog_binary_application(
+        left: expr_node(bindings: bindings, e: l),
+        operator: ^verilog_op_or,
+        right: expr_node(bindings: bindings, e: r)
+      )
+  }
+}
+
+// An unbound name cannot reach here: first_admission_refusal runs before any node is built and
+// refuses on a signal with no binding. The arm exists because the lookup is total and must
+// answer something; it is unreachable on the production path and the witness for the unbound
+// case proves the refusal fires first.
+fn symbol_or_unbound(bindings: List<VerilogBinding>, name: SignalName) -> Symbol {
+  match symbol_for(bindings: bindings, name: name) {
+    Present { value: sym } => sym
+    Absent => ^verilog_unbound_signal
+  }
+}
+
+fn port_list_node(bindings: List<VerilogBinding>, signals: List<DigitalSignal>) -> Node {
+  match signals {
+    Empty => verilog_conj(children: [])
+    Cons { head: s, tail: rest } =>
+      match rest {
+        Empty =>
+          verilog_port_list_one(
+            port: verilog_ansi_port(
+              direction: direction_symbol(s: s),
+              name: symbol_or_unbound(bindings: bindings, name: s.name)
+            )
+          )
+        Cons { head: _, tail: _ } =>
+          verilog_port_list_cons(
+            port: verilog_ansi_port(
+              direction: direction_symbol(s: s),
+              name: symbol_or_unbound(bindings: bindings, name: s.name)
+            ),
+            rest: port_list_node(bindings: bindings, signals: rest)
+          )
+      }
+  }
+}
+
+fn assign_list_node(bindings: List<VerilogBinding>, equations: List<DigitalEquation>) -> Node {
+  match equations {
+    Empty => verilog_conj(children: [])
+    Cons { head: eq, tail: rest } =>
+      match rest {
+        Empty =>
+          verilog_assign_list_one(
+            assignment: verilog_continuous_assign(
+              lhs: symbol_or_unbound(bindings: bindings, name: eq.driven),
+              value: expr_node(bindings: bindings, e: eq.expression)
+            )
+          )
+        Cons { head: _, tail: _ } =>
+          verilog_assign_list_cons(
+            assignment: verilog_continuous_assign(
+              lhs: symbol_or_unbound(bindings: bindings, name: eq.driven),
+              value: expr_node(bindings: bindings, e: eq.expression)
+            ),
+            rest: assign_list_node(bindings: bindings, equations: rest)
+          )
+      }
+  }
+}
+
+fn intent_module_node(bindings: List<VerilogBinding>, intent: DigitalControlIntent) -> Node {
+  verilog_module_declaration(
+    name: symbol_or_unbound(bindings: bindings, name: intent.block_name),
+    ports: port_list_node(bindings: bindings, signals: intent.signals),
+    assignments: assign_list_node(bindings: bindings, equations: intent.equations)
+  )
+}
+
 fn project_intent_to_verilog(
   article_identity: BoardArticleIdentity,
   intent: DigitalControlIntent,
   bindings: List<VerilogBinding>
 ) -> VerilogProjection {
-  match first_non_output_driven(intent: intent) {
-    Present { value: s } => VerilogProjectionRefused { cause: DrivenSignalIsNotAnOutput { signal: s } }
+  match first_admission_refusal(bindings: bindings, intent: intent) {
+    Present { value: r } => VerilogProjectionRefused { cause: r }
     Absent =>
-      match first_undeclared_reference(intent: intent) {
-        Present { value: d } =>
-          VerilogProjectionRefused { cause: ReferencedSignalUndeclared { equation_driven: d } }
-        Absent =>
-          match first_admission_refusal(bindings: bindings, intent: intent) {
-            Present { value: r } => VerilogProjectionRefused { cause: r }
-            Absent =>
-              VerilogModuleEmitted {
-                receipt: VerilogEmissionReceipt {
-                  source_article: article_identity,
-                  source: render_module(bindings: bindings, intent: intent),
-                },
-              }
+      match verilog_emit_module(
+        module_node: intent_module_node(bindings: bindings, intent: intent),
+        spellings: binding_spellings_for(bindings: bindings)
+      ) {
+        VerilogEmitted { source: src } =>
+          VerilogModuleEmitted {
+            receipt: VerilogEmissionReceipt {
+              source_article: article_identity,
+              source: src,
+            },
           }
+        VerilogEmissionRefused { reason: why } =>
+          VerilogProjectionRefused { cause: TargetEmissionRefused { reason: why } }
       }
   }
 }
@@ -275,21 +314,26 @@ fn project_intent_to_verilog(
 // exactly that kind of fact from the authority. The article names logical signals; this table
 // says how this one target spells them.
 data power_interlock_verilog_bindings: List<VerilogBinding> = [
-  VerilogBinding { signal: "board_power_interlock" as SignalName, spelling: "board_power_interlock" },
-  VerilogBinding { signal: conditioned_good_signal, spelling: "conditioned_good" },
-  VerilogBinding { signal: fault_signal, spelling: "fault" },
-  VerilogBinding { signal: power_permit_signal, spelling: "power_permit" },
-  VerilogBinding { signal: reset_release_signal, spelling: "reset_release" },
+  VerilogBinding { signal: "board_power_interlock" as SignalName, symbol: ^interlock_module_name, spelling: "board_power_interlock" },
+  VerilogBinding { signal: conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "conditioned_good" },
+  VerilogBinding { signal: fault_signal, symbol: ^interlock_fault, spelling: "fault" },
+  VerilogBinding { signal: power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
+  VerilogBinding { signal: reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
 ]
 
 // The production entry point, for the same reason the SPICE side has one: identity and intent
 // arrive as ONE value, so a receipt cannot name an article whose control logic it did not
 // render. The binding table stays a parameter because a spelling table is a fact about a target,
 // not about the board — a second Verilog-speaking consumer may legitimately spell it otherwise.
+// It takes the ADMITTED article rather than the article. A projection that accepts any article
+// has to trust that whoever called it checked the board's own coherence first, and the sealed
+// wrapper removes the trust: an article with two components sharing an identity, or an output
+// nothing drives, has no route to this function at all.
 fn project_article_to_verilog(
-  article: BoardPowerInterfaceArticle,
+  admitted: AdmittedBoardPowerInterfaceArticle,
   bindings: List<VerilogBinding>
 ) -> VerilogProjection {
+  let article = admitted_article(a: admitted)
   project_intent_to_verilog(
     article_identity: article.identity,
     intent: article.digital_control,

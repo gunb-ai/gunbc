@@ -1,5 +1,6 @@
 module v2.compiler.self_host.frontier_probe
 
+import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest
 }
@@ -23,6 +24,7 @@ import v2.compiler.program_assembly {
   ProgramAssemblyFoldOk
 }
 import v2.compiler.self_host.frontier_probe_assemble_detail {
+  frontier_probe_assemble_located_reason_from_diagnostics,
   frontier_probe_receipt_from_assemble_rejection
 }
 import v2.compiler.self_host.frontier_probe_types {
@@ -122,6 +124,10 @@ data frontier_probe_closure_count_mismatch_reason: Symbol = ^frontier_probe_clos
 data frontier_probe_entry_binding_refused_reason: Symbol = ^frontier_probe_entry_binding_refused
 
 data frontier_probe_coverage_refused_reason: Symbol = ^frontier_probe_coverage_refused
+
+data frontier_probe_empty_ingest_reason: Symbol = ^frontier_probe_empty_ingest
+
+data frontier_probe_empty_ingest_refusal_note: String = "An empty ingest is the absence of a closure, never a closure containing nothing, and the two have different remedies. MEASURED, not hypothesised: an over-cap manifest emits SourceRootManifestElided with produced_row_count 0 and host_source_root_ingest = Empty, and this entry answered ^resolve_module_not_found with cause MissingModuleIdentityUnavailable — a survey row asserting the module is missing when what actually happened is that its sources were never supplied. Executed against src/v2/compiler/03_resolve.dag at 71 reads against the 64 cap. The gate that already classifies this correctly, frontier_probe_coverage_gate, guards only the discovery path; this entry receives the ingest directly and never consults coverage, so the conflation was reachable from every from_ingest caller. RESIDUE, stated rather than closed: emptiness is decidable here and coverage is not, because this entry is not given the SourceRootCoverage — so a PARTIAL closure still answers, and a wrong-but-populated ingest is outside this wall. Dissolve-on: the entry takes the coverage receipt beside the ingest and routes it through frontier_probe_coverage_gate, at which point this refusal becomes one arm of that gate rather than a separate check."
 
 type FrontierProbeCoverageGate
   = FrontierProbeCoveragePermitted
@@ -266,7 +272,7 @@ fn frontier_probe_read_failure_reason(result: SourceRefReadResult) -> Symbol {
 }
 
 fn frontier_probe_first_missing_import_lookup(
-  roots: FreeMonoid<Node>,
+  roots: FreeMonoid<NormalizedTree>,
   imports: FreeMonoid<Import>
 ) -> Optional<QualifiedName> {
   fold_list(
@@ -288,9 +294,10 @@ fn frontier_probe_first_missing_import_lookup(
 fn frontier_probe_missing_module_from_assemble_context(
   ingest: SourceRootIngest,
   admission: Admission,
-  d: NonEmptyDiagnostics
+  d: NonEmptyDiagnostics,
+  reason: Symbol
 ) -> Optional<QualifiedName> {
-  if d.head.reason != ^resolve_module_not_found {
+  if reason != ^resolve_module_not_found {
     optional_absent()
   } else {
     match program_assembly_fold_ingest(ingest: ingest, lm: dag_language_model()) {
@@ -318,7 +325,8 @@ fn frontier_probe_detail_from_diagnostic(
     match frontier_probe_missing_module_from_assemble_context(
       ingest: ingest,
       admission: admission,
-      d: d
+      d: d,
+      reason: reason
     ) {
       Present { value: qn } => MissingModule { requested: qn }
       Absent => FrontierProbeDetailAbsent
@@ -645,19 +653,36 @@ fn frontier_probe_emit_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission
 ) -> FrontierProbeReceipt {
+  if length(xs: ingest) == 0 {
+    frontier_probe_receipt_from_population_refused(
+      module_path: module_path,
+      cause: frontier_probe_empty_ingest_reason
+    )
+  } else {
+    frontier_probe_emit_from_populated_ingest(
+      module_path: module_path,
+      ingest: ingest,
+      admission: admission
+    )
+  }
+}
+
+fn frontier_probe_emit_from_populated_ingest(
+  module_path: String,
+  ingest: SourceRootIngest,
+  admission: Admission
+) -> FrontierProbeReceipt {
   match assemble_program_from_ingest(
     ingest: ingest,
     admission: admission,
     lm: dag_language_model()
   ) {
-    Rejected { diagnostics: d } => {
-      let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
+    Rejected { diagnostics: d } =>
       frontier_probe_receipt_from_assemble_rejection(
         module_path: module_path,
-        blocker: blocker,
         diagnostics: d,
         detail: frontier_probe_detail_from_diagnostic(
-          reason: d.head.reason,
+          reason: frontier_probe_assemble_located_reason_from_diagnostics(d: d),
           d: d,
           ingest: ingest,
           admission: admission
@@ -666,7 +691,6 @@ fn frontier_probe_emit_from_ingest(
           grammar: dag_language_model().grammar
         )
       )
-    }
     Accepted { value: _, diagnostics: _ } =>
       match emit_compiler_import_closure_from_ingest(
         ingest: ingest,

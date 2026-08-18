@@ -80,7 +80,7 @@ type IgnoreArtifact
   | GithubCLICacheDir
   | PythonLocalDevScriptFile
   | PythonAuditScriptAllowlisted
-  | DissolutionCensusProjectionScriptAllowlisted
+  | PythonProbeScriptAllowlisted
   | PythonBytecodeCacheDir
   | PythonCompiledBytecode
   | ClaimMapDir

@@ -11,29 +11,27 @@ use std::time::Instant;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
-    build_floor_discovery_request, compute_histogram_data,
-    discover_floor_witness_roster_with_snapshot, enable_floor_compile_clean_lazy_install,
-    floor_discovery_consumer_role_from_env, heartbeat_feed_enter_batch,
+    active_workset_admit, active_workset_complete, build_floor_discovery_request,
+    compute_histogram_data, discover_floor_witness_roster_with_snapshot,
+    enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
     make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
-    render_selection_degradation_receipt_body, request_identity_digest,
     reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
     ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
-    DiscoveryWitnessOutcome, FloorDiscoveryConsumerRole, FloorPhase, HistogramData,
-    NodeFrontierSelectionMode, PhaseProfile, ResolutionDivergencePhase,
-    ResolutionDivergencePhaseState, SelectionDegradationSnapshot, TimingPercentiles,
-    WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N, FLOOR_DISCOVERY_CONSUMER_ENV,
+    DiscoveryWitnessOutcome, FloorDiscoveryConsumerRole, FloorPhase, HistogramData, PhaseProfile,
+    ResolutionDivergencePhase, ResolutionDivergencePhaseState, TimingPercentiles, WitnessRowCost,
+    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
+use v1_compiler::derived_realization_schedule::{RealizationConcurrency, RealizationSlot};
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
     leaf_cgroup_dir, mem_total_bytes, memory_pressure_some_avg10, read_cgroup_raw, read_cgroup_u64,
-    AdmittedSlot, MemoryGovernor,
 };
 use v1_compiler::v1_interpreter::{
-    color_enabled, paint, run_in_context, run_in_context_with_args, sgr, ExecutionMode,
+    color_enabled, paint, run_in_context, run_in_context_with_args, sgr, str_value, ExecutionMode,
     InterpContext, Value,
 };
 
@@ -105,7 +103,7 @@ fn read_positive_budget_ms(
 /// while citing `gunbc_ci_floor_batch_clamp_params[0]` — a row whose overhead is 240 seconds. The
 /// authority now travels WITH the value; the index is carried beside it because an offset into a
 /// list is the one part of the citation no symbol can name.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum FloorBatchClampAuthority {
     PositionalCiSpecClamp {
         module_path: String,
@@ -147,7 +145,7 @@ impl FloorBatchClampAuthority {
 
 /// A clamp plus the declaration that produced it. Constructing one without an authority is not
 /// expressible, which is what keeps the refusal's citation and its number from drifting apart.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct ResolvedFloorBatchClamp {
     overhead_ms: u128,
     per_unit_ms: u128,
@@ -589,7 +587,7 @@ fn aggregate_batch_runtime_units(results: &[ClaimResult]) -> FloorRuntimeUnitCou
 /// policy mapping and plan roster enrollment are delegated to `.dag` eval
 /// (`gunbc_ci_floor_batch_stop_policy_for_github_event`,
 /// `gunbc_ci_floor_plan_uses_batch_stop_policy`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum FloorBatchStopPolicy {
     StopBeforeDependents,
     FullLedger,
@@ -601,7 +599,7 @@ fn plan_uses_floor_batch_stop_policy(plan_ctx: &InterpContext, plan_function: &s
         "gunbc_ci_floor_plan_uses_batch_stop_policy",
         &[(
             Some("plan_function".to_string()),
-            Value::Str(plan_function.to_string()),
+            str_value(plan_function.to_string()),
         )],
         true,
     ) {
@@ -633,7 +631,7 @@ fn resolve_floor_batch_stop_policy(
     match run_in_context_with_args(
         plan_ctx,
         "gunbc_ci_floor_batch_stop_policy_for_github_event",
-        &[(Some("event".to_string()), Value::Str(event))],
+        &[(Some("event".to_string()), str_value(event))],
         true,
     ) {
         Ok(Value::Variant { variant_name, .. }) => {
@@ -670,7 +668,7 @@ fn resolve_floor_batch_stop_policy(
 /// `RunnableMemoryClass`). A structural marker, not a quantity — the operator ruling
 /// that retired predicted-peak byte constants stands, and this carries only the
 /// Negligible/Substantial fact co-residence structure keys on.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 enum ParsedMemoryClass {
     Negligible,
     Substantial,
@@ -696,13 +694,13 @@ enum ParsedMemoryClass {
 /// does, the stage validator cannot tell "declared Negligible" from "nothing declared"
 /// (review 2026-07-31). A pure but whole-tree-heavy ClaimRef would enter a stage looking
 /// negligible. Absence is therefore its own state, and stages refuse it.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 enum ParsedProfileProvenance {
     Declared,
     Undeclared,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 struct ParsedRunnableProfile {
     provenance: ParsedProfileProvenance,
     heavy_whole_tree_resolve: bool,
@@ -747,7 +745,6 @@ enum Runnable {
         scan_dirs: Vec<String>,
         explicit_entries: Vec<(String, String)>,
         native_bundle_entries: Vec<(String, String)>,
-        node_frontier_selection: NodeFrontierSelectionMode,
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         execution_mode: ExecutionMode,
@@ -759,7 +756,6 @@ enum Runnable {
         source_roots_digest: String,
         entries: Vec<ScopedScheduleEntry>,
         scan_dirs: Vec<String>,
-        node_frontier_selection: NodeFrontierSelectionMode,
         execution_authority: ScopedWitnessExecutionAuthority,
         profile: ParsedRunnableProfile,
         clamp: ResolvedFloorBatchClamp,
@@ -767,7 +763,7 @@ enum Runnable {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct ScopedScheduleEntry {
     entry: String,
     function: String,
@@ -781,14 +777,14 @@ struct ScopedReceiptBatch {
     entries: Vec<ScopedScheduleEntry>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum ScopedProcessIsolation {
     SharedWalkProcess,
     SequentialChildProcess,
     FreshJobProcess,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum ScopedWitnessExecutionAuthority {
     InheritedWalkSourceRoots,
 }
@@ -904,7 +900,7 @@ fn str_list_from_value(value: &Value, ctx: &InterpContext) -> Result<Vec<String>
     let mut out = Vec::new();
     for elem in free_monoid_elems(value, ctx)? {
         match elem {
-            Value::Str(s) => out.push(s.clone()),
+            Value::Str(s) => out.push(s.to_string()),
             other => {
                 return Err(format!(
                     "expected a List<String> element, got {}",
@@ -923,7 +919,7 @@ fn str_field(
     ctx: &InterpContext,
 ) -> Result<String, String> {
     match ctx.field(fields, name) {
-        Some(Value::Str(s)) => Ok(s.clone()),
+        Some(Value::Str(s)) => Ok(s.to_string()),
         Some(other) => Err(format!(
             "{}.{} is {}, not String",
             owner,
@@ -1138,41 +1134,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 }
                 None => (Vec::new(), Vec::new()),
             };
-            let node_frontier_selection = match ctx.field(fields, "node_frontier_selection") {
-                Some(Value::Variant { variant_name, .. }) => {
-                    if ctx.sym_eq(*variant_name, "SelectionOff") {
-                        NodeFrontierSelectionMode::Off
-                    } else if ctx.sym_eq(*variant_name, "SelectionApplied") {
-                        NodeFrontierSelectionMode::Applied
-                    } else if ctx.sym_eq(*variant_name, "SelectionPredictOnly") {
-                        NodeFrontierSelectionMode::PredictOnly
-                    } else {
-                        return Err(format!(
-                            "RunnableDiscoveryBatch.node_frontier_selection: unknown \
-                                 NodeFrontierSelection variant `{}`",
-                            ctx.resolve(*variant_name)
-                        ));
-                    }
-                }
-                Some(other) => {
-                    return Err(format!(
-                        "RunnableDiscoveryBatch.node_frontier_selection must be a \
-                             NodeFrontierSelection variant, got {}",
-                        other.type_label_public()
-                    ))
-                }
-                // Absent is a REFUSAL, not a default: the former Bool defaulted to false
-                // when the field was missing — a fail-open where a stale plan silently
-                // ran without its declared selection semantics.
-                None => {
-                    return Err(
-                        "RunnableDiscoveryBatch.node_frontier_selection is absent — the \
-                             plan row must declare its selection mode (SelectionOff / \
-                             SelectionApplied / SelectionPredictOnly); no silent default"
-                            .to_string(),
-                    )
-                }
-            };
             let exclude_substrings = match ctx.field(fields, "exclude_substrings") {
                 Some(v) => str_list_from_value(v, ctx)?,
                 // Field absent means the plan author specified no exclusions — default is empty,
@@ -1193,7 +1154,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 scan_dirs,
                 explicit_entries,
                 native_bundle_entries,
-                node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
                 execution_mode: profile.execution_mode,
@@ -1229,7 +1189,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 )],
                 false,
             ) {
-                Ok(Value::Str(digest)) if !digest.is_empty() => digest,
+                Ok(Value::Str(digest)) if !digest.is_empty() => digest.to_string(),
                 Ok(other) => {
                     return Err(format!(
                         "scoped_witness_source_roots_digest_for_wire returned {}, expected String",
@@ -1296,21 +1256,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
             let scan_dirs = match ctx.field(batch, "scan_dirs") {
                 Some(v) => str_list_from_value(v, ctx)?,
                 None => return Err("ScopedWitnessBatch missing field `scan_dirs`".to_string()),
-            };
-            let node_frontier_selection = match ctx.field(batch, "node_frontier_selection") {
-                Some(Value::Variant { variant_name, .. })
-                    if ctx.sym_eq(*variant_name, "SelectionOff") => NodeFrontierSelectionMode::Off,
-                Some(Value::Variant { variant_name, .. })
-                    if ctx.sym_eq(*variant_name, "SelectionApplied") => NodeFrontierSelectionMode::Applied,
-                Some(Value::Variant { variant_name, .. })
-                    if ctx.sym_eq(*variant_name, "SelectionPredictOnly") => NodeFrontierSelectionMode::PredictOnly,
-                Some(other) => {
-                    return Err(format!(
-                        "ScopedWitnessBatch.node_frontier_selection must be NodeFrontierSelection, got {}",
-                        other.type_label_public()
-                    ))
-                }
-                None => return Err("ScopedWitnessBatch missing field `node_frontier_selection`".to_string()),
             };
             let execution_authority = match ctx.field(batch, "execution_authority") {
                 Some(Value::Variant { variant_name, .. })
@@ -1426,7 +1371,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 source_roots_digest,
                 entries,
                 scan_dirs,
-                node_frontier_selection,
                 execution_authority,
                 profile,
                 clamp: ResolvedFloorBatchClamp {
@@ -1528,7 +1472,7 @@ fn pre_walk_execution_from_value(
     }
     let string_field = |name: &str| -> Result<String, String> {
         match ctx.field(fields, name) {
-            Some(Value::Str(s)) if !s.trim().is_empty() => Ok(s.clone()),
+            Some(Value::Str(s)) if !s.trim().is_empty() => Ok(s.to_string()),
             other => Err(format!(
                 "TypedClaimSubprocess.{name} must be a non-empty String, got {other:?}"
             )),
@@ -1670,7 +1614,7 @@ fn string_field_from_record(
     field: &str,
 ) -> Result<String, String> {
     match ctx.field(fields, field) {
-        Some(Value::Str(s)) => Ok(s.clone()),
+        Some(Value::Str(s)) => Ok(s.to_string()),
         other => Err(format!("expected {field}: String, got {other:?}")),
     }
 }
@@ -1907,6 +1851,11 @@ struct ClaimResult {
     /// as data on the path that needs it. It is a projection of `ClaimOutcome::TimedOut`,
     /// not a second authority: nothing sets it except the `TimedOut` arm below.
     budget_refusal: Option<BudgetRefusal>,
+    /// Set when a wet witness refused because a host CLI dependency was absent on PATH
+    /// before execution. Parsed from the failure-receipt wire
+    /// `HostDependencyAbsent{tool=...,hint=...}`. Dissolve-on:
+    /// `gunbc.witness_row_cost` `host_dependency_refusal_seed_deferral_note`.
+    host_dependency_refusal: Option<HostDependencyRefusal>,
     /// Set only when this batch contained a witness declared expected-RED that ran GREEN,
     /// carrying the identities that must be un-quarantined.
     ///
@@ -1918,7 +1867,6 @@ struct ClaimResult {
     /// message, so no rewording can move the class.
     expectation_refusal: Option<ExpectationRefusal>,
     /// Discovery batch only: finalized selection-degradation facts for floor receipts.
-    selection_degradation: Option<SelectionDegradationSnapshot>,
     /// Recorded at the reuse decision site for rostered obligation subjects only.
     /// Disposition is NEVER inferred from `resolve_nanos` alone — timing is cost evidence.
     resolve_realization: Option<ResolveRealizationObservation>,
@@ -2061,7 +2009,7 @@ fn pre_verdict_unverified_claim_result(
         witness_row_costs: Vec::new(),
         expectation_refusal: Some(refusal),
         budget_refusal: None,
-        selection_degradation: None,
+        host_dependency_refusal: None,
         resolve_realization: None,
     }
 }
@@ -2360,6 +2308,53 @@ struct BudgetRefusal {
     kind: BudgetKind,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HostDependencyRefusal {
+    tool: String,
+    hint: String,
+}
+
+impl HostDependencyRefusal {
+    fn mode(&self) -> &'static str {
+        HOST_DEPENDENCY_ABSENT_MODE
+    }
+
+    fn detail(&self) -> String {
+        format!(
+            "HostDependencyAbsent{{tool={},hint={}}}",
+            self.tool, self.hint
+        )
+    }
+}
+
+const HOST_DEPENDENCY_ABSENT_MODE: &str = "HostDependencyAbsent";
+
+fn host_dependency_refusal_from_detail(detail: &str) -> Option<HostDependencyRefusal> {
+    const PREFIX: &str = "HostDependencyAbsent{tool=";
+    // Anchor on the last wire token so an earlier accidental substring cannot win.
+    let start = detail.rfind(PREFIX)?;
+    let rest = &detail[start + PREFIX.len()..];
+    let comma = rest.find(",hint=")?;
+    let tool = rest[..comma].to_string();
+    if tool.is_empty() || tool.contains('{') || tool.contains('}') {
+        return None;
+    }
+    let hint_start = comma + ",hint=".len();
+    let hint_rest = &rest[hint_start..];
+    if hint_rest.contains('{') {
+        return None;
+    }
+    let hint_end = hint_rest.rfind('}')?;
+    if hint_end != hint_rest.len() - 1 {
+        return None;
+    }
+    let hint = hint_rest[..hint_end].to_string();
+    if hint.is_empty() {
+        return None;
+    }
+    Some(HostDependencyRefusal { tool, hint })
+}
+
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
 /// `entry` collapse into a single `SharedClaims` group: the entry's import closure is resolved
 /// (and typechecked) EXACTLY ONCE and every claim runs on that one shared interpreter context,
@@ -2389,7 +2384,6 @@ enum BatchUnit {
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
         explicit_entries: Vec<(String, String)>,
-        node_frontier_selection: NodeFrontierSelectionMode,
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         execution_mode: ExecutionMode,
@@ -2401,7 +2395,6 @@ enum BatchUnit {
         entries_with_kind: Vec<ScopedScheduleEntry>,
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
-        node_frontier_selection: NodeFrontierSelectionMode,
         execution_authority: ScopedWitnessExecutionAuthority,
         execution_mode: ExecutionMode,
         spawns_host_compiler: bool,
@@ -2463,7 +2456,6 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 scan_dirs,
                 explicit_entries,
                 native_bundle_entries,
-                node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
                 execution_mode,
@@ -2474,7 +2466,6 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                         source_roots: source_roots.clone(),
                         scan_dirs: scan_dirs.clone(),
                         explicit_entries: explicit_entries.clone(),
-                        node_frontier_selection: *node_frontier_selection,
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
                         execution_mode: *execution_mode,
@@ -2495,7 +2486,6 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 source_roots_digest,
                 entries,
                 scan_dirs,
-                node_frontier_selection,
                 execution_authority,
                 profile,
                 ..
@@ -2505,7 +2495,6 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 entries_with_kind: entries.clone(),
                 source_roots: source_roots.clone(),
                 scan_dirs: scan_dirs.clone(),
-                node_frontier_selection: *node_frontier_selection,
                 execution_authority: *execution_authority,
                 execution_mode: profile.execution_mode,
                 spawns_host_compiler: profile.spawns_host_compiler,
@@ -2573,34 +2562,40 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
-            selection_degradation: None,
+            host_dependency_refusal: None,
             resolve_realization,
         },
-        ClaimOutcome::Fail => ClaimResult {
-            detail: {
-                let mut detail = "returned Bool(false)".to_string();
-                v1_compiler::cli_run::append_failure_receipt_companion_loudness(
-                    &mut detail,
-                    ctx,
-                    &function,
-                );
-                detail
-            },
-            function,
-            entry: entry.clone(),
-            ok: false,
-            wall_nanos,
-            resolve_nanos,
-            corpus_resolve_nanos: 0,
-            corpus_eval_nanos: 0,
-            corpus_witnesses: 0,
-            runtime_unit_count: single_claim_runtime_unit_count(),
-            witness_row_costs: Vec::new(),
-            expectation_refusal: None,
-            budget_refusal: None,
-            selection_degradation: None,
-            resolve_realization,
-        },
+        ClaimOutcome::Fail => {
+            let mut detail = "returned Bool(false)".to_string();
+            v1_compiler::cli_run::append_failure_receipt_companion_loudness(
+                &mut detail,
+                ctx,
+                &function,
+            );
+            v1_compiler::cli_run::append_witness_verdict_diagnostic_loudness(
+                &mut detail,
+                ctx,
+                &function,
+            );
+            let host_dependency_refusal = host_dependency_refusal_from_detail(&detail);
+            ClaimResult {
+                detail,
+                function,
+                entry: entry.clone(),
+                ok: false,
+                wall_nanos,
+                resolve_nanos,
+                corpus_resolve_nanos: 0,
+                corpus_eval_nanos: 0,
+                corpus_witnesses: 0,
+                runtime_unit_count: single_claim_runtime_unit_count(),
+                witness_row_costs: Vec::new(),
+                expectation_refusal: None,
+                budget_refusal: None,
+                host_dependency_refusal,
+                resolve_realization,
+            }
+        }
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
             entry: entry.clone(),
@@ -2615,7 +2610,7 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
-            selection_degradation: None,
+            host_dependency_refusal: None,
             resolve_realization,
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
@@ -2632,7 +2627,7 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
-            selection_degradation: None,
+            host_dependency_refusal: None,
             resolve_realization,
         },
         ClaimOutcome::TimedOut {
@@ -2667,7 +2662,7 @@ fn claim_result_for_outcome(
                 budget_ms,
                 kind,
             }),
-            selection_degradation: None,
+            host_dependency_refusal: None,
             resolve_realization,
         },
     }
@@ -2750,7 +2745,7 @@ fn native_bundle_string_list(value: &Value, ctx: &InterpContext) -> Result<Vec<S
     free_monoid_elems(value, ctx)?
         .into_iter()
         .map(|item| match item {
-            Value::Str(s) => Ok(s.clone()),
+            Value::Str(s) => Ok(s.to_string()),
             other => Err(format!(
                 "native bundle argv element must be String, got {}",
                 other.type_label_public()
@@ -2897,7 +2892,9 @@ fn native_transport_observation(
     // The transport's phase vocabulary is closed; an unknown phase is malformed wire,
     // not a new kind of leg the receipt should silently carry.
     let phase = match ctx.field(fields, "phase") {
-        Some(Value::Str(s)) if matches!(s.as_str(), "build" | "run" | "run_cached") => s.clone(),
+        Some(Value::Str(s)) if matches!(s.as_ref(), "build" | "run" | "run_cached") => {
+            s.to_string()
+        }
         Some(Value::Str(s)) => {
             return Err(format!(
                 "native transport phase `{s}` is outside build|run|run_cached"
@@ -3026,7 +3023,7 @@ fn run_native_bundle_unit(
         witness_row_costs: Vec::new(),
         expectation_refusal: None,
         budget_refusal: None,
-        selection_degradation: None,
+        host_dependency_refusal: None,
         resolve_realization: None,
     };
     if execution_mode != ExecutionMode::Wet {
@@ -3058,7 +3055,7 @@ fn run_native_bundle_unit(
         witness_row_costs: Vec::new(),
         expectation_refusal: None,
         budget_refusal: None,
-        selection_degradation: None,
+        host_dependency_refusal: None,
         resolve_realization: resolve_observation(),
     };
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
@@ -3231,7 +3228,7 @@ fn run_native_bundle_unit(
         witness_row_costs: Vec::new(),
         expectation_refusal: None,
         budget_refusal: None,
-        selection_degradation: None,
+        host_dependency_refusal: None,
         resolve_realization: Some(ResolveRealizationObservation::ColdResolvePerformed {
             resolve_nanos,
         }),
@@ -3250,7 +3247,7 @@ fn scoped_execution_authority_source_roots(
 fn run_batch_unit(
     source_roots: Vec<String>,
     unit: BatchUnit,
-    governor: Arc<MemoryGovernor>,
+    governor: Arc<RealizationConcurrency>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
     obligation_subjects: Option<&ObligationSubjectSet>,
@@ -3273,7 +3270,7 @@ fn run_batch_unit(
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
-            selection_degradation: None,
+            host_dependency_refusal: None,
             resolve_realization: None,
         }],
         BatchUnit::NativeBundle {
@@ -3281,8 +3278,8 @@ fn run_batch_unit(
             selector_function,
             execution_mode,
         } => {
-            let mut slot =
-                AdmittedSlot::acquire_blocking(&governor, &format!("native-bundle {entry}"));
+            let slot =
+                RealizationSlot::acquire_blocking(&governor, &format!("native-bundle {entry}"));
             let result =
                 run_native_bundle_unit(&source_roots, entry, selector_function, execution_mode);
             slot.note_unit_complete();
@@ -3292,7 +3289,6 @@ fn run_batch_unit(
             source_roots: roots,
             scan_dirs,
             explicit_entries,
-            node_frontier_selection,
             exclude_substrings,
             discovery_scope_dirs,
             execution_mode,
@@ -3317,7 +3313,6 @@ fn run_batch_unit(
                 execution_authority_source_roots,
                 scan_dirs,
                 explicit_entries,
-                node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
                 governor,
@@ -3339,7 +3334,6 @@ fn run_batch_unit(
             entries_with_kind,
             source_roots: roots,
             scan_dirs,
-            node_frontier_selection,
             execution_authority,
             execution_mode,
             spawns_host_compiler,
@@ -3355,7 +3349,6 @@ fn run_batch_unit(
                 execution_authority_source_roots,
                 scan_dirs,
                 explicit_entries,
-                node_frontier_selection,
                 Vec::new(),
                 Vec::new(),
                 governor,
@@ -3390,7 +3383,7 @@ fn run_batch_unit(
             // A gate unit's resolved graph is a real memory resident: take a governor
             // slot for the unit's lifetime so gate threads and discovery workers draw
             // from the same admission window instead of stacking unbounded.
-            let mut slot = AdmittedSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
+            let slot = RealizationSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
             let results = run_shared_entry_claims(
                 &source_roots,
                 &entry,
@@ -3431,7 +3424,7 @@ fn run_shared_entry_claims(
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
-                    selection_degradation: None,
+                    host_dependency_refusal: None,
                     resolve_realization: None,
                 })
                 .collect();
@@ -3448,7 +3441,9 @@ fn run_shared_entry_claims(
         .map(|function| {
             set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
+            active_workset_admit(entry, function);
             let outcome = run_claim(&ctx, function);
+            active_workset_complete(entry, function);
             // Witness frame exit: the memo must not retain values across
             // witnesses sharing this ctx (byte-unbounded, 20GiB-class kills).
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
@@ -3518,7 +3513,7 @@ fn run_memo_shared_claims(
                         witness_row_costs: Vec::new(),
                         expectation_refusal: None,
                         budget_refusal: None,
-                        selection_degradation: None,
+                        host_dependency_refusal: None,
                         resolve_realization: None,
                     })
                     .collect();
@@ -3551,7 +3546,9 @@ fn run_memo_shared_claims(
         .map(|function| {
             set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
+            active_workset_admit(entry, function);
             let outcome = run_claim(ctx, function);
+            active_workset_complete(entry, function);
             // Witness frame exit — this memoized ctx outlives whole entry
             // groups, so per-witness release matters here most of all.
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(ctx);
@@ -3623,7 +3620,7 @@ fn render_timing_histogram(
             &ctx,
             "render_percentile_box",
             &[
-                (Some("title".to_string()), Value::Str(title.to_string())),
+                (Some("title".to_string()), str_value(title.to_string())),
                 (
                     Some("p50".to_string()),
                     Value::Int(clamp_nanos_to_i64(p.p50)),
@@ -3651,7 +3648,7 @@ fn render_timing_histogram(
         )
         .map_err(|e| format!("render_percentile_box eval failed: {e}"))?;
         match value {
-            Value::Str(s) => Ok(s),
+            Value::Str(s) => Ok(s.to_string()),
             other => Err(format!(
                 "render_percentile_box returned non-string: {other}"
             )),
@@ -3687,7 +3684,7 @@ fn str_list_value(lines: &[String]) -> Value {
         lines
             .iter()
             .cloned()
-            .map(Value::Str)
+            .map(str_value)
             .collect::<Vec<_>>()
             .into(),
     ))
@@ -3719,9 +3716,9 @@ fn render_slowest_witnesses(
                 (Some("rank".to_string()), Value::Int((i + 1) as i64)),
                 (
                     Some("function".to_string()),
-                    Value::Str(row.function.clone()),
+                    str_value(row.function.clone()),
                 ),
-                (Some("entry".to_string()), Value::Str(row.entry.clone())),
+                (Some("entry".to_string()), str_value(row.entry.clone())),
                 (
                     Some("eval_ns".to_string()),
                     Value::Int(clamp_nanos_to_i64(row.eval_wall_nanos)),
@@ -3739,7 +3736,7 @@ fn render_slowest_witnesses(
         )
         .map_err(|e| format!("slowest_witness_row eval failed: {e}"))?;
         match line {
-            Value::Str(s) => body_lines.push(s),
+            Value::Str(s) => body_lines.push(s.to_string()),
             other => return Err(format!("slowest_witness_row returned non-string: {other}")),
         }
     }
@@ -3759,7 +3756,7 @@ fn render_slowest_witnesses(
     )
     .map_err(|e| format!("render_slowest_witnesses_box eval failed: {e}"))?;
     match value {
-        Value::Str(s) => Ok(s),
+        Value::Str(s) => Ok(s.to_string()),
         other => Err(format!(
             "render_slowest_witnesses_box returned non-string: {other}"
         )),
@@ -4029,6 +4026,22 @@ fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal>
         })
 }
 
+/// Lift the first host-dependency refusal among this discovery batch's failure lines.
+///
+/// Parallel to `discovery_budget_refusal`: falsifier batch 5 runs Codex materialization
+/// witnesses as a `RunnableDiscoveryBatch`, flattening N reds into one `ClaimResult`.
+/// The failure-receipt wire is appended in `cli_run` on discovery reds, but
+/// `batch_failure_mode_and_detail` reads `host_dependency_refusal` off the value — not
+/// substring-matching `detail` — so this lift is required for `HostDependencyAbsent` on
+/// the primary falsifier path (run 31685755058 component 6). Dissolve-on:
+/// `gunbc.witness_row_cost` `host_dependency_refusal_seed_deferral_note`.
+fn discovery_host_dependency_refusal(summary: &DiscoverySummary) -> Option<HostDependencyRefusal> {
+    summary
+        .failures
+        .iter()
+        .find_map(|failure| host_dependency_refusal_from_detail(failure))
+}
+
 const SCOPED_WITNESS_RECEIPT_PATH: &str = "target/scoped-witness-execution-receipt.tsv";
 const SCOPED_WITNESS_RECEIPT_HEADER: &str =
     "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail";
@@ -4090,11 +4103,7 @@ fn scoped_witness_summary_outcome(
             ),
         });
     }
-    summary
-        .selection_skipped_rows
-        .iter()
-        .find(|row| row.entry == entry && row.function == function)
-        .map(|row| ("selection-skipped", row.provenance.clone()))
+    None
 }
 
 fn append_scoped_witness_receipt_rows(
@@ -4155,7 +4164,6 @@ fn discovery_claim_result(
     function: String,
     ok: bool,
     detail: String,
-    selection: NodeFrontierSelectionMode,
     summary: &DiscoverySummary,
     projected: Result<Vec<WitnessRowCost>, String>,
     expectation_refusal: Option<ExpectationRefusal>,
@@ -4164,44 +4172,23 @@ fn discovery_claim_result(
     // incomplete row set must refuse the discovery claim (typed/located), never silently
     // emit a partial receipt as complete (§5 / review 43261 + review 43274).
     match projected {
-        Ok(mut witness_row_costs) => {
-            for row in &summary.selection_skipped_rows {
-                // Zeros here are placeholders the writer never renders: the row's own
-                // `selection-skipped` outcome routes every timing cell to UNMEASURED. The
-                // CPU slot is `None` for the stronger reason that it is not a placeholder
-                // at all — an unexecuted row has no clock reading of any kind, and the type
-                // now says so rather than leaving a zero to be believed.
-                witness_row_costs.push(WitnessRowCost {
-                    entry: row.entry.clone(),
-                    function: row.function.clone(),
-                    eval_wall_nanos: 0,
-                    eval_cpu_nanos: None,
-                    resolve_nanos: 0,
-                    warm_nanos: 0,
-                    outcome: "selection-skipped".to_string(),
-                    detail: row.provenance.clone(),
-                });
-            }
-            ClaimResult {
-                function,
-                entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
-                ok,
-                detail,
-                wall_nanos: 0,
-                resolve_nanos: 0,
-                corpus_resolve_nanos: summary.total_resolve_nanos,
-                corpus_eval_nanos: summary.total_measured_nanos,
-                corpus_witnesses: summary.total,
-                runtime_unit_count: discovery_runtime_unit_count_from_summary(summary.total),
-                witness_row_costs,
-                expectation_refusal,
-                budget_refusal: discovery_budget_refusal(summary),
-                selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
-                    selection, summary,
-                )),
-                resolve_realization: None,
-            }
-        }
+        Ok(witness_row_costs) => ClaimResult {
+            function,
+            entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+            ok,
+            detail,
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: summary.total_resolve_nanos,
+            corpus_eval_nanos: summary.total_measured_nanos,
+            corpus_witnesses: summary.total,
+            runtime_unit_count: discovery_runtime_unit_count_from_summary(summary.total),
+            witness_row_costs,
+            expectation_refusal,
+            budget_refusal: discovery_budget_refusal(summary),
+            host_dependency_refusal: discovery_host_dependency_refusal(summary),
+            resolve_realization: None,
+        },
         Err(msg) => {
             eprintln!("[witness-row-cost] refused: {msg}");
             // Preserve the caller's failure context (e.g. "N of M discovery witness(es)
@@ -4231,9 +4218,7 @@ fn discovery_claim_result(
                 // here would hand it back to the substring classifier.
                 expectation_refusal,
                 budget_refusal: discovery_budget_refusal(summary),
-                selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
-                    selection, summary,
-                )),
+                host_dependency_refusal: discovery_host_dependency_refusal(summary),
                 resolve_realization: None,
             }
         }
@@ -4265,10 +4250,9 @@ fn run_discovery_batch_node(
     execution_authority_source_roots: Vec<String>,
     scan_dirs: Vec<String>,
     explicit_entries: Vec<(String, String)>,
-    node_frontier_selection: NodeFrontierSelectionMode,
     exclude_substrings: Vec<String>,
     discovery_scope_dirs: Vec<String>,
-    governor: Arc<MemoryGovernor>,
+    _governor: Arc<RealizationConcurrency>,
     execution_mode: ExecutionMode,
     spawns_host_compiler: bool,
     fast_lane_eval_budget_ms: Option<u64>,
@@ -4292,7 +4276,7 @@ fn run_discovery_batch_node(
     // `gunbc.witness_row_cost` and tempts callers to widen the subject envelope.
     let execution_projection_source_roots = execution_authority_source_roots.clone();
     let label = format!(
-        "{corpus_kind}[{} root(s)+{} explicit, adaptive width{}]",
+        "{corpus_kind}[{} root(s)+{} explicit, derived schedule width{}]",
         source_roots.len(),
         explicit_entries.len(),
         if batch_entries_all_in(&explicit_entries, &expected_red) {
@@ -4306,9 +4290,8 @@ fn run_discovery_batch_node(
         &scan_dirs,
         &explicit_entries,
         execution_mode,
-        DiscoveryWidthPolicy::Adaptive(governor),
+        DiscoveryWidthPolicy::DerivedSchedule,
         DiscoveryCorpusOptions {
-            node_frontier_selection,
             execution_authority_source_roots,
             explicit_roster_only: false,
             exclude_substrings,
@@ -4343,10 +4326,7 @@ fn run_discovery_batch_node(
                         witness_row_costs: Vec::new(),
                         expectation_refusal: None,
                         budget_refusal: discovery_budget_refusal(&summary),
-                        selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
-                            node_frontier_selection,
-                            &summary,
-                        )),
+                        host_dependency_refusal: discovery_host_dependency_refusal(&summary),
                         resolve_realization: None,
                     };
                 }
@@ -4477,7 +4457,6 @@ fn run_discovery_batch_node(
                     label,
                     false,
                     refusal.detail(),
-                    node_frontier_selection,
                     &summary,
                     projected,
                     Some(refusal),
@@ -4486,7 +4465,6 @@ fn run_discovery_batch_node(
                     format!("{label} ({} witnesses)", summary.total),
                     true,
                     String::new(),
-                    node_frontier_selection,
                     &summary,
                     projected,
                     None,
@@ -4518,10 +4496,7 @@ fn run_discovery_batch_node(
                         witness_row_costs: Vec::new(),
                         expectation_refusal: None,
                         budget_refusal: discovery_budget_refusal(&summary),
-                        selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
-                            node_frontier_selection,
-                            &summary,
-                        )),
+                        host_dependency_refusal: discovery_host_dependency_refusal(&summary),
                         resolve_realization: None,
                     };
                 }
@@ -4549,7 +4524,6 @@ fn run_discovery_batch_node(
                     label,
                     false,
                     refusal.detail(),
-                    node_frontier_selection,
                     &summary,
                     projected,
                     Some(refusal),
@@ -4566,7 +4540,6 @@ fn run_discovery_batch_node(
                         format!("{label} (expect_red still-red OK)"),
                         true,
                         String::new(),
-                        node_frontier_selection,
                         &summary,
                         projected,
                         None,
@@ -4588,7 +4561,6 @@ fn run_discovery_batch_node(
                         },
                         summary.failures.join("; ")
                     ),
-                    node_frontier_selection,
                     &summary,
                     projected,
                     None,
@@ -4652,7 +4624,7 @@ fn run_discovery_batch_node(
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
-                    selection_degradation: None,
+                    host_dependency_refusal: None,
                     resolve_realization: None,
                 }
             }
@@ -4725,11 +4697,11 @@ fn run_pre_walk_execution(
             ),
             (
                 Some("claim_entry".to_string()),
-                Value::Str(claim_entry.clone()),
+                str_value(claim_entry.clone()),
             ),
             (
                 Some("claim_function".to_string()),
-                Value::Str(claim_function.clone()),
+                str_value(claim_function.clone()),
             ),
         ],
         false,
@@ -4827,7 +4799,7 @@ fn render_phase_concluded_line(
         &ctx,
         "phase_concluded_line",
         &[
-            (Some("phase".to_string()), Value::Str(phase.to_string())),
+            (Some("phase".to_string()), str_value(phase.to_string())),
             (
                 Some("elapsed_ms".to_string()),
                 Value::Int(elapsed_ms as i64),
@@ -4842,7 +4814,7 @@ fn render_phase_concluded_line(
     )
     .ok()?;
     match out {
-        Value::Str(s) => Some(s),
+        Value::Str(s) => Some(s.to_string()),
         _ => None,
     }
 }
@@ -5250,54 +5222,8 @@ struct BatchRecord {
     /// receipt keys on (`gunbc.floor_component_receipt` role note): the affected-set
     /// cold control is the `predict_only` component, never "batch 1" — indices shift
     /// when a `gunbc_falsifier_batches` enrollment flag flips.
-    selection_tag: &'static str,
     /// Wet-profiled batches (bin_witness wet corpus, falsifier wet follow-on, …).
     is_wet: bool,
-}
-
-/// Materialization-ladder receipt: how many entry resolves this floor run actually
-/// paid (walk_memo hits charge resolve_nanos == 0 and are excluded — this counts the
-/// duplicated work across DISTINCT entries, the cross-entry share the memo cannot do).
-/// Discovery corpus resolve time is reported on its own key, never folded into the
-/// entry count (different grain; conflating them would mask either regression).
-/// Consumed by the ci.yml resolve-receipt gate emitted from dag/gunbc/ci_materialization.dag.
-/// Returns false on a write error — the walk fails closed at the point of
-/// failure rather than relying only on the downstream missing-file gate.
-/// The batch's node-frontier selection role, as the tag vocabulary
-/// `gunbc.floor_component_receipt.floor_component_selection_of_tag` admits.
-/// Two or more DISTINCT selections in one batch returns `"ambiguous"`, which that
-/// function refuses — the role would not identify a unique component, and a silently
-/// picked first one is exactly the kind of guess the receipt exists to remove.
-fn batch_selection_tag(batch: &[Runnable]) -> &'static str {
-    let mut seen: Vec<&'static str> = Vec::new();
-    for r in batch {
-        let selection = match r {
-            Runnable::DiscoveryBatch {
-                node_frontier_selection,
-                ..
-            }
-            | Runnable::ScopedWitnessBatch {
-                node_frontier_selection,
-                ..
-            } => Some(node_frontier_selection),
-            Runnable::SingleClaim { .. } => None,
-        };
-        if let Some(node_frontier_selection) = selection {
-            let tag = match node_frontier_selection {
-                NodeFrontierSelectionMode::Off => "off",
-                NodeFrontierSelectionMode::Applied => "applied",
-                NodeFrontierSelectionMode::PredictOnly => "predict_only",
-            };
-            if !seen.contains(&tag) {
-                seen.push(tag);
-            }
-        }
-    }
-    match seen.len() {
-        0 => "off",
-        1 => seen[0],
-        _ => "ambiguous",
-    }
 }
 
 /// One batch's failure MODE and detail — the seed's existing `falsifier_failure_mode`
@@ -5348,6 +5274,16 @@ fn batch_failure_mode_and_detail(rec: &BatchRecord) -> (&'static str, String) {
         return (
             "BudgetExceeded",
             joined.chars().take(600).collect::<String>(),
+        );
+    }
+    if let Some(refusal) = rec
+        .results
+        .iter()
+        .find_map(|r| r.host_dependency_refusal.as_ref())
+    {
+        return (
+            refusal.mode(),
+            refusal.detail().chars().take(600).collect::<String>(),
         );
     }
     (
@@ -5473,7 +5409,6 @@ fn write_floor_component_receipt_at(
             &run_id,
             rec.batch_index as i64 + 1,
             &rec.label,
-            rec.selection_tag,
             batch_witness_count(rec) as i64,
             failure_mode,
             &detail,
@@ -5486,122 +5421,58 @@ fn write_floor_component_receipt_at(
     // Batches the stop policy never reached are Skipped with their cause — a named
     // state, never an absent row the alert would have to guess about.
     //
-    // They carry their PLANNED identity, not a placeholder. `batch_heartbeat_label` and
-    // `batch_selection_tag` are pure functions of `batches[bi]`, so the roster identity of
-    // an unreached component is fully available here; the earlier version discarded it and
-    // wrote a literal "not reached" / "off" pair. That made the receipt complete by COUNT
-    // and anonymous by IDENTITY for exactly the components that did not run — the shape
-    // DESIGN §5 rules out ("Completeness is an identity join, not a count equality").
+    // They carry their PLANNED identity, not a placeholder. `batch_heartbeat_label` is a pure
+    // function of `batches[bi]`, so the roster identity of an unreached component is fully
+    // available here; an earlier version discarded it and wrote a literal "not reached". That
+    // made the receipt complete by COUNT and anonymous by IDENTITY for exactly the components
+    // that did not run -- the shape DESIGN section 5 rules out ("Completeness is an identity
+    // join, not a count equality").
     //
-    // The erased `selection_tag` was the load-bearing half. The affected-set cold control is
-    // identified by the property that DEFINES it — `predict_only`
-    // (`gunbc.floor_component_receipt` role note) — so padding it as "off" deleted the cold
-    // control from its own receipt: `floor_affected_set_control_state` then returned
-    // `ControlAbsent`, which cannot distinguish "the control was never enrolled" from "the
-    // control was enrolled and an earlier batch stopped the line before it ran". Two states,
-    // two different remedies, one output — a state-space conflation in the receipt whose
-    // whole purpose is to keep component states distinct. With the planned tag carried, that
-    // run instead yields `ControlConcluded` with a `Skipped` outcome, and the alert reports
-    // the control RED with its real cause.
+    // A second erased field, the per-component selection tag, used to be the load-bearing half
+    // of this argument: padding the affected-set cold control's `predict_only` tag as "off"
+    // deleted that control from its own receipt. Both the tag and the control are gone with
+    // affected-set selection (2026-08-15), so the label is now the whole identity -- which
+    // makes carrying it accurately the only thing standing between an unreached component and
+    // anonymity.
     for bi in batch_records.len()..total_batches {
-        match floor_component_row_value(
-            &ctx,
-            &run_id,
-            bi as i64 + 1,
-            &batch_heartbeat_label(&batches[bi]),
-            batch_selection_tag(&batches[bi]),
-            0,
-            unreached.failure_mode(),
-            unreached.detail(),
-            0,
-        ) {
+        let label = batch_heartbeat_label(&batches[bi]);
+        let row = if unreached == UnreachedCause::RunIncomplete {
+            floor_component_row_not_concluded_value(
+                &ctx,
+                &run_id,
+                bi as i64 + 1,
+                &label,
+                unreached.failure_mode(),
+                unreached.detail(),
+            )
+        } else {
+            floor_component_row_value(
+                &ctx,
+                &run_id,
+                bi as i64 + 1,
+                &label,
+                0,
+                unreached.failure_mode(),
+                unreached.detail(),
+                0,
+            )
+        };
+        match row {
             Some(v) => rows.push(v),
             None => return false,
         }
     }
 
-    let doc = if let Some(snapshot) = selection_degradation_from_batch_records(batch_records) {
-        match run_in_context_with_args(
-            &ctx,
-            "floor_component_receipt_document_with_selection",
-            &[
-                (
-                    Some("workflow_name".to_string()),
-                    Value::Str(workflow_name.clone()),
-                ),
-                (Some("run_id".to_string()), Value::Str(run_id.clone())),
-                (Some("head_sha".to_string()), Value::Str(head_sha.clone())),
-                (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
-                (
-                    Some("selection_mode_tag".to_string()),
-                    Value::Str(snapshot.selection_mode_tag.clone()),
-                ),
-                (
-                    Some("selected".to_string()),
-                    Value::Int(snapshot.selected_entry_groups as i64),
-                ),
-                (
-                    Some("total".to_string()),
-                    Value::Int(snapshot.total_entry_groups as i64),
-                ),
-                (
-                    Some("categorization_unavailable".to_string()),
-                    Value::Bool(snapshot.categorization_unavailable),
-                ),
-                (
-                    Some("categorization_reason".to_string()),
-                    Value::Str(snapshot.categorization_reason.clone()),
-                ),
-            ],
-            false,
-        ) {
-            Ok(Value::Str(s)) => s,
-            Ok(other) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document_with_selection returned {other:?}, not Str"
-                );
-                return false;
-            }
-            Err(e) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document_with_selection eval: {e}"
-                );
-                return false;
-            }
-        }
-    } else {
-        match run_in_context_with_args(
-            &ctx,
-            "floor_component_receipt_document",
-            &[
-                (
-                    Some("workflow_name".to_string()),
-                    Value::Str(workflow_name.clone()),
-                ),
-                (Some("run_id".to_string()), Value::Str(run_id.clone())),
-                (Some("head_sha".to_string()), Value::Str(head_sha.clone())),
-                (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
-            ],
-            false,
-        ) {
-            Ok(Value::Str(s)) => s,
-            Ok(other) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document returned {other:?}, not Str"
-                );
-                return false;
-            }
-            Err(e) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document eval: {e}"
-                );
-                return false;
-            }
-        }
+    let Some(doc) = write_floor_component_receipt_document(
+        &ctx,
+        &workflow_name,
+        &run_id,
+        &head_sha,
+        rows,
+        unreached,
+        batch_records,
+    ) else {
+        return false;
     };
 
     let path = base.join("floor-component-receipt.json");
@@ -5659,7 +5530,6 @@ fn floor_component_row_value(
     run_id: &str,
     index: i64,
     label: &str,
-    selection_tag: &str,
     witnesses: i64,
     failure_mode: &str,
     detail: &str,
@@ -5687,19 +5557,15 @@ fn floor_component_row_value(
     };
     let constructor = "floor_component_row_of_failure_mode";
     let args: Vec<(Option<String>, Value)> = vec![
-        (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+        (Some("run_id".to_string()), str_value(run_id.to_string())),
         (Some("index".to_string()), Value::Int(index)),
-        (Some("label".to_string()), Value::Str(label.to_string())),
-        (
-            Some("selection_tag".to_string()),
-            Value::Str(selection_tag.to_string()),
-        ),
+        (Some("label".to_string()), str_value(label.to_string())),
         (Some("witnesses".to_string()), Value::Int(witnesses)),
         (
             Some("failure_mode".to_string()),
-            Value::Str(failure_mode.to_string()),
+            str_value(failure_mode.to_string()),
         ),
-        (Some("detail".to_string()), Value::Str(detail.to_string())),
+        (Some("detail".to_string()), str_value(detail.to_string())),
         (Some("wall".to_string()), wall),
     ];
     let out = run_in_context_with_args(ctx, constructor, &args, false);
@@ -5722,8 +5588,7 @@ fn floor_component_row_value(
         Ok(Value::Null) => {
             eprintln!(
                 "claim_executor: floor component receipt REFUSED — {constructor} returned \
-                 absent for batch {index}: selection_tag={selection_tag:?} \
-                 failure_mode={failure_mode:?} are outside the .dag vocabulary"
+                 absent for batch {index}: failure_mode={failure_mode:?} are outside the .dag vocabulary"
             );
             None
         }
@@ -5738,6 +5603,153 @@ fn floor_component_row_value(
                 "claim_executor: floor component receipt REFUSED — {constructor} eval for batch {index}: {e}"
             );
             None
+        }
+    }
+}
+
+fn floor_component_row_not_concluded_value(
+    ctx: &InterpContext,
+    run_id: &str,
+    index: i64,
+    label: &str,
+    failure_mode: &str,
+    detail: &str,
+) -> Option<Value> {
+    let constructor = "floor_component_row_not_concluded";
+    let args: Vec<(Option<String>, Value)> = vec![
+        (Some("run_id".to_string()), str_value(run_id.to_string())),
+        (Some("index".to_string()), Value::Int(index)),
+        (Some("label".to_string()), str_value(label.to_string())),
+        (
+            Some("failure_mode".to_string()),
+            str_value(failure_mode.to_string()),
+        ),
+        (Some("detail".to_string()), str_value(detail.to_string())),
+    ];
+    let out = run_in_context_with_args(ctx, constructor, &args, false);
+    match out {
+        Ok(Value::Variant {
+            ref variant_name,
+            ref fields,
+            ..
+        }) if ctx.sym_eq(*variant_name, "Present") => fields
+            .iter()
+            .find(|(n, _)| ctx.sym_eq(*n, "value"))
+            .map(|(_, v)| v.clone())
+            .or_else(|| {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     Present row without a `value` field (batch {index})"
+                );
+                None
+            }),
+        Ok(Value::Null) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — {constructor} returned \
+                 absent for batch {index}: failure_mode={failure_mode:?} are outside the .dag vocabulary"
+            );
+            None
+        }
+        Ok(other) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — {constructor} returned {other:?} for batch {index}"
+            );
+            None
+        }
+        Err(e) => {
+            eprintln!("claim_executor: floor component receipt REFUSED — {constructor} eval: {e}");
+            None
+        }
+    }
+}
+
+fn write_floor_component_receipt_document(
+    ctx: &InterpContext,
+    workflow_name: &str,
+    run_id: &str,
+    head_sha: &str,
+    rows: Vec<Value>,
+    unreached: UnreachedCause,
+    batch_records: &[BatchRecord],
+) -> Option<String> {
+    let rows_list = Value::List(Rc::new(rows.into()));
+    if unreached == UnreachedCause::RunIncomplete {
+        let concluded_count = batch_records.len() as i64;
+        let pending_from_index = (batch_records.len() + 1) as i64;
+        let args: Vec<(Option<String>, Value)> = vec![
+            (
+                Some("workflow_name".to_string()),
+                str_value(workflow_name.to_string()),
+            ),
+            (Some("run_id".to_string()), str_value(run_id.to_string())),
+            (
+                Some("head_sha".to_string()),
+                str_value(head_sha.to_string()),
+            ),
+            (Some("rows".to_string()), rows_list),
+            (
+                Some("run_terminal_cause".to_string()),
+                str_value(unreached.failure_mode().to_string()),
+            ),
+            (
+                Some("concluded_count".to_string()),
+                Value::Int(concluded_count),
+            ),
+            (
+                Some("pending_from_index".to_string()),
+                Value::Int(pending_from_index),
+            ),
+        ];
+        let constructor = "floor_component_receipt_document_incomplete";
+        match run_in_context_with_args(ctx, constructor, &args, false) {
+            Ok(Value::Str(s)) => Some(s.to_string()),
+            Ok(other) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     {constructor} returned {other:?}, not Str"
+                );
+                None
+            }
+            Err(e) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — {constructor} eval: {e}"
+                );
+                None
+            }
+        }
+    } else {
+        match run_in_context_with_args(
+            ctx,
+            "floor_component_receipt_document",
+            &[
+                (
+                    Some("workflow_name".to_string()),
+                    str_value(workflow_name.to_string()),
+                ),
+                (Some("run_id".to_string()), str_value(run_id.to_string())),
+                (
+                    Some("head_sha".to_string()),
+                    str_value(head_sha.to_string()),
+                ),
+                (Some("rows".to_string()), rows_list),
+            ],
+            false,
+        ) {
+            Ok(Value::Str(s)) => Some(s.to_string()),
+            Ok(other) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document returned {other:?}, not Str"
+                );
+                None
+            }
+            Err(e) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document eval: {e}"
+                );
+                None
+            }
         }
     }
 }
@@ -6234,10 +6246,7 @@ fn witness_row_cost_verdict_via_authority(
                     (Some("observed_clock".to_string()), observed_clock),
                     (Some("basis_clock".to_string()), basis_clock),
                     (Some("basis_eval".to_string()), basis_eval),
-                    (
-                        Some("run_ref".to_string()),
-                        Value::Str(b.run_ref.clone().into()),
-                    ),
+                    (Some("run_ref".to_string()), str_value(b.run_ref.clone())),
                 ],
             )
         }
@@ -6795,47 +6804,6 @@ fn write_on_success_receipt(
     true
 }
 
-fn selection_degradation_from_batch_records(
-    batch_records: &[BatchRecord],
-) -> Option<SelectionDegradationSnapshot> {
-    batch_records
-        .iter()
-        .flat_map(|rec| &rec.results)
-        .find_map(|result| result.selection_degradation.clone())
-}
-
-fn write_selection_degradation_receipt_at(
-    base: &std::path::Path,
-    source_roots: &[String],
-    batch_records: &[BatchRecord],
-) -> bool {
-    let Some(snapshot) = selection_degradation_from_batch_records(batch_records) else {
-        return true;
-    };
-    let body = match render_selection_degradation_receipt_body(source_roots, &snapshot) {
-        Ok(body) => body,
-        Err(msg) => {
-            eprintln!("claim_executor: {msg}");
-            return false;
-        }
-    };
-    let path = base.join("floor-selection-degradation-receipt.txt");
-    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
-        eprintln!(
-            "claim_executor: failed to write selection degradation receipt {}: {e} — walk fails closed",
-            path.display()
-        );
-        return false;
-    }
-    eprintln!(
-        "[receipt] floor selection degradation: {} entry group(s) selected of {} (receipt: {})",
-        snapshot.selected_entry_groups,
-        snapshot.total_entry_groups,
-        path.display()
-    );
-    true
-}
-
 /// Receipt line derived from transported obligations joined to observed realizations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ResolveObligationLine {
@@ -7055,7 +7023,7 @@ fn append_resolve_obligation_receipt_body(
 
 fn write_resolve_receipt_at(
     base: &std::path::Path,
-    source_roots: &[String],
+    _source_roots: &[String],
     batch_records: &[BatchRecord],
     floor_finalization: Option<&FloorFinalization>,
 ) -> bool {
@@ -7081,19 +7049,6 @@ fn write_resolve_receipt_at(
         if let Err(msg) = append_resolve_obligation_receipt_body(&mut body, fin, batch_records) {
             eprintln!("claim_executor: resolve obligation receipt refused: {msg}");
             return false;
-        }
-    }
-    if let Some(snapshot) = selection_degradation_from_batch_records(batch_records) {
-        match render_selection_degradation_receipt_body(source_roots, &snapshot) {
-            Ok(selection_body) => {
-                body.push_str("\n[selection_degradation]\n");
-                body.push_str(&selection_body);
-                body.push('\n');
-            }
-            Err(msg) => {
-                eprintln!("claim_executor: resolve receipt selection degradation refused: {msg}");
-                return false;
-            }
         }
     }
     let path = base.join("floor-resolve-receipt.txt");
@@ -7794,7 +7749,7 @@ fn run_stage(
     feed_index: u64,
     memo: &mut std::collections::HashMap<(String, ExecutionMode), InterpContext>,
     memo_path_entries: &std::collections::HashSet<(String, ExecutionMode)>,
-    governor: &Arc<MemoryGovernor>,
+    governor: &Arc<RealizationConcurrency>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: &FalsifierSelfHostWetBudgets,
     clamp_params: Option<ResolvedFloorBatchClamp>,
@@ -8044,6 +7999,43 @@ fn arm_population_budget_watchdog(
             if watchdog_armed.load(std::sync::atomic::Ordering::Acquire) {
                 let elapsed_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
                 let locus = progress.snapshot();
+                let label = population.to_ascii_uppercase().replace('_', "-");
+                let detail = population_budget_over_budget_detail(
+                    &label, &site, &locus, elapsed_ms, budget_ms,
+                );
+
+                // THE REFUSAL IS ANNOUNCED BEFORE ANY WORK THAT CAN BLOCK OR FAIL, because the
+                // incident this ordering fixes is a budget exhaustion that killed the floor and
+                // said NOTHING. Run 31474198106 (PR #8132) ran the floor step for exactly 55m01s
+                // against gunbc_ci_ordinary_floor_budget_minutes = 55, exited 1, and emitted no
+                // OVER-BUDGET line anywhere in the attempt log — so the failure was
+                // indistinguishable from an unexplained death, and readers reached for whatever
+                // number was nearby (a cgroup peak RSS reading, in that case) and diagnosed a
+                // memory kill that never happened. A fail-closed wall whose diagnostic is missing
+                // is strictly worse than a loud one: the refusal is correct, the silence teaches
+                // everyone the wrong cause.
+                //
+                // TWO CANDIDATE LOSS MECHANISMS, and this ordering closes both without needing to
+                // decide between them. The receipt write ran FIRST and its path was interpolated
+                // into the message, so a slow or stalled write under a loaded runner delayed the
+                // only announcement past process death. And the message then took an explicit
+                // stderr lock guard held across the write — a lock the main thread holds while it
+                // streams its own receipt phases, which is exactly what the floor is doing in the
+                // window this fired in. A watchdog thread must never wait on a resource the thread
+                // it is policing can hold.
+                //
+                // The annotation goes to stdout as `::error::` so the cause reaches the run summary
+                // rather than only line ~7000 of a step log; the same located detail is replayed
+                // into the worker terminal receipt after these lines flush. eprintln!/println!
+                // take the lock per call rather than holding a guard across several operations,
+                // and the durable receipt writes move after both, where a failure to write can
+                // no longer suppress the diagnosis.
+                println!("::error::claim_executor: {detail}");
+                eprintln!("claim_executor: {detail}");
+                use std::io::Write as _;
+                let _ = std::io::stdout().flush();
+                let _ = std::io::stderr().flush();
+
                 let receipt = PopulationBudgetRefusal {
                     population,
                     plan_site: &site,
@@ -8052,24 +8044,13 @@ fn arm_population_budget_watchdog(
                     elapsed_ms,
                     budget_ms,
                 };
-                let receipt_path = write_population_budget_refusal_at(Path::new("target"), &receipt)
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_else(|error| format!("UNWRITABLE ({error})"));
-                use std::io::Write as _;
-                let mut stderr = std::io::stderr().lock();
-                let _ = writeln!(
-                    stderr,
-                    "claim_executor: {}-OVER-BUDGET — plan_site={} population_index={} active_unit={} elapsed_ms={} budget_ms={} receipt={}; executor refusing inside the population boundary",
-                    population.to_ascii_uppercase().replace('_', "-"),
-                    site,
-                    locus.population_index,
-                    locus.active_unit,
-                    elapsed_ms,
-                    budget_ms,
-                    receipt_path,
-                );
-                let _ = stderr.flush();
-                std::process::exit(1);
+                let receipt_path =
+                    write_population_budget_refusal_at(Path::new("target"), &receipt)
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_else(|error| format!("UNWRITABLE ({error})"));
+                eprintln!("claim_executor: {label}-OVER-BUDGET receipt={receipt_path}");
+                let _ = std::io::stderr().flush();
+                population_budget_watchdog_exit(&detail);
             }
         });
     armed
@@ -8118,6 +8099,19 @@ struct PopulationBudgetRefusal<'a> {
     active_unit: &'a str,
     elapsed_ms: u64,
     budget_ms: u64,
+}
+
+fn population_budget_over_budget_detail(
+    label: &str,
+    plan_site: &str,
+    locus: &PopulationBudgetLocus,
+    elapsed_ms: u64,
+    budget_ms: u64,
+) -> String {
+    format!(
+        "{label}-OVER-BUDGET plan_site={plan_site} population_index={} active_unit={} elapsed_ms={elapsed_ms} budget_ms={budget_ms}; executor refusing inside the population boundary",
+        locus.population_index, locus.active_unit,
+    )
 }
 
 fn population_budget_refusal_body(receipt: &PopulationBudgetRefusal<'_>) -> String {
@@ -8332,7 +8326,7 @@ fn run_walk(
     // SIGKILL it cannot conclude through. `None` leaves the walk's admission unbounded,
     // exactly as before.
     soft_deadline_ms: Option<u64>,
-    governor: &Arc<MemoryGovernor>,
+    governor: &Arc<RealizationConcurrency>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
     stop_policy: FloorBatchStopPolicy,
@@ -8520,7 +8514,6 @@ fn run_walk(
             runtime_units: batch_runtime_units,
             results: batch_results,
             label: label.clone(),
-            selection_tag: batch_selection_tag(batch),
             is_wet: batch_is_wet(batch),
         });
         // CHECKPOINT. The receipt used to be written once, after every batch, so the one
@@ -8603,14 +8596,6 @@ fn run_walk(
     let resolve_receipt_ok = !emit_ordinary_floor_receipts
         || write_resolve_receipt(source_roots, &batch_records, floor_finalization);
     trace_floor_phase("resolve-receipt", "completed", "");
-    trace_floor_phase("selection-degradation-receipt", "started", "");
-    let selection_degradation_receipt_ok = !emit_ordinary_floor_receipts
-        || write_selection_degradation_receipt_at(
-            std::path::Path::new("target"),
-            source_roots,
-            &batch_records,
-        );
-    trace_floor_phase("selection-degradation-receipt", "completed", "");
     trace_floor_phase("batch-wall-receipt", "started", "");
     let batch_wall_receipt_ok =
         !emit_ordinary_floor_receipts || write_batch_wall_receipt(&batch_records);
@@ -8695,7 +8680,6 @@ fn run_walk(
         || !wet_witness_row_outcome_receipt_ok
         || !witness_row_cost_drift_receipt_ok
         || !witness_row_cost_migration_disclosure_receipt_ok
-        || !selection_degradation_receipt_ok
         || !floor_component_receipt_ok
         || !materialization_receipt_ok;
     push_ordinary_receipt_write_refusals(
@@ -8707,7 +8691,6 @@ fn run_walk(
         wet_witness_row_outcome_receipt_ok,
         witness_row_cost_drift_receipt_ok,
         witness_row_cost_migration_disclosure_receipt_ok,
-        selection_degradation_receipt_ok,
         floor_component_receipt_ok,
         materialization_receipt_ok,
     );
@@ -9167,7 +9150,6 @@ fn run_perturb_check(
                         scan_dirs,
                         explicit_entries,
                         native_bundle_entries,
-                        node_frontier_selection,
                         exclude_substrings,
                         discovery_scope_dirs,
                         execution_mode,
@@ -9177,7 +9159,6 @@ fn run_perturb_check(
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
                         explicit_entries: explicit_entries.clone(),
                         native_bundle_entries: native_bundle_entries.clone(),
-                        node_frontier_selection: *node_frontier_selection,
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
                         execution_mode: *execution_mode,
@@ -9189,7 +9170,6 @@ fn run_perturb_check(
                         source_roots_digest,
                         entries,
                         scan_dirs,
-                        node_frontier_selection,
                         execution_authority,
                         profile,
                         clamp,
@@ -9209,7 +9189,6 @@ fn run_perturb_check(
                             })
                             .collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
-                        node_frontier_selection: *node_frontier_selection,
                         execution_authority: *execution_authority,
                         profile: *profile,
                         clamp: clamp.clone(),
@@ -9240,7 +9219,7 @@ fn run_perturb_check(
         None,
         None,
         None,
-        &Arc::new(MemoryGovernor::from_environment(1)),
+        &RealizationConcurrency::for_walk(1).expect("test schedule"),
         None,
         FalsifierSelfHostWetBudgets::default(),
         FloorBatchStopPolicy::StopBeforeDependents,
@@ -9276,7 +9255,6 @@ fn run_perturb_check(
 
 const FLOOR_WORKER_TERMINAL_ENV: &str = "GUNBC_FLOOR_WORKER_TERMINAL_RECEIPT";
 const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
-const SCOPED_WITNESS_BATCH_MANIFEST_PATH: &str = "target/scoped-witness-batch-manifest.tsv";
 const FLOOR_WORKER_OBSERVATION_RECEIPT_PATH: &str = "target/floor-worker-observation-receipt.tsv";
 const FLOOR_WET_WITNESS_ROW_OUTCOME_RECEIPT_PATH: &str =
     "target/floor-wet-witness-row-outcome-receipt.tsv";
@@ -9552,79 +9530,6 @@ struct DerivedFloorWorkerOutcome {
     label: &'static str,
     detail: String,
 }
-
-fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String> {
-    let Some(path) = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV) else {
-        return Ok(());
-    };
-    let path = PathBuf::from(path);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("create worker terminal directory {}: {e}", parent.display()))?;
-    }
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    fs::write(&tmp, format!("{outcome}\t{detail}\n"))
-        .map_err(|e| format!("write worker terminal {}: {e}", tmp.display()))?;
-    fs::rename(&tmp, &path).map_err(|e| format!("publish worker terminal {}: {e}", path.display()))
-}
-
-fn write_scoped_witness_batch_manifest(batch_ids: &[String]) -> Result<(), String> {
-    let path = Path::new(SCOPED_WITNESS_BATCH_MANIFEST_PATH);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("create scoped manifest directory {}: {e}", parent.display()))?;
-    }
-    let mut body = String::from("batch_id\n");
-    for batch_id in batch_ids {
-        if batch_id.is_empty()
-            || !batch_id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
-        {
-            return Err(format!(
-                "ScopedWitnessBatchId `{batch_id}` is not transport-safe for the worker manifest"
-            ));
-        }
-        body.push_str(batch_id);
-        body.push('\n');
-    }
-    fs::write(path, body).map_err(|e| format!("write scoped manifest {}: {e}", path.display()))
-}
-
-fn read_scoped_witness_batch_manifest() -> Result<Vec<String>, String> {
-    let path = Path::new(SCOPED_WITNESS_BATCH_MANIFEST_PATH);
-    let body = fs::read_to_string(path)
-        .map_err(|e| format!("read scoped manifest {}: {e}", path.display()))?;
-    let mut lines = body.lines();
-    if lines.next() != Some("batch_id") {
-        return Err(format!(
-            "scoped manifest {} has an invalid header",
-            path.display()
-        ));
-    }
-    let mut ids = Vec::new();
-    for id in lines {
-        if id.is_empty()
-            || !id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
-        {
-            return Err(format!(
-                "scoped manifest {} contains invalid batch id `{id}`",
-                path.display()
-            ));
-        }
-        if ids.iter().any(|existing| existing == id) {
-            return Err(format!(
-                "scoped manifest {} contains duplicate batch id `{id}`",
-                path.display()
-            ));
-        }
-        ids.push(id.to_string());
-    }
-    Ok(ids)
-}
-
 fn exit_status_termination(status: &ExitStatus) -> ProcessTermination {
     if let Some(code) = status.code() {
         return ProcessTermination::Exited(code);
@@ -9824,7 +9729,6 @@ fn spawn_floor_worker(
     batch_id: Option<&str>,
     ordinal: usize,
     walk_attempt_id: &str,
-    discovery_consumer: &str,
 ) -> Result<ObservedFloorWorker, String> {
     let worker = match batch_id {
         Some(id) => format!("scoped:{id}"),
@@ -9843,7 +9747,6 @@ fn spawn_floor_worker(
     }
     command.env(FLOOR_WORKER_TERMINAL_ENV, &terminal_path);
     command.env("GUNBC_FLOOR_WALK_ATTEMPT_ID", walk_attempt_id);
-    command.env(FLOOR_DISCOVERY_CONSUMER_ENV, discovery_consumer);
     #[cfg(target_os = "linux")]
     {
         use std::os::unix::process::CommandExt;
@@ -9870,6 +9773,11 @@ fn spawn_floor_worker(
         .spawn()
         .map_err(|e| format!("spawn floor worker `{worker}`: {e}"))?;
     let wait_started = Instant::now();
+    // Per-worker, beside `wait_started`, NOT a `static`: a process-global counter is shared by
+    // every worker's wait loop, so with N workers each one prints roughly every Nth tick and a
+    // given worker can skip all of its own heartbeats. Liveness per worker is the entire fact this
+    // line carries, so the counter has to have the same scope as the thing it reports on.
+    let mut wait_ticks: u64 = 0;
     let status = loop {
         match child
             .try_wait()
@@ -9895,10 +9803,31 @@ fn spawn_floor_worker(
                         wait_started.elapsed().as_secs()
                     ),
                 );
-                eprintln!(
-                    "[floor-worker-wait] worker={worker} elapsed_seconds={} state=running",
-                    wait_started.elapsed().as_secs()
-                );
+                // CADENCE DIVERGENCE, marked here because this diff creates it: the journal append
+                // above runs EVERY iteration, this print runs every tenth. They were one cadence
+                // before, so anything that reads these two sites as interchangeable is now wrong.
+                // Attach no state write to this site — a snapshot written here is up to five
+                // minutes stale, and a consumer polling it for liveness (a stuck-worker detector is
+                // the live proposal) would inherit that staleness as its detection floor. The
+                // per-iteration journal site is where a progress fact belongs.
+                //
+                // The wait tick is journaled above on every iteration; the console keeps one line
+                // per worker per five minutes rather than one per thirty seconds. Not journal-only, and the
+                // difference is deliberate: the journal is an artifact a reader reaches AFTER the
+                // run, so a floor that hangs would print nothing for ninety minutes and then a
+                // timeout, which reads as a dead process rather than a waiting one. Liveness is
+                // the one fact a heartbeat exists to carry, so it stays on the console at the
+                // coarsest cadence that still carries it.
+                {
+                    let n = wait_ticks;
+                    wait_ticks += 1;
+                    if n % 10 == 0 {
+                        eprintln!(
+                            "[floor-worker-wait] worker={worker} elapsed_seconds={} state=running",
+                            wait_started.elapsed().as_secs()
+                        );
+                    }
+                }
                 std::thread::sleep(std::time::Duration::from_secs(30));
             }
         }
@@ -9965,7 +9894,7 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         }
     }
     let _ = fs::remove_file(FLOOR_WORKER_OBSERVATION_RECEIPT_PATH);
-    let _ = fs::remove_file(SCOPED_WITNESS_BATCH_MANIFEST_PATH);
+    let _ = fs::remove_file(SCOPED_EXECUTION_REQUESTS_PATH);
     if let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) {
         let _ = fs::remove_file(path);
     }
@@ -9982,8 +9911,7 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
             )));
         }
     };
-    let ordinary = match spawn_floor_worker(args, "ordinary", None, 0, &walk_attempt_id, "producer")
-    {
+    let ordinary = match spawn_floor_worker(args, "ordinary", None, 0, &walk_attempt_id) {
         Ok(observed) => observed,
         Err(msg) => {
             replay_ordinary_floor_wet_witness_row_outcomes();
@@ -10022,17 +9950,21 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
             )));
         }
     };
-    let digest = request_identity_digest(&pre_plan_request);
-    if let Err(msg) = verify_floor_discovery_terminal_for_coordinator(&walk_attempt_id, &digest) {
+    if let Err(msg) =
+        verify_floor_discovery_terminal_for_coordinator(&walk_attempt_id, &pre_plan_request)
+    {
         return Some(coordinator_terminal_refusal(&format!(
             "floor coordinator snapshot terminal refusal: {msg}"
         )));
     }
-    let batch_ids = match read_scoped_witness_batch_manifest() {
-        Ok(ids) => ids,
+    let batch_ids = match read_scoped_execution_requests() {
+        Ok(requests) => requests
+            .into_iter()
+            .map(|request| request.batch_id)
+            .collect::<Vec<String>>(),
         Err(msg) => {
             return Some(coordinator_terminal_refusal(&format!(
-                "floor coordinator manifest refusal: {msg}"
+                "floor coordinator scoped request refusal: {msg}"
             )));
         }
     };
@@ -10043,7 +9975,6 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
             Some(batch_id),
             index.saturating_add(1),
             &walk_attempt_id,
-            "coordinated_consumer",
         ) {
             Ok(observed) => observed,
             Err(msg) => {
@@ -10074,6 +10005,244 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
     Some(ExitCode::SUCCESS)
 }
 
+fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String> {
+    let Some(path) = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV) else {
+        return Ok(());
+    };
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("create worker terminal directory {}: {e}", parent.display()))?;
+    }
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    fs::write(&tmp, format!("{outcome}\t{detail}\n"))
+        .map_err(|e| format!("write worker terminal {}: {e}", tmp.display()))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("publish worker terminal {}: {e}", path.display()))
+}
+
+const SCOPED_EXECUTION_REQUESTS_PATH: &str = "target/floor-attempts/scoped-execution-requests.json";
+
+/// The exact work a scoped child is asked to do, published by the ordinary worker before the
+/// child is spawned.
+///
+/// A scoped child used to receive the ordinary worker's whole CLI and rebuild its way back to one
+/// answer: it re-resolved the plan entry, re-evaluated the plan, and scanned the resulting batches
+/// for the single `ScopedWitnessBatch` whose id matched its `--scoped-batch-id`. Every other value
+/// that evaluation produced was discarded behind a `!Scoped` guard. This carrier hands the child
+/// that one answer directly, with the plan-derived budgets it genuinely reads, so the second
+/// resolve and evaluation have nothing left to compute.
+///
+/// The subject fields are not decoration: a child must refuse a request frozen against a different
+/// commit, tree, or tool rather than executing it against whatever it finds on disk.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct ScopedExecutionRequest {
+    tested_commit: String,
+    tested_tree: String,
+    tool_identity: String,
+    batch_id: String,
+    source_roots: Vec<String>,
+    source_roots_digest: String,
+    entries: Vec<ScopedScheduleEntry>,
+    scan_dirs: Vec<String>,
+    execution_authority: ScopedWitnessExecutionAuthority,
+    profile: ParsedRunnableProfile,
+    clamp: ResolvedFloorBatchClamp,
+    process_isolation: ScopedProcessIsolation,
+    /// Plan-derived and read by the child while executing rows. Carried here because the child no
+    /// longer evaluates the plan that produced them.
+    fast_lane_eval_budget_ms: Option<u64>,
+    ordinary_budget_ms: Option<u64>,
+    /// Also plan-derived, and the reason the first two CI runs of this change died: the stop
+    /// policy is resolved UNCONDITIONALLY for every worker, so a child with no plan context
+    /// refused there after the ordinary walk had already succeeded. It is the parent's decision
+    /// in exactly the sense the rest of this carrier is — freeze it, hand it over.
+    batch_stop_policy: FloorBatchStopPolicy,
+}
+
+impl ScopedExecutionRequest {
+    fn to_runnable(&self) -> Runnable {
+        Runnable::ScopedWitnessBatch {
+            batch_id: self.batch_id.clone(),
+            source_roots: self.source_roots.clone(),
+            source_roots_digest: self.source_roots_digest.clone(),
+            entries: self.entries.clone(),
+            scan_dirs: self.scan_dirs.clone(),
+            execution_authority: self.execution_authority,
+            profile: self.profile,
+            clamp: self.clamp.clone(),
+            process_isolation: self.process_isolation,
+        }
+    }
+}
+
+fn scoped_execution_requests_from_rows(
+    rows: &[Runnable],
+    fast_lane_eval_budget_ms: Option<u64>,
+    ordinary_budget_ms: Option<u64>,
+    batch_stop_policy: FloorBatchStopPolicy,
+) -> Result<Vec<ScopedExecutionRequest>, String> {
+    let (tested_commit, tested_tree) = v1_compiler::cli_run::floor_tested_commit_and_tree()?;
+    let tool_identity = v1_compiler::cli_run::floor_tool_identity()?;
+    let mut out = Vec::new();
+    for runnable in rows {
+        if let Runnable::ScopedWitnessBatch {
+            batch_id,
+            source_roots,
+            source_roots_digest,
+            entries,
+            scan_dirs,
+            execution_authority,
+            profile,
+            clamp,
+            process_isolation:
+                isolation @ (ScopedProcessIsolation::SequentialChildProcess
+                | ScopedProcessIsolation::FreshJobProcess),
+        } = runnable
+        {
+            out.push(ScopedExecutionRequest {
+                tested_commit: tested_commit.clone(),
+                tested_tree: tested_tree.clone(),
+                tool_identity: tool_identity.clone(),
+                batch_id: batch_id.clone(),
+                source_roots: source_roots.clone(),
+                source_roots_digest: source_roots_digest.clone(),
+                entries: entries.clone(),
+                scan_dirs: scan_dirs.clone(),
+                execution_authority: *execution_authority,
+                profile: *profile,
+                clamp: clamp.clone(),
+                process_isolation: *isolation,
+                fast_lane_eval_budget_ms,
+                ordinary_budget_ms,
+                batch_stop_policy,
+            });
+        }
+    }
+    Ok(out)
+}
+
+fn write_scoped_execution_requests(requests: &[ScopedExecutionRequest]) -> Result<(), String> {
+    let path = Path::new(SCOPED_EXECUTION_REQUESTS_PATH);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("create scoped request directory {}: {e}", parent.display()))?;
+    }
+    for request in requests {
+        if request.batch_id.is_empty()
+            || !request
+                .batch_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err(format!(
+                "ScopedWitnessBatchId `{}` is not transport-safe for the worker request",
+                request.batch_id
+            ));
+        }
+    }
+    let body = serde_json::to_string_pretty(requests)
+        .map_err(|e| format!("serialize scoped execution requests: {e}"))?;
+    fs::write(path, body).map_err(|e| format!("write scoped requests {}: {e}", path.display()))
+}
+
+fn read_scoped_execution_requests() -> Result<Vec<ScopedExecutionRequest>, String> {
+    let path = Path::new(SCOPED_EXECUTION_REQUESTS_PATH);
+    let body = fs::read_to_string(path)
+        .map_err(|e| format!("read scoped requests {}: {e}", path.display()))?;
+    let requests: Vec<ScopedExecutionRequest> =
+        serde_json::from_str(&body).map_err(|e| format!("parse scoped requests: {e}"))?;
+    refuse_duplicate_scoped_batch_ids(&requests, &path.display().to_string())?;
+    Ok(requests)
+}
+
+/// A batch id addresses exactly one frozen population, so a repeated id is an ambiguity, not an
+/// ordering question. It is refused at the READ rather than at either consumer, because the
+/// coordinator spawns one child per row and would otherwise turn one contradiction into N parallel
+/// workers racing on one batch's outputs. The manifest this carrier replaces carried the same
+/// refusal; dropping it on the way through would have been a silent widen (DESIGN §5).
+fn refuse_duplicate_scoped_batch_ids(
+    requests: &[ScopedExecutionRequest],
+    located: &str,
+) -> Result<(), String> {
+    for (index, request) in requests.iter().enumerate() {
+        if requests[..index]
+            .iter()
+            .any(|earlier| earlier.batch_id == request.batch_id)
+        {
+            return Err(format!(
+                "scoped requests {located} contain duplicate batch id `{}` — refused",
+                request.batch_id
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Select and VERIFY one published request. Every refusal is typed and located: a child that
+/// cannot prove it was handed the work it is about to do must stop, never fall back to
+/// reconstructing the plan for itself — that fallback is the boundary this carrier deletes, and it
+/// would sit exactly where it is least observable.
+fn scoped_execution_request_for(batch_id: &str) -> Result<ScopedExecutionRequest, String> {
+    let requests = read_scoped_execution_requests()?;
+    let matching: Vec<&ScopedExecutionRequest> =
+        requests.iter().filter(|r| r.batch_id == batch_id).collect();
+    if matching.len() != 1 {
+        return Err(format!(
+            "scoped execution request for batch `{batch_id}` resolved to {} rows; expected exactly one",
+            matching.len()
+        ));
+    }
+    let request = matching[0].clone();
+    let (tested_commit, tested_tree) = v1_compiler::cli_run::floor_tested_commit_and_tree()?;
+    let tool_identity = v1_compiler::cli_run::floor_tool_identity()?;
+    refuse_subject_mismatch(&request, &tested_commit, &tested_tree, &tool_identity)?;
+    Ok(request)
+}
+
+/// The subject comparison, separated from the observation that supplies it so a control can drive
+/// the production decision rather than restate its field comparisons (review 51445). Observing the
+/// live commit, tree and tool is git and filesystem work; deciding whether they match a frozen
+/// request is not, and only the second is what refuses.
+fn refuse_subject_mismatch(
+    request: &ScopedExecutionRequest,
+    tested_commit: &str,
+    tested_tree: &str,
+    tool_identity: &str,
+) -> Result<(), String> {
+    if request.tested_commit != tested_commit
+        || request.tested_tree != tested_tree
+        || request.tool_identity != tool_identity
+    {
+        return Err(format!(
+            "scoped execution request for batch `{}` was frozen against a different subject \
+             (request {}/{}/{}, observed {tested_commit}/{tested_tree}/{tool_identity}) — \
+             execution refused",
+            request.batch_id, request.tested_commit, request.tested_tree, request.tool_identity,
+        ));
+    }
+    Ok(())
+}
+
+/// Whether a worker executes witness rows, and whether it must derive a witness roster.
+///
+/// These are two questions and were one flag until the scoped-child boundary deletion. A scoped
+/// child EXECUTES rows — so it needs the per-witness eval budget — but must NOT walk a roster,
+/// because its entries were frozen by the ordinary worker and re-deriving them is the duplicate
+/// selection the boundary removes. Collapsing them drops the child's eval deadline while looking
+/// like a pure scope narrowing, which is exactly the mistake `witness_walk_flags_split_the_two_questions`
+/// pins.
+struct WitnessWalkFlags {
+    executes_witness_rows: bool,
+    schedules_discovery: bool,
+}
+
+fn witness_walk_flags(carries_witness_rows: bool, is_scoped_child: bool) -> WitnessWalkFlags {
+    WitnessWalkFlags {
+        executes_witness_rows: carries_witness_rows,
+        schedules_discovery: carries_witness_rows && !is_scoped_child,
+    }
+}
+
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
@@ -10086,6 +10255,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut verify_artifacts_mode = false;
     let mut floor_worker_role: Option<FloorWorkerRole> = None;
     let mut scoped_batch_id: Option<String> = None;
+    let mut required_floor_mode = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -10103,6 +10273,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--source-root" => {
                 i += 1;
                 source_roots.push(require_path_value(&args, i, "--source-root")?);
+            }
+            "--required-floor" => {
+                required_floor_mode = true;
             }
             "--plan-entry" => {
                 i += 1;
@@ -10180,6 +10353,51 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
     let _phase_profile = PhaseProfile::install_from_env();
+
+    // THE REQUIRED WITNESS FLOOR: one repository preparation, one immutable scope per distinct
+    // claim scope, one cheap mutable frame per claim, one linear fold over every witness in the
+    // tree. It takes no plan, so it short-circuits before the plan-arg requirement — there is no
+    // schedule to resolve, no batch to assign, no worker to spawn and no selection to compute,
+    // and the absence of those flags is the point rather than an omission. `run_required_floor`
+    // refuses when planned, executed and terminal identity counts disagree, so a silently short
+    // roster cannot report as a pass.
+    if required_floor_mode {
+        let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+        return match v1_compiler::cli_run::run_required_floor(
+            &source_roots,
+            &commit,
+            v1_compiler::cli_run::ShardStyle::single_shard(),
+        ) {
+            Ok(outcome) => {
+                eprintln!(
+                    "required-floor: subject={} modules_resolved={} modules_excluded={}",
+                    outcome.subject_digest, outcome.modules_resolved, outcome.modules_excluded
+                );
+                eprintln!(
+                    "required-floor: planned={} executed={} terminal={} passed={} \
+                     known_red_held={} failed={}",
+                    outcome.claims_planned,
+                    outcome.claims_executed,
+                    outcome.receipt_identities,
+                    outcome.passed,
+                    outcome.known_red_held,
+                    outcome.failures.len()
+                );
+                for failure in &outcome.failures {
+                    eprintln!("required-floor: FAIL {failure}");
+                }
+                if outcome.failures.is_empty() {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            Err(e) => {
+                eprintln!("required-floor: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
     let plan_entry = match plan_entry {
         Some(e) => e,
         None => {
@@ -10267,57 +10485,123 @@ fn run() -> Result<ExitCode, ExitCode> {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
     }
 
-    // Resolve the plan entry ONCE and evaluate both the batches (hermetic) and the
-    // spawn width (wet) from the same resolved graph — this resolve was previously
-    // paid twice back-to-back (the §2 double-paid-compute trap, at minutes each).
-    let resolution_divergence_receipt_armed = plan_function == "gunbc_falsifier_plan";
-    if resolution_divergence_receipt_armed {
-        if let Err(e) = reset_resolution_divergence_phase_receipt()
-            .and_then(|()| {
+    // A SCOPED CHILD DOES NOT RESOLVE OR EVALUATE THE ORDINARY PLAN. Its work arrives as a
+    // published, subject-verified `ScopedExecutionRequest` — the batch the ordinary worker already
+    // froze, plus the plan-derived budgets the child reads. Re-resolving the plan entry and
+    // re-evaluating it per child, only to scan the result for one batch id and discard every other
+    // value behind a `!Scoped` guard, is the duplicate prelude this boundary deletes.
+    //
+    // There is no fallback arm. A child that cannot load or verify its request refuses; falling
+    // back to reconstructing the plan would restore the boundary in the failure case, where it is
+    // least observable.
+    let scoped_request: Option<ScopedExecutionRequest> = match &floor_worker_role {
+        Some(FloorWorkerRole::Scoped { batch_id }) => {
+            match scoped_execution_request_for(batch_id) {
+                Ok(request) => Some(request),
+                Err(msg) => {
+                    eprintln!("claim_executor: scoped floor worker request refusal: {msg}");
+                    let _ = write_floor_worker_terminal("refused", &msg);
+                    return Err(ExitCode::from(1));
+                }
+            }
+        }
+        _ => None,
+    };
+
+    let (plan_ctx, walk_plan) = if let Some(request) = &scoped_request {
+        phase_mark("scoped request verified");
+        (
+            None,
+            ParsedWalkPlan {
+                pre_walk_execution: PreWalkExecution::None,
+                batches: vec![vec![request.to_runnable()]],
+                finalization: None,
+                on_success_stages: Vec::new(),
+                ordinary_budget_ms: request.ordinary_budget_ms,
+                on_success_budget_ms: None,
+            },
+        )
+    } else {
+        // Resolve the plan entry ONCE and evaluate both the batches (hermetic) and the
+        // spawn width (wet) from the same resolved graph — this resolve was previously
+        // paid twice back-to-back (the §2 double-paid-compute trap, at minutes each).
+        let resolution_divergence_receipt_armed = plan_function == "gunbc_falsifier_plan";
+        if resolution_divergence_receipt_armed {
+            if let Err(e) = reset_resolution_divergence_phase_receipt()
+                .and_then(|()| {
+                    record_resolution_divergence_phase(
+                        ResolutionDivergencePhase::ParentPlanResolve,
+                        ResolutionDivergencePhaseState::Started,
+                        &format!("{plan_entry}::{plan_function}"),
+                    )
+                })
+                .and_then(|()| resolution_divergence_parent_plan_capture_begin())
+            {
+                eprintln!("claim_executor: {e}");
+                return Err(ExitCode::from(1));
+            }
+        }
+        let (plan_graph, plan_indices) =
+            match resolve_entry_graph_shared(&source_roots, &plan_entry) {
+                Ok(resolved) => resolved,
+                Err(msg) => {
+                    if resolution_divergence_receipt_armed {
+                        let _ = resolution_divergence_parent_plan_capture_finish();
+                    }
+                    eprintln!("claim_executor: resolve failed for plan {plan_entry}:\n{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            };
+        if resolution_divergence_receipt_armed {
+            if let Err(e) = resolution_divergence_parent_plan_capture_finish().and_then(|()| {
                 record_resolution_divergence_phase(
                     ResolutionDivergencePhase::ParentPlanResolve,
-                    ResolutionDivergencePhaseState::Started,
+                    ResolutionDivergencePhaseState::Completed,
                     &format!("{plan_entry}::{plan_function}"),
                 )
-            })
-            .and_then(|()| resolution_divergence_parent_plan_capture_begin())
-        {
-            eprintln!("claim_executor: {e}");
-            return Err(ExitCode::from(1));
-        }
-    }
-    let (plan_graph, plan_indices) = match resolve_entry_graph_shared(&source_roots, &plan_entry) {
-        Ok(resolved) => resolved,
-        Err(msg) => {
-            if resolution_divergence_receipt_armed {
-                let _ = resolution_divergence_parent_plan_capture_finish();
+            }) {
+                eprintln!("claim_executor: {e}");
+                return Err(ExitCode::from(1));
             }
-            eprintln!("claim_executor: resolve failed for plan {plan_entry}:\n{msg}");
-            return Err(ExitCode::from(1));
         }
-    };
-    if resolution_divergence_receipt_armed {
-        if let Err(e) = resolution_divergence_parent_plan_capture_finish().and_then(|()| {
-            record_resolution_divergence_phase(
-                ResolutionDivergencePhase::ParentPlanResolve,
-                ResolutionDivergencePhaseState::Completed,
-                &format!("{plan_entry}::{plan_function}"),
-            )
-        }) {
-            eprintln!("claim_executor: {e}");
-            return Err(ExitCode::from(1));
-        }
-    }
-    phase_mark("plan resolve");
+        phase_mark("plan resolve");
 
-    let plan_ctx = make_eval_context(&plan_graph, plan_indices.clone(), ExecutionMode::Hermetic);
-    let walk_plan = match eval_plan_in_ctx(&plan_ctx, &plan_entry, &plan_function) {
-        Ok(b) => b,
-        Err(msg) => {
-            eprintln!("claim_executor: {msg}");
-            return Err(ExitCode::from(1));
-        }
+        let plan_ctx =
+            make_eval_context(&plan_graph, plan_indices.clone(), ExecutionMode::Hermetic);
+        let walk_plan = match eval_plan_in_ctx(&plan_ctx, &plan_entry, &plan_function) {
+            Ok(b) => b,
+            Err(msg) => {
+                eprintln!("claim_executor: {msg}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        (Some(plan_ctx), walk_plan)
     };
+
+    // Every remaining plan read belongs to a path a scoped child never takes. Rather than unwrap
+    // an Option ten times, ask once and refuse in the child's voice if that ever stops being true:
+    // a missing plan context is a routing error, not a value to substitute a default for.
+    macro_rules! plan_ctx_or_refuse {
+        ($what:expr) => {
+            match plan_ctx.as_ref() {
+                Some(ctx) => ctx,
+                None => {
+                    // WRITE THE TERMINAL. Without it the coordinator observes only `exited:1` and
+                    // reports "worker returned before producing a walk terminal receipt" — a
+                    // located refusal rendered as an unlocated absence, which is what hid this
+                    // exact defect through two full CI floors.
+                    let msg = format!(
+                        "{} requires the ordinary plan context, which a scoped child does not have (fail-closed)",
+                        $what
+                    );
+                    eprintln!("claim_executor: {msg}");
+                    let _ = write_floor_worker_terminal("refused", &msg);
+                    return Err(ExitCode::from(1));
+                }
+            }
+        };
+    }
+
     let pre_walk_execution = walk_plan.pre_walk_execution;
     let ordinary_budget_ms = walk_plan.ordinary_budget_ms;
     let on_success_budget_ms = walk_plan.on_success_budget_ms;
@@ -10329,26 +10613,32 @@ fn run() -> Result<ExitCode, ExitCode> {
     // role's, and the two must not be read back through one collapsed `Option` later
     // (review 49917, cursor/composer-2.5).
     let plan_declared_no_finalization = floor_finalization.is_none();
+    let mut published_scoped_rows: Vec<Runnable> = Vec::new();
     match floor_worker_role.as_ref() {
         Some(FloorWorkerRole::Ordinary) => {
-            let child_batch_ids: Vec<String> = batches
+            // The child rows leave `batches` on the retain below, so capture their exact payload
+            // first. Publication waits until the plan-derived budgets are known — a request
+            // missing them would force the child to evaluate the plan for the very values this
+            // carrier exists to hand it.
+            // Clone the SCOPED rows only. The publishable population is a small handful of
+            // batches; cloning every runnable in the plan and filtering afterwards copies the
+            // whole corpus roster to keep a few rows, which is the cost shape §6 forbids
+            // independently of how large the plan happens to be today.
+            published_scoped_rows = batches
                 .iter()
                 .flatten()
-                .filter_map(|runnable| match runnable {
-                    Runnable::ScopedWitnessBatch {
-                        batch_id,
-                        process_isolation:
-                            ScopedProcessIsolation::SequentialChildProcess
-                            | ScopedProcessIsolation::FreshJobProcess,
-                        ..
-                    } => Some(batch_id.clone()),
-                    _ => None,
+                .filter(|runnable| {
+                    matches!(
+                        runnable,
+                        Runnable::ScopedWitnessBatch {
+                            process_isolation: ScopedProcessIsolation::SequentialChildProcess
+                                | ScopedProcessIsolation::FreshJobProcess,
+                            ..
+                        }
+                    )
                 })
+                .cloned()
                 .collect();
-            if let Err(msg) = write_scoped_witness_batch_manifest(&child_batch_ids) {
-                eprintln!("claim_executor: ordinary floor worker manifest refusal: {msg}");
-                return Err(ExitCode::from(1));
-            }
             batches.retain(|batch| {
                 !batch.iter().any(|runnable| {
                     matches!(
@@ -10363,28 +10653,36 @@ fn run() -> Result<ExitCode, ExitCode> {
             });
         }
         Some(FloorWorkerRole::Scoped { batch_id }) => {
-            let mut selected = Vec::new();
-            for batch in &batches {
-                for runnable in batch {
-                    if let Runnable::ScopedWitnessBatch {
-                        batch_id: candidate,
-                        ..
-                    } = runnable
-                    {
-                        if candidate == batch_id {
-                            selected.push(runnable.clone());
-                        }
-                    }
+            // The batch comes from the VERIFIED request, not from a re-evaluated plan. There is no
+            // fallback arm: a child that cannot prove it was handed this work refuses.
+            //
+            // The request is READ here, never re-loaded. A second `scoped_execution_request_for`
+            // would repeat the disk read, the duplicate refusal and the subject verification that
+            // already ran above — double-paid compute inside the very boundary this change exists
+            // to delete (review 51433). The refusal below is not the verification: it is the
+            // structural fact that this arm is reachable only when the earlier one produced a
+            // request, refused rather than unwrapped so a future edit that breaks the pairing
+            // stops the line instead of panicking.
+            // The pairing check stays even though this arm now consumes nothing off the request:
+            // reaching execution as a scoped worker with no verified request in hand is the state
+            // this whole change exists to make impossible, and it must stop the line where it is
+            // observed rather than surface later as a missing value.
+            match &scoped_request {
+                Some(_) => {}
+                None => {
+                    let msg = format!(
+                        "scoped floor worker for batch `{batch_id}` reached execution with no \
+                         verified request in hand — refused"
+                    );
+                    eprintln!("claim_executor: {msg}");
+                    let _ = write_floor_worker_terminal("refused", &msg);
+                    return Err(ExitCode::from(1));
                 }
             }
-            if selected.len() != 1 {
-                eprintln!(
-                    "claim_executor: scoped floor worker batch id `{batch_id}` resolved to {} rows; expected exactly one",
-                    selected.len()
-                );
-                return Err(ExitCode::from(1));
-            }
-            batches = vec![selected];
+            // `batches` already IS this request's single row — it came from the walk plan built
+            // above out of the same verified request, so rebuilding it here would be a second
+            // construction of one decision (review 51445). What this arm still owes is the
+            // surrounding shape: a scoped child runs its batch and nothing else.
             on_success_stages.clear();
             floor_finalization = None;
         }
@@ -10422,20 +10720,40 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Fast-lane 5s rule (operator 2026-07-12): a plan that schedules a discovery batch
     // must declare the per-witness eval budget; a missing/mistyped row refuses the run
     // (fail-closed), while discovery-free plans (regen, plan-artifact) never read it.
-    let schedules_discovery = batches.iter().flatten().any(|r| {
+    // A SCOPED CHILD NEVER SCHEDULES DISCOVERY. Its batch arrives with `entries` already
+    // frozen by the ordinary worker — exact (entry, function) identities — so a roster walk
+    // here can only re-derive a selection its parent already made, and re-deriving it is the
+    // duplicate work this boundary exists to delete. Naming hygiene is a property of the
+    // corpus, not of one child's slice: the ordinary worker pays it once per run, and every
+    // PR runs a plan that does. Deleting the child's walk also removes the last caller of
+    // `FloorDiscoveryConsumerRole::CoordinatedConsumer`, and with it the whole-graph snapshot
+    // transport that existed solely to make that walk's facts acquisition a cache hit.
+    let is_scoped_child = matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. }));
+    // TWO QUESTIONS, deliberately not one flag. *Does this worker execute witness rows?* decides
+    // the per-witness eval budget, and a scoped child does execute them. *Must this worker derive
+    // a witness roster?* decides the naming-hygiene walk, and a scoped child must not — its
+    // entries are already frozen. They were one predicate until this change, so narrowing the walk
+    // would have silently dropped the child's eval deadline with it.
+    let carries_witness_rows = batches.iter().flatten().any(|r| {
         matches!(
             r,
             Runnable::DiscoveryBatch { .. } | Runnable::ScopedWitnessBatch { .. }
         )
     });
-    // Witness naming hygiene (`test fn` outside `*_test.dag`, `__` basenames) is a
+    let WitnessWalkFlags {
+        executes_witness_rows,
+        schedules_discovery,
+    } = witness_walk_flags(carries_witness_rows, is_scoped_child);
+    // Witness naming hygiene (`test fn` outside `*_test.dag`; the `__`-basename rule and
+    // the orphan-helper census were deleted in gunbc#8155) is a
     // property of the witness ROSTER, so it is paid by the plans that have one. It ran
     // unconditionally before plan evaluation until this change, on the stated ground
     // that a naming violation should be "the cheapest possible failure"; measured, the
     // walk is the most expensive phase in the process (5.9 min of a 56.5-min floor,
     // ~6 min of a ~15-min regen), because the roster producer it calls builds
-    // module-graph facts, a second strict reference-resolution pass, inert-lens
-    // reachability and the construction-justification census. A two-node regen plan
+    // module-graph facts, a second strict reference-resolution pass, and (until
+    // gunbc#8141 deleted them) inert-lens reachability plus the
+    // construction-justification census. A two-node regen plan
     // paid all of it to discover a roster it never reads. The roster is memoized by
     // request digest (IN_PROCESS_ROSTER_BY_REQUEST), so plans that DO schedule
     // discovery pay exactly what they paid before — the corpus batch hits the memo
@@ -10443,10 +10761,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     // cannot: they have no roster to be unhygienic about.
     if schedules_discovery {
         let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
-        let discovery_consumer = match floor_worker_role.as_ref() {
-            Some(FloorWorkerRole::Scoped { .. }) => floor_discovery_consumer_role_from_env(),
-            Some(FloorWorkerRole::Ordinary) | None => FloorDiscoveryConsumerRole::Producer,
-        };
+        // Only a non-scoped worker reaches here (see `schedules_discovery`), so the roster is
+        // always produced, never consumed from a transported snapshot.
+        let discovery_consumer = FloorDiscoveryConsumerRole::Producer;
         if let Err(msg) = discover_floor_witness_roster_with_snapshot(
             &source_roots,
             &[],
@@ -10462,8 +10779,16 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
     phase_mark("naming-hygiene walk");
-    let fast_lane_eval_budget_ms: Option<u64> = if schedules_discovery {
-        match run_value(&plan_ctx, "gunbc_ci_fast_lane_eval_budget_ms") {
+    let fast_lane_eval_budget_ms: Option<u64> = if let Some(request) = &scoped_request {
+        // Carried by the verified request: the child reads this budget but no longer evaluates
+        // the plan that declares it. Read off the request itself rather than a second tuple
+        // copied out of it — one value, one home.
+        request.fast_lane_eval_budget_ms
+    } else if executes_witness_rows {
+        match run_value(
+            plan_ctx_or_refuse!("fast-lane eval budget"),
+            "gunbc_ci_fast_lane_eval_budget_ms",
+        ) {
             Ok(Value::Int(n)) if n > 0 => Some(n as u64),
             Ok(other) => {
                 eprintln!(
@@ -10484,7 +10809,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let falsifier_self_host_wet_budgets = if plan_function == "gunbc_falsifier_plan" {
         FalsifierSelfHostWetBudgets {
             wall_budget_ms: match read_positive_budget_ms(
-                &plan_ctx,
+                plan_ctx_or_refuse!("falsifier budget"),
                 "gunbc_falsifier_self_host_wet_receipt_wall_budget_ms",
             ) {
                 Ok(v) => v,
@@ -10494,7 +10819,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             interp_eval_budget_ms: match read_positive_budget_ms(
-                &plan_ctx,
+                plan_ctx_or_refuse!("falsifier budget"),
                 "gunbc_falsifier_self_host_wet_interp_eval_budget_ms",
             ) {
                 Ok(v) => v,
@@ -10504,7 +10829,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             roster_entry_paths: match read_schedule_witness_entry_paths(
-                &plan_ctx,
+                plan_ctx_or_refuse!("plan read"),
                 "falsifier_self_host_wet_entries",
             ) {
                 Ok(v) => v,
@@ -10514,7 +10839,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             known_red_entry_paths: match read_schedule_witness_entry_paths(
-                &plan_ctx,
+                plan_ctx_or_refuse!("plan read"),
                 "falsifier_self_host_wet_known_red_roster",
             ) {
                 Ok(v) => v,
@@ -10524,7 +10849,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             silent_pick_wall_budget_ms: match read_positive_budget_ms(
-                &plan_ctx,
+                plan_ctx_or_refuse!("falsifier budget"),
                 "gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms",
             ) {
                 Ok(v) => v,
@@ -10534,7 +10859,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             silent_pick_entry_paths: match read_schedule_witness_entry_paths(
-                &plan_ctx,
+                plan_ctx_or_refuse!("plan read"),
                 "falsifier_silent_pick_gate_roster",
             ) {
                 Ok(v) => v,
@@ -10544,7 +10869,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             substrate_long_lane_entry_paths: match read_schedule_witness_entry_paths(
-                &plan_ctx,
+                plan_ctx_or_refuse!("plan read"),
                 "witness_long_eval_budget_entries",
             ) {
                 Ok(v) => v,
@@ -10554,16 +10879,18 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             expected_red_witnesses: {
-                let mut pairs =
-                    match read_schedule_witness_entry_pairs(&plan_ctx, "known_red_probe_roster") {
-                        Ok(v) => v,
-                        Err(msg) => {
-                            eprintln!("{msg}");
-                            return Err(ExitCode::from(1));
-                        }
-                    };
+                let mut pairs = match read_schedule_witness_entry_pairs(
+                    plan_ctx_or_refuse!("known-red probe roster"),
+                    "known_red_probe_roster",
+                ) {
+                    Ok(v) => v,
+                    Err(msg) => {
+                        eprintln!("{msg}");
+                        return Err(ExitCode::from(1));
+                    }
+                };
                 match read_schedule_witness_entry_pairs(
-                    &plan_ctx,
+                    plan_ctx_or_refuse!("plan read"),
                     "falsifier_self_host_wet_known_red_roster",
                 ) {
                     Ok(v) => pairs.extend(v),
@@ -10575,7 +10902,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 pairs
             },
             pre_verdict_refusal_witnesses: match read_schedule_witness_entry_pairs(
-                &plan_ctx,
+                plan_ctx_or_refuse!("plan read"),
                 "known_red_pre_verdict_refusal_roster",
             ) {
                 Ok(v) => v,
@@ -10585,7 +10912,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             substrate_long_lane_eval_budget_ms: match read_positive_budget_ms(
-                &plan_ctx,
+                plan_ctx_or_refuse!("falsifier budget"),
                 "gunbc_falsifier_substrate_long_lane_eval_budget_ms",
             ) {
                 Ok(v) => v,
@@ -10606,7 +10933,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // rather than silently leaving admission unbounded, because a deadline that quietly
     // failed to arm is indistinguishable from the state it was added to fix.
     let falsifier_soft_deadline_ms = if plan_function == "gunbc_falsifier_plan" {
-        match read_positive_budget_ms(&plan_ctx, "gunbc_falsifier_soft_deadline_ms") {
+        match read_positive_budget_ms(
+            plan_ctx_or_refuse!("falsifier budget"),
+            "gunbc_falsifier_soft_deadline_ms",
+        ) {
             Ok(v) => v,
             Err(msg) => {
                 eprintln!("{msg}");
@@ -10616,7 +10946,33 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
-    let batch_stop_policy = resolve_floor_batch_stop_policy(&plan_ctx, &plan_function);
+    // A scoped child does not re-derive this: the parent resolved it against the plan and froze
+    // it into the request. Reading it from the plan here is what made the child refuse after the
+    // ordinary walk had already passed — this site is unconditional for every worker.
+    let batch_stop_policy = match &scoped_request {
+        Some(request) => request.batch_stop_policy,
+        None => resolve_floor_batch_stop_policy(
+            plan_ctx_or_refuse!("batch stop policy"),
+            &plan_function,
+        ),
+    };
+    // PUBLISH THE EXACT SCOPED WORK, and publish it HERE: everything a child needs must already
+    // be known, which includes the stop policy resolved just above. Publishing earlier is what
+    // shipped a request missing a plan-derived value the child then had no way to obtain, so it
+    // refused mid-floor with the ordinary walk already paid for.
+    if matches!(floor_worker_role, Some(FloorWorkerRole::Ordinary)) {
+        if let Err(msg) = scoped_execution_requests_from_rows(
+            &published_scoped_rows,
+            fast_lane_eval_budget_ms,
+            ordinary_budget_ms,
+            batch_stop_policy,
+        )
+        .and_then(|requests| write_scoped_execution_requests(&requests))
+        {
+            eprintln!("claim_executor: ordinary floor worker scoped request refusal: {msg}");
+            return Err(ExitCode::from(1));
+        }
+    }
     // THE COST WALL (Piece 3 derived clamp): the floor plan's per-batch clamp params, read
     // fail-closed at arm time (the fast-lane-budget pattern). Scoped to the full floor plan only:
     // the plan-artifact shortcut runs a single batch of the same schedule and the falsifier
@@ -10634,7 +10990,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     };
     let positional_count = scoped_clamps.iter().filter(|clamp| clamp.is_none()).count();
     let positional_clamps = if plan_function == "gunbc_ci_floor_plan" && positional_count > 0 {
-        match read_floor_batch_clamp_params(&plan_ctx, positional_count) {
+        match read_floor_batch_clamp_params(
+            plan_ctx_or_refuse!("positional batch clamps"),
+            positional_count,
+        ) {
             Ok(v) => Some(v),
             Err(msg) => {
                 eprintln!("{msg}");
@@ -10677,7 +11036,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             && (plan_function == "gunbc_ci_floor_plan"
                 || plan_function == "gunbc_ci_plan_artifact_plan")
         {
-            match read_compile_clean_clamp(&plan_ctx) {
+            match read_compile_clean_clamp(plan_ctx_or_refuse!("compile-clean clamp")) {
                 Ok(v) => Some(v),
                 Err(msg) => {
                     eprintln!("{msg}");
@@ -10763,7 +11122,6 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
     drop(plan_ctx);
-    drop(plan_graph);
     phase_mark("plan eval");
 
     eprintln!(
@@ -10793,21 +11151,25 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         phase_mark("pre-walk execution");
     }
-    // Adaptive width: no plan-evaluated spawn width and no pinned per-shard constants —
-    // the governor admits workers against the slot's own declared budget (AIMD), so the
-    // width story for the run is its announce line here plus its end-of-run receipt.
-    let governor = Arc::new(MemoryGovernor::from_environment(
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1),
-    ));
+    // Derived schedule width: no plan-evaluated spawn width — realize_pack chooses
+    // concurrency up front from host budget and derived space bounds (P4).
+    let hardware_max = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let governor = match RealizationConcurrency::for_walk(hardware_max) {
+        Ok(g) => g,
+        Err(msg) => {
+            eprintln!("claim_executor: {msg}");
+            return Err(ExitCode::from(1));
+        }
+    };
     if plan_requires_floor_arm_time_budget_refusal(&plan_function) {
         if let Some(msg) = floor_budget_below_minimum_footprint(governor.budget_bytes()) {
             eprintln!("claim_executor: {msg}");
             return Err(ExitCode::from(1));
         }
     }
-    phase_mark("memory-governor arm");
+    phase_mark("realization-schedule arm");
     spawn_floor_memory_heartbeat();
 
     // Plans whose schedule carries the compile-clean gate node: the gate only CONSUMES the
@@ -10868,7 +11230,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!(
                 "{}",
                 v1_compiler::cli_run::render_peak_rss_line_mirror(
-                    "floor peak RSS (adaptive width)",
+                    "floor peak RSS (derived schedule width)",
                     Some(bytes),
                     std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
                 )
@@ -10877,7 +11239,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         None => eprintln!(
             "{}",
             v1_compiler::cli_run::render_peak_rss_line_mirror(
-                "floor peak RSS (adaptive width)",
+                "floor peak RSS (derived schedule width)",
                 None,
                 std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
             )
@@ -10890,7 +11252,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // child rustc/sccache PIDs; cgroup-v2 `memory.peak` at the leaf job cgroup is hierarchical and
     // captures them). Single authority `emit_cgroup_measurement` so the `ci` and `rust_tests` jobs
     // report an identically-shaped line. Runtime-harmless read-only.
-    emit_cgroup_measurement("floor adaptive-width");
+    emit_cgroup_measurement("floor derived-schedule width");
     // Compile-clean leg cost gates (prelude coverage follow-up (a)): the enforced clamp
     // and the counted basis drift, both over the leg's cost snapshot. Post-walk so both
     // the eager and the lazy install path are covered; no snapshot (skipped/refused leg)
@@ -11043,7 +11405,6 @@ fn push_ordinary_receipt_write_refusals(
     wet_witness_row_outcome_receipt_ok: bool,
     witness_row_cost_drift_receipt_ok: bool,
     witness_row_cost_migration_disclosure_receipt_ok: bool,
-    selection_degradation_receipt_ok: bool,
     floor_component_receipt_ok: bool,
     materialization_receipt_ok: bool,
 ) {
@@ -11079,10 +11440,6 @@ fn push_ordinary_receipt_write_refusals(
     push(
         witness_row_cost_migration_disclosure_receipt_ok,
         "ordinary-floor witness row-cost migration disclosure receipt write refused",
-    );
-    push(
-        selection_degradation_receipt_ok,
-        "ordinary-floor selection degradation receipt write refused",
     );
     push(
         floor_component_receipt_ok,
@@ -11209,6 +11566,16 @@ fn walk_terminal_detail(
 /// terminal row — so a post-walk compile_clean refusal or a receipt-write failure looked
 /// like a silent exit-1 with every batch green. Emit the same detail on stderr and the
 /// durable journal before `process::exit`.
+fn population_budget_watchdog_exit(detail: &str) -> ! {
+    emit_floor_terminal_outcome("failed", detail);
+    if let Err(msg) = write_floor_worker_terminal("refused", detail) {
+        eprintln!("claim_executor: population budget watchdog terminal receipt refusal: {msg}");
+    }
+    use std::io::Write as _;
+    let _ = std::io::stderr().flush();
+    std::process::exit(1);
+}
+
 fn floor_terminal_fast_exit(code: i32, detail: &str) -> ! {
     use std::io::Write as _;
     let terminal_outcome = if code == 0 { "completed" } else { "failed" };
@@ -11297,6 +11664,9 @@ mod tests {
         if std::env::var(CHILD_MARKER).as_deref() == Ok("1") {
             let progress = PopulationBudgetProgress::before_first_unit();
             progress.enter(3, "dag/tools/fixture.dag::bounded_stage_claim".to_string());
+            let terminal = PathBuf::from("target/population-budget-watchdog-terminal.tsv");
+            let _ = fs::remove_file(&terminal);
+            std::env::set_var(FLOOR_WORKER_TERMINAL_ENV, &terminal);
             let _armed = arm_population_budget_watchdog(
                 "ordinary_floor",
                 "fixture::bounded_plan",
@@ -11313,6 +11683,7 @@ mod tests {
         ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create watchdog fixture directory");
+        let terminal = dir.join("target/population-budget-watchdog-terminal.tsv");
         let output = std::process::Command::new(std::env::current_exe().expect("current test exe"))
             .arg("--exact")
             .arg("tests::population_budget_watchdog_refuses_and_writes_located_receipt")
@@ -11343,6 +11714,16 @@ mod tests {
                 && receipt.contains("budget_ms=50")
                 && receipt.contains("outcome=refused"),
             "receipt must carry the refused population and its subject: {receipt}"
+        );
+        let worker_terminal = fs::read_to_string(&terminal).expect("worker terminal receipt");
+        assert!(
+            worker_terminal.starts_with("refused\t")
+                && worker_terminal.contains("ORDINARY-FLOOR-OVER-BUDGET")
+                && worker_terminal.contains("fixture::bounded_plan")
+                && worker_terminal.contains("population_index=3")
+                && worker_terminal.contains("dag/tools/fixture.dag::bounded_stage_claim")
+                && worker_terminal.contains("budget_ms=50"),
+            "progress announcement and worker terminal receipt must carry the same located refusal: {worker_terminal:?}"
         );
         fs::remove_dir_all(&dir).expect("remove watchdog fixture directory");
     }
@@ -11392,7 +11773,6 @@ mod tests {
             unit_count: 0,
             runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "finalization-fixture".to_string(),
-            selection_tag: "fixture",
             is_wet: false,
             results: resolve_counts
                 .iter()
@@ -11410,7 +11790,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
-                    selection_degradation: None,
+                    host_dependency_refusal: None,
                     resolve_realization: None,
                 })
                 .collect(),
@@ -11603,7 +11983,6 @@ mod tests {
             unit_count: 0,
             runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "obligation-fixture".to_string(),
-            selection_tag: "fixture",
             is_wet: false,
             results: vec![
                 ClaimResult {
@@ -11620,7 +11999,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
-                    selection_degradation: None,
+                    host_dependency_refusal: None,
                     resolve_realization: resolve_observation_for_nanos(anchor_nanos),
                 },
                 ClaimResult {
@@ -11639,7 +12018,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
-                    selection_degradation: None,
+                    host_dependency_refusal: None,
                     resolve_realization: resolve_observation_for_nanos(native_nanos),
                 },
             ],
@@ -11668,7 +12047,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
-            selection_degradation: None,
+            host_dependency_refusal: None,
             resolve_realization: None,
         });
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
@@ -11691,7 +12070,6 @@ mod tests {
             unit_count: 0,
             runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "emit-only".to_string(),
-            selection_tag: "fixture",
             is_wet: false,
             results: vec![ClaimResult {
                 function: "emit_host_gate_passes".to_string(),
@@ -11707,7 +12085,7 @@ mod tests {
                 witness_row_costs: Vec::new(),
                 expectation_refusal: None,
                 budget_refusal: None,
-                selection_degradation: None,
+                host_dependency_refusal: None,
                 resolve_realization: None,
             }],
         }];
@@ -11744,7 +12122,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
-            selection_degradation: None,
+            host_dependency_refusal: None,
             resolve_realization: None,
         });
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
@@ -11775,7 +12153,6 @@ mod tests {
                 unit_count: 0,
                 runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "cheap-gates".to_string(),
-                selection_tag: "fixture",
                 is_wet: false,
                 results: vec![ClaimResult {
                     function: "cheap_claim_pool_gate_passes".to_string(),
@@ -11791,7 +12168,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
-                    selection_degradation: None,
+                    host_dependency_refusal: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 9 },
                     ),
@@ -11804,7 +12181,6 @@ mod tests {
                 unit_count: 0,
                 runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "compile-anchor".to_string(),
-                selection_tag: "fixture",
                 is_wet: false,
                 results: vec![ClaimResult {
                     function: "dag_compile_clean_gate_passes".to_string(),
@@ -11820,7 +12196,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
-                    selection_degradation: None,
+                    host_dependency_refusal: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::SatisfiedFromSharedPool {
                             computation_identity: format!("entry-closure:{anchor_entry}:Hermetic"),
@@ -11836,7 +12212,6 @@ mod tests {
                 unit_count: 0,
                 runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "native-bundle".to_string(),
-                selection_tag: "fixture",
                 is_wet: false,
                 results: vec![ClaimResult {
                     function: "native_selected_logic_production_spec".to_string(),
@@ -11854,7 +12229,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
-                    selection_degradation: None,
+                    host_dependency_refusal: None,
                     resolve_realization: resolve_observation_for_nanos(3),
                 }],
             },
@@ -11885,7 +12260,6 @@ mod tests {
             unit_count: 0,
             runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "memo-regression".to_string(),
-            selection_tag: "fixture",
             is_wet: false,
             results: vec![
                 ClaimResult {
@@ -11902,7 +12276,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
-                    selection_degradation: None,
+                    host_dependency_refusal: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 9 },
                     ),
@@ -11921,7 +12295,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
-                    selection_degradation: None,
+                    host_dependency_refusal: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 7 },
                     ),
@@ -12253,7 +12627,7 @@ mod tests {
             None,
             None,
             None,
-            &Arc::new(MemoryGovernor::from_environment(1)),
+            &RealizationConcurrency::for_walk(1).expect("test schedule"),
             None,
             FalsifierSelfHostWetBudgets::default(),
             FloorBatchStopPolicy::StopBeforeDependents,
@@ -12461,7 +12835,6 @@ mod tests {
             true,
             true,
             true,
-            true,
             false,
             true,
         );
@@ -12529,7 +12902,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: refusal,
             budget_refusal: None,
-            selection_degradation: None,
+            host_dependency_refusal: None,
             resolve_realization: None,
         }
     }
@@ -12737,7 +13110,7 @@ mod tests {
     /// ordinary instead of reverting to one polarity for everything in it.
     #[test]
     fn expected_red_is_function_grain_not_file_or_batch_grain() {
-        let entry = "src/v2/test/claim/emit/logic_ground_truth_test.dag";
+        let entry = "src/v2/test/claim/manual/english_emit_add_test.dag";
         let expected_red = vec![(
             entry.to_string(),
             "logic_complement_truth_table".to_string(),
@@ -12846,7 +13219,9 @@ mod tests {
             .function
             .contains(EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE));
         // It is a refusal, not a verdict about any witness: no per-witness populations.
-        assert_eq!(r.expectation_refusal, None);
+        // (The typed refusal itself IS carried — asserted above; an earlier
+        // `expectation_refusal == None` here contradicted that assertion and made the whole
+        // test unexecutable, so it never observed anything it claimed to.)
         assert!(r.witness_row_costs.is_empty());
 
         // Distinct from BOTH siblings on the same axis — different remedies, different modes.
@@ -12866,7 +13241,7 @@ mod tests {
     #[test]
     fn resolve_refuse_agreement_requires_every_entry_expect_a_pre_verdict_refusal() {
         let pre_verdict = (
-            "src/v2/test/claim/emit/logic_ground_truth_test.dag".to_string(),
+            "src/v2/test/claim/manual/english_emit_add_test.dag".to_string(),
             "logic_complement_truth_table".to_string(),
         );
         let ordinary_known_red = (
@@ -13018,7 +13393,7 @@ mod tests {
     /// A count equality alone cannot see this; that is the whole reason the join replaced it.
     #[test]
     fn non_pass_join_matches_identities_not_merely_counts() {
-        let entry = "src/v2/test/claim/emit/logic_ground_truth_test.dag";
+        let entry = "src/v2/test/claim/manual/english_emit_add_test.dag";
         let expected_red = vec![(
             entry.to_string(),
             "logic_complement_truth_table".to_string(),
@@ -13056,7 +13431,7 @@ mod tests {
     /// the empty-observation narrow, applied to the batch's own accounting.
     #[test]
     fn still_red_pass_arm_requires_exact_failure_accounting() {
-        let entry = "src/v2/test/claim/emit/logic_ground_truth_test.dag";
+        let entry = "src/v2/test/claim/manual/english_emit_add_test.dag";
         let f = "logic_complement_truth_table";
         let expected_red = vec![(entry.to_string(), f.to_string())];
         let tally =
@@ -13147,7 +13522,6 @@ mod tests {
             runtime_units: FloorRuntimeUnitCount::Observed { units: unit_count },
             results,
             label: "batch-under-test".to_string(),
-            selection_tag: "off",
             is_wet: false,
         }
     }
@@ -13179,7 +13553,7 @@ mod tests {
                 budget_ms: 900_000,
                 kind: BudgetKind::Wall,
             }),
-            selection_degradation: None,
+            host_dependency_refusal: None,
             resolve_realization: None,
         };
         // Sanity: the string classifier alone really would misclassify this detail.
@@ -13208,11 +13582,76 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
-            selection_degradation: None,
+            host_dependency_refusal: None,
             resolve_realization: None,
         };
         let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![plain]));
         assert_eq!(mode, "WitnessRed");
+    }
+
+    /// A host dependency refusal must classify as HostDependencyAbsent from the VALUE,
+    /// not WitnessRed — same structural rule as budget_kill_classifies_structurally_not_by_message_text.
+    #[test]
+    fn host_dependency_absent_classifies_structurally_not_as_witness_red() {
+        let npm_absent = ClaimResult {
+            function: "materialize_codex_runtime_bundle_produces_native_executable_holds"
+                .to_string(),
+            entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag".to_string(),
+            ok: false,
+            detail: "returned Bool(false) | HostDependencyAbsent{tool=npm,hint=apt install npm}"
+                .to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
+            witness_row_costs: Vec::new(),
+            expectation_refusal: None,
+            budget_refusal: None,
+            host_dependency_refusal: Some(HostDependencyRefusal {
+                tool: "npm".to_string(),
+                hint: "apt install npm".to_string(),
+            }),
+            resolve_realization: None,
+        };
+        assert_eq!(
+            falsifier_failure_mode(&[npm_absent.detail.clone()]),
+            "WitnessRed",
+            "control: string classifier alone would misclassify"
+        );
+        let (mode, detail) =
+            batch_failure_mode_and_detail(&batch_record_for_test(vec![npm_absent]));
+        assert_eq!(mode, HOST_DEPENDENCY_ABSENT_MODE);
+        assert!(detail.contains("HostDependencyAbsent{tool=npm"));
+    }
+
+    #[test]
+    fn host_dependency_refusal_from_detail_parses_wire() {
+        let parsed = host_dependency_refusal_from_detail(
+            "returned Bool(false) | HostDependencyAbsent{tool=npm,hint=apt install npm}",
+        )
+        .expect("wire must parse");
+        assert_eq!(parsed.tool, "npm");
+        assert_eq!(parsed.hint, "apt install npm");
+    }
+
+    #[test]
+    fn host_dependency_refusal_from_detail_anchors_last_wire_token() {
+        let parsed = host_dependency_refusal_from_detail(
+            "HostDependencyAbsent{tool=decoy,hint=x} | returned Bool(false) | HostDependencyAbsent{tool=npm,hint=apt install npm}",
+        )
+        .expect("last wire token must win");
+        assert_eq!(parsed.tool, "npm");
+        assert_eq!(parsed.hint, "apt install npm");
+    }
+
+    #[test]
+    fn host_dependency_refusal_from_detail_refuses_brace_in_hint() {
+        assert!(host_dependency_refusal_from_detail(
+            "HostDependencyAbsent{tool=npm,hint=install {pkg} on runner}"
+        )
+        .is_none());
     }
 
     #[test]
@@ -13460,7 +13899,6 @@ mod tests {
                 scan_dirs: vec!["dag/test/claim".to_string()],
                 explicit_entries: Vec::new(),
                 native_bundle_entries: Vec::new(),
-                node_frontier_selection: NodeFrontierSelectionMode::PredictOnly,
                 exclude_substrings: Vec::new(),
                 discovery_scope_dirs: Vec::new(),
                 execution_mode: ExecutionMode::Hermetic,
@@ -13477,7 +13915,6 @@ mod tests {
             runtime_units: FloorRuntimeUnitCount::Observed { units: 1 },
             results: Vec::new(),
             label: batch_heartbeat_label(&batches[0]),
-            selection_tag: batch_selection_tag(&batches[0]),
             is_wet: false,
         }];
 
@@ -13535,8 +13972,8 @@ mod tests {
             runtime_unit_count: runtime_unit_count_unavailable("resolve refused"),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            host_dependency_refusal: None,
             expectation_refusal: None,
-            selection_degradation: None,
             resolve_realization: None,
         };
         let units = aggregate_batch_runtime_units(&[discovery_fail]);
@@ -13558,8 +13995,8 @@ mod tests {
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            host_dependency_refusal: None,
             expectation_refusal: None,
-            selection_degradation: None,
             resolve_realization: None,
         };
         assert_eq!(
@@ -13595,7 +14032,6 @@ mod tests {
             runtime_units: runtime_unit_count_unavailable("discovery corpus failed: test"),
             results: Vec::new(),
             label: "discovery-corpus".to_string(),
-            selection_tag: "applied",
             is_wet: false,
         }];
         assert!(write_batch_wall_receipt_at(&base, &records));
@@ -13656,7 +14092,6 @@ mod tests {
             unit_count: 1,
             results: Vec::new(),
             label: batch_heartbeat_label(&batches[0]),
-            selection_tag: batch_selection_tag(&batches[0]),
             is_wet: false,
         }];
 
@@ -13674,8 +14109,16 @@ mod tests {
             "a checkpoint's unreached tail carries run_incomplete: {checkpoint}"
         );
         assert!(
-            !checkpoint.contains("\"failure_mode\": \"not_reached\""),
-            "a checkpoint must NOT claim the plan decided to skip the tail: {checkpoint}"
+            checkpoint.contains("\"outcome\": \"pending\""),
+            "a checkpoint's unreached tail is pending, not a fabricated skip: {checkpoint}"
+        );
+        assert!(
+            !checkpoint.contains("\"outcome\": \"skipped\""),
+            "a checkpoint must not manufacture skipped verdicts for unreached batches: {checkpoint}"
+        );
+        assert!(
+            checkpoint.contains("\"disposition\": \"incomplete\""),
+            "a checkpoint names the run-level incomplete fact: {checkpoint}"
         );
 
         // CONCLUDED: the same records, but the plan is over — the tail was genuinely skipped.
@@ -13729,7 +14172,6 @@ mod tests {
                 runtime_units: FloorRuntimeUnitCount::Observed { units: 3 },
                 results: Vec::new(),
                 label: "batch-0".to_string(),
-                selection_tag: "off",
                 is_wet: false,
             },
             BatchRecord {
@@ -13740,7 +14182,6 @@ mod tests {
                 runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 results: Vec::new(),
                 label: "batch-1".to_string(),
-                selection_tag: "off",
                 is_wet: false,
             },
         ];
@@ -13761,7 +14202,6 @@ mod tests {
             runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             results: Vec::new(),
             label: "batch-0".to_string(),
-            selection_tag: "off",
             is_wet: false,
         }];
         assert!(write_batch_wall_receipt_at(&base, &unbudgeted_records));
@@ -13990,7 +14430,7 @@ mod tests {
             &ctx,
             "phase_begin_line",
             &[
-                (Some("phase".to_string()), Value::Str(phase.to_string())),
+                (Some("phase".to_string()), str_value(phase.to_string())),
                 (
                     Some("overhead_ms".to_string()),
                     Value::Int(overhead_ms as i64),
@@ -14001,7 +14441,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14071,7 +14511,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14108,7 +14548,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14177,7 +14617,7 @@ mod tests {
             &[
                 (
                     Some("module_path".to_string()),
-                    Value::Str(module_path.to_string()),
+                    str_value(module_path.to_string()),
                 ),
                 (
                     Some("elapsed_ms".to_string()),
@@ -14193,7 +14633,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14256,7 +14696,7 @@ mod tests {
             &ctx,
             "seed_peak_rss_line",
             &[
-                (Some("label".to_string()), Value::Str(label.to_string())),
+                (Some("label".to_string()), str_value(label.to_string())),
                 (Some("rss_bytes".to_string()), Value::Int(rss_bytes as i64)),
                 (
                     Some("rss_available".to_string()),
@@ -14268,7 +14708,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14331,10 +14771,10 @@ mod tests {
             &ctx,
             "shell_effect_failed_line",
             &[
-                (Some("intent".to_string()), Value::Str(intent.to_string())),
+                (Some("intent".to_string()), str_value(intent.to_string())),
                 (
                     Some("argv_collapsed".to_string()),
-                    Value::Str(argv_collapsed.to_string()),
+                    str_value(argv_collapsed.to_string()),
                 ),
                 (Some("exit_code".to_string()), Value::Int(exit_code as i64)),
                 (
@@ -14351,7 +14791,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14418,7 +14858,7 @@ mod tests {
                 (Some("batch_index".into()), Value::Int(0)),
                 (
                     Some("batch_label".into()),
-                    Value::Str(batch_label.to_string()),
+                    str_value(batch_label.to_string()),
                 ),
                 (Some("entry_index".into()), Value::Int(entry_index as i64)),
                 (Some("entry_total".into()), Value::Int(entry_total as i64)),
@@ -14446,7 +14886,7 @@ mod tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s),
+            Value::Str(s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -14670,7 +15110,7 @@ mod tests {
                 None,
                 None,
                 deadline,
-                &Arc::new(MemoryGovernor::from_environment(1)),
+                &RealizationConcurrency::for_walk(1).expect("test schedule"),
                 None,
                 FalsifierSelfHostWetBudgets::default(),
                 FloorBatchStopPolicy::StopBeforeDependents,
@@ -14754,7 +15194,7 @@ mod tests {
             None,
             None,
             None,
-            &Arc::new(MemoryGovernor::from_environment(1)),
+            &RealizationConcurrency::for_walk(1).expect("test schedule"),
             None,
             FalsifierSelfHostWetBudgets::default(),
             FloorBatchStopPolicy::StopBeforeDependents,
@@ -14948,7 +15388,6 @@ mod tests {
             scan_dirs: vec!["dag/test/claim".to_string()],
             explicit_entries: vec![],
             native_bundle_entries: vec![],
-            node_frontier_selection: NodeFrontierSelectionMode::Applied,
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
             execution_mode: ExecutionMode::Hermetic,
@@ -15015,7 +15454,6 @@ mod tests {
             scan_dirs: vec![],
             explicit_entries: vec![],
             native_bundle_entries: vec![("bundle.dag".to_string(), "bundle_spec".to_string())],
-            node_frontier_selection: NodeFrontierSelectionMode::Applied,
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
             execution_mode: ExecutionMode::Wet,
@@ -15148,7 +15586,7 @@ mod tests {
                 "non-integer signal",
                 Some(variant(
                     "ProcessSignaled",
-                    vec![("signal", Value::Str("9".to_string()))],
+                    vec![("signal", str_value("9".to_string()))],
                 )),
             ),
         ];
@@ -15255,7 +15693,7 @@ mod tests {
         let results = run_batch_unit(
             vec!["src/v2".to_string()],
             unit,
-            Arc::new(MemoryGovernor::from_environment(1)),
+            RealizationConcurrency::for_walk(1).expect("test schedule"),
             None,
             FalsifierSelfHostWetBudgets::default(),
             None,
@@ -15793,7 +16231,6 @@ mod tests {
             unit_count: 3,
             runtime_units: FloorRuntimeUnitCount::Observed { units: 3 },
             label: "bin-witness-corpus".to_string(),
-            selection_tag: "applied",
             is_wet: true,
             results: vec![ClaimResult {
                 function: "bin-witness-corpus (3 witnesses)".to_string(),
@@ -15841,7 +16278,7 @@ mod tests {
                 ],
                 expectation_refusal: None,
                 budget_refusal: None,
-                selection_degradation: None,
+                host_dependency_refusal: None,
                 resolve_realization: None,
             }],
         }];
@@ -15890,7 +16327,6 @@ mod tests {
             unit_count: 2,
             runtime_units: FloorRuntimeUnitCount::Observed { units: 2 },
             label: "collision".to_string(),
-            selection_tag: "applied",
             is_wet: false,
             results: vec![ClaimResult {
                 function: "discovery-corpus".to_string(),
@@ -15942,7 +16378,7 @@ mod tests {
                 ],
                 expectation_refusal: None,
                 budget_refusal: None,
-                selection_degradation: None,
+                host_dependency_refusal: None,
                 resolve_realization: None,
             }],
         }]
@@ -16194,9 +16630,7 @@ mod tests {
             total: 1,
             passed: 0,
             skipped: 0,
-            selection_skipped_rows: Vec::new(),
             deferred_rows: Vec::new(),
-            predicted_unaffected: Vec::new(),
             divergences: Vec::new(),
             failures: vec![killed_detail.into()],
             witness_outcomes: vec![DiscoveryWitnessOutcome {
@@ -16215,7 +16649,6 @@ mod tests {
             roster_closure_nodes: 0,
             total_entry_groups: 0,
             selected_entry_groups: 0,
-            selection_categorization_reason: None,
         };
         let killed = ClaimOutcome::TimedOut {
             elapsed_ms: 900_001,
@@ -16233,7 +16666,6 @@ mod tests {
                 "discovery-corpus".into(),
                 false,
                 killed_detail.to_string(),
-                NodeFrontierSelectionMode::Applied,
                 &summary_with(killed.clone()),
                 projected,
                 None,
@@ -16251,12 +16683,88 @@ mod tests {
             "discovery-corpus".into(),
             false,
             "red".into(),
-            NodeFrontierSelectionMode::Applied,
             &summary_with(ClaimOutcome::Fail),
             Ok(Vec::new()),
             None,
         );
         assert!(result.budget_refusal.is_none());
+    }
+
+    /// RED control for review 51796: discovery batch must lift host-dependency refusals out of
+    /// `summary.failures`, parallel to `discovery_budget_kill_classifies_structurally_on_the_falsifier_path`.
+    #[test]
+    fn discovery_host_dependency_absent_classifies_structurally_on_the_falsifier_path() {
+        use v1_compiler::cli_run::{
+            ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
+            ResolveStageNanos,
+        };
+        let wire = "HostDependencyAbsent{tool=npm,hint=apt install npm}";
+        let failure = format!(
+            "materialize_codex_runtime_bundle_produces_native_executable_holds \
+             (dag/test/claim/codex_package_delivery_wet_witness_test.dag) returned Bool(false) | \
+             {wire}"
+        );
+        let aggregate_detail = format!("1 of 1 discovery witness(es) failed: {failure}");
+        assert_eq!(
+            falsifier_failure_mode(&[aggregate_detail.clone()]),
+            "WitnessRed",
+            "control: string classifier alone would misclassify"
+        );
+
+        let summary_with = |outcome: ClaimOutcome, failures: Vec<String>| DiscoverySummary {
+            total: 1,
+            passed: 0,
+            skipped: 0,
+            deferred_rows: Vec::new(),
+            divergences: Vec::new(),
+            failures,
+            witness_outcomes: vec![DiscoveryWitnessOutcome {
+                entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag".into(),
+                module_path: "test.claim.codex_package_delivery_wet_witness_test".into(),
+                function: "materialize_codex_runtime_bundle_produces_native_executable_holds"
+                    .into(),
+                outcome,
+                execution_leg: "InterpretedLeg".into(),
+            }],
+            entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
+            total_resolve_nanos: 0,
+            total_stage_nanos: ResolveStageNanos::default(),
+            performance_receipts: Vec::new(),
+            total_measured_nanos: 0,
+            roster_closure_nodes: 0,
+            total_entry_groups: 0,
+            selected_entry_groups: 0,
+        };
+
+        for projected in [
+            Ok(Vec::new()),
+            Err("[witness-row-cost] REFUSED: missing measured resolve parent".to_string()),
+        ] {
+            let result = discovery_claim_result(
+                "discovery-corpus".into(),
+                false,
+                aggregate_detail.clone(),
+                &summary_with(ClaimOutcome::Fail, vec![failure.clone()]),
+                projected,
+                None,
+            );
+            assert!(
+                result.host_dependency_refusal.is_some(),
+                "discovery batch must lift the host dependency refusal out of summary.failures"
+            );
+            let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![result]));
+            assert_eq!(mode, HOST_DEPENDENCY_ABSENT_MODE);
+        }
+
+        let result = discovery_claim_result(
+            "discovery-corpus".into(),
+            false,
+            "red".into(),
+            &summary_with(ClaimOutcome::Fail, vec!["returned Bool(false)".into()]),
+            Ok(Vec::new()),
+            None,
+        );
+        assert!(result.host_dependency_refusal.is_none());
     }
 
     #[test]
@@ -16271,9 +16779,7 @@ mod tests {
             total: 1,
             passed: 0,
             skipped: 0,
-            selection_skipped_rows: Vec::new(),
             deferred_rows: Vec::new(),
-            predicted_unaffected: Vec::new(),
             divergences: Vec::new(),
             failures: vec!["e.dag::f failed".into()],
             witness_outcomes: vec![DiscoveryWitnessOutcome {
@@ -16292,14 +16798,12 @@ mod tests {
             roster_closure_nodes: 0,
             total_entry_groups: 0,
             selected_entry_groups: 0,
-            selection_categorization_reason: None,
         };
         let prior = "1 of 1 discovery witness(es) failed: e.dag::f failed";
         let result = discovery_claim_result(
             "probe".into(),
             false,
             prior.to_string(),
-            NodeFrontierSelectionMode::Applied,
             &summary,
             Err("[witness-row-cost] REFUSED: missing measured resolve parent for e.dag".into()),
             None,
@@ -16314,49 +16818,6 @@ mod tests {
             result.detail.contains("witness row-cost receipt refused"),
             "receipt refusal must also be present, got: {}",
             result.detail
-        );
-    }
-
-    #[test]
-    fn scoped_selection_skip_is_a_provenanced_nonfailure_receipt_outcome() {
-        use v1_compiler::cli_run::{
-            DiscoverySummary, EntryResolveReceipt, ResolveStageNanos, SelectionSkippedDiscoveryRow,
-        };
-        let summary = DiscoverySummary {
-            total: 0,
-            passed: 0,
-            skipped: 1,
-            deferred_rows: Vec::new(),
-            predicted_unaffected: Vec::new(),
-            selection_skipped_rows: vec![SelectionSkippedDiscoveryRow {
-                entry: "src/v1/tests/claim/caret_parse_smoke_test.dag".into(),
-                function: "w_caret_tokenizes_as_sh_caret".into(),
-                provenance: "skip-before-resolve-fast-path".into(),
-            }],
-            divergences: Vec::new(),
-            failures: Vec::new(),
-            witness_outcomes: Vec::new(),
-            entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
-            total_resolve_nanos: 0,
-            total_stage_nanos: ResolveStageNanos::default(),
-            performance_receipts: Vec::new(),
-            total_measured_nanos: 0,
-            roster_closure_nodes: 0,
-            total_entry_groups: 0,
-            selected_entry_groups: 0,
-            selection_categorization_reason: None,
-        };
-        let (label, provenance) = scoped_witness_summary_outcome(
-            &summary,
-            "src/v1/tests/claim/caret_parse_smoke_test.dag",
-            "w_caret_tokenizes_as_sh_caret",
-        )
-        .expect("an unaffected enrolled row must remain present in the receipt");
-        assert_eq!(label, "selection-skipped");
-        assert_eq!(provenance, "skip-before-resolve-fast-path");
-        assert!(
-            summary.failures.is_empty(),
-            "selection skip is not a refusal"
         );
     }
 
@@ -16375,7 +16836,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
-            selection_degradation: None,
+            host_dependency_refusal: None,
             resolve_realization: None,
         }
     }
@@ -16730,5 +17191,261 @@ mod tests {
         assert_eq!(outcome.label, "failed");
         assert!(outcome.detail.contains("signal 9"));
         assert!(!floor_worker_succeeded(&observed));
+    }
+}
+
+#[cfg(test)]
+mod witness_walk_flags_tests {
+    use super::witness_walk_flags;
+
+    /// The scoped-child boundary deletion narrowed the roster walk. This pins that it narrowed
+    /// ONLY the walk: a scoped child still executes rows, so it must still be handed the
+    /// per-witness eval budget. RED if the two questions are ever collapsed back into one flag —
+    /// the collapse is silent at the type level and would weaken a budget wall while reading as a
+    /// pure scope narrowing.
+    #[test]
+    fn witness_walk_flags_split_the_two_questions() {
+        let ordinary = witness_walk_flags(true, false);
+        assert!(ordinary.executes_witness_rows);
+        assert!(
+            ordinary.schedules_discovery,
+            "an ordinary worker carrying witness rows must still derive the roster"
+        );
+
+        let scoped = witness_walk_flags(true, true);
+        assert!(
+            scoped.executes_witness_rows,
+            "a scoped child executes its frozen rows, so it must keep the eval budget"
+        );
+        assert!(
+            !scoped.schedules_discovery,
+            "a scoped child must never re-derive a roster its parent already froze"
+        );
+
+        // No rows at all: neither question is yes, for either role.
+        for is_scoped in [false, true] {
+            let empty = witness_walk_flags(false, is_scoped);
+            assert!(!empty.executes_witness_rows);
+            assert!(!empty.schedules_discovery);
+        }
+    }
+}
+
+#[cfg(test)]
+mod scoped_execution_request_tests {
+    use super::*;
+
+    fn entry(name: &str) -> ScopedScheduleEntry {
+        ScopedScheduleEntry {
+            entry: format!("dag/test/claim/{name}_test.dag"),
+            function: format!("{name}_holds"),
+            witness_kind: "CorpusWitnessKind".to_string(),
+        }
+    }
+
+    fn request(batch_id: &str, entries: Vec<ScopedScheduleEntry>) -> ScopedExecutionRequest {
+        ScopedExecutionRequest {
+            tested_commit: "a".repeat(40),
+            tested_tree: "b".repeat(40),
+            tool_identity: "tool-identity".to_string(),
+            batch_id: batch_id.to_string(),
+            source_roots: vec!["dag".to_string(), "src/v1".to_string()],
+            source_roots_digest: "digest".to_string(),
+            entries,
+            scan_dirs: Vec::new(),
+            execution_authority: ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots,
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: false,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Hermetic,
+            },
+            clamp: ResolvedFloorBatchClamp {
+                overhead_ms: 1,
+                per_unit_ms: 2,
+                authority: FloorBatchClampAuthority::ScopedBatchOwnedClamp {
+                    batch_id: batch_id.to_string(),
+                    module_path: "gunbc.ci_layer_roots".to_string(),
+                    decl_name: "scoped_witness_batches".to_string(),
+                },
+            },
+            process_isolation: ScopedProcessIsolation::SequentialChildProcess,
+            fast_lane_eval_budget_ms: Some(5_000),
+            ordinary_budget_ms: Some(60_000),
+            batch_stop_policy: FloorBatchStopPolicy::StopBeforeDependents,
+        }
+    }
+
+    /// EXACT IDENTITY TRANSPORT. The child executes what the parent froze — not a re-derivation of
+    /// it — so the round trip must preserve the identity set exactly. RED if a field is dropped
+    /// from the carrier or reordered into a different batch.
+    #[test]
+    fn round_trip_preserves_the_frozen_identity_set() {
+        let original = request("v1_claim_scoped", vec![entry("alpha"), entry("beta")]);
+        let wire = serde_json::to_string(&[original.clone()]).expect("serialize");
+        let decoded: Vec<ScopedExecutionRequest> = serde_json::from_str(&wire).expect("decode");
+        assert_eq!(decoded.len(), 1);
+
+        let before: Vec<(String, String)> = original
+            .entries
+            .iter()
+            .map(|e| (e.entry.clone(), e.function.clone()))
+            .collect();
+        let after: Vec<(String, String)> = decoded[0]
+            .entries
+            .iter()
+            .map(|e| (e.entry.clone(), e.function.clone()))
+            .collect();
+        assert_eq!(
+            before, after,
+            "the frozen identity set must survive transport exactly"
+        );
+        assert_eq!(decoded[0].fast_lane_eval_budget_ms, Some(5_000));
+        assert_eq!(decoded[0].ordinary_budget_ms, Some(60_000));
+
+        // The runnable the child executes carries the same identities, in order.
+        match decoded[0].to_runnable() {
+            Runnable::ScopedWitnessBatch {
+                entries, batch_id, ..
+            } => {
+                assert_eq!(batch_id, "v1_claim_scoped");
+                let rebuilt: Vec<(String, String)> = entries
+                    .iter()
+                    .map(|e| (e.entry.clone(), e.function.clone()))
+                    .collect();
+                assert_eq!(rebuilt, before);
+            }
+            _ => panic!("expected a scoped witness batch"),
+        }
+    }
+
+    /// PLANTED OMITTED IDENTITY. A request that lost one of its frozen rows must not silently
+    /// execute the smaller set: the identity sets differ, and this control is what notices.
+    #[test]
+    fn planted_omitted_identity_is_visible_in_the_request() {
+        let full = request("v1_claim_scoped", vec![entry("alpha"), entry("beta")]);
+        let truncated = request("v1_claim_scoped", vec![entry("alpha")]);
+        let full_ids: Vec<String> = full.entries.iter().map(|e| e.function.clone()).collect();
+        let truncated_ids: Vec<String> = truncated
+            .entries
+            .iter()
+            .map(|e| e.function.clone())
+            .collect();
+        assert_ne!(
+            full_ids, truncated_ids,
+            "an omitted frozen identity must be a visible difference, never an equal set"
+        );
+        assert_eq!(truncated_ids.len(), full_ids.len() - 1);
+    }
+
+    /// PLANTED WRONG SUBJECT. Selection alone is not verification: a request frozen against another
+    /// commit, tree, or tool must refuse rather than execute against whatever is on disk. This
+    /// drives the PRODUCTION refusal on each axis — an earlier revision asserted field inequality
+    /// on hand-authored data, which restates the comparison instead of exercising it and would
+    /// have stayed green if the loader stopped consulting one axis (review 51445). Observing the
+    /// live subject is git work and stays with the floor; deciding on it is what refuses here.
+    #[test]
+    fn planted_wrong_subject_differs_on_every_axis() {
+        let frozen = request("v1_claim_scoped", vec![entry("alpha")]);
+        for (commit, tree, tool) in [
+            (
+                "c".repeat(40),
+                frozen.tested_tree.clone(),
+                frozen.tool_identity.clone(),
+            ),
+            (
+                frozen.tested_commit.clone(),
+                "d".repeat(40),
+                frozen.tool_identity.clone(),
+            ),
+            (
+                frozen.tested_commit.clone(),
+                frozen.tested_tree.clone(),
+                "other-tool".to_string(),
+            ),
+        ] {
+            let refusal = refuse_subject_mismatch(&frozen, &commit, &tree, &tool)
+                .expect_err("a subject perturbed on any axis must refuse");
+            assert!(
+                refusal.contains("frozen against a different subject")
+                    && refusal.contains(&frozen.batch_id),
+                "the refusal must say what it refused and for which batch: {refusal}"
+            );
+        }
+
+        // The unperturbed subject must be ACCEPTED — otherwise the refusals above would pass for a
+        // reason unrelated to what they claim (a check that refuses everything is not a check).
+        refuse_subject_mismatch(
+            &frozen,
+            &frozen.tested_commit,
+            &frozen.tested_tree,
+            &frozen.tool_identity,
+        )
+        .expect("the subject it was frozen against must be accepted");
+    }
+
+    /// THE DEFECT TWO FULL CI FLOORS PAID FOR. `resolve_floor_batch_stop_policy` is read
+    /// unconditionally by every worker, so a scoped child — which has no plan context by
+    /// construction after this change — refused there AFTER the ordinary walk had already
+    /// succeeded, and the coordinator reported it as "worker returned before producing a walk
+    /// terminal receipt" because the refusal path exited without writing one.
+    ///
+    /// The wall is that every plan-derived value a child reads must travel ON the request. This
+    /// pins the population: adding a plan read to the child's path without adding its field here
+    /// fails, rather than being discovered by a 70-minute floor.
+    #[test]
+    fn every_plan_derived_value_the_child_reads_travels_on_the_request() {
+        let frozen = request("v1_claim_scoped", vec![entry("alpha")]);
+
+        // Each of these is read by a scoped child at execution time and is derived from the plan
+        // the child no longer evaluates. Absence is not "default it" — it is unrepresentable.
+        assert_eq!(frozen.fast_lane_eval_budget_ms, Some(5_000));
+        assert_eq!(frozen.ordinary_budget_ms, Some(60_000));
+        assert_eq!(
+            frozen.batch_stop_policy,
+            FloorBatchStopPolicy::StopBeforeDependents
+        );
+
+        // And they must survive the transport — a field the parent freezes but the JSON drops
+        // puts the child right back where it was, reading a plan it does not have.
+        let encoded = serde_json::to_string(&vec![frozen.clone()]).expect("serializes");
+        let decoded: Vec<ScopedExecutionRequest> =
+            serde_json::from_str(&encoded).expect("round-trips");
+        assert_eq!(
+            decoded[0].fast_lane_eval_budget_ms,
+            frozen.fast_lane_eval_budget_ms
+        );
+        assert_eq!(decoded[0].ordinary_budget_ms, frozen.ordinary_budget_ms);
+        assert_eq!(decoded[0].batch_stop_policy, frozen.batch_stop_policy);
+    }
+
+    /// cursor review 51430 found this: the manifest this carrier replaces refused a duplicate
+    /// batch id on read, and the replacement only JSON-parsed. The coordinator spawns one child
+    /// per published row, so a repeated id spawned parallel workers for one batch instead of
+    /// stopping the line. This drives the production refusal, not a restatement of it.
+    #[test]
+    fn a_repeated_batch_id_refuses_before_anything_spawns() {
+        let unique = vec![
+            request("v1_claim_scoped", vec![entry("alpha")]),
+            request("v1_claim_scoped_two", vec![entry("beta")]),
+        ];
+        assert!(
+            refuse_duplicate_scoped_batch_ids(&unique, "fixture").is_ok(),
+            "distinct batch ids must pass — otherwise the refusal below proves nothing"
+        );
+
+        // Same id, DIFFERENT populations: the contradiction a first-wins read would resolve by
+        // silently picking one.
+        let duplicated = vec![
+            request("v1_claim_scoped", vec![entry("alpha")]),
+            request("v1_claim_scoped", vec![entry("beta")]),
+        ];
+        let refusal = refuse_duplicate_scoped_batch_ids(&duplicated, "fixture")
+            .expect_err("a repeated batch id must refuse");
+        assert!(
+            refusal.contains("duplicate batch id") && refusal.contains("v1_claim_scoped"),
+            "the refusal must name what it refused and where: {refusal}"
+        );
     }
 }

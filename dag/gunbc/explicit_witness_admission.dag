@@ -88,6 +88,26 @@ fn known_red_probe(
   )
 }
 
+data source_root_ingest_gate_admitted_witness_note: String = "Green exact admission for witnesses excluded from per-PR discovery by OfflineLocalRecipe transport posture but executed on the per-PR floor by v2.workflow.source_root_ingest_gate (run_compiler_closure_ingest_gate and siblings). Cadence is BinWitnessWet as the Wet host-overlay execution class only — these rows are NOT enrolled on gunbc.ci_layer_roots bin_witness_wet_entries; hermetic discovery there would bypass the file exclusion and refuse on an empty manifest. The executing consumer is the gate overlay ClaimRun list in v2.workflow.compiler_closure_ingest_transport."
+
+fn source_root_ingest_gate_admitted_witness(
+  entry: NonEmptyStr,
+  f: String,
+  kind: WitnessKind,
+  budget: WitnessExecutionBudget,
+  reason: NonEmptyStr,
+  dissolution: DissolutionCondition
+) -> ExplicitWitnessAdmission {
+  ExplicitWitnessAdmission {
+    witness: ScheduleWitnessEntry { entry: entry, function: f, kind: kind },
+    cadence: BinWitnessWet,
+    budget: budget,
+    expected: ExpectWitnessHolds,
+    reason: reason,
+    dissolution: dissolution,
+  }
+}
+
 data known_red_pre_verdict_probe_note: String = "The narrow arm: a witness whose assertion never RUNS, because the run stops in an earlier phase. Its agreement is a typed refusal at the declared phase and cause, not a false verdict, and separating it is what stops an arbitrary corpus resolve failure from reading as every quarantine holding — see std.witness_admission witness_expected_verdict_split_note for the defect and for the bound on how exactly the observed cause is matched today. A row belongs here only when the phase and the cause are BOTH known and named; a witness that merely happens to be failing to resolve for an undiagnosed reason is ordinary known_red_probe, and its resolve failure is an infrastructure fact rather than agreement."
 
 fn known_red_pre_verdict_probe(
@@ -114,36 +134,6 @@ fn known_red_pre_verdict_probe(
 data known_red_class_note: String = "WHAT A KNOWN-RED ADMISSION IS: a witness red on main for a feature gap owned by a named lane. It is a RED CONTROL for that lane, not a broken test — deleting it would discard the discriminating input, while leaving it in per-PR discovery would red every wide PR on a debt that PR did not create. Greening is the counted un-quarantine event of std.witness_admission: the row deletes in the SAME change that lands the fix, which promotes the unchanged witness to ordinary DiscoverySelection as a permanent regression control (DESIGN 4b(4) — the climb deletes the quarantine machinery, never the evidence). The roster must not grow silently: a new admission carries a reason naming the diagnosis and owner plus a dissolve_on, both refused empty by NonEmptyStr, and a row whose witness runs green locally is stale and deletes. Local recipe per row: claim_batch --source-root dag --source-root src/v2 --entry <entry> --functions <function>. CorpusWitnessKind rows run on the hermetic falsifier probe batch; ExecutionWitnessKind rows run on the falsifier wet quarantine batch."
 
 data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
-  known_red_pre_verdict_probe(
-    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
-    f: "logic_complement_truth_table",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    phase: PreVerdictResolve,
-    cause: UnboundImportedVariantConstructor,
-    reason: "the v1 resolver does not bind imported bare variant constructors in EXPRESSION position (import v2.std.logic { True } then gt_complement(a: True) -> undefined variable: True; patterns-via-scrutinee work). Owner: the namespace-only-resolution lane, whose containment SymbolIndex covers exactly this class.",
-    dissolution: unbound_dissolution(description: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes")
-  ),
-  known_red_pre_verdict_probe(
-    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
-    f: "logic_meet_truth_table",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    phase: PreVerdictResolve,
-    cause: UnboundImportedVariantConstructor,
-    reason: "same imported-bare-variant-constructor resolver gap as its logic_complement sibling. Owner: the namespace-only-resolution lane.",
-    dissolution: unbound_dissolution(description: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes")
-  ),
-  known_red_pre_verdict_probe(
-    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
-    f: "logic_join_truth_table",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    phase: PreVerdictResolve,
-    cause: UnboundImportedVariantConstructor,
-    reason: "same imported-bare-variant-constructor resolver gap as its logic_complement sibling. Owner: the namespace-only-resolution lane.",
-    dissolution: unbound_dissolution(description: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes")
-  ),
   known_red_probe(
     entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
     f: "english_emit_add_ingest_round_trip_holds",
@@ -153,27 +143,11 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the S2 behavioral-closure lane greens it locally, then this row deletes")
   ),
   known_red_probe(
-    entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
-    f: "english_emit_add_prose_holds",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "the english emit prose projection, same S2 emit-family root as its round-trip sibling. Owner: the S2 behavioral-closure lane.",
-    dissolution: unbound_dissolution(description: "the S2 behavioral-closure lane greens it locally, then this row deletes")
-  ),
-  known_red_probe(
-    entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
-    f: "compiler_closure_scoped_ingest_module_count_ok_holds",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "asserts COMPLETE ingest coverage for the src/v2/compiler/00_compile.dag closure, which is 91 source reads against MANIFEST_INLINE_LIST_MAX (64), so the emitted carrier is legitimately Empty. It was GREEN until 2026-07-19 only because the receipt fabricated its own numbers; making the elision the typed, counted SourceRootManifestElided turned a fabricated green into a true red. Admitted rather than deleted because it is the discriminating input for the carrier deficit — its gate did not go vacuous, compiler_closure_ingest_receipt_describes_carrier_holds replaced it as the live claim. Owner: wise-bee-768 / the module-identity storage-binding lane.",
-    dissolution: unbound_dissolution(description: "manifest rows carry a source ref plus content hash instead of inlined text, the parse oracle reads through the ref with hash verification, the cap stops binding, this witness greens and this row deletes")
-  ),
-  known_red_probe(
     entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag",
     f: "legacy_test_behavior_unclassified_frontier_is_zero",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
-    reason: "the discriminating closing validation for roadmap node v1-test-migration, RED BY DESIGN while any independently discovered legacy #[test] function has no typed behavior disposition. Unlike the diff-scoped deletion guard it cannot pass on zero progress; stale, duplicate, unresolved and unclassified identities all refuse.",
+    reason: "NO LONGER THE CLOSING VALIDATION FOR roadmap node v1-test-migration as of 2026-08-11 (gunbc#8146, review 51212) — that node rebound to test_migration_debt_test.dag retained_rust_kernel_wall_holds_against_live_tree when the authority inverted from classifying departures to declaring residents, and gunbc.roadmap_authority is the single authority for that binding. RETAINED as an expecting-red probe only: it still measures a real derived quantity and greening it would still be progress. It was: the discriminating closing validation for roadmap node v1-test-migration, RED BY DESIGN while any independently discovered legacy #[test] function has no typed behavior disposition. Unlike the diff-scoped deletion guard it cannot pass on zero progress; stale, duplicate, unresolved and unclassified identities all refuse.",
     dissolution: unbound_dissolution(description: "the derived unclassified legacy-behavior set reaches zero with every disposition admitted — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent migration regression wall")
   ),
   known_red_probe(
@@ -183,6 +157,22 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     budget: FastLaneEvalBudget,
     reason: "the acceptance test for roadmap node observation-raw-print-retirement, red BY DESIGN: it asserts observation_emit_frontier_count() == 0 while the census still counts unmigrated emit sites. It is the discriminating validation on that node's WorkItemExecutionContract, so dispatch's Verify segment has a target that can actually FAIL — without a red validation somewhere, a green Verify proves only that the plumbing ran. Not relaxable: the only edit that may green it is migrating the sites it counts.",
     dissolution: unbound_dissolution(description: "the frontier reaches zero — this row MUST delete in the same change that lands the last migration, promoting the witness to ordinary DiscoverySelection as a standing regression ratchet")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/g2_data_reference_under_selection_witness_test.dag",
+    f: "specimen_classifies_as_runtime_read",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "G2 under-selection through data declarations (adhoc-8026d859-7e4): scaffold_disposition_census_fixture_pool_is_nonempty reaches decl_facts only via a data initializer, and live_read_selection_manifest_live classifies it LocalRead on 341d3203bc2 (discriminating LocalRead-vs-Refused receipt, not Refused). LocalRead licenses a skip — under-selection. Owner: live-read / G2 computation-reachability lane ahead of #8130 data-root admission.",
+    dissolution: unbound_dissolution(description: "G2 computation reachability follows data initializers as well as function bodies, this witness greens, and this row deletes — promoting the unchanged witness to ordinary DiscoverySelection as the permanent under-selection regression control")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/g2_data_reference_under_selection_witness_test.dag",
+    f: "specimen_does_not_classify_as_local_read",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "The discriminating half of the under-selection pair (adhoc-8026d859-7e4). Its sibling specimen_classifies_as_runtime_read is false in two OPPOSITE states — Classified\{LocalRead\}, which licenses a skip and is the harm, and Refused, which is fail-closed and licenses nothing — so alone it cannot establish that the defect is under-selection rather than a refusal, and a note is not evidence a machine can read. This claim carries the other bit: the pair reads (false,false) on LocalRead today, (true,true) once traversal follows data initializers, and (false,TRUE) if the state drifts to Refused, which greens this row ALONE and surfaces as StaleKnownRed instead of hiding behind a sibling that stays red either way. Expected-red rather than an ordinary green witness because it costs the same ~14s evaluation and the long-eval budget is coupled to expected-red across today's population.",
+    dissolution: unbound_dissolution(description: "the traversal repair lands and BOTH rows for this entry delete in the same change — they are one obligation with one terminal construction and neither survives the other, so they are deliberately not split; the two witnesses stay as the permanent pair that keeps LocalRead, RuntimeRead and Refused distinguishable")
   ),
   known_red_probe(
     entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag",
@@ -287,6 +277,30 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     budget: SubstrateLongLaneEvalBudget,
     reason: "Admitted RED: direct-door smoke is outside witness entry import closure without roster imports — repository-wide discovery requires call-occurrence substrate. Owner: witness-evidence-lifecycle lane.",
     dissolution: unbound_dissolution(description: "whole-tree or call-occurrence substrate includes direct-door smoke without witness-import roster, this witness greens, and this row deletes")
+  ),
+  source_root_ingest_gate_admitted_witness(
+    entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
+    f: "compiler_closure_scoped_ingest_module_count_ok_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "Un-quarantined capless closure completeness witness (#8210): asserts SourceRootCoverageComplete for the 00_compile closure via transport overlay. Per-PR consumer is run_compiler_closure_ingest_gate on source_root_ingest_gate — not bin_witness_wet_entries.",
+    dissolution: unbound_dissolution(description: "this witness re-enrolls on ordinary per-PR discovery when transport overlay is no longer required, or this row migrates to witness_deferral_freeze with a measured dissolve_on")
+  ),
+  source_root_ingest_gate_admitted_witness(
+    entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
+    f: "compiler_closure_ingest_overflow_refuses_never_empty_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "Overflow-refusal witness for capless closure transport (#8210): requires SourceRootManifestElided with full ref population past manifest_inline_list_max. Per-PR consumer is run_compiler_closure_ingest_gate overlay on source_root_ingest_gate.",
+    dissolution: unbound_dissolution(description: "overflow transport is exercised on ordinary per-PR discovery without overlay, or this row migrates to witness_deferral_freeze with a measured dissolve_on")
+  ),
+  source_root_ingest_gate_admitted_witness(
+    entry: "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag",
+    f: "compiler_closure_ingest_boundary_exact_cap_transport_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "Exact-cap boundary witness for 07_target_carriers closure (#8210): discriminates complete vs elided transport at manifest_inline_list_max. Per-PR consumer is run_closure_boundary_overlay_claims on source_root_ingest_gate.",
+    dissolution: unbound_dissolution(description: "boundary witness re-enrolls on per-PR discovery without transport overlay, or this row migrates to witness_deferral_freeze with a measured dissolve_on")
   )
 ]
 
@@ -379,6 +393,28 @@ fn explicit_witness_admission_is_known_red(row: ExplicitWitnessAdmission) -> Boo
     ExpectTypedPreVerdictRefusal { phase: _, cause: _ } => true
     ExpectWitnessHolds => false
   }
+}
+
+fn explicit_witness_admission_is_executing_witness(row: ExplicitWitnessAdmission) -> Bool {
+  match row.expected {
+    ExpectWitnessHolds => true
+    ExpectAssertionFalse => false
+    ExpectTypedPreVerdictRefusal { phase: _, cause: _ } => false
+  }
+}
+
+fn explicit_witness_admission_executing_witness_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    explicit_witness_admissions,
+    init: Empty,
+    f: fn(acc, row) {
+      if explicit_witness_admission_is_executing_witness(row: row) {
+        Cons { head: row.witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
 }
 
 fn explicit_witness_admission_requires_long_eval_budget(row: ExplicitWitnessAdmission) -> Bool {

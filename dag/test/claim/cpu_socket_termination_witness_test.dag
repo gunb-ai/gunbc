@@ -1,0 +1,173 @@
+module test.claim.cpu_socket_termination_witness
+
+import std.logic { Bool }
+import std.types { List, NonEmptyStr }
+import extdeps.cpu.types {
+  socket_termination_as_package_termination,
+  SocketedPinGrid,
+  SocketedLandGrid, CpuSocket, LandGridArray, PinGridArray, cpu_socket_eq }
+import extdeps.vendor.amd { amd }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.cpu.types { CpuModelCatalogRow, SocketFactCitation }
+import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.cpu.ampere {
+  ampere_lga4926_cooling_mount, altra_max_m12830_catalog, ampere_cpu_catalog_rows }
+import extdeps.cpu.amd {
+  amd_am4_cooling_mount,
+  amd_cpu_catalog_rows,
+  amd_ryzen_5_3600_authority,
+  socket_am5_authority,
+  ryzen_5_3600_catalog,
+  ryzen_7_pro_8700ge_catalog,
+  ryzen_9_7950x3d_catalog,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE TERMINATION IS A PER-SOCKET FACT AND AMD CHANGED IT MID-CATALOGUE. Both Zen 4
+// rows carried PinGridArray, which is what AMD used through AM4 and abandoned at AM5:
+// Socket AM5 is a zero insertion force flip-chip land grid array, so the processor
+// presents lands and the socket presents the springs. The contact counts were already
+// right, which is exactly why the defect survived -- 1718 looked correct beside a
+// termination that had been copied down from the AM4 rows.
+test fn w_am5_processors_terminate_as_land_grid_array() -> Bool {
+  socket_termination_as_package_termination(t: ryzen_7_pro_8700ge_catalog.socket.termination) == LandGridArray
+    && socket_termination_as_package_termination(t: ryzen_9_7950x3d_catalog.socket.termination) == LandGridArray
+}
+
+// AM4 STAYS PGA. Without this the fix above could have been applied corpus-wide, which
+// would have replaced one wrong termination with another rather than reading each socket.
+test fn w_am4_processors_still_terminate_as_pin_grid_array() -> Bool {
+  socket_termination_as_package_termination(t: ryzen_5_3600_catalog.socket.termination) == PinGridArray
+}
+
+// THE CONTACT COUNTS ARE UNCHANGED BY THE TERMINATION FIX. The defect was in the package
+// axis alone, and this pins that the repair did not drift the counts while touching the rows.
+test fn w_the_contact_counts_survive_the_termination_correction() -> Bool {
+  ryzen_5_3600_catalog.socket.contact_count == 1331
+    && ryzen_7_pro_8700ge_catalog.socket.contact_count == 1718
+    && ryzen_9_7950x3d_catalog.socket.contact_count == 1718
+}
+
+// RED control: the two terminations are distinguishable, so the assertions above are
+// properties of the catalogue rather than a comparison that cannot fail.
+test fn w_red_the_two_terminations_are_distinguishable() -> Bool {
+  let lga = CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 1718, cooling_mount: amd_am4_cooling_mount }
+  let pga = CpuSocket { platform_owner: amd, termination: SocketedPinGrid, contact_count: 1718, cooling_mount: amd_am4_cooling_mount }
+  lga.termination != pga.termination && lga.contact_count == pga.contact_count
+}
+
+// THE DEFECT CLASS, PINNED: equal contact count does not establish equal socket. These two
+// differ only in termination and are not the same interface -- which is the same reason a
+// count alone cannot identify LGA4926, and why the Dynatron coolers sold as "Intel LGA 4926"
+// are mislabelled against an Ampere platform.
+test fn w_red_equal_contact_count_is_not_equal_socket() -> Bool {
+  let lga = CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 1718, cooling_mount: amd_am4_cooling_mount }
+  let pga = CpuSocket { platform_owner: amd, termination: SocketedPinGrid, contact_count: 1718, cooling_mount: amd_am4_cooling_mount }
+  !(lga.termination == pga.termination && lga.contact_count == pga.contact_count)
+}
+
+// THE COLLISION THE IDENTITY AXIS EXISTS TO PREVENT. Before platform_owner, these two values were
+// byte-identical: a hypothetical AMD 4926-contact LGA socket was structurally the same socket as
+// Ampere's, so a footprint, a cooler roster or a compatibility check could have matched across
+// platforms on nothing but a coincidence of scale.
+test fn w_red_same_termination_and_count_under_different_platforms_are_not_one_socket() -> Bool {
+  let ampere_4926 = CpuSocket {
+    platform_owner: ampere_vendor,
+    termination: SocketedLandGrid,
+    contact_count: 4926,
+    cooling_mount: ampere_lga4926_cooling_mount,
+  }
+  let hypothetical_amd_4926 = CpuSocket {
+    platform_owner: amd,
+    termination: SocketedLandGrid,
+    contact_count: 4926,
+    cooling_mount: amd_am4_cooling_mount,
+  }
+  ampere_4926.termination == hypothetical_amd_4926.termination
+    && ampere_4926.contact_count == hypothetical_amd_4926.contact_count
+    && !cpu_socket_eq(a: ampere_4926, b: hypothetical_amd_4926)
+}
+
+// AND THE PREDICATE STILL ADMITS A GENUINE MATCH, so the refusal above is a property of the two
+// values rather than an equality that can only answer false.
+test fn w_red_one_socket_matches_itself_across_two_constructions() -> Bool {
+  let a = CpuSocket { platform_owner: ampere_vendor, termination: SocketedLandGrid, contact_count: 4926, cooling_mount: ampere_lga4926_cooling_mount }
+  let b = CpuSocket { platform_owner: ampere_vendor, termination: SocketedLandGrid, contact_count: 4926, cooling_mount: ampere_lga4926_cooling_mount }
+  cpu_socket_eq(a: a, b: b)
+}
+
+// THE CATALOG ROWS CITE, NOT A LIST BESIDE THEM. The first cut of this asserted that
+// socket_am5_citations existed and pointed at the authority, which a row carrying structurally
+// uncited socket fields would have satisfied -- the evidence could stay green while the thing it
+// claimed to cover was untouched. These read the citations THROUGH the rows, so a row that dropped
+// its citation edge reds here rather than passing beside an orphaned list.
+//
+// Both axes are checked because the package axis is the one that was wrong: a citation covering
+// only the row would not have covered the field that carried the defect.
+fn row_cites_socket_field(row: CpuModelCatalogRow, field: NonEmptyStr, authority: ExternalAuthority) -> Bool {
+  count(row.socket_citations |> filter(c => c.field == field && c.authority == authority)) == 1
+}
+
+test fn w_the_am5_catalog_rows_cite_their_socket_termination() -> Bool {
+  row_cites_socket_field(row: ryzen_7_pro_8700ge_catalog, field: "package", authority: socket_am5_authority)
+    && row_cites_socket_field(row: ryzen_7_pro_8700ge_catalog, field: "contact_count", authority: socket_am5_authority)
+    && row_cites_socket_field(row: ryzen_9_7950x3d_catalog, field: "package", authority: socket_am5_authority)
+    && row_cites_socket_field(row: ryzen_9_7950x3d_catalog, field: "contact_count", authority: socket_am5_authority)
+}
+
+// EVERY CATALOG ROW CITES ITS SOCKET, joined over the modules' own rosters rather than a list
+// re-typed here. review 52588 caught the previous form enumerating four rows and omitting
+// altra_q6430_catalog, so a row could have regressed to an empty citation list with this witness
+// still green. Re-listing rows in a test is the shape that produced that hole, not just the
+// omission: a hand-picked subset is a change detector for the rows someone remembered.
+//
+// HONEST CEILING: the rosters are themselves hand-authored, so a NEW row that is never added to
+// its module's roster is still invisible here. What this buys is that the roster sits beside the
+// rows it names, in the file an author is already editing, rather than in a test module they have
+// no reason to open. A genuinely closed denominator would have to be discovered from the module
+// tree, which is lens work and is not attempted here.
+fn every_row_cites_its_socket(rows: List<CpuModelCatalogRow>) -> Bool {
+  count(rows |> filter(r => count(r.socket_citations) >= 2)) == count(rows)
+}
+
+test fn w_every_catalog_row_in_both_rosters_cites_its_socket() -> Bool {
+  every_row_cites_its_socket(rows: amd_cpu_catalog_rows)
+    && every_row_cites_its_socket(rows: ampere_cpu_catalog_rows)
+    && count(amd_cpu_catalog_rows) == 3
+    && count(ampere_cpu_catalog_rows) == 2
+}
+
+// RED control: the census discriminates. A roster carrying a row with no citations must fail, or
+// the check above would pass on any population -- including an empty roster, which is the way a
+// count-based census most often lies.
+test fn w_red_a_row_without_citations_fails_the_census() -> Bool {
+  let uncited = CpuModelCatalogRow {
+    model_number: ryzen_9_7950x3d_catalog.model_number,
+    oem_listing_id: ryzen_9_7950x3d_catalog.oem_listing_id,
+    vendor: ryzen_9_7950x3d_catalog.vendor,
+    architecture: ryzen_9_7950x3d_catalog.architecture,
+    cores: ryzen_9_7950x3d_catalog.cores,
+    threads: ryzen_9_7950x3d_catalog.threads,
+    nominal_sustained_per_thread_hz: ryzen_9_7950x3d_catalog.nominal_sustained_per_thread_hz,
+    socket: ryzen_9_7950x3d_catalog.socket,
+    socket_citations: [],
+    tdp_watts: ryzen_9_7950x3d_catalog.tdp_watts,
+    l1_cache: ryzen_9_7950x3d_catalog.l1_cache,
+    l1_cache_citations: ryzen_9_7950x3d_catalog.l1_cache_citations,
+    l2_cache: ryzen_9_7950x3d_catalog.l2_cache,
+    l2_cache_citations: ryzen_9_7950x3d_catalog.l2_cache_citations,
+    l3_cache: ryzen_9_7950x3d_catalog.l3_cache,
+    l3_cache_citations: ryzen_9_7950x3d_catalog.l3_cache_citations,
+  }
+  !every_row_cites_its_socket(rows: [uncited])
+    && every_row_cites_its_socket(rows: [ryzen_9_7950x3d_catalog])
+}
+
+// RED control: the join is discriminating. A field the rows do not cite, and an authority that did
+// not issue the claim, must both answer false -- otherwise the checks above would pass on any row.
+test fn w_red_an_uncited_field_or_foreign_authority_does_not_satisfy_the_join() -> Bool {
+  !row_cites_socket_field(row: ryzen_9_7950x3d_catalog, field: "platform_owner", authority: socket_am5_authority)
+    && !row_cites_socket_field(row: ryzen_9_7950x3d_catalog, field: "package", authority: amd_ryzen_5_3600_authority)
+}

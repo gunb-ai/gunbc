@@ -1,6 +1,7 @@
 module test.claim.guarantee_probe_corpus_witness_test
 
 import extdeps.filesystem.filesystem_io
+import std.materialization_ladder { string_list_contains }
 import gunbc.guarantee_probe_corpus {
   guarantee_probe_corpus_charter_note,
   v1_compile_rust_path_id,

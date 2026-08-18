@@ -8,6 +8,8 @@ pub use crate::v1_compiler_infer_types::{
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
+pub use crate::v1_std_core::CompilerDiagnostic;
+use crate::v1_std_core::CompilerDiagnostic::*;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
@@ -426,28 +428,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "test_migration_debt_module_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_debt_total_loc".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_debt_total_test_fns".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
             "test_migration_debt_module_names".to_string(),
             list_of_type_variable("test_migration_debt_module_name_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_debt_known_covered_module_is_not_debt".to_string(),
-            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -466,32 +448,12 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "test_migration_delete_guard_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_delete_guard_uncovered_deletes".to_string(),
-            list_of_type_variable("test_migration_delete_guard_uncovered_delete_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
             "inert_carrier_names_live".to_string(),
             list_of_type_variable("inert_carrier_name_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "inert_carrier_declared_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "inert_lens_unreached_module_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "inert_lens_top_level_module_count".to_string(),
             int_type(),
         );
         let m = v1_rt::rc_map_insert(m.clone(), "non_fold_residue_count".to_string(), int_type());
@@ -614,6 +576,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "reference_resolution_facts".to_string(),
             list_of_type_variable("import_resolution_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "dependency_resolution_facts".to_string(),
+            list_of_type_variable("module_dependency_edge_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

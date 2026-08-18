@@ -1,0 +1,171 @@
+module test.claim.self_host_artifact_materialization_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data artifact_materialization_witness_note: String = "These claims execute the two PURE folds that carry every decision in gunbc.self_host_artifact_materialization, which is why the decisions are witnessed on every PR instead of behind a wet cadence. The discriminating claims are not the happy path: they are that a build failure never reads as a path refusal, that no failure arm produces ArtifactMaterialized, and that the executable carried out of the fold is the one the cargo stream NAMED. That last one is the whole lane in a single assertion — a convention-derived path would satisfy every other claim here while pointing at a different file than the one digested."
+
+data valid_hex: String = "cf03d459f24df996cd9f067bb9ef1eb98b4110a3566bc0db54d6949e5371e7861511488e25a86c5177a6940af6e97e7a337e987ce464b55408fe325df9993be9"
+
+data artifact_stream: String = "\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"gunbc\",\"kind\":[\"bin\"]\},\"executable\":\"/w/target/release/gunbc\"\}\n\{\"reason\":\"build-finished\",\"success\":true\}"
+
+data ambiguous_stream: String = "\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"gunbc\",\"kind\":[\"bin\"]\},\"executable\":\"/w/target/release/gunbc\"\}\n\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"gunbc\",\"kind\":[\"bin\"]\},\"executable\":\"/w/target/release/other\"\}"
+
+data observed_digest_note: String = "valid_hex is the REAL sha512 of the ASCII string gunbc-artifact-materialization-fixture, reproducible with printf | sha512sum, rather than hand-typed hex. The first draft here WAS hand-typed and was 130 characters instead of 128; the refinement rejected it, good_observation became a refusal, and the three positive claims went red — which is the wall doing its job and is why this note exists. Built through the validating mint rather than by labelling text a digest: sha512_hex_digest applies the length and lowercase-hex refinement, so if this fixture hex is ever wrong the observation becomes a REFUSAL and the positive claims below go red, rather than a bad digest silently flowing into the carrier. That is the same construction wall the artifact axis relies on, exercised by the witness that depends on it."
+
+fn good_observation() -> Sha512FileObservation {
+  match std.content_hash.sha512_hex_digest(hex: valid_hex) {
+    Present { value: d } => Sha512FileObserved { digest: d }
+    Absent =>
+      Sha512FileObservationRefused { cause: "fixture hex failed the refinement" as NonEmptyStr }
+  }
+}
+
+fn path_of(build_success: Bool, stdout: String) -> ArtifactPathOutcome {
+  gunbc.self_host_artifact_materialization.select_artifact_path(
+    build_success: build_success,
+    build_stdout: stdout,
+    target_name: "gunbc"
+  )
+}
+
+fn reported_path_or_empty(outcome: ArtifactPathOutcome) -> String {
+  match outcome {
+    ArtifactPathReported { executable: exe } => exe
+    ArtifactPathBuildFailed { target_name: _ } => ""
+    ArtifactPathRefused { selection: _ } => ""
+  }
+}
+
+test fn the_reported_path_is_the_one_the_stream_named() -> Bool {
+  let reported = reported_path_or_empty(
+    outcome: path_of(build_success: true, stdout: artifact_stream)
+  )
+  reported == "/w/target/release/gunbc"
+}
+
+test fn a_failed_build_is_its_own_arm_not_a_path_refusal() -> Bool {
+  match path_of(build_success: false, stdout: artifact_stream) {
+    ArtifactPathBuildFailed { target_name: t } => t == "gunbc"
+    ArtifactPathReported { executable: _ } => false
+    ArtifactPathRefused { selection: _ } => false
+  }
+}
+
+test fn a_failed_build_does_not_consult_the_stream_at_all() -> Bool {
+  match path_of(build_success: false, stdout: "not json at all") {
+    ArtifactPathBuildFailed { target_name: t } => t == "gunbc"
+    ArtifactPathReported { executable: _ } => false
+    ArtifactPathRefused { selection: _ } => false
+  }
+}
+
+test fn an_ambiguous_stream_refuses_and_carries_the_selection() -> Bool {
+  match path_of(build_success: true, stdout: ambiguous_stream) {
+    ArtifactPathRefused { selection: s } =>
+      match s {
+        CargoArtifactAmbiguous { target_name: t, count: c } => t == "gunbc" && c == 2
+        CargoArtifactSelected { executable: _ } => false
+        CargoArtifactAbsent { target_name: _ } => false
+        CargoArtifactWithoutExecutable { target_name: _ } => false
+        CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+        CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+        CargoMessageExecutableAbsent { line_number: _ } => false
+        CargoMessageLineUnparseable { line_number: _ } => false
+        CargoMessageLineNotAnObject { line_number: _ } => false
+        CargoMessageReasonAbsent { line_number: _ } => false
+        CargoMessageReasonNotAString { line_number: _ } => false
+        CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+        CargoMessageTargetNotAnObject { line_number: _ } => false
+        CargoMessageTargetNameAbsent { line_number: _ } => false
+        CargoMessageTargetNameNotAString { line_number: _ } => false
+      }
+    ArtifactPathReported { executable: _ } => false
+    ArtifactPathBuildFailed { target_name: _ } => false
+  }
+}
+
+test fn an_observed_digest_materializes_and_keeps_the_named_path() -> Bool {
+  let outcome = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
+    path: path_of(build_success: true, stdout: artifact_stream),
+    observation: good_observation()
+  )
+  match outcome {
+    ArtifactMaterializationObserved { executable: exe, digest: _ } =>
+      exe == "/w/target/release/gunbc"
+    ArtifactMaterializationBuildFailed { target_name: _ } => false
+    ArtifactMaterializationPathRefused { selection: _ } => false
+    ArtifactMaterializationDigestRefused { executable: _, cause: _ } => false
+  }
+}
+
+test fn a_refused_digest_does_not_materialize() -> Bool {
+  let outcome = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
+    path: path_of(build_success: true, stdout: artifact_stream),
+    observation: Sha512FileObservationRefused {
+      cause: "sha512sum DigestFile failed" as NonEmptyStr
+    }
+  )
+  match gunbc.self_host_artifact_materialization.artifact_identity_of(outcome: outcome) {
+    ArtifactNotMaterialized => true
+    ArtifactMaterialized { digest: _ } => false
+  }
+}
+
+test fn a_failed_build_does_not_materialize_even_with_a_good_digest() -> Bool {
+  let outcome = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
+    path: path_of(build_success: false, stdout: artifact_stream),
+    observation: good_observation()
+  )
+  match gunbc.self_host_artifact_materialization.artifact_identity_of(outcome: outcome) {
+    ArtifactNotMaterialized => true
+    ArtifactMaterialized { digest: _ } => false
+  }
+}
+
+test fn an_ambiguous_stream_does_not_materialize_even_with_a_good_digest() -> Bool {
+  let outcome = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
+    path: path_of(build_success: true, stdout: ambiguous_stream),
+    observation: good_observation()
+  )
+  match gunbc.self_host_artifact_materialization.artifact_identity_of(outcome: outcome) {
+    ArtifactNotMaterialized => true
+    ArtifactMaterialized { digest: _ } => false
+  }
+}
+
+test fn only_an_observed_outcome_yields_an_invocable_path() -> Bool {
+  let good = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
+    path: path_of(build_success: true, stdout: artifact_stream),
+    observation: good_observation()
+  )
+  let bad = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
+    path: path_of(build_success: true, stdout: ambiguous_stream),
+    observation: good_observation()
+  )
+  let good_path = match gunbc.self_host_artifact_materialization.materialized_executable(outcome: good) {
+    Present { value: p } => p
+    Absent => ""
+  }
+  let bad_path = match gunbc.self_host_artifact_materialization.materialized_executable(outcome: bad) {
+    Present { value: p } => p
+    Absent => ""
+  }
+  good_path == "/w/target/release/gunbc" && bad_path == ""
+}
+
+test fn the_digested_path_and_the_invocable_path_are_one_value() -> Bool {
+  let outcome = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
+    path: path_of(build_success: true, stdout: artifact_stream),
+    observation: good_observation()
+  )
+  match outcome {
+    ArtifactMaterializationObserved { executable: exe, digest: _ } =>
+      match gunbc.self_host_artifact_materialization.materialized_executable(outcome: outcome) {
+        Present { value: p } => p == exe
+        Absent => false
+      }
+    ArtifactMaterializationBuildFailed { target_name: _ } => false
+    ArtifactMaterializationPathRefused { selection: _ } => false
+    ArtifactMaterializationDigestRefused { executable: _, cause: _ } => false
+  }
+}

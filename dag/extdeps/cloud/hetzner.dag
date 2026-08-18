@@ -3,6 +3,12 @@ module extdeps.cloud.hetzner
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.toolchain.types { Architecture }
+import std.currency { CurrencyCode }
+import std.measure { ByteSize, HardwareThreadCount, MoneyAmountMicro, byte_size, hardware_thread_count, money_amount_micro }
+import std.types { List, NonEmptyStr }
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

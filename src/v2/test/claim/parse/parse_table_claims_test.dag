@@ -4,15 +4,15 @@ module v2.test.parse.parse_table_claims
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn parse_table_token(class: Symbol) -> Token {
-  Token { class: class, lexeme: Empty, file: class, start: 0, end: 0 }
+  Token { class: class, lexeme: std.algebra.Empty, file: class, start: 0, end: 0 }
 }
 
 data parse_table_two_tokens: List<Token> = Cons {
   head: parse_table_token(class: ^parse_table_probe_class),
-  tail: Cons { head: parse_table_token(class: ^parse_table_probe_class), tail: Empty }
+  tail: Cons { head: parse_table_token(class: ^parse_table_probe_class), tail: std.algebra.Empty }
 }
 
-data parse_table_empty_tokens: List<Token> = Empty
+data parse_table_empty_tokens: List<Token> = std.algebra.Empty
 
 test fn parse_table_token_position_indices_no_extra_append_holds() -> Bool {
   (length(xs: token_position_indices(tokens: parse_table_two_tokens)) == 3)
@@ -92,7 +92,7 @@ fn parse_table_projection_grammar() -> ParseGrammar {
           },
           emitted: grammar_atom(identity: ^pt_proj_start)
         },
-        tail: Empty
+        tail: std.algebra.Empty
       },
       sync_tokens: grammar_empty_sync_tokens()
     }
@@ -114,7 +114,7 @@ data parse_table_defined_root: GrammarRoot = GrammarRoot {
       expression: Terminal { token_class: ^pt_undef_tok, stamp: StampClass },
       emitted: grammar_atom(identity: ^pt_undef_defined)
     },
-    tail: Empty
+    tail: std.algebra.Empty
   },
   sync_tokens: grammar_empty_sync_tokens()
 }
@@ -206,17 +206,17 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
   let table = parse_table_empty()
   let root = GrammarRoot {
     start: ^pt_parse_expr_start,
-    productions: Empty,
+    productions: std.algebra.Empty,
     sync_tokens: grammar_empty_sync_tokens()
   }
   let tok_a = parse_table_token(class: ^pt_parse_expr_tok_a)
   let tok_b = parse_table_token(class: ^pt_parse_expr_tok_b)
   let tok_c = parse_table_token(class: ^pt_parse_expr_tok_c)
-  let toks_a = Cons { head: tok_a, tail: Empty }
-  let toks_b = Cons { head: tok_b, tail: Empty }
-  let toks_c = Cons { head: tok_c, tail: Empty }
-  let toks_ab = Cons { head: tok_a, tail: Cons { head: tok_b, tail: Empty } }
-  let toks_aab = Cons { head: tok_a, tail: Cons { head: tok_a, tail: Cons { head: tok_b, tail: Empty } } }
+  let toks_a = Cons { head: tok_a, tail: std.algebra.Empty }
+  let toks_b = Cons { head: tok_b, tail: std.algebra.Empty }
+  let toks_c = Cons { head: tok_c, tail: std.algebra.Empty }
+  let toks_ab = Cons { head: tok_a, tail: Cons { head: tok_b, tail: std.algebra.Empty } }
+  let toks_aab = Cons { head: tok_a, tail: Cons { head: tok_a, tail: Cons { head: tok_b, tail: std.algebra.Empty } } }
   let r1 = match parse_expr(
     expr: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass },
     tokens: toks_a, all_tokens: toks_a, root: root, table: table, prov: prov

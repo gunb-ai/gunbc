@@ -7,7 +7,6 @@ import v2.workflow.witness_admission {
   witness_admission_manifest_covers_row
 }
 import std.witness_admission {
-  FalsifierRehomedBinWet,
   FalsifierSubstrateLongLane,
   WitnessConsumerCadence,
   BinWitnessWet,
@@ -64,8 +63,8 @@ test fn witness_synthetic_orphan_admission_red_holds() -> Bool {
 
 test fn witness_known_red_probe_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
-    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
-    function: "logic_complement_truth_table",
+    entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
+    function: "english_emit_add_ingest_round_trip_holds",
     excluded_from_discovery: true
   ) {
     QuarantineProbeExpectRed => true
@@ -159,24 +158,6 @@ test fn witness_bin_wet_live_rust_observation_consumer_holds() -> Bool {
     BinWitnessWet => true
     _ => false
   }
-}
-
-test fn witness_rehomed_bin_wet_consumer_holds() -> Bool {
-  match witness_consumer_cadence_for_row(
-    entry: "dag/test/claim/floor_skip_discovery_witness_test.dag",
-    function: "floor_skip_discovery_keystone_holds",
-    excluded_from_discovery: true
-  ) {
-    FalsifierRehomedBinWet => true
-    _ => false
-  }
-}
-
-test fn witness_rehomed_bin_wet_manifest_covers_holds() -> Bool {
-  witness_admission_manifest_covers_row(
-    entry: "dag/test/claim/floor_skip_discovery_witness_test.dag",
-    function: "floor_skip_discovery_keystone_holds"
-  )
 }
 
 test fn witness_substrate_long_lane_consumer_holds() -> Bool {

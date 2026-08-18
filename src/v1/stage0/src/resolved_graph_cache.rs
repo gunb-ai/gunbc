@@ -9,16 +9,17 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::v1_compiler_compile::SourceFile;
-use crate::v1_compiler_infer::{
-    rewire_func_env_parent_links, rewire_type_env_import_str_binding_identity,
-    rewire_type_env_parent_links,
-};
+use crate::v1_compiler_infer::{rewire_func_env_parent_links, rewire_type_env_parent_links};
 use crate::v1_compiler_infer_items::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
 use crate::v1_std_core::{ErrorNode, NewlineIndex};
 use im::Vector;
 
-const FORMAT_VERSION: u32 = 3;
+/// v4: persisted graphs are assembly-final for import-str identity. Decode no
+/// longer replays `rewire_type_env_import_str_binding_identity` (v3 did). v1 and
+/// v3 artifacts cold-rebuild. Parent-link and func-env rewire remain decode-time
+/// — they repair Rc parent edges, not declaration identity.
+const FORMAT_VERSION: u32 = 4;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
 /// v3 header sentinel: union output not persisted in payload (semantically incomplete).
 pub const UNION_PART_ABSENT_DIGEST: &str = "ffffffffffffffff";
@@ -65,7 +66,7 @@ pub enum CacheRejectReason {
     PartDecodeFailure,
 }
 
-/// Per-output digests and byte sizes for a FORMAT_VERSION 3 artifact — derived
+/// Per-output digests and byte sizes for a FORMAT_VERSION 4 artifact — derived
 /// from the bounded header without reading payload bytes on the probe path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FaithfulResolvedGraphProbeParts {
@@ -575,8 +576,8 @@ enum ExistingArtifactDisposition {
     Unrecognized,
 }
 
-/// Classify an on-disk artifact at the subject path before a v3 write. Legacy v1
-/// rows are migration replaceable; complete v3 rows are write-once.
+/// Classify an on-disk artifact at the subject path before a current-format write.
+/// Legacy v1 and v3 rows are migration replaceable; complete current-format rows are write-once.
 fn classify_existing_artifact(
     path: &Path,
     expected_subject: &str,
@@ -608,7 +609,7 @@ fn classify_existing_artifact(
     let version = u32::from_le_bytes(prefix[MAGIC.len()..].try_into().unwrap());
     const LEGACY_HEADER_LEN: usize = MAGIC.len() + 4 + 16 + 16 + 8;
     match version {
-        1 => {
+        1 | 3 => {
             if file_len < LEGACY_HEADER_LEN {
                 return Ok(ExistingArtifactDisposition::Unrecognized);
             }
@@ -664,16 +665,18 @@ fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
     }
     let version = u32::from_le_bytes(prefix[MAGIC.len()..].try_into().unwrap());
     const LEGACY_HEADER_LEN: usize = MAGIC.len() + 4 + 16 + 16 + 8;
-    if version == 1 {
-        let mut legacy = vec![0u8; LEGACY_HEADER_LEN - prefix.len()];
-        if file.read_exact(&mut legacy).is_err() {
-            return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
-        }
-        let subject = std::str::from_utf8(&legacy[0..16])
-            .map_err(|_| CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed))
-            .unwrap_or("");
-        if subject != expected_subject {
-            return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    if version == 1 || version == 3 {
+        if version == 1 {
+            let mut legacy = vec![0u8; LEGACY_HEADER_LEN - prefix.len()];
+            if file.read_exact(&mut legacy).is_err() {
+                return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+            }
+            let subject = std::str::from_utf8(&legacy[0..16])
+                .map_err(|_| CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed))
+                .unwrap_or("");
+            if subject != expected_subject {
+                return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+            }
         }
         return CacheProbeResult::LegacyMigrationRequired {
             format_version: version,
@@ -756,8 +759,6 @@ fn decode_v3_payload_from_file(file: &mut File, header: V3Header) -> CacheLookup
         Rc::new(si_plain.into_iter().map(|(k, v)| (k, Rc::new(v))).collect());
     let decoded = Rc::new(decoded_graph);
     let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
-    let modules =
-        rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
     let modules = rewire_func_env_parent_links(modules, source_indices.clone());
     let graph = Rc::new(ResolvedGraph {
         modules,
@@ -1263,8 +1264,6 @@ pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolv
     );
     let decoded = Rc::new(payload.graph);
     let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
-    let modules =
-        rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
     let modules = rewire_func_env_parent_links(modules, source_indices.clone());
     Ok(CachedResolvedGraph {
         graph: Rc::new(ResolvedGraph {

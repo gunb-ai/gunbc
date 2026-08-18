@@ -1,10 +1,22 @@
 module gunbc.host_layout
 
 import std.types { String, NonEmptyStr, FilePath }
+import product.placement_supply { HostIdentity }
 import gunbc.provider_account {
   codex_account_state_root,
   codex_roadmap_account_selection,
 }
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+import gunbc.codex_runtime_paths {
+  srv1_codex_runtime_release_root,
+  codex_bundled_executable_at_current_link,
+}
+import gunbc.package_delivery { codex_linux_arm64_native_executable_rel }
 
 data host_layout_note: String = "The ONE authority for the srv1 gunbc host paths (docs/plans/gunbc-served-dashboard-design.md section 5; lane agreement with royal-carp-451, 2026-07-20). Five facts must agree with their consumers or in-process dispatch breaks: srv1_gunbc_repo_root is BOTH the tree `gunbc serve` loads AND the repo the belt runs `git worktree add` from; srv1_dispatch_worktree_root is where those worktrees land; srv1_dispatch_attempt_state_root is where the belt publishes attempt evidence before it launches a provider; srv1_gunbc_serve_binary is the deployed seed binary; srv1_roadmap_codex_home is the dedicated Codex state root whose auth/config/session state the Codex provider preflights and invokes through CODEX_HOME. gunbc.roadmap_belt_actuate and gunbc.roadmap_dispatch_actuator project these rows, while gunbc.live_deploy.spec owns convergence of the filesystem/runtime membership. Interim: the parent lane hand-provisions srv1 to these exact paths; that hand-provisioning dissolves when live_deploy formally carries every member, including the provider state-root existence/ownership check (credentials themselves remain user-authored secret state, never deployment payload)."
 
@@ -39,9 +51,20 @@ type GunbcHostLayout {
   gunbc_serve_binary: FilePath
   roadmap_codex_home: FilePath
   controller_repo: FilePath
+  codex_bundled_executable: FilePath?
 }
 
 data srv1_dashboard_controller_repo: FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath
+
+data gunbc_host_layout_codex_executable_note: String = "The bundled Codex executable path is derived through codex_bundled_executable_for_host, not stored as an independent layout literal. GunbcHostLayout.codex_bundled_executable is FilePath? so Absent has no fabricated path constructor — executors refuse when the committed-lock placement is unavailable. Witness: srv1_committed_lock_bundled_executable_is_present."
+
+fn srv1_codex_bundled_executable() -> FilePath? {
+  codex_bundled_executable_for_host(host: "srv1" as HostIdentity)
+}
+
+fn srv2_codex_bundled_executable() -> FilePath? {
+  codex_bundled_executable_for_host(host: "srv2" as HostIdentity)
+}
 
 fn srv1_host_layout() -> GunbcHostLayout {
   GunbcHostLayout {
@@ -49,6 +72,7 @@ fn srv1_host_layout() -> GunbcHostLayout {
     gunbc_serve_binary: srv1_gunbc_serve_binary,
     roadmap_codex_home: srv1_roadmap_codex_home,
     controller_repo: srv1_dashboard_controller_repo,
+    codex_bundled_executable: srv1_codex_bundled_executable(),
   }
 }
 
@@ -69,6 +93,7 @@ fn srv2_host_layout() -> GunbcHostLayout {
     gunbc_serve_binary: srv2_gunbc_serve_binary,
     roadmap_codex_home: srv2_roadmap_codex_home,
     controller_repo: srv2_dashboard_controller_repo,
+    codex_bundled_executable: srv2_codex_bundled_executable(),
   }
 }
 data managed_compile_pool_slice_note: String = "The ONE authority for the managed compile-pool slice unit name, homed here for the same reason as the paths above: it is a fact about how a HOST is laid out, not about any one consumer of it. Its live consumers are gunbc.build_cache_instance `ci_cache_instance` and `session_cache_instance`, which carry it as each deployed instance's `intended_compile_pool`, plus the `managed_compile_pool_slice_fixture` row in gunbc.host_build_cache_provision. STATE, stated so this row is not read as a description of the fleet: NOTHING PROVISIONS THIS SLICE YET. No observed host has it — the 2026-08-01 placement receipt found every CI cache endpoint owned by a runner-slot process, never by a managed unit inside a compile pool — so the name is declared intent that an observation is checked against, and gunbc.fleet_host_budget's `CompilePoolInRunnerSlots` correspondingly derives a ZERO pool today. CORRECTED 2026-08-01 (review 46182, and the review understated it — all three of this note's claims had gone stale in one edit, which is the §3 citation class this repo keeps paying for): it previously cited `ServerUnitOwned.slice_unit` in gunbc.host_build_cache_provision, said the emitted shell in gunbc.host_build_cache_provision_script greps the observed cgroup for this value, and justified its homing by an import cycle between those two consumers. `ServerUnitOwned` no longer exists (it is `ServerManagedUnitOwned { unit }` in gunbc.build_cache_instance, and placement is decided against the instance's `intended_unit` — a service, not this slice); the script carries no compile-pool reference at all, because the branch's emitted placement probe was deliberately not landed (that module is an A5 census row whose emitted shell may shrink but not grow); and with that consumer absent the two-consumer drift hazard and the cycle rationale describe a mechanism that is not in the tree."
@@ -79,13 +104,17 @@ data belt_spawn_workdir_env_var_note: String = "The ONE authority for the enviro
 
 data belt_spawn_workdir_env_var: NonEmptyStr = "GUNBC_BELT_SPAWN_WORKDIR" as NonEmptyStr
 
-// The ONE authority for the fleet converge-receipt directory, homed here for the same
-// two-consumers-across-a-boundary reason as the belt env var above: gunbc.fleet_converge_cli
-// WRITES per-host receipts under it, gunbc.live_deploy.emit CREATES it at deploy time
-// (install -d). Homing it in the CLI put the deploy emitter's closure behind the converge
-// CLI, which closed the import cycle fleet_converge_apply -> host_effect_realize ->
-// live_deploy.emit -> fleet_converge_cli the moment the CLI imported its own apply seam.
+// The ONE authority for the fleet converge-receipt directory path, homed here for the
+// two-consumers-across-a-boundary reason: gunbc.fleet_converge_cli publishes under it;
+// gunbc.fleet_receipt_collector reads back. Homing the path in either consumer would drag
+// the other's closure behind an import cycle.
 data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
+
+// srv1 observation (2026-08-13, parent eager-koi-458): directory already briansrls-owned;
+// EACCES was a root-owned STALE FILE from the pre-b1 unit user, not the directory.
+// Publication authority is atomic rename in gunbc.fleet_converge_cli — NOT live_deploy
+// install-d on this path and NOT per-run elevation.
+data fleet_converge_receipt_atomic_publish_note: String = "Receipt publication is gunbc.fleet_converge_cli converge_cli_atomic_receipt_write: Filesystem.Write to a same-directory *.staging file, then shell.Move.File over the final path. rename(2) takes permission from the containing directory, not the file being replaced, so a root-owned stale receipt is superseded without elevation when the service principal owns the directory. In-place Filesystem.Write on the target path fails EACCES on stale root-owned files and is crash-unsafe (truncated receipts). Deploy install-d on fleet_converge_receipt_dir (live_deploy emit FleetConvergeTimerUnit apply) ensures the directory exists and is owned by the service principal on fresh hosts; that bootstrap is orthogonal to publication — per-run sudo install on individual receipt files is not the publication fix when the directory is already service-user-owned."
 
 data provider_runtime_placement_note: String = "ONE host-parameterized placement for provider package/exec release trees, mutable provider state, and private wire-evidence roots. Parallel to GunbcHostLayout: a second host must be describable without minting a second set of path concepts. Claude/Cursor/Codex lanes consume this record; they do not re-author /opt/... roots. The flat srv1_* path data below are the once-written field values of srv1's row — the same dissolution pattern as gunbc_host_layout_note."
 
@@ -94,8 +123,6 @@ type ProviderRuntimePlacement {
   runtime_mutable_state_root: FilePath
   wire_evidence_root: FilePath
 }
-
-data srv1_codex_runtime_release_root: FilePath = "/opt/gunbc/provider-runtime/codex" as FilePath
 
 data srv1_codex_runtime_mutable_state_root: FilePath = "/opt/gunbc/provider-runtime/codex-state" as FilePath
 
@@ -106,5 +133,36 @@ fn srv1_provider_runtime_placement() -> ProviderRuntimePlacement {
     runtime_release_root: srv1_codex_runtime_release_root,
     runtime_mutable_state_root: srv1_codex_runtime_mutable_state_root,
     wire_evidence_root: srv1_provider_wire_evidence_root,
+  }
+}
+
+fn provider_runtime_placement_for_host(host: HostIdentity) -> ProviderRuntimePlacement? {
+  if host == operator_host_srv1
+    || host == operator_host_srv2
+    || host == operator_host_srv3
+    || host == operator_host_srv4
+  {
+    Present { value: srv1_provider_runtime_placement() }
+  } else {
+    none
+  }
+}
+
+data provider_runtime_placement_shared_row_note: String = "srv1..srv4 currently project srv1_provider_runtime_placement() — paths are convention-uniform today, not derived per-host. dissolve-on: each host's GunbcHostLayout row carries its own ProviderRuntimePlacement when a fleet host diverges from the srv1-shaped paths."
+
+fn codex_bundled_executable_for_host(host: HostIdentity) -> FilePath? {
+  match provider_runtime_placement_for_host(host: host) {
+    Absent => none
+    Present { value: placement } =>
+      match codex_linux_arm64_native_executable_rel() {
+        Absent => none
+        Present { value: rel } =>
+          Present {
+            value: codex_bundled_executable_at_current_link(
+              release_parent: placement.runtime_release_root,
+              native_executable_rel: rel,
+            )
+          }
+      }
   }
 }

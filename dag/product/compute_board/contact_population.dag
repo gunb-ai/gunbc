@@ -1,0 +1,261 @@
+module product.compute_board.contact_population
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+import std.nat { Nat }
+
+data contact_population_note: String = "FOUR POPULATIONS THAT ARE NOT ONE POPULATION, and the count was already being compared across them. An earlier revision asserted bank_population_total == roster_pin_count and called it two independent authorities agreeing — 92 general-purpose contacts plus 4 configuration contacts against Project IceStorm's 96 placeable positions. Both sides really are 96 and the comparison really did execute, which is what makes it the dangerous kind of evidence: nothing anywhere stated that those two totals count the same THINGS. Lattice's current product table describes the same device as 98 total I/O plus 2 dedicated I/O, which is 100 by a third inclusion rule, so at least one of the three is counting something the others are not. A bare Int == Int cannot notice any of that; it is the cross-family comparison this repository already closed for content hashes, reappearing wherever two numbers happen to share a type."
+
+// A COUNT IS ONLY MEANINGFUL WITH ITS INCLUSION RULE. These are separate kinds rather than one
+// labelled number because the whole failure mode is that two counts compared cleanly while
+// counting different sets — so the kind has to be part of what a comparison sees, not a field a
+// reader is trusted to check.
+type ContactPopulationKind
+  = AllPackageLeads
+  | VendorGeneralPurposeIo
+  | VendorGeneralPurposeSingleEndedIo
+  | VendorDifferentialInputsSubset
+  | VendorDedicatedIo
+  | VendorTotalIo
+  | ConfigurationContacts
+  | PlaceableLogicPins
+  | SupplyContacts
+  | ReturnContacts
+  | NoConnectContacts
+
+fn population_kind_name(k: ContactPopulationKind) -> NonEmptyStr {
+  match k {
+    AllPackageLeads => "all package leads"
+    VendorGeneralPurposeIo => "vendor general-purpose I/O"
+    VendorGeneralPurposeSingleEndedIo => "vendor total general-purpose single-ended I/O"
+    VendorDifferentialInputsSubset => "vendor differential inputs (a recount of single-ended contacts)"
+    VendorDedicatedIo => "vendor dedicated I/O"
+    VendorTotalIo => "vendor total I/O"
+    ConfigurationContacts => "configuration contacts"
+    PlaceableLogicPins => "placeable logic pins"
+    SupplyContacts => "supply contacts"
+    ReturnContacts => "return contacts"
+    NoConnectContacts => "no-connect contacts"
+  }
+}
+
+// IDENTITY IS NOT SPELLING. An earlier revision decided whether two kinds were the same by
+// round-tripping both through population_kind_name and comparing the prose — so editing a display
+// string, which is documentation, silently redefined the equality relation that compare_populations
+// uses to decide whether two counts may be compared at all. Two kinds could be made equal by a
+// copy-edit. The tag below is a structural discriminant with no other job: it is not displayed,
+// not parsed and not ordered, so nothing else can be tempted to read meaning into it, and the
+// exhaustive match means a new kind cannot be added without giving it one.
+//
+// The residual risk moves from "a rename changes equality" to "two kinds share a tag", which is
+// the better failure because it is decidable by execution: the witness asserts the tags are
+// pairwise distinct across every kind, so a duplicate reds instead of quietly fusing two
+// populations.
+fn population_kind_tag(k: ContactPopulationKind) -> Int {
+  match k {
+    AllPackageLeads => 1
+    VendorGeneralPurposeIo => 2
+    VendorGeneralPurposeSingleEndedIo => 3
+    VendorDifferentialInputsSubset => 4
+    VendorDedicatedIo => 5
+    VendorTotalIo => 6
+    ConfigurationContacts => 7
+    PlaceableLogicPins => 8
+    SupplyContacts => 9
+    ReturnContacts => 10
+    NoConnectContacts => 11
+  }
+}
+
+fn population_kinds_equal(a: ContactPopulationKind, b: ContactPopulationKind) -> Bool {
+  population_kind_tag(k: a) == population_kind_tag(k: b)
+}
+
+// WHAT THE DISTINCTNESS WITNESS DOES AND DOES NOT COVER. The tag match is exhaustive, so the
+// compiler refuses a new member that has not been given a discriminant. The ROSTER below is not
+// enforced that way: it is hand-maintained, and a seventh member added without joining it would
+// leave the witness walking six and passing while saying nothing about the seventh. So the
+// guarantee is "every member the roster names has a distinct tag", not "every member has one" -
+// and the second is what a reader would assume if this were not written down. Adding a contiguity
+// check would not close it either, since an unlisted member takes the next tag and leaves the
+// listed range intact. The class sits at mechanically preventable for tag ASSIGNMENT and at
+// nothing at all for roster membership; closing it needs the language to enumerate a coproduct's
+// members, which is not reachable from here today.
+data all_contact_population_kinds: List<ContactPopulationKind> = [
+  AllPackageLeads,
+  VendorGeneralPurposeIo,
+  VendorGeneralPurposeSingleEndedIo,
+  VendorDifferentialInputsSubset,
+  VendorDedicatedIo,
+  VendorTotalIo,
+  ConfigurationContacts,
+  PlaceableLogicPins,
+  SupplyContacts,
+  ReturnContacts,
+  NoConnectContacts,
+]
+
+type ContactPopulation {
+  kind: ContactPopulationKind
+  count: Nat
+  authority: NonEmptyStr
+}
+
+// COMPARISON REFUSES ACROSS KINDS RATHER THAN ANSWERING FALSE. A false would say the populations
+// disagree, which is a claim about the device; the truth is that the question has no answer until
+// someone states the projection between the two inclusion rules. Those are different states with
+// different remedies, so they are different arms.
+type PopulationComparison
+  = PopulationsAgree { kind: ContactPopulationKind, count: Nat }
+  | PopulationsDisagree { kind: ContactPopulationKind, left: Nat, right: Nat }
+  | PopulationsNotComparable { left: ContactPopulationKind, right: ContactPopulationKind }
+
+fn compare_populations(a: ContactPopulation, b: ContactPopulation) -> PopulationComparison {
+  if !population_kinds_equal(a: a.kind, b: b.kind) {
+    PopulationsNotComparable { left: a.kind, right: b.kind }
+  } else {
+    if a.count == b.count {
+      PopulationsAgree { kind: a.kind, count: a.count }
+    } else {
+      PopulationsDisagree { kind: a.kind, left: a.count, right: b.count }
+    }
+  }
+}
+
+// A PROJECTION IS A DECLARED CLAIM, NOT AN ARITHMETIC ACCIDENT. To compare the vendor's bank table
+// with the toolchain's roster, someone must assert which vendor categories the toolchain's
+// placeable set is believed to comprise. That assertion can be wrong, and being wrong is useful:
+// it is a statement about the world that a later document can contradict. The previous form of this
+// join asserted nothing and so could not be contradicted by anything.
+type PopulationProjection {
+  target: ContactPopulationKind
+  from_kinds: List<ContactPopulationKind>
+  rationale: NonEmptyStr
+}
+
+fn project_population(p: PopulationProjection, parts: List<ContactPopulation>) -> ContactPopulation? {
+  let all_admitted = fold(parts, init: true, f: fn(acc, part) {
+    acc && fold(p.from_kinds, init: false, f: fn(found, k) { found || population_kinds_equal(a: k, b: part.kind) })
+  })
+  if !all_admitted {
+    none
+  } else {
+    Present {
+      value: ContactPopulation {
+        kind: p.target,
+        count: fold(parts, init: 0, f: fn(acc, part) { acc + part.count }),
+        authority: p.rationale,
+      }
+    }
+  }
+}
+
+// THE PROJECTION THIS DEVICE'S JOIN RELIES ON, stated so it can be refuted. Project IceStorm's
+// roster is believed to enumerate exactly the positions its place-and-route tool will accept for
+// user logic, which is asserted here to be the vendor's general-purpose bank contacts together
+// with the configuration contacts — the latter because a configuration pin is physically an I/O
+// that a design may spend, and IceStorm does not exclude them.
+data placeable_from_vendor_categories: PopulationProjection = PopulationProjection {
+  target: PlaceableLogicPins,
+  from_kinds: [VendorGeneralPurposeIo, ConfigurationContacts],
+  rationale: "Project IceStorm's placeable roster is believed to comprise the vendor's general-purpose bank contacts plus the configuration contacts, which are physically I/O a design may spend",
+}
+
+// AND THE DISCREPANCY THAT REMAINS, decomposed rather than narrated. An earlier revision carried
+// this as two prose String fields, which is the anemic leaf this repository refuses: the
+// conflicting count, the authority that states it, and the fact that our citation is superseded
+// are three separate facts, and a sentence holding all three can be read by a human and by
+// nothing else. A consumer cannot ask "which population disagrees" of a paragraph.
+type CitationCurrency
+  = CitedRevisionCurrent { revision: NonEmptyStr }
+  | CitedRevisionSuperseded { cited: NonEmptyStr, current: NonEmptyStr }
+
+// The populations that reconcile and the one that does not are the same carrier, so the gap is a
+// statement in the same vocabulary as the agreement it qualifies — not a footnote beside it.
+type PopulationGap {
+  subject: NonEmptyStr
+  reconciled: List<ContactPopulation>
+  unreconciled: List<ContactPopulation>
+  citation_currency: CitationCurrency
+}
+
+fn gap_is_open(g: PopulationGap) -> Bool {
+  fold(g.unreconciled, init: false, f: fn(acc, _p) { true })
+}
+
+fn citation_is_current(c: CitationCurrency) -> Bool {
+  match c {
+    CitedRevisionCurrent { revision: _ } => true
+    CitedRevisionSuperseded { cited: _, current: _ } => false
+  }
+}
+
+// THE PROJECTION THAT CLOSED THE OLD GAP. The product table's 98 "total I/O" and its 2
+// "dedicated I/O" sat unreconciled here against the data sheet's 96 for one reason: the repository
+// was citing a 2017 revision that did not carry the row which relates them. The current revision
+// does. Its Pin Information Summary states Total General Purpose Single Ended I/O = 96 and Total
+// Dedicated Inputs = 2 for this column, and 96 + 2 is the product table's 98 exactly. So the
+// third inclusion rule was never a contradiction; it was a sum across two rows this repository had
+// not read, and the remedy was to go and read the current document rather than to model harder.
+data vendor_total_io_from_datasheet_rows: PopulationProjection = PopulationProjection {
+  target: VendorTotalIo,
+  from_kinds: [VendorGeneralPurposeSingleEndedIo, VendorDedicatedIo],
+  rationale: "the product table's total I/O is the data sheet's Total General Purpose Single Ended I/O plus its Total Dedicated Inputs; the former already includes the four configuration contacts",
+}
+
+// AND THE GAP THAT REPLACED IT, which is smaller, sharper and not ours. Summing the Pin
+// Information Summary's own partition rows for this column — general-purpose single-ended,
+// dedicated inputs, VCCIO, VCC, VCC_SPI, VPP_2V5, VPP_FAST, VCCPLL, GND and NC — gives 143
+// against the same table's Total Count of Bonded Pins of 144. One contact of the package is not
+// accounted for by any class the table names.
+//
+// It is recorded as unreconciled rather than adjusted in either direction, because both
+// adjustments would be fabrications: raising a class by one invents a contact in a class the
+// document did not put it in, and lowering the declared total contradicts a package that
+// physically has 144 leads. The VQ100 column of the same table cross-foots exactly at 100, which
+// is what makes this a fact about the document rather than about the arithmetic.
+data ice40_hx1k_tq144_io_count_gap: PopulationGap = PopulationGap {
+  subject: "iCE40HX1K in TQ144",
+  reconciled: [
+    ContactPopulation {
+      kind: VendorGeneralPurposeIo,
+      count: 92,
+      authority: "iCE40 LP/HX Family Data Sheet FPGA-DS-02029-4.3 Pin Information Summary, per-bank rows",
+    },
+    ContactPopulation {
+      kind: ConfigurationContacts,
+      count: 4,
+      authority: "iCE40 LP/HX Family Data Sheet FPGA-DS-02029-4.3 Pin Information Summary, Configuration row",
+    },
+    ContactPopulation {
+      kind: VendorGeneralPurposeSingleEndedIo,
+      count: 96,
+      authority: "iCE40 LP/HX Family Data Sheet FPGA-DS-02029-4.3 Pin Information Summary, Total General Purpose Single Ended I/O row",
+    },
+    ContactPopulation {
+      kind: VendorDedicatedIo,
+      count: 2,
+      authority: "iCE40 LP/HX Family Data Sheet FPGA-DS-02029-4.3 Pin Information Summary, Total Dedicated Inputs row",
+    },
+    ContactPopulation {
+      kind: VendorTotalIo,
+      count: 98,
+      authority: "Lattice iCE40 LP/HX product table",
+    },
+    ContactPopulation {
+      kind: PlaceableLogicPins,
+      count: 96,
+      authority: "Project IceStorm package pin roster",
+    },
+  ],
+  unreconciled: [
+    ContactPopulation {
+      kind: AllPackageLeads,
+      count: 144,
+      authority: "iCE40 LP/HX Family Data Sheet FPGA-DS-02029-4.3 Pin Information Summary, Total Count of Bonded Pins row",
+    },
+  ],
+  citation_currency: CitedRevisionCurrent {
+    revision: "iCE40 LP/HX Family Data Sheet FPGA-DS-02029-4.3, February 2025",
+  },
+}

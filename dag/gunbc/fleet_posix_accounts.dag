@@ -154,6 +154,25 @@ fn fleet_posix_operator_sudo_grants() -> List<PosixSudoGrant> {
   ]
 }
 
+// Structural guard: operator roster must stay hostnamectl-only until operator rules on
+// set-property elevation — not whole-binary install/systemctl (root-equivalent).
+fn fleet_posix_operator_sudo_grant_is_hostnamectl_only() -> Bool {
+  match fleet_posix_operator_sudo_grants().first() {
+    Present { value: g } => g.command_path == fleet_hostnamectl_command_path
+    Absent => false
+  }
+}
+
+// OPERATOR HOLD (2026-08-13, parent eager-koi-458): widening fleet_posix_operator_sudo_grants
+// with whole-binary NOPASSWD /usr/bin/install or /usr/bin/systemctl is root-equivalent
+// (sudo install can mint setuid root shells). NOT enrolled. MemoryMax collapsed to
+// deploy-time host_axis_caps (operator ruling 2026-08-13) — no set-property elevation
+// path remains for converge on the operator account.
+// Precedent: fleet_posix_ci_runner_sudo_grants already carries both binaries for ghrunner —
+// that is a finding, not automatic justification for the operator account.
+// Receipt publication: gunbc.host_layout fleet_converge_receipt_atomic_publish_note.
+data fleet_converge_operator_privilege_hold_note: String = "b1 moved gunbc-roadmap-fleet-converge.service to User=briansrls. Whole-binary NOPASSWD install/systemctl on the operator roster is held — root-equivalent. MemoryMax is deploy-time only (gunbc.host_axis_caps); converge does not assert MemoryMax via set-property."
+
 data fleet_apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
 
 data fleet_visudo_binary_path: NonEmptyStr = "/usr/sbin/visudo"

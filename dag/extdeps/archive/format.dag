@@ -1,0 +1,82 @@
+module extdeps.archive.format
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/tar.html"
+  }
+}
+
+data gzip_rfc_1952_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc1952"
+  }
+}
+
+data zstd_rfc_8878_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc8878"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.archive.format",
+      decl_name: "ArchiveFormat",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [gzip_rfc_1952_authority, zstd_rfc_8878_authority]
+}
+
+data archive_format_decomposition_note: String = "ArchiveFormat is container x compression codec (DESIGN section 2 deep decomposition). A .tar.zst distribution is PosixPaxUstarContainer with Zstd codec — not one opaque TarZst enum member or a literal .tar.zst string. .tar.gz and .tgz are the same axes with different distribution suffix conventions."
+
+type PosixPaxUstarContainer {}
+
+data posix_pax_ustar_container: PosixPaxUstarContainer = PosixPaxUstarContainer {}
+
+type ArchiveCompressionCodec = Gzip | Zstd
+
+type ArchiveFormat {
+  container: PosixPaxUstarContainer
+  codec: ArchiveCompressionCodec
+}
+
+type ArchiveDistributionSuffixStyle = TarDotCodec | TgzShort
+
+data archive_format_tar_zstd: ArchiveFormat = ArchiveFormat {
+  container: posix_pax_ustar_container,
+  codec: Zstd,
+}
+
+data archive_format_tar_gzip: ArchiveFormat = ArchiveFormat {
+  container: posix_pax_ustar_container,
+  codec: Gzip,
+}
+
+fn archive_format_distribution_suffix(
+  format: ArchiveFormat,
+  style: ArchiveDistributionSuffixStyle,
+) -> String {
+  match format.codec {
+    Zstd => ".tar.zst"
+    Gzip =>
+      match style {
+        TarDotCodec => ".tar.gz"
+        TgzShort => ".tgz"
+      }
+  }
+}
+
+fn archive_format_eq(a: ArchiveFormat, b: ArchiveFormat) -> Bool {
+  a.container == b.container && a.codec == b.codec
+}

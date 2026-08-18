@@ -22,6 +22,7 @@ import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
   srv2_lab_dashboard_instance,
+  dashboard_instance_provider_executable,
 }
 import gunbc.provider_account { codex_roadmap_account_selection }
 import gunbc.provider_standing {
@@ -95,11 +96,13 @@ import gunbc.dispatch_selection {
   fixture_inventory_codex_and_cursor_available,
   fixture_inventory_codex_then_claude,
   fixture_codex_offer_with_standing,
-  codex_offer_for_instance,
   codex_offer_for_instance_with_standing,
   dispatch_selection_shape_mismatch_reason,
   dispatch_selection_standing_ineligible_reason,
   dispatch_selection_automatic_native_bucket_join_undetermined_refusal,
+  dispatch_codex_process_fingerprint_unobserved_selection_refusal,
+  fixture_codex_process_fingerprint_standing,
+  CodexProcessFingerprintUnobserved,
   ClaudeStateRootRef,
   dispatch_claude_default_workflow_mode,
   Unsized,
@@ -108,47 +111,52 @@ import gunbc.dispatch_selection {
 fn fixture_multibucket_codex_standing_inventory(
   instance: HostDashboardInstance,
 ) -> ProviderInventory {
-  ProviderInventory {
-    offers: [
-      fixture_codex_offer_with_standing(
-        instance: instance,
-        standing: provider_standing_from_fixture_bundle(
-          provider: ProviderInstance {
-            kind: CodexCliProvider,
-            host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
-            executable: "codex" as NonEmptyStr,
-            observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
-            state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
-            credential_storage_method: ProviderInstanceFieldUnobserved {
-              reason: "fixture" as NonEmptyStr,
-            },
-            service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
-          },
-          bundle: ProviderStandingBundle {
-            installation: InstallationReady,
-            authentication: AuthenticationAuthenticated,
-            entitlement: EntitlementObservedAvailable,
-            limits: [
-              LimitExhausted {
-                subject: ProviderNativeLimitBucket {
-                  credential: LimitCredentialUnspecified,
-                  native_key: codex_default_rate_limit_id,
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent => ProviderInventory { offers: [] }
+    Present { value: executable } =>
+      ProviderInventory {
+        offers: [
+          fixture_codex_offer_with_standing(
+            instance: instance,
+            executable: executable,
+            standing: provider_standing_from_fixture_bundle(
+              provider: ProviderInstance {
+                kind: CodexCliProvider,
+                host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+                executable: "codex" as NonEmptyStr,
+                observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+                state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+                credential_storage_method: ProviderInstanceFieldUnobserved {
+                  reason: "fixture" as NonEmptyStr,
                 },
-                native_token: codex_default_rate_limit_id,
+                service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
               },
-              LimitObservedAvailable {
-                subject: ProviderNativeLimitBucket {
-                  credential: LimitCredentialUnspecified,
-                  native_key: codex_bengalfox_rate_limit_id,
-                },
+              bundle: ProviderStandingBundle {
+                installation: InstallationReady,
+                authentication: AuthenticationAuthenticated,
+                entitlement: EntitlementObservedAvailable,
+                limits: [
+                  LimitExhausted {
+                    subject: ProviderNativeLimitBucket {
+                      credential: LimitCredentialUnspecified,
+                      native_key: codex_default_rate_limit_id,
+                    },
+                    native_token: codex_default_rate_limit_id,
+                  },
+                  LimitObservedAvailable {
+                    subject: ProviderNativeLimitBucket {
+                      credential: LimitCredentialUnspecified,
+                      native_key: codex_bengalfox_rate_limit_id,
+                    },
+                  },
+                ],
+                turn: TurnNotStarted,
+                tool_environment: ToolEnvironmentReady,
               },
-            ],
-            turn: TurnNotStarted,
-            tool_environment: ToolEnvironmentReady,
-          },
-        ),
-      ),
-    ],
+            ),
+          ),
+        ],
+      }
   }
 }
 
@@ -209,18 +217,52 @@ test fn witness_deep_profile_refuses_without_realization() -> Bool {
   }
 }
 
-test fn witness_srv1_inventory_includes_codex() -> Bool {
-  inventory_includes_provider_kind(
-    inventory: ProviderInventory {
-      offers: [
-        fixture_codex_offer_with_standing(
-          instance: srv1_live_dashboard_instance(),
-          standing: provider_standing_inventory_unobserved(),
-        ),
-      ],
-    },
-    kind: CodexCliProvider,
+test fn witness_production_codex_selection_refuses_unobserved_fingerprint() -> Bool {
+  let inventory = provider_inventory_for_instance(
+    instance: srv1_live_dashboard_instance(),
   )
+  let production_offer_is_unobserved = any(inventory.offers, offer =>
+    match offer {
+      OfferCodex { offer: o } =>
+        match o.process_fingerprint {
+          CodexProcessFingerprintUnobserved { reason: _ } => true
+          _ => false
+        }
+      _ => false
+    }
+  )
+  match resolve_dispatch_selection(
+    inventory: inventory,
+    request: default_provider_selection_request(),
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      production_offer_is_unobserved
+        && (
+          reason == dispatch_codex_process_fingerprint_unobserved_selection_refusal
+          || reason == dispatch_selection_standing_ineligible_reason
+        )
+    DispatchSelectionResolved { receipt: _ } => false
+  }
+}
+
+test fn witness_srv1_inventory_includes_codex() -> Bool {
+  match dashboard_instance_provider_executable(instance: srv1_live_dashboard_instance()) {
+    Absent => false
+    Present { value: executable } =>
+      inventory_includes_provider_kind(
+        inventory: ProviderInventory {
+          offers: [
+            fixture_codex_offer_with_standing(
+              instance: srv1_live_dashboard_instance(),
+              standing: provider_standing_inventory_unobserved(),
+              executable: executable,
+            ),
+          ],
+        },
+        kind: CodexCliProvider,
+      )
+  }
 }
 
 test fn witness_srv1_inventory_includes_claude() -> Bool {
@@ -263,43 +305,10 @@ test fn witness_production_inventory_excludes_claude() -> Bool {
 }
 
 test fn witness_srv2_inventory_includes_cursor() -> Bool {
-  let instance = srv2_lab_dashboard_instance()
   inventory_includes_provider_kind(
-    inventory: ProviderInventory {
-      offers: [
-        fixture_codex_offer_with_standing(
-          instance: instance,
-          standing: provider_standing_inventory_unobserved(),
-        ),
-        OfferCursor {
-          offer: CursorOffer {
-            instance: ProviderInstance {
-              kind: CursorCliProvider,
-              host: ProviderInstanceFieldUnobserved {
-                reason: "fixture cursor inventory row" as NonEmptyStr,
-              },
-              executable: "cursor-agent" as NonEmptyStr,
-              observed_version: ProviderInstanceFieldUnobserved {
-                reason: "fixture cursor inventory row" as NonEmptyStr,
-              },
-              state_directory: ProviderInstanceFieldUnobserved {
-                reason: "fixture cursor inventory row" as NonEmptyStr,
-              },
-              credential_storage_method: ProviderInstanceFieldUnobserved {
-                reason: "fixture cursor inventory row" as NonEmptyStr,
-              },
-              service_identity: ProviderInstanceFieldUnobserved {
-                reason: "fixture cursor inventory row" as NonEmptyStr,
-              },
-            },
-            credential: CursorLocalLoginRef,
-            standing: provider_standing_inventory_unobserved(),
-            default_model: cursor_model_auto,
-            process_fingerprint: dispatch_cursor_process_fingerprint,
-          },
-        },
-      ],
-    },
+    inventory: provider_inventory_for_instance(
+      instance: srv2_lab_dashboard_instance(),
+    ),
     kind: CursorCliProvider,
   )
 }
@@ -397,43 +406,49 @@ test fn witness_wrong_selection_shape_refuses() -> Bool {
 
 test fn witness_probe_bridge_ineligible_standing_refuses_selection() -> Bool {
   let instance = srv1_live_dashboard_instance()
-  let inventory = ProviderInventory {
-    offers: [
-      fixture_codex_offer_with_standing(
-        instance: instance,
-        standing: provider_standing_from_observed_bundle(
-          fact_id: selection_fixture_standing_fact_id,
-          provider: codex_offer_for_instance_with_standing(
-            instance: instance,
-            standing: provider_standing_inventory_unobserved(),
-          ).instance,
-          bundle: provider_standing_bundle_from_codex_dashboard_probes(
-            observation: CodexProviderDashboardProbeObservation {
-              state_root: CodexStateRootPresent,
-              runtime: ProviderDashboardExecProbeReported {
-                succeeded: true,
-                stdout: "codex-cli 0.145.0" as String,
-                stderr: "" as String,
-              },
-              auth: ProviderDashboardExecProbeReported {
-                succeeded: true,
-                stdout: "" as String,
-                stderr: "Logged in using ChatGPT" as String,
-              },
-            },
-          ),
-        ),
-      ),
-    ],
-  }
-  match resolve_dispatch_selection(
-    inventory: inventory,
-    request: default_provider_selection_request(),
-    node_sizing: Unsized,
-  ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
-      reason == dispatch_selection_standing_ineligible_reason
-    DispatchSelectionResolved { receipt: _ } => false
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent => false
+    Present { value: executable } =>
+      match resolve_dispatch_selection(
+        inventory: ProviderInventory {
+          offers: [
+            fixture_codex_offer_with_standing(
+              instance: instance,
+              standing: provider_standing_from_observed_bundle(
+                fact_id: selection_fixture_standing_fact_id,
+                provider: codex_offer_for_instance_with_standing(
+                  instance: instance,
+                  standing: provider_standing_inventory_unobserved(),
+                  executable: executable,
+                  process_fingerprint: fixture_codex_process_fingerprint_standing(),
+                ).instance,
+                bundle: provider_standing_bundle_from_codex_dashboard_probes(
+                  observation: CodexProviderDashboardProbeObservation {
+                    state_root: CodexStateRootPresent,
+                    runtime: ProviderDashboardExecProbeReported {
+                      succeeded: true,
+                      stdout: "codex-cli 0.145.0" as String,
+                      stderr: "" as String,
+                    },
+                    auth: ProviderDashboardExecProbeReported {
+                      succeeded: true,
+                      stdout: "" as String,
+                      stderr: "Logged in using ChatGPT" as String,
+                    },
+                  },
+                ),
+              ),
+              executable: executable,
+            ),
+          ],
+        },
+        request: default_provider_selection_request(),
+        node_sizing: Unsized,
+      ) {
+        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+          reason == dispatch_selection_standing_ineligible_reason
+        DispatchSelectionResolved { receipt: _ } => false
+      }
   }
 }
 
@@ -604,6 +619,7 @@ test fn dispatch_selection_keystone_holds() -> Bool {
   witness_automatic_codex_preserves_medium_effort()
     && witness_intricacy_does_not_change_automatic_effort()
     && witness_deep_profile_refuses_without_realization()
+    && witness_production_codex_selection_refuses_unobserved_fingerprint()
     && witness_srv1_inventory_includes_codex()
     && witness_srv1_inventory_includes_claude()
     && witness_production_inventory_excludes_claude()

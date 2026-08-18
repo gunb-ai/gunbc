@@ -102,13 +102,6 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
     }
   },
   WitnessEntryRoutingRow {
-    entry: "src/v2/test/claim/self_host/compiler_frontier_census_test.dag",
-    disposition: InterpretedRetained {
-      reason: BulkFlipPendingCensusIncomplete,
-      dissolution: unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
-    }
-  },
-  WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/witness_admission_test.dag",
     disposition: InterpretedRetained {
       reason: BulkFlipPendingCensusIncomplete,
@@ -155,13 +148,6 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
     disposition: InterpretedRetained {
       reason: HostFedCeiling,
       dissolution: unbound_dissolution(description: "native host-effect transport lane delivers typed host_effect_apply execution for this entry's sink class (deliberately uncoupled from bulk flip per ROADMAP 2a)")
-    }
-  },
-  WitnessEntryRoutingRow {
-    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
-    disposition: InterpretedRetained {
-      reason: BulkFlipPendingCensusIncomplete,
-      dissolution: unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {

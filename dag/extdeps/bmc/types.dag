@@ -19,7 +19,10 @@ import std.measure {
   percent_count,
 }
 import std.nat { Nat }
-import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr }
+import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, Secret, String, list_length }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import v2.std.algebra { filter, length, skip }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -124,11 +127,73 @@ type RedfishFanControlSurface
   = RedfishFanControlResourceAbsent
   | RedfishInitialDutyControlResource
 
-type BmcRedfishSurfaceObservation {
-  firmware: BmcFirmwareObservation
+// THE REDFISH SURFACE IS A FUNCTION OF THE IMAGE, NOT A FACT ABOUT A HOST.
+// Which thermal resources bmcweb serves, how many sensors the chassis
+// collection carries, and whether a fan-control resource exists are all
+// decided by the firmware build for a given board. Two hosts running the same
+// image therefore present the same surface — measured 2026-08-12, srv3 and
+// srv4 both on OpenBMC 3.22.00 returned a byte-identical Thermal key shape,
+// legacy Thermal 200, ThermalSubsystem 404, and a 9-member sensor collection.
+//
+// An earlier revision stored those three fields per host BESIDE the firmware
+// they are a function of. That is a dual representation (DESIGN section 3),
+// and it failed in the way dual representations fail: srv3 was flashed
+// 2.07.00 -> 3.22.00 on 2026-08-11, its hand-authored row went on claiming
+// ThermalSubsystemSensorCollection with 51 sensors, and two witnesses ASSERTED
+// those constants — so the corpus stayed green while describing a surface the
+// host no longer had. Nothing could have caught it, because there was no
+// second authority to disagree with.
+type BmcRedfishSurfaceShape {
   thermal_surface: RedfishThermalTelemetrySurface
-  chassis_sensor_collection_member_count: Nat
   fan_control_surface: RedfishFanControlSurface
+}
+
+// A cited (board firmware version -> surface shape) row. The catalog is the
+// single authority; a host contributes only its observed firmware version.
+type BmcRedfishSurfaceRow {
+  firmware: BmcFirmwareVersion
+  shape: BmcRedfishSurfaceShape
+}
+
+// Fail-closed: an image this repository has not catalogued yields a REFUSAL
+// carrying the version, never a fabricated or nearest-neighbour shape. A newly
+// flashed image is therefore loud at the point of derivation rather than
+// silently wrong at the point of use.
+type BmcRedfishSurfaceDerivation
+  = SurfaceShapeKnown { shape: BmcRedfishSurfaceShape }
+  | SurfaceShapeUncatalogued { firmware: BmcFirmwareVersion }
+  | SurfaceShapeAmbiguous { firmware: BmcFirmwareVersion, matches: Nat }
+
+fn bmc_redfish_surface_matches(
+  catalog: List<BmcRedfishSurfaceRow>,
+  firmware: BmcFirmwareVersion,
+) -> List<BmcRedfishSurfaceRow> {
+  filter(catalog, row => row.firmware == firmware)
+}
+
+fn bmc_redfish_surface_for(
+  catalog: List<BmcRedfishSurfaceRow>,
+  firmware: BmcFirmwareVersion,
+) -> BmcRedfishSurfaceDerivation {
+  let matches = bmc_redfish_surface_matches(catalog: catalog, firmware: firmware)
+  let count = list_length(matches)
+  if count == 0 {
+    SurfaceShapeUncatalogued { firmware: firmware }
+  } else if count == 1 {
+    SurfaceShapeKnown { shape: matches.first().shape }
+  } else {
+    SurfaceShapeAmbiguous { firmware: firmware, matches: count }
+  }
+}
+
+// The per-host projection. It takes the host's firmware OBSERVATION and the
+// catalog, and there is deliberately no arm by which a caller supplies the
+// shape: the only per-host input is the version.
+fn bmc_redfish_surface_of_host(
+  catalog: List<BmcRedfishSurfaceRow>,
+  observation: BmcFirmwareObservation,
+) -> BmcRedfishSurfaceDerivation {
+  bmc_redfish_surface_for(catalog: catalog, firmware: observation.firmware)
 }
 
 type BmcUpdateServiceObservation {

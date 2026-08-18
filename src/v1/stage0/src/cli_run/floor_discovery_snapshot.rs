@@ -1,14 +1,31 @@
 //! Floor discovery snapshot materialization (R0).
 //!
-//! ## Consumer census (coordinated scoped floor worker)
+//! The snapshot carries ONE thing across the coordinator boundary: the witness ROSTER, plus the
+//! request identity and payload digests that make it verifiable. It used to carry a second thing —
+//! a whole `ModuleGraphFactsSnapshot` — so that a coordinated scoped child's
+//! `build_module_graph_facts_live` call would hit a warm cache instead of re-acquiring the corpus.
 //!
-//! | Consumer site | What it reads from the discovery walk | Closed projection |
-//! |---|---|---|
-//! | Pre-plan `discover_floor_witness_roster([], [])` | Naming hygiene, orphan/helpers, producer roster, module-graph facts, inert-lens + construction-justification gates | Full snapshot payload + installed module-graph cache |
-//! | Discovery corpus with `scan_dirs=[]` + explicit entries | Skips roster walk; still calls `build_module_graph_facts_live` on selection/skip paths | Module-graph facts bytes in snapshot (cache install) |
-//! | Discovery corpus with non-empty `scan_dirs` | Full roster walk for that scan shape | Not covered by pre-plan snapshot (distinct request identity) |
+//! That consumer is deleted. A scoped child receives its `entries` already frozen by the ordinary
+//! worker, so any roster walk it performed could only re-derive a selection its parent had already
+//! made; `schedules_discovery` in `claim_executor` now excludes scoped children by construction.
+//! With the walk gone the child never asks for the facts, and a payload nobody reads is not an
+//! optimization — it is serialization, a digest, a file write, a parse, and a whole-object
+//! reconstruction performed once per child for no answer.
 //!
-//! Coordinator before scoped spawn: terminal receipt + request identity digest + payload digest.
+//! Deleted with it: `ModuleGraphFactsSnapshot`, `facts_to_snapshot`, `snapshot_to_facts`,
+//! `module_graph_facts_digest`, `install_module_graph_facts_cache`,
+//! `load_floor_discovery_snapshot_coordinated`, `FloorDiscoveryConsumerRole::CoordinatedConsumer`,
+//! the `GUNBC_FLOOR_DISCOVERY_CONSUMER` env channel, and the installed-snapshot precondition that
+//! guarded the child's corpus entry.
+//!
+//! WHAT THIS IS NOT: a claim that the child got cheaper by the size of the payload. The child no
+//! longer performs the roster walk at all, which is the larger deletion; the transport disappeared
+//! because its only consumer did, not because it was independently wasteful. A wall-clock claim
+//! needs a same-subject, same-runner floor comparison and is not made here.
+//!
+//! The producer still builds module-graph facts for its OWN use — `refuse_on_module_graph_read_refusals`
+//! and `apply_effect_reach_derived_reads_live_tree` both read them while deciding the roster. That
+//! is a local read, not a transport.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -20,28 +37,28 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::std_content_hash::{content_hash_atom, content_hash_combine_structural};
+use crate::std_content_hash::{
+    content_hash_atom, content_hash_combine_structural, fnv1a64_structural_hex_digest,
+};
 use crate::v1_rt;
 
 pub const FLOOR_ATTEMPTS_DIR: &str = "target/floor-attempts";
 pub const FLOOR_DISCOVERY_SNAPSHOT_FILE: &str = "floor-discovery-snapshot.json";
 pub const FLOOR_DISCOVERY_TERMINAL_FILE: &str = "floor-discovery-snapshot.terminal";
 pub const FLOOR_DISCOVERY_TRACE_FILE: &str = "floor-discovery-trace.tsv";
-pub const FLOOR_DISCOVERY_CONSUMER_ENV: &str = "GUNBC_FLOOR_DISCOVERY_CONSUMER";
 
-static COORDINATED_DISCOVERY_COMPUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static IN_PROCESS_ROSTER_BY_REQUEST: OnceLock<Mutex<HashMap<String, Vec<super::DiscoveryRow>>>> =
     OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FloorDiscoveryConsumerRole {
     Producer,
-    CoordinatedConsumer,
     Standalone,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FloorDiscoveryRequest {
+    pub tested_commit: String,
     pub tested_tree: String,
     pub source_roots: Vec<String>,
     pub scan_dirs: Vec<String>,
@@ -62,61 +79,29 @@ pub struct DiscoveryRowSnapshot {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModuleGraphFactsSnapshot {
-    pub edges: Vec<super::ImportResolutionFactRaw>,
-    pub nodes: Vec<super::ModuleDeclarationFactRaw>,
-    pub adjacency: BTreeMap<String, Vec<String>>,
-    pub selection_adjacency: BTreeMap<String, Vec<String>>,
-    pub reference_unaccounted: Vec<String>,
-    pub path_to_module: BTreeMap<String, String>,
-    pub observed_paths: Vec<String>,
-    pub read_refusals: Vec<(String, String)>,
-    pub declared_paths: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FloorDiscoverySnapshot {
     pub request: FloorDiscoveryRequest,
     pub request_identity_digest: String,
     pub roster: Vec<DiscoveryRowSnapshot>,
     pub roster_digest: String,
-    pub naming_hygiene_refusal: Option<String>,
-    pub orphan_helper_refusal: Option<String>,
-    pub module_graph_facts: ModuleGraphFactsSnapshot,
-    pub module_graph_facts_digest: String,
     pub payload_digest: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FloorDiscoveryTerminalReceipt {
+    pub tested_commit: String,
     pub tested_tree: String,
     pub walk_attempt_id: String,
     pub request_identity_digest: String,
     pub payload_digest: String,
     pub outcome: String,
 }
-
-pub fn coordinated_discovery_compute_count() -> usize {
-    COORDINATED_DISCOVERY_COMPUTE_COUNT.load(Ordering::SeqCst)
-}
-
 #[cfg(test)]
 pub fn reset_floor_discovery_snapshot_for_test() {
-    COORDINATED_DISCOVERY_COMPUTE_COUNT.store(0, Ordering::SeqCst);
     if let Some(lock) = IN_PROCESS_ROSTER_BY_REQUEST.get() {
         lock.lock().unwrap().clear();
     }
 }
-
-pub fn floor_discovery_consumer_role_from_env() -> FloorDiscoveryConsumerRole {
-    match std::env::var(FLOOR_DISCOVERY_CONSUMER_ENV).as_deref() {
-        Ok("producer") => FloorDiscoveryConsumerRole::Producer,
-        Ok("coordinated_consumer") => FloorDiscoveryConsumerRole::CoordinatedConsumer,
-        Ok("standalone") => FloorDiscoveryConsumerRole::Standalone,
-        _ => FloorDiscoveryConsumerRole::Standalone,
-    }
-}
-
 pub fn build_floor_discovery_request(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -125,8 +110,10 @@ pub fn build_floor_discovery_request(
     execution_mode: &str,
     execution_authority_source_roots: &[String],
 ) -> Result<FloorDiscoveryRequest, String> {
+    let (tested_commit, tested_tree) = floor_tested_commit_and_tree()?;
     Ok(FloorDiscoveryRequest {
-        tested_tree: floor_tested_tree()?,
+        tested_commit,
+        tested_tree,
         source_roots: source_roots.to_vec(),
         scan_dirs: scan_dirs.to_vec(),
         exclude_substrings: exclude_substrings.to_vec(),
@@ -138,10 +125,14 @@ pub fn build_floor_discovery_request(
     })
 }
 
-pub fn request_identity_digest(request: &FloorDiscoveryRequest) -> String {
-    let seed = content_hash_atom("floor-discovery-request-identity-v1".to_string());
-    let mut acc =
-        content_hash_combine_structural(seed, content_hash_atom(request.tested_tree.clone()));
+pub fn request_identity_digest(request: &FloorDiscoveryRequest) -> Result<String, String> {
+    let seed = content_hash_atom("floor-discovery-request-identity-v2".to_string());
+    let with_commit =
+        content_hash_combine_structural(seed, content_hash_atom(request.tested_commit.clone()));
+    let mut acc = content_hash_combine_structural(
+        with_commit,
+        content_hash_atom(request.tested_tree.clone()),
+    );
     for root in &request.source_roots {
         acc = content_hash_combine_structural(acc, content_hash_atom(root.clone()));
     }
@@ -158,38 +149,149 @@ pub fn request_identity_digest(request: &FloorDiscoveryRequest) -> String {
     for root in &request.execution_authority_source_roots {
         acc = content_hash_combine_structural(acc, content_hash_atom(root.clone()));
     }
-    acc = content_hash_combine_structural(
-        acc,
-        content_hash_atom(request.naming_authority_digest.clone()),
-    );
-    acc = content_hash_combine_structural(acc, content_hash_atom(request.tool_identity.clone()));
-    acc.digest.clone()
+    let naming_authority = fnv1a64_structural_hex_digest(request.naming_authority_digest.clone())
+        .ok_or_else(|| {
+            format!(
+                "floor naming authority identity `{}` is not a modeled lower-hex Fnv1a64Structural digest",
+                request.naming_authority_digest
+            )
+        })?;
+    acc = content_hash_combine_structural(acc, naming_authority);
+    let tool_identity =
+        fnv1a64_structural_hex_digest(request.tool_identity.clone()).ok_or_else(|| {
+            format!(
+                "floor tool identity `{}` is not a modeled lower-hex Fnv1a64Structural digest",
+                request.tool_identity
+            )
+        })?;
+    acc = content_hash_combine_structural(acc, tool_identity);
+    Ok(acc.digest.clone())
 }
 
-fn floor_tested_tree() -> Result<String, String> {
-    if let Ok(sha) = std::env::var("GITHUB_SHA") {
-        let lower = sha.to_ascii_lowercase();
-        if lower.len() == 40 && lower.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Ok(lower);
-        }
-    }
+fn git_rev_parse(spec: &str, coordinate: &str) -> Result<String, String> {
     let output = std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
+        .args(["rev-parse", "--verify", spec])
         .output()
-        .map_err(|e| format!("floor tested_tree git rev-parse: {e}"))?;
+        .map_err(|e| format!("floor {coordinate} git rev-parse `{spec}`: {e}"))?;
     if !output.status.success() {
         return Err(format!(
-            "floor tested_tree git rev-parse failed: {}",
+            "floor {coordinate} git rev-parse `{spec}` failed: {}",
             String::from_utf8_lossy(&output.stderr)
         ));
     }
-    let sha = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .to_ascii_lowercase();
-    if sha.len() != 40 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(format!("floor tested_tree invalid git HEAD `{sha}`"));
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn floor_git_object_format() -> Result<String, String> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--show-object-format=storage"])
+        .output()
+        .map_err(|e| format!("floor git object format observation: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "floor git object format observation failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
-    Ok(sha)
+    let format = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    match format.as_str() {
+        "sha1" | "sha256" => Ok(format),
+        _ => Err(format!(
+            "floor git object format `{format}` is unsupported; expected sha1 or sha256"
+        )),
+    }
+}
+
+fn validate_git_object_hex(value: &str, format: &str, coordinate: &str) -> Result<(), String> {
+    let expected_len = match format {
+        "sha1" => 40,
+        "sha256" => 64,
+        _ => {
+            return Err(format!(
+                "floor {coordinate} cannot validate unsupported git object format `{format}`"
+            ));
+        }
+    };
+    if value.len() != expected_len
+        || value != value.to_ascii_lowercase()
+        || !value.chars().all(|c| c.is_ascii_hexdigit())
+    {
+        return Err(format!(
+            "floor {coordinate} `{value}` is not a canonical lowercase {format} object id"
+        ));
+    }
+    Ok(())
+}
+
+pub fn floor_tested_commit_and_tree() -> Result<(String, String), String> {
+    let object_format = floor_git_object_format()?;
+    let selected_commit = match std::env::var("GITHUB_SHA") {
+        Ok(sha) => {
+            validate_git_object_hex(&sha, &object_format, "tested_commit GITHUB_SHA")?;
+            sha
+        }
+        Err(std::env::VarError::NotPresent) => git_rev_parse("HEAD^{commit}", "tested_commit")?,
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err("floor tested_commit GITHUB_SHA is not Unicode".to_string());
+        }
+    };
+    let canonical_commit =
+        git_rev_parse(&format!("{selected_commit}^{{commit}}"), "tested_commit")?;
+    validate_git_object_hex(&canonical_commit, &object_format, "tested_commit")?;
+    if canonical_commit != selected_commit {
+        return Err(format!(
+            "floor tested_commit mismatch: selected `{selected_commit}`, canonical `{canonical_commit}`"
+        ));
+    }
+    let tree_hex = git_rev_parse(&format!("{canonical_commit}^{{tree}}"), "tested_tree")?;
+    validate_git_object_hex(&tree_hex, &object_format, "tested_tree")?;
+    Ok((canonical_commit, format!("{object_format}:{tree_hex}")))
+}
+
+fn verify_floor_worktree_matches_subject(request: &FloorDiscoveryRequest) -> Result<(), String> {
+    let diff = std::process::Command::new("git")
+        .args([
+            "diff",
+            "--quiet",
+            "--no-ext-diff",
+            &request.tested_commit,
+            "--",
+        ])
+        .status()
+        .map_err(|e| format!("floor exact-subject tracked-worktree observation: {e}"))?;
+    match diff.code() {
+        Some(0) => {}
+        Some(1) => {
+            return Err(format!(
+                "floor exact-subject refusal: tracked worktree bytes differ from tested commit {}",
+                request.tested_commit
+            ));
+        }
+        code => {
+            return Err(format!(
+                "floor exact-subject tracked-worktree observation failed with status {code:?}"
+            ));
+        }
+    }
+
+    let untracked = std::process::Command::new("git")
+        .args(["ls-files", "--others", "--exclude-standard"])
+        .output()
+        .map_err(|e| format!("floor exact-subject untracked-worktree observation: {e}"))?;
+    if !untracked.status.success() {
+        return Err(format!(
+            "floor exact-subject untracked-worktree observation failed: {}",
+            String::from_utf8_lossy(&untracked.stderr)
+        ));
+    }
+    let untracked_paths = String::from_utf8_lossy(&untracked.stdout);
+    if let Some(first) = untracked_paths.lines().next() {
+        return Err(format!(
+            "floor exact-subject refusal: untracked worktree path `{first}` is not named by tested tree {}",
+            request.tested_tree
+        ));
+    }
+    Ok(())
 }
 
 const NAMING_AUTHORITY_PATHS: &[&str] = &[
@@ -215,7 +317,7 @@ fn naming_authority_digest_hex() -> Result<String, String> {
     Ok(digest.digest.clone())
 }
 
-fn floor_tool_identity() -> Result<String, String> {
+pub fn floor_tool_identity() -> Result<String, String> {
     let exe =
         std::env::current_exe().map_err(|e| format!("floor tool_identity current_exe: {e}"))?;
     let bytes =
@@ -257,6 +359,73 @@ fn trace_epoch_millis() -> u128 {
         .map(|d| d.as_millis())
         .unwrap_or(0)
 }
+fn digest_rows(rows: &[DiscoveryRowSnapshot]) -> String {
+    let mut acc = content_hash_atom("floor-discovery-roster-v1".to_string());
+    for row in rows {
+        acc = content_hash_combine_structural(acc, content_hash_atom(row.entry.clone()));
+        acc = content_hash_combine_structural(acc, content_hash_atom(row.function.clone()));
+        acc = content_hash_combine_structural(
+            acc,
+            content_hash_atom(format!("live={}", row.reads_live_tree)),
+        );
+    }
+    acc.digest.clone()
+}
+#[derive(Serialize)]
+struct FloorDiscoveryPayloadDigestView<'a> {
+    request: &'a FloorDiscoveryRequest,
+    request_identity_digest: &'a str,
+    roster: &'a [DiscoveryRowSnapshot],
+    roster_digest: &'a str,
+}
+
+fn digest_payload(snapshot: &FloorDiscoverySnapshot) -> String {
+    let payload = FloorDiscoveryPayloadDigestView {
+        request: &snapshot.request,
+        request_identity_digest: &snapshot.request_identity_digest,
+        roster: &snapshot.roster,
+        roster_digest: &snapshot.roster_digest,
+    };
+    let json = serde_json::to_string(&payload)
+        .expect("floor discovery payload view contains only infallibly serializable fields");
+    content_hash_atom(json).digest.clone()
+}
+
+fn verify_snapshot_payload_integrity(snapshot: &FloorDiscoverySnapshot) -> Result<(), String> {
+    let observed = digest_payload(snapshot);
+    if observed != snapshot.payload_digest {
+        return Err(format!(
+            "floor discovery snapshot payload digest mismatch: recorded {}, observed {observed}",
+            snapshot.payload_digest
+        ));
+    }
+    Ok(())
+}
+
+fn row_to_snapshot(row: &super::DiscoveryRow) -> DiscoveryRowSnapshot {
+    DiscoveryRowSnapshot {
+        label: row.label.clone(),
+        entry: row.entry.clone(),
+        function: row.function.clone(),
+        reads_live_tree: row.reads_live_tree,
+    }
+}
+
+fn snapshot_to_row(row: &DiscoveryRowSnapshot) -> super::DiscoveryRow {
+    super::DiscoveryRow {
+        label: row.label.clone(),
+        entry: row.entry.clone(),
+        function: row.function.clone(),
+        reads_live_tree: row.reads_live_tree,
+    }
+}
+fn install_roster_cache(request_digest: &str, rows: &[super::DiscoveryRow]) {
+    IN_PROCESS_ROSTER_BY_REQUEST
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap()
+        .insert(request_digest.to_string(), rows.to_vec());
+}
 
 pub fn append_discovery_trace_row(
     walk_attempt_id: &str,
@@ -293,135 +462,9 @@ pub fn append_discovery_trace_row(
     let _ = file.write_all(row.as_bytes()).and_then(|()| file.flush());
 }
 
-fn facts_to_snapshot(facts: &super::ModuleGraphFactsLive) -> ModuleGraphFactsSnapshot {
-    ModuleGraphFactsSnapshot {
-        edges: facts.edges.clone(),
-        nodes: facts.nodes.clone(),
-        adjacency: facts
-            .adjacency
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect(),
-        selection_adjacency: facts
-            .selection_adjacency
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect(),
-        reference_unaccounted: facts.reference_unaccounted.iter().cloned().collect(),
-        path_to_module: facts
-            .path_to_module
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect(),
-        observed_paths: facts.observed_paths.iter().cloned().collect(),
-        read_refusals: facts.read_refusals.clone(),
-        declared_paths: facts.declared_paths.iter().cloned().collect(),
-    }
-}
-
-fn snapshot_to_facts(snapshot: &ModuleGraphFactsSnapshot) -> super::ModuleGraphFactsLive {
-    super::ModuleGraphFactsLive {
-        edges: snapshot.edges.clone(),
-        nodes: snapshot.nodes.clone(),
-        adjacency: snapshot
-            .adjacency
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect(),
-        selection_adjacency: snapshot
-            .selection_adjacency
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect(),
-        reference_unaccounted: snapshot.reference_unaccounted.iter().cloned().collect(),
-        path_to_module: snapshot
-            .path_to_module
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect(),
-        observed_paths: snapshot.observed_paths.iter().cloned().collect(),
-        read_refusals: snapshot.read_refusals.clone(),
-        declared_paths: snapshot.declared_paths.iter().cloned().collect(),
-    }
-}
-
-fn digest_rows(rows: &[DiscoveryRowSnapshot]) -> String {
-    let mut acc = content_hash_atom("floor-discovery-roster-v1".to_string());
-    for row in rows {
-        acc = content_hash_combine_structural(acc, content_hash_atom(row.entry.clone()));
-        acc = content_hash_combine_structural(acc, content_hash_atom(row.function.clone()));
-        acc = content_hash_combine_structural(
-            acc,
-            content_hash_atom(format!("live={}", row.reads_live_tree)),
-        );
-    }
-    acc.digest.clone()
-}
-
-fn digest_facts_snapshot(facts: &ModuleGraphFactsSnapshot) -> String {
-    let json = serde_json::to_string(facts).unwrap_or_default();
-    content_hash_atom(json).digest.clone()
-}
-
-fn digest_payload(snapshot: &FloorDiscoverySnapshot) -> String {
-    let json = serde_json::to_string(snapshot).unwrap_or_default();
-    content_hash_atom(json).digest.clone()
-}
-
-fn row_to_snapshot(row: &super::DiscoveryRow) -> DiscoveryRowSnapshot {
-    DiscoveryRowSnapshot {
-        label: row.label.clone(),
-        entry: row.entry.clone(),
-        function: row.function.clone(),
-        reads_live_tree: row.reads_live_tree,
-    }
-}
-
-fn snapshot_to_row(row: &DiscoveryRowSnapshot) -> super::DiscoveryRow {
-    super::DiscoveryRow {
-        label: row.label.clone(),
-        entry: row.entry.clone(),
-        function: row.function.clone(),
-        reads_live_tree: row.reads_live_tree,
-    }
-}
-
-pub fn install_module_graph_facts_cache(
-    source_roots: &[String],
-    facts: &super::ModuleGraphFactsLive,
-) {
-    super::install_module_graph_facts_cache_entry(source_roots, facts.clone());
-}
-
-fn install_roster_cache(request_digest: &str, rows: &[super::DiscoveryRow]) {
-    IN_PROCESS_ROSTER_BY_REQUEST
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-        .unwrap()
-        .insert(request_digest.to_string(), rows.to_vec());
-}
-
 pub fn produce_floor_discovery_snapshot(
     request: &FloorDiscoveryRequest,
 ) -> Result<FloorDiscoverySnapshot, String> {
-    COORDINATED_DISCOVERY_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
-    let naming_hygiene_refusal =
-        match super::floor_filename_hygiene_refusal_via_producer(&request.source_roots) {
-            Ok(()) => None,
-            Err(msg) => Some(msg),
-        };
-    if naming_hygiene_refusal.is_some() {
-        return Err(naming_hygiene_refusal.clone().unwrap());
-    }
-    let orphan_helper_refusal =
-        match super::test_module_hygiene_bridge::check_orphan_helpers_or_err(&request.source_roots)
-        {
-            Ok(()) => None,
-            Err(msg) => Some(msg),
-        };
-    if orphan_helper_refusal.is_some() {
-        return Err(orphan_helper_refusal.clone().unwrap());
-    }
     let mut rows = super::invoke_floor_discovery_producer(
         &request.source_roots,
         &request.scan_dirs,
@@ -431,46 +474,14 @@ pub fn produce_floor_discovery_snapshot(
     let facts = super::build_module_graph_facts_live_uncached(&request.source_roots);
     super::refuse_on_module_graph_read_refusals(&facts)?;
     super::apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
-    let inert = super::inert_lens_modules(&rows, &facts);
-    if !inert.is_empty() {
-        return Err(format!(
-            "inert-lens hygiene (DESIGN.md §6): {} lens module(s) under `v2.lens.*` are authored \
-             but unreached by any discovered floor witness — an inert lens is a lie. Wire each \
-             with a discovered fail-closed witness (a `*_test.dag` `test fn`/`test data`, or a \
-             scan-dir `unified_claim_*`) or delete it: {}",
-            inert.len(),
-            inert.join(", ")
-        ));
-    }
-    let (lens_module_to_path, lens_with_justification) = super::lens_justification_census(&facts)?;
-    let unjustified =
-        super::unjustified_lens_modules(&lens_module_to_path, &lens_with_justification);
-    if !unjustified.is_empty() {
-        return Err(format!(
-            "construction-justification (DESIGN.md §5/§6): {} lens module(s) under `v2.lens.*` do \
-             not record a `construction_justification` — before adding a lens you must justify why \
-             the bad-state class cannot be made unwritable by construction. Add a `data \
-             construction_justification: ConstructionJustification = …` decl (see \
-             v2.lens.common.construction_justification) classifying it as WallNow / \
-             WallAfterGrounding / RatchetForever: {}",
-            unjustified.len(),
-            unjustified.join(", ")
-        ));
-    }
     let roster: Vec<DiscoveryRowSnapshot> = rows.iter().map(row_to_snapshot).collect();
-    let facts_snapshot = facts_to_snapshot(&facts);
-    let request_identity_digest = request_identity_digest(request);
+    let request_identity_digest = request_identity_digest(request)?;
     let roster_digest = digest_rows(&roster);
-    let module_graph_facts_digest = digest_facts_snapshot(&facts_snapshot);
     let snapshot = FloorDiscoverySnapshot {
         request: request.clone(),
         request_identity_digest,
         roster,
         roster_digest,
-        naming_hygiene_refusal,
-        orphan_helper_refusal,
-        module_graph_facts: facts_snapshot,
-        module_graph_facts_digest,
         payload_digest: String::new(),
     };
     let payload_digest = digest_payload(&snapshot);
@@ -493,6 +504,7 @@ pub fn publish_floor_discovery_snapshot(
     fs::write(&json_path, json)
         .map_err(|e| format!("write snapshot {}: {e}", json_path.display()))?;
     let terminal = FloorDiscoveryTerminalReceipt {
+        tested_commit: snapshot.request.tested_commit.clone(),
         tested_tree: snapshot.request.tested_tree.clone(),
         walk_attempt_id: walk_attempt_id.to_string(),
         request_identity_digest: snapshot.request_identity_digest.clone(),
@@ -509,8 +521,10 @@ pub fn publish_floor_discovery_snapshot(
 
 pub fn verify_floor_discovery_terminal_for_coordinator(
     walk_attempt_id: &str,
-    expected_request_digest: &str,
+    expected_request: &FloorDiscoveryRequest,
 ) -> Result<String, String> {
+    verify_floor_worktree_matches_subject(expected_request)?;
+    let expected_request_digest = request_identity_digest(expected_request)?;
     let terminal_path = snapshot_terminal_path(walk_attempt_id);
     let bytes = fs::read_to_string(&terminal_path).map_err(|e| {
         format!(
@@ -528,6 +542,18 @@ pub fn verify_floor_discovery_terminal_for_coordinator(
         return Err(format!(
             "coordinator snapshot terminal walk_attempt_id mismatch: expected {walk_attempt_id}, got {}",
             terminal.walk_attempt_id
+        ));
+    }
+    if terminal.tested_commit != expected_request.tested_commit {
+        return Err(format!(
+            "coordinator snapshot terminal tested_commit mismatch: expected {}, got {}",
+            expected_request.tested_commit, terminal.tested_commit
+        ));
+    }
+    if terminal.tested_tree != expected_request.tested_tree {
+        return Err(format!(
+            "coordinator snapshot terminal tested_tree mismatch: expected {}, got {}",
+            expected_request.tested_tree, terminal.tested_tree
         ));
     }
     if terminal.request_identity_digest != expected_request_digest {
@@ -551,6 +577,12 @@ pub fn verify_floor_discovery_terminal_for_coordinator(
     })?;
     let snapshot: FloorDiscoverySnapshot = serde_json::from_str(&snapshot_bytes)
         .map_err(|e| format!("coordinator snapshot payload parse: {e}"))?;
+    if snapshot.request != *expected_request {
+        return Err(
+            "coordinator snapshot payload request subject mismatch — recompute refused".to_string(),
+        );
+    }
+    verify_snapshot_payload_integrity(&snapshot)?;
     if snapshot.payload_digest != terminal.payload_digest {
         return Err(
             "coordinator snapshot payload_digest does not match terminal receipt".to_string(),
@@ -561,39 +593,7 @@ pub fn verify_floor_discovery_terminal_for_coordinator(
     }
     Ok(terminal.payload_digest.clone())
 }
-
-pub fn load_floor_discovery_snapshot_coordinated(
-    walk_attempt_id: &str,
-    request: &FloorDiscoveryRequest,
-) -> Result<FloorDiscoverySnapshot, String> {
-    let expected_digest = request_identity_digest(request);
-    let json_path = snapshot_json_path(walk_attempt_id);
-    let bytes = fs::read_to_string(&json_path).map_err(|_| {
-        format!(
-            "coordinated floor discovery consumer: snapshot absent at {} — recompute refused",
-            json_path.display()
-        )
-    })?;
-    let snapshot: FloorDiscoverySnapshot = serde_json::from_str(&bytes)
-        .map_err(|e| format!("coordinated consumer snapshot parse: {e}"))?;
-    if snapshot.request != *request {
-        return Err(
-            "coordinated floor discovery consumer: snapshot request subject mismatch — recompute refused"
-                .to_string(),
-        );
-    }
-    if snapshot.request_identity_digest != expected_digest {
-        return Err(
-            "coordinated floor discovery consumer: snapshot identity digest mismatch — recompute refused"
-                .to_string(),
-        );
-    }
-    Ok(snapshot)
-}
-
 pub fn install_floor_discovery_snapshot(snapshot: &FloorDiscoverySnapshot) {
-    let facts = snapshot_to_facts(&snapshot.module_graph_facts);
-    install_module_graph_facts_cache(&snapshot.request.source_roots, &facts);
     let rows: Vec<super::DiscoveryRow> = snapshot.roster.iter().map(snapshot_to_row).collect();
     install_roster_cache(&snapshot.request_identity_digest, &rows);
 }
@@ -616,31 +616,14 @@ pub fn discover_floor_witness_roster_with_snapshot(
         execution_mode,
         execution_authority_source_roots,
     )?;
-    let request_digest = request_identity_digest(&request);
+    if consumer != FloorDiscoveryConsumerRole::Standalone {
+        verify_floor_worktree_matches_subject(&request)?;
+    }
+    let request_digest = request_identity_digest(&request)?;
     let started = Instant::now();
     let started_ms = trace_epoch_millis();
 
     match consumer {
-        FloorDiscoveryConsumerRole::CoordinatedConsumer => {
-            let snapshot = load_floor_discovery_snapshot_coordinated(walk_attempt_id, &request)?;
-            install_floor_discovery_snapshot(&snapshot);
-            let rows: Vec<super::DiscoveryRow> =
-                snapshot.roster.iter().map(snapshot_to_row).collect();
-            let completed_ms = trace_epoch_millis();
-            append_discovery_trace_row(
-                walk_attempt_id,
-                "discover_floor_witness_roster",
-                "coordinated_consumer",
-                "LocalFilesystem",
-                "Share",
-                started_ms,
-                completed_ms,
-                &snapshot.payload_digest,
-                "VerifiedSnapshot",
-                started.elapsed().as_nanos(),
-            );
-            return Ok(rows);
-        }
         FloorDiscoveryConsumerRole::Producer | FloorDiscoveryConsumerRole::Standalone => {
             if let Some(lock) = IN_PROCESS_ROSTER_BY_REQUEST.get() {
                 if let Some(rows) = lock.lock().unwrap().get(&request_digest) {
@@ -651,9 +634,6 @@ pub fn discover_floor_witness_roster_with_snapshot(
                         match consumer {
                             FloorDiscoveryConsumerRole::Producer => "producer",
                             FloorDiscoveryConsumerRole::Standalone => "standalone",
-                            FloorDiscoveryConsumerRole::CoordinatedConsumer => {
-                                "coordinated_consumer"
-                            }
                         },
                         "LocalInProcess",
                         "Share",
@@ -682,7 +662,6 @@ pub fn discover_floor_witness_roster_with_snapshot(
         match consumer {
             FloorDiscoveryConsumerRole::Producer => "producer",
             FloorDiscoveryConsumerRole::Standalone => "standalone",
-            FloorDiscoveryConsumerRole::CoordinatedConsumer => "coordinated_consumer",
         },
         "LocalInProcess",
         "Recompute",
@@ -699,29 +678,35 @@ pub fn discover_floor_witness_roster_with_snapshot(
 mod tests {
     use super::*;
 
-    #[test]
-    fn coordinated_consumer_refuses_absent_snapshot() {
-        reset_floor_discovery_snapshot_for_test();
-        let request = FloorDiscoveryRequest {
-            tested_tree: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
-            source_roots: vec!["dag".to_string()],
-            scan_dirs: vec![],
-            exclude_substrings: vec![],
-            discovery_scope_dirs: vec![],
-            execution_mode: "Hermetic".to_string(),
-            execution_authority_source_roots: vec!["dag".to_string()],
-            naming_authority_digest: "0123456789abcdef".to_string(),
-            tool_identity: "tool".to_string(),
+    fn minimal_snapshot(request: FloorDiscoveryRequest) -> FloorDiscoverySnapshot {
+        let mut snapshot = FloorDiscoverySnapshot {
+            request_identity_digest: request_identity_digest(&request).expect("request identity"),
+            request,
+            roster: vec![],
+            roster_digest: digest_rows(&[]),
+            payload_digest: String::new(),
         };
-        assert!(
-            load_floor_discovery_snapshot_coordinated("attempt-a", &request).is_err(),
-            "absent snapshot must refuse"
+        snapshot.payload_digest = digest_payload(&snapshot);
+        snapshot
+    }
+
+    #[test]
+    fn tested_commit_and_tree_are_distinct_exact_git_coordinates() {
+        let (commit, tree) = floor_tested_commit_and_tree().expect("exact subject");
+        let format = floor_git_object_format().expect("git object format");
+        let expected_commit = git_rev_parse("HEAD^{commit}", "test commit").expect("HEAD commit");
+        let expected_tree =
+            git_rev_parse(&format!("{expected_commit}^{{tree}}"), "test tree").expect("HEAD tree");
+        assert_eq!(commit, expected_commit);
+        assert_eq!(tree, format!("{format}:{expected_tree}"));
+        assert_ne!(
+            commit, expected_tree,
+            "a commit id is not its tree object id"
         );
     }
 
     #[test]
-    fn coordinated_consumer_refuses_subject_mismatch() {
-        reset_floor_discovery_snapshot_for_test();
+    fn request_identity_binds_commit_and_tree_independently() {
         let request = build_floor_discovery_request(
             &["dag".to_string()],
             &[],
@@ -731,111 +716,52 @@ mod tests {
             &["dag".to_string()],
         )
         .expect("request");
-        let mut snapshot = FloorDiscoverySnapshot {
-            request: request.clone(),
-            request_identity_digest: request_identity_digest(&request),
-            roster: vec![],
-            roster_digest: digest_rows(&[]),
-            naming_hygiene_refusal: None,
-            orphan_helper_refusal: None,
-            module_graph_facts: ModuleGraphFactsSnapshot {
-                edges: vec![],
-                nodes: vec![],
-                adjacency: BTreeMap::new(),
-                selection_adjacency: BTreeMap::new(),
-                reference_unaccounted: vec![],
-                path_to_module: BTreeMap::new(),
-                observed_paths: vec![],
-                read_refusals: vec![],
-                declared_paths: vec![],
-            },
-            module_graph_facts_digest: digest_facts_snapshot(&ModuleGraphFactsSnapshot {
-                edges: vec![],
-                nodes: vec![],
-                adjacency: BTreeMap::new(),
-                selection_adjacency: BTreeMap::new(),
-                reference_unaccounted: vec![],
-                path_to_module: BTreeMap::new(),
-                observed_paths: vec![],
-                read_refusals: vec![],
-                declared_paths: vec![],
-            }),
-            payload_digest: String::new(),
+        let canonical = request_identity_digest(&request).expect("canonical request identity");
+        let changed_commit = FloorDiscoveryRequest {
+            tested_commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            ..request.clone()
         };
-        snapshot.payload_digest = digest_payload(&snapshot);
-        publish_floor_discovery_snapshot("attempt-b", &snapshot).expect("publish");
-        let mismatched = FloorDiscoveryRequest {
-            source_roots: vec!["src/v2".to_string()],
+        let changed_tree = FloorDiscoveryRequest {
+            tested_tree: "sha1:1111111111111111111111111111111111111111".to_string(),
             ..request
         };
-        assert!(
-            load_floor_discovery_snapshot_coordinated("attempt-b", &mismatched).is_err(),
-            "subject mismatch must refuse"
+        assert_ne!(
+            canonical,
+            request_identity_digest(&changed_commit).expect("changed commit identity")
+        );
+        assert_ne!(
+            canonical,
+            request_identity_digest(&changed_tree).expect("changed tree identity")
+        );
+        assert_ne!(
+            request_identity_digest(&changed_commit).expect("changed commit identity"),
+            request_identity_digest(&changed_tree).expect("changed tree identity")
         );
     }
 
     #[test]
-    fn coordinated_consumer_consumes_published_minimal_snapshot() {
-        reset_floor_discovery_snapshot_for_test();
-        let request = build_floor_discovery_request(
-            &["dag".to_string()],
-            &[],
-            &[],
-            &[],
-            "Hermetic",
-            &["dag".to_string()],
-        )
-        .expect("request");
-        let snapshot = FloorDiscoverySnapshot {
-            request: request.clone(),
-            request_identity_digest: request_identity_digest(&request),
-            roster: vec![],
-            roster_digest: digest_rows(&[]),
-            naming_hygiene_refusal: None,
-            orphan_helper_refusal: None,
-            module_graph_facts: ModuleGraphFactsSnapshot {
-                edges: vec![],
-                nodes: vec![],
-                adjacency: BTreeMap::new(),
-                selection_adjacency: BTreeMap::new(),
-                reference_unaccounted: vec![],
-                path_to_module: BTreeMap::new(),
-                observed_paths: vec![],
-                read_refusals: vec![],
-                declared_paths: vec![],
-            },
-            module_graph_facts_digest: digest_facts_snapshot(&ModuleGraphFactsSnapshot {
-                edges: vec![],
-                nodes: vec![],
-                adjacency: BTreeMap::new(),
-                selection_adjacency: BTreeMap::new(),
-                reference_unaccounted: vec![],
-                path_to_module: BTreeMap::new(),
-                observed_paths: vec![],
-                read_refusals: vec![],
-                declared_paths: vec![],
-            }),
-            payload_digest: String::new(),
+    fn request_identity_matches_modeled_golden() {
+        let request = FloorDiscoveryRequest {
+            tested_commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            tested_tree: "sha1:1111111111111111111111111111111111111111".to_string(),
+            source_roots: vec!["dag".to_string(), "src/v1".to_string()],
+            scan_dirs: vec!["dag/test/claim".to_string()],
+            exclude_substrings: vec!["/long/".to_string()],
+            discovery_scope_dirs: vec!["dag/test/claim".to_string()],
+            execution_mode: "Hermetic".to_string(),
+            execution_authority_source_roots: vec!["dag".to_string(), "src/v2".to_string()],
+            naming_authority_digest: content_hash_atom(
+                "floor-discovery-naming-authority-fixture".to_string(),
+            )
+            .digest
+            .clone(),
+            tool_identity: content_hash_atom("floor-discovery-tool-fixture".to_string())
+                .digest
+                .clone(),
         };
-        let mut snapshot = snapshot;
-        snapshot.payload_digest = digest_payload(&snapshot);
-        publish_floor_discovery_snapshot("attempt-c", &snapshot).expect("publish");
-        let rows = discover_floor_witness_roster_with_snapshot(
-            &request.source_roots,
-            &request.scan_dirs,
-            &request.exclude_substrings,
-            &request.discovery_scope_dirs,
-            "attempt-c",
-            FloorDiscoveryConsumerRole::CoordinatedConsumer,
-            &request.execution_mode,
-            &request.execution_authority_source_roots,
-        )
-        .expect("coordinated consumer must consume published snapshot");
-        assert!(rows.is_empty());
         assert_eq!(
-            coordinated_discovery_compute_count(),
-            0,
-            "coordinated consumer must not invoke produce_floor_discovery_snapshot"
+            request_identity_digest(&request).expect("request identity"),
+            "f8e90d00ba0ad7f8"
         );
     }
 }

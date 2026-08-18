@@ -22,6 +22,7 @@ import extdeps.languages.python.subject { python_language_model_scope }
 import extdeps.languages.riscv.subject { riscv_isa_model_scope }
 import extdeps.languages.rust.subject { rust_language_model_scope }
 import extdeps.languages.spice.subject { spice_netlist_language_model_scope }
+import extdeps.simulators.icarus_verilog.subject { icarus_verilog_simulator_model_scope }
 import extdeps.simulators.ngspice.subject { ngspice_simulator_model_scope }
 import extdeps.languages.swift.subject { swift_language_model_scope }
 import extdeps.languages.typescript.subject { typescript_language_model_scope }
@@ -162,7 +163,7 @@ data jsx_registry_role_note: String = "JSX'S REGISTRY ROLE IS AN OPEN DECISION, 
 
 data d0_scope_boundary_note: String = "WHAT THIS REGISTRY IS AND IS NOT, so it is not read as closing more than it does (cursor review 48122, P1 — a fair objection to how this work could be presented). This is the D0 IDENTITY AND GROUNDING slice: which targets exist, what upstream authority grounds each, and which surfaces join which subject. IT DOES NOT CLOSE THE SUPPORT REGISTRY. The support contract requires every registered target to carry declared support PROFILES, required CAPABILITY sets, EVIDENCE refs, and checker bindings in one typed registry, and none of those exist here. What is here in their place is deliberately weaker and should be read as such: priority appears only as free text inside parked reasons, and there are no capability or profile rows at all. Anyone treating a registration in this file as a support claim is reading it wrong — grounding says a target has an authority behind it, not that anything about it is supported."
 
-data governing_contract_id_resolution_note: String = "WHY THIS ROW CARRIES A MODULE NAME AND NOT THE GOVERNING CONTRACT IDENTIFIERS, and the answer is a publication boundary rather than a citation gap. The strategy authority that governs Rust is not in this repository: it lives in a separate private overlay, so its contract identifiers cannot be resolved — or verified — from here, and a sweep of this tree finds nothing no matter how thorough. THAT IS A FIFTH FAILURE SHAPE, worth naming because it is NOT the hand-carried-string class this lane spent the day fixing: those strings named nothing anywhere, while these name something real that is invisible from where the check stands. A measurement that cannot reach an authority must not conclude the authority is absent. WHY THE IDS ARE NOT SIMPLY COPIED IN: the private overlay runs an opt-in-public model in which publishing is an explicit act, so transcribing its identifiers into a public row would be a PUBLICATION DECISION taken by a registry edit — above this lane, and not repaired by the identifiers looking innocuous. The interim carried here is v2.compiler.self_host.frontier, a real module in this repository that a reader can open, which is weaker than the governing contract but resolvable rather than dangling. Rust is genuinely governed by MORE THAN ONE contract, which is why the carrier is plural and why this single entry is an interim rather than the truth. NEXT TRIGGER: the operator rules on whether the strategy keys are published; if they are, this field takes the exact governing identifiers and this note deletes. THE ECMASCRIPT AND C++ DECISION IDS ARE A DIFFERENT CASE: they name a document section in THIS repository, which is a positional citation — weaker than a symbol, but openable."
+data governing_contract_id_resolution_note: String = "WHY THIS ROW CARRIES A MODULE NAME AND NOT THE GOVERNING CONTRACT IDENTIFIERS, and the answer is a publication boundary rather than a citation gap. The strategy authority that governs Rust is not in this repository: it lives in a separate private overlay, so its contract identifiers cannot be resolved — or verified — from here, and a sweep of this tree finds nothing no matter how thorough. THAT IS A FIFTH FAILURE SHAPE, worth naming because it is NOT the hand-carried-string class this lane spent the day fixing: those strings named nothing anywhere, while these name something real that is invisible from where the check stands. A measurement that cannot reach an authority must not conclude the authority is absent. WHY THE IDS ARE NOT SIMPLY COPIED IN: the private overlay runs an opt-in-public model in which publishing is an explicit act, so transcribing its identifiers into a public row would be a PUBLICATION DECISION taken by a registry edit — above this lane, and not repaired by the identifiers looking innocuous. The interim carried here is v2.compiler.self_host.emitter_producer_provenance, a real module in this repository that a reader can open, which is weaker than the governing contract but resolvable rather than dangling. It replaced v2.compiler.self_host.frontier when the self-host frontier roster was deleted; the first repoint went to emit_coverage_frontier and was wrong, because that module answers whether a witness body runs native (its axis a) and explicitly disclaims module self-emission (its axis b) — the name resembled the deleted one, which is not a reason. Rust is genuinely governed by MORE THAN ONE contract, which is why the carrier is plural and why this single entry is an interim rather than the truth. NEXT TRIGGER: the operator rules on whether the strategy keys are published; if they are, this field takes the exact governing identifiers and this note deletes. THE ECMASCRIPT AND C++ DECISION IDS ARE A DIFFERENT CASE: they name a document section in THIS repository, which is a positional citation — weaker than a symbol, but openable."
 
 
 data registered_language_targets: List<LanguageTargetRegistration> = [
@@ -200,7 +201,7 @@ data registered_language_targets: List<LanguageTargetRegistration> = [
   },
   LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: rust_language_model_scope },
-    disposition: TargetGovernedByContracts { contract_ids: ["v2.compiler.self_host.frontier"] }
+    disposition: TargetGovernedByContracts { contract_ids: ["v2.compiler.self_host.emitter_producer_provenance"] }
   },
   LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: ecmascript_language_model_scope },
@@ -309,6 +310,8 @@ data spice_netlist_language_subject_ref: DeclarationRef = spice_netlist_language
 
 data ngspice_simulator_subject_ref: DeclarationRef = ngspice_simulator_model_scope.subject.declaration
 
+data icarus_verilog_simulator_subject_ref: DeclarationRef = icarus_verilog_simulator_model_scope.subject.declaration
+
 data target_runtime_binding_note: String = "WHICH RUNTIME EXECUTES A TARGET IS A SEPARATE FACT FROM WHAT THE TARGET IS (cursor review 48122, P0). Fusing them is what made ngspice look like a language: the registry registered the simulator, gave it the netlist's file extensions, and joined it to a surface that models a generic SpiceNetlist. Split here into two subjects plus this binding, so the medium can gain a second runtime without either subject changing — which is the whole test of whether the split was real. A binding is NOT a support claim: it says which tool WOULD execute this target, not that any execution receipt exists. SPICE's frontier row is bar-b, meaning the witness compares emitted text to a golden file and never runs ngspice at all, so this binding is precisely the thing an execution receipt would later discharge. THIS BINDING ALSO CARRIES THE DIALECT FACT, which belongs here and not on either subject's scope (cursor review 48361). SPICE has no normative netlist specification, so the readable authority for the concrete syntax this repository would emit is the ngspice manual — but that manual is ngspice's own governing document, and citing it on the SPICE medium's scope would claim one upstream grounds another. An earlier revision did exactly that and re-forked the fact this split had just separated. The binding is the honest home: it names both subjects by reference, each keeping its own authority, and says which runtime's dialect an emission would target. That is why a support claim for SPICE must resolve THROUGH this binding to state a dialect, rather than reading one off the medium's citation list."
 
 type TargetRuntimeBinding {
@@ -320,6 +323,10 @@ data target_runtime_bindings: List<TargetRuntimeBinding> = [
   TargetRuntimeBinding {
     target: spice_netlist_language_subject_ref,
     runtime: ngspice_simulator_subject_ref
+  },
+  TargetRuntimeBinding {
+    target: verilog_language_subject_ref,
+    runtime: icarus_verilog_simulator_subject_ref
   }
 ]
 

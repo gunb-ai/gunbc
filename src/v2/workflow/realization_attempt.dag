@@ -6,7 +6,7 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.name_resolve { Admission, ResolutionSubject, Import, ImportVisible }
 import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.compile { compile_inferred, TranslateTo, TranslateResult, EvalResult, CompileMode }
-import v2.compiler.emit_produced { emit_produced_module_rust }
+import v2.compiler.emit_produced { emit_produced_module }
 import v2.extdeps.languages.rust { rust_target_model_staging }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { list_at_optional }
@@ -21,7 +21,7 @@ import std.algebra { Cons, Empty }
 import v2.std.logic { Bool }
 import std.types { Int, List, NonEmptyStr, String }
 
-data realization_attempt_note: String = "CI2-0 Commit B (operator mandate 2026-08-08): the ACTUAL canonical v2 realization attempt per identity — replacing the circular census whose capability verdict was bundle membership. One entry attempt runs the mandated pipeline over the entry's real authored source: Filesystem.Read -> tokenize -> parse_module -> normalize -> resolve (ingested_resolved_module_from_source, the SAME general ingest the wave1 census fixtures ride — not a witness-specific converter) -> Arrow extraction per declaration -> emit_produced_module_rust against rust_target_model_staging (the one general Rust TargetModel). The result is a typed standing per phase: the FIRST refusing phase is recorded with its exact diagnostic, and a green traversal is V2TranslateSerialized (RustCompile/NativeExecute are the transport stages, attempted by the bundle leg, not here). Bundle membership appears nowhere in this computation."
+data realization_attempt_note: String = "CI2-0 Commit B (operator mandate 2026-08-08): the ACTUAL canonical v2 realization attempt per identity — replacing the circular census whose capability verdict was bundle membership. One entry attempt runs the mandated pipeline over the entry's real authored source: Filesystem.Read -> tokenize -> parse_module -> normalize -> resolve (ingested_resolved_module_from_source, the SAME general ingest the wave1 census fixtures ride — not a witness-specific converter) -> Arrow extraction per declaration -> emit_produced_module against rust_target_model_staging (the one general Rust TargetModel). The result is a typed standing per phase: the FIRST refusing phase is recorded with its exact diagnostic, and a green traversal is V2TranslateSerialized (RustCompile/NativeExecute are the transport stages, attempted by the bundle leg, not here). Bundle membership appears nowhere in this computation."
 
 
 data attempt_probe_supersession_note: String = "OPERATOR VERDICT (msg_9dec74f7, seven blocking findings): this module as landed is a PROBE, not the canonical route, and is being replaced IN-PLACE. The replacement contract: exact required-test identity -> exact module closure (the floor's own resolved graph — never a single-file re-ingest) -> canonical compiler result -> exact resolved declaration (identity join against enrolled test declarations, never synthetic wrappers) -> v2.compiler.compile with TranslateTo (infer INCLUDED — finding 3) -> canonical Rust realization -> bundle member. Findings addressed so far: (7) attempt_is_emitted now requires emitted_nonempty — accepted-but-empty is not emitted. Remaining, tracked here until each lands: (1) drop the ingested_fixture_arrows bridge; (2) closure resolution via the executor's resolved graph; (3) infer stage actually runs via compile(); (4) per-stage phase precision — the measured specimen is a normalize wrapper-retained refusal (body_lowering_reason_wrapper_retained_emitted) currently flattened into PhaseFrontend; (5) show rust_target_model_staging canonical or replace with what is; (6) identity join replaces collect_arrows synthesis. The probe's measured buckets (test-marker gate, match-binder resolve, staging-lex literals, wrapper-retained normalize) remain valid census data — they were produced by real canonical stages even where the harness plumbing was probe-grade."
@@ -168,7 +168,7 @@ fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttemp
       if length(xs: arrows) == 0 {
         attempt_refused(entry: entry, phase: PhaseTranslate, cause: ^realization_attempt_no_arrow_declarations)
       } else {
-        match emit_produced_module_rust(decls: arrows, target: rust_target_model_staging()) {
+        match emit_produced_module(decls: arrows, target: rust_target_model_staging()) {
           Accepted { value: medium, diagnostics: _ } =>
             EntryRealizationAttempt {
               entry: entry,

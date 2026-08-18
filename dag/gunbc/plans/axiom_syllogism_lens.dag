@@ -113,7 +113,7 @@ fn axiom_syllogism_lens_body() -> List<MarkdownBlock> {
       rows: [
         row(cells: [cell(text: "acyclicity / cycle detection"), cell(text: "`graph_has_multi_node_scc`"), cell(text: "`std/graph.dag`")]),
         row(cells: [cell(text: "forward/reverse adjacency, DFS"), cell(text: "`forward_adjacency` · `reverse_adjacency` · `dfs_finish_order`"), cell(text: "`std/graph.dag`")]),
-        row(cells: [cell(text: "reachability `universe ∖ reachable(roots)`"), cell(text: "the inert-lens / doc-graph BFS shape"), cell(text: "`inert_lens_modules` (`cli_run.rs`) · `doc_reachability_project.rs`")]),
+        row(cells: [cell(text: "reachability `universe ∖ reachable(roots)`"), cell(text: "the inert-lens / doc-graph BFS shape"), cell(text: "`doc_reachability_project.rs` (was also `inert_lens_modules`, DELETED gunbc#8141)")]),
         row(cells: [cell(text: "truth-value / syllogistic structure"), cell(text: "`Classical = True \\| False`"), cell(text: "`std/logic.dag`")]),
         row(cells: [cell(text: "well-founded / acyclic grounding"), cell(text: "initial-algebra + size-change"), cell(text: "`std/induction.dag`")]),
         row(cells: [cell(text: "fail-closed lens verdict carrier"), cell(text: "`LensVerdict` (Holds/Violation/NotApplicable/Unrealized)"), cell(text: "`std/lens_verdict.dag`")]),

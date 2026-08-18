@@ -1,5 +1,6 @@
 module gunbc.host_effect
 
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import std.types { String, Int, NonEmptyStr, List }
 import std.content_hash { ContentHash }
 import std.cache_identity { CacheInterfaceId }
@@ -14,6 +15,7 @@ import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdGrantListProbeShape,
 }
 import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
+import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIntent }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
@@ -40,6 +42,7 @@ type HostEffect =
   | ConvergePlan { policy: HostConverge }
   | OsInstallActuatorToolchainEnsure {}
   | ProvisionBuildCache { catalog_id: CacheInterfaceId }
+  | ProvisionCodexRuntime {}
   | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbe { probe: SudoNopasswdExecuteProbeShape }
@@ -51,6 +54,10 @@ type HostEffect =
   | Srv3BmcwebTokenExtract
   | Srv3NbdProxyServe {
       intent: NbdProxyServeTransportIntent,
+      lease_key: NonEmptyStr,
+    }
+  | CodexSupervisedWorkerTurn {
+      intent: CodexAppServerStdioSessionIntent,
       lease_key: NonEmptyStr,
     }
   | Srv3BootOnceReadBackSleep
@@ -85,10 +92,72 @@ type ThinInvocation {
   argv: List<String>
 }
 
+// FleetSsh CARRIES THE SEALED EXECUTION CONTEXT, and lands beside SshShell rather than replacing it
+// so the migration is a counted population the compiler enumerates rather than one edit reddening
+// every consumer at once.
+//
+// The difference is not cosmetic. SshShell carries a bare endpoint, so every realizer holding one
+// assembles its own ssh invocation -- which is how the corpus came to hold one site requiring
+// host-key verification and another disabling it, spelled as indistinguishable text. A FleetSsh
+// carries a context constructible ONLY from a known-hosts materialization whose readback
+// hash-equalled the enrolled registry, plus a bound client credential, so a realizer cannot assemble
+// a weaker invocation: no options parameter to widen, no endpoint reachable without the anchor that
+// verified it.
+//
+// It also carries the PRINCIPAL, which SshShell could not. An occurrence is (host x principal), so a
+// transport naming only a host cannot say which account it acts as -- the exact distinction the
+// Spark work turned on, where one key reaches a human bootstrap account and a managed executor with
+// different authority.
+//
+// 🟡 dissolve-on: SshShell is DELETED when its consumers migrate. Each is a counted row, not an
+// open-ended intention: host_effect_realize, live_deploy apply/readiness, systemctl_show_read,
+// systemctl_status_read, hostname_read, hostname_set, roadmap_verify,
+// roadmap_dashboard_instance_apply, host_reach_identity_probe, fleet_receipt_collector.
 type HostEffectTransport =
     LocalShell
   | SshShell { ssh_host: NonEmptyStr }
+  | FleetSsh { target: SshTarget, context: FleetSshExecutionContext }
   | EmitArtifactThenThinRun { bootstrap: BootstrapFragment, invocation: ThinInvocation }
+
+// THE FLEETSSH LEAF FRONTIER. A leaf that BUILDS an invocation cannot be migrated by routing FleetSsh
+// to the SshShell body: that body reaches ssh with an endpoint and no trust context, so the arm would
+// hold a sealed context and ignore it -- a variant lying about what it does, which is worse than not
+// having the arm, because the type would read verified while the leg was not.
+//
+// So every unmigrated leaf routes here, as ONE NAMED authority rather than seventeen anonymous
+// `false`s, making the frontier countable by name.
+//
+// STATED PLAINLY BECAUSE THE SHAPE IS INHERITED AND BAD: these leaves return Bool, so a refusal is
+// indistinguishable from "it ran and failed" -- the fabricated-negative class. That is already true
+// of the EmitArtifactThenThinRun arm beside it; this does not fix it and declines to make it worse
+// anonymously. The name is the only thing carrying the distinction.
+//
+// THE REMAINING POPULATION IS ONE CLASS, NOT A REMAINDER, and naming it is the difference between a
+// frontier and a backlog. Six leaves migrated cleanly because they already spoke TYPED ARGV: their
+// invocation was a List<String> that portable_remote_words could admit or refuse, so routing them
+// through the sealed context was a change of producer and nothing else.
+//
+// The ten that remain (all in host_effect_realize, plus one in ci_deploy_target_host) call
+// ssh_session_exec with a CONCATENATED SHELL COMMAND STRING -- `cd <workdir> && <bin> <joined args>`
+// and similar. They cannot route through this context, and not because the work is tedious: the
+// context's whole guarantee is that what crosses to the far side is a vector of words each admitted
+// by a wall, and a pre-joined command string has already destroyed the structure that wall inspects.
+// Giving them a string-carrying path would reinstate exactly what portable_remote_words exists to
+// prevent, one function lower, while the type still read verified.
+//
+// So their blocker is a DIFFERENT migration -- command-string to typed argv, per site, which is the
+// same shell-to-intent work the corpus is doing elsewhere -- and only after that is each one a
+// producer swap like the six above. Recorded here so the count is not mistaken for remaining effort
+// of the same kind.
+//
+// 🟡 dissolve-on: each leaf takes a FleetSshExecutionContext and calls the context-aware exec, at
+// which point its FleetSsh arm does real work and stops routing here. DELETED when the last one
+// migrates -- it must never acquire a permanent population. No std.disposition.Scaffold row here:
+// DESIGN §5 requires an operator verdict bound to head for net-new dissolution obligations; the
+// migration target is gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh (see inline note above).
+fn fleet_ssh_leaf_unmigrated_refused() -> Bool {
+  false
+}
 
 data host_effect_emit_artifact_transport_scope_disposition: Disposition = Terminal {
   reason: "EmitArtifactThenThinRun transport mint (shell-emission slice 1+2): fresh-standup bootstrap routes through emit(intent,Bash) (bootstrap_fragment_script_carrier_scaffold dissolved); ThinInvocation.argv remains a medium-as-string scaffold until steady-state typed argv dispatch dissolves thin_invocation_argv_carrier_scaffold."
@@ -117,7 +186,7 @@ type HostEffectIntent {
 }
 
 type HostEffectEvidence =
-    ShellEffectApplied { exit_code: Int, stdout: String }
+    ShellEffectApplied { exit_code: Int, stdout: String, stderr: String }
   | ConvergePlanApplied { exit_code: Int, stdout: String }
 
 fn host_effect_drive_from_evidence(evidence: IdempotencyEvidence) -> Drive {

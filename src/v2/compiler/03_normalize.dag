@@ -37,7 +37,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_finish_for_normalize,
   body_lower_is_deferred_lower_at_normalize
 }
-import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
 import v2.compiler.namespace_graft {
   module_header_containment_graft,
   namespace_graft_is_graft_candidate
@@ -217,7 +217,7 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: grafted, diagnostics: d1 } =>
           if well_formed(n: grafted) {
-            Accepted { value: grafted, diagnostics: d1 }
+            admit_normalized_tree(root: grafted, diagnostics: d1)
           } else {
             Rejected {
               diagnostics: rejected_with_pending(

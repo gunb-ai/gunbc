@@ -19,7 +19,7 @@ data shlw_purity_source: String = Cons {
           head: 108,
           tail: Cons {
             head: 101,
-            tail: Empty
+            tail: std.algebra.Empty
           }
         }
       }
@@ -40,7 +40,7 @@ data shlw_trunc_full_path: String = "src/v2/test/fixture/census_path_trunc/full.
 
 fn shlw_first_token_lexeme(tokens: List<Token>) -> String {
   match list_at_optional(xs: tokens, index: 0) {
-    Absent => Empty
+    Absent => std.algebra.Empty
     Present { value: tok } => tok.lexeme
   }
 }
@@ -76,7 +76,7 @@ fn shlw_trunc_paths() -> List<String> {
       head: shlw_trunc_quarter_path,
       tail: Cons {
         head: shlw_trunc_half_path,
-        tail: Cons { head: shlw_trunc_full_path, tail: Empty }
+        tail: Cons { head: shlw_trunc_full_path, tail: std.algebra.Empty }
       }
     }
   }

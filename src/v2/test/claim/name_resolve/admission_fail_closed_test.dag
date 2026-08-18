@@ -1,0 +1,369 @@
+module v2.test.name_resolve.admission_fail_closed
+
+import v2.compiler.name_resolve {
+  Admission,
+  AdmissionAccepted,
+  AdmissionRejected,
+  AdmissionState,
+  Import,
+  ImportVisible,
+  ResolutionSubject,
+  admit_import_entry,
+  resolve_with_admission,
+  resolve_with_admission_policy,
+  subject_module_root_for_name,
+  validate_module_roots
+}
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_language_model_surface_empty_prelude,
+  dag_named_edge
+}
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list_node }
+import v2.std.collection { empty_map }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted,
+  Textual,
+  diagnostics_eq
+}
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.resolution_policy { ImportScoped }
+
+test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
+  let missing = fc_qn(seg: ^fc_missing_seg)
+  fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
+  match subject_module_root_for_name(roots: roots, name: missing) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match d.head.at {
+        Textual { file: module_file, extent: _ } =>
+          (d.head.reason == ^resolve_module_not_found)
+            && (symbol_lexeme(sym: module_file) == qualified_name_to_dotted_string(qn: missing))
+        _ => false
+      }
+  }
+  })
+}
+
+fn fc_qn_node(seg: Symbol) -> Node {
+  fold_list_node(
+    xs: Cons { head: seg, tail: Empty },
+    item_node: fn(sym) {
+      Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+    }
+  )
+}
+
+fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: fc_qn_node(seg: seg)
+      ),
+      Edge {
+        label: Named { name: export_sym },
+        target: Node {
+          kind: TypeNode {
+            connective: Atom { identity: ^dag_c3_surface_sugar_service }
+          },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+}
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn fc_module_root(seg: Symbol) -> Node {
+  fc_module_root_export(seg: seg, export_sym: ^fc_export_sym)
+}
+
+fn fc_qn(seg: Symbol) -> QualifiedName {
+  Cons { head: seg, tail: Empty }
+}
+
+data fc_admitted_fixture_note: String = "These fixtures pass module roots to validate_module_roots / resolve_with_admission, which since BL-1 take FreeMonoid<NormalizedTree>. They therefore admit each synthetic root through the real door rather than casting past it -- a fixture that reached the sealed carrier without admission would be the wrapper-payload conflation the receipt in docs/plans/hollow-alias-construction-wall.md section 8.2 records, planted in the witness population. Admission is threaded as an Outcome and its refusal arm FAILS the witness: a fixture that cannot be admitted is a broken fixture, and reporting that as a passing verdict is the fabrication these witnesses exist to catch."
+
+fn fc_with_roots(
+  o: Outcome<FreeMonoid<NormalizedTree>>,
+  f: fn(FreeMonoid<NormalizedTree>) -> Bool
+) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } => f(roots)
+  }
+}
+
+fn fc_admitted(n: Node) -> Outcome<NormalizedTree> {
+  admit_normalized_tree(root: n, diagnostics: None)
+}
+
+fn fc_duplicate_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_dup_seg)), f: fn(a) {
+    bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_dup_seg)), f: fn(b) {
+      outcome_accepted(value: Cons { head: a, tail: Cons { head: b, tail: Empty } })
+    })
+  })
+}
+
+fn fc_single_found_root() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_found_seg)), f: fn(a) {
+    outcome_accepted(value: Cons { head: a, tail: Empty })
+  })
+}
+
+fn fc_malformed_subject_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: fc_qn_node(seg: ^fc_malformed_seg)
+      ),
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^fc_malformed_child_sym } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+}
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn fc_malformed_subject_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: fc_admitted(n: fc_malformed_subject_root()), f: fn(a) {
+    outcome_accepted(value: Cons { head: a, tail: Empty })
+  })
+}
+
+fn fc_import_missing_target() -> Import {
+  Import { target: fc_qn(seg: ^fc_missing_seg), visibility: ImportVisible }
+}
+
+fn fc_initial_admission_state() -> AdmissionState {
+  AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
+}
+
+test fn admit_import_missing_module_is_rejected() -> Bool {
+  fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
+  match admit_import_entry(
+    roots: roots,
+    import_edge: fc_import_missing_target(),
+    state: fc_initial_admission_state(),
+    subject_qn: fc_qn(seg: ^fc_subject_seg),
+    index: source_root_index_empty(),
+    active_roots: Empty
+  ) {
+    AdmissionAccepted { bindings: _, origins: _ } => false
+    AdmissionRejected { diagnostics: _ } => true
+  }
+  })
+}
+
+test fn resolve_duplicate_module_roots_is_rejected() -> Bool {
+  fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
+  match resolve_with_admission(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: roots,
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: fc_qn(seg: ^fc_dup_seg)
+      },
+      imports: Empty
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+  })
+}
+
+test fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
+  fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
+  match resolve_with_admission(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: roots,
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: fc_qn(seg: ^fc_missing_seg)
+      },
+      imports: Empty
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+  })
+}
+
+test fn validate_module_roots_threads_accepted_projection_diagnostics() -> Bool {
+  fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
+  match validate_module_roots(roots: roots) {
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_eq(a: d, b: None)
+    Rejected { diagnostics: _ } => false
+  }
+  })
+}
+
+test fn validate_module_roots_merges_pending_before_duplicate_reject() -> Bool {
+  fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
+  match validate_module_roots(roots: roots) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+  })
+}
+
+test fn validate_module_roots_malformed_root_is_rejected() -> Bool {
+  fc_with_roots(o: fc_malformed_subject_roots(), f: fn(roots) {
+  match validate_module_roots(roots: roots) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+  })
+}
+
+test fn resolve_malformed_subject_root_is_rejected() -> Bool {
+  fc_with_roots(o: fc_malformed_subject_roots(), f: fn(roots) {
+  match resolve_with_admission(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: roots,
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: fc_qn(seg: ^fc_malformed_seg)
+      },
+      imports: Empty
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+  })
+}
+
+fn fc_dual_import_subject_root(seg: Symbol, use_sym: Symbol, imported_decl: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: fc_qn_node(seg: seg)
+      ),
+      Edge {
+        label: Named { name: use_sym },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: imported_decl } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+}
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn fc_dual_import_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: fc_admitted(n: fc_dual_import_subject_root(
+    seg: ^fc_subject_seg,
+    use_sym: ^fc_import_use_sym,
+    imported_decl: ^fc_export_a_sym
+  )), f: fn(a) {
+    bind_outcome(o: fc_admitted(n: fc_module_root_export(seg: ^fc_import_a_seg, export_sym: ^fc_export_a_sym)), f: fn(b) {
+      bind_outcome(o: fc_admitted(n: fc_module_root_export(seg: ^fc_import_b_seg, export_sym: ^fc_export_b_sym)), f: fn(c) {
+        outcome_accepted(value: Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Empty } } })
+      })
+    })
+  })
+}
+
+test fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
+  fc_with_roots(o: fc_dual_import_roots(), f: fn(roots) {
+  match resolve_with_admission_policy(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: roots,
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: fc_qn(seg: ^fc_subject_seg)
+      },
+      imports: Cons {
+        head: Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible },
+        tail: Cons {
+          head: Import { target: fc_qn(seg: ^fc_import_b_seg), visibility: ImportVisible },
+          tail: Empty
+        }
+      }
+    },
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: ImportScoped
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+  })
+}
+
+test fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
+  fc_with_roots(o: fc_dual_import_roots(), f: fn(roots) {
+  match validate_module_roots(roots: roots) {
+    Accepted { value: _, diagnostics: validate_diag } =>
+      match resolve_with_admission_policy(
+        lm: dag_language_model_surface_empty_prelude(),
+        roots: roots,
+        admission: Admission {
+          subject: ResolutionSubject {
+            name: fc_qn(seg: ^fc_subject_seg)
+          },
+          imports: Cons {
+            head: Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible },
+            tail: Cons {
+              head: Import { target: fc_qn(seg: ^fc_import_b_seg), visibility: ImportVisible },
+              tail: Empty
+            }
+          }
+        },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: ImportScoped
+      ) {
+        Accepted { value: _, diagnostics: resolve_diag } =>
+          diagnostics_eq(a: resolve_diag, b: validate_diag)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+  })
+}
+

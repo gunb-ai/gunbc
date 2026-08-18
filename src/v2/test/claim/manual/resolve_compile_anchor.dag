@@ -1,5 +1,6 @@
 module v2.test.manual.resolve_compile_anchor
 
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots, admit_normalized_tree }
 import v2.compiler.name_resolve {
   Admission,
   Import,
@@ -17,7 +18,12 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected
+}
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -78,8 +84,8 @@ fn anchor_resolve_empty_prelude_service_atom() -> Outcome<ResolvedTree> {
 }
 
 fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTree> {
-  resolve(
-    tree: Node {
+  match admit_normalized_tree(
+    root: Node {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
@@ -105,13 +111,16 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTre
       ],
       occurrence_id: SyntheticOccurrence
 },
-    lm: dag_language_model_void()
-  )
+    diagnostics: None
+  ) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: t, diagnostics: _ } => resolve(tree: t, lm: dag_language_model_void())
+  }
 }
 
 fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
-  resolve(
-    tree: Node {
+  match admit_normalized_tree(
+    root: Node {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
@@ -156,8 +165,11 @@ fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
       ],
       occurrence_id: SyntheticOccurrence
 },
-    lm: dag_language_model_void()
-  )
+    diagnostics: None
+  ) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: t, diagnostics: _ } => resolve(tree: t, lm: dag_language_model_void())
+  }
 }
 
 fn resolve_roots_claim_node(ok: Bool) -> Node {
@@ -271,14 +283,17 @@ fn resolve_subject_name() -> QualifiedName {
   Cons { head: ^anchor_subject_path_segment, tail: Empty }
 }
 
-fn resolve_roots_single_import() -> FreeMonoid<Node> {
-  Cons {
+fn resolve_roots_single_import() -> Outcome<FreeMonoid<NormalizedTree>> {
+  admit_normalized_roots(
+    roots: Cons {
     head: resolve_subject_module_root_with_import_use(),
     tail: Cons {
       head: resolve_imported_module_root(),
       tail: Empty
     }
-  }
+  },
+    diagnostics: None
+  )
 }
 
 fn resolve_imported_use_tree() -> Node {
@@ -294,27 +309,31 @@ fn resolve_import_target() -> QualifiedName {
 }
 
 fn resolve_with_admission_imported_binding_accepts() -> Bool {
-  match resolve_with_admission_policy(
-    lm: dag_language_model_surface_empty_prelude(),
-    roots: resolve_roots_single_import(),
-    admission: Admission {
-      subject: ResolutionSubject {
-        name: resolve_subject_name()
-      },
-      imports: Cons {
-        head: Import {
-          target: resolve_import_target(),
-          visibility: ImportVisible
-        },
-        tail: Empty
-      }
-    },
-    index: source_root_index_empty(),
-    active_roots: Empty,
-    policy: ImportScoped
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
+  match resolve_roots_single_import() {
     Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
+    match resolve_with_admission_policy(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: admitted,
+      admission: Admission {
+        subject: ResolutionSubject {
+          name: resolve_subject_name()
+        },
+        imports: Cons {
+          head: Import {
+            target: resolve_import_target(),
+            visibility: ImportVisible
+          },
+          tail: Empty
+        }
+      },
+      index: source_root_index_empty(),
+      active_roots: Empty,
+      policy: ImportScoped
+    ) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
   }
 }
 

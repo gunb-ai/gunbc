@@ -1,0 +1,415 @@
+module test.claim.orthogonal_topology_witness
+
+import std.types { Bool, Int, List }
+import std.measure {
+  Micro,
+  Milli, millimeter_count, square_millimeter_count, cubic_millimeter_count }
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
+import std.affine_space { Point2, Point3, point2, point3 }
+import std.orthogonal_geometry {
+  OrthogonalConstruction, OrthogonalReady, OrthogonalRefused,
+  OrthogonalFrameMismatch, SpacesInterpenetrate,
+  OrthogonalLoop2, orthogonal_loop2,
+  OrthogonalPrism3, orthogonal_prism3,
+}
+import std.orthogonal_topology {
+  ClosedShell, closed_shell_of_prism, shell_face_count,
+  EnclosedSpace, enclosed_space, space_floor_area, space_volume, space_height, space_walls, space_shell,
+  PointInsideSpace, PointOnSpaceBoundary, PointOutsideSpace, space_locate_point,
+  spaces_interpenetrate, spaces_are_adjacent,
+  SpaceComplex, space_complex, complex_space_count, complex_total_volume,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.spatial_frame {
+  SpatialFrameRegistry, FrameExtent, ExtentInFrame, ExtentFrameUnregistered,
+  LengthProjected, LengthProjectionRefused, frame_length_as_millimeter,
+  empty_frame_registry, register_frame, registry_with, FrameRegistered, FrameRegistrationRefused
+}
+
+
+// The rooms this witness builds are millimetre-framed, which is what makes reading their heights
+// as millimetres true rather than assumed.
+fn mm_registry() -> SpatialFrameRegistry {
+  match register_frame(r: empty_frame_registry(), identity: room(), length_scale: Milli) {
+    FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
+    FrameRegistrationRefused { cause: _ } => empty_frame_registry()
+  }
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn room() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
+fn building() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
+
+fn p2(x: Int, y: Int) -> Point2 { point2(frame: room(), x: x, y: y) }
+fn p3(x: Int, y: Int, z: Int) -> Point3 { point3(frame: room(), x: x, y: y, z: z) }
+
+// FIXTURES ARE THREADED AS CONSTRUCTIONS, never unwrapped through a fallback. An unwrap helper
+// needs something to return when the mint refuses, and every candidate is a fabrication: a
+// sentinel space would make a claim pass or fail for a reason unrelated to what it tests, and a
+// recursive retry would hang. So the constructions travel and every claim matches them - a fixture
+// that stops minting reds the witness at the fixture, which is the honest failure.
+fn space_ctor(vertices: List<Point2>, low: Int, high: Int) -> OrthogonalConstruction<EnclosedSpace> {
+  match orthogonal_loop2(vertices: vertices) {
+    OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
+    OrthogonalReady { value: l } =>
+      match orthogonal_prism3(footprint: l, low: low, high: high) {
+        OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
+        OrthogonalReady { value: pr } => OrthogonalReady { value: enclosed_space(shell: closed_shell_of_prism(prism: pr)) }
+      }
+  }
+}
+
+fn sequence_spaces(cs: List<OrthogonalConstruction<EnclosedSpace>>) -> OrthogonalConstruction<List<EnclosedSpace>> {
+  let folded = fold(cs, init: OrthogonalReady { value: [] }, f: (acc, c) =>
+    match acc {
+      OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
+      OrthogonalReady { value: got } =>
+        match c {
+          OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
+          OrthogonalReady { value: s } => OrthogonalReady { value: concat([s], got) }
+        }
+    })
+  match folded {
+    OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
+    OrthogonalReady { value: got } => OrthogonalReady { value: reverse(got) }
+  }
+}
+
+// An L-shaped footprint: a 4000x3000 rectangle with a 2000x1000 bite taken out of the far corner.
+// Every claim below uses this rather than a rectangle deliberately - a rectangle's area agrees with
+// its bounding box, so it cannot tell a derived area from an authored width-times-depth.
+fn l_shape() -> List<Point2> {
+  [p2(x: 0, y: 0), p2(x: 4000, y: 0), p2(x: 4000, y: 2000), p2(x: 2000, y: 2000), p2(x: 2000, y: 3000), p2(x: 0, y: 3000)]
+}
+
+fn l_space() -> OrthogonalConstruction<EnclosedSpace> { space_ctor(vertices: l_shape(), low: 0, high: 2400) }
+
+fn rect_ctor(x0: Int, y0: Int, x1: Int, y1: Int, low: Int, high: Int) -> OrthogonalConstruction<EnclosedSpace> {
+  space_ctor(vertices: [p2(x: x0, y: y0), p2(x: x1, y: y0), p2(x: x1, y: y1), p2(x: x0, y: y1)], low: low, high: high)
+}
+
+// Every projection below answers -1 on a refusal rather than a plausible number, so a claim can
+// never pass because a fixture or an operation refused - the two outcomes are distinguishable.
+fn area_of(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
+  match c {
+    OrthogonalRefused { cause: _ } => 0 - 1
+    OrthogonalReady { value: s } =>
+      match space_floor_area(registry: mm_registry(), s: s) {
+        OrthogonalReady { value: a } => square_millimeter_count(m: a)
+        OrthogonalRefused { cause: _ } => 0 - 1
+      }
+  }
+}
+
+fn volume_of(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
+  match c {
+    OrthogonalRefused { cause: _ } => 0 - 1
+    OrthogonalReady { value: s } =>
+      match space_volume(registry: mm_registry(), s: s) {
+        OrthogonalReady { value: v } => cubic_millimeter_count(m: v)
+        OrthogonalRefused { cause: _ } => 0 - 1
+      }
+  }
+}
+
+// THE HEIGHT NOW ARRIVES IN A FRAME, so reading it as a millimetre count is a projection that can
+// refuse: an unregistered frame has no quantum and yields no length at all. The sentinel keeps its
+// meaning - a height nobody can state is as much a failure as a space that would not construct.
+fn height_of(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
+  match c {
+    OrthogonalRefused { cause: _ } => 0 - 1
+    OrthogonalReady { value: s } =>
+      match space_height(registry: mm_registry(), s: s) {
+        ExtentInFrame { length: l } =>
+          match frame_length_as_millimeter(l: l) {
+            LengthProjected { value: mm } => millimeter_count(m: mm)
+            LengthProjectionRefused { cause: _ } => 0 - 1
+          }
+        ExtentFrameUnregistered { identity: _ } => 0 - 1
+      }
+  }
+}
+
+fn wall_count(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
+  match c {
+    OrthogonalRefused { cause: _ } => 0 - 1
+    OrthogonalReady { value: s } => length(space_walls(s: s))
+  }
+}
+
+fn face_count(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
+  match c {
+    OrthogonalRefused { cause: _ } => 0 - 1
+    OrthogonalReady { value: s } => shell_face_count(s: space_shell(s: s))
+  }
+}
+
+fn located(c: OrthogonalConstruction<EnclosedSpace>, p: Point3) -> Int {
+  match c {
+    OrthogonalRefused { cause: _ } => 0 - 1
+    OrthogonalReady { value: s } =>
+      match space_locate_point(s: s, p: p) {
+        OrthogonalRefused { cause: _ } => 0 - 2
+        OrthogonalReady { value: loc } =>
+          match loc {
+            PointInsideSpace => 1
+            PointOnSpaceBoundary => 2
+            PointOutsideSpace => 3
+          }
+      }
+  }
+}
+
+fn pairwise(ca: OrthogonalConstruction<EnclosedSpace>, cb: OrthogonalConstruction<EnclosedSpace>, want_adjacency: Bool) -> Int {
+  match ca {
+    OrthogonalRefused { cause: _ } => 0 - 1
+    OrthogonalReady { value: a } =>
+      match cb {
+        OrthogonalRefused { cause: _ } => 0 - 1
+        OrthogonalReady { value: b } =>
+          match if want_adjacency { spaces_are_adjacent(a: a, b: b) } else { spaces_interpenetrate(a: a, b: b) } {
+            OrthogonalRefused { cause: _ } => 0 - 2
+            OrthogonalReady { value: v } => if v { 1 } else { 0 }
+          }
+      }
+  }
+}
+
+fn overlaps(ca: OrthogonalConstruction<EnclosedSpace>, cb: OrthogonalConstruction<EnclosedSpace>) -> Int {
+  pairwise(ca: ca, cb: cb, want_adjacency: false)
+}
+
+fn adjacent(ca: OrthogonalConstruction<EnclosedSpace>, cb: OrthogonalConstruction<EnclosedSpace>) -> Int {
+  pairwise(ca: ca, cb: cb, want_adjacency: true)
+}
+
+// 4000x2000 + 2000x1000 = 10,000,000 mm^2. The bounding box is 4000x3000 = 12,000,000, so a
+// bounding-box area would be 20% high - that gap is what makes this discriminating.
+test fn area_is_derived_from_the_boundary_not_the_extents() -> Bool {
+  area_of(c: l_space()) == 10000000 && area_of(c: l_space()) != 4000 * 3000
+}
+
+test fn volume_is_area_times_height_and_agrees_with_the_footprint() -> Bool {
+  height_of(c: l_space()) == 2400 && volume_of(c: l_space()) == 10000000 * 2400
+}
+
+// Two spaces with the SAME bounding box and the same height whose volumes differ. Nothing authored
+// as width x depth x height can tell these apart; the derived volume does, which is the band's
+// claim stated as an executable difference rather than as a property of a type name.
+test fn same_extents_different_boundaries_have_different_volumes() -> Bool {
+  let rect = rect_ctor(x0: 0, y0: 0, x1: 4000, y1: 3000, low: 0, high: 2400)
+  volume_of(c: rect) == 12000000 * 2400 && volume_of(c: l_space()) < volume_of(c: rect)
+}
+
+test fn face_count_is_walls_plus_floor_and_ceiling() -> Bool {
+  wall_count(c: l_space()) == 6
+    && face_count(c: l_space()) == 8
+    && face_count(c: rect_ctor(x0: 0, y0: 0, x1: 1, y1: 1, low: 0, high: 1)) == 6
+}
+
+// The notch point is inside the BOUNDING BOX and outside the space. A containment test using the
+// extents would answer inside, so this is the control that says the crossing count is real.
+//
+// The last two send the ray through a VERTEX (y = 2000 is the height of the notch corner), which
+// is the only case the half-open span rule exists for: under a closed rule the edges meeting there
+// are counted twice and the parity flips. An earlier revision of this witness omitted them and a
+// mutation to the rule stayed green, so the rule was untested while looking tested.
+test fn containment_distinguishes_inside_boundary_and_the_notch() -> Bool {
+  located(c: l_space(), p: p3(x: 1000, y: 1000, z: 1200)) == 1
+    && located(c: l_space(), p: p3(x: 3000, y: 2500, z: 1200)) == 3
+    && located(c: l_space(), p: p3(x: 0, y: 1000, z: 1200)) == 2
+    && located(c: l_space(), p: p3(x: 1000, y: 1000, z: 0)) == 2
+    && located(c: l_space(), p: p3(x: 1000, y: 1000, z: 2500)) == 3
+    && located(c: l_space(), p: p3(x: 1000, y: 2000, z: 1200)) == 1
+    && located(c: l_space(), p: p3(x: 3000, y: 2000, z: 1200)) == 2
+}
+
+test fn containment_refuses_across_frames() -> Bool {
+  match l_space() {
+    OrthogonalRefused { cause: _ } => false
+    OrthogonalReady { value: s } =>
+      match space_locate_point(s: s, p: point3(frame: building(), x: 1000, y: 1000, z: 1200)) {
+        OrthogonalReady { value: _ } => false
+        OrthogonalRefused { cause: c } =>
+          match c { OrthogonalFrameMismatch { expected: _, observed: _ } => true  _ => false }
+      }
+  }
+}
+
+// Two shapes whose BOUNDING BOXES overlap heavily but whose areas do not meet at all: the second
+// occupies exactly the notch the L-shape excludes. A bounding-box test would report an overlap and
+// refuse a legal pair of rooms - the widen DESIGN section 5 rules fail-open even though it never
+// misses a real overlap.
+test fn interlocking_shapes_do_not_interpenetrate() -> Bool {
+  overlaps(ca: l_space(), cb: rect_ctor(x0: 2000, y0: 2000, x1: 4000, y1: 3000, low: 0, high: 2400)) == 0
+}
+
+test fn genuinely_overlapping_spaces_interpenetrate() -> Bool {
+  overlaps(ca: l_space(), cb: rect_ctor(x0: 1000, y0: 1000, x1: 3000, y1: 1500, low: 1000, high: 2000)) == 1
+}
+
+// Stacked floors share a slab plane and must not count as interpenetrating: the vertical ranges
+// touch at one coordinate, and touching is adjacency, not overlap.
+test fn stacked_floors_touch_without_interpenetrating() -> Bool {
+  overlaps(ca: l_space(), cb: space_ctor(vertices: l_shape(), low: 2400, high: 4800)) == 0
+}
+
+// TWO SPACES AT THE SAME PLACE. This is the case the first version of the overlap predicate got
+// wrong: with coincident boundaries no vertex of either is STRICTLY inside the other and no pair of
+// edges crosses transversally, so a vertex-and-crossing test answers "disjoint" for two rooms
+// occupying one volume. It reached review-quality green because nothing exercised it; the mutation
+// that should have flipped stacked_floors did not, which is what exposed it.
+test fn identical_spaces_interpenetrate() -> Bool {
+  overlaps(ca: l_space(), cb: l_space()) == 1
+    && match sequence_spaces(cs: [l_space(), l_space()]) {
+         OrthogonalRefused { cause: _ } => false
+         OrthogonalReady { value: spaces } =>
+           match space_complex(spaces: spaces) {
+             OrthogonalReady { value: _ } => false
+             OrthogonalRefused { cause: c } => match c { SpacesInterpenetrate => true  _ => false }
+           }
+       }
+}
+
+// One space wholly inside another, again with no crossing edges. The inner one's vertices ARE
+// strictly inside here, so the refuted predicate happened to get this right - it is kept because
+// containment and coincidence are different geometric situations and only one of them was broken.
+test fn a_space_contained_in_another_interpenetrates() -> Bool {
+  overlaps(
+    ca: rect_ctor(x0: 0, y0: 0, x1: 6000, y1: 6000, low: 0, high: 3000),
+    cb: rect_ctor(x0: 1000, y0: 1000, x1: 2000, y1: 2000, low: 1000, high: 2000),
+  ) == 1
+}
+
+test fn adjacency_is_a_shared_wall_not_a_shared_corner() -> Bool {
+  let a = rect_ctor(x0: 0, y0: 0, x1: 3000, y1: 3000, low: 0, high: 2400)
+  adjacent(ca: a, cb: rect_ctor(x0: 3000, y0: 0, x1: 6000, y1: 3000, low: 0, high: 2400)) == 1
+    && adjacent(ca: a, cb: rect_ctor(x0: 3000, y0: 3000, x1: 6000, y1: 6000, low: 0, high: 2400)) == 0
+    && adjacent(ca: a, cb: rect_ctor(x0: 9000, y0: 0, x1: 12000, y1: 3000, low: 0, high: 2400)) == 0
+}
+
+// A wall shared in plan but at disjoint heights is not adjacency: you cannot put a door between a
+// ground-floor room and a first-floor room that merely sit beside one another vertically.
+test fn adjacency_requires_a_shared_vertical_span() -> Bool {
+  adjacent(
+    ca: rect_ctor(x0: 0, y0: 0, x1: 3000, y1: 3000, low: 0, high: 2400),
+    cb: rect_ctor(x0: 3000, y0: 0, x1: 6000, y1: 3000, low: 2400, high: 4800),
+  ) == 0
+}
+
+test fn complex_admits_disjoint_spaces_and_sums_their_volumes() -> Bool {
+  match sequence_spaces(cs: [
+    rect_ctor(x0: 0, y0: 0, x1: 3000, y1: 3000, low: 0, high: 2400),
+    rect_ctor(x0: 3000, y0: 0, x1: 6000, y1: 3000, low: 0, high: 2400),
+  ]) {
+    OrthogonalRefused { cause: _ } => false
+    OrthogonalReady { value: spaces } =>
+      match space_complex(spaces: spaces) {
+        OrthogonalRefused { cause: _ } => false
+        OrthogonalReady { value: c } =>
+          complex_space_count(c: c) == 2
+            && match complex_total_volume(registry: mm_registry(), c: c) {
+                 OrthogonalReady { value: v } => cubic_millimeter_count(m: v) == 2 * 9000000 * 2400
+                 OrthogonalRefused { cause: _ } => false
+               }
+      }
+  }
+}
+
+test fn complex_refuses_interpenetrating_members() -> Bool {
+  match sequence_spaces(cs: [l_space(), rect_ctor(x0: 1000, y0: 1000, x1: 3000, y1: 1500, low: 1000, high: 2000)]) {
+    OrthogonalRefused { cause: _ } => false
+    OrthogonalReady { value: spaces } =>
+      match space_complex(spaces: spaces) {
+        OrthogonalReady { value: _ } => false
+        OrthogonalRefused { cause: c } => match c { SpacesInterpenetrate => true  _ => false }
+      }
+  }
+}
+
+test fn complex_refuses_members_in_different_frames() -> Bool {
+  let elsewhere = space_ctor(
+    vertices: [
+      point2(frame: building(), x: 0, y: 0),
+      point2(frame: building(), x: 3000, y: 0),
+      point2(frame: building(), x: 3000, y: 3000),
+      point2(frame: building(), x: 0, y: 3000),
+    ],
+    low: 0,
+    high: 2400,
+  )
+  match sequence_spaces(cs: [rect_ctor(x0: 0, y0: 0, x1: 3000, y1: 3000, low: 0, high: 2400), elsewhere]) {
+    OrthogonalRefused { cause: _ } => false
+    OrthogonalReady { value: spaces } =>
+      match space_complex(spaces: spaces) {
+        OrthogonalReady { value: _ } => false
+        OrthogonalRefused { cause: c } =>
+          match c { OrthogonalFrameMismatch { expected: _, observed: _ } => true  _ => false }
+      }
+  }
+}
+
+// THE METRIC FOLDS REFUSE A FRAME THEY CANNOT LABEL, which is the wall the extents did not need.
+// A rectangle's width answers IN the frame and is true at any quantum; an area and a volume are
+// still spelled in square and cubic millimetres, so on a micrometre-registered frame they would
+// multiply micrometre counts and call the product square millimetres - wrong by a factor of a
+// million, from arithmetic that is right. The millimetre frame is the positive control on the
+// same space, so the frame decides the outcome rather than the fold refusing everything.
+fn micro_registry() -> SpatialFrameRegistry {
+  match register_frame(r: empty_frame_registry(), identity: room(), length_scale: Micro) {
+    FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
+    FrameRegistrationRefused { cause: _ } => empty_frame_registry()
+  }
+}
+
+// THE VOLUME PATH REFUSES TOO - and it reaches that refusal through the AREA guard, not
+// through the height projection. The first version of this comment claimed the second, and
+// mutating both height arms to fabricate a zero left this witness green, which is how the
+// claim was caught: space_volume consults the area fold first and it refuses on exactly the
+// frames that would break the height projection. So what this establishes is that a volume
+// over an unlabelable frame refuses rather than returning zero. It does NOT establish that
+// the height projection refuses, and the module records that those arms are defensive.
+test fn w_metric_folds_refuse_a_frame_they_cannot_label() -> Bool {
+  match l_space() {
+    OrthogonalRefused { cause: _ } => false
+    OrthogonalReady { value: s } => {
+      let area_refused = match space_floor_area(registry: micro_registry(), s: s) {
+        OrthogonalRefused { cause: c } =>
+          match c {
+            MillimetreFrameRequiredForMetric { frame: _ } => true
+            SegmentEndpointsCoincide => false
+            SegmentNotAxisAligned => false
+            ExtentNotPositive { axis: _ } => false
+            OrthogonalFrameMismatch { expected: _, observed: _ } => false
+            LoopTooFewVertices { supplied: _ } => false
+            LoopEdgeNotAxisAligned => false
+            LoopEdgesNotPerpendicular => false
+            LoopSelfIntersects => false
+            ShellArithmeticRefused { cause: _ } => false
+            SpacesInterpenetrate => false
+            RotationAxesParallel => false
+            BoundingBoxHasNoPoints => false
+          }
+        OrthogonalReady { value: _ } => false
+      }
+      let area_answered = match space_floor_area(registry: mm_registry(), s: s) {
+        OrthogonalReady { value: _ } => true
+        OrthogonalRefused { cause: _ } => false
+      }
+      let height_unregistered = match space_height(registry: empty_frame_registry(), s: s) {
+        ExtentFrameUnregistered { identity: _ } => true
+        ExtentInFrame { length: _ } => false
+      }
+      let volume_refused = match space_volume(registry: micro_registry(), s: s) {
+        OrthogonalRefused { cause: _ } => true
+        OrthogonalReady { value: _ } => false
+      }
+      let volume_answered = match space_volume(registry: mm_registry(), s: s) {
+        OrthogonalReady { value: v } => cubic_millimeter_count(m: v) > 0
+        OrthogonalRefused { cause: _ } => false
+      }
+      area_refused && area_answered && height_unregistered && volume_refused && volume_answered
+    }
+  }
+}

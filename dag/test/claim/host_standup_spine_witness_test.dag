@@ -13,10 +13,11 @@ fn spine_step_tag(step: HostStandupStep) -> Int {
     Assimilation { phase: ReachSecretsNetwork } => 5
     Assimilation { phase: RunnerDeploySlot } => 6
     Assimilation { phase: BuildCacheProvision } => 7
-    Assimilation { phase: ComputeFabricEnroll } => 8
-    Assimilation { phase: GreenPlaceReadiness } => 9
-    Assimilation { phase: SessionPlacementEnrollment } => 10
-    Assimilation { phase: StandupAssimilationComplete } => 11
+    Assimilation { phase: CodexRuntimeProvision } => 8
+    Assimilation { phase: ComputeFabricEnroll } => 9
+    Assimilation { phase: GreenPlaceReadiness } => 10
+    Assimilation { phase: SessionPlacementEnrollment } => 11
+    Assimilation { phase: StandupAssimilationComplete } => 12
   }
 }
 
@@ -36,10 +37,30 @@ fn spine_tags_are_linear() -> Bool {
   ).ok
 }
 
-test fn host_standup_spine_is_twelve_step_linear_prefix_then_p0_p5() -> Bool {
-  host_standup_spine_length() == 12
+test fn host_standup_spine_is_thirteen_step_linear_prefix_then_p0_p5() -> Bool {
+  host_standup_spine_length() == 13
     && spine_tags_are_linear()
-    && host_standup_gap_ledger.length() == 12
+    && host_standup_gap_ledger.length() == 13
+}
+
+test fn p1c_codex_runtime_provision_spine_row_landed() -> Bool {
+  fold(
+    host_standup_spine,
+    init: false,
+    f: (acc, s) =>
+      acc || match s.phase {
+        Assimilation { phase: CodexRuntimeProvision } =>
+          s.label == "P1c:codex-runtime-provision"
+            && match s.disposition {
+              ModeledCompose { authorities: refs } =>
+                refs.length() >= 3
+                  && string_contains(s: s.label, pattern: "codex-runtime-provision")
+              DeclaredGap { interim_realization: _, refusal: _ } => false
+            }
+        Prefix { phase: _ } => acc
+        Assimilation { phase: _ } => acc
+      }
+  )
 }
 
 test fn p1b_build_cache_provision_spine_row_landed() -> Bool {
@@ -64,7 +85,7 @@ test fn p1b_build_cache_provision_spine_row_landed() -> Bool {
 
 test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {
   srv3_host_standup_target == operator_host_srv3
-    && srv3_install_mechanism_is_nbd_proxy_no_fallback()
+    && srv3_install_mechanism_refuses_rather_than_falling_back()
 }
 
 test fn srv3_live_fleet_offer_carries_ci() -> Bool {

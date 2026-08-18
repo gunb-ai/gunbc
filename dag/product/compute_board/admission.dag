@@ -1,0 +1,342 @@
+module product.compute_board.admission
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import product.compute_board.analog {
+  AnalogCircuitIntent,
+  component_identity,
+  component_terminals,
+}
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  ElectricalNet,
+  ElectricalTerminalRef,
+  NetIdentity,
+  component_identity_eq,
+  component_local_label,
+  design_identity_eq,
+  net_identity_eq,
+  net_local_label,
+  terminal_ref_equal,
+}
+import product.compute_board.digital_control {
+  DigitalControlIntent,
+  DigitalEquation,
+  DigitalExpr,
+  DigitalSignal,
+  SignalName,
+  expr_references_undeclared,
+  intent_declares_signal,
+  signal_direction_is_output,
+  signal_names_equal,
+}
+import product.compute_board.article {
+  BoardPowerInterfaceArticle,
+  EstablishedByBoardSignal,
+  EstablishedByPlatformComponent,
+  HostFirmwareStartPrecondition,
+  NotEstablishedByThisArticle,
+  ChassisBond,
+  ElectricalBond,
+  PowerReturnConnection,
+  ProtectiveEarthBond,
+  ShieldTermination,
+  SignalReferenceConnection,
+}
+
+data admission_note: String = "WHOLE-ARTICLE ADMISSION, BEFORE ANY PROJECTION READS A FIELD. Every projection in this product was checking the facts it personally needed and no more, which meant the ARTICLE's own coherence was nobody's: duplicate component identities, a net member naming a terminal no component owns, a bond attached to a nonexistent node, an output nothing drives, two equations driving one output — each is well-formed to every individual projection and each makes the article describe a board that cannot exist. THE SPLIT IS DELIBERATE AND IS NOT A DUPLICATED CHECK: what lives here is article-level structure — identity uniqueness and referential integrity across the analog, bonding and digital halves. What stays in a projection is target-specific: which terminals need a node (SPICE), which spellings a target's lexer admits (Verilog). A digital-only target has no opinion about whether a capacitor terminal sits on a net, so that fact is not an article-level admission. THE LINE WAS DRAWN WRONG ONCE AND THE CORRECTION IS INSTRUCTIVE: the Verilog projection also checked that every driven signal is a declared output and that no equation references an undeclared one. Those are article-level, they are refused here, and keeping them there was one concept under two names in two modules — plus, once the projection took the sealed wrapper, arms that no production call could reach. They were deleted rather than left as a second opinion. REFUSALS ARE COLLECTED, NOT FIRST-WINS. A first-refusal fold reports one cause per edit cycle, which turns a coherent set of related defects into a queue discovered one at a time; and it makes the reported cause depend on authoring order, which is the same list-order accident this article has now closed three times."
+
+type BoardArticleRefusal
+  = DuplicateComponentIdentity { component: NonEmptyStr }
+  | DuplicateNetIdentity { net: NonEmptyStr }
+  | DuplicateSignalName { signal: NonEmptyStr }
+  | NetMemberNamesNoTerminal { net: NonEmptyStr, component: NonEmptyStr, terminal: NonEmptyStr }
+  | NetMemberBelongsToAnotherDesign { net: NonEmptyStr, net_design: NonEmptyStr, member_design: NonEmptyStr }
+  | BondTerminalNamesNoTerminal { component: NonEmptyStr, terminal: NonEmptyStr }
+  | BondNamesUndeclaredNet { net: NonEmptyStr }
+  | ReferenceNetNotDeclared { net: NonEmptyStr }
+  | DrivenSignalUndeclared { signal: NonEmptyStr }
+  | DrivenSignalIsAnInput { signal: NonEmptyStr }
+  | EquationReferencesUndeclaredSignal { driven: NonEmptyStr }
+  | OutputWithNoDriver { signal: NonEmptyStr }
+  | OutputWithMultipleDrivers { signal: NonEmptyStr }
+  | PreconditionSignalUndeclared { signal: NonEmptyStr }
+  | PreconditionSignalIsNotAnOutput { signal: NonEmptyStr }
+
+// Nonempty by construction — a refusal arm carrying an empty cause list is the shape that lets a
+// refusal report nothing, so head-and-tail rather than a List anyone can hand [] to.
+type BoardArticleRefusalSet {
+  first: BoardArticleRefusal
+  rest: List<BoardArticleRefusal>
+}
+
+// The admitted article is a SEALED wrapper, not a Bool beside the article. A predicate answering
+// "is this coherent" leaves the incoherent value in every caller's hand and relies on each of them
+// to have asked; a projection taking this type cannot be reached with an unchecked article at all,
+// because admit_board_article is the only declaration that constructs one.
+type AdmittedBoardPowerInterfaceArticle sole_constructor {
+  article: BoardPowerInterfaceArticle
+}
+
+fn admitted_article(a: AdmittedBoardPowerInterfaceArticle) -> BoardPowerInterfaceArticle {
+  a.article
+}
+
+type BoardArticleAdmission
+  = BoardArticleAdmitted { article: AdmittedBoardPowerInterfaceArticle }
+  | BoardArticleRefused { causes: BoardArticleRefusalSet }
+
+fn count_matching(names: List<NonEmptyStr>, name: NonEmptyStr) -> Nat {
+  fold(names, init: 0, f: fn(acc, n) { if n == name { acc + 1 } else { acc } })
+}
+
+fn duplicated_names(names: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  fold(names, init: [], f: fn(acc, n) {
+    if count_matching(names: names, name: n) > 1 && count_matching(names: acc, name: n) == 0 {
+      concat(acc, [n])
+    } else {
+      acc
+    }
+  })
+}
+
+fn article_terminals(intent: AnalogCircuitIntent) -> List<ElectricalTerminalRef> {
+  fold(intent.components, init: [], f: fn(acc, c) { concat(acc, component_terminals(c: c)) })
+}
+
+fn terminal_exists(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> Bool {
+  fold(article_terminals(intent: intent), init: false, f: fn(acc, k) { acc || terminal_ref_equal(a: k, b: t) })
+}
+
+fn net_declared(intent: AnalogCircuitIntent, n: NetIdentity) -> Bool {
+  fold(intent.nets, init: false, f: fn(acc, net) { acc || net_identity_eq(a: net.identity, b: n) })
+}
+
+// ----- analog structure -----
+
+fn duplicate_component_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
+  let names = fold(intent.components, init: [], f: fn(acc, c) { concat(acc, [component_local_label(c: component_identity(c: c))]) })
+  fold(duplicated_names(names: names), init: [], f: fn(acc, n) {
+    concat(acc, [DuplicateComponentIdentity { component: n }])
+  })
+}
+
+fn duplicate_net_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
+  let names = fold(intent.nets, init: [], f: fn(acc, net) { concat(acc, [net_local_label(n: net.identity)]) })
+  fold(duplicated_names(names: names), init: [], f: fn(acc, n) {
+    concat(acc, [DuplicateNetIdentity { net: n }])
+  })
+}
+
+// A net member naming a terminal no component owns is the defect the identity brands were
+// introduced to make DECIDABLE rather than to make impossible: the brand stops a chassis feature
+// being compared to a circuit node, and it does not stop a typo. This is where the typo is caught.
+// A NET MEMBER FROM ANOTHER BOARD IS A QUIETER DEFECT THAN A TYPO, and the design axis on the
+// identity does not catch it on its own. Scoped identities make the two boards' terminals UNEQUAL,
+// which is what stops a foreign terminal from being FOUND on this net -- but nothing stops such a
+// net being authored. The result is a member that is silently never on its own net: every
+// membership question about it answers no, and no question answers WHY. That is the state-space
+// conflation DESIGN section 5 forbids, one level up from the equality -- absent and wrong-board are
+// different states with different remedies, and only the refusal distinguishes them.
+//
+// It is a separate cause from the dangling member below, not a widening of it, because the remedies
+// differ: a dangling member is a typo in a terminal name, a foreign member means two designs were
+// spliced and the author has to decide which board this net belongs to. And it REPLACES the dangling
+// cause rather than accompanying it -- a foreign member never resolves to a terminal on this board,
+// so reporting both would name one problem twice and send the author hunting a typo that is not
+// there. One cause per problem, which is the same rule the net-grain causes already follow.
+fn foreign_design_net_member_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
+  fold(intent.nets, init: [], f: fn(acc, net) {
+    fold(net.members, init: acc, f: fn(inner, m) {
+      if design_identity_eq(a: net.identity.design, b: m.component.design) {
+        inner
+      } else {
+        concat(inner, [NetMemberBelongsToAnotherDesign {
+          net: net_local_label(n: net.identity),
+          net_design: net.identity.design as NonEmptyStr,
+          member_design: m.component.design as NonEmptyStr,
+        }])
+      }
+    })
+  })
+}
+
+fn dangling_net_member_refusals(intent: AnalogCircuitIntent) -> List<BoardArticleRefusal> {
+  fold(intent.nets, init: [], f: fn(acc, net) {
+    fold(net.members, init: acc, f: fn(inner, m) {
+      if terminal_exists(intent: intent, t: m)
+        || !design_identity_eq(a: net.identity.design, b: m.component.design) {
+        inner
+      } else {
+        concat(inner, [NetMemberNamesNoTerminal {
+          net: net_local_label(n: net.identity),
+          component: component_local_label(c: m.component),
+          terminal: m.terminal as NonEmptyStr,
+        }])
+      }
+    })
+  })
+}
+
+fn bond_refusal(intent: AnalogCircuitIntent, b: ElectricalBond) -> List<BoardArticleRefusal> {
+  match b {
+    PowerReturnConnection { domain: d, terminal: t } =>
+      concat(net_refusal(intent: intent, n: d), terminal_refusal(intent: intent, t: t))
+    SignalReferenceConnection { signal_class: d, terminal: t } =>
+      concat(net_refusal(intent: intent, n: d), terminal_refusal(intent: intent, t: t))
+    ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => []
+    ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => []
+    ShieldTermination { shield: _, chassis_feature: _, standing: _ } => []
+  }
+}
+
+fn bond_refusals(intent: AnalogCircuitIntent, bonds: List<ElectricalBond>) -> List<BoardArticleRefusal> {
+  fold(bonds, init: [], f: fn(acc, b) { concat(acc, bond_refusal(intent: intent, b: b)) })
+}
+
+fn net_refusal(intent: AnalogCircuitIntent, n: NetIdentity) -> List<BoardArticleRefusal> {
+  if net_declared(intent: intent, n: n) { [] } else { [BondNamesUndeclaredNet { net: net_local_label(n: n) }] }
+}
+
+fn terminal_refusal(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> List<BoardArticleRefusal> {
+  if terminal_exists(intent: intent, t: t) {
+    []
+  } else {
+    [BondTerminalNamesNoTerminal { component: component_local_label(c: t.component), terminal: t.terminal as NonEmptyStr }]
+  }
+}
+
+fn reference_net_refusals(intent: AnalogCircuitIntent, reference: NetIdentity) -> List<BoardArticleRefusal> {
+  if net_declared(intent: intent, n: reference) {
+    []
+  } else {
+    [ReferenceNetNotDeclared { net: net_local_label(n: reference) }]
+  }
+}
+
+// ----- digital structure -----
+
+fn duplicate_signal_refusals(control: DigitalControlIntent) -> List<BoardArticleRefusal> {
+  let names = fold(control.signals, init: [], f: fn(acc, s) { concat(acc, [s.name as NonEmptyStr]) })
+  fold(duplicated_names(names: names), init: [], f: fn(acc, n) {
+    concat(acc, [DuplicateSignalName { signal: n }])
+  })
+}
+
+fn signal_is_output(control: DigitalControlIntent, name: SignalName) -> Bool {
+  fold(control.signals, init: false, f: fn(acc, s) {
+    acc || (signal_names_equal(a: s.name, b: name) && signal_direction_is_output(s: s))
+  })
+}
+
+fn driver_count(control: DigitalControlIntent, name: SignalName) -> Nat {
+  fold(control.equations, init: 0, f: fn(acc, e) {
+    if signal_names_equal(a: e.driven, b: name) { acc + 1 } else { acc }
+  })
+}
+
+fn equation_refusals(control: DigitalControlIntent) -> List<BoardArticleRefusal> {
+  fold(control.equations, init: [], f: fn(acc, e) {
+    let undeclared = if intent_declares_signal(intent: control, name: e.driven) {
+      []
+    } else {
+      [DrivenSignalUndeclared { signal: e.driven as NonEmptyStr }]
+    }
+    let direction = if intent_declares_signal(intent: control, name: e.driven) && !signal_is_output(control: control, name: e.driven) {
+      [DrivenSignalIsAnInput { signal: e.driven as NonEmptyStr }]
+    } else {
+      []
+    }
+    let referenced = if expr_references_undeclared(intent: control, e: e.expression) {
+      [EquationReferencesUndeclaredSignal { driven: e.driven as NonEmptyStr }]
+    } else {
+      []
+    }
+    concat(acc, concat(undeclared, concat(direction, referenced)))
+  })
+}
+
+// EVERY OUTPUT NEEDS EXACTLY ONE DRIVER, and the two failures are separate causes because their
+// remedies are opposite: an undriven output means an equation is missing, a doubly-driven one
+// means one is surplus. A single "wrong driver count" cause would report both as the same defect
+// and leave the reader to work out which direction to edit in.
+fn output_driver_refusals(control: DigitalControlIntent) -> List<BoardArticleRefusal> {
+  fold(control.signals, init: [], f: fn(acc, s) {
+    if signal_direction_is_output(s: s) {
+      let n = driver_count(control: control, name: s.name)
+      if n == 0 {
+        concat(acc, [OutputWithNoDriver { signal: s.name as NonEmptyStr }])
+      } else {
+        if n == 1 { acc } else { concat(acc, [OutputWithMultipleDrivers { signal: s.name as NonEmptyStr }]) }
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+// THE PRECONDITION JOIN. A firmware contract naming a signal the control logic never declares is
+// a promise about a wire that does not exist, and naming one declared as an INPUT is worse: the
+// board would be claiming to establish a condition it only observes. Both were unrepresentable
+// before the establishment was typed and are refused now that it is — which is the whole reason
+// the prose fields were replaced rather than merely rewritten.
+fn precondition_refusal(
+  control: DigitalControlIntent,
+  p: HostFirmwareStartPrecondition
+) -> List<BoardArticleRefusal> {
+  match p.establishment {
+    EstablishedByPlatformComponent { role: _ } => []
+    NotEstablishedByThisArticle { owner: _ } => []
+    EstablishedByBoardSignal { signal: sig } =>
+      if !intent_declares_signal(intent: control, name: sig) {
+        [PreconditionSignalUndeclared { signal: sig as NonEmptyStr }]
+      } else {
+        if signal_is_output(control: control, name: sig) {
+          []
+        } else {
+          [PreconditionSignalIsNotAnOutput { signal: sig as NonEmptyStr }]
+        }
+      }
+  }
+}
+
+fn precondition_refusals(a: BoardPowerInterfaceArticle) -> List<BoardArticleRefusal> {
+  fold(a.platform_firmware.start_preconditions, init: [], f: fn(acc, p) {
+    concat(acc, precondition_refusal(control: a.digital_control, p: p))
+  })
+}
+
+fn article_refusals(a: BoardPowerInterfaceArticle) -> List<BoardArticleRefusal> {
+  concat(
+    concat(
+      concat(duplicate_component_refusals(intent: a.analog), duplicate_net_refusals(intent: a.analog)),
+      concat(concat(dangling_net_member_refusals(intent: a.analog), foreign_design_net_member_refusals(intent: a.analog)), reference_net_refusals(intent: a.analog, reference: a.reference_net))
+    ),
+    concat(
+      concat(bond_refusals(intent: a.analog, bonds: a.bonds), duplicate_signal_refusals(control: a.digital_control)),
+      concat(
+        concat(equation_refusals(control: a.digital_control), output_driver_refusals(control: a.digital_control)),
+        precondition_refusals(a: a)
+      )
+    )
+  )
+}
+
+fn push_refusal(acc: BoardArticleRefusalSet?, r: BoardArticleRefusal) -> BoardArticleRefusalSet? {
+  match acc {
+    Absent => Present { value: BoardArticleRefusalSet { first: r, rest: [] } }
+    Present { value: s } =>
+      Present { value: BoardArticleRefusalSet { first: s.first, rest: concat(s.rest, [r]) } }
+  }
+}
+
+fn refusal_set_count(s: BoardArticleRefusalSet) -> Nat {
+  1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
+}
+
+fn admit_board_article(a: BoardPowerInterfaceArticle) -> BoardArticleAdmission {
+  match fold(article_refusals(a: a), init: none, f: fn(acc, r) { push_refusal(acc: acc, r: r) }) {
+    Absent => BoardArticleAdmitted { article: AdmittedBoardPowerInterfaceArticle { article: a } }
+    Present { value: s } => BoardArticleRefused { causes: s }
+  }
+}

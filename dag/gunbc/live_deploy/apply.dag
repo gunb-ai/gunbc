@@ -111,6 +111,10 @@ fn tailscale_serve_status_read(transport: HostEffectTransport) -> TailscaleServe
       let result = tailscale.Serve.StatusJson()
       TailscaleServeStatusObserved { json: result.stdout }
     }
+    FleetSsh { target: t, context: _ } =>
+      TailscaleServeStatusReadRefused {
+        reason: concat("tailscale serve status is not yet migrated to the FleetSsh sealed context; the leg was NOT attempted for ", t.endpoint as String),
+      }
     SshShell { ssh_host } =>
       match typed_argv_exec_over_ssh(host: ssh_host, argv: argv) {
         TypedArgvExecConverged { result } =>
@@ -398,6 +402,7 @@ fn live_deploy_access_preflight_for(access: DeployAccess) -> Reconciliation<Host
           evidence: ShellEffectApplied {
             exit_code: 0,
             stdout: deploy_access_preflight_pass_message(access: access),
+            stderr: "",
           },
           applied: intent,
         }

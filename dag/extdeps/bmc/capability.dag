@@ -4,7 +4,12 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.bmc { BmcFirmwareFamily, BmcEndpoint }
 import std.nat { Nat }
+import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import v2.std.algebra { any, filter, length, skip }
+import v2.std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -25,30 +30,12 @@ type BmcCapability
 
 type BmcFirmwareVersion {
   family: BmcFirmwareFamily
-  version: BmcFirmwareSemanticVersion
-}
-
-type BmcFirmwareSemanticVersion {
-  major: Nat
-  minor: Nat
-  patch: Nat
+  version: FirmwareSemanticVersion
 }
 
 type BmcFirmwareVersionParse
-  = BmcFirmwareVersionParsed { version: BmcFirmwareSemanticVersion }
+  = BmcFirmwareVersionParsed { version: FirmwareSemanticVersion }
   | BmcFirmwareVersionRefused { wire: String }
-
-fn bmc_firmware_semantic_version(
-  major: Nat,
-  minor: Nat,
-  patch: Nat,
-) -> BmcFirmwareSemanticVersion {
-  BmcFirmwareSemanticVersion {
-    major: major,
-    minor: minor,
-    patch: patch,
-  }
-}
 
 fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
   let fields = split(s: wire, delimiter: ".")
@@ -68,7 +55,7 @@ fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
                   BmcFirmwareVersionRefused { wire: wire }
                 } else {
                   BmcFirmwareVersionParsed {
-                    version: bmc_firmware_semantic_version(
+                    version: firmware_semantic_version(
                       major: major,
                       minor: minor,
                       patch: patch,

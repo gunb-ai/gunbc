@@ -4,6 +4,7 @@ import std.types { Bool, NonEmptyStr }
 import std.integer { Int }
 import std.nat { Nat }
 import std.measure {
+  Scale, Milli,
   Millimeter,
   SignedSquareMillimeter,
   signed_square_millimeter,
@@ -11,7 +12,6 @@ import std.measure {
   millimeter,
   square_millimeter,
   square_millimeter_count,
-  signed_millimeter_component_count,
 }
 import std.checked_arithmetic {
   CheckedInt,
@@ -30,10 +30,16 @@ import std.affine_space {
   Vector3,
   Point3,
   displacement_between3,
-  SpatialArithmeticResult,
-  SpatialArithmeticReady,
+  SpatialResult,
+  SpatialReady,
   SpatialArithmeticRefused,
-}
+  SpatialFrameRefused,
+  SpatialFrameRefusal,
+  SpatialOperationIdentity, OpDot3, OpCross3,
+  SpatialFrameRelation, SameFrameOperandsRequired, MillimetreFrameRequired,
+  OpNormSquared3, OpNorm3, signed_frame_component_count }
+import std.spatial_frame { SpatialFrameRegistry, frame_length_scale, scales_agree }
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
 
 // SPATIAL-2, metric half. This is where integer millimetres stop being sufficient, so it is where
 // the numeric policy has to become structural.
@@ -64,51 +70,109 @@ type ExactLength
       reason: NonEmptyStr
     }
 
+
+// THE METRIC OPERATIONS REFUSE A FRAME THEY CANNOT LABEL. Components became unit-neutral when the
+// frame took ownership of the quantum, and these three operations are the ones that put a unit
+// BACK on their result: a dot product is an area, a norm is a length, and both are spelled in
+// millimetres here. That spelling is only true when the frame's quantum is the millimetre. On a
+// micrometre-registered board frame the same arithmetic would return millimeter(1000) for a
+// thousand-micrometre vector - a number that is right and a label that is a lie, which travels
+// further than an error because nothing about it looks wrong.
+//
+// The remedy is a refusal rather than a conversion, and rather than a silently rescaled answer.
+// A frame that is not registered at all also refuses: an unregistered frame has no quantum, so
+// there is no unit to check the label against, and assuming the default is how the convention
+// this whole layer removed would come back.
+//
+// NEXT RUNG: derive the result's unit from the frame the way std.orthogonal_geometry now derives
+// its extents. The length half is reachable today through FrameExtent; the area half needs a
+// frame-relative area carrier, which nothing in the corpus consumes yet - so it is named here
+// rather than invented ahead of a consumer.
+fn frame_is_millimetre(registry: SpatialFrameRegistry, identity: CoordinateFrameIdentity) -> Bool {
+  match frame_length_scale(r: registry, identity: identity) {
+    Absent => false
+    Present { value: s } => scales_agree(a: s, b: Milli)
+  }
+}
+
+fn metric_frame_refusal(op: SpatialOperationIdentity, frame: CoordinateFrameIdentity) -> SpatialFrameRefusal {
+  SpatialFrameRefusal { operation: op, left_frame: frame, right_frame: frame, relation: MillimetreFrameRequired }
+}
+
 // Dot product of two DISPLACEMENTS is an AREA with a meaningful sign - millimetre times millimetre
 // is millimetre squared. Returning a bare Int erased that dimension at the first operation, and an
 // erased dimension is how a plausible-looking wrong quantity travels. Sign is retained because a
 // negative dot product means the displacements point away from each other.
-fn dot3<F>(a: Vector3<F>, b: Vector3<F>) -> SpatialArithmeticResult<SignedSquareMillimeter> {
-  let px = checked_int_multiply(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x))
-  let py = checked_int_multiply(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y))
-  let pz = checked_int_multiply(a: signed_millimeter_component_count(m: a.z), b: signed_millimeter_component_count(m: b.z))
+fn dot3(registry: SpatialFrameRegistry, a: Vector3, b: Vector3) -> SpatialResult<SignedSquareMillimeter> {
+  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+    SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpDot3, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
+  } else {
+  if !frame_is_millimetre(registry: registry, identity: a.frame) {
+    SpatialFrameRefused { refusal: metric_frame_refusal(op: OpDot3, frame: a.frame) }
+  } else {
+  let px = checked_int_multiply(a: signed_frame_component_count(c: a.x), b: signed_frame_component_count(c: b.x))
+  let py = checked_int_multiply(a: signed_frame_component_count(c: a.y), b: signed_frame_component_count(c: b.y))
+  let pz = checked_int_multiply(a: signed_frame_component_count(c: a.z), b: signed_frame_component_count(c: b.z))
   match checked_add_results(a: checked_add_results(a: px, b: py), b: pz) {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: total } =>
-      SpatialArithmeticReady { value: signed_square_millimeter(count: total) }
+      SpatialReady { value: signed_square_millimeter(count: total) }
+  }
+  }
   }
 }
 
 // An AREA vector, NOT a displacement vector. Its components are millimetre squared, and an earlier
-// revision returned Vector3<F> - whose components are millimetre displacements - so the numbers
+// revision returned Vector3 - whose components are millimetre displacements - so the numbers
 // were areas wearing a length type. That made translate_point3(point, by: cross3(a, b)) writable:
 // a cross-product area consumed as a physical translation. A separate carrier makes it unwritable
 // rather than merely wrong, and it is deliberately NOT an alias of Vector3: sharing three numeric
 // components is not sharing a dimension.
-type AreaVector3<F> {
+type AreaVector3 {
+  frame: CoordinateFrameIdentity
   x: SignedSquareMillimeter
   y: SignedSquareMillimeter
   z: SignedSquareMillimeter
 }
 
-fn cross3<F>(a: Vector3<F>, b: Vector3<F>) -> SpatialArithmeticResult<AreaVector3<F>> {
-  let ax = signed_millimeter_component_count(m: a.x)
-  let ay = signed_millimeter_component_count(m: a.y)
-  let az = signed_millimeter_component_count(m: a.z)
-  let bx = signed_millimeter_component_count(m: b.x)
-  let by = signed_millimeter_component_count(m: b.y)
-  let bz = signed_millimeter_component_count(m: b.z)
+// THREE LABELS RATHER THAN ONE, which is why leaving this unguarded was worse than the scalar
+// case it was grouped with rather than merely equal to it: every component of the returned
+// AreaVector3 is spelled in square millimetres, so an unguarded micrometre frame mislabels a
+// whole vector at once and each component then travels independently.
+fn cross3(registry: SpatialFrameRegistry, a: Vector3, b: Vector3) -> SpatialResult<AreaVector3> {
+  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+    SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpCross3, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
+  } else {
+  if !frame_is_millimetre(registry: registry, identity: a.frame) {
+    SpatialFrameRefused { refusal: metric_frame_refusal(op: OpCross3, frame: a.frame) }
+  } else {
+  let ax = signed_frame_component_count(c: a.x)
+  let ay = signed_frame_component_count(c: a.y)
+  let az = signed_frame_component_count(c: a.z)
+  let bx = signed_frame_component_count(c: b.x)
+  let by = signed_frame_component_count(c: b.y)
+  let bz = signed_frame_component_count(c: b.z)
   let cx = checked_subtract_results(a: checked_int_multiply(a: ay, b: bz), b: checked_int_multiply(a: az, b: by))
   let cy = checked_subtract_results(a: checked_int_multiply(a: az, b: bx), b: checked_int_multiply(a: ax, b: bz))
   let cz = checked_subtract_results(a: checked_int_multiply(a: ax, b: by), b: checked_int_multiply(a: ay, b: bx))
-  area_vector3_from_checked(x: cx, y: cy, z: cz)
+  area_vector3_from_checked(frame: a.frame, x: cx, y: cy, z: cz)
+  }
+  }
 }
 
+// NOT GUARDED, AND THAT IS THE CORRECT SCOPE RATHER THAN AN OVERSIGHT. This labels components in
+// square millimetres and takes no registry, so read alone it is the same defect as the unguarded
+// cross3 - the difference is reachability. It has exactly one caller, cross3 above, which checks
+// the frame before reaching here, and no module imports it. A census over this file flags it as
+// the sole remaining labeller without a guard, so this note is what tells the next reader of that
+// census that the answer is a call-graph fact rather than a miss. If it ever gains a second
+// caller or leaves the module, it takes the guard with it.
+//
 // The same first-crossing-wins fold std.affine_space applies to displacement components, over the
 // area carrier. It is not shared with that one: these components are millimetre SQUARED, and the
 // whole reason AreaVector3 is a separate type from Vector3 is that three numbers of a different
 // dimension are a different thing (this module's own cross3 comment, one dimension up).
-fn area_vector3_from_checked<F>(x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialArithmeticResult<AreaVector3<F>> {
+fn area_vector3_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialResult<AreaVector3> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
@@ -118,7 +182,8 @@ fn area_vector3_from_checked<F>(x: CheckedInt, y: CheckedInt, z: CheckedInt) -> 
           match z {
             CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
             CheckedIntReady { value: zv } =>
-              SpatialArithmeticReady { value: AreaVector3 {
+              SpatialReady { value: AreaVector3 {
+                frame: frame,
                 x: signed_square_millimeter(count: xv),
                 y: signed_square_millimeter(count: yv),
                 z: signed_square_millimeter(count: zv),
@@ -137,10 +202,13 @@ fn area_vector3_from_checked<F>(x: CheckedInt, y: CheckedInt, z: CheckedInt) -> 
 //
 // Nonnegativity is still by construction - a sum of squares - which is why the crossing into the
 // Nat-backed area carrier is a magnitude read rather than a clamp.
-fn norm_squared3<F>(v: Vector3<F>) -> SpatialArithmeticResult<SquareMillimeter> {
-  let x = signed_millimeter_component_count(m: v.x)
-  let y = signed_millimeter_component_count(m: v.y)
-  let z = signed_millimeter_component_count(m: v.z)
+fn norm_squared3(registry: SpatialFrameRegistry, v: Vector3) -> SpatialResult<SquareMillimeter> {
+  if !frame_is_millimetre(registry: registry, identity: v.frame) {
+    SpatialFrameRefused { refusal: metric_frame_refusal(op: OpNormSquared3, frame: v.frame) }
+  } else {
+  let x = signed_frame_component_count(c: v.x)
+  let y = signed_frame_component_count(c: v.y)
+  let z = signed_frame_component_count(c: v.z)
   let sx = checked_int_multiply(a: x, b: x)
   let sy = checked_int_multiply(a: y, b: y)
   let sz = checked_int_multiply(a: z, b: z)
@@ -149,8 +217,9 @@ fn norm_squared3<F>(v: Vector3<F>) -> SpatialArithmeticResult<SquareMillimeter> 
     CheckedIntReady { value: total } =>
       match checked_int_magnitude(a: total) {
         CheckedNatOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-        CheckedNatReady { value: n } => SpatialArithmeticReady { value: square_millimeter(count: n) }
+        CheckedNatReady { value: n } => SpatialReady { value: square_millimeter(count: n) }
       }
+  }
   }
 }
 
@@ -162,26 +231,31 @@ fn norm_squared3<F>(v: Vector3<F>) -> SpatialArithmeticResult<SquareMillimeter> 
 // carries can itself cross the bound. The inner ExactLength is the kernel: even with unbounded
 // integers, a diagonal has no magnitude this axis kernel resolves. Collapsing them would tell a
 // caller holding a rational realization to go get a bigger integer, or the reverse.
-fn norm3<F>(v: Vector3<F>) -> SpatialArithmeticResult<ExactLength> {
-  let x = signed_millimeter_component_count(m: v.x)
-  let y = signed_millimeter_component_count(m: v.y)
-  let z = signed_millimeter_component_count(m: v.z)
+fn norm3(registry: SpatialFrameRegistry, v: Vector3) -> SpatialResult<ExactLength> {
+  if !frame_is_millimetre(registry: registry, identity: v.frame) {
+    SpatialFrameRefused { refusal: metric_frame_refusal(op: OpNorm3, frame: v.frame) }
+  } else {
+  let x = signed_frame_component_count(c: v.x)
+  let y = signed_frame_component_count(c: v.y)
+  let z = signed_frame_component_count(c: v.z)
   let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
   if nonzero_axes <= 1 {
     match checked_int_magnitude(a: x + y + z) {
       CheckedNatOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
       CheckedNatReady { value: n } =>
-        SpatialArithmeticReady { value: LengthExact { value: millimeter(count: n) } }
+        SpatialReady { value: LengthExact { value: millimeter(count: n) } }
     }
   } else {
-    match norm_squared3(v: v) {
+    match norm_squared3(registry: registry, v: v) {
       SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
-      SpatialArithmeticReady { value: sq } =>
-        SpatialArithmeticReady { value: LengthRootUnresolvedInExactKernel {
+      SpatialFrameRefused { refusal: fr } => SpatialFrameRefused { refusal: fr }
+      SpatialReady { value: sq } =>
+        SpatialReady { value: LengthRootUnresolvedInExactKernel {
           squared: sq,
           reason: "this exact kernel resolves a magnitude only for an axis-aligned displacement; the root may itself be exact ((3,4,0) has magnitude 5, which an integer square root would find) or irrational ((1,1,0) has none), and this arm distinguishes neither",
         } }
     }
+  }
   }
 }
 
@@ -192,18 +266,20 @@ fn axis_count(value: Int) -> Nat {
 // Distance is the norm of the displacement, and inherits both partialities exactly. It is NOT a
 // separate approximation: one operation, asked of the vector between two points - and the point
 // subtraction is itself bounded, which is the third place this composite can refuse.
-fn distance3<F>(from: Point3<F>, to: Point3<F>) -> SpatialArithmeticResult<ExactLength> {
+fn distance3(registry: SpatialFrameRegistry, from: Point3, to: Point3) -> SpatialResult<ExactLength> {
   match displacement_between3(from: from, to: to) {
     SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
-    SpatialArithmeticReady { value: d } => norm3(v: d)
+    SpatialFrameRefused { refusal: fr } => SpatialFrameRefused { refusal: fr }
+    SpatialReady { value: d } => norm3(registry: registry, v: d)
   }
 }
 
 // Squared distance takes no root, and is what a comparison should use.
-fn distance_squared3<F>(from: Point3<F>, to: Point3<F>) -> SpatialArithmeticResult<SquareMillimeter> {
+fn distance_squared3(registry: SpatialFrameRegistry, from: Point3, to: Point3) -> SpatialResult<SquareMillimeter> {
   match displacement_between3(from: from, to: to) {
     SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
-    SpatialArithmeticReady { value: d } => norm_squared3(v: d)
+    SpatialFrameRefused { refusal: fr } => SpatialFrameRefused { refusal: fr }
+    SpatialReady { value: d } => norm_squared3(registry: registry, v: d)
   }
 }
 
@@ -211,27 +287,48 @@ fn distance_squared3<F>(from: Point3<F>, to: Point3<F>) -> SpatialArithmeticResu
 // nonnegative magnitudes. This is the operation most callers of "distance" actually want, and it
 // stays exact wherever both squared distances are representable - a comparison whose operands
 // cannot be computed has no answer, and returning false would be a verdict rather than a refusal.
-fn closer_than3<F>(a_from: Point3<F>, a_to: Point3<F>, b_from: Point3<F>, b_to: Point3<F>) -> SpatialArithmeticResult<Bool> {
-  match distance_squared3(from: a_from, to: a_to) {
+fn closer_than3(registry: SpatialFrameRegistry, a_from: Point3, a_to: Point3, b_from: Point3, b_to: Point3) -> SpatialResult<Bool> {
+  match distance_squared3(registry: registry, from: a_from, to: a_to) {
     SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
-    SpatialArithmeticReady { value: a2 } =>
-      match distance_squared3(from: b_from, to: b_to) {
+    SpatialFrameRefused { refusal: fr } => SpatialFrameRefused { refusal: fr }
+    SpatialReady { value: a2 } =>
+      match distance_squared3(registry: registry, from: b_from, to: b_to) {
         SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
-        SpatialArithmeticReady { value: b2 } =>
-          SpatialArithmeticReady {
+        SpatialFrameRefused { refusal: fr } => SpatialFrameRefused { refusal: fr }
+        SpatialReady { value: b2 } =>
+          SpatialReady {
             value: square_millimeter_count(m: a2) < square_millimeter_count(m: b2)
           }
       }
   }
 }
 
-// A DIRECTION IS DIMENSIONLESS. An earlier revision returned Vector3<F> with components of -1, 0
+// A DIRECTION IS DIMENSIONLESS. An earlier revision returned Vector3 with components of -1, 0
 // or 1 MILLIMETRES, which is not a direction at all - it is a one-millimetre displacement, and it
 // made translate_point3(point, by: normalized.direction) writable, moving the point by 1 mm. For
 // the exact integer-only slice the honest carrier is the axis enum: it names the six directions
 // integer arithmetic can represent exactly and carries no magnitude to be mistaken for one. A
 // general normalized direction needs division and arrives with the approximate realization.
-type AxisDirection3<F>
+// THE UNSIGNED AXIS, HOMED WITH ITS SIGNED COMPANION. AxisDirection3 IS Axis3 crossed with a sign,
+// so the two are one authority and splitting them across modules put the decomposition helpers in a
+// module that could not import the type they decompose.
+type Axis3
+  = Axis3X
+  | Axis3Y
+  | Axis3Z
+
+fn axis3_index(a: Axis3) -> Int {
+  match a {
+    Axis3X => 0
+    Axis3Y => 1
+    Axis3Z => 2
+  }
+}
+
+fn axis3_eq(a: Axis3, b: Axis3) -> Bool {
+  axis3_index(a: a) == axis3_index(a: b)
+}
+type AxisDirection3
   = PositiveX
   | NegativeX
   | PositiveY
@@ -239,8 +336,43 @@ type AxisDirection3<F>
   | PositiveZ
   | NegativeZ
 
-type Direction3Result<F>
-  = DirectionExact { direction: AxisDirection3<F> }
+// PREDICATE AND PROJECTION OVER AxisDirection3, HOMED WITH THE TYPE. These lived in
+// std.orthogonal_geometry, which forked the single authority for this carrier (DESIGN section 3):
+// a consumer asking which axis a direction lies on had two places to look, and a second projection
+// could have been minted in a third module without contradicting either. The type owns its own
+// axis/sign decomposition and its own reconstruction from that pair.
+fn axis_direction_axis(d: AxisDirection3) -> Axis3 {
+  match d {
+    PositiveX => Axis3X
+    NegativeX => Axis3X
+    PositiveY => Axis3Y
+    NegativeY => Axis3Y
+    PositiveZ => Axis3Z
+    NegativeZ => Axis3Z
+  }
+}
+
+fn axis_direction_is_negative(d: AxisDirection3) -> Bool {
+  match d {
+    PositiveX => false
+    NegativeX => true
+    PositiveY => false
+    NegativeY => true
+    PositiveZ => false
+    NegativeZ => true
+  }
+}
+
+fn axis_direction_of(axis: Axis3, negative: Bool) -> AxisDirection3 {
+  match axis {
+    Axis3X => if negative { NegativeX } else { PositiveX }
+    Axis3Y => if negative { NegativeY } else { PositiveY }
+    Axis3Z => if negative { NegativeZ } else { PositiveZ }
+  }
+}
+
+type Direction3Result
+  = DirectionExact { frame: CoordinateFrameIdentity, direction: AxisDirection3 }
   | DirectionZeroVectorHasNone
   | DirectionUnresolvedInAxisKernel {
       squared_magnitude: SquareMillimeter
@@ -262,16 +394,17 @@ type Direction3Result<F>
 // axis_direction_of(1, 1, 0) answered PositiveX. Both are fabricated answers reachable by any
 // caller, safe today only because the single call site happened to be guarded. Inlined, the guard
 // is the enclosing branch and the case analysis cannot be reached without it.
-fn normalize3<F>(v: Vector3<F>) -> SpatialArithmeticResult<Direction3Result<F>> {
-  let x = signed_millimeter_component_count(m: v.x)
-  let y = signed_millimeter_component_count(m: v.y)
-  let z = signed_millimeter_component_count(m: v.z)
+fn normalize3(registry: SpatialFrameRegistry, v: Vector3) -> SpatialResult<Direction3Result> {
+  let x = signed_frame_component_count(c: v.x)
+  let y = signed_frame_component_count(c: v.y)
+  let z = signed_frame_component_count(c: v.z)
   let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
   if nonzero_axes == 0 {
-    SpatialArithmeticReady { value: DirectionZeroVectorHasNone }
+    SpatialReady { value: DirectionZeroVectorHasNone }
   } else {
     if nonzero_axes == 1 {
-      SpatialArithmeticReady { value: DirectionExact {
+      SpatialReady { value: DirectionExact {
+        frame: v.frame,
         direction: if x != 0 {
           if x < 0 { NegativeX } else { PositiveX }
         } else {
@@ -283,10 +416,11 @@ fn normalize3<F>(v: Vector3<F>) -> SpatialArithmeticResult<Direction3Result<F>> 
         },
       } }
     } else {
-      match norm_squared3(v: v) {
+      match norm_squared3(registry: registry, v: v) {
         SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
-        SpatialArithmeticReady { value: sq } =>
-          SpatialArithmeticReady { value: DirectionUnresolvedInAxisKernel {
+        SpatialFrameRefused { refusal: fr } => SpatialFrameRefused { refusal: fr }
+        SpatialReady { value: sq } =>
+          SpatialReady { value: DirectionUnresolvedInAxisKernel {
             squared_magnitude: sq,
             reason: "this axis kernel resolves a unit direction only for an axis-aligned displacement; the direction may still be exactly representable ((3,4,0) is exactly (3/5,4/5,0)) and a richer realization - rational, algebraic, or error-bounded approximate - resolves it",
           } }

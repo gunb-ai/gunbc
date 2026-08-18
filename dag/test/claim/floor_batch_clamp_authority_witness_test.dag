@@ -5,27 +5,28 @@ import std.realization_schedule {
   runnable_batch_clamp_ms,
 }
 import std.decl_ref { decl_ref }
-import std.measure { second, millisecond, second_count, millisecond_count }
+import std.measure { second, millisecond, second_count }
 import std.types { NonEmptyStr }
 import gunbc.ci_spec { gunbc_ci_floor_batch_clamp_params, gunbc_ci_compile_clean_clamp }
-import gunbc.ci_layer_roots { v1_claim_scoped_witness_batch }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The two populations that feed one aligned clamp list, asserted at their own declarations. A
-// refusal that reports one population's number while citing the other's row is the defect these
-// witnesses exist to keep unwritable (gunbc#7869: clamp_ms=360000 beside
-// gunbc_ci_floor_batch_clamp_params[0], whose overhead is 240 seconds).
+// ONE POPULATION NOW FEEDS THE CLAMP LIST, and that is why this file shrank rather than being
+// deleted. The defect it was written for (gunbc#7869: a refusal reporting clamp_ms=360000 while
+// citing gunbc_ci_floor_batch_clamp_params[0], whose overhead is 240 seconds) needed TWO
+// independently owned populations aligned into one positional list; the second population was the
+// scoped witness batch's own clamp row, deleted 2026-08-15 with affected-set selection. A
+// misattributed citation is therefore no longer constructible, so the discriminating pair and the
+// scoped rate assertions that proved it are removed rather than left asserting against one side of
+// a comparison that has nothing to compare. What survives is the surviving population's own
+// citation, plus the formula control -- because runnable_batch_clamp_ms is still live and its
+// unit-rate arithmetic is still the thing a future clamp row will be read through.
 fn positional_clamp_row_zero() -> RunnableBatchClamp {
   match gunbc_ci_floor_batch_clamp_params {
     Empty => gunbc_ci_compile_clean_clamp
     Cons { head: h, tail: _ } => h
   }
-}
-
-fn scoped_clamp() -> RunnableBatchClamp {
-  v1_claim_scoped_witness_batch.resource_profile.clamp
 }
 
 test fn positional_clamp_row_zero_cites_the_ci_spec_list_it_lives_in() -> Bool {
@@ -35,40 +36,8 @@ test fn positional_clamp_row_zero_cites_the_ci_spec_list_it_lives_in() -> Bool {
     && (second_count(s: c.overhead) == 240)
 }
 
-test fn scoped_batch_clamp_cites_its_own_declaration_not_the_positional_list() -> Bool {
-  let c = scoped_clamp()
-  (c.authority.module_path as String == "gunbc.ci_layer_roots")
-    && (c.authority.decl_name as String == "v1_claim_scoped_witness_batch")
-    && (second_count(s: c.overhead) == 480)
-    && (millisecond_count(m: c.per_unit) == 0)
-}
-
-// THE DISCRIMINATING CONTROL, and the reason the pair above is not two restatements of one fact:
-// the two authorities carry DIFFERENT numbers, so a citation pointing at the wrong one is decidable
-// rather than cosmetic. Re-point the scoped clamp's authority at gunbc.ci_spec and this goes red;
-// so does making the two overheads equal, which would silently restore the ambiguity.
-test fn the_two_clamp_authorities_are_distinguishable_by_value() -> Bool {
-  let positional = positional_clamp_row_zero()
-  let scoped = scoped_clamp()
-  let positional_decl = positional.authority.decl_name as String
-  let scoped_decl = scoped.authority.decl_name as String
-  let positional_ms = runnable_batch_clamp_ms(clamp: positional, units: 27)
-  let scoped_ms = runnable_batch_clamp_ms(clamp: scoped, units: 27)
-  (positional_decl != scoped_decl) && (positional_ms != scoped_ms)
-}
-
-// units IS in the expression and contributes exactly zero on this row. The refusal prints
-// `units=27`, which invites trimming the roster or splitting the batch; neither can move the
-// threshold, and the split form would hand the same work a second overhead allowance.
-test fn scoped_clamp_is_identical_at_one_unit_and_at_twenty_seven() -> Bool {
-  let c = scoped_clamp()
-  (runnable_batch_clamp_ms(clamp: c, units: 1) == runnable_batch_clamp_ms(clamp: c, units: 27))
-    && (runnable_batch_clamp_ms(clamp: c, units: 27) == 480000)
-}
-
-// The positive control for the one above: a row whose rate is NONZERO must move with the unit
-// count, or the equality test proves nothing about the formula and only that this file's arithmetic
-// is constant.
+// THE FORMULA CONTROL. A row whose rate is NONZERO must move with the unit count, or nothing in
+// this file distinguishes runnable_batch_clamp_ms from a constant.
 test fn a_nonzero_rate_clamp_does_move_with_the_unit_count() -> Bool {
   let priced = RunnableBatchClamp {
     overhead: second(count: 300),

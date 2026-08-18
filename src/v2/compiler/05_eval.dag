@@ -39,6 +39,7 @@ import v2.std.runtime {
   InterpretationAlgebra,
   InterpretationStructureWitness,
   LoopInterpreter,
+  MatchInterpreter,
   Raise,
   TransformInterpreter,
   ValueInterpreter,
@@ -72,10 +73,12 @@ import v2.std.runtime {
   effect_handler_for_kind,
   environment_binding_key_for_symbol,
   interpretation_behavior_dispatch,
+  runtime_reject_match_arm,
   runtime_value_node_projection,
   runtime_value_resolved_type
 }
 import v2.std.node {
+  ArrowBodyForm,
   Behavior,
   Bind,
   Branch,
@@ -93,7 +96,10 @@ import v2.std.node {
   Value,
   Arrow,
   Atom,
+  DirectAtomBody,
+  arrow_body_admits_eval_entry,
   bag_hash_digest,
+  classify_arrow_body_form,
   combine_hash,
   content_hash,
   ByteOffsetCacheEligible,
@@ -315,15 +321,18 @@ fn interpretation_structure_witness_slots_digest(w: InterpretationStructureWitne
   combine_hash(
     a: combine_hash(
       a: combine_hash(
-        a: test_claim_symbol_digest(sym: w.allocate_literal),
-        b: test_claim_symbol_digest(sym: w.call_primitive)
+        a: combine_hash(
+          a: test_claim_symbol_digest(sym: w.allocate_literal),
+          b: test_claim_symbol_digest(sym: w.call_primitive)
+        ),
+        b: test_claim_symbol_digest(sym: w.choose_branch)
       ),
-      b: test_claim_symbol_digest(sym: w.choose_branch)
+      b: combine_hash(
+        a: test_claim_symbol_digest(sym: w.step_loop),
+        b: test_claim_symbol_digest(sym: w.bind_value)
+      )
     ),
-    b: combine_hash(
-      a: test_claim_symbol_digest(sym: w.step_loop),
-      b: test_claim_symbol_digest(sym: w.bind_value)
-    )
+    b: test_claim_symbol_digest(sym: w.choose_arm)
   )
 }
 
@@ -379,6 +388,18 @@ fn interpretation_bind_interpreter_executed_digest(b: BindInterpreter) -> Hash {
   }
 }
 
+// match_pattern's InterpretationAlgebra sibling is the match slot: choose_arm.
+// The registered v4 evaluator wires choose_arm to runtime_reject_match_arm (Match
+// eval is unimplemented, not absent), so that is the recognized identity here,
+// same as every other slot recognizing its registered production function.
+fn interpretation_match_interpreter_executed_digest(m: MatchInterpreter) -> Hash {
+  if m.choose_arm == runtime_reject_match_arm {
+    test_claim_symbol_digest(sym: ^runtime_reject_match_arm)
+  } else {
+    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_match_tag)
+  }
+}
+
 fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_sym: Symbol) -> Bool {
   if v.allocate_literal == v2_eval_allocate_literal {
     test_claim_symbol_digest(sym: ^v2_eval_allocate_literal_sym) == test_claim_symbol_digest(sym: witness_sym)
@@ -421,6 +442,14 @@ fn interpretation_bind_interpreter_slot_coherent(b: BindInterpreter, witness_sym
   }
 }
 
+fn interpretation_match_interpreter_slot_coherent(m: MatchInterpreter, witness_sym: Symbol) -> Bool {
+  if m.choose_arm == runtime_reject_match_arm {
+    test_claim_symbol_digest(sym: ^runtime_reject_match_arm) == test_claim_symbol_digest(sym: witness_sym)
+  } else {
+    false
+  }
+}
+
 fn interpretation_structure_witness_coherent(
   interpretation: InterpretationAlgebra,
   structure_witness: InterpretationStructureWitness
@@ -430,21 +459,25 @@ fn interpretation_structure_witness_coherent(
     && interpretation_branch_interpreter_slot_coherent(b: interpretation.branch, witness_sym: structure_witness.choose_branch)
     && interpretation_loop_interpreter_slot_coherent(l: interpretation.loop, witness_sym: structure_witness.step_loop)
     && interpretation_bind_interpreter_slot_coherent(b: interpretation.bind, witness_sym: structure_witness.bind_value)
+    && interpretation_match_interpreter_slot_coherent(m: interpretation.match, witness_sym: structure_witness.choose_arm)
 }
 
 fn interpretation_algebra_executed_slots_digest(interpretation: InterpretationAlgebra) -> Hash {
   combine_hash(
     a: combine_hash(
       a: combine_hash(
-        a: interpretation_value_interpreter_executed_digest(v: interpretation.value),
-        b: interpretation_transform_interpreter_executed_digest(t: interpretation.transform)
+        a: combine_hash(
+          a: interpretation_value_interpreter_executed_digest(v: interpretation.value),
+          b: interpretation_transform_interpreter_executed_digest(t: interpretation.transform)
+        ),
+        b: interpretation_branch_interpreter_executed_digest(b: interpretation.branch)
       ),
-      b: interpretation_branch_interpreter_executed_digest(b: interpretation.branch)
+      b: combine_hash(
+        a: interpretation_loop_interpreter_executed_digest(l: interpretation.loop),
+        b: interpretation_bind_interpreter_executed_digest(b: interpretation.bind)
+      )
     ),
-    b: combine_hash(
-      a: interpretation_loop_interpreter_executed_digest(l: interpretation.loop),
-      b: interpretation_bind_interpreter_executed_digest(b: interpretation.bind)
-    )
+    b: interpretation_match_interpreter_executed_digest(m: interpretation.match)
   )
 }
 
@@ -1409,48 +1442,6 @@ fn eval_arrow_admits_callee_dispatch(arrow: Node) -> Bool {
   }
 }
 
-fn eval_transform_body_admits_dispatch(body: Node) -> Bool {
-  match body.kind {
-    ComputationNode { behavior: Transform } =>
-
-      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
-        Present { value: _ } => false
-        Absent => true
-      }
-    ComputationNode { behavior: Branch } =>
-
-      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
-        Present { value: _ } => false
-        Absent =>
-          match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
-            Present { value: _ } => true
-            Absent => false
-          }
-      }
-    ComputationNode { behavior: Bind } =>
-
-      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
-        Present { value: _ } => false
-        Absent =>
-          match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
-            Present { value: _ } => true
-            Absent => false
-          }
-      }
-    ComputationNode { behavior: Loop } =>
-
-      match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
-        Present { value: _ } => false
-        Absent =>
-          match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
-            Present { value: _ } => true
-            Absent => false
-          }
-      }
-    _ => false
-  }
-}
-
 fn eval_transform_has_callee_reference(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>
@@ -1670,8 +1661,9 @@ fn eval_transform_node(
           f: fn(callee_edge) {
             match find_arrow_body_child(root: callee_edge.target) {
               Accepted { value: body, diagnostics: _ } =>
+                let body_form = classify_arrow_body_form(target: body)
                 if eval_arrow_admits_callee_dispatch(arrow: callee_edge.target)
-                  && eval_transform_body_admits_dispatch(body: body) {
+                  && arrow_body_admits_eval_entry(form: body_form) {
                   bind_outcome(
                     o: eval_bind_arrow_params(
                       arrow: callee_edge.target,
@@ -1681,14 +1673,23 @@ fn eval_transform_node(
                       node: node
                     ),
                     f: fn(call_environment) {
-                      eval_runtime_node(
-                        node: body,
-                        tree: tree,
-                        interpretation: interpretation,
-                        environment: call_environment,
-                        runtime: runtime,
-                        effect_io: effect_io
-                      )
+                      match body_form {
+                        DirectAtomBody =>
+                          eval_type_node_atom(
+                            node: body,
+                            interpretation: interpretation,
+                            environment: call_environment
+                          )
+                        _ =>
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: call_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                      }
                     }
                   )
                 } else {

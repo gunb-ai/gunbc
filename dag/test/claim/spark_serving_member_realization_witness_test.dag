@@ -1,0 +1,193 @@
+module test.claim.spark_serving_member_realization_witness
+
+import std.types { String, List, Bool, NonEmptyStr }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5 }
+import gunbc.ownership { Owned, Ensured }
+import gunbc.membership_reconcile {
+  MemberChanged,
+  MemberEffect,
+  EffectReplace,
+}
+import gunbc.spark_serving_membership {
+  SparkServingMember,
+  SparkServingMemberAt,
+  SparkServingResourceAddress,
+  SparkServingRuntimeRootAddress,
+  SparkServingUserUnitAddress,
+  SparkServingModelSlotAddress,
+  SparkServingLingerAddress,
+  spark_serving_member,
+  spark_serving_member_key,
+  spark_serving_serving_principal,
+  spark_serving_primary_model_slot,
+}
+import gunbc.spark_serving_member_realization {
+  spark_serving_install_effects_for_member_effect,
+  spark_serving_install_effects_for_member_action,
+  spark_serving_install_effects_include,
+}
+import gunbc.spark_serving_realization {
+  ServingInstallEffect,
+  InstallOwnedRuntimeClosure,
+  WriteUserUnitFile,
+  ReloadUserManager,
+  EnableUserUnit,
+  EnableLingerForOwnAccount,
+  PullModelArtifact,
+  WriteSystemUnitFile,
+  ReloadSystemManager,
+  EnableSystemUnit,
+  InstallRuntimePackage,
+  GrantContainerRuntimeAccess,
+  RunContainerAsOwnUser,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn w_host() -> HostIdentity {
+  operator_host_srv5
+}
+
+fn w_principal() -> NonEmptyStr {
+  spark_serving_serving_principal()
+}
+
+fn w_runtime_member(host: HostIdentity, state: NonEmptyStr) -> SparkServingMember {
+  spark_serving_member(
+    host: host,
+    principal: w_principal(),
+    address: SparkServingRuntimeRootAddress,
+    state_digest: state,
+    ownership: Owned,
+  )
+}
+
+fn w_unit_member(state: NonEmptyStr) -> SparkServingMember {
+  spark_serving_member(
+    host: w_host(),
+    principal: w_principal(),
+    address: SparkServingUserUnitAddress,
+    state_digest: state,
+    ownership: Owned,
+  )
+}
+
+fn w_model_member(state: NonEmptyStr) -> SparkServingMember {
+  spark_serving_member(
+    host: w_host(),
+    principal: w_principal(),
+    address: SparkServingModelSlotAddress { slot: spark_serving_primary_model_slot },
+    state_digest: state,
+    ownership: Owned,
+  )
+}
+
+fn w_linger_member(state: NonEmptyStr) -> SparkServingMember {
+  spark_serving_member(
+    host: w_host(),
+    principal: w_principal(),
+    address: SparkServingLingerAddress,
+    state_digest: state,
+    ownership: Ensured,
+  )
+}
+
+fn w_runtime_replace_effect() -> MemberEffect<SparkServingMember> {
+  EffectReplace {
+    from: w_runtime_member(host: w_host(), state: "ollama-0.32.9" as NonEmptyStr),
+    to: w_runtime_member(host: w_host(), state: "ollama-0.33.0" as NonEmptyStr),
+  }
+}
+
+test fn w_member_realization_runtime_change_is_install_owned_closure_only() -> Bool {
+  let effects = spark_serving_install_effects_for_member_effect(effect: w_runtime_replace_effect())
+  length(effects) == 1
+    && spark_serving_install_effects_include(
+      effects: effects,
+      needle: InstallOwnedRuntimeClosure,
+    )
+    && !spark_serving_install_effects_include(effects: effects, needle: WriteSystemUnitFile)
+}
+
+test fn w_member_realization_user_unit_change_includes_write_reload_enable() -> Bool {
+  let effect = EffectReplace {
+    from: w_unit_member(state: "unit-v1" as NonEmptyStr),
+    to: w_unit_member(state: "unit-v2" as NonEmptyStr),
+  }
+  let effects = spark_serving_install_effects_for_member_effect(effect: effect)
+  spark_serving_install_effects_include(effects: effects, needle: WriteUserUnitFile)
+    && spark_serving_install_effects_include(effects: effects, needle: ReloadUserManager)
+    && spark_serving_install_effects_include(effects: effects, needle: EnableUserUnit)
+    && !spark_serving_install_effects_include(effects: effects, needle: WriteSystemUnitFile)
+}
+
+test fn w_member_realization_model_slot_change_is_pull_model_artifact() -> Bool {
+  let effect = EffectReplace {
+    from: w_model_member(state: "model-a" as NonEmptyStr),
+    to: w_model_member(state: "model-b" as NonEmptyStr),
+  }
+  let effects = spark_serving_install_effects_for_member_effect(effect: effect)
+  length(effects) == 1
+    && spark_serving_install_effects_include(effects: effects, needle: PullModelArtifact)
+}
+
+test fn w_member_realization_linger_change_is_enable_linger() -> Bool {
+  let effect = EffectReplace {
+    from: w_linger_member(state: "linger=0" as NonEmptyStr),
+    to: w_linger_member(state: "linger=1" as NonEmptyStr),
+  }
+  let effects = spark_serving_install_effects_for_member_effect(effect: effect)
+  length(effects) == 1
+    && spark_serving_install_effects_include(effects: effects, needle: EnableLingerForOwnAccount)
+}
+
+test fn w_member_realization_member_changed_action_matches_effect_replace() -> Bool {
+  let from = w_runtime_member(host: w_host(), state: "v1" as NonEmptyStr)
+  let to = w_runtime_member(host: w_host(), state: "v2" as NonEmptyStr)
+  match spark_serving_install_effects_for_member_action(
+    action: MemberChanged {
+      at: spark_serving_member_key(member: to),
+      from: from,
+      to: to,
+    },
+  ) {
+    Present { value: action_effects } =>
+      length(action_effects) == 1
+        && spark_serving_install_effects_include(
+          effects: action_effects,
+          needle: InstallOwnedRuntimeClosure,
+        )
+    Absent => false
+  }
+}
+
+// SYSTEM-SCOPE EFFECTS MUST EQUAL THEMSELVES. The deleted hand-rolled matcher
+// (spark_serving_install_effect_eq) gave six of the twelve ServingInstallEffect variants an
+// unconditional `=> false` arm — every system-scope, privileged one — so include() answered
+// "no" for an effect the list demonstrably contained. This is RED against that matcher on all
+// six, and it is the control that keeps the coproduct's own equality in place if anyone
+// reintroduces a hand-written predicate beside it (DESIGN section 2, predicate dissolution).
+//
+// It also records why the bug survived: the existing negative assertions of the form
+// !include(effects, WriteSystemUnitFile) passed VACUOUSLY under the matcher, since that arm
+// could not return true for any input. A negative assertion over a predicate that is false by
+// construction proves nothing, and three of them were standing.
+test fn w_system_scope_install_effects_equal_themselves() -> Bool {
+  spark_serving_install_effects_include(effects: [WriteSystemUnitFile], needle: WriteSystemUnitFile)
+    && spark_serving_install_effects_include(effects: [ReloadSystemManager], needle: ReloadSystemManager)
+    && spark_serving_install_effects_include(effects: [EnableSystemUnit], needle: EnableSystemUnit)
+    && spark_serving_install_effects_include(effects: [InstallRuntimePackage], needle: InstallRuntimePackage)
+    && spark_serving_install_effects_include(effects: [GrantContainerRuntimeAccess], needle: GrantContainerRuntimeAccess)
+    && spark_serving_install_effects_include(effects: [RunContainerAsOwnUser], needle: RunContainerAsOwnUser)
+}
+
+// Positive control for the negative direction: include() must still distinguish variants, so
+// the fix above is not "return true for everything". Without this, an equality that always
+// answered true would satisfy the claim above and break every !include assertion silently.
+test fn w_install_effects_include_still_discriminates_between_variants() -> Bool {
+  !spark_serving_install_effects_include(effects: [WriteSystemUnitFile], needle: EnableSystemUnit)
+    && !spark_serving_install_effects_include(effects: [EnableLingerForOwnAccount], needle: WriteUserUnitFile)
+    && !spark_serving_install_effects_include(effects: [], needle: WriteSystemUnitFile)
+}

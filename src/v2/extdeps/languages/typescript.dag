@@ -97,7 +97,8 @@ import v2.std.grounding {
   insert_per_language_fact_bundle_entry
 }
 import v2.std.node_query { find_named_child }
-import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.compilers.target_model {
   TargetAtomRealization,
@@ -135,10 +136,17 @@ import v2.std.compilers.target_model {
   TargetCallApplyShape,
   TargetClosureShape,
   TargetEffectCalleeRow,
+  ConditionalSelfDelimiting,
   TargetConditionalShape,
   TargetOperatorRealization,
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
+  TargetBindLetShape,
+  TargetLoopShape,
+  TargetRecordConstructShape,
+  TargetFieldAccessShape,
+  TargetMatchShape,
+  TargetBoolLiteralShape,
   grammar_relation_row_attach_bodied_scaffold,
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
@@ -525,6 +533,13 @@ fn ts_emitted_add_fn_node() -> Node {
 }
 
 
+// Delimiting discipline for this target. ts_token_kw_then named a THEN KEYWORD
+// TYPESCRIPT DOES NOT HAVE: the shape was a copy of .dag's ML-style
+// if/then/else, and none of its three tokens had a lex rule, so nothing ever
+// executed it and nothing caught the fiction. TypeScript's if/else is a
+// statement; the conditional operator is its value form, and it is
+// self-delimiting -- `c ? a : b` ends with its else arm. No value-producing
+// loop either, so loop_token stays unspelled and the loop form refuses.
 fn ts_value_expression_projection() -> TargetValueExpressionProjection {
   ts_value_expression_projection_full(
     record_literal_names_type: Omit,
@@ -613,9 +628,10 @@ fn ts_value_expression_projection_full(
     },
 
     conditional_form: TargetConditionalShape {
-      if_token: ^ts_token_kw_if,
-      then_token: ^ts_token_kw_then,
-      else_token: ^ts_token_kw_else
+      if_token: ^ts_token_ternary_nop,
+      then_token: ^ts_token_ternary_question,
+      else_token: ^ts_token_ternary_colon,
+      delimiting: ConditionalSelfDelimiting
     },
 
     let_form: TargetBindLetShape {
@@ -645,6 +661,10 @@ fn ts_value_expression_projection_full(
       close: ^ts_token_rbrace,
       fat_arrow: ^ts_token_fat_arrow,
       arm_separator: ^ts_token_comma
+    },
+    bool_literal_form: TargetBoolLiteralShape {
+      true_token: ^ts_token_kw_true,
+      false_token: ^ts_token_kw_false
     },
     block_evaluation_mode: block_evaluation_mode
   }
@@ -1376,6 +1396,7 @@ fn ts_pr3_identity_target_model_witness() -> Witness<TargetModel> {
     Holds { value: bundle } =>
       Holds {
         value: TargetModel {
+          produced_decl_support: ProducedDeclUnwired,
           bundle: bundle,
           lex: ts_lex(),
           binding_spellings: ts_pr3_identity_binding_spellings(),
@@ -1519,6 +1540,7 @@ fn ts_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
     binding_spellings: ts_binding_spellings(),
@@ -1746,6 +1768,7 @@ fn ts_sg2_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_sg2_type_expr_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: ts_sg2_type_expr_target_model_node(),
     lex: ts_sg2_type_expr_lex(),
     binding_spellings: ts_sg2_binding_spellings(),
@@ -2004,6 +2027,7 @@ fn ts_task_target_model_witness() -> Witness<TargetModel> {
     Holds { value: bundle } =>
       Holds {
         value: TargetModel {
+          produced_decl_support: ProducedDeclUnwired,
           bundle: bundle,
           lex: ts_lex(),
           binding_spellings: ts_binding_spellings(),
@@ -2058,7 +2082,12 @@ fn ts_fn_add_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_dot, text: "."),
       ts_lex_rule(token_class: ^ts_token_semicolon, text: ";"),
       ts_lex_rule(token_class: ^ts_token_effect_read_callee, text: "__gunbc_effect_read"),
-      ts_lex_rule(token_class: ^ts_token_effect_write_callee, text: "__gunbc_effect_write")
+      ts_lex_rule(token_class: ^ts_token_effect_write_callee, text: "__gunbc_effect_write"),
+      ts_lex_rule(token_class: ^ts_token_kw_true, text: "true"),
+      ts_lex_rule(token_class: ^ts_token_kw_false, text: "false"),
+      ts_lex_rule(token_class: ^ts_token_ternary_nop, text: ""),
+      ts_lex_rule(token_class: ^ts_token_ternary_question, text: " ? "),
+      ts_lex_rule(token_class: ^ts_token_ternary_colon, text: " : ")
     ]
   }
 }
@@ -2388,6 +2417,8 @@ fn ts_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_kw_let, text: "let "),
       ts_lex_rule(token_class: ^ts_token_kw_const, text: "const "),
       ts_lex_rule(token_class: ^ts_token_kw_type, text: "type "),
+      ts_lex_rule(token_class: ^ts_token_kw_true, text: "true"),
+      ts_lex_rule(token_class: ^ts_token_kw_false, text: "false"),
       ts_ident_lex_rule(),
       ts_lex_rule(token_class: ^ts_token_ty_number, text: "number"),
       ts_lex_rule(token_class: ^ts_token_ty_string, text: "string"),

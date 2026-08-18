@@ -1,5 +1,18 @@
 module test.claim.ci_budget_tree_witness
 
+import gunbc.ci_runner_placement { resolve_session_slice }
+import gunbc.ci_runner_target { FleetSelfHosted, ci_runner_target_ram_speed_budget }
+import gunbc.ci_budget_tree {
+  srv1_budget_tree,
+  srv1_gha_runner_pool_budget,
+  srv1_ci_run_container_hard_cap,
+  srv1_fixed_overhead_bytes,
+  srv1_floor_memory_budget,
+  host_overhead_bytes,
+  host_budget_tree_at,
+  witness_floor_budget_equals_selected_target_budget,
+}
+
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn fitting_slice() -> Int {
@@ -125,4 +138,3 @@ test fn witness_managed_hosts_share_one_overhead_and_legacy_hosts_share_another(
   let managed4 = byte_size_count(b: host_overhead_bytes(offer: srv4_offer))
   legacy1 == legacy2 && managed3 == managed4 && legacy1 > managed3
 }
-

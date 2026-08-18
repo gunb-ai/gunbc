@@ -18,7 +18,7 @@ fn ts_import_block_node(names: List<Symbol>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: names,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, sym) {
         list_append(
           left: acc,
@@ -93,6 +93,7 @@ fn ts_import_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_import_witness_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_lex(),
     binding_spellings: ts_import_binding_spellings(),
@@ -104,7 +105,7 @@ fn ts_import_witness_target_model() -> TargetModel {
 
 fn ts_import_qualified_name_symbols(qn: QualifiedName) -> List<Symbol> {
   match qn {
-    Empty => Empty
+    Empty => std.algebra.Empty
     Cons { head: h, tail: t } =>
       Cons { head: h, tail: ts_import_qualified_name_symbols(qn: t) }
   }
@@ -113,7 +114,7 @@ fn ts_import_qualified_name_symbols(qn: QualifiedName) -> List<Symbol> {
 fn ts_import_name_symbols_from_block(block: Node) -> Outcome<List<Symbol>> {
   fold(
     node_positional_child_targets(node: block),
-    init: outcome_accepted(value: Empty),
+    init: outcome_accepted(value: std.algebra.Empty),
     f: fn(acc, nd) {
       bind_outcome(
         o: acc,
@@ -214,7 +215,7 @@ fn ts_import_missing_qn_carrier() -> Node {
 }
 
 fn ts_import_empty_names_carrier() -> Node {
-  ts_import_carrier_node(segments: [^seg_v2, ^seg_std, ^seg_algebra], names: Empty)
+  ts_import_carrier_node(segments: [^seg_v2, ^seg_std, ^seg_algebra], names: std.algebra.Empty)
 }
 
 test fn ts_import_emit_by_execution_exact_holds() -> Bool {

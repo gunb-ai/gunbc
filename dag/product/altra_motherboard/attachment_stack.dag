@@ -1,0 +1,498 @@
+module product.altra_motherboard.attachment_stack
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.cpu.types { CpuSocket }
+import extdeps.cpu.ampere_altra_package {
+  ReferenceBoardCollateralStanding,
+  ReferenceBoardCollateralAvailable,
+  ReferenceBoardCollateralUnderNda,
+  altra_declared_contact_count,
+  altra_fclga_socket,
+  altra_reference_board_collateral_standing,
+  extdeps_external_authority_anchor,
+}
+import extdeps.cpu_attachment.ilm4926 {
+  DesignationFactEstablished,
+  DesignationFactUnresolved,
+  DesignationResolutionStanding,
+  ilm4926,
+  attachment_board_land_pattern,
+  ilm4926_attachment_standing,
+}
+import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
+
+// SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor
+// package, the socket, the socket's own board termination, the motherboard land pattern that
+// termination solders to, the loading mechanism that clamps the processor into the socket, and the
+// mounting that carries the load are six independently governed identities with six different
+// authorities — one vendor publishes the package, another manufactures the socket, and the
+// motherboard designer owns neither. THE ERROR THIS MODULE EXISTS TO MAKE UNWRITABLE is deriving
+// the board land pattern from the processor package's bottom-land geometry. Both are grids of
+// lands with 4926 members and the same pitch, so they LOOK like the same fact, and the datasheet's
+// mechanical section is right there. They are not the same fact: one is the package's underside,
+// the other is the pad array the SOCKET solders to, and the socket sits between them adding its
+// own tolerance, termination style and keepout. A board built on the first is a board where
+// nothing solders. The identical category error was already made one layer down in this
+// repository, where a package body envelope was called a footprint and approved by review before
+// it was caught.
+// EACH LAYER IS ITS OWN SUBJECT WITH ITS OWN AUTHORITY. They are separate types rather than one
+// parameterised row because their FACTS differ in kind, not only in value: a package has contacts
+// and a mechanical outline, a socket has a vendor part number and an insertion force, a loading
+// mechanism has a clamping load and a screw torque. Fusing them would produce a record where most
+// fields are absent for most layers, which is how an absent fact becomes indistinguishable from
+// an inapplicable one.
+type AttachmentLayer
+  = ProcessorPackageLayer
+  | SocketLayer
+  | SocketBoardTerminationLayer
+  | BoardLandPatternLayer
+  | LoadingMechanismLayer
+  | MountingLayer
+
+fn attachment_layer_name(l: AttachmentLayer) -> NonEmptyStr {
+  match l {
+    ProcessorPackageLayer => "processor package"
+    SocketLayer => "socket"
+    SocketBoardTerminationLayer => "socket board termination"
+    BoardLandPatternLayer => "board land pattern"
+    LoadingMechanismLayer => "loading mechanism"
+    MountingLayer => "mounting"
+  }
+}
+
+// THREE CATEGORIES, NOT TWO, and the third is the one that keeps getting collapsed into the
+// second. A fact whose authority nobody has looked for is UNRESOLVED; it is not NDA-gated, and
+// recording it as NDA-gated invents a blocker and stops anyone looking. The reverse error is
+// equally live: this repository once declared the Altra pin map NDA-only by reasoning from the
+// fact that the reference BOARD collateral is under NDA, and defended it with a passing witness.
+// It was public in the datasheet the repository was already citing.
+//
+// REDISTRIBUTION IS A FOURTH THING AND IT IS NOT AVAILABILITY. A document can be freely
+// downloadable and still carry a proprietary footer that makes copying its tables into a public
+// repository a licensing question. That is a question about WHERE the bytes may live, not about
+// whether we may know them, and conflating the two would either block modelling that is allowed
+// or leak bytes that are not.
+// THE ACCESS ROUTE IS AN AUTHORITY, NOT A SENTENCE. An earlier revision typed this NonEmptyStr
+// beside a subject of the same type, and the projection below duly bound the real
+// ExternalAuthority, discarded it, and put the subject label in the route field — a swap that
+// typechecked precisely because both were strings. A consumer asking where to obtain the
+// collateral received a description of what the collateral IS. The holder is gone rather than
+// corrected: it was hard-coded here while the upstream standing carries no such field, so it
+// was an invented fact, and the authority already identifies who holds it.
+// TWO INDEPENDENT QUESTIONS, SPLIT BECAUSE FUSING THEM MADE HONEST STATES UNSAYABLE. The earlier
+// AuthorityStanding forced a choice between "publicly cited" and "public but redistribution
+// undecided", so a subject whose dimensions ARE established from a public document, and whose
+// vendor expression this repository declines to copy, had no representation — which is exactly
+// the Altra package. This module's own note above says redistribution answers WHERE THE BYTES MAY
+// LIVE and not whether we may know them, and the type then made them one choice. Worse, the fused
+// type let a consumer write EnvelopeNotEstablished carrying PubliclyCited: a not-established arm
+// holding an established value, a contradiction the type permitted.
+//
+// IS THE FACT ESTABLISHED. This axis says nothing about what may be copied.
+// AND THE FOURTH STATE, WHICH THE FIRST THREE COULD NOT SAY. A fact can sit in a document that is
+// found, public, and already cited by this repository, and still be unreadable: it is drawn rather
+// than written. The Altra land geometry is exactly this -- the mechanical section IS the drawing,
+// and its dimensions render from subset fonts carrying no character map, so a machine reading it
+// gets glyph codes rather than numbers.
+//
+// Filing that as FactUnresolved was wrong in the way that matters most here, because this type's
+// own principle is that the reason decides who acts. Unresolved dispatches someone to find a
+// document; there is no document left to find, the bibliography lists nine and none is a mechanical
+// drawing, and the search would return empty after costing a day. What is owed is a HUMAN READING A
+// DRAWING, which is a different actor and a different unblocking event.
+//
+// It is deliberately NOT a carriage question. The document is public and the ruling permits its
+// facts, so nothing legal stands here -- fusing this into carriage would send a reading task to
+// whoever decides what the repository may hold.
+type FactAuthorityStanding
+  = FactEstablished { authority: ExternalAuthority, subject: DeclarationRef }
+  | FactUnresolved { what_is_missing: NonEmptyStr }
+  | FactAccessGated { subject: NonEmptyStr, access_route: ExternalAuthority }
+  | FactStatedOnlyInFigure { figure: NonEmptyStr, what_is_drawn: NonEmptyStr }
+
+// WHAT THIS REPOSITORY MAY CARRY FOR THAT SUBJECT. Deliberately three arms rather than the four a
+// naive split would give, and the missing one is worth stating: there is no
+// SourceExpressionMayBeCarried, because copying a vendor's PDF, figure, prose or table layout is
+// refused for EVERY subject by repository policy rather than chosen per subject. It is therefore
+// not a degree of freedom here, and modelling it as one would invite a row to grant itself
+// something no row may grant. NormalizedFactsMayBeCarried consequently means exactly: the
+// normalized numerical facts are admitted AND the vendor's expression of them is not.
+type RepositoryCarriageStanding
+  = CarriageNotApplicable { because: NonEmptyStr }
+  | NormalizedFactsMayBeCarried
+  | CarriageDecisionRequired { reason: NonEmptyStr }
+
+fn fact_is_established(f: FactAuthorityStanding) -> Bool {
+  match f {
+    FactEstablished { authority: _, subject: _ } => true
+    FactUnresolved { what_is_missing: _ } => false
+    FactAccessGated { subject: _, access_route: _ } => false
+    FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
+  }
+}
+
+type AttachmentLayerStanding {
+  layer: AttachmentLayer
+  fact: FactAuthorityStanding
+  carriage: RepositoryCarriageStanding
+}
+
+// THE AUTHORITIES ARE THE EXTDEPS MODULE'S AND ARE CONSUMED, NOT RE-MINTED. An earlier revision
+// of this module declared its own ExternalAuthority rows for the Ampere product brief and the
+// Customer Connect page, both of which already exist in extdeps.cpu.ampere_altra_package — a
+// second name for one authority, in a module whose entire subject is that six layers must not be
+// collapsed into fewer. One of the duplicates was not even referenced, so it forked a fact
+// without buying anything.
+
+// The processor package is PUBLIC and its redistribution is the open question — every page of the
+// datasheet carrying it is footed proprietary, so the contact table may be modelled and joined
+// but not hand-copied into this public repository until placement is decided.
+data processor_package_standing: AttachmentLayerStanding = AttachmentLayerStanding {
+  layer: ProcessorPackageLayer,
+  fact: FactEstablished {
+    authority: extdeps_external_authority_anchor,
+    subject: DeclarationRef {
+      module_path: "extdeps.cpu.ampere_altra_package",
+      decl_name: "altra_fclga_socket",
+      field: WholeDeclaration
+    },
+  },
+  carriage: NormalizedFactsMayBeCarried,
+}
+
+// The socket is a purchased part from a socket manufacturer, and nobody here has yet identified
+// which one. That is an unresolved authority, NOT an NDA blocker — recording it as NDA-gated
+// would invent a wall and stop anyone from looking for the datasheet that probably exists.
+// CORRECTED BY EXECUTION. This layer said the processor datasheet names the package and not the
+// socket that receives it. That is false: the datasheet's thermal notes state the case temperature
+// is measured with the device seated in a named socket, and the OCP board specification names the
+// same designation independently. Two documents agreeing is what promoted it to its own authority.
+//
+// The layer stays unresolved because what is still missing narrowed rather than cleared: a
+// designation is not a vendor part number, and which physical part the designation names -- the
+// socket body or the retention hardware, plausibly different vendors -- is unsettled. The
+// designation and its four resolution obligations live in extdeps.cpu_attachment.ilm4926;
+// this layer consumes ilm4926.designator rather than repeating the spelling.
+data socket_standing: AttachmentLayerStanding = AttachmentLayerStanding {
+  layer: SocketLayer,
+  fact: FactUnresolved {
+    what_is_missing: concat(
+      "the socket vendor and part number for the ",
+      ilm4926.designator as String,
+      " designation, and which physical part that designation names; see extdeps.cpu_attachment.ilm4926 ilm4926_attachment_standing",
+    ),
+  },
+  carriage: CarriageNotApplicable {
+    because: "no fact is established for this layer, so there is nothing to decide carriage for",
+  },
+}
+
+data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLayerStanding {
+  layer: SocketBoardTerminationLayer,
+  fact: FactUnresolved {
+    what_is_missing: "how the selected socket terminates to the board — solder ball, compliant pin or land — which is a property of the socket part and cannot be read off the processor package",},
+  carriage: CarriageNotApplicable {
+    because: "no fact is established for this layer, so there is nothing to decide carriage for",
+  },
+}
+
+// THE ONE THAT MATTERS MOST. The board land pattern is the SOCKET vendor's recommended pad array,
+// not the processor's underside. PROJECTED FROM extdeps.cpu_attachment.ilm4926
+// ilm4926_attachment_standing rather than restated here, and reached through
+// attachment_board_land_pattern so the read must go via the SOCKET BODY -- the constituent that
+// owns the board geometry. A complete read of the public platform specification found no board-side
+// land pattern in any section. Two routes remain and they are not equivalent: a Lotes customer
+// drawing would be ordinary published connector documentation and publicly carriable, while the
+// Ampere Altra PCB Layout Guidelines sit behind Customer Connect under NDA and could not enter this
+// public model even if obtained. That second route is weaker than the naming suggests: the platform
+// specification points at that document from sections 4.2.2 and 4.3.2, both titled Reference Layout
+// under VRD Implementation using Texas Instruments and Infineon Devices, so the pointer's subject is
+// voltage-regulator layout and the document's socket contents are unverified rather than known. The socket-vendor route is the
+// next authority, so this projects as unresolved rather than access-gated: a fact this repository
+// could never carry is not a fact merely waiting behind a gate.
+fn board_land_pattern_fact_from_obligation(standing: DesignationResolutionStanding) -> FactAuthorityStanding {
+  match standing {
+    DesignationFactEstablished { value: _, authority: a } =>
+      FactEstablished {
+        authority: a,
+        subject: DeclarationRef {
+          module_path: "extdeps.cpu_attachment.ilm4926",
+          decl_name: "ilm4926_attachment_standing",
+          field: WholeDeclaration
+        },
+      }
+    DesignationFactUnresolved { reason: r, next_authority_to_consult: next } =>
+      match next {
+        Present { value: a } =>
+          if a == ampere_customer_reference_boards_authority {
+            FactAccessGated {
+              subject: "Altra PCB Layout Guidelines — a candidate collateral package whose socket contents are unverified; the public platform specification names it from sections 4.2.2 and 4.3.2, both of which are voltage-regulator reference layouts",
+              access_route: ampere_customer_reference_boards_authority,
+            }
+          } else {
+            FactUnresolved { what_is_missing: r }
+          }
+        none =>
+          FactUnresolved { what_is_missing: r }
+      }
+  }
+}
+
+fn carriage_for_board_land_pattern_fact(fact: FactAuthorityStanding) -> RepositoryCarriageStanding {
+  match fact {
+    FactAccessGated { subject: _, access_route: _ } =>
+      CarriageNotApplicable {
+        because: "the fact is behind commercial access, so its carriage is governed by the access terms and is not a decision this repository takes separately",
+      }
+    FactEstablished { authority: _, subject: _ } =>
+      CarriageNotApplicable {
+        because: "no carriage question is modeled separately once a land pattern is established from a cited authority",
+      }
+    FactUnresolved { what_is_missing: _ } =>
+      CarriageNotApplicable {
+        because: "no fact is established for this layer, so there is nothing to decide carriage for",
+      }
+    FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } =>
+      CarriageNotApplicable {
+        because: "no fact is established for this layer, so there is nothing to decide carriage for",
+      }
+  }
+}
+
+fn board_land_pattern_standing_row() -> AttachmentLayerStanding {
+  let fact = board_land_pattern_fact_from_obligation(standing: attachment_board_land_pattern(a: ilm4926_attachment_standing))
+  AttachmentLayerStanding {
+    layer: BoardLandPatternLayer,
+    fact: fact,
+    carriage: carriage_for_board_land_pattern_fact(fact: fact),
+  }
+}
+
+data board_land_pattern_standing: AttachmentLayerStanding = board_land_pattern_standing_row()
+
+data loading_mechanism_standing: AttachmentLayerStanding = AttachmentLayerStanding {
+  layer: LoadingMechanismLayer,
+  fact: FactUnresolved {
+    what_is_missing: "independent loading mechanism and backplate geometry, clamping load and torque; whether these ship with the socket or with reference-board collateral is itself unestablished",},
+  carriage: CarriageNotApplicable {
+    because: "no fact is established for this layer, so there is nothing to decide carriage for",
+  },
+}
+
+data mounting_standing: AttachmentLayerStanding = AttachmentLayerStanding {
+  layer: MountingLayer,
+  fact: FactUnresolved {
+    what_is_missing: "mounting hole positions and keepouts carrying the loading mechanism's reaction force",},
+  carriage: CarriageNotApplicable {
+    because: "no fact is established for this layer, so there is nothing to decide carriage for",
+  },
+}
+
+// THE NDA BOUNDARY IS PROJECTED FROM THE EXTDEPS STANDING, NOT RESTATED. That module already owns
+// the fact, names the four reference boards and cites the access route; re-authoring it here as
+// product-layer prose would be a second representation that drifts the moment either is edited.
+// The projection exists because this module's AuthorityStanding is the vocabulary its six layers
+// share — so the boundary arrives as a value in that vocabulary rather than as a parallel claim.
+fn reference_board_collateral_standing() -> FactAuthorityStanding {
+  match altra_reference_board_collateral_standing() {
+    ReferenceBoardCollateralAvailable =>
+      FactEstablished {
+        authority: ampere_customer_reference_boards_authority,
+        subject: DeclarationRef {
+          module_path: "extdeps.cpu.ampere_altra_package",
+          decl_name: "altra_reference_board_collateral_standing",
+          field: WholeDeclaration
+        },
+      }
+    ReferenceBoardCollateralUnderNda { subject: s, access_route: route } =>
+      FactAccessGated { subject: s, access_route: route }
+  }
+}
+
+data attachment_stack: List<AttachmentLayerStanding> = [
+  processor_package_standing,
+  socket_standing,
+  socket_board_termination_standing,
+  board_land_pattern_standing,
+  loading_mechanism_standing,
+  mounting_standing,
+]
+
+// A LAYER IS BLOCKED FOR A REASON, AND THE REASON DECIDES WHO ACTS. An unresolved authority is
+// someone reading a datasheet; a redistribution question is a legal decision about where bytes
+// may live; an NDA gate is a commercial relationship. Collapsing them into "not ready" would send
+// all three to the same person and make the tractable ones look like the intractable one.
+// WHY A SUBJECT IS BLOCKED, WITH NO ESTABLISHED ARM. That absence is the construction: a consumer
+// holding one of these cannot be holding an established fact, so the contradiction the fused type
+// permitted — a not-established carrier containing PubliclyCited — has no representation. It is
+// layer-agnostic because envelopes, laminates and layers are all blocked for these same three
+// reasons, and minting a second copy per subject is the fork this repository keeps repairing.
+type FactAuthorityBlocker
+  = NeedsSomeoneToFindTheDocument { what_is_missing: NonEmptyStr }
+  | NeedsARedistributionDecision { reason: NonEmptyStr }
+  | NeedsCommercialAccess { subject: NonEmptyStr, access_route: ExternalAuthority }
+  | NeedsAHumanToReadTheDrawing { figure: NonEmptyStr, what_is_drawn: NonEmptyStr }
+  | NeedsTheStandingItselfRepaired { refusal: AuthorityStandingRefusal }
+
+// THE BLOCKER FOR ANY SUBJECT, derived from both axes rather than either alone. AN ESTABLISHED
+// FACT CAN STILL BE BLOCKED, and only the split makes that sayable: the question is then not
+// whether we know the dimension but whether this repository may carry it, so the blocker is read
+// off the carriage axis. Before the split these were one choice, and a subject whose fact was
+// established and whose carriage was undecided had to be filed as not established — which sent a
+// legal question to whoever was reading datasheets.
+// THE TWO AXES ARE INDEPENDENT BUT NOT UNCONSTRAINED, and this admission is the hole I left when
+// I split them. Splitting fact from carriage was right -- whether anyone established a fact and
+// whether this repository may hold it are different questions with different remedies. What I did
+// not do was say which COMBINATIONS mean anything, so the product admitted three that do not, and
+// subject_blocker answered the worst of them with no blocker at all: an established fact whose
+// carriage is "not applicable" read as nothing standing in the way, which is the fabricated
+// plausible output pointed at the legal axis.
+//
+// WHY EACH REFUSAL IS INCOHERENT RATHER THAN MERELY UNUSUAL. Carriage is not applicable only
+// because there is no fact yet to carry, so once the fact IS established the question stops being
+// moot and somebody has to answer it -- silence there is a decision nobody made. Carriage
+// permission for a fact nobody has established is permission to hold nothing, and it will read as
+// a green light the moment the fact lands, without anyone revisiting it. And an access-gated fact
+// does not get an independent carriage decision, because the terms that gate the access are the
+// terms that govern the carriage: deciding them separately is deciding one of them wrongly.
+type AuthorityStandingRefusal
+  = EstablishedFactHasInapplicableCarriage
+  | UnestablishedFactClaimsNormalizedCarriage
+  | AccessGatedFactHasIndependentCarriageDecision
+
+fn authority_standing_refusal(fact: FactAuthorityStanding, carriage: RepositoryCarriageStanding) -> AuthorityStandingRefusal? {
+  match fact {
+    FactEstablished { authority: _, subject: _ } =>
+      match carriage {
+        CarriageNotApplicable { because: _ } => Present { value: EstablishedFactHasInapplicableCarriage }
+        NormalizedFactsMayBeCarried => none
+        CarriageDecisionRequired { reason: _ } => none
+      }
+    FactUnresolved { what_is_missing: _ } =>
+      match carriage {
+        NormalizedFactsMayBeCarried => Present { value: UnestablishedFactClaimsNormalizedCarriage }
+        CarriageNotApplicable { because: _ } => none
+        CarriageDecisionRequired { reason: _ } => none
+      }
+    FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } =>
+      match carriage {
+        NormalizedFactsMayBeCarried => Present { value: UnestablishedFactClaimsNormalizedCarriage }
+        CarriageNotApplicable { because: _ } => none
+        CarriageDecisionRequired { reason: _ } => none
+      }
+    FactAccessGated { subject: _, access_route: _ } =>
+      match carriage {
+        CarriageDecisionRequired { reason: _ } => Present { value: AccessGatedFactHasIndependentCarriageDecision }
+        NormalizedFactsMayBeCarried => Present { value: AccessGatedFactHasIndependentCarriageDecision }
+        CarriageNotApplicable { because: _ } => none
+      }
+  }
+}
+
+// The refusal rendered as text for a consumer that can only carry a string. The three arms are
+// named individually rather than folded to one generic sentence, because which coherence law a row
+// broke is the fact a reader needs.
+fn authority_standing_refusal_text(r: AuthorityStandingRefusal) -> NonEmptyStr {
+  match r {
+    EstablishedFactHasInapplicableCarriage =>
+      "this layer's fact is established, yet its carriage says the question does not apply; an established fact always has a carriage answer"
+    UnestablishedFactClaimsNormalizedCarriage =>
+      "this layer claims normalized facts may be carried, yet no fact is established for it; there is nothing to carry"
+    AccessGatedFactHasIndependentCarriageDecision =>
+      "this layer's fact is behind commercial access, so its carriage is governed by the access terms and may not be decided independently here"
+  }
+}
+
+fn standing_pair_is_admitted(fact: FactAuthorityStanding, carriage: RepositoryCarriageStanding) -> Bool {
+  match authority_standing_refusal(fact: fact, carriage: carriage) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// RUNG, STATED HONESTLY rather than implied by the presence of this function. This is mechanically
+// preventable, not structurally impossible: AttachmentLayerStanding is still a freely constructible
+// record, so an incoherent pair remains WRITABLE and safety depends on a witness executing. The
+// next rung is construction closure -- sealing the record so the only mint is a function that
+// consults this refusal -- and that is the trigger, not a wish. It is deliberately not attempted in
+// the same change that discovers the class.
+// Mechanically preventable. The incoherent combinations are detected and witnessed, not made
+// unwritable; AttachmentLayerStanding stays a public record literal. Next-rung trigger: seal
+// AttachmentLayerStanding with a sole constructor whose mint returns an admission, so an
+// incoherent pair has no representation rather than a check that must be run.
+// THE JOINT REFUSAL IS CONSULTED FIRST, so an incoherent row cannot read as an unblocked one.
+// An earlier revision asked only what the FACT was missing, and answered Absent -- no blocker --
+// for an established fact whose carriage said the question did not apply. That pair is exactly
+// what authority_standing_refusal calls EstablishedFactHasInapplicableCarriage, so the row was
+// simultaneously refused by the coherence check and reported clean by the blocker projection, and
+// a consumer reading the blockers saw a settled layer. The two answers now come from one place.
+fn subject_blocker(fact: FactAuthorityStanding, carriage: RepositoryCarriageStanding) -> FactAuthorityBlocker? {
+  match authority_standing_refusal(fact: fact, carriage: carriage) {
+    Present { value: r } => Present { value: NeedsTheStandingItselfRepaired { refusal: r } }
+    Absent => subject_blocker_for_coherent_standing(fact: fact, carriage: carriage)
+  }
+}
+
+fn subject_blocker_for_coherent_standing(fact: FactAuthorityStanding, carriage: RepositoryCarriageStanding) -> FactAuthorityBlocker? {
+  match fact {
+    FactUnresolved { what_is_missing: w } =>
+      Present { value: NeedsSomeoneToFindTheDocument { what_is_missing: w } }
+    FactStatedOnlyInFigure { figure: f, what_is_drawn: d } =>
+      Present { value: NeedsAHumanToReadTheDrawing { figure: f, what_is_drawn: d } }
+    FactAccessGated { subject: sub, access_route: route } =>
+      Present { value: NeedsCommercialAccess { subject: sub, access_route: route } }
+    FactEstablished { authority: _, subject: _ } =>
+      match carriage {
+        NormalizedFactsMayBeCarried => none
+        CarriageNotApplicable { because: _ } => none
+        CarriageDecisionRequired { reason: r } =>
+          Present { value: NeedsARedistributionDecision { reason: r } }
+      }
+  }
+}
+
+// The layer-grain wrapper is the generic blocker PLUS which layer it is about, rather than three
+// variants restating the generic ones with a layer field bolted on. Those would be a second copy
+// that drifts the moment a fourth blocking reason exists.
+type LayerBlocker {
+  layer: AttachmentLayer
+  blocker: FactAuthorityBlocker
+}
+
+fn layer_blocker(row: AttachmentLayerStanding) -> LayerBlocker? {
+  match subject_blocker(fact: row.fact, carriage: row.carriage) {
+    Absent => none
+    Present { value: b } => Present { value: LayerBlocker { layer: row.layer, blocker: b } }
+  }
+}
+
+
+fn open_blockers() -> List<LayerBlocker> {
+  fold(attachment_stack, init: [], f: fn(acc, row) {
+    match layer_blocker(row: row) {
+      Absent => acc
+      Present { value: b } => concat(acc, [b])
+    }
+  })
+}
+
+// THE CONSTRUCTION WALL. A board land pattern is reachable only from the socket layer's own
+// authority, and this module supplies no function taking a processor package and returning one.
+// The absence is the wall: with no such function, a caller that wants board pads must obtain the
+// socket vendor's geometry, and cannot instead reach for the package drawing that is sitting
+// right there in the datasheet.
+//
+// The contact COUNT is shared and is deliberately the only thing that crosses: however the socket
+// terminates, a 4926-contact processor needs 4926 board-side terminations, so the population is a
+// join key between the two layers even though the geometry is not.
+fn board_side_termination_population() -> Int {
+  altra_declared_contact_count()
+}
+
+fn processor_socket() -> CpuSocket {
+  altra_fclga_socket
+}

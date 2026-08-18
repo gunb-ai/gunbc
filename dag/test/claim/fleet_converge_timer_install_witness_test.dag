@@ -2,29 +2,27 @@ module test.claim.fleet_converge_timer_install_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Join 2 (operator verdict): the timer route is TOTAL over the fleet and each arm is
-// typed — srv1 stays on live_deploy membership (its owned-artifact authority), every
-// other enrolled host self-installs, Sparks are pre-enrollment (never silently absent),
-// and a non-fleet name is outside. No two hosts collapse into an untyped default.
+// Timer cadence retired (sleek-heron-218): every enrolled host routes to TimerRetired;
+// only names outside the fleet applicability join stay on TimerOutsideFleet.
 test fn witness_timer_route_is_total_and_discriminates() -> Bool {
   match fleet_timer_install_route(host: "srv1") {
-    TimerViaLiveDeployMembership { host: h } => h == "srv1"
+    TimerRetired { host: h } => h == "srv1"
     _ => false
   }
     && match fleet_timer_install_route(host: "srv2") {
-      TimerViaSelfInstall { host: h } => h == "srv2"
+      TimerRetired { host: h } => h == "srv2"
       _ => false
     }
     && match fleet_timer_install_route(host: "srv3") {
-      TimerViaSelfInstall { host: h } => h == "srv3"
+      TimerRetired { host: h } => h == "srv3"
       _ => false
     }
     && match fleet_timer_install_route(host: "srv4") {
-      TimerViaSelfInstall { host: h } => h == "srv4"
+      TimerRetired { host: h } => h == "srv4"
       _ => false
     }
     && match fleet_timer_install_route(host: "srv5") {
-      TimerPreEnrollment { host: h } => h == "srv5"
+      TimerRetired { host: h } => h == "srv5"
       _ => false
     }
     && match fleet_timer_install_route(host: "no-such-host") {

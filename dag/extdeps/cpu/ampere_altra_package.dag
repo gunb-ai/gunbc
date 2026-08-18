@@ -1,23 +1,18 @@
 module extdeps.cpu.ampere_altra_package
 
 import std.types { String, NonEmptyStr, List, Map }
+import std.measure { Micrometer, micrometer }
 import extdeps.cpu.types { CpuSocket }
-import extdeps.cpu.ampere { altra_max_m12830_catalog, ampere_altra_rev_a1_datasheet_authority }
+import extdeps.cpu.ampere { ampere_lga4926_socket, ampere_altra_rev_a1_datasheet_authority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
-  }
-}
-
-data ampere_customer_reference_boards_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "amperecomputing.com/home/customer-reference-boards"
   }
 }
 
@@ -29,7 +24,7 @@ data ampere_customer_reference_boards_authority: ExternalAuthority = ExternalAut
 // Table 4, thirty-five sheets of PIN # to SIGNAL NAME; section 6 carries Signal Descriptions
 // with 6.1 Reserved Pins naming all thirty-nine explicitly; section 9 is Power Supply
 // Sequencing, split into SoC and PCP domains.
-data ampere_altra_package_note: String = "THE ALTRA PACKAGE PINOUT IS PUBLIC, AND AN EARLIER REVISION OF THIS MODULE SAID IT WAS NOT. That revision declared the per-contact map, the power sequencing and the admitted memory topologies to be NDA-only, and refused on that basis. It was wrong, and the way it was wrong is worth keeping: the claim was reasoned from the fact that Ampere's reference board collateral IS under NDA, and never checked against the datasheet this repository was already citing. The refusal was therefore well-typed, executed on the real acceptance path, defended by a passing witness, and false — a fabricated verdict wearing every mark of a grounded one. THE ACTUAL SPLIT, read from the documents. PUBLIC, in the Rev A1 datasheet Issue 1.15: the complete pin assignment table (section 5, Table 4, thirty-five sheets), the signal functional descriptions with widths, directions and I/O types (section 6.2, Table 6), the thirty-nine reserved pins by designator (section 6.1), the pin summary decomposition (Table 5), mechanical data (section 3), electrical specifications (section 7) and power supply sequencing for both the SoC and PCP domains (section 9). NDA, via Customer Connect: the reference BOARD collateral — the Mt. Jade, Mt. Collins, Mt. Bonnell and Mt. Snow motherboard design packages, plus UEFI, OpenBMC and CPLD source. Those are board designs, not package facts, and conflating the two is what produced the error. WHAT REMAINS GENUINELY UNRESOLVED, and it is NOT availability: every page of the datasheet is footed 'Ampere Computing Proprietary', so transcribing its tables into this public repository is a licensing question rather than an access one. That question is open and is not answered by the pinout being downloadable. TWO READING TRAPS IN THE SIGNAL NAMES, recorded because both are easy to get backwards. The DDR4_/DDR5_/DDR6_/DDR7_ prefixes are CHANNEL indices four through seven, not memory generations — section 6.2 groups them as 'DDR[0:7]' across eight DDR4 channels and the shared rail is named VDDQ_DDR4567. And Table 4 states it 'does not list the depopulated pins on the package', so a row count taken from that table is not automatically the package population; the completeness authority is Table 5, carried below."
+data ampere_altra_package_note: String = "THE ALTRA PACKAGE PINOUT IS PUBLIC, AND AN EARLIER REVISION OF THIS MODULE SAID IT WAS NOT. That revision declared the per-contact map, the power sequencing and the admitted memory topologies to be NDA-only, and refused on that basis. It was wrong, and the way it was wrong is worth keeping: the claim was reasoned from the fact that Ampere's reference board collateral IS under NDA, and never checked against the datasheet this repository was already citing. The refusal was therefore well-typed, executed on the real acceptance path, defended by a passing witness, and false — a fabricated verdict wearing every mark of a grounded one. THE ACTUAL SPLIT, read from the documents. PUBLIC, in the Rev A1 datasheet Issue 1.15: the complete pin assignment table (section 5, Table 4, thirty-five sheets), the signal functional descriptions with widths, directions and I/O types (section 6.2, Table 6), the thirty-nine reserved pins by designator (section 6.1), the pin summary decomposition (Table 5), mechanical data (section 3), electrical specifications (section 7) and power supply sequencing for both the SoC and PCP domains (section 9). NDA, via Customer Connect: the reference BOARD collateral — the Mt. Jade, Mt. Collins, Mt. Bonnell and Mt. Snow motherboard design packages, plus UEFI, OpenBMC and CPLD source. Those are board designs, not package facts, and conflating the two is what produced the error. THE PROPRIETARY FOOTER IS A RECORDED ATTRIBUTE, NOT A CARRIAGE BARRIER: every page of the datasheet is footed 'Ampere Computing Proprietary', but carriage derives from public availability — the locator returns the PDF without login — not from the footer. Transcribing the publicly reachable datasheet tables is therefore admissible on that axis; Customer Connect board collateral remains barred because it is not public, not because it is proprietary. TWO READING TRAPS IN THE SIGNAL NAMES, recorded because both are easy to get backwards. The DDR4_/DDR5_/DDR6_/DDR7_ prefixes are CHANNEL indices four through seven, not memory generations — section 6.2 groups them as 'DDR[0:7]' across eight DDR4 channels and the shared rail is named VDDQ_DDR4567. And Table 4 states it 'does not list the depopulated pins on the package', so a row count taken from that table is not automatically the package population; the completeness authority is Table 5, carried below."
 
 // Table 5, Pin Summary, cited to the datasheet. This is the completeness authority a contact
 // map must join against — and it cross-foots exactly, which is why it is carried as its parts
@@ -51,11 +46,44 @@ fn altra_pin_summary_total() -> Int {
 // named: a pin-map module with no import edge to the CPU catalog it claims to bound, joining
 // its completeness check against a denominator that could drift away from the socket fact
 // independently.
-data altra_fclga_socket: CpuSocket = altra_max_m12830_catalog.socket
+// DE-FORKED 2026-08-15. This read altra_max_m12830_catalog.socket — the ALTRA MAX M128-30 row —
+// inside a module named for the Altra package, so a family mechanical fact was sourced from one
+// specific product of the other family. The value was correct, which is exactly why it survived:
+// both families are LGA4926, so every witness passed and nothing could have caught it by
+// execution. It now reads the family authority, which is what it always meant.
+data altra_fclga_socket: CpuSocket = ampere_lga4926_socket
 
 fn altra_declared_contact_count() -> Int {
   altra_fclga_socket.contact_count
 }
+
+// THE PACKAGE BODY EXTENT, section 3 Mechanical Data, carried as a typed row rather than as the
+// sentence in the comment above it. It was prose here for two revisions, which is the exact shape
+// DESIGN §4c forbids for a machine-consumed fact: no accepted program can read a comment, so a
+// placement asking how much board area the processor occupies had no answer to join against while
+// the number sat four lines away in English. THE UNIT IS EXACT, not rounded: 77.080 mm and 67.000
+// mm are whole micrometres, so the datasheet's three decimal places survive the carrier instead of
+// being truncated into millimetres and re-expanded later.
+//
+// THIS IS THE PACKAGE BODY AND NOTHING ELSE. It is not the socket, not the socket's board
+// termination, and not the land pattern the board etches — the four are separately governed and
+// this module's sibling attachment stack exists to keep them apart. What it legitimately bounds is
+// the volume the processor occupies once seated, which is a real constraint on keepout and on
+// neighbouring component clearance even while the socket part remains unselected.
+data altra_package_body_width: Micrometer = micrometer(count: 77080)
+
+data altra_package_body_height: Micrometer = micrometer(count: 67000)
+
+// THE LAND PITCH BELONGS TO THE PACKAGE, NOT TO WHICHEVER DOCUMENT TRANSCRIBED IT FIRST. The
+// datasheet's package mechanical drawing states e = 0.87 BASIC and f = 0.50 BASIC on the same
+// figure as the body extent and the 4926-contact identity, so the hexagonal pitch pair is a
+// property of the part. It was previously authored only in the platform-specification module, and
+// a fact's ABSENCE from its subject's authority is not what makes it belong somewhere else.
+data altra_package_pad_pitch_dx: Micrometer = micrometer(count: 870)
+
+data altra_package_pad_pitch_dy: Micrometer = micrometer(count: 500)
+
+data altra_package_body_designator: NonEmptyStr = "FCLGA4926"
 
 data altra_ddr4_channel_count: Int = 8
 
@@ -74,6 +102,7 @@ type ContactElectricalFunction
   | SignalReferenceContact
   | SingleEndedSignalContact
   | DifferentialPairMemberContact { pair: NonEmptyStr }
+  | IncompleteDifferentialPolarityContact { pair: NonEmptyStr }
   | NoConnectContact
   | ReservedContact
   | FunctionUnstated
@@ -81,6 +110,151 @@ type ContactElectricalFunction
 type PackageContact {
   designator: NonEmptyStr
   function: ContactElectricalFunction
+}
+
+// One Table 4 row before classification: the datasheet names a land and its default signal.
+type Table4PinRow {
+  designator: NonEmptyStr
+  signal_name: NonEmptyStr
+}
+
+data power_supply_signal_prefixes: List<NonEmptyStr> = [
+  "VDD",
+  "VCC",
+  "VPP",
+  "VREF",
+  "VTT",
+  "VREG",
+  "PVDD",
+  "AVDD",
+  "DVDD",
+]
+
+fn signal_has_power_supply_prefix(signal: NonEmptyStr) -> Bool {
+  fold(power_supply_signal_prefixes, init: false, f: fn(acc, prefix) {
+    acc || starts_with(s: signal as String, prefix: prefix as String)
+  })
+}
+
+fn signal_is_reserved_name(signal: NonEmptyStr) -> Bool {
+  starts_with(s: signal as String, prefix: "RESERVED")
+    || starts_with(s: signal as String, prefix: "RFU")
+}
+
+fn signal_is_power_return_name(signal: NonEmptyStr) -> Bool {
+  (signal as String) == "VSS"
+    || (signal as String) == "GND"
+    || starts_with(s: signal as String, prefix: "VSS_")
+}
+
+fn signal_is_reference_name(signal: NonEmptyStr) -> Bool {
+  (signal as String) == "AGND" || (signal as String) == "DGND"
+}
+
+fn signal_has_positive_polarity_suffix(signal: NonEmptyStr) -> Bool {
+  ends_with(s: signal as String, suffix: "_P")
+}
+
+fn signal_has_negative_polarity_suffix(signal: NonEmptyStr) -> Bool {
+  ends_with(s: signal as String, suffix: "_N")
+    || ends_with(s: signal as String, suffix: "_M")
+}
+
+fn differential_pair_base_name(signal: NonEmptyStr) -> NonEmptyStr? {
+  if signal_has_positive_polarity_suffix(signal: signal) || signal_has_negative_polarity_suffix(signal: signal) {
+    let len = (signal as String).length()
+    if len > 2 {
+      Present {
+        value: substring(
+          s: signal as String,
+          start: 0,
+          end: len - 2,
+        ) as NonEmptyStr,
+      }
+    } else {
+      none
+    }
+  } else {
+    none
+  }
+}
+
+type DifferentialPolarityScan {
+  has_positive: Bool
+  has_negative: Bool
+}
+
+fn scan_table4_differential_polarities(rows: List<Table4PinRow>) -> Map<NonEmptyStr, DifferentialPolarityScan> {
+  fold(rows, init: empty_map(), f: fn(acc, row) {
+    match differential_pair_base_name(signal: row.signal_name) {
+      Absent => acc
+      Present { value: base } => {
+        let prior = match map_get(acc, base) {
+          Present { value: scan } => scan
+          Absent => DifferentialPolarityScan { has_positive: false, has_negative: false }
+        }
+        let updated = if signal_has_positive_polarity_suffix(signal: row.signal_name) {
+          DifferentialPolarityScan { has_positive: true, has_negative: prior.has_negative }
+        } else {
+          DifferentialPolarityScan { has_positive: prior.has_positive, has_negative: true }
+        }
+        map_insert(acc, base, updated)
+      }
+    }
+  })
+}
+
+fn differential_pair_is_complete(scan: DifferentialPolarityScan) -> Bool {
+  scan.has_positive && scan.has_negative
+}
+
+// Active-low and other single-ended _N/_M names (WE_N, RAS_N, …) with no _P mate route to
+// SingleEndedSignalContact when scan.has_negative && !scan.has_positive.
+fn classify_table4_signal(
+  signal: NonEmptyStr,
+  polarities: Map<NonEmptyStr, DifferentialPolarityScan>
+) -> ContactElectricalFunction {
+  if signal_is_reserved_name(signal: signal) {
+    ReservedContact
+  } else if (signal as String) == "NC" {
+    NoConnectContact
+  } else if signal_is_power_return_name(signal: signal) {
+    PowerReturnContact
+  } else if signal_is_reference_name(signal: signal) {
+    SignalReferenceContact
+  } else if signal_has_power_supply_prefix(signal: signal) {
+    PowerSupplyContact
+  } else {
+    match differential_pair_base_name(signal: signal) {
+      Absent => SingleEndedSignalContact
+      Present { value: base } => match map_get(polarities, base) {
+        Present { value: scan } =>
+          if differential_pair_is_complete(scan: scan) {
+            DifferentialPairMemberContact { pair: base }
+          } else if scan.has_negative && !scan.has_positive {
+            SingleEndedSignalContact
+          } else {
+            IncompleteDifferentialPolarityContact { pair: base }
+          }
+        Absent => IncompleteDifferentialPolarityContact { pair: base }
+      }
+    }
+  }
+}
+
+fn table4_row_to_contact(
+  row: Table4PinRow,
+  polarities: Map<NonEmptyStr, DifferentialPolarityScan>
+) -> PackageContact {
+  PackageContact {
+    designator: row.designator,
+    function: classify_table4_signal(signal: row.signal_name, polarities: polarities),
+  }
+}
+
+fn contacts_from_table4(rows: List<Table4PinRow>) -> List<PackageContact> {
+  let polarities = scan_table4_differential_polarities(rows: rows)
+  rows |> map(row => table4_row_to_contact(row: row, polarities: polarities))
 }
 
 type PackageContactMap {
@@ -99,6 +273,7 @@ type PackageContactMapStanding
   | ContactMapPubliclyAvailableNotIngested { document: NonEmptyStr, authority: ExternalAuthority }
   | ContactPopulationIncomplete { expected: Int, resolved: Int }
   | DuplicateContactDesignator { designator: NonEmptyStr }
+  | IncompleteDifferentialPolarity { pair: NonEmptyStr }
 
 fn contact_designators(map: PackageContactMap) -> List<NonEmptyStr> {
   map.contacts |> map(c => c.designator)
@@ -106,6 +281,105 @@ fn contact_designators(map: PackageContactMap) -> List<NonEmptyStr> {
 
 fn contact_count(map: PackageContactMap) -> Int {
   fold(map.contacts, init: 0, f: (acc, _) => acc + 1)
+}
+
+fn classified_signal_pin_count(contacts: List<PackageContact>) -> Int {
+  fold(contacts, init: 0, f: fn(acc, c) {
+    match c.function {
+      SingleEndedSignalContact => acc + 1
+      DifferentialPairMemberContact { pair: _ } => acc + 1
+      _ => acc
+    }
+  })
+}
+
+fn classified_power_and_ground_pin_count(contacts: List<PackageContact>) -> Int {
+  fold(contacts, init: 0, f: fn(acc, c) {
+    match c.function {
+      PowerSupplyContact => acc + 1
+      PowerReturnContact => acc + 1
+      SignalReferenceContact => acc + 1
+      _ => acc
+    }
+  })
+}
+
+fn classified_reserved_pin_count(contacts: List<PackageContact>) -> Int {
+  fold(contacts, init: 0, f: fn(acc, c) {
+    match c.function {
+      ReservedContact => acc + 1
+      _ => acc
+    }
+  })
+}
+
+// A differential pair is COMPLETE when its pair name names exactly two member contacts in the
+// map — one for each polarity the datasheet assigns. Members are classified as differential
+// only when BOTH polarities exist under the same base name. Active-low _N names with no _P mate
+// (WE_N, RAS_N, …) stay single-ended; PCIe lanes use _M as the negative leg beside _P.
+type DifferentialPairPopulationScan {
+  counts: Map<NonEmptyStr, Int>
+}
+
+fn scan_differential_pair_population(contacts: List<PackageContact>) -> DifferentialPairPopulationScan {
+  fold(contacts, init: DifferentialPairPopulationScan { counts: empty_map() }, f: fn(acc, c) {
+    match c.function {
+      DifferentialPairMemberContact { pair: p } => {
+        let prior = match map_get(acc.counts, p) {
+          Present { value: n } => n
+          Absent => 0
+        }
+        DifferentialPairPopulationScan {
+          counts: map_insert(acc.counts, p, prior + 1),
+        }
+      }
+      _ => acc
+    }
+  })
+}
+
+type DifferentialPairStanding
+  = AllDifferentialPairsComplete
+  | IncompleteDifferentialPair { pair: NonEmptyStr, member_count: Int }
+
+fn first_incomplete_polarity_pair(contacts: List<PackageContact>) -> NonEmptyStr? {
+  fold(contacts, init: none, f: fn(acc, c) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => match c.function {
+        IncompleteDifferentialPolarityContact { pair: p } => Present { value: p }
+        _ => none
+      }
+    }
+  })
+}
+
+fn differential_pair_standing(contacts: List<PackageContact>) -> DifferentialPairStanding {
+  match first_incomplete_polarity_pair(contacts: contacts) {
+    Present { value: pair } => IncompleteDifferentialPair { pair: pair, member_count: 1 }
+    Absent => {
+      let scan = scan_differential_pair_population(contacts: contacts)
+      fold(contacts, init: AllDifferentialPairsComplete, f: fn(acc, c) {
+        match acc {
+          IncompleteDifferentialPair { pair: _, member_count: _ } => acc
+          AllDifferentialPairsComplete => match c.function {
+            DifferentialPairMemberContact { pair: p } => {
+              let members = match map_get(scan.counts, p) {
+                Present { value: n } => n
+                Absent => 0
+              }
+              if members == 2 {
+                AllDifferentialPairsComplete
+              } else {
+                IncompleteDifferentialPair { pair: p, member_count: members }
+              }
+            }
+            _ => AllDifferentialPairsComplete
+          }
+        }
+      })
+    }
+  }
 }
 
 // TWO LINEAR PASSES, NOT A QUADRATIC ONE. An earlier revision re-counted the whole designator
@@ -155,28 +429,19 @@ fn first_duplicate_designator(designators: List<NonEmptyStr>) -> NonEmptyStr? {
 // party asserting it, which is the same unforgeable-construction frontier DESIGN names, and
 // it is stated rather than papered over.
 fn admit_package_contact_map(map: PackageContactMap, expected: Int) -> PackageContactMapStanding {
-  match first_duplicate_designator(designators: contact_designators(map: map)) {
-    Present { value: dup } => DuplicateContactDesignator { designator: dup }
-    Absent => {
-      let resolved = contact_count(map: map)
-      if resolved == expected {
-        PackageContactMapAdmitted { resolved: resolved }
-      } else {
-        ContactPopulationIncomplete { expected: expected, resolved: resolved }
+  match first_incomplete_polarity_pair(contacts: map.contacts) {
+    Present { value: pair } => IncompleteDifferentialPolarity { pair: pair }
+    Absent => match first_duplicate_designator(designators: contact_designators(map: map)) {
+      Present { value: dup } => DuplicateContactDesignator { designator: dup }
+      Absent => {
+        let resolved = contact_count(map: map)
+        if resolved == expected {
+          PackageContactMapAdmitted { resolved: resolved }
+        } else {
+          ContactPopulationIncomplete { expected: expected, resolved: resolved }
+        }
       }
     }
-  }
-}
-
-// The live standing of the Altra package in THIS repository, today. It still refuses, but for
-// the correct reason and to the correct owner: the map is published and this repository has
-// not ingested it. That is OUR unfinished work, not a business prerequisite, and the two route
-// to different people — which is exactly the distinction the three refusal families exist to
-// preserve, and exactly the one the previous revision got backwards.
-fn altra_contact_map_standing() -> PackageContactMapStanding {
-  ContactMapPubliclyAvailableNotIngested {
-    document: "Ampere Altra Max Rev A1 datasheet Issue 1.15, section 5 Table 4 (pin assignment), section 6 Table 6 (signal descriptions), Table 5 (pin summary)",
-    authority: ampere_altra_rev_a1_datasheet_authority,
   }
 }
 

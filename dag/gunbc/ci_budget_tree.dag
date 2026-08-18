@@ -1,7 +1,14 @@
 module gunbc.ci_budget_tree
 
+import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
+import gunbc.ci_runner_target {
+  FleetSelfHosted,
+  ci_runner_target_ram_speed_budget,
+  selected_ci_runner_target,
+}
+import std.measure { Memory, One }
 
-data gunbc_ci_budget_tree_deconfliction_disposition: Disposition = std.disposition.Terminal { reason: "DESIGN §3 deliberate carrier split: this BudgetNode governs INTER-run co-residence (host_ram partitioned as overhead + sessions_slice + runner_slice, conserving by construction via byte_size_saturating_sub). srv1_floor_memory_budget returns gunbc_ci_runner_slot_ram_speed_ceiling (min of live MemoryHigh 15GiB and live MemoryMax 16GiB per the applied 2026-07-11 allocation ruling; see srv1_floor_memory_budget_live_note - within-run width packs to the throttle line, memory.max stays the kill authority). gunbc_ci_dashboard_session_container_cap (31.27 GiB) is inter-run session pool only. Do NOT conflate. See gunbc_ci_footprint_granularity_disposition." }
+data gunbc_ci_budget_tree_deconfliction_disposition: Disposition = std.disposition.Terminal { reason: "DESIGN §3 deliberate carrier split: this BudgetNode governs INTER-run co-residence (host_ram partitioned as overhead + sessions_slice + runner_slice, conserving by construction via byte_size_saturating_sub). srv1_floor_memory_budget returns gunbc_ci_runner_slot_ram_speed_ceiling (min of declared MemoryHigh and declared MemoryMax from gunbc.runner_slot_allocation — 13GiB/14GiB under the 2026-08-05 ruling; see srv1_floor_memory_budget_live_note for kernel-effective vs deploy drop-in shadow caveat). gunbc_ci_dashboard_session_container_cap (31.27 GiB) is inter-run session pool only. Do NOT conflate. See gunbc_ci_footprint_granularity_disposition." }
 
 fn host_overhead_bytes(offer: ComputeOffer) -> ByteSize {
   match gunbc_ci_host_fixed_overhead_for(host: offer.supply.physical.identity) {
@@ -11,8 +18,10 @@ fn host_overhead_bytes(offer: ComputeOffer) -> ByteSize {
   }
 }
 
+data host_ram_ceiling_direction_note: String = "THIS READS OS-USABLE RAM PER HOST, NOT NOMINAL DIMM CAPACITY, and the change matters because this module and gunbc.ci_runner_placement were answering the same question with different ceilings. compute_host_ram_bytes_total sums the populated modules; the OS sees less after firmware and kernel reservations. While placement checked usable and these budget trees checked nominal, both could report conservation green while disagreeing about how much memory exists — and the sibling tests here call themselves live, so agreement was never being tested.\n\nWHY ZERO IS THE FAIL-CLOSED ARM HERE, which is the opposite of the direction it means one function above. host_overhead_bytes maps an unmeasured overhead to zero and that IS a fail-open — an unknown CHARGE read as no charge lets a host look emptier than it is. This value is a CEILING, so an unknown ceiling read as zero admits nothing: every pool overcommits and conservation refuses. Same literal, opposite polarity, because one is a debit and the other is the account."
+
 fn host_ram_of(offer: ComputeOffer) -> ByteSize {
-  compute_host_ram_bytes_total(host: offer.supply.physical)
+  host_usable_ram_ceiling_bytes(host: offer.supply.physical.identity)
 }
 
 fn host_allocatable_bytes(offer: ComputeOffer) -> ByteSize {
@@ -107,7 +116,7 @@ fn srv1_fixed_overhead_bytes() -> ByteSize {
   host_overhead_bytes(offer: srv1_offer)
 }
 
-data srv1_floor_memory_budget_live_note: String = "Floor width sizing reads the RAM-SPEED ceiling (gunbc_ci_runner_slot_ram_speed_ceiling = min(live MemoryHigh, live MemoryMax); 15GiB under the applied 2026-07-11 allocation ruling), not the kill line: between memory.high and memory.max the slot does not fail, it reclaim-throttles into swap (four floor_peak_post pins at exactly 16106127360+overshoot, runs 29137081535/29142398465/29159082043 - the 60m-timeout wedge signature), and a width budget denominated at the kill line buys its last GiB at swap speed (DESIGN 5: the widening arm; the 2026-07-10 24GiB-era wedges were this row reading the then-live 24GiB cap on slots already carved to 16/15). History: the 2026-07-09 discovery flip first forced the live-over-declared read (executor base ~8.3GiB could not fit the then-declared 8GiB slot); the 2026-07-10/11 ruling then converged declared to 16GiB max / 15GiB high and the apply landed. Dissolve-on: direct post-apply memory.max readback proves live == declared, collapse both live rows to the gunbc.runner_slot_allocation single authority (high stays a first-class axis there)."
+data srv1_floor_memory_budget_live_note: String = "Floor width sizing reads gunbc_ci_runner_slot_ram_speed_ceiling = min(declared MemoryHigh, declared MemoryMax) from gunbc.runner_slot_allocation (14GiB / 13GiB under the 2026-08-05 ruling), NOT the kill line. HONEST RESIDUAL (operator observation 2026-08-13, srv1): kernel-effective caps may match the declared row while system.control shadow residue still blocks deploy drop-in authority (16GiB/15GiB on disk at srv1) — sizing against declared 13GiB matches today's enforced throttle but is NOT proof deploy authority is in force; shadow teardown is deploy apply via gunbc.host_axis_caps (not gunbc converge on briansrls). Between memory.high and memory.max the slot reclaim-throttles into swap (four floor_peak_post pins at armed_memory_high+overshoot, runs 29137081535/29142398465/29159082043). Dissolve-on: post-shadow-removal live readback proves effective == deploy drop-in authority and this note retires the shadow caveat."
 
 fn srv1_floor_memory_budget() -> ByteSize {
   ci_runner_target_ram_speed_budget(target: selected_ci_runner_target())

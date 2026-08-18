@@ -1,6 +1,6 @@
 module gunbc.host_converge_realize
 
-import std.types { String, List, Bool, NonEmptyStr }
+import std.types { String, List, Bool, NonEmptyStr, Int }
 import gunbc.host_converge {
   ConvergeKnob,
   ConvergeTarget,
@@ -13,6 +13,7 @@ import gunbc.host_converge {
   JobserverTokens,
   VerifyOnlyCap,
   GunbcPinnedTree,
+  CodexRuntimeBundle,
 }
 import gunbc.host_axis_caps { desired_cap_member, cap_upsert_script }
 
@@ -37,6 +38,7 @@ fn converge_target_kind_label(t: ConvergeTarget) -> String {
       green_place_marker: _,
       live_apply: _,
     } => "GunbcPinnedTree"
+    CodexRuntimeBundle { host_identity: _ } => "CodexRuntimeBundle"
   }
 }
 

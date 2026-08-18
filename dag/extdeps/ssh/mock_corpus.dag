@@ -23,6 +23,13 @@ data ssh_session_mock_case_exec_argv: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
+data ssh_session_mock_case_exec_portable_words_with_stdin: PublishedMockCase = PublishedMockCase {
+  operation_key: "ssh.Session.ExecPortableWordsWithStdin",
+  service: "ssh.Session",
+  operation: "ExecPortableWordsWithStdin",
+  case_id: 0
+}
+
 data ssh_session_mock_case_reachability: PublishedMockCase = PublishedMockCase {
   operation_key: "ssh.Session.Reachability",
   service: "ssh.Session",
@@ -34,5 +41,6 @@ data ssh_published_mock_corpus: List<PublishedMockCase> = [
   ssh_session_mock_case_exec,
   ssh_session_mock_case_exec_script,
   ssh_session_mock_case_exec_argv,
+  ssh_session_mock_case_exec_portable_words_with_stdin,
   ssh_session_mock_case_reachability,
 ]

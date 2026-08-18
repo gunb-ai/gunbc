@@ -1,11 +1,22 @@
 module gunbc.spark_serving_release
 
-import std.types { String, Bool, List, Int, NonEmptyStr }
+import std.types { String, Bool, List, Int, NonEmptyStr, Port }
 import product.placement_supply { HostIdentity }
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, ContentHash, serialize_content_hash }
+import gunbc.model_artifact { ModelArtifact }
+import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire, ollama_default_port }
 import v2.std.algebra { fold_list }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize }
+import gunbc.spark_serving_realization {
+  SystemPrincipal, ServingDeploymentTarget, UserUnitRealization,
+  EscalationShortfall, NoNewPrivilegeRequired, NewPrivilegeRequired, ShortfallUndecidable,
+  ShortfallEvidenceMismatch,
+  SparkServingIntent, SparkServingRealization, ServingRequirementRefusal, identity_contract_refusal,
+  ObservedGrantPopulation, escalation_shortfall, applicable_without_administrator,
+  ServingEndpointIntent, UnauthenticatedEndpoint, AuthenticatedEndpoint,
+}
+import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 
 // THE SPARK SERVING RELEASE — one content-addressed identity over everything that must be
 // identical on both replicas.
@@ -24,22 +35,65 @@ import std.measure { ByteSize, byte_size_count }
 // a time.
 type RuntimeArtifactIdentity { closure_digest: NonEmptyStr }
 
-// The model artifact is pinned by EXACT REVISION, never a tag. A moving tag makes the identity
-// claim unfalsifiable and could differ between the two hosts, silently breaking exact replay.
-type ModelArtifactIdentity { repository: NonEmptyStr  revision: NonEmptyStr }
-
 type ServingConfigurationIdentity { configuration_digest: NonEmptyStr }
 
-// The credential belongs to the OCCURRENCE, not the release. It sat inside SparkServingRelease
-// while the comment below said prerequisites stay outside precisely so a rotation cannot change
-// the release identity -- a self-contradiction ten lines apart, and the same defect class as prose
-// asserting a guarantee the mechanism does not implement. Rotating an endpoint credential now
-// changes the occurrence's desired state without pretending the model or runtime artifact changed.
-//
-// It is referenced BY EXACT VERSION. A moving `latest` alias defeats the
-// exact-version discipline this repo already models: a rotation between observation and
-// reapplication changes the actuator identity with no receipt saying so.
-type SecretVersionRef { secret: NonEmptyStr  version: NonEmptyStr }
+type OllamaRuntime {}
+
+type SparkServingRuntimeKind = OllamaRuntime
+
+type SparkServingBindListen {
+  host: NonEmptyStr
+  port: Port
+}
+
+fn spark_serving_runtime_kind_wire(runtime: SparkServingRuntimeKind) -> String {
+  match runtime {
+    OllamaRuntime => "ollama"
+  }
+}
+
+fn spark_serving_endpoint_intent_wire(intent: ServingEndpointIntent) -> String {
+  match intent {
+    UnauthenticatedEndpoint => "lan-unauthenticated"
+    AuthenticatedEndpoint => "authenticated"
+  }
+}
+
+fn spark_serving_bind_listen_wire(bind: SparkServingBindListen) -> String {
+  join([bind.host as String, ":", to_string(bind.port)], "")
+}
+
+fn spark_serving_configuration_seed(
+  runtime: SparkServingRuntimeKind,
+  model_ref: OllamaModelRef,
+  bind: SparkServingBindListen,
+  endpoint: ServingEndpointIntent,
+) -> NonEmptyStr {
+  join([
+    "spark-serving|runtime=", spark_serving_runtime_kind_wire(runtime: runtime),
+    "|model=", ollama_model_ref_wire(ref: model_ref),
+    "|bind=", spark_serving_bind_listen_wire(bind: bind),
+    "|endpoint=", spark_serving_endpoint_intent_wire(intent: endpoint),
+  ], "") as NonEmptyStr
+}
+
+fn spark_serving_configuration_identity(
+  runtime: SparkServingRuntimeKind,
+  model_ref: OllamaModelRef,
+  bind: SparkServingBindListen,
+  endpoint: ServingEndpointIntent,
+) -> ServingConfigurationIdentity {
+  ServingConfigurationIdentity {
+    configuration_digest: content_hash_atom(
+      value: spark_serving_configuration_seed(
+        runtime: runtime,
+        model_ref: model_ref,
+        bind: bind,
+        endpoint: endpoint,
+      ),
+    ).digest as NonEmptyStr,
+  }
+}
 
 // Unified memory is SHARED between CPU and GPU on GB10, which is why the accelerator reports no
 // separate device total. Admission is against the shared pool; budgeting as though a private
@@ -54,7 +108,10 @@ type InferenceCapacityPolicy { max_model_len: Nat  shared_memory_budget_bytes: B
 
 type SparkServingRelease {
   runtime: RuntimeArtifactIdentity
-  model: ModelArtifactIdentity
+  model: ModelArtifact
+}
+
+type SparkServingServingPolicy {
   serving_configuration: ServingConfigurationIdentity
   capacity: InferenceCapacityPolicy
 }
@@ -76,7 +133,11 @@ type SparkServingReleaseIdentity { digest: Fnv1a64Structural }
 // therefore a different digest -- which is what makes the identity a function of the release
 // rather than a label beside it.
 fn spark_serving_release_seed(spec: SparkServingRelease) -> NonEmptyStr {
-  "spark-serving-release|runtime={spec.runtime.closure_digest}|repo={spec.model.repository}|rev={spec.model.revision}|config={spec.serving_configuration.configuration_digest}|max_len={spec.capacity.max_model_len}|mem={byte_size_count(b: spec.capacity.shared_memory_budget_bytes)}" as NonEmptyStr
+  join([
+    "spark-serving-release|runtime=", spec.runtime.closure_digest as String,
+    "|model=", serialize_content_hash(hash: spec.model.identity) as String,
+    "|serving_label=", spec.model.serving_label as String,
+  ], "") as NonEmptyStr
 }
 
 fn spark_serving_release_identity(spec: SparkServingRelease) -> SparkServingReleaseIdentity {
@@ -88,10 +149,26 @@ fn spark_serving_release_identity(spec: SparkServingRelease) -> SparkServingRele
 // it is why the access and identity prerequisites below are NOT fields of the release: fusing a
 // credential or a host-key binding into it would change the release identity whenever a
 // credential rotated, so the two hosts could no longer share one.
+// THE ENDPOINT CREDENTIAL IS GONE, by operator ruling (2026-08-14). The field was REQUIRED on every
+// occurrence while the operator's endpoint intent is UnauthenticatedEndpoint -- so the model demanded
+// a credential for a surface with no authentication, and no code ever read it: the only values that
+// ever filled it were witness fixtures. A required field with no consumer is not a placeholder for
+// future authentication, it is a fact the model asserts and never checks, and it would have been
+// filled with a plausible-looking SecretVersionRef at the first real declaration.
+//
+// The operator's ruling was conditional and the condition was measured rather than assumed: keep it
+// if authentication is already wired, remove it if it needs more wiring. Nothing consumes it, so it
+// needs wiring, so it goes. Authenticating the endpoint later is a real change -- an intent arm, a
+// credential resolution path, and a consumer that presents it -- and it should land as that change
+// rather than being pre-declared by an unread field.
+//
+// Serving policy (configuration digest and capacity) lives on the OCCURRENCE beside release identity.
+// It is desired state compared separately from the loaded runtime+model fingerprint — configuration
+// and capacity are not imported into observations.
 type SparkServingOccurrence {
   host: HostIdentity
   release_identity: SparkServingReleaseIdentity
-  endpoint_credential: SecretVersionRef
+  serving_policy: SparkServingServingPolicy
 }
 
 // Prerequisites are ADMITTED DEPENDENCIES, not booleans and not release fields. Each names what
@@ -118,12 +195,23 @@ type SparkServingRefusal { subject: NonEmptyStr  cause: NonEmptyStr }
 // wrong" have different remedies, and collapsing them lets an unobservable host read as drifted.
 // The loaded identity is the SAME derived carrier as the desired one, so a comparison cannot be
 // satisfied by a caller-authored label.
+//
+// THE THIRD ARM EXISTS BECAUSE FIRST INSTALL WAS UNREACHABLE WITHOUT IT. With only Observed and
+// ObservationRefused, a host running nothing at all could be reported only as a refusal -- and this
+// module's own comment above says refusal means "we could not see", not "we saw nothing". So a
+// never-installed Spark and an unreachable Spark produced the same reconciliation, and the arm that
+// proposes an install had no observation that could reach it: you cannot propose adding what you
+// have no way to say is absent. That is the same state-space conflation the paragraph above refuses
+// between refusal and drift, one position over -- and it was load-bearing rather than cosmetic,
+// because it is precisely the state both Sparks are in today.
 type SparkServingObservation
-  = SparkServingObserved { host: HostIdentity, loaded_release: SparkServingReleaseIdentity }
+  = SparkServingObserved { host: HostIdentity, loaded_release: SparkServingRelease }
+  | SparkServingAbsent { host: HostIdentity }
   | SparkServingObservationRefused { host: HostIdentity, cause: NonEmptyStr }
 
 type SparkServingReconciliation
   = SparkServingAlreadyConverged { converged_release: SparkServingReleaseIdentity }
+  | SparkServingInstallRequired { subject: HostIdentity, desired_release: SparkServingReleaseIdentity }
   | SparkServingDeltaRequired { plan_subject: NonEmptyStr }
   | SparkServingRefused { first: SparkServingRefusal, more: List<SparkServingRefusal> }
 
@@ -215,14 +303,27 @@ fn reconcile_spark_serving(
           SparkServingRefused { first: missing_managed_access_refusal, more: no_further_refusals }
         } else {
           match observation {
-            SparkServingObservationRefused { host: _, cause: why } =>
-              SparkServingRefused { first: SparkServingRefusal { subject: "observation", cause: why }, more: no_further_refusals }
+            SparkServingObservationRefused { host: seen, cause: why } =>
+              if host_matches(a: seen, b: desired.host) == false {
+                SparkServingRefused { first: observation_subject_mismatch_refusal, more: no_further_refusals }
+              } else {
+                SparkServingRefused { first: SparkServingRefusal { subject: "observation", cause: why }, more: no_further_refusals }
+              }
+            SparkServingAbsent { host: seen } =>
+              if host_matches(a: seen, b: desired.host) == false {
+                SparkServingRefused { first: observation_subject_mismatch_refusal, more: no_further_refusals }
+              } else {
+                SparkServingInstallRequired { subject: desired.host, desired_release: desired.release_identity }
+              }
             SparkServingObserved { host: seen, loaded_release: loaded } =>
               if host_matches(a: seen, b: desired.host) == false {
                 SparkServingRefused { first: observation_subject_mismatch_refusal, more: no_further_refusals }
               } else {
-                if (loaded.digest.digest as String) == (desired.release_identity.digest.digest as String) {
-                  SparkServingAlreadyConverged { converged_release: loaded }
+                if (spark_serving_release_identity(spec: loaded).digest.digest as String)
+                  == (desired.release_identity.digest.digest as String) {
+                  SparkServingAlreadyConverged {
+                    converged_release: spark_serving_release_identity(spec: loaded),
+                  }
                 } else {
                   SparkServingDeltaRequired { plan_subject: "loaded release differs from desired release" as NonEmptyStr }
                 }
@@ -238,6 +339,7 @@ fn reconcile_spark_serving(
 fn spark_serving_may_actuate(reconciliation: SparkServingReconciliation) -> Bool {
   match reconciliation {
     SparkServingDeltaRequired { plan_subject: _ } => true
+    SparkServingInstallRequired { subject: _, desired_release: _ } => true
     SparkServingAlreadyConverged { converged_release: _ } => false
     SparkServingRefused { first: _, more: _ } => false
   }
@@ -248,4 +350,150 @@ fn spark_serving_may_actuate(reconciliation: SparkServingReconciliation) -> Bool
 // conjunction that can be weakened one arm at a time.
 fn spark_occurrences_share_release(a: SparkServingOccurrence, b: SparkServingOccurrence) -> Bool {
   (a.release_identity.digest.digest as String) == (b.release_identity.digest.digest as String)
+}
+
+// ── The fleet plan: one row per host, joining what must change to what it costs in privilege ────
+
+// WHY THE PLAN IS A CARRIER RATHER THAN A PRINTED STRING. The operator reviews a plan and then
+// approves it, so the thing approved and the thing applied must be the SAME VALUE. Rendering first
+// and deciding from the rendered text is the prose-decision defect this repo has now removed twice
+// from probe exits; it would be worse here, because the decision is an operator's rather than a
+// process exit code. So the rows are typed, the render is a projection of them, and an apply
+// consumes the rows.
+//
+// The join is the point. A reconciliation alone says a host needs an install; a shortfall alone says
+// what privilege a realization costs. Neither answers the question an operator actually has, which
+// is "can this be applied with the credentials that exist". Only the pair answers it.
+type SparkServingPlanRow {
+  host: HostIdentity
+  reconciliation: SparkServingReconciliation
+  contract: ServingRequirementRefusal?
+  shortfall: EscalationShortfall
+}
+
+// Head-plus-tail: a plan over zero hosts has no constructor. "Nothing to do" and "no host was
+// considered" are different answers and an empty list would render identically for both -- which is
+// precisely the conflation that made first install unreachable one type up.
+type SparkServingPlan
+  = ServingPlanned { first: SparkServingPlanRow, more: List<SparkServingPlanRow> }
+  | ServingPlanNotAttempted { cause: NonEmptyStr }
+
+// The deployment target for a Spark serving unit under the named automation account. The actor is a
+// PARAMETER rather than a constant because the same plan computed for root is the control that
+// proves privilege is emergent -- run it as RootPrincipal and every shortfall empties.
+fn spark_serving_target(actor: SystemPrincipal) -> ServingDeploymentTarget {
+  ServingDeploymentTarget {
+    actor: actor,
+    unit_name: spark_serving_unit_name as NonEmptyStr,
+    unit_path: join(["/etc/systemd/system/", spark_serving_unit_name], "") as NonEmptyStr,
+    staged_unit_path: join(["/var/lib/gunbc/staged/", spark_serving_unit_name], "") as NonEmptyStr,
+    runtime_package: "ollama" as NonEmptyStr,
+  }
+}
+
+// THE REALIZATION IS A PARAMETER AND ITS ADMISSIBILITY IS CHECKED, because the first cut hardcoded
+// UserUnitRealization here and that was fail-open planning (review 51835). The realization model
+// REFUSES a user unit under an intent requiring a no-login service identity -- structurally, on any
+// host, with no observation -- so a plan that assumed it could answer "ready to apply" for a path the
+// model says cannot satisfy the intent, while the admitted path needed administrator-backed effects.
+// Computing a privilege cost for the wrong realization is not a smaller answer; it is a confident
+// answer to a different question.
+//
+// The contract check is identity_contract_refusal, which takes only the intent and the realization.
+// That is deliberate: it is the OBSERVATION-FREE half of admission, so the plan gains intent fidelity
+// without depending on SparkHostCapabilityObservation -- the host-grained carrier whose fork is still
+// open and which must not acquire a new consumer before it is closed. Full selection, including the
+// capability half, lands with that closure and not before.
+fn spark_serving_plan_row(
+  desired: SparkServingOccurrence,
+  observation: SparkServingObservation,
+  prerequisites: List<SparkServingPrerequisite>,
+  intent: SparkServingIntent,
+  realization: SparkServingRealization,
+  actor: SystemPrincipal,
+  expected_credential: ContentHash,
+  observed_grants: ObservedGrantPopulation,
+) -> SparkServingPlanRow {
+  SparkServingPlanRow {
+    host: desired.host,
+    reconciliation: reconcile_spark_serving(
+      desired: desired, observation: observation, prerequisites: prerequisites),
+    contract: identity_contract_refusal(intent: intent, realization: realization),
+    shortfall: escalation_shortfall(
+      realization: realization,
+      subject_host: desired.host,
+      expected_credential: expected_credential,
+      target: spark_serving_target(actor: actor),
+      observed: observed_grants),
+  }
+}
+
+// A row may be applied only when BOTH halves admit it: the reconciliation says there is a change to
+// make, and the privilege it costs is already held. Total over both coproducts, so neither a new
+// reconciliation arm nor a new shortfall arm can become applicable by omission.
+fn plan_row_applicable(row: SparkServingPlanRow) -> Bool {
+  match row.contract {
+    Present { value: _ } => false
+    Absent =>
+      spark_serving_may_actuate(reconciliation: row.reconciliation)
+        && applicable_without_administrator(shortfall: row.shortfall)
+  }
+}
+
+// WHAT AN OPERATOR IS BEING ASKED TO APPROVE, per row. Deliberately NOT a Bool: "nothing to do",
+// "ready to apply" and "blocked on a credential" are three different answers, and an approval
+// interface that collapses the last two invites approving a plan that cannot run.
+type SparkServingPlanVerdict
+  = ServingNoChangeRequired
+  | ServingReadyToApply
+  | ServingRealizationInadmissible { cause: NonEmptyStr }
+  | ServingBlockedOnPrivilege { first_missing: NonEmptyStr }
+  | ServingBlockedOnObservation { cause: NonEmptyStr }
+  | ServingEvidenceMismatch { cause: NonEmptyStr }
+
+// THE CONTRACT IS CHECKED BEFORE ANYTHING ELSE. An inadmissible realization makes every downstream
+// answer moot: there is no point reporting that its privilege cost is already covered.
+fn plan_row_verdict(row: SparkServingPlanRow) -> SparkServingPlanVerdict {
+  match row.contract {
+    Present { value: refusal } => ServingRealizationInadmissible { cause: refusal.cause }
+    Absent => plan_row_verdict_admitted(row: row)
+  }
+}
+
+fn plan_row_verdict_admitted(row: SparkServingPlanRow) -> SparkServingPlanVerdict {
+  match row.reconciliation {
+    SparkServingAlreadyConverged { converged_release: _ } => ServingNoChangeRequired
+    SparkServingRefused { first: f, more: _ } => ServingBlockedOnObservation { cause: f.cause }
+    SparkServingInstallRequired { subject: _, desired_release: _ } => privilege_verdict(shortfall: row.shortfall)
+    SparkServingDeltaRequired { plan_subject: _ } => privilege_verdict(shortfall: row.shortfall)
+  }
+}
+
+fn privilege_verdict(shortfall: EscalationShortfall) -> SparkServingPlanVerdict {
+  match shortfall {
+    NoNewPrivilegeRequired => ServingReadyToApply
+    NewPrivilegeRequired { first: f, more: _ } => ServingBlockedOnPrivilege { first_missing: f }
+    ShortfallUndecidable { cause: c } => ServingBlockedOnObservation { cause: c }
+    ShortfallEvidenceMismatch { cause: c } => ServingEvidenceMismatch { cause: c }
+  }
+}
+
+fn plan_verdict_label(verdict: SparkServingPlanVerdict) -> String {
+  match verdict {
+    ServingNoChangeRequired => "no-change"
+    ServingReadyToApply => "ready-to-apply"
+    ServingBlockedOnPrivilege { first_missing: m } => join(["blocked-on-privilege missing=", m as String], "")
+    ServingBlockedOnObservation { cause: c } => join(["blocked-on-observation cause=", c as String], "")
+    ServingRealizationInadmissible { cause: c } => join(["realization-inadmissible cause=", c as String], "")
+    ServingEvidenceMismatch { cause: c } => join(["evidence-mismatch cause=", c as String], "")
+  }
+}
+
+fn spark_serving_plan_text(plan: SparkServingPlan) -> String {
+  match plan {
+    ServingPlanNotAttempted { cause: c } => join(["spark serving plan not attempted: ", c as String, "\n"], "")
+    ServingPlanned { first: f, more: m } =>
+      join(map(concat([f], m), row =>
+        join(["plan host=", row.host as String, " ", plan_verdict_label(verdict: plan_row_verdict(row: row)), "\n"], "")), "")
+  }
 }

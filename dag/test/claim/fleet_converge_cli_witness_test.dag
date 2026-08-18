@@ -16,12 +16,25 @@ test fn witness_converge_cli_srv3_routes_to_slice1_not_realize_frontier() -> Boo
 }
 
 test fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
+  let host_knobs = converge_cli_run_host_knobs(host: "srv2")
   let r = converge_cli_run(host: "srv2")
-  r.host == "srv2"
-    && r.applied == 0
-    && r.drifted == 0
-    && converge_verdict_label(v: r.verdict) == "absent"
-    && !converge_cli_receipt_converged(r: r)
+  host_knobs.host == "srv2"
+    && host_knobs.applied == 0
+    && host_knobs.drifted == 0
+    && converge_verdict_label(v: host_knobs.verdict) == "absent"
+    && !converge_cli_receipt_converged(r: host_knobs)
+    && match host_knobs.reason {
+      Present { value: cause } =>
+        match cause {
+          KnobFrontier { reason: why } => string_contains(s: why, pattern: "host_converge_realize")
+          PolicyUnsound { reason: _ } => false
+          UnknownHost { host: _ } => false
+          SparkPreEnrollment { host: _ } => false
+          SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
+          ComputeInventoryAbsent { host: _ } => false
+        }
+      _ => false
+    }
     && match r.reason {
       Present { value: cause } =>
         match cause {
@@ -136,6 +149,12 @@ test fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
     }
 }
 
+// Atomic publication: staging file lives beside the final receipt so rename(2) needs
+// directory write permission only — superseding a root-owned stale file without elevation.
+test fn witness_fleet_converge_receipt_staging_path_same_directory_as_final() -> Bool {
+  fleet_converge_receipt_staging_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.staging"
+    && fleet_converge_receipt_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.txt"
+}
 
 // Join 1 (operator verdict) — construction rework 2026-08-10, the §5 empty-observation
 // narrow. converge_cli_receipt_join_revision MEETS the knob verdict with the revision
@@ -150,33 +169,34 @@ test fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
 // NOT-converged — the narrow is closed at the seam the collector actually reads. Also asserts
 // the converge-revision line now carries the OBSERVATION as evidence (observed=/drift/
 // unobserved), never a second verdict= token, so the receipt holds exactly one verdict.
+// The knob run is the srv1 shape: converged with nothing to apply. Against it the joint is
+// exercised on all three revision standings — converged passes the knob verdict through,
+// drift demotes to drifted, and unobserved demotes to absent, each checked on the emitted
+// line as well as the verdict so a line that still said converged could not pass. The
+// end-to-end leg feeds the joint unobserved line back through the collector's OWN parser,
+// because the narrow this claim closes lived at the seam the collector reads rather than in
+// the verdict itself.
 test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
   let a = revision_fixture_oid(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
   let b = revision_fixture_oid(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
-  // knob run converged (nothing to apply) — the srv1 shape
   let knob = ConvergeCliReceipt { host: "srv1", applied: 0, drifted: 0, verdict: VerdictConverged, reason: none }
   let joint_ok = converge_cli_receipt_join_revision(r: knob, standing: RevisionConverged { revision: a })
   let joint_drift = converge_cli_receipt_join_revision(r: knob, standing: RevisionDrifted { desired: a, local: b })
   let joint_unobs = converge_cli_receipt_join_revision(r: knob, standing: RevisionUnobserved { cause: "ls-remote refused: no route" })
-  // revision converged: knob verdict passes through -> converged, line says verdict=converged
   converge_verdict_label(v: joint_ok.verdict) == "converged"
     && converge_cli_receipt_converged(r: joint_ok)
     && string_contains(s: converge_cli_receipt_line(r: joint_ok), pattern: "verdict=converged")
-    // revision drift: joint demotes to drifted, line does NOT say converged
     && converge_verdict_label(v: joint_drift.verdict) == "drifted"
     && !converge_cli_receipt_converged(r: joint_drift)
     && !string_contains(s: converge_cli_receipt_line(r: joint_drift), pattern: "verdict=converged")
-    // revision unobserved: joint demotes to absent, line says absent NOT converged (srv1 narrow, closed)
     && converge_verdict_label(v: joint_unobs.verdict) == "absent"
     && !converge_cli_receipt_converged(r: joint_unobs)
     && string_contains(s: converge_cli_receipt_line(r: joint_unobs), pattern: "verdict=absent")
     && !string_contains(s: converge_cli_receipt_line(r: joint_unobs), pattern: "verdict=converged")
-    // end-to-end: the collector's OWN parser, fed the joint unobserved line, reads not-converged
     && match parse_converge_receipt_line(line: converge_cli_receipt_line(r: joint_unobs)) {
       Present { value: parsed } => !converge_cli_receipt_converged(r: parsed)
       Absent => false
     }
-    // the revision line carries the observation as evidence, never a second verdict= token
     && string_contains(s: converge_cli_revision_line(standing: RevisionConverged { revision: a }), pattern: "observed=")
     && string_contains(s: converge_cli_revision_line(standing: RevisionDrifted { desired: a, local: b }), pattern: "drift desired=")
     && string_contains(s: converge_cli_revision_line(standing: RevisionUnobserved { cause: "x" }), pattern: "unobserved cause=")
@@ -240,4 +260,24 @@ test fn witness_spark_managed_access_unmeasured_is_typed_and_distinct_from_unkno
         }
       _ => false
     }
+}
+
+test fn witness_converge_kernel_hostname_trim_strips_whitespace() -> Bool {
+  converge_kernel_short_hostname_from_content(raw: "srv2\n") == "srv2"
+}
+
+test fn witness_converge_codex_runtime_local_locus_refuses_cross_host() -> Bool {
+  !converge_codex_runtime_local_locus_matches_host(host: "srv2")
+    || converge_local_kernel_short_hostname() == "srv2"
+}
+
+test fn witness_codex_runtime_bundle_knob_registered_in_fleet_converge_policy() -> Bool {
+  converge_cli_codex_runtime_knob_registered_for_host(host: operator_host_srv1)
+    && converge_cli_codex_runtime_knob_registered_for_host(host: operator_host_srv4)
+}
+
+test fn witness_converge_cli_fleet_compute_hosts_include_srv1_through_srv4() -> Bool {
+  converge_cli_is_fleet_compute_host(host: "srv1")
+    && converge_cli_is_fleet_compute_host(host: "srv4")
+    && !converge_cli_is_fleet_compute_host(host: "srv5")
 }

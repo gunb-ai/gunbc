@@ -234,7 +234,6 @@ data prose_row_migration_scope: List<String> = [
   "dag/test/claim/scm_issuer_corpus_witness_test.dag",
   "dag/test/claim/scm_provider_matrix_witness_test.dag",
   "dag/test/claim/scm_serving_model_witness_test.dag",
-  "dag/test/claim/selection_degradation_receipt_witness_test.dag",
   "dag/test/claim/session_residency_witness_test.dag",
   "dag/test/claim/source_annotation_attachment_witness_test.dag",
   "dag/test/claim/state_response_totality_witness_test.dag",

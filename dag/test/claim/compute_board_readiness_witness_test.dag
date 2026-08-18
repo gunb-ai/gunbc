@@ -15,9 +15,9 @@ import extdeps.ipc.dpmx {
 }
 import extdeps.ucamco.gerber { gerber_semantic_carriage }
 import extdeps.cpu.ampere_altra_package {
-    ContactMapPubliclyAvailableNotIngested,
   ContactPopulationIncomplete,
   DuplicateContactDesignator,
+  IncompleteDifferentialPolarity,
   altra_pin_summary_total,
   altra_reference_board_collateral_standing,
   ReferenceBoardCollateralAvailable,
@@ -29,15 +29,15 @@ import extdeps.cpu.ampere_altra_package {
   PackageContactMapStanding,
   PowerSupplyContact,
   admit_package_contact_map,
-  altra_contact_map_standing,
   altra_declared_contact_count,
   altra_fclga_socket,
 }
+import extdeps.cpu.ampere_altra_package_contact_map { altra_contact_map_standing }
 import product.compute_board.intent {
   Compute,
   Management,
   RemoteManagement,
-  Memory,
+  MemorySubsystem,
   ComputeBoardIntent,
   ComputeCores,
   NetworkPaths,
@@ -55,8 +55,9 @@ import product.compute_board.composition {
   board_readiness,
   capability_satisfied,
   unearned_components,
-  unsatisfied_capabilities,
+  unsatisfied_board_capabilities,
   FabricatorStackupUnconfirmed,
+  project_contact_map_standing,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -137,22 +138,26 @@ test fn w_duplicate_designator_refuses_at_correct_count() -> Bool {
   }
 }
 
-// GAP-0's live claim, CORRECTED. The Altra pin map is PUBLIC (Rev A1 datasheet Issue 1.15,
-// section 5 Table 4), so the standing is 'published and not yet ingested' — our unfinished
-// work, landing in the DESIGN family. An earlier revision of this witness asserted the
-// opposite and passed, which is the whole lesson: a refusal can be typed, executed and green
-// while naming the wrong owner, and no amount of test discipline catches that. Only reading
-// the document did.
+test fn w_incomplete_differential_polarity_projects_to_design_refusal() -> Bool {
+  let projected = project_contact_map_standing(
+    standing: IncompleteDifferentialPolarity { pair: "DDR4_CLK_0" }
+  )
+  list_count(xs: projected.design) == 1
+    && list_is_empty(xs: projected.collateral)
+    && !board_is_ready(r: projected)
+}
+
+// GAP-0's live claim, CORRECTED TWICE. The Altra pin map is public (Rev A1 datasheet Issue
+// 1.15, section 5 Table 4). An earlier revision asserted the opposite; a later one correctly
+// named the standing as 'published and not yet ingested'. ALTRA-CONTACTS-0 completes that
+// ingestion, so the live standing is now admitted at the declared package population.
 test fn w_altra_contact_map_is_published_and_lands_in_design_family() -> Bool {
   match altra_contact_map_standing() {
-    ContactMapPubliclyAvailableNotIngested { document: _, authority: _ } => {
-      let readiness = board_readiness(
-        intent: narrow_compute_node_intent,
-        components: [],
-        contact_standing: altra_contact_map_standing(),
-        reference_board_standing: ReferenceBoardCollateralAvailable
-      )
-      list_is_empty(xs: readiness.collateral) && !board_is_ready(r: readiness)
+    PackageContactMapAdmitted { resolved: n } => {
+      let contact_only = project_contact_map_standing(standing: altra_contact_map_standing())
+      n == altra_declared_contact_count()
+        && list_is_empty(xs: contact_only.collateral)
+        && list_is_empty(xs: contact_only.design)
     }
     _ => false
   }
@@ -194,7 +199,7 @@ test fn w_pin_summary_cross_foots_to_declared_package_count() -> Bool {
 // An empty board leaves every contract capability unsatisfied. Ten requirements, ten holes:
 // the count is the contract's, so a requirement added without a component would move it.
 test fn w_empty_board_leaves_every_capability_unsatisfied() -> Bool {
-  list_count(xs: unsatisfied_capabilities(intent: narrow_compute_node_intent, components: [])) == list_count(xs: narrow_compute_node_intent.requirements)
+  list_count(xs: unsatisfied_board_capabilities(intent: narrow_compute_node_intent, components: [])) == list_count(xs: narrow_compute_node_intent.requirements)
 }
 
 fn cpu_component() -> ComponentInstance {
@@ -236,7 +241,7 @@ fn unjustified_component() -> ComponentInstance {
 
 test fn w_discharging_component_satisfies_its_capability() -> Bool {
   capability_satisfied(components: [cpu_component()], cap: Compute)
-    && !capability_satisfied(components: [cpu_component()], cap: Memory)
+    && !capability_satisfied(components: [cpu_component()], cap: MemorySubsystem)
 }
 
 // THE SEPARATION THAT MATTERS MOST HERE: a component earned by another component's imposed

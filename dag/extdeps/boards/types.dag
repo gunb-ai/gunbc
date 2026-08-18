@@ -1,6 +1,6 @@
 module extdeps.boards.types
 
-import std.types { NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
 import std.bmc { BmcFirmwareFamily, BmcEndpoint }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -34,4 +34,55 @@ type BaseboardCatalogRow {
 type ServerBaseboard {
   catalog: BaseboardCatalogRow
   bmc: BmcEndpoint
+}
+
+// The documented DIMM populations for a board. A population that is not on
+// this list is not a smaller version of a supported one — it is an
+// unsupported configuration whose failure proves nothing about the modules.
+type DimmPopulation {
+  board: BaseboardModel
+  slots: List<NonEmptyStr>
+  authority: ExternalAuthority
+}
+
+type PopulationAdmission
+  = PopulationSupported
+  | PopulationUnsupported { slots: List<NonEmptyStr> }
+
+fn slot_occurrence_count(slots: List<NonEmptyStr>, slot: NonEmptyStr) -> Int {
+  fold(slots, init: 0, f: (acc, s) => if s == slot { acc + 1 } else { acc })
+}
+
+// MULTISET EQUALITY, not equal-length-plus-subset. The previous form folded
+// the DOCUMENTED row over the candidate, which happens to refuse a duplicated
+// candidate slot — a duplicate shrinks the candidate's distinct set, so the
+// subset test fails. But it relied on an unstated precondition that no
+// documented row carries a duplicate: documented ["A1","A1"] would admit
+// candidate ["A1","B1"], since both documented entries are found and the
+// lengths agree. No documented row has a duplicate today, so this was latent
+// rather than live; comparing occurrence counts removes the precondition
+// instead of leaving correctness resting on it.
+fn population_slots_match(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> Bool {
+  count(a) == count(b)
+    && fold(
+      a,
+      init: true,
+      f: (acc, s) => acc && (slot_occurrence_count(slots: a, slot: s) == slot_occurrence_count(slots: b, slot: s)),
+    )
+}
+
+// Fail-closed: a population absent from the documented list is REFUSED rather
+// than assumed workable. Testing an unsupported population and reading its
+// failure as a verdict on the modules is a fabricated conclusion, and the
+// original plan for this incident — "four modules, one per channel" — was
+// exactly such a population.
+fn admit_population(
+  candidate: List<NonEmptyStr>,
+  documented: List<DimmPopulation>,
+) -> PopulationAdmission {
+  if any(documented, p => population_slots_match(a: p.slots, b: candidate)) {
+    PopulationSupported
+  } else {
+    PopulationUnsupported { slots: candidate }
+  }
 }

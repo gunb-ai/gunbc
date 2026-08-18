@@ -8,6 +8,7 @@ import extdeps.cpu.ampere_altra_package {
   ContactMapPubliclyAvailableNotIngested,
   ContactPopulationIncomplete,
   DuplicateContactDesignator,
+  IncompleteDifferentialPolarity,
   PackageContactMapAdmitted,
   PackageContactMapStanding,
   ReferenceBoardCollateralAvailable,
@@ -223,7 +224,7 @@ fn capability_satisfied(components: List<ComponentInstance>, cap: BoardCapabilit
   })
 }
 
-fn unsatisfied_capabilities(
+fn unsatisfied_board_capabilities(
   intent: ComputeBoardIntent,
   components: List<ComponentInstance>
 ) -> List<BoardCapability> {
@@ -260,6 +261,7 @@ type DesignIncompleteRefusal
   | UnearnedComponentPresent { designator: NonEmptyStr }
   | PackageContactPopulationIncomplete { expected: Int, resolved: Int }
   | DuplicatePackageContact { designator: NonEmptyStr }
+  | IncompleteDifferentialPolarityPair { pair: NonEmptyStr }
 
 type ManufacturingRefusal
   = FabricatorStackupUnconfirmed { fabricator: NonEmptyStr }
@@ -313,6 +315,12 @@ fn project_contact_map_standing(
         design: [DuplicatePackageContact { designator: d }],
         manufacturing: [],
       }
+    IncompleteDifferentialPolarity { pair: p } =>
+      BoardReadiness {
+        collateral: [],
+        design: [IncompleteDifferentialPolarityPair { pair: p }],
+        manufacturing: [],
+      }
   }
 }
 
@@ -346,7 +354,7 @@ fn composition_readiness(
   BoardReadiness {
     collateral: [],
     design: append(
-      unsatisfied_capabilities(intent: intent, components: components)
+      unsatisfied_board_capabilities(intent: intent, components: components)
         |> map(cap => RequiredCapabilityUnsatisfied { capability: cap }),
       items: unearned_components(components: components)
         |> map(c => UnearnedComponentPresent { designator: c.designator })

@@ -1,12 +1,17 @@
 module extdeps.filesystem.filesystem_io
 
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { Bool, Int, List, String }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/write.html"
   }
 }
+
+data write_owner_only_realization_note: String = "v1 realization: Unix OpenOptions create_new + mode 0600 at creation (O_EXCL); non-Unix hosts refuse rather than degrading to unmodeled write."
 
 service Filesystem {
 
@@ -19,6 +24,17 @@ service Filesystem {
       error: String from "error"
     }
     transport file { path: "{path}" }
+  }
+
+  operation WriteOwnerOnly {
+    input { path: String, content: String }
+    output {
+      success: Bool from "write_success"
+      bytes_written: Int from "bytes_written"
+      path: String from "path"
+      error: String from "error"
+    }
+    transport file { path: "{path}", verb: "write_owner_only" }
   }
 
   operation Read {

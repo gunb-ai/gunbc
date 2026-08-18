@@ -73,7 +73,7 @@ test fn ci_v1_compiler_tests_compile_gate_uses_cargo_bin_and_test_args() -> Bool
     && string_contains(s: script, pattern: "'-p'")
     && string_contains(s: script, pattern: "'v1-compiler-tests'")
     && string_contains(s: script, pattern: "'--release'")
-    && string_contains(s: script, pattern: "'--no-run'")
+    && !string_contains(s: script, pattern: "'--no-run'")
     && !string_contains(s: script, pattern: "'check'")
     && !string_contains(s: script, pattern: "nextest")
 }

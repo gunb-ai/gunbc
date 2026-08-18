@@ -1,0 +1,554 @@
+module test.claim.compute_board_admission_witness
+
+import std.types { String, NonEmptyStr, List }
+import std.measure { Measure }
+import product.compute_board.analog {
+  AnalogCircuitIntent,
+  CapacitorInstance,
+  ElectricalComponentInstance,
+  ResistorInstance,
+}
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  ElectricalDesignIdentity,
+  ElectricalNet,
+  NetIdentity,
+  TerminalIdentity,
+  component_identity_eq,
+  component_instance_identity,
+  component_local_label,
+  net_identity,
+  net_identity_eq,
+  net_local_label,
+  terminal_ref,
+}
+import product.compute_board.digital_control {
+  Conjunction,
+  DigitalControlIntent,
+  DigitalEquation,
+  DigitalInput,
+  DigitalOutput,
+  DigitalSignal,
+  Negation,
+  SignalName,
+  SignalRef,
+}
+import product.compute_board.article {
+  BoardPowerInterfaceArticle,
+  EstablishedByBoardSignal,
+  FirmwareWriteProtection,
+  HostFirmwareStartPrecondition,
+  PlatformFirmwareContract,
+  PowerPermitAsserted,
+  ElectricalBond,
+  PowerReturnConnection,
+  board_power_interlock_bonds,
+  board_power_interlock_firmware_contract,
+  board_power_interlock_manufacturing,
+  board_power_interlock_physical,
+  BoardArticleIdentity,
+  power_interlock_article,
+}
+import product.compute_board.admission {
+  BoardArticleAdmitted,
+  BoardArticleRefused,
+  BoardArticleRefusalSet,
+  BoardArticleRefusal,
+  DuplicateComponentIdentity,
+  DuplicateNetIdentity,
+  DuplicateSignalName,
+  NetMemberNamesNoTerminal,
+  BondTerminalNamesNoTerminal,
+  BondNamesUndeclaredNet,
+  ReferenceNetNotDeclared,
+  DrivenSignalUndeclared,
+  DrivenSignalIsAnInput,
+  EquationReferencesUndeclaredSignal,
+  OutputWithNoDriver,
+  OutputWithMultipleDrivers,
+  PreconditionSignalUndeclared,
+  PreconditionSignalIsNotAnOutput,
+  admit_board_article,
+  article_refusals,
+  refusal_set_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data fixture_design: ElectricalDesignIdentity = "test.compute_board_admission.fixture" as ElectricalDesignIdentity
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EACH FIXTURE PLANTS EXACTLY ONE DEFECT into an otherwise coherent article, and asserts the
+// cause NAMED for it rather than merely that something refused. A witness asserting only "it
+// refused" passes when every planted defect trips one over-broad cause, which is how a set of
+// distinct causes decays into a single catch-all nobody notices has swallowed the others.
+
+data a_net: NetIdentity = net_identity(design: fixture_design, local_identity: "a")
+
+data b_net: NetIdentity = net_identity(design: fixture_design, local_identity: "b")
+
+data r_one: ElectricalComponentInstance = ResistorInstance {
+  identity: component_instance_identity(design: fixture_design, local_identity: "r1"),
+  part: "series resistor",
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  resistance: Measure { count: 10 },
+}
+
+data c_one: ElectricalComponentInstance = CapacitorInstance {
+  identity: component_instance_identity(design: fixture_design, local_identity: "c1"),
+  part: "filter capacitor",
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  capacitance: Measure { count: 100 },
+}
+
+// A resistor sharing r1's identity. Nothing distinguishes it downstream: a model binding, a net
+// member or a receipt naming "r1" cannot say which of the two it means.
+data r_one_again: ElectricalComponentInstance = ResistorInstance {
+  identity: component_instance_identity(design: fixture_design, local_identity: "r1"),
+  part: "second series resistor",
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  resistance: Measure { count: 47 },
+}
+
+data coherent_analog: AnalogCircuitIntent = AnalogCircuitIntent {
+  title: "admission fixture",
+  components: [r_one, c_one],
+  nets: [
+    ElectricalNet {
+      identity: a_net,
+      members: [
+        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "1" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "c1"), terminal: "1" as TerminalIdentity),
+      ],
+    },
+    ElectricalNet {
+      identity: b_net,
+      members: [
+        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "2" as TerminalIdentity),
+        terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "c1"), terminal: "2" as TerminalIdentity),
+      ],
+    },
+  ],
+}
+
+data in_signal: SignalName = "d_in" as SignalName
+
+data out_signal: SignalName = "d_out" as SignalName
+
+data coherent_control: DigitalControlIntent = DigitalControlIntent {
+  block_name: "fixture_block" as SignalName,
+  signals: [
+    DigitalSignal { name: in_signal, direction: DigitalInput },
+    DigitalSignal { name: out_signal, direction: DigitalOutput },
+  ],
+  equations: [
+    DigitalEquation { driven: out_signal, expression: Negation { operand: SignalRef { signal: in_signal } } },
+  ],
+}
+
+// The fixture's firmware contract deliberately establishes nothing at the board. The production
+// contract names power_permit and reset_release, which this fixture's two-signal control does not
+// declare — and the join refuses exactly that, so reusing the production contract here would have
+// planted two extra causes in every fixture below.
+data fixture_firmware_contract: PlatformFirmwareContract = PlatformFirmwareContract {
+  start_preconditions: [],
+  write_protection: board_power_interlock_firmware_contract.write_protection,
+  development_image_trust: board_power_interlock_firmware_contract.development_image_trust,
+  production_signing: board_power_interlock_firmware_contract.production_signing,
+}
+
+fn fixture_article(
+  analog: AnalogCircuitIntent,
+  reference: NetIdentity,
+  control: DigitalControlIntent,
+  bonds: List<ElectricalBond>
+) -> BoardPowerInterfaceArticle {
+  BoardPowerInterfaceArticle {
+    identity: BoardArticleIdentity { name: "admission fixture", revision: "0" },
+    analog: analog,
+    model_bindings: [],
+    reference_net: reference,
+    digital_control: control,
+    bonds: bonds,
+    platform_firmware: fixture_firmware_contract,
+    physical: board_power_interlock_physical,
+    manufacturing: board_power_interlock_manufacturing,
+  }
+}
+
+data coherent_fixture: BoardPowerInterfaceArticle = fixture_article(analog: coherent_analog, reference: b_net, control: coherent_control, bonds: [])
+
+fn is_admitted(a: BoardPowerInterfaceArticle) -> Bool {
+  match admit_board_article(a: a) {
+    BoardArticleAdmitted { article: _ } => true
+    BoardArticleRefused { causes: _ } => false
+  }
+}
+
+// The positive control. Without it every refusal claim below is satisfied by an admission
+// function that refuses everything.
+test fn w_a_coherent_fixture_is_admitted() -> Bool {
+  is_admitted(a: coherent_fixture)
+}
+
+fn refusal_is(r: BoardArticleRefusal, wanted: String) -> Bool {
+  match r {
+    DuplicateComponentIdentity { component: _ } => wanted == "DuplicateComponentIdentity"
+    DuplicateNetIdentity { net: _ } => wanted == "DuplicateNetIdentity"
+    NetMemberBelongsToAnotherDesign { net: _, net_design: _, member_design: _ } => wanted == "NetMemberBelongsToAnotherDesign"
+    DuplicateSignalName { signal: _ } => wanted == "DuplicateSignalName"
+    NetMemberNamesNoTerminal { net: _, component: _, terminal: _ } => wanted == "NetMemberNamesNoTerminal"
+    BondTerminalNamesNoTerminal { component: _, terminal: _ } => wanted == "BondTerminalNamesNoTerminal"
+    BondNamesUndeclaredNet { net: _ } => wanted == "BondNamesUndeclaredNet"
+    ReferenceNetNotDeclared { net: _ } => wanted == "ReferenceNetNotDeclared"
+    DrivenSignalUndeclared { signal: _ } => wanted == "DrivenSignalUndeclared"
+    DrivenSignalIsAnInput { signal: _ } => wanted == "DrivenSignalIsAnInput"
+    EquationReferencesUndeclaredSignal { driven: _ } => wanted == "EquationReferencesUndeclaredSignal"
+    OutputWithNoDriver { signal: _ } => wanted == "OutputWithNoDriver"
+    OutputWithMultipleDrivers { signal: _ } => wanted == "OutputWithMultipleDrivers"
+    PreconditionSignalUndeclared { signal: _ } => wanted == "PreconditionSignalUndeclared"
+    PreconditionSignalIsNotAnOutput { signal: _ } => wanted == "PreconditionSignalIsNotAnOutput"
+  }
+}
+
+// Exactly one cause, and it is the named one. "Contains the cause" would pass on an admission
+// that reports every cause for every article.
+fn refuses_with_exactly(a: BoardPowerInterfaceArticle, wanted: String) -> Bool {
+  match admit_board_article(a: a) {
+    BoardArticleAdmitted { article: _ } => false
+    BoardArticleRefused { causes: s } =>
+      refusal_set_count(s: s) == 1 && refusal_is(r: s.first, wanted: wanted)
+  }
+}
+
+data duplicate_component_analog: AnalogCircuitIntent = AnalogCircuitIntent {
+  title: "admission fixture",
+  components: [r_one, c_one, r_one_again],
+  nets: coherent_analog.nets,
+}
+
+test fn w_two_components_sharing_an_identity_refuse() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(analog: duplicate_component_analog, reference: b_net, control: coherent_control, bonds: []),
+    wanted: "DuplicateComponentIdentity"
+  )
+}
+
+data duplicate_net_analog: AnalogCircuitIntent = AnalogCircuitIntent {
+  title: "admission fixture",
+  components: coherent_analog.components,
+  nets: concat(coherent_analog.nets, [ElectricalNet { identity: a_net, members: [] }]),
+}
+
+test fn w_two_nets_sharing_an_identity_refuse() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(analog: duplicate_net_analog, reference: b_net, control: coherent_control, bonds: []),
+    wanted: "DuplicateNetIdentity"
+  )
+}
+
+data dangling_member_analog: AnalogCircuitIntent = AnalogCircuitIntent {
+  title: "admission fixture",
+  components: coherent_analog.components,
+  nets: [
+    ElectricalNet {
+      identity: a_net,
+      members: [terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r9"), terminal: "1" as TerminalIdentity)],
+    },
+    ElectricalNet { identity: b_net, members: [] },
+  ],
+}
+
+test fn w_a_net_member_naming_no_terminal_refuses() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(analog: dangling_member_analog, reference: b_net, control: coherent_control, bonds: []),
+    wanted: "NetMemberNamesNoTerminal"
+  )
+}
+
+// The BRAND does not catch this and was never claimed to: "r1" and "r9" are both perfectly good
+// ComponentInstanceIdentity values. What the brand buys is that a chassis feature cannot be
+// compared to one; what admission buys is that a typo in either is located.
+test fn w_the_terminal_number_is_checked_not_only_the_component() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(
+      analog: AnalogCircuitIntent {
+        title: "admission fixture",
+        components: coherent_analog.components,
+        nets: [
+          ElectricalNet {
+            identity: a_net,
+            members: [terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "3" as TerminalIdentity)],
+          },
+          ElectricalNet { identity: b_net, members: [] },
+        ],
+      },
+      reference: b_net,
+      control: coherent_control,
+      bonds: []
+    ),
+    wanted: "NetMemberNamesNoTerminal"
+  )
+}
+
+test fn w_a_reference_net_that_is_not_declared_refuses() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(
+      analog: coherent_analog,
+      reference: net_identity(design: fixture_design, local_identity: "not_a_net"),
+      control: coherent_control,
+      bonds: []
+    ),
+    wanted: "ReferenceNetNotDeclared"
+  )
+}
+
+test fn w_a_bond_on_a_nonexistent_terminal_refuses() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(
+      analog: coherent_analog,
+      reference: b_net,
+      control: coherent_control,
+      bonds: [PowerReturnConnection {
+        domain: b_net,
+        terminal: terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r7"), terminal: "1" as TerminalIdentity),
+      }]
+    ),
+    wanted: "BondTerminalNamesNoTerminal"
+  )
+}
+
+test fn w_a_bond_on_an_undeclared_net_refuses() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(
+      analog: coherent_analog,
+      reference: b_net,
+      control: coherent_control,
+      bonds: [PowerReturnConnection {
+        domain: net_identity(design: fixture_design, local_identity: "nowhere"),
+        terminal: terminal_ref(component: component_instance_identity(design: fixture_design, local_identity: "r1"), terminal: "2" as TerminalIdentity),
+      }]
+    ),
+    wanted: "BondNamesUndeclaredNet"
+  )
+}
+
+test fn w_two_signals_sharing_a_name_refuse() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(
+      analog: coherent_analog,
+      reference: b_net,
+      control: DigitalControlIntent {
+        block_name: coherent_control.block_name,
+        signals: concat(coherent_control.signals, [DigitalSignal { name: out_signal, direction: DigitalOutput }]),
+        equations: coherent_control.equations,
+      },
+      bonds: []
+    ),
+    wanted: "DuplicateSignalName"
+  )
+}
+
+test fn w_driving_an_undeclared_signal_refuses() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(
+      analog: coherent_analog,
+      reference: b_net,
+      control: DigitalControlIntent {
+        block_name: coherent_control.block_name,
+        signals: coherent_control.signals,
+        equations: concat(coherent_control.equations, [DigitalEquation {
+          driven: "ghost" as SignalName,
+          expression: SignalRef { signal: in_signal },
+        }]),
+      },
+      bonds: []
+    ),
+    wanted: "DrivenSignalUndeclared"
+  )
+}
+
+// Driving an INPUT is a direction contradiction, not a missing declaration, and the two have
+// opposite remedies — declare the signal, or stop driving it. One cause covering both would tell
+// the reader nothing about which.
+test fn w_driving_an_input_refuses_as_a_direction_conflict() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(
+      analog: coherent_analog,
+      reference: b_net,
+      control: DigitalControlIntent {
+        block_name: coherent_control.block_name,
+        signals: coherent_control.signals,
+        equations: concat(coherent_control.equations, [DigitalEquation {
+          driven: in_signal,
+          expression: SignalRef { signal: out_signal },
+        }]),
+      },
+      bonds: []
+    ),
+    wanted: "DrivenSignalIsAnInput"
+  )
+}
+
+test fn w_an_equation_over_an_undeclared_signal_refuses() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(
+      analog: coherent_analog,
+      reference: b_net,
+      control: DigitalControlIntent {
+        block_name: coherent_control.block_name,
+        signals: coherent_control.signals,
+        equations: [DigitalEquation {
+          driven: out_signal,
+          expression: Conjunction {
+            left: SignalRef { signal: in_signal },
+            right: SignalRef { signal: "phantom" as SignalName },
+          },
+        }],
+      },
+      bonds: []
+    ),
+    wanted: "EquationReferencesUndeclaredSignal"
+  )
+}
+
+test fn w_an_output_nothing_drives_refuses() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(
+      analog: coherent_analog,
+      reference: b_net,
+      control: DigitalControlIntent {
+        block_name: coherent_control.block_name,
+        signals: coherent_control.signals,
+        equations: [],
+      },
+      bonds: []
+    ),
+    wanted: "OutputWithNoDriver"
+  )
+}
+
+test fn w_an_output_two_equations_drive_refuses() -> Bool {
+  refuses_with_exactly(
+    a: fixture_article(
+      analog: coherent_analog,
+      reference: b_net,
+      control: DigitalControlIntent {
+        block_name: coherent_control.block_name,
+        signals: coherent_control.signals,
+        equations: concat(coherent_control.equations, [DigitalEquation {
+          driven: out_signal,
+          expression: SignalRef { signal: in_signal },
+        }]),
+      },
+      bonds: []
+    ),
+    wanted: "OutputWithMultipleDrivers"
+  )
+}
+
+// TWO PLANTED DEFECTS PRODUCE TWO CAUSES. This is the claim the collected-refusal shape was
+// built for, and a first-wins fold passes every test above while failing this one.
+test fn w_two_defects_are_both_reported() -> Bool {
+  let a = fixture_article(
+    analog: duplicate_component_analog,
+    reference: net_identity(design: fixture_design, local_identity: "not_a_net"),
+    control: coherent_control,
+    bonds: []
+  )
+  match admit_board_article(a: a) {
+    BoardArticleAdmitted { article: _ } => false
+    BoardArticleRefused { causes: s } => refusal_set_count(s: s) == 2
+  }
+}
+
+// THE PRODUCTION ARTICLE, admitted. The fixtures above prove the mechanism discriminates; this
+// proves it is pointed at the real root rather than only at synthetic ones.
+test fn w_the_production_article_carries_no_cause() -> Bool {
+  fold(article_refusals(a: power_interlock_article), init: 0, f: fn(acc, _r) { acc + 1 }) == 0
+    && is_admitted(a: power_interlock_article)
+}
+
+// THE FIRMWARE CONTRACT'S PRECONDITIONS JOIN THE CONTROL LOGIC. These two fixtures are the reason
+// the prose fields were replaced rather than reworded: neither defect had a representation at
+// all before the establishment was typed, so neither could be refused.
+fn firmware_contract_with(p: HostFirmwareStartPrecondition) -> PlatformFirmwareContract {
+  PlatformFirmwareContract {
+    start_preconditions: [p],
+    write_protection: board_power_interlock_firmware_contract.write_protection,
+    development_image_trust: board_power_interlock_firmware_contract.development_image_trust,
+    production_signing: board_power_interlock_firmware_contract.production_signing,
+  }
+}
+
+fn fixture_with_firmware(f: PlatformFirmwareContract) -> BoardPowerInterfaceArticle {
+  BoardPowerInterfaceArticle {
+    identity: coherent_fixture.identity,
+    analog: coherent_fixture.analog,
+    model_bindings: coherent_fixture.model_bindings,
+    reference_net: coherent_fixture.reference_net,
+    digital_control: coherent_fixture.digital_control,
+    bonds: coherent_fixture.bonds,
+    platform_firmware: f,
+    physical: coherent_fixture.physical,
+    manufacturing: coherent_fixture.manufacturing,
+  }
+}
+
+test fn w_a_precondition_naming_no_signal_refuses() -> Bool {
+  refuses_with_exactly(
+    a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
+      kind: PowerPermitAsserted,
+      establishment: EstablishedByBoardSignal { signal: "no_such_wire" as SignalName },
+    })),
+    wanted: "PreconditionSignalUndeclared"
+  )
+}
+
+// Establishing a precondition with an INPUT is the subtler defect: the signal exists, so a
+// declaration check passes, and the board would be claiming to establish a condition it only
+// observes. Direction is the whole content of the distinction.
+test fn w_a_precondition_established_by_an_input_refuses() -> Bool {
+  refuses_with_exactly(
+    a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
+      kind: PowerPermitAsserted,
+      establishment: EstablishedByBoardSignal { signal: in_signal },
+    })),
+    wanted: "PreconditionSignalIsNotAnOutput"
+  )
+}
+
+test fn w_a_precondition_on_a_declared_output_is_admitted() -> Bool {
+  is_admitted(a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
+    kind: PowerPermitAsserted,
+    establishment: EstablishedByBoardSignal { signal: out_signal },
+  })))
+}
+
+// A NET MEMBER FROM ANOTHER BOARD, WHICH THE DESIGN AXIS ALONE DOES NOT CATCH. Scoped identities
+// make the two boards' terminals unequal, so a foreign member is never FOUND on this net -- and a
+// membership question that always answers no, for a reason nothing states, is the silent half of
+// the state space. This is the loud half. The fixture is otherwise the coherent article, so the
+// only thing that changed is which design the member's component belongs to.
+test fn w_a_net_member_from_another_board_refuses() -> Bool {
+  let elsewhere: ElectricalDesignIdentity = "test.compute_board_admission.other_board" as ElectricalDesignIdentity
+  let foreign = ElectricalTerminalRef {
+    component: component_instance_identity(design: elsewhere, local_identity: "r_top"),
+    terminal: "1" as TerminalIdentity,
+  }
+  let spliced = AnalogCircuitIntent {
+    title: coherent_analog.title,
+    components: coherent_analog.components,
+    nets: [ElectricalNet {
+      identity: net_identity(design: fixture_design, local_identity: "spliced"),
+      members: [foreign],
+    }] + coherent_analog.nets,
+  }
+  refuses_with_exactly(
+    a: fixture_article(analog: spliced, reference: b_net, control: coherent_control, bonds: []),
+    wanted: "NetMemberBelongsToAnotherDesign"
+  )
+}

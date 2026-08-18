@@ -10,6 +10,13 @@ import v2.lens.doc_reachability { doc_graph_clean_holds, doc_graph_orphan_clean_
 import v2.std.algebra { filter, list_flat_map }
 import v2.std.decl_index { decl_facts }
 import v2.std.decl_ref_resolution { declaration_ref_resolves }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster {
+  KeyedRosterBuild,
+  KeyedRosterBuilt,
+  KeyedRosterBuildDuplicateKey,
+  keyed_roster_build,
+}
 
 data doc_graph_roots_note: String = "The single authority for doc-graph roots. Registered plans derive theirs (a PlanArtifact registration IS the document binding); hand-authored docs declare typed HandAuthoredDocBind rows — symbolic identity (home + slug, the same key space as Plan.slug; the file path is a derived storage projection, never stored), the .dag work the doc binds to, and its PlanRetirement. Most rows retire: the condition names the change that deletes the row. Some do NOT -- the cited-symbol-resolution discriminating controls (hand_authored_bind_is_cited_symbol_resolution_control) are permanent evidence and carry PlanHasNoRetirement, because a climb deletes production machinery and keeps the discriminating evidence (DESIGN 4b(4)). A permanent row stating 'never retires' inside an unbound condition would be a model contradiction: the coproduct would say retires-when while the payload said never. No prose 'bind:' scan remains: an unbound doc is an orphan, loudly; a hand-authored slug colliding with a registered plan slug is a red (the row outlived its migration)."
 
@@ -38,7 +45,11 @@ fn declaration_ref_carries_symbol(r: DeclarationRef) -> Bool {
 }
 
 fn hand_authored_works_refs_all_carry_symbols() -> Bool {
-  all(hand_authored_doc_binds, b => all(hand_authored_bind_works(b: b), r => declaration_ref_carries_symbol(r: r)))
+  match hand_authored_doc_binds_population() {
+    HandAuthoredDocBindsBuilt { binds: binds } =>
+      all(binds, b => all(hand_authored_bind_works(b: b), r => declaration_ref_carries_symbol(r: r)))
+    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
 }
 
 fn hand_authored_bind_is_cited_symbol_resolution_control(b: HandAuthoredDocBind) -> Bool {
@@ -48,11 +59,15 @@ fn hand_authored_bind_is_cited_symbol_resolution_control(b: HandAuthoredDocBind)
 }
 
 fn hand_authored_production_doc_binds() -> List<HandAuthoredDocBind> {
-  filter(hand_authored_doc_binds, b => !hand_authored_bind_is_cited_symbol_resolution_control(b: b))
+  match hand_authored_doc_binds_population() {
+    HandAuthoredDocBindsBuilt { binds: binds } =>
+      filter(binds, b => !hand_authored_bind_is_cited_symbol_resolution_control(b: b))
+    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => []
+  }
 }
 
 fn hand_authored_doc_declaration_refs() -> List<DeclarationRef> {
-  list_flat_map(xs: hand_authored_doc_binds, f: fn(b) { hand_authored_bind_works(b: b) })
+  list_flat_map(xs: hand_authored_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
 }
 
 fn hand_authored_production_doc_declaration_refs() -> List<DeclarationRef> {
@@ -61,7 +76,7 @@ fn hand_authored_production_doc_declaration_refs() -> List<DeclarationRef> {
 
 fn hand_authored_cited_symbol_control_declaration_refs() -> List<DeclarationRef> {
   list_flat_map(
-    xs: filter(hand_authored_doc_binds, b => hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
+    xs: filter(hand_authored_doc_binds(), b => hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
     f: fn(b) { hand_authored_bind_works(b: b) }
   )
 }
@@ -71,13 +86,18 @@ fn hand_authored_works_resolution_pool_roots() -> List<String> {
 }
 
 fn hand_authored_works_refs_all_resolve() -> Bool {
-  let pool = hand_authored_works_resolution_pool_roots()
-  let facts = decl_facts(pool_roots: pool)
-  let modules = module_declaration_facts_live(pool_roots: pool)
-  all(
-    hand_authored_production_doc_declaration_refs(),
-    r => declaration_ref_resolves(ref: r, facts: facts, modules: modules)
-  )
+  match hand_authored_doc_binds_population() {
+    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
+    HandAuthoredDocBindsBuilt { binds: _ } => {
+      let pool = hand_authored_works_resolution_pool_roots()
+      let facts = decl_facts(pool_roots: pool)
+      let modules = module_declaration_facts_live(pool_roots: pool)
+      all(
+        hand_authored_production_doc_declaration_refs(),
+        r => declaration_ref_resolves(ref: r, facts: facts, modules: modules)
+      )
+    }
+  }
 }
 
 fn hand_authored_bind_key(b: HandAuthoredDocBind) -> String {
@@ -86,18 +106,6 @@ fn hand_authored_bind_key(b: HandAuthoredDocBind) -> String {
     ProbeDoc => concat("probe/", b.slug)
   }
 }
-
-fn hand_authored_key_collision_count(binds: List<HandAuthoredDocBind>) -> Int {
-  binds
-    |> filter(b => (binds |> filter(o => hand_authored_bind_key(b: o) == hand_authored_bind_key(b: b)) |> count) > 1)
-    |> count
-}
-
-fn hand_authored_bind_identities_unique() -> Bool {
-  hand_authored_key_collision_count(binds: hand_authored_doc_binds) == 0
-}
-
-
 
 fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
   match b.home {
@@ -116,7 +124,7 @@ data body_lowering_production_consumer_ref: DeclarationRef = DeclarationRef { mo
 
 data mock_corpus_prefilter_control_note: String = "LIVE CONTROL FOR THE MOCK-CORPUS DECLARER OBSERVATION, and the reason this sentence names the type it does. This module imports v2 modules and sits under dag/, so it is exactly the shape that broke the floor when whole-tree published-mock declarer selection was decided by a substring scan: a documentary row naming PublishedMockCase made this file read as a corpus declarer, its closure could not resolve under the dag-only roots that precompute uses, and the run refused before any witness executed. The declarer decision is now the exact type-annotation check. This sentence therefore MENTIONS PublishedMockCase without declaring one, so if the substring shortcut is ever restored the floor reds here first."
 
-data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
+data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "affected-set-differential-falsifier",
@@ -125,15 +133,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
 
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject entry_affected_by_touched_paths describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "affected-set-precompute-pruning",
-    primary_work: DeclarationRef { module_path: "v2.workflow.affected_set_floor_runner", decl_name: "floor_witness_run_disposition", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "v2.workflow.affected_set_floor_runner", decl_name: "floor_test_fn_declaration_edited", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject floor_witness_run_disposition describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -376,6 +375,24 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "reconcile-cost-root-cause",
+    primary_work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "typecheck_module", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v1.compiler.infer", decl_name: "infer_record_lit_structural", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the measured cost this record localizes is removed -- gunbc.host_effect_realize stops dominating corpus type inference -- at which point the document describes history rather than a live cost and deletes with this row. Registered at subject grain: typecheck_module owns the per-module inference this record partitions, and infer_record_lit_structural owns the RecordLit half; movement in either is what would make this document's numbers false.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "floor-cut-replacement-plan",
+    primary_work: DeclarationRef { module_path: "gunbc.replacement_cut", decl_name: "admit_replacement_cut_plan", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_plan", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the integration/floor-cut cutover merges to main and the old generated-ci / ci_floor_plan authorities named in this plan are deleted per its terminal receipt; the row deletes with the document once the cut is no longer the active migration vehicle. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "floor-memory-pool-parse-regression-diagnosis",
     primary_work: DeclarationRef { module_path: "v2.lens.live_read_classification", decl_name: "live_read_classification", field: WholeDeclaration },
     additional_works: [
@@ -518,6 +535,19 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "keying-relation-design",
+    primary_work: DeclarationRef { module_path: "std.key_relation", decl_name: "KeyRelation", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.change", decl_name: "keyed_two_way_diff", field: WholeDeclaration },
+      DeclarationRef { module_path: "std.effects", decl_name: "KeySource", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.membership_reconcile", decl_name: "membership_reconcile", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.tailscale.serve", decl_name: "TailscaleServeRouteKey", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_route_key", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject KeyRelation describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "language-support-completion-design",
     primary_work: DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_substrate_long_lane_rows", field: WholeDeclaration },
     additional_works: [
@@ -581,6 +611,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.realization_schedule", decl_name: "Schedule", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject NonEmptyStr describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "namespace-cut-replacement-plan",
+    primary_work: DeclarationRef { module_path: "gunbc.replacement_cut", decl_name: "admit_replacement_cut_plan", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "SymbolIndex", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "lookup_symbol_index_atom_identity", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the integration/namespace-cut cutover merges to main and the import concept / import-name-universe authorities named in this plan are deleted per its terminal receipt; the row deletes with the document once the cut is no longer the active migration vehicle. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -1025,7 +1065,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority_for", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.selection_degradation_receipt", decl_name: "selection_degradation_receipt_note", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_verdict", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "end_to_end_residual", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "retention_settle", field: WholeDeclaration },
@@ -1088,7 +1127,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "curated_cargo_frontier_probe_report",
-    primary_work: DeclarationRef { module_path: "tools.self_host_curated_probe_cargo", decl_name: "curated_probe_cargo_toml_from_cssl_authority", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "tools.self_host_curated_probe_cargo", decl_name: "curated_probe_cargo_toml_write_from_cssl_authority", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "modeled probe transport lands (bash-emit #5828)") },
   },
@@ -1102,7 +1141,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "emitter_residual_site_map_2026-07-21",
-    primary_work: DeclarationRef { module_path: "tools.self_host_curated_probe_cargo", decl_name: "curated_probe_cargo_toml_from_cssl_authority", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "tools.self_host_curated_probe_cargo", decl_name: "curated_probe_cargo_toml_write_from_cssl_authority", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "dissolves with the emitter residual classes it maps (dotted-alias #6981, generic-T fold closures)") },
   },
@@ -1126,6 +1165,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     primary_work: DeclarationRef { module_path: "v2.compiler.trait_derive_completeness", decl_name: "trait_derive_completeness_note", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "Slice A Clone-bound propagation lands in v1 trait_derive_emit (where-clause + container bounds) and canonical-seven E0599 census reaches tails-only; or doc migrates into a registered gunbc.plan.Plan row") },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
+    slug: "root_d_generic_arity_2026-08-16",
+    primary_work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_render_checkpoint_scalar_bare", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "extdeps.languages.rust.types", decl_name: "rust_type_checkpoints", field: WholeDeclaration }],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "lookup_checkpoint stops being keyed on the bare authored leaf name — the arity half is closed by the declared-arity guard this probe measures, and the remaining identity half (7 of 10 rust_type_checkpoints rows name a type src/v2 also declares) is the identity-keyed realization work; when the table is keyed on resolved declaration identity, both halves this probe localises are structurally unreachable and the probe deletes with this row") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -1157,6 +1203,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "root_b_primitive_repr_fork_2026-08-16",
+    primary_work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "decl_file_realizes_natively", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_seed_host_numeric_alias", field: WholeDeclaration }, DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "type_reference_decl_file", field: WholeDeclaration }],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the checkpoint table stops being keyed on the bare dag_name -- a corpus-side declaration-to-Rust-type binding supersedes the spelling row, so realization is decided by declaration identity on every name rather than on the names the table happens to miss; at that point the residue this probe measured is closed and the record is fully superseded") },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "e0277_trait_bound_census_2026-07-26",
     primary_work: DeclarationRef { module_path: "v1.compiler.trait_derive_emit", decl_name: "v1_generic_params_needing_clone_bound", field: WholeDeclaration },
     additional_works: [],
@@ -1178,20 +1231,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
-    slug: "frontier_probe_exact_head_survey_2026-08-03",
-    primary_work: DeclarationRef { module_path: "v2.compiler.self_host.frontier_probe_survey", decl_name: "frontier_probe_exact_head_closeout_note", field: WholeDeclaration },
-    additional_works: [DeclarationRef { module_path: "v2.compiler.self_host.frontier", decl_name: "compiler_frontier_receipt_totality_wall_holds", field: WholeDeclaration }],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "execution_measurement=27 at one pinned source_head in host_frontier_probe_survey_manifest, frontier.dag rows hand-authored from that manifest, compiler_frontier_per_module_probe_survey_holds greens, and totality wall witnesses pass — then this interim audit receipt deletes with this row") },
-  },
-  HandAuthoredDocBind {
-    home: ProbeDoc,
-    slug: "frontier_probe_run_interrupted_2026-08-06",
-    primary_work: DeclarationRef { module_path: "v2.compiler.self_host.frontier_probe_survey", decl_name: "frontier_probe_run_interruption_note", field: WholeDeclaration },
-    additional_works: [DeclarationRef { module_path: "v2.compiler.self_host.frontier_probe_survey", decl_name: "frontier_roster_provenance_constructor_inflation_note", field: WholeDeclaration }],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the probe emits a receipt for at least one module at a pinned FrontierSurveySubject and roster row provenance becomes structural — then this interrupted-run receipt deletes with this row") },
-  },
-  HandAuthoredDocBind {
-    home: ProbeDoc,
     slug: "srv2-05-native-agreement-divergence-diagnosis",
     primary_work: DeclarationRef { module_path: "v2.compiler.self_host.witness_entry_eligibility_census", decl_name: "witness_entry_eligibility_census_note", field: WholeDeclaration },
     additional_works: [],
@@ -1201,7 +1240,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     home: PlanDoc,
     slug: "rc-ownership-wrap-decision-design",
     primary_work: DeclarationRef { module_path: "v2.compiler.wrap_decision", decl_name: "WrapDecisionBundleChildLookup", field: WholeDeclaration },
-    additional_works: [],
+    additional_works: [
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "build_shared_types", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "render_rust_shared_type_if_needed", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "render_rust_fn_sig_type", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_struct_field_from_child", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit", decl_name: "render_node_type", field: WholeDeclaration },
+    ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)") },
   },
   HandAuthoredDocBind {
@@ -1494,10 +1539,73 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the six findings this note records outlive their archived lanes only until each has a carrier of its own: the rejected_with_pending diagnostic-order defect, the entry-vs-member position divergence, the three-entrypoint admission divergence, the standing section 4c population that makes a full-corpus compile exit 1, the floor-gated deploy, and the run_id concurrency key. When each is either fixed or carried as a typed row, the note is a historical account and deletes with this bind. It is registered rather than deleted today because four sessions were archived holding these measurements and nothing else records them — but a cross-lane status narrative is the parallel-ledger shape DESIGN section 6 warns about, so its home is a question for the operator, not a settled one.") },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "self-host-cargo-refusal-root-partition",
+    primary_work: DeclarationRef { module_path: "v2.compiler.self_host.v2_emitter_direct_rust_door_contract", decl_name: "v2_emitter_direct_rust_door_contract_dissolution_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.infer", decl_name: "node_grounding_frontier_note", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the root partition this document coordinates is confirmed, its roots are owned, and the emitted Rust compiles for at least one module — at which point the wall it describes is history and the document deletes with this bind. Registered at subject grain: the bound declarations are the three carriers whose movement would make this document's framing false — the Band A readiness note that routes the blocker to the namespace cut, the inference frontier note whose counted-not-refused status is the correction this document records, and the direct-door dissolution note that says emission is already reached. It is a shared coordination surface for two sessions rather than an authority, which is why every claim in it names its measurement and the unconfirmed hypotheses are labelled as such; a coordination narrative that outlived its lanes would be the parallel-ledger shape DESIGN section 6 warns about.") },
+  },
 ]
 
+type HandAuthoredDocBindsPopulation
+  = HandAuthoredDocBindsBuilt { binds: List<HandAuthoredDocBind> }
+  | HandAuthoredDocBindsDuplicateKey {
+      key: String,
+      first: HandAuthoredDocBind,
+      duplicate: HandAuthoredDocBind,
+    }
+
+fn hand_authored_bind_key_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn hand_authored_binds_to_keyed_rows(binds: List<HandAuthoredDocBind>) -> List<KeyedRow<String, HandAuthoredDocBind>> {
+  map(binds, b => KeyedRow { row_key: hand_authored_bind_key(b: b), value: b })
+}
+
+fn hand_authored_doc_binds_keyed_build(incomings: List<HandAuthoredDocBind>) -> KeyedRosterBuild<String, HandAuthoredDocBind> {
+  keyed_roster_build(
+    incomings: hand_authored_binds_to_keyed_rows(binds: incomings),
+    key_eq: hand_authored_bind_key_eq,
+  )
+}
+
+fn hand_authored_doc_binds_construct() -> KeyedRosterBuild<String, HandAuthoredDocBind> {
+  hand_authored_doc_binds_keyed_build(incomings: hand_authored_doc_bind_incomings)
+}
+
+fn hand_authored_doc_binds_population() -> HandAuthoredDocBindsPopulation {
+  match hand_authored_doc_binds_construct() {
+    KeyedRosterBuilt { rows: rows } =>
+      HandAuthoredDocBindsBuilt { binds: map(rows, row => row.value) }
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+      HandAuthoredDocBindsDuplicateKey {
+        key: k,
+        first: f.value,
+        duplicate: d.value,
+      }
+  }
+}
+
+fn hand_authored_doc_binds() -> List<HandAuthoredDocBind> {
+  match hand_authored_doc_binds_population() {
+    HandAuthoredDocBindsBuilt { binds: binds } => binds
+    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => []
+  }
+}
+
+fn hand_authored_bind_identities_unique() -> Bool {
+  match hand_authored_doc_binds_population() {
+    HandAuthoredDocBindsBuilt { binds: _ } => true
+    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
 fn hand_authored_doc_graph_roots() -> List<String> {
-  map(hand_authored_doc_binds, b => hand_authored_doc_path(b: b))
+  map(hand_authored_doc_binds(), b => hand_authored_doc_path(b: b))
 }
 
 fn doc_graph_roots_all() -> List<String> {
@@ -1520,5 +1628,9 @@ fn hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind) -> Bool {
 }
 
 fn hand_authored_slugs_all_unregistered() -> Bool {
-  all(hand_authored_doc_binds, b => hand_authored_plan_slug_is_unregistered(b: b))
+  match hand_authored_doc_binds_population() {
+    HandAuthoredDocBindsBuilt { binds: binds } =>
+      all(binds, b => hand_authored_plan_slug_is_unregistered(b: b))
+    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
 }

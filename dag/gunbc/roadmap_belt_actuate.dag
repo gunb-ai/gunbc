@@ -21,7 +21,7 @@ import gunbc.roadmap_belt {
   belt_reconcile_refusal_count,
   roadmap_belt_default_capacity,
   roadmap_belt_default_run_state,
-  DispatchMember, DesiredMember, ObservedMember,
+  DispatchMember, DesiredMember, ObservedMember, dispatch_member_key,
 }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -99,7 +99,7 @@ import gunbc.roadmap_dispatch_actuator {
   tmux_kill_session_argv_for_instance,
   dispatch_live_sessions_from_entries,
   dispatch_live_sessions_with_process,
-  dispatch_tmux_session_scope_for_live_session,
+  dispatch_session_cleanup_for_live_session,
   DispatchStopRunningProcess,
   DispatchClearRetainedSession,
   DispatchCleanupRefused,
@@ -130,6 +130,8 @@ import gunbc.worker_lifecycle {
   WorkerProcessEvidence,
   WorkerProcessUnobserved,
   WorkerProcessAbsent,
+  WorkerProcessRunning,
+  WorkerProcessExited,
   worker_phase_label,
   worker_process_evidence_label,
   worker_process_evidence_detail,
@@ -149,6 +151,7 @@ import gunbc.roadmap_dashboard_instance {
   srv1_green_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
+  dashboard_instance_provider_executable_refusal_detail,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
 }
@@ -300,6 +303,11 @@ import gunbc.git_diff_change_window {
   git_diff_window_absent_identity,
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import gunbc.fleet_desired_observe {
+  fleet_revision_standing,
+  FleetRevisionStanding,
+  RevisionConverged, RevisionDrifted, RevisionUnobserved,
+}
 import extdeps.git { shape_git_rev_parse_head_args }
 import gunbc.roadmap_dispatch_actuator { host_exec_argv }
 import gunbc.roadmap_provider_events { ProviderCompleted, provider_execution_activity }
@@ -339,10 +347,13 @@ import extdeps.filesystem.filesystem_io
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
   shape_codex_version_env_args_for_program,
-  codex_cli_identity_contains,
   claude_cli_program,
   claude_trust_store_path,
   claude_workspace_trust_seeded,
+}
+import gunbc.package_delivery {
+  codex_runtime_version_identity_marker,
+  codex_runtime_version_identity_satisfied,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -995,9 +1006,8 @@ fn belt_codex_preflight_decision_observed_for_home(
   login_status_stderr: String,
 ) -> BeltCodexPreflight {
   let identity_realized = identity_command_success
-    && string_contains(
-      s: join([identity_stdout, "\n", identity_stderr], ""),
-      pattern: codex_cli_identity_contains,
+    && codex_runtime_version_identity_satisfied(
+      combined_output: join([identity_stdout, "\n", identity_stderr], ""),
     )
   if !codex_on_path {
     CodexPreflightRefused {
@@ -1014,7 +1024,7 @@ fn belt_codex_preflight_decision_observed_for_home(
       step: "codex-identity",
       detail: join([
         "codex --version did not realize ",
-        codex_cli_identity_contains,
+        codex_runtime_version_identity_marker(),
         "; stdout: ",
         identity_stdout,
         "; stderr: ",
@@ -1039,74 +1049,82 @@ fn belt_codex_preflight_decision_observed_for_home(
 }
 
 fn belt_codex_preflight_for_instance(instance: HostDashboardInstance) -> BeltCodexPreflight {
-  let codex_home = dashboard_instance_provider_state_root(instance: instance) as String
-  let codex_program = dashboard_instance_provider_executable(instance: instance) as String
-  let env_program = dispatch_capability_program(
-    environment: instance.execution_environment,
-    cap: EnvironmentBindingCapability,
-  )
-  let codex_ok = belt_program_available(program: codex_program)
-  let env_ok = belt_program_available(program: env_program)
-  if !codex_ok || !env_ok {
-    belt_codex_preflight_decision_observed_for_home(
-      codex_home: codex_home,
-      codex_on_path: codex_ok,
-      env_on_path: env_ok,
-      identity_command_success: false,
-      identity_stdout: "",
-      identity_stderr: "",
-      login_status_success: false,
-      login_status_stdout: "",
-      login_status_stderr: "",
-    )
-  } else {
-    let identity = gunbc.WitnessBin.Run(
-      workdir: belt_observe_workdir,
-      bin_path: env_program as FilePath,
-      args: shape_codex_version_env_args_for_program(
-        program: codex_program,
-        codex_home: codex_home,
-      ),
-      expect: OutcomeIsData,
-    )
-    let identity_realized = identity.success
-      && string_contains(
-        s: join([identity.stdout, "\n", identity.stderr], ""),
-        pattern: codex_cli_identity_contains,
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent =>
+      CodexPreflightRefused {
+        step: "codex-executable-placement",
+        detail: dashboard_instance_provider_executable_refusal_detail(instance: instance),
+      }
+    Present { value: codex_program } => {
+      let codex_home = dashboard_instance_provider_state_root(instance: instance) as String
+      let codex_program_str = codex_program as String
+      let env_program = dispatch_capability_program(
+        environment: instance.execution_environment,
+        cap: EnvironmentBindingCapability,
       )
-    if !identity_realized {
-      belt_codex_preflight_decision_observed_for_home(
-        codex_home: codex_home,
-        codex_on_path: codex_ok,
-        env_on_path: env_ok,
-        identity_command_success: identity.success,
-        identity_stdout: identity.stdout,
-        identity_stderr: identity.stderr,
-        login_status_success: false,
-        login_status_stdout: "",
-        login_status_stderr: "",
-      )
-    } else {
-    let result = gunbc.WitnessBin.Run(
-      workdir: belt_observe_workdir,
-      bin_path: env_program as FilePath,
-      args: shape_codex_login_status_env_args_for_program(
-        program: codex_program,
-        codex_home: codex_home,
-      ),
-      expect: OutcomeIsData,
-    )
-    belt_codex_preflight_decision_observed_for_home(
-      codex_home: codex_home,
-      codex_on_path: codex_ok,
-      env_on_path: env_ok,
-      identity_command_success: identity.success,
-      identity_stdout: identity.stdout,
-      identity_stderr: identity.stderr,
-      login_status_success: result.success,
-      login_status_stdout: result.stdout,
-      login_status_stderr: result.stderr,
-    )
+      let codex_ok = belt_program_available(program: codex_program_str)
+      let env_ok = belt_program_available(program: env_program)
+      if !codex_ok || !env_ok {
+        belt_codex_preflight_decision_observed_for_home(
+          codex_home: codex_home,
+          codex_on_path: codex_ok,
+          env_on_path: env_ok,
+          identity_command_success: false,
+          identity_stdout: "",
+          identity_stderr: "",
+          login_status_success: false,
+          login_status_stdout: "",
+          login_status_stderr: "",
+        )
+      } else {
+        let identity = gunbc.WitnessBin.Run(
+          workdir: belt_observe_workdir,
+          bin_path: env_program as FilePath,
+          args: shape_codex_version_env_args_for_program(
+            program: codex_program_str,
+            codex_home: codex_home,
+          ),
+          expect: OutcomeIsData,
+        )
+        let identity_realized = identity.success
+          && codex_runtime_version_identity_satisfied(
+            combined_output: join([identity.stdout, "\n", identity.stderr], ""),
+          )
+        if !identity_realized {
+          belt_codex_preflight_decision_observed_for_home(
+            codex_home: codex_home,
+            codex_on_path: codex_ok,
+            env_on_path: env_ok,
+            identity_command_success: identity.success,
+            identity_stdout: identity.stdout,
+            identity_stderr: identity.stderr,
+            login_status_success: false,
+            login_status_stdout: "",
+            login_status_stderr: "",
+          )
+        } else {
+          let result = gunbc.WitnessBin.Run(
+            workdir: belt_observe_workdir,
+            bin_path: env_program as FilePath,
+            args: shape_codex_login_status_env_args_for_program(
+              program: codex_program_str,
+              codex_home: codex_home,
+            ),
+            expect: OutcomeIsData,
+          )
+          belt_codex_preflight_decision_observed_for_home(
+            codex_home: codex_home,
+            codex_on_path: codex_ok,
+            env_on_path: env_ok,
+            identity_command_success: identity.success,
+            identity_stdout: identity.stdout,
+            identity_stderr: identity.stderr,
+            login_status_success: result.success,
+            login_status_stdout: result.stdout,
+            login_status_stderr: result.stderr,
+          )
+        }
+      }
     }
   }
 }
@@ -1737,30 +1755,7 @@ fn belt_observe_from_result(
   }
 }
 
-fn belt_observe_for_instance(instance: HostDashboardInstance) -> BeltObserve {
-  let ls = tmux_ls_argv_for_instance(instance: instance)
-  if belt_program_available(program: ls.program) {
-    let result = gunbc.WitnessBin.Run(
-      workdir: belt_observe_workdir,
-      bin_path: ls.program as FilePath,
-      args: ls.args,
-      expect: OutcomeIsData,
-    )
-    belt_observe_from_result(
-      success: result.success,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    )
-  } else {
-    ObserveRefused {
-      reason: "belt_observe: tmux not found on PATH; cannot observe belt session set; fail-closed (no blind spawn/reap on an unknowable observed set)",
-    }
-  }
-}
-
-fn belt_observe() -> BeltObserve {
-  belt_observe_for_instance(instance: srv1_live_dashboard_instance())
-}
+data belt_observe_entry_dissolution_note: String = "belt_observe and belt_observe_for_instance ARE DELETED. They observed the tmux session NAME set only, so a retained dead pane read as a live agent — the defect this arc removed. Both dispatch and tick now call belt_sessions_observe_for_instance, which classifies each row's process evidence.\n\nbelt_observe_from_result SURVIVES DELIBERATELY and is now reached only by witnesses. Its subject is the tmux stdout parse (nonzero exit with no documented no-server marker, unparseable line, empty set), and deleting it would delete that evidence along with the caller — the §4b rule is that a climb dissolves the lower-rung production handling, never the discriminating evidence that the higher rung stays real. Its parse duty is subsumed by classify_tmux_session_list, which the live observer uses; the dissolve-on is those parse witnesses being re-pointed at classify_tmux_session_list with the refusal cases preserved one-for-one, at which point this function and this note go together."
 
 type BeltPassOutcome
   = BeltPassRecorded
@@ -2080,6 +2075,93 @@ fn belt_tick_empty_reconcile(state: BeltRunState) -> BeltReconcile {
 
 data belt_tick_note: String = "The re-runnable belt driver: observe the live session set -> decide via belt_reconcile (the sole belt decision; belt_step is its degenerate spawn-only precursor) -> actuate each planned spawn/teardown through the fail-closed exec seam. Idempotent by construction: a spawned session is observed present on the next tick, keying to its ready node as Unchanged -> noop, so re-ticking never double-spawns (the observed set closes the loop the pure decision cannot). ObserveRefused blocks spawn/reap only — verify and publish still run on their own evidence authorities (operator P1, 2026-08-02)."
 
+data belt_tick_lifecycle_note: String = "THE TIMER IS A DISPATCH ACTUATOR TOO (review artifact 51237, both P0s). The dead-pane fix and the revision gate reached the click path only. This tick passed the whole observed session list into belt_reconcile, which maps EVERY present row to an observed member and counts live.length() as occupied — so a retained dead pane stayed a member (desired + present = Unchanged, no respawn) and still consumed a capacity slot. It also never consulted the deployed revision, so a drifted host refused a click and spawned on a timer.\n\nBOTH PATHS NOW CONSUME ONE SEAM. belt_revision_admission gates the tick before any spawn or reap. A refusal blocks spawn and teardown ONLY: verification and publication continue, because they read independently bound receipts and already run when tmux observation refuses — stopping them would widen a spawn-admission refusal into a work stoppage.\n\nCLEANUP PRECEDES START, DEFERRED ONE TICK. A stale pane is excluded from observed membership, so the node becomes a spawn candidate — but spawning it THIS tick would collide with the tmux session name that still exists, because spawn runs before teardown here. So a stale node's spawn is withheld this tick and its teardown is planned; the next tick observes it Absent and spawns normally. That is why the fix is a partition plus a deferral rather than a filter.\n\nLivenessUnobserved and MultiplicityConflict are neither cleaned nor spawned: they are counted refusals. An unobserved pane might be running, so tearing it down could kill live work, and spawning beside it could double-run the node.\n\nTHIS PARAGRAPH DESCRIBED BEHAVIOUR THE CODE DID NOT HAVE (review artifact 51285), which is worse than the gap it described. The first cut partitioned `refused` and never read it again, so only stale node ids were withheld from spawn — a ready node with an unobserved-but-present session read as ABSENT to belt_reconcile and could be spawned beside a pane that might be running. The deferral set is now every non-running class, so the note and the code say the same thing.\n\nMULTIPLICITY IS A NODE FACT, NOT A SESSION FACT, and the first cut missed it here for that reason: belt_tick_classify_sessions read each row's process state in isolation, so two rows for one node (one running, one stale) landed in two different buckets and the reconciler acted on an ambiguous observation that dispatch would have refused. The partition is now node-aware — a node with more than one row is conflicted whatever its rows say individually — so both actuation paths refuse the same ambiguity."
+
+type BeltTickSessionPartition {
+  running: List<DispatchLiveSession>
+  stale: List<DispatchLiveSession>
+  refused: List<DispatchLiveSession>
+  conflicted: List<DispatchLiveSession>
+}
+
+fn belt_tick_node_row_count(live: List<DispatchLiveSession>, node_id: String) -> Int {
+  count(filter(live, s => s.node_id == node_id))
+}
+
+data belt_tick_session_class_note: String = "THE PARTITION READS THE COPRODUCT, NOT A PARALLEL STRING VOCABULARY (review artifact 51309). The first cut asked belt_tick_session_is(s, arm: \"running\") and compared string arms — a second naming scheme for BeltSessionLiveness, which already names exactly these states. Two vocabularies for one concept is the nicknaming class, and the string one is strictly worse: a typo in an arm name compiles and silently empties a bucket, where a missing coproduct arm is a non-exhaustive match the compiler catches.\n\nThe node-awareness stays here rather than moving into belt_session_liveness_from_process, because multiplicity is a fact about a NODE's rows and that function sees one row's process. belt_node_session_liveness makes the same distinction on the dispatch path."
+
+fn belt_tick_session_class(
+  live: List<DispatchLiveSession>,
+  s: DispatchLiveSession,
+) -> BeltSessionLiveness {
+  let n = belt_tick_node_row_count(live: live, node_id: s.node_id)
+  if n > 1 {
+    BeltSessionMultiplicityConflict {
+      session_names: join(
+        map(filter(live, r => r.node_id == s.node_id), r => r.session_name), ", "),
+      session_count: n,
+    }
+  } else {
+    belt_session_liveness_from_process(session_name: s.session_name, process: s.worker.process)
+  }
+}
+
+fn belt_tick_is_running(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+  match belt_tick_session_class(live: live, s: s) {
+    BeltSessionRunning { session_name: _, command: _ } => true
+    _ => false
+  }
+}
+
+fn belt_tick_is_stale(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+  match belt_tick_session_class(live: live, s: s) {
+    BeltSessionStaleTerminal { session_name: _, detail: _ } => true
+    _ => false
+  }
+}
+
+fn belt_tick_is_refused(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+  match belt_tick_session_class(live: live, s: s) {
+    BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true
+    _ => false
+  }
+}
+
+fn belt_tick_is_conflicted(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+  match belt_tick_session_class(live: live, s: s) {
+    BeltSessionMultiplicityConflict { session_names: _, session_count: _ } => true
+    _ => false
+  }
+}
+
+fn belt_tick_classify_sessions(live: List<DispatchLiveSession>) -> BeltTickSessionPartition {
+  BeltTickSessionPartition {
+    running: filter(live, s => belt_tick_is_running(live: live, s: s)),
+    stale: filter(live, s => belt_tick_is_stale(live: live, s: s)),
+    refused: filter(live, s => belt_tick_is_refused(live: live, s: s)),
+    conflicted: filter(live, s => belt_tick_is_conflicted(live: live, s: s)),
+  }
+}
+
+data belt_tick_revision_drift_reason: String = "belt tick refused: deployed tree is not the admitted fleet revision; spawn and reap withheld"
+data belt_tick_revision_unobserved_reason: String = "belt tick refused: deployed revision could not be observed; spawn and reap withheld"
+
+fn belt_tick_revision_refused(
+  instance: HostDashboardInstance,
+  state: BeltRunState,
+  reason: String,
+) -> BeltTickResult {
+  BeltTickResult {
+    observe_refused: true,
+    observe_refusal_reason: reason,
+    reconcile: belt_tick_empty_reconcile(state: state),
+    spawn_outcomes: [],
+    teardown_outcomes: [],
+    verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
+    publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
+  }
+}
+
 fn belt_tick_for_instance(
   instance: HostDashboardInstance,
   state: BeltRunState,
@@ -2087,7 +2169,7 @@ fn belt_tick_for_instance(
   cap: BeltCapacity,
   spawn_workdir: String,
 ) -> BeltTickResult {
-  match belt_observe_for_instance(instance: instance) {
+  match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } =>
       BeltTickResult {
         observe_refused: true,
@@ -2098,10 +2180,43 @@ fn belt_tick_for_instance(
         verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
         publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
       }
-    Observed { live: live } => {
-      let r = belt_reconcile(state: state, frontier: frontier, live: live, cap: cap)
-      let spawn_outcomes = r.spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir))
-      let teardown_outcomes = r.teardowns |> map(m => belt_actuate_teardown_member(m: m))
+    Observed { live: live } =>
+      match belt_revision_admission(
+        standing: fleet_revision_standing(repo: instance.repo_root),
+      ) {
+        BeltRevisionRefusedDrifted { desired: d, local: l } =>
+          belt_tick_revision_refused(
+            instance: instance,
+            state: state,
+            reason: join([belt_tick_revision_drift_reason, " desired=", d, " local=", l], ""),
+          )
+        BeltRevisionRefusedUnobserved { cause: c } =>
+          belt_tick_revision_refused(
+            instance: instance,
+            state: state,
+            reason: join([belt_tick_revision_unobserved_reason, " cause=", c], ""),
+          )
+        BeltRevisionAdmitted { revision: _ } => {
+      let classified = belt_tick_classify_sessions(live: live)
+      let r = belt_reconcile(
+        state: state,
+        frontier: frontier,
+        live: classified.running,
+        cap: cap,
+      )
+      let deferred_ids = concat(
+        map(classified.stale, s => s.node_id),
+        concat(
+          map(classified.refused, s => s.node_id),
+          map(classified.conflicted, s => s.node_id),
+        ),
+      )
+      let admitted_spawns = filter(r.spawns, m =>
+        !any(deferred_ids, id => id == dispatch_member_key(m: m)))
+      let spawn_outcomes = admitted_spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir))
+      let stale_teardowns = map(classified.stale, s => ObservedMember { node_id: s.node_id, session: s })
+      let teardown_outcomes =
+        concat(r.teardowns, stale_teardowns) |> map(m => belt_actuate_teardown_member(m: m))
       BeltTickResult {
         observe_refused: false,
         observe_refusal_reason: "",
@@ -2111,7 +2226,8 @@ fn belt_tick_for_instance(
         verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
         publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
       }
-    }
+        }
+      }
   }
 }
 
@@ -4351,11 +4467,7 @@ fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
         json_kv(key: "schema", value: json_string(s: "roadmap-sessions/v1")),
         json_kv(key: "observe_refused", value: json_bool(b: false)),
         json_kv(key: "sessions", value: json_array(elements: live |> map(sess => {
-          let scope = dispatch_tmux_session_scope_for_live_session(sess: sess)
-          let cleanup = dispatch_session_cleanup(
-            scope: scope,
-            session: sess,
-          )
+          let cleanup = dispatch_session_cleanup_for_live_session(sess: sess)
           json_object(members: [
             json_kv(key: "node_id", value: json_string(s: sess.node_id)),
             json_kv(key: "session_name", value: json_string(s: sess.session_name)),
@@ -4460,7 +4572,7 @@ fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
   }
 }
 
-data belt_dispatch_node_note: String = "Per-node MANUAL dispatch — the click path (operator 2026-07-20: 'i should just manually click/dispatch'). belt_run_once ticks the WHOLE ready frontier; belt_dispatch_node spawns exactly ONE node by id, operator-selected from the roadmap UI, NOT frontier-gated (the operator's click IS the selection). DONE = the operator's SIGNOFF, never a merged PR (operator: 'PR merged not necessarily mean item == done — they may not be 1:1'): a signoff-accepted node refuses dispatch (DispatchNodeAlreadyDone); a node whose PRs merged but is unsigned is still 'in review' and remains dispatchable (more work). Idempotent by the same observe-before-spawn the tick uses: if the node's session is already live, DispatchAlreadyLive (noop), so a double-click never double-spawns. Fail-closed: unknown node id -> DispatchNodeNotFound; unknowable observed set -> DispatchObserveRefused; spawn failure -> DispatchSpawnFailed (never a fabricated success). Reuses belt_lookup_node (pure roadmap read), belt_observe, and belt_actuate_spawn — no forked spawn path."
+data belt_dispatch_node_note: String = "Per-node MANUAL dispatch — the click path (operator 2026-07-20: 'i should just manually click/dispatch'). belt_run_once ticks the WHOLE ready frontier; belt_dispatch_node spawns exactly ONE node by id, operator-selected from the roadmap UI, NOT frontier-gated (the operator's click IS the selection). DONE = the operator's SIGNOFF, never a merged PR (operator: 'PR merged not necessarily mean item == done — they may not be 1:1'): a signoff-accepted node refuses dispatch (DispatchNodeAlreadyDone); a node whose PRs merged but is unsigned is still 'in review' and remains dispatchable (more work). Idempotent by the same observe-before-spawn the tick uses, and idempotence is asserted of a PROCESS rather than of a container name (belt_session_liveness_note): a running worker gives DispatchAlreadyLive (noop) so a double-click never double-spawns, while a retained dead pane gives DispatchStaleSession — refused, never accepted, and never suppressing the new turn. Fail-closed: unknown node id -> DispatchNodeNotFound; unknowable observed set -> DispatchObserveRefused; unreadable pane lifecycle for a present session -> DispatchSessionLivenessUnobserved (no blind spawn under unknown liveness); spawn failure -> DispatchSpawnFailed (never a fabricated success). Reuses belt_lookup_node (pure roadmap read), belt_sessions_observe_for_instance (the process-aware observation the sessions route already used), and belt_actuate_spawn — no forked spawn path and no second observer."
 
 type BeltNodeLookup
   = NodeFound { node: RoadmapNode }
@@ -4487,11 +4599,93 @@ fn belt_lookup_node(node_id: String) -> BeltNodeLookup {
   }
 }
 
-fn belt_node_session_live(live: List<DispatchLiveSession>, node_id: String) -> Bool {
-  any(live, s => s.node_id == node_id)
+data belt_session_liveness_note: String = "A TMUX CONTAINER IS NOT A LIVE AGENT, AND ADMISSION IS THE LAST PLACE IN THIS MODULE TO LEARN IT. dispatch_process_cleanup_separation_note settled the rule for the cleanup path and belt_sessions_observation_separation_note settled it for the sessions route: session presence and process lifecycle are independent facts, so `session present` never by itself means `agent running`. Dispatch admission never adopted it. belt_node_session_live asked `any(live, s => s.node_id == node_id)` over a tmux ls row set whose worker evidence was the worker_observation_without_provider_probe placeholder, so a retained remain-on-exit pane — the exact artifact the spawn path CREATES by setting remain-on-exit — answered `live`, and the click returned DispatchAlreadyLive through the accepted band. The operator saw a positive acknowledgement and no agent, forever, with no refusal anywhere to count.\\n\\nTHAT IS WORSE THAN THE REFUSAL IT SITS BESIDE. A selection refusal at least lands in a journal as a typed, counted event; an accepted no-op is indistinguishable from success at every surface, so its frequency is zero by construction — the absorbing fallback of DESIGN section 5 wearing an idempotence label. `already running` is a claim about a PROCESS, and it must be derived from process evidence or refuse.\\n\\nTHE FOUR ANSWERS ARE NOT A BOOLEAN. Running is the only one that may suppress a spawn. StaleTerminal is a container whose pane is dead: it must never suppress the new turn and must never read as accepted, because the remedy is to clear or supersede it. LivenessUnobserved is the honest third state — a pane probe that refused, or a dead pane with no exit status — and it REFUSES rather than spawning, because a blind spawn under unknown liveness is how one node acquires two workers. Absent is the ordinary path to a spawn. Collapsing Unobserved into either pole is the state-space conflation that produced this defect one level down.\\n\\nNO SECOND OBSERVER WAS BUILT FOR THIS. The pane probe (belt_attempt_panes_observe_for_instance), the pane-to-evidence projection (worker_process_from_attempt_pane) and the per-session join (worker_process_for_session) already existed and already carried the refusal semantics; what was missing was that dispatch admission read the ls-only observation instead of the process-aware one. This routes the two actuation call sites — the tick and the dispatch — through the observation the sessions UI was already using."
+
+type BeltSessionLiveness
+  = BeltSessionRunning { session_name: String, command: String }
+  | BeltSessionStaleTerminal { session_name: String, detail: String }
+  | BeltSessionLivenessUnobserved { session_name: String, reason: String }
+  | BeltSessionAbsent
+  | BeltSessionMultiplicityConflict { session_names: String, session_count: Int }
+
+fn belt_session_liveness_from_process(
+  session_name: String,
+  process: WorkerProcessEvidence,
+) -> BeltSessionLiveness {
+  match process {
+    WorkerProcessRunning { command } =>
+      BeltSessionRunning { session_name: session_name, command: command as String }
+    WorkerProcessExited { exit_code, last_command } =>
+      BeltSessionStaleTerminal {
+        session_name: session_name,
+        detail: join([
+          "retained pane: process exited with status ",
+          to_string(exit_code),
+          "; last command ",
+          last_command,
+        ], ""),
+      }
+    WorkerProcessAbsent =>
+      BeltSessionStaleTerminal {
+        session_name: session_name,
+        detail: "session container is present but no provider process is attached",
+      }
+    WorkerProcessUnobserved { reason } =>
+      BeltSessionLivenessUnobserved {
+        session_name: session_name,
+        reason: reason as String,
+      }
+  }
 }
 
+fn belt_node_session_liveness(
+  live: List<DispatchLiveSession>,
+  node_id: String,
+) -> BeltSessionLiveness {
+  let matched = live |> filter(s => s.node_id == node_id)
+  let n = count(matched)
+  if n > 1 {
+    BeltSessionMultiplicityConflict {
+      session_names: join(map(matched, s => s.session_name), ", "),
+      session_count: n,
+    }
+  } else {
+    match matched.first() {
+      Present { value: s } =>
+        belt_session_liveness_from_process(
+          session_name: s.session_name,
+          process: s.worker.process,
+        )
+      Absent => BeltSessionAbsent
+    }
+  }
+}
+
+data belt_session_multiplicity_note: String = "0/1/MANY, BECAUSE first() IS A SILENT VERDICT (review artifact 51237 handback item 3). The fold filtered rows by node id and took the first match, so two sessions claiming one node resolved to whichever tmux happened to list first — [running, stale] answered running and [stale, running] answered stale. The same observation, two orders, two different dispatch outcomes, and no signal that a choice had been made.\n\nTwo sessions for one node is not a tie to break; it is a state whose remedy differs from every other arm — neither spawn nor reuse is safe until someone decides which history is real. So it refuses and NAMES every session, because a refusal that says only 'ambiguous' leaves the operator to go find the panes themselves."
+
+data belt_node_session_live_deletion_note: String = "belt_node_session_live IS DELETED. It answered Bool over a four-state lifecycle, mapping StaleTerminal, LivenessUnobserved and Absent all to false — and the module's own liveness note says those three have different remedies (clean up; refuse and count; spawn). A Boolean that erases the distinction is a standing invitation to bypass the coproduct, and it had no production caller left once dispatch matched on BeltSessionLiveness directly. Consumers match the coproduct."
+
 data belt_dispatch_wire_contract_exemplar_provider: String = "codex"
+
+type BeltRevisionAdmission
+  = BeltRevisionAdmitted { revision: String }
+  | BeltRevisionRefusedDrifted { desired: String, local: String }
+  | BeltRevisionRefusedUnobserved { cause: String }
+
+data belt_revision_admission_note: String = "THE GATE, EXTRACTED SO IT IS WITNESSABLE (review artifact 51237 handback item 4). The revision check lived inline in belt_dispatch_node_for_instance, so every witness constructed DispatchRevisionDrifted directly and asserted its label, band and JSON — which proves the ARMS render, and would stay green if the fleet_revision_standing match were deleted outright. A test that survives the removal of the thing it tests is not testing it.\n\nThis fold is pure: FleetRevisionStanding in, admission out, no effect. The effectful read stays at the call site, so a witness can drive Converged / Drifted / Unobserved through the real decision without a git tree.\n\nIt is also the SHARED seam, which is the second half of the same finding: the belt timer is a dispatch actuator exactly as much as the button is, and a gate that only the button consults refuses a click on a drifted host while the tick spawns against it anyway."
+
+fn belt_revision_admission(standing: FleetRevisionStanding) -> BeltRevisionAdmission {
+  match standing {
+    RevisionConverged { revision: r } =>
+      BeltRevisionAdmitted { revision: git_object_id_wire_hex(oid: r) as String }
+    RevisionDrifted { desired: d, local: l } =>
+      BeltRevisionRefusedDrifted {
+        desired: git_object_id_wire_hex(oid: d) as String,
+        local: git_object_id_wire_hex(oid: l) as String,
+      }
+    RevisionUnobserved { cause: c } => BeltRevisionRefusedUnobserved { cause: c }
+  }
+}
 
 type BeltDispatchResult
   = DispatchSpawned { node_id: String, session_name: String, provider: String }
@@ -4502,6 +4696,17 @@ type BeltDispatchResult
   | DispatchObserveRefused { node_id: String, reason: String }
   | DispatchAuthorityRefused { node_id: String, detail: String }
   | DispatchSpawnFailed { node_id: String, step: String, detail: String, provider: String }
+  | DispatchStaleSession { node_id: String, session_name: String, detail: String }
+  | DispatchSessionLivenessUnobserved { node_id: String, session_name: String, reason: String }
+  | DispatchRevisionDrifted { node_id: String, desired: String, local: String }
+  | DispatchRevisionUnobserved { node_id: String, cause: String }
+  | DispatchSessionMultiplicityConflict {
+      node_id: String,
+      session_names: String,
+      session_count: Int,
+    }
+
+data belt_dispatch_revision_gate_note: String = "DISPATCH READS BACK THE DEPLOYED REVISION BEFORE IT ACTS, and the reason is that every fact this path consumes comes from the deployed tree — the node roster, the signoff, the contract, the command it is about to run. `gunbc.fleet_desired_observe` `fleet_revision_standing` already decided that cell three ways, and until now its ONLY consumer was `gunbc.fleet_converge_cli`: convergence knew the host was drifted while the served page dispatched against the drifted tree anyway, saying nothing. That is not a stale display, it is a worker spawned from code the fleet never admitted, reported as an ordinary spawn.\\n\\nSo the standing is consulted FIRST — before node lookup, before session observation, before the worktree — because a roster read from an unadmitted tree cannot be trusted to name the right node, and refusing later would mean refusing after acting on it.\\n\\nBOTH non-converged arms refuse, and neither is an absorbing widen: `RevisionDrifted` carries BOTH revisions (the membership-diff `from` ruling — a catch-up needs the prior, and a receipt must name what it observed), `RevisionUnobserved` carries its cause and is unobserved-GRADE, never satisfied. A `RevisionUnobserved` that dispatched anyway would be exactly the empty-observation narrow: could-not-compare rendered as nothing-is-wrong.\\n\\nThe repo path is `instance.repo_root`, not the `srv1_gunbc_repo_root` constant `fleet_converge_cli` uses, because the gate is a fact about the instance being dispatched — hardcoding srv1 here would mint a second path authority and answer for the wrong host on any other instance."
 
 fn belt_dispatch_node_for_instance(
   instance: HostDashboardInstance,
@@ -4514,7 +4719,15 @@ fn belt_dispatch_node_for_instance(
       instance_id: instance.instance_id as String,
       reason: "dashboard instance is observe-only; dispatch refused before observation, provider preflight, or worktree creation",
     }
-    DashboardActuating => {
+    DashboardActuating =>
+      match belt_revision_admission(
+        standing: fleet_revision_standing(repo: instance.repo_root),
+      ) {
+        BeltRevisionRefusedDrifted { desired: d, local: l } =>
+          DispatchRevisionDrifted { node_id: node_id, desired: d, local: l }
+        BeltRevisionRefusedUnobserved { cause: c } =>
+          DispatchRevisionUnobserved { node_id: node_id, cause: c }
+        BeltRevisionAdmitted { revision: _ } => {
   match belt_lookup_node(node_id: node_id) {
     AuthorityProjectionRefused { detail: detail } =>
       DispatchAuthorityRefused { node_id: node_id, detail: detail }
@@ -4523,16 +4736,35 @@ fn belt_dispatch_node_for_instance(
       if signoff_accepts(s: node.signoff) {
         DispatchNodeAlreadyDone { node_id: node_id }
       } else {
-        match belt_observe_for_instance(instance: instance) {
+        match belt_sessions_observe_for_instance(instance: instance) {
           ObserveRefused { reason: r } =>
             DispatchObserveRefused { node_id: node_id, reason: r }
           Observed { live: live } =>
-            if belt_node_session_live(live: live, node_id: node_id) {
-              DispatchAlreadyLive {
-                node_id: node_id,
-                session_name: dispatch_tmux_session_name(node_id: node.node),
-              }
-            } else {
+            match belt_node_session_liveness(live: live, node_id: node_id) {
+              BeltSessionRunning { session_name: sn, command: _ } =>
+                DispatchAlreadyLive {
+                  node_id: node_id,
+                  session_name: sn,
+                }
+              BeltSessionStaleTerminal { session_name: sn, detail: d } =>
+                DispatchStaleSession {
+                  node_id: node_id,
+                  session_name: sn,
+                  detail: d,
+                }
+              BeltSessionLivenessUnobserved { session_name: sn, reason: r } =>
+                DispatchSessionLivenessUnobserved {
+                  node_id: node_id,
+                  session_name: sn,
+                  reason: r,
+                }
+              BeltSessionMultiplicityConflict { session_names: sn, session_count: n } =>
+                DispatchSessionMultiplicityConflict {
+                  node_id: node_id,
+                  session_names: sn,
+                  session_count: n,
+                }
+              BeltSessionAbsent =>
               match (match clock_now_probed_at() {
                 Present { value: probed_at } =>
                   belt_actuate_spawn_for_instance(
@@ -4558,6 +4790,7 @@ fn belt_dispatch_node_for_instance(
       }
   }
   }
+      }
   }
 }
 
@@ -4584,6 +4817,11 @@ fn belt_dispatch_status_label(r: BeltDispatchResult) -> String {
     DispatchObserveRefused { node_id: _, reason: _ } => "observe_refused"
     DispatchAuthorityRefused { node_id: _, detail: _ } => "authority_refused"
     DispatchSpawnFailed { node_id: _, step: _, detail: _, provider: _ } => "spawn_failed"
+    DispatchStaleSession { node_id: _, session_name: _, detail: _ } => "stale_session"
+    DispatchSessionLivenessUnobserved { node_id: _, session_name: _, reason: _ } => "session_liveness_unobserved"
+    DispatchRevisionDrifted { node_id: _, desired: _, local: _ } => "deployed_revision_drifted"
+    DispatchRevisionUnobserved { node_id: _, cause: _ } => "deployed_revision_unobserved"
+    DispatchSessionMultiplicityConflict { node_id: _, session_names: _, session_count: _ } => "session_multiplicity_conflict"
   }
 }
 
@@ -4615,6 +4853,11 @@ fn belt_dispatch_result_band(r: BeltDispatchResult) -> DispatchBand {
     DispatchObserveRefused { node_id: _, reason: _ } => BandLoud
     DispatchAuthorityRefused { node_id: _, detail: _ } => BandLoud
     DispatchSpawnFailed { node_id: _, step: _, detail: _, provider: _ } => BandLoud
+    DispatchStaleSession { node_id: _, session_name: _, detail: _ } => BandLoud
+    DispatchSessionLivenessUnobserved { node_id: _, session_name: _, reason: _ } => BandLoud
+    DispatchRevisionDrifted { node_id: _, desired: _, local: _ } => BandLoud
+    DispatchRevisionUnobserved { node_id: _, cause: _ } => BandLoud
+    DispatchSessionMultiplicityConflict { node_id: _, session_names: _, session_count: _ } => BandLoud
   }
 }
 
@@ -4665,7 +4908,7 @@ fn belt_dispatch_label_band_key(wire_label: String) -> String {
   }
 }
 
-data belt_dispatch_all_status_labels_note: String = "The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (§3): one exemplar per BeltDispatchResult variant, mapped through the label authority. The exemplar roster is the single manual enumeration the closed variant set forces — the same enumeration witness_dispatch_status_labels_pin_wire_contract already pins — and it is fail-closed twice: an 8th variant makes belt_dispatch_status_label's match non-exhaustive (compiler-caught), and gunbc.roadmap_component derives the DispatchButton's terminal states from THIS list and cross-checks totality both directions (a label with no state row, a state with no label — each red), so the button's state set cannot silently drift from the served contract. This is the projection the dispatch-button incident (2026-07-23) needed: one authority for the wire vocabulary, consumed by the JSON body, the page ok-predicate, and now the component state totality."
+data belt_dispatch_all_status_labels_note: String = "The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (§3): one exemplar per BeltDispatchResult variant, mapped through the label authority. The exemplar roster is the single manual enumeration the closed variant set forces — the same enumeration witness_dispatch_status_labels_pin_wire_contract already pins — and it is fail-closed twice: a NEW variant makes belt_dispatch_status_label's match non-exhaustive (compiler-caught), and gunbc.roadmap_component derives the DispatchButton's terminal states from THIS list and cross-checks totality both directions (a label with no state row, a state with no label — each red), so the button's state set cannot silently drift from the served contract. This is the projection the dispatch-button incident (2026-07-23) needed: one authority for the wire vocabulary, consumed by the JSON body, the page ok-predicate, and now the component state totality."
 
 fn belt_dispatch_result_exemplars() -> List<BeltDispatchResult> {
   [
@@ -4677,6 +4920,11 @@ fn belt_dispatch_result_exemplars() -> List<BeltDispatchResult> {
     DispatchObserveRefused { node_id: "x", reason: "r" },
     DispatchAuthorityRefused { node_id: "x", detail: "d" },
     DispatchSpawnFailed { node_id: "x", step: "s", detail: "d", provider: belt_dispatch_wire_contract_exemplar_provider },
+    DispatchStaleSession { node_id: "x", session_name: "s", detail: "d" },
+    DispatchSessionLivenessUnobserved { node_id: "x", session_name: "s", reason: "r" },
+    DispatchRevisionDrifted { node_id: "x", desired: "a", local: "b" },
+    DispatchRevisionUnobserved { node_id: "x", cause: "c" },
+    DispatchSessionMultiplicityConflict { node_id: "x", session_names: "s1, s2", session_count: 2 },
   ]
 }
 
@@ -4760,6 +5008,40 @@ fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
         json_kv(key: "provider", value: json_string(s: p)),
         json_kv(key: "step", value: json_string(s: st)),
         json_kv(key: "detail", value: json_string(s: d)),
+      ])
+    DispatchStaleSession { node_id: nid, session_name: sn, detail: d } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "session", value: json_string(s: sn)),
+        json_kv(key: "detail", value: json_string(s: d)),
+      ])
+    DispatchSessionLivenessUnobserved { node_id: nid, session_name: sn, reason: r2 } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "session", value: json_string(s: sn)),
+        json_kv(key: "reason", value: json_string(s: r2)),
+      ])
+    DispatchRevisionDrifted { node_id: nid, desired: dr, local: lr } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "desired", value: json_string(s: dr)),
+        json_kv(key: "local", value: json_string(s: lr)),
+      ])
+    DispatchRevisionUnobserved { node_id: nid, cause: c2 } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "cause", value: json_string(s: c2)),
+      ])
+    DispatchSessionMultiplicityConflict { node_id: nid, session_names: sn, session_count: n } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "sessions", value: json_string(s: sn)),
+        json_kv(key: "session_count", value: json_int(n: n)),
       ])
   }
 }

@@ -26,7 +26,6 @@ import gunbc.observation_emit_census {
   assembly_split_site,
   witness_row_cost_site,
   witness_row_cost_migration_disclosure_site,
-  selection_degradation_site,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -131,9 +130,7 @@ test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
   census_marker_present(site: witness_row_cost_site) &&
   emit_site_is_frontier(site: witness_row_cost_site) &&
   census_marker_present(site: witness_row_cost_migration_disclosure_site) &&
-  emit_site_is_frontier(site: witness_row_cost_migration_disclosure_site) &&
-  census_marker_present(site: selection_degradation_site) &&
-  emit_site_is_frontier(site: selection_degradation_site)
+  emit_site_is_frontier(site: witness_row_cost_migration_disclosure_site)
 }
 
 test fn w_the_raw_byte_dump_shape_is_gone_from_the_seed() -> Bool {

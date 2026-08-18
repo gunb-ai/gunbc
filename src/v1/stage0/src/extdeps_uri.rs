@@ -48,6 +48,13 @@ pub struct Uri {
     pub locator: NonEmptyStr,
 }
 
+pub fn uri_https(locator: String) -> Rc<Uri> {
+    Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: locator.clone(),
+    })
+}
+
 pub fn uri_scheme_is_http(s: UriScheme) -> bool {
     match s.clone() {
         UriScheme::Http => true,
@@ -909,7 +916,8 @@ pub fn uri_percent_encode_outcomes_first_refusal(
 ) -> Option<Rc<UriPercentEncodeRefusalCause>> {
     outcomes.clone().iter().cloned().fold(
         None,
-        |acc: _, outcome: Rc<UriPercentEncodeScalarOutcome>| match acc.clone() {
+        |acc: Option<Rc<UriPercentEncodeRefusalCause>>,
+         outcome: Rc<UriPercentEncodeScalarOutcome>| match acc.clone() {
             Some(_) => acc.clone(),
             None => match (*outcome.clone()).clone() {
                 UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused {

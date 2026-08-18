@@ -206,7 +206,7 @@ data synthetic_ci_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
 
 fn cell_label_is_runner_only(c: HostPhaseCellStatus) -> Bool {
   let l = c.cell.phase_label
-  l == "prefix:bmc-credential-converge" || l == "prefix:os-install-mechanism" || l == "prefix:os-install-actuated" || l == "P1:runner-deploy-slot" || l == "P1b:build-cache-provision" || l == "P3:green-place-readiness" || l == "P4:session-placement-enrollment"
+  l == "prefix:bmc-credential-converge" || l == "prefix:os-install-mechanism" || l == "prefix:os-install-actuated" || l == "P1:runner-deploy-slot" || l == "P1b:build-cache-provision" || l == "P1c:codex-runtime-provision" || l == "P3:green-place-readiness" || l == "P4:session-placement-enrollment"
 }
 
 fn cell_label_is_shared(c: HostPhaseCellStatus) -> Bool {
@@ -361,11 +361,11 @@ test fn witness_enrolled_sparks_carry_exactly_the_shared_obligations() -> Bool {
 
 // The unobserved half of the same claim, kept separate so a future producer landing on a Spark
 // cell reds this witness instead of silently upgrading the sentence above.
+// Re-derived on the join-4 flip: the executed probe observed BOTH P0 cells on each
+// Spark at the modeled endpoint (ProbeHostKeyUnenrolled -> Inaccessible — observed,
+// NOT satisfied), and every non-P0 Spark cell stays unobserved. The witness now pins
+// that exact split so a producer landing on any further Spark cell still reds here.
 test fn witness_enrolled_spark_cells_are_all_unobserved() -> Bool {
-  // Re-derived on the join-4 flip: the executed probe observed BOTH P0 cells on each
-  // Spark at the modeled endpoint (ProbeHostKeyUnenrolled -> Inaccessible — observed,
-  // NOT satisfied), and every non-P0 Spark cell stays unobserved. The witness now pins
-  // that exact split so a producer landing on any further Spark cell still reds here.
   let matrix = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments)
   let sparks = filter(
     matrix,
@@ -417,6 +417,10 @@ data witness_authored_observation_note: String = "THE SIBLING OF THE NOTE ABOVE,
 // SubstrateInputsOnly, meaning it reads no live tree at all -- and it still computes a Converged
 // "live observation". An execution-backed observation could not be reproduced under that
 // disposition; an authored one is reproduced exactly.
+// EXACTLY Absent, not merely "some non-Converged arm". Under StallWithinBudget the deduction
+// contract for an observed table with no os-up row is Absent specifically; Drifted, Conflict,
+// Inaccessible and UnknownRefused each denote a DIFFERENT regression, and a test that accepted
+// any of them would stay green through all four.
 test fn witness_covered_cell_verdict_is_selected_by_authorship_alone() -> Bool {
   let converged = deduce_os_install_actuation_verdict(
     obs: srv3_post_install_lease_observation,
@@ -429,10 +433,6 @@ test fn witness_covered_cell_verdict_is_selected_by_authorship_alone() -> Bool {
     stall: StallWithinBudget,
   )
   let converged_is_converged = match converged { Converged => true, std.upsert_decision.Absent => false, Drifted => false, Conflict => false, Inaccessible => false, UnknownRefused => false }
-  // EXACTLY Absent, not merely "some non-Converged arm". Under StallWithinBudget the deduction
-  // contract for an observed table with no os-up row is Absent specifically; Drifted, Conflict,
-  // Inaccessible and UnknownRefused each denote a DIFFERENT regression, and a test that accepted
-  // any of them would stay green through all four.
   let refused_is_exactly_absent = match refused { Converged => false, std.upsert_decision.Absent => true, Drifted => false, Conflict => false, Inaccessible => false, UnknownRefused => false }
   converged_is_converged && refused_is_exactly_absent
 }
@@ -441,6 +441,14 @@ test fn witness_covered_cell_verdict_is_selected_by_authorship_alone() -> Bool {
 // tree-copied snapshot: the set of cells the coverage metric counts is exactly the one cell whose
 // verdict the control above shows to be authored. If a genuinely executed producer is ever wired,
 // this reds and must be re-derived deliberately -- which is the point.
+// Join-4 flip: the rest of the covered population must be EXACTLY the probe-deduced
+// P0 cells — identity grain, not a widened count.
+// The PRODUCTION metric itself, not a rebuilt filter beside it. host_phase_observation_coverage_count
+// is the subject of this finding, so a control that never calls it proves nothing about the number
+// anyone actually reads.
+// Exactly one. This is not a tree-copied roster: the PR's factual claim is that the ENTIRE covered
+// population is this single authored cell, so the assertion must fail the moment that stops holding
+// -- including when a genuinely executed producer is wired, which is the outcome this lane wants.
 test fn witness_every_covered_cell_today_is_the_authored_one() -> Bool {
   let covered = filter(
     host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments),
@@ -450,19 +458,11 @@ test fn witness_every_covered_cell_today_is_the_authored_one() -> Bool {
     covered,
     c => c.cell.host == operator_host_srv3 && c.cell.phase_label == "prefix:os-install-actuated",
   )
-  // Join-4 flip: the rest of the covered population must be EXACTLY the probe-deduced
-  // P0 cells — identity grain, not a widened count.
   let probe_deduced = filter(
     covered,
     c => c.cell.phase_label == "P0:reach-secrets-network" || c.cell.phase_label == "P0:host-identity-converge",
   )
-  // The PRODUCTION metric itself, not a rebuilt filter beside it. host_phase_observation_coverage_count
-  // is the subject of this finding, so a control that never calls it proves nothing about the number
-  // anyone actually reads.
   let metric = host_phase_observation_coverage_count(enrollments: fleet_subsumption_enrollments)
-  // Exactly one. This is not a tree-copied roster: the PR's factual claim is that the ENTIRE covered
-  // population is this single authored cell, so the assertion must fail the moment that stops holding
-  // -- including when a genuinely executed producer is wired, which is the outcome this lane wants.
   metric == covered.length()
     && covered.length() == authored.length() + probe_deduced.length()
     && authored.length() == 1

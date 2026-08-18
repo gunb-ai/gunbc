@@ -1,0 +1,349 @@
+module extdeps.firmware.types
+
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
+import std.types { EpochMs, NonEmptyStr, List, list_length }
+import v2.std.optional { Present, Absent }
+import extdeps.crypto.hash { Digest }
+import extdeps.boards.types { BaseboardModel }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Firmware"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.firmware.types",
+      decl_name: "FirmwareReleaseRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data types_scope_subject_note: String = "THE SUBJECT IS THE VENDOR FIRMWARE RELEASE AND ITS APPLICABILITY PRECONDITION. A release row names a board, an independently versioned firmware target, a packaging, and the bytes; the prerequisite names what must already be running before those bytes can be applied. NOT the flashing mechanism, NOT any BMC API surface, NOT product policy about which release a fleet should run — those are extdeps.bmc.* upstream facts and gunbc product decisions respectively. The prerequisite minimum here is bounded by executed pushes carried as FirmwarePrerequisiteObservation rows, never asserted from a vendor page, which documents no such dependency."
+
+// A version triple is one concept. It was previously spelled
+// BmcFirmwareSemanticVersion inside the BMC module, which made the SAME
+// concept unnameable for host firmware without minting a second name for
+// it (DESIGN section 3, the CpuArchitecture/TargetArchitecture class).
+// The BMC carrier now imports this one.
+type FirmwareSemanticVersion {
+  major: Nat
+  minor: Nat
+  patch: Nat
+}
+
+fn firmware_semantic_version(
+  major: Nat,
+  minor: Nat,
+  patch: Nat,
+) -> FirmwareSemanticVersion {
+  FirmwareSemanticVersion {
+    major: major,
+    minor: minor,
+    patch: patch,
+  }
+}
+
+// The two independently versioned, independently flashed firmware subjects
+// on one baseboard. They are NOT one subject at two versions: the BMC runs
+// continuously and serves the update surface, while host firmware executes
+// only during host boot and owns DRAM training. A single "firmware version"
+// field cannot express "BMC 3.22.00 and BIOS 3.10" and that is exactly the
+// state srv4 is in.
+type FirmwareTarget
+  = BmcController
+  | HostBios
+
+// How a release artifact is applied. The distinction is load-bearing rather
+// than cosmetic: the OpenBMC web-UI tar is pushed to the BMC's UpdateService
+// over the network, while the Instant Flash ROM is applied from host firmware
+// setup and is unreachable while a host fails to POST.
+type FirmwareImageKind
+  = OpenBmcWebUiTar
+  | InstantFlashRom
+
+// A vendor release, cited. image_digest is Optional because a digest this
+// repository has not COMPUTED must not be authored: an unverified hex would
+// be a fabricated plausible value at exactly the boundary where the wrong
+// bytes brick a controller (DESIGN section 5). It is filled by measuring the
+// acquired file, never transcribed.
+// On prerequisite:
+// What must already be running before these bytes can be applied. Carried
+// ON the release row so an unappliable push is refused from the catalog,
+// not discovered from a vendor shell script after the upload.
+type FirmwareReleaseRow {
+  board: BaseboardModel
+  target: FirmwareTarget
+  version: FirmwareSemanticVersion
+  released_on: EpochMs
+  image_kind: FirmwareImageKind
+  image_uri: Uri
+  image_bytes: ByteSize
+  image_digest: Digest?
+  release_notes: NonEmptyStr
+  prerequisite: FirmwarePrerequisite
+  authority: ExternalAuthority
+}
+
+// A release is not universally applicable to its own board. Vendor packaging
+// carries manifest fields that only a NEWER controller understands, so
+// "correct image for this board" and "appliable to this host right now" are
+// different facts and fusing them is what let a valid image be pushed at a
+// host that could never accept it.
+//
+// RECEIPT (2026-08-11, srv3 192.168.1.192): the BIOS 3.10 OpenBMC tar was
+// accepted for transfer by BMC 2.07.00, untarred, and then refused by the
+// vendor flash script with "Invalid ExtendedVersion: primary-all. Please check
+// MANIFEST file!" — phosphor-image-updater reported "Bios upgrade failed."
+// The refusal was clean (no flash write), but it arrived only after a 33 MB
+// upload, a host power-off, and a Redfish task that reports Exception with no
+// machine-readable cause. srv4 on BMC 3.22.00 accepted the same bytes.
+type FirmwarePrerequisite
+  = NoFirmwarePrerequisite
+  | RequiresMinimumTargetFirmware {
+      target: FirmwareTarget,
+      minimum: FirmwareSemanticVersion,
+    }
+
+// On FirmwarePrerequisiteUnobserved:
+// Fail-closed third arm. An unobserved prerequisite is NOT met: srv3 reports
+// its BIOS version as null through Redfish, so "we could not read it" must
+// refuse rather than collapse into either pole (DESIGN section 5).
+type FirmwareApplicabilityVerdict
+  = FirmwareApplicable
+  | FirmwarePrerequisiteUnmet {
+      target: FirmwareTarget,
+      minimum: FirmwareSemanticVersion,
+      observed: FirmwareSemanticVersion,
+    }
+  | FirmwarePrerequisiteUnobserved {
+      target: FirmwareTarget,
+      minimum: FirmwareSemanticVersion,
+    }
+
+// WHAT ESTABLISHED THE PREREQUISITE, as a carrier rather than as prose.
+// A minimum-version row is a claim; the thing that makes it true is a pair of
+// executed pushes with opposite outcomes. Holding that only in a String left
+// the release row and its evidence unjoinable, so a declared minimum that the
+// evidence contradicted would read exactly like one it supported.
+type FirmwarePushOutcome
+  = PushAcceptedByTarget
+  | PushRefusedByTarget { diagnostic: NonEmptyStr }
+
+// On gating_target:
+// The prerequisite is a property of the PACKAGING, not of the release: the
+// same version applied as an Instant Flash ROM never passes through the BMC
+// and so has no gating target at all. image_kind is carried for that reason.
+type FirmwarePrerequisiteObservation {
+  board: BaseboardModel
+  subject: FirmwareTarget
+  image_kind: FirmwareImageKind
+  gating_target: FirmwareTarget
+  gating_version: FirmwareSemanticVersion
+  outcome: FirmwarePushOutcome
+  observed_at: EpochMs
+}
+
+// Two executed pushes BOUND a threshold; they do not locate it. Refused at
+// 2.07.00 and accepted at 3.22.00 means the true minimum lies somewhere in
+// that interval, so a declared 3.22.00 is an upper bound and may be stricter
+// than the vendor requires — the safe direction, and the positive arm says so
+// rather than claiming the threshold was measured.
+//
+// BOTH BOUNDS ARE OPTIONAL, and that is the correction that matters. An
+// earlier revision stored the DECLARED MINIMUM into whichever bound had no
+// observation yet, so a verdict backed only by an acceptance reported a
+// highest_refusal that never happened — a fabricated plausible value in the
+// exact field a consumer reads to judge how well-bounded the threshold is
+// (DESIGN section 5). It was also order-dependent: later observations were
+// discarded once a bound was set, so the same evidence in a different order
+// gave different bounds. Absent now means absent.
+type PrerequisiteEvidenceVerdict
+  = PrerequisiteConsistentUpperBound {
+      highest_refusal: FirmwareSemanticVersion?
+      lowest_acceptance: FirmwareSemanticVersion?
+    }
+  | PrerequisiteContradictedByAcceptanceBelowMinimum {
+      accepted_at: FirmwareSemanticVersion
+    }
+  | PrerequisiteContradictedByRefusalAtOrAboveMinimum {
+      refused_at: FirmwareSemanticVersion
+    }
+  | PrerequisiteEvidenceAbsent
+
+fn higher_version(
+  a: FirmwareSemanticVersion,
+  b: FirmwareSemanticVersion,
+) -> FirmwareSemanticVersion {
+  if firmware_semantic_version_at_least(observed: a, minimum: b) { a } else { b }
+}
+
+fn lower_version(
+  a: FirmwareSemanticVersion,
+  b: FirmwareSemanticVersion,
+) -> FirmwareSemanticVersion {
+  if firmware_semantic_version_at_least(observed: a, minimum: b) { b } else { a }
+}
+
+// The strongest refusal observed, over every refusal. Order-independent by
+// construction: max is associative and commutative, so the fold cannot depend
+// on authoring order the way the previous first-wins accumulator did.
+fn highest_refused_version(
+  observations: List<FirmwarePrerequisiteObservation>,
+) -> FirmwareSemanticVersion? {
+  fold(
+    observations,
+    init: Absent,
+    f: (acc, observation) =>
+      match observation.outcome {
+        PushAcceptedByTarget => acc
+        PushRefusedByTarget { diagnostic: _ } =>
+          match acc {
+            Absent => Present { value: observation.gating_version }
+            Present { value: current } =>
+              Present {
+                value: higher_version(a: current, b: observation.gating_version),
+              }
+          }
+      },
+  )
+}
+
+// The weakest acceptance observed. This is the tighter of the two bounds on
+// the true threshold, since anything at or above it demonstrably works.
+fn lowest_accepted_version(
+  observations: List<FirmwarePrerequisiteObservation>,
+) -> FirmwareSemanticVersion? {
+  fold(
+    observations,
+    init: Absent,
+    f: (acc, observation) =>
+      match observation.outcome {
+        PushRefusedByTarget { diagnostic: _ } => acc
+        PushAcceptedByTarget =>
+          match acc {
+            Absent => Present { value: observation.gating_version }
+            Present { value: current } =>
+              Present {
+                value: lower_version(a: current, b: observation.gating_version),
+              }
+          }
+      },
+  )
+}
+
+// Does ONE observation contradict a declared minimum? An acceptance strictly
+// below the minimum falsifies it, and a refusal at or above it falsifies it in
+// the other direction. Anything else is consistent, which is not the same as
+// supporting it — that is what the bounds above report.
+fn prerequisite_observation_contradicts(
+  minimum: FirmwareSemanticVersion,
+  observation: FirmwarePrerequisiteObservation,
+) -> PrerequisiteEvidenceVerdict {
+  match observation.outcome {
+    PushAcceptedByTarget =>
+      if firmware_semantic_version_at_least(
+        observed: observation.gating_version,
+        minimum: minimum,
+      ) {
+        PrerequisiteEvidenceAbsent
+      } else {
+        PrerequisiteContradictedByAcceptanceBelowMinimum {
+          accepted_at: observation.gating_version,
+        }
+      }
+    PushRefusedByTarget { diagnostic: _ } =>
+      if firmware_semantic_version_at_least(
+        observed: observation.gating_version,
+        minimum: minimum,
+      ) {
+        PrerequisiteContradictedByRefusalAtOrAboveMinimum {
+          refused_at: observation.gating_version,
+        }
+      } else {
+        PrerequisiteEvidenceAbsent
+      }
+  }
+}
+
+fn prerequisite_contradiction(
+  minimum: FirmwareSemanticVersion,
+  observations: List<FirmwarePrerequisiteObservation>,
+) -> PrerequisiteEvidenceVerdict {
+  fold(
+    observations,
+    init: PrerequisiteEvidenceAbsent,
+    f: (acc, observation) =>
+      match acc {
+        PrerequisiteEvidenceAbsent =>
+          prerequisite_observation_contradicts(
+            minimum: minimum,
+            observation: observation,
+          )
+        other => other
+      },
+  )
+}
+
+fn prerequisite_evidence_verdict(
+  minimum: FirmwareSemanticVersion,
+  observations: List<FirmwarePrerequisiteObservation>,
+) -> PrerequisiteEvidenceVerdict {
+  match prerequisite_contradiction(minimum: minimum, observations: observations) {
+    PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: a } =>
+      PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: a }
+    PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r } =>
+      PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r }
+    _ =>
+      match list_length(observations) {
+        0 => PrerequisiteEvidenceAbsent
+        _ =>
+          PrerequisiteConsistentUpperBound {
+            highest_refusal: highest_refused_version(observations: observations),
+            lowest_acceptance: lowest_accepted_version(observations: observations),
+          }
+      }
+  }
+}
+
+fn firmware_semantic_version_at_least(
+  observed: FirmwareSemanticVersion,
+  minimum: FirmwareSemanticVersion,
+) -> Bool {
+  if observed.major != minimum.major {
+    observed.major > minimum.major
+  } else if observed.minor != minimum.minor {
+    observed.minor > minimum.minor
+  } else {
+    observed.patch >= minimum.patch
+  }
+}
+
+fn firmware_release_applicability(
+  prerequisite: FirmwarePrerequisite,
+  observed: FirmwareSemanticVersion?,
+) -> FirmwareApplicabilityVerdict {
+  match prerequisite {
+    NoFirmwarePrerequisite => FirmwareApplicable
+    RequiresMinimumTargetFirmware { target: t, minimum: m } =>
+      match observed {
+        Absent => FirmwarePrerequisiteUnobserved { target: t, minimum: m }
+        Present { value: v } =>
+          if firmware_semantic_version_at_least(observed: v, minimum: m) {
+            FirmwareApplicable
+          } else {
+            FirmwarePrerequisiteUnmet { target: t, minimum: m, observed: v }
+          }
+      }
+  }
+}

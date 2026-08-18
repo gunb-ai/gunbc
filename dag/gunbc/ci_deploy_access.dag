@@ -334,6 +334,7 @@ fn deploy_access_is_local_apply(access: DeployAccess) -> Bool {
   match access.transport {
     LocalShell => true
     SshShell { ssh_host: _ } => false
+    FleetSsh { target: _, context: _ } => false
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
   }
 }

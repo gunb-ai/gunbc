@@ -21,6 +21,12 @@ import gunbc.roadmap_authority {
   roadmap_authority,
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
+  closing_contract_task_edges_projection,
+  ClosingContractTaskEdgesProjected,
+  ClosingContractTaskEdgesProjectionRefused,
+  projected_roadmap_dependency_edges_projection,
+  ProjectedRoadmapDependencyEdgesProjected,
+  ProjectedRoadmapDependencyEdgesProjectionRefused,
 }
 import gunbc.roadmap_spawner {
   roadmap_rendered_ghost_count,
@@ -789,7 +795,7 @@ test fn witness_every_binding_carries_a_validation() -> Bool {
   )
 }
 
-test fn witness_v1_test_migration_contract_names_behavior_frontier() -> Bool {
+test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
   match bound_execution_contract_for(id: "v1-test-migration") {
     ExecutionContractUnspecified => false
     ExecutionContract { validations, extra_capabilities } =>
@@ -797,8 +803,8 @@ test fn witness_v1_test_migration_contract_names_behavior_frontier() -> Bool {
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
           GunbcClaimValidation { entry, function } =>
-            (entry as String) == "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag"
-              && function == "legacy_test_behavior_unclassified_frontier_is_zero"
+            (entry as String) == "src/v2/test/claim/manual/test_migration_debt_test.dag"
+              && function == "retained_rust_kernel_wall_holds_against_live_tree"
           CargoTestValidation { filter: _ } => false
           CargoFmtValidation => false
         })
@@ -829,4 +835,32 @@ test fn witness_ghost_node_outside_authority_is_counted() -> Bool {
 
 test fn witness_altered_copy_of_declared_node_is_counted() -> Bool {
   roadmap_altered_copy_red_probe_count() == 1
+}
+
+test fn witness_projected_dependency_edges_include_closing_contract_projection() -> Bool {
+  match closing_contract_task_edges_projection() {
+    ClosingContractTaskEdgesProjected { edges: closing_edges } =>
+      match projected_roadmap_dependency_edges_projection() {
+        ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
+          fold(closing_edges, init: true, f: fn(acc, edge) {
+            acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
+          })
+        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
+      }
+    ClosingContractTaskEdgesProjectionRefused { detail: _ } => false
+  }
+}
+
+test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      match projected_roadmap_dependency_edges_projection() {
+        ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
+          fold(active_roadmap_edges_for_accepted(accepted: accepted), init: true, f: fn(acc, edge) {
+            acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
+          })
+        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
+      }
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => false
+  }
 }

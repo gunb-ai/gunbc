@@ -12,6 +12,7 @@ type HostStandupAssimilationPhase
   | ReachSecretsNetwork
   | RunnerDeploySlot
   | BuildCacheProvision
+  | CodexRuntimeProvision
   | ComputeFabricEnroll
   | GreenPlaceReadiness
   | SessionPlacementEnrollment
@@ -257,6 +258,18 @@ data host_standup_spine: List<HostStandupStep> = [
     effect_evidence: host_effect_identity_evidence
   ),
   host_standup_assimilation_step(
+    phase: CodexRuntimeProvision,
+    label: "P1c:codex-runtime-provision",
+    disposition: ModeledCompose {
+      authorities: [
+        decl_ref(module_path: "gunbc.host_codex_runtime_provision", decl_name: "provision_codex_runtime"),
+        decl_ref(module_path: "gunbc.package_delivery", decl_name: "materialize_codex_runtime_bundle"),
+        decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "realize_provision_codex_runtime"),
+      ]
+    },
+    effect_evidence: host_effect_identity_evidence
+  ),
+  host_standup_assimilation_step(
     phase: ComputeFabricEnroll,
     label: "P2:compute-fabric-enroll",
     disposition: DeclaredGap {
@@ -345,6 +358,11 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
     phase_label: "P1b:build-cache-provision",
     modeling: "modeled",
     authority_or_interim: "gunbc.host_build_cache_provision.provision_build_cache → gunbc.host_toolchain_ensure.host_toolchain_ensure(BuildCache) + extdeps.cache.sccache.sccache_local_facts + gunbc.host_effect_realize.realize_provision_build_cache"
+  },
+  GapLedgerRow {
+    phase_label: "P1c:codex-runtime-provision",
+    modeling: "modeled",
+    authority_or_interim: "gunbc.host_codex_runtime_provision.provision_codex_runtime → host_toolchain_ensure(CodexRuntime) + package_delivery.materialize_codex_runtime_bundle + realize_provision_codex_runtime; RECURRING cadence via fleet_converge_policy codex_runtime_bundle knob + fleet_converge_cli converge_provider_runtime_codex_receipt on every gunbc converge for srv1–srv4"
   },
   GapLedgerRow {
     phase_label: "P2:compute-fabric-enroll",
@@ -648,13 +666,16 @@ fn assimilation_complete_all_satisfied(
   }
 }
 
-fn srv3_install_mechanism_is_nbd_proxy_no_fallback() -> Bool {
+// NO SILENT FALLBACK — the same claim as before, now carried by the refusal.
+// This read "is nbd-proxy, no fallback" while srv3 ran 2.07.00; the load-bearing
+// half was always the second one, that a solver finding no virtual media must not
+// quietly answer PXE. srv3 on 3.22.00 has no catalogued delivery mechanism, so
+// the fallback arm is exactly where a defective solver would land — and refusing
+// is the proof it does not. A Selected of any kind here means the fallback fired.
+fn srv3_install_mechanism_refuses_rather_than_falling_back() -> Bool {
   match srv3_install_mechanism_solution {
-    OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall } => true
-    OsInstallMechanismSelected { mechanism: VirtualMediaInstall } => false
-    OsInstallMechanismSelected { mechanism: PxeHttpInstall } => false
-    OsInstallMechanismSelected { mechanism: FirmwareUpdateThenVirtualMedia } => false
-    OsInstallMechanismRefused { cause: _ } => false
+    OsInstallMechanismRefused { cause: _ } => true
+    OsInstallMechanismSelected { mechanism: _ } => false
   }
 }
 

@@ -1,0 +1,775 @@
+module product.altra_motherboard.placement
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
+import std.affine_space { Point2, point2 }
+import std.orthogonal_geometry {
+  AxisAlignedRectangle2,
+  OrthogonalConstruction,
+  OrthogonalReady,
+  OrthogonalRefused,
+  axis_aligned_rectangle2,
+}
+import product.pcb.physical {
+  BoardPhysicalArticle,
+  BodyEnvelopesAdmitted,
+  ComponentPlacement,
+  PackageBodyEnvelope,
+  PhysicalAdmission,
+  PhysicalRefusalSet,
+  PhysicallyRefused,
+  BoardFrameRegistrationRefused,
+  admit_body_envelopes,
+  body_envelope_of_ice40_package,
+}
+import std.spatial_frame {
+  FrameRegistered,
+  FrameRegistrationRefused,
+  FrameRegistrationRefusal,
+  Micro,
+  SpatialFrameRegistry,
+  empty_frame_registry,
+  register_frame,
+  registry_with,
+}
+import product.altra_motherboard.minimal_design {
+  AltraMinimalMotherboard,
+  DdrSlotIdentity,
+  ddr_channel_ordinal,
+  ddr_slot_identity_eq,
+  dimm_slot_position_ordinal,
+  topology_slot_identities,
+  altra_1p_minimum,
+}
+import product.altra_motherboard.realization {
+  BoardRequirementIdentity,
+  RequiredFunctionWithoutJustifiedPart,
+  altra_1p_requirement_part_realizations,
+  population_realization_refusals,
+}
+import extdeps.land_pattern.types { PackageBodyDimensions }
+import extdeps.network.ti_dp83867 { dp83867_rgz0048b_body }
+import extdeps.power.ti_tps53688 { tps53688_rsb0040a_body }
+import extdeps.power.ti_tps3808 { tps3808_dbv0006a_body }
+import product.altra_motherboard.attachment_stack {
+  FactAuthorityBlocker,
+  NeedsARedistributionDecision,
+  NeedsCommercialAccess,
+  NeedsSomeoneToFindTheDocument,
+  socket_standing,
+  subject_blocker,
+}
+import extdeps.programmable_logic.ice40.subject { ice40_tq144_package }
+import extdeps.cpu.ampere_altra_package {
+  altra_package_body_designator,
+  altra_package_body_height,
+  altra_package_body_width,
+}
+
+// WHERE THE PARTS GO, AND WHICH PARTS THIS REPOSITORY IS ENTITLED TO SAY THAT ABOUT. Placing a
+// component requires its body envelope, and a body envelope is a VENDOR fact: the part is whatever
+// size the vendor made it, so a number chosen because it looks about right is fabricated plausible
+// output in its most dangerous form — a layout built from invented dimensions passes every
+// geometric check, draws convincingly, and cannot be assembled. THE BOARD OUTLINE IS A DIFFERENT
+// KIND OF FACT and is authored here without citation: how big we make our own board is our
+// decision, not a claim about anyone document. WHY EACH COMPONENT IS BLOCKED COMES FROM THE
+// ATTACHMENT STACK, and specifically from EACH LAYER ITS OWN. An earlier revision of this module
+// bound the processor SOCKET to the processor PACKAGE standing, which reopened the category error
+// that module exists to prevent: the package is the part placed inside the socket, its bottom-land
+// geometry is not the socket board geometry, and the two are separately governed by different
+// vendors. A witness then locked that wrong edge in. Because of it this module also asserted a
+// false dependency — that a redistribution decision about the package would unblock socket
+// geometry and DDR routing. It does not; it establishes the package body and nothing else. The
+// socket now derives its blocker from the socket layer, so a decision recorded against the package
+// cannot silently unblock it.
+// WHAT A COMPONENT IS ON THIS BOARD, which is what the population is checked against. A roster of
+// identities would say the board has twelve parts; a roster of ROLES says it has a processor
+// socket, four memory slots and a boot device, which is the claim a design review actually makes.
+// The memory slot carries its channel because two slots on one channel and one slot on each of two
+// channels are different boards, and an identity-only roster cannot tell them apart.
+type BoardComponentRole
+  = ProcessorSocket
+  | ProcessorPackage
+  | MemoryModuleSlot { slot: DdrSlotIdentity }
+  | BoardControlCpld
+  | BootFirmwareEeprom
+  | FirmwareFlash
+  | ResetController
+  | ProcessorRailSequencer
+  | ProcessorPowerStage
+  | ProcessorPowerGoodSupervisor
+  | HostNetworkPhy
+  | ManagementNetworkPath
+  | StorageEndpoint
+  | DebugConnector
+
+// A DISPLAY NAME FOR DIAGNOSTICS, AND DELIBERATELY NOT AN EQUALITY. An earlier revision of this
+// module compared roles by this string, which the module's own note warns against: a role compared
+// through a rendered name is a role whose equality an edit to that name can redefine. Equality is
+// structural below; this exists so a refusal can say WHICH role, and nothing reads it to decide
+// whether two roles are the same.
+fn role_tag(r: BoardComponentRole) -> NonEmptyStr {
+  match r {
+    ProcessorSocket => "ProcessorSocket"
+    ProcessorPackage => "ProcessorPackage"
+    MemoryModuleSlot { slot: _ } => "MemoryModuleSlot"
+    BoardControlCpld => "BoardControlCpld"
+    BootFirmwareEeprom => "BootFirmwareEeprom"
+    FirmwareFlash => "FirmwareFlash"
+    ResetController => "ResetController"
+    ProcessorRailSequencer => "ProcessorRailSequencer"
+    ProcessorPowerStage => "ProcessorPowerStage"
+    ProcessorPowerGoodSupervisor => "ProcessorPowerGoodSupervisor"
+    HostNetworkPhy => "HostNetworkPhy"
+    ManagementNetworkPath => "ManagementNetworkPath"
+    StorageEndpoint => "StorageEndpoint"
+    DebugConnector => "DebugConnector"
+  }
+}
+
+// EQUALITY WENT THROUGH THREE WRONG SHAPES BEFORE THIS ONE, and each is worth keeping because the
+// next author will reach for one of them. The first derived a channel with -1 standing for "this
+// role has no channel" -- a degenerate value absorbing ignorance. The second matched both sides
+// directly and carried eleven nested wildcard arms over a closed coproduct. The third replaced
+// both with a projected key record whose discriminator was a bare Int.
+// NO KEY RECORD, BECAUSE A KEY RECORD IS A WRITABLE ILLEGAL STATE. An earlier revision projected
+// each role to RoleKey { kind: Int, slot }, and the Int was an in-band discriminator: kind 99 was
+// constructible, the numbers were arbitrary (ProcessorPackage ended up 12 because it was added
+// last, which is the "pick another magic number" hazard showing itself), and the record carried
+// the bad state around. The ordinal below is not stored anywhere -- it exists only inside the
+// comparison -- so there is no value that can hold 99 and nothing to validate.
+//
+// WHY NOT A DOUBLE MATCH ON THE COPRODUCT, which is the obvious answer and was tried twice. A
+// nested match over twelve variants is a hundred and forty-four arms if it is total, and eleven
+// nested wildcard arms if it is not -- and a wildcard here is a silent hazard rather than a
+// stylistic one, because a thirteenth role would compare equal to nothing and report every plan as
+// missing it, with no arm to update and no failure pointing here. Two total projections give the
+// same guarantee at twelve arms each: neither has a wildcard, so a thirteenth role fails to
+// compile in both until someone decides its ordinal and whether it carries a slot.
+fn role_ordinal(r: BoardComponentRole) -> Int {
+  match r {
+    MemoryModuleSlot { slot: _ } => 1
+    ProcessorSocket => 2
+    BoardControlCpld => 3
+    BootFirmwareEeprom => 4
+    FirmwareFlash => 5
+    ResetController => 7
+    ProcessorRailSequencer => 8
+    ProcessorPowerStage => 9
+    ProcessorPowerGoodSupervisor => 10
+    HostNetworkPhy => 11
+    ManagementNetworkPath => 12
+    StorageEndpoint => 13
+    DebugConnector => 14
+    ProcessorPackage => 15
+  }
+}
+
+// THE SLOT IS ABSENT, NOT A SENTINEL. A processor socket does not have channel minus one; it has
+// no channel at all, and the option is what says so.
+fn role_slot(r: BoardComponentRole) -> DdrSlotIdentity? {
+  match r {
+    MemoryModuleSlot { slot: s } => Present { value: s }
+    ProcessorSocket => none
+    BoardControlCpld => none
+    BootFirmwareEeprom => none
+    FirmwareFlash => none
+    ResetController => none
+    ProcessorRailSequencer => none
+    ProcessorPowerStage => none
+    ProcessorPowerGoodSupervisor => none
+    HostNetworkPhy => none
+    ManagementNetworkPath => none
+    StorageEndpoint => none
+    DebugConnector => none
+    ProcessorPackage => none
+  }
+}
+
+// SLOT EQUALITY IS THE DESIGN LAYER'S, NOT RETYPED HERE. An earlier revision compared a bare
+// channel integer, which could not distinguish the two DIMM positions on one channel at all: the
+// near and far slots differ in stub length and loading, and two connectors that compare equal are
+// two connectors that can silently become one.
+fn slots_equal(sa: DdrSlotIdentity?, sb: DdrSlotIdentity?) -> Bool {
+  match sa {
+    Present { value: x } =>
+      match sb {
+        Present { value: y } => ddr_slot_identity_eq(a: x, b: y)
+        Absent => false
+      }
+    Absent =>
+      match sb {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+fn roles_equal(a: BoardComponentRole, b: BoardComponentRole) -> Bool {
+  role_ordinal(r: a) == role_ordinal(r: b)
+    && slots_equal(sa: role_slot(r: a), sb: role_slot(r: b))
+}
+
+// AN ENVELOPE IS EITHER ESTABLISHED FROM A SOURCE OR IT IS AN OBLIGATION. There is no third arm
+// carrying a provisional number, and that absence is the construction: a placement cannot be built
+// from a guess because a guess has no representation here.
+// THE SOURCE IS A DECLARATION, NOT A SENTENCE ABOUT ONE. This carried a NonEmptyStr, and the two
+// values it held show why that was wrong in two different ways. One was literally a module path and
+// a declaration name written as prose -- a second, unresolvable spelling of something the namespace
+// already names, which nothing can check and which rots silently when the declaration is renamed.
+// The other fused two facts: the declaration this module read AND the document section that
+// declaration came from. The second is not ours to state. Where the package authority got its
+// dimensions is a fact belonging to the package authority; restating it here creates a copy that
+// stays confidently wrong when the authority corrects itself.
+//
+// A DeclarationRef says only what this module actually did: it read that declaration. It is not yet
+// CHECKED -- nothing in the corpus verifies these resolve, which is the citation-staleness class
+// DESIGN section 3 names -- but a name the namespace could resolve is decidable in principle, and a
+// sentence is not decidable at all.
+type ComponentEnvelopeStanding
+  = EnvelopeEstablished { envelope: PackageBodyEnvelope, source: DeclarationRef }
+  | EnvelopeNotEstablished { gap: FactAuthorityBlocker }
+
+type PlannedComponent {
+  identity: NonEmptyStr
+  role: BoardComponentRole
+  envelope: ComponentEnvelopeStanding
+  origin: Point2
+}
+
+// EACH ARM, AND WHY IT IS ITS OWN ARM. ComponentEnvelopeNotEstablished carries the gap with the
+// refusal so the reader learns which question to ask, not merely that one exists.
+// RequiredRoleUnfilled is a role the design requires that nothing fills; ComponentFillsNoRequired
+// Role is its mirror, a part on the board answering to nothing.
+// PlannedIdentityRepeated is refused HERE rather than left to the geometry layer, and that is the
+// whole reason it exists: physical.dag does refuse a repeated identity, but it only ever sees
+// components whose envelopes are established, so a duplicate among OBLIGATIONS is invisible to it.
+// The reference plan carried exactly that - four memory slots sharing one identity, harmless only
+// while their envelopes stayed outstanding, and a collision the moment they landed.
+type PlacementRefusal
+  = ComponentEnvelopeNotEstablished { component: NonEmptyStr, gap: FactAuthorityBlocker }
+  | RequiredRoleUnfilled { role: BoardComponentRole }
+  | ComponentFillsNoRequiredRole { component: NonEmptyStr, role_named: NonEmptyStr }
+  | PlannedIdentityRepeated { component: NonEmptyStr }
+  | RoleFilledMoreThanOnce { role: BoardComponentRole, fills: Int }
+  | PlanWasBuiltFromADifferentDesign { plan_design: DeclarationRef, admitted_against: DeclarationRef }
+  | RequiredFunctionWithoutJustifiedPartOnBoard { requirement: BoardRequirementIdentity }
+
+// WHICH DESIGN THIS PLAN WAS BUILT FROM, carried so that a projection cannot mix two boards. A
+// plan is derived from a design, and once several projections exist -- a scene, a fabrication
+// artifact, a receipt -- the failure that costs the most is not one of them being wrong. It is two
+// of them being right about DIFFERENT boards: each internally consistent, each passing its own
+// checks, and disagreeing about what was built. Nothing downstream can detect that unless the plan
+// says which design it came from.
+//
+// IT IS AN IDENTITY, AND DELIBERATELY NOT CALLED A REVISION. A DeclarationRef names the design
+// declaration; it does not change when that declaration's CONTENTS are edited in place, so it
+// distinguishes two designs and not two states of one design. Calling it a revision would claim
+// the second and deliver the first, and a stamp that cannot notice an edit is worse than no stamp
+// while wearing the name of one. What a real revision needs is a content hash of the design, which
+// std.content_hash already provides; that is a further step and it is not taken here.
+type BoardPlacementPlan {
+  frame: CoordinateFrameIdentity
+  outline: AxisAlignedRectangle2
+  design: DeclarationRef
+  components: List<PlannedComponent>
+}
+
+fn altra_1p_minimum_ref() -> DeclarationRef {
+  decl_ref(module_path: "product.altra_motherboard.minimal_design", decl_name: "altra_1p_minimum")
+}
+
+// THE REQUIRED POPULATION IS DERIVED FROM THE DESIGN, never listed beside it. A hand-written
+// roster of four memory slots is a second statement of the channel count, and the copy that
+// disagrees when someone selects six channels is the one nobody edits.
+//
+// AND IT IS DERIVED FROM NAMED SLOTS, NOT FROM A COUNT. This module previously expanded the
+// channel count into [0..n), which is cardinality standing where identity was required: it
+// asserts that a four-channel board populates channels zero through three, an arithmetic answer
+// to a design question. The topology now names its controllers and its per-channel positions, so
+// the required roles are the cross product of two authored sets rather than a generated range --
+// and a board that populates DDR0, DDR1, DDR4 and DDR5 is expressible, which under the old shape
+// it was not.
+// CLOCK FUNCTIONS STAY OFF THIS ROSTER. They are modeled in product.altra_motherboard.realization
+// and projected as functional obligations without coordinates — putting them on the physical
+// roster made the exactly-one population join silently decide that one device provides them.
+
+fn plan_component_identities(plan: BoardPlacementPlan) -> List<NonEmptyStr> {
+  fold(plan.components, init: [], f: fn(acc, c) { concat(acc, [c.identity]) })
+}
+
+fn realization_placement_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+  fold(
+    population_realization_refusals(
+      roster: altra_1p_requirement_part_realizations,
+      plan_identities: plan_component_identities(plan: plan),
+    ),
+    init: [],
+    f: fn(acc, r) {
+      match r {
+        RequiredFunctionWithoutJustifiedPart { requirement: req } =>
+          concat(acc, [RequiredFunctionWithoutJustifiedPartOnBoard { requirement: req }])
+      }
+    }
+  )
+}
+
+fn required_roles(d: AltraMinimalMotherboard) -> List<BoardComponentRole> {
+  let slots = fold(topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
+    concat(acc, [MemoryModuleSlot { slot: s }])
+  })
+  concat(
+    [ProcessorSocket, ProcessorPackage, BoardControlCpld, BootFirmwareEeprom, FirmwareFlash,
+     ResetController, ProcessorRailSequencer, ProcessorPowerStage, ProcessorPowerGoodSupervisor,
+     HostNetworkPhy, ManagementNetworkPath, StorageEndpoint, DebugConnector],
+    slots
+  )
+}
+
+fn role_fill_count(plan: BoardPlacementPlan, r: BoardComponentRole) -> Int {
+  fold(plan.components, init: 0, f: fn(acc, c) { if roles_equal(a: c.role, b: r) { acc + 1 } else { acc } })
+}
+
+fn plan_fills_role(plan: BoardPlacementPlan, r: BoardComponentRole) -> Bool {
+  role_fill_count(plan: plan, r: r) > 0
+}
+
+fn design_requires_role(d: AltraMinimalMotherboard, r: BoardComponentRole) -> Bool {
+  fold(required_roles(d: d), init: false, f: fn(acc, q) { acc || roles_equal(a: q, b: r) })
+}
+
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT. Asserting that the plan has fourteen components
+// would pass for a plan with two processor sockets and no clock generator. Both directions are
+// walked because they fail differently: a missing role is an unbuilt board, and an extra component
+// is a part nobody has justified.
+//
+// AND THE JOIN IS ON MULTIPLICITY, NOT MERE PRESENCE. An earlier revision asked only whether SOME
+// component filled each role, which admitted a board with two processor sockets: both answered a
+// required role, so neither was unjustified, and nothing was missing. The board was wrong and every
+// check passed. Every role this board has is exactly-one -- each DIMM slot is a distinct identity
+// rather than a quantity -- so exactly-one is enforced directly. A role that legitimately admits
+// several parts (decoupling, say) is not representable here today, and the day one exists this
+// becomes a projection of that role's declared multiplicity rather than a fixed comparison. It is
+// deliberately not written as one now: a multiplicity axis with a single inhabited value is a field
+// carried but never joined, which reads as a guarantee while deciding nothing.
+fn population_refusals(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+  let missing = fold(required_roles(d: d), init: [], f: fn(acc, r) {
+    let fills = role_fill_count(plan: plan, r: r)
+    if fills == 1 {
+      acc
+    } else {
+      if fills == 0 {
+        concat(acc, [RequiredRoleUnfilled { role: r }])
+      } else {
+        concat(acc, [RoleFilledMoreThanOnce { role: r, fills: fills }])
+      }
+    }
+  })
+  let extra = fold(plan.components, init: [], f: fn(acc, c) {
+    if design_requires_role(d: d, r: c.role) {
+      acc
+    } else {
+      concat(acc, [ComponentFillsNoRequiredRole { component: c.identity, role_named: role_tag(r: c.role) }])
+    }
+  })
+  concat(missing, extra)
+}
+
+fn envelope_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+  fold(plan.components, init: [], f: fn(acc, c) {
+    match c.envelope {
+      EnvelopeEstablished { envelope: _, source: _ } => acc
+      EnvelopeNotEstablished { gap: g } =>
+        concat(acc, [ComponentEnvelopeNotEstablished { component: c.identity, gap: g }])
+    }
+  })
+}
+
+fn planned_identity_occurrences(cs: List<PlannedComponent>, id: NonEmptyStr) -> Int {
+  fold(cs, init: 0, f: fn(acc, c) { if (c.identity as String) == (id as String) { acc + 1 } else { acc } })
+}
+
+fn planned_identity_seen(seen: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
+  fold(seen, init: false, f: fn(acc, s) { acc || (s as String) == (id as String) })
+}
+
+type IdentityScan {
+  seen: List<NonEmptyStr>
+  out: List<PlacementRefusal>
+}
+
+// A REPEATED IDENTITY IS REPORTED ONCE, not once per occurrence, so four slots sharing a name
+// produce one refusal naming it rather than four saying the same thing.
+fn identity_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+  let scan = fold(plan.components, init: IdentityScan { seen: [], out: [] }, f: fn(acc, c) {
+    let dup = if planned_identity_occurrences(cs: plan.components, id: c.identity) > 1
+      && !planned_identity_seen(seen: acc.seen, id: c.identity) {
+      [PlannedIdentityRepeated { component: c.identity }]
+    } else {
+      []
+    }
+    IdentityScan { seen: concat(acc.seen, [c.identity]), out: concat(acc.out, dup) }
+  })
+  scan.out
+}
+
+// THE DESIGN JOIN IS ITS OWN CAUSE RATHER THAN A PRECONDITION, because a plan built from another
+// design does not merely fail the population check -- it fails it in a way that reads like ordinary
+// missing work. An eight-channel plan admitted against a four-channel design reports four
+// unjustified slots, which is what a board with four spare connectors would report, and the reader
+// fixes the wrong thing. Naming the mismatch says the two are not comparable at all.
+fn design_refusals(d_ref: DeclarationRef, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+  if declaration_ref_eq(a: plan.design, b: d_ref) {
+    []
+  } else {
+    [PlanWasBuiltFromADifferentDesign { plan_design: plan.design, admitted_against: d_ref }]
+  }
+}
+
+// THE DESIGN IDENTITY IS AN ARGUMENT, NOT A CONSTANT REACHED FOR INSIDE. An earlier revision took
+// the design value d and then compared the plan against a hardcoded altra_1p_minimum_ref(), so the
+// join answered the same question no matter which design was passed: a plan built from design A,
+// admitted against design B, agreed with A and passed. The caller is the one who knows which
+// declaration it read the design out of, so the caller states it and the mismatch becomes real.
+fn placement_causes(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+  concat(
+    concat(
+      concat(
+        concat(population_refusals(d: d, plan: plan), envelope_refusals(plan: plan)),
+        identity_refusals(plan: plan)
+      ),
+      design_refusals(d_ref: d_ref, plan: plan)
+    ),
+    realization_placement_refusals(plan: plan)
+  )
+}
+
+fn placement_refusal_count(cs: List<PlacementRefusal>) -> Int {
+  fold(cs, init: 0, f: fn(acc, _c) { acc + 1 })
+}
+
+type PlacementAdmission
+  = PlacementAdmitted { plan: BoardPlacementPlan }
+  | PlacementRefused { causes: List<PlacementRefusal> }
+
+// THE ADMISSION IS THE SAME QUESTION UNDER BOTH INTENTS, and that is deliberate. An unestablished
+// envelope is not more acceptable during bring-up: the part is still whatever size it is, and a
+// bring-up board that cannot be assembled is not a lesser failure than a production one. The
+// intent already decides what the design admits in minimal_design; it does not get a second,
+// weaker meaning here.
+fn admit_placement(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> PlacementAdmission {
+  let causes = placement_causes(d: d, d_ref: d_ref, plan: plan)
+  if placement_refusal_count(cs: causes) == 0 {
+    PlacementAdmitted { plan: plan }
+  } else {
+    PlacementRefused { causes: causes }
+  }
+}
+
+// ONLY THE COMPONENTS WHOSE SIZE IS KNOWN BECOME PLACEMENTS. This is the bridge to the body-
+// envelope collision check, and it deliberately cannot carry an obligation across: a component
+// with no established envelope has no extent, so handing it to a geometric check would require
+// inventing one. The obligations are reported by the admission above rather than smuggled here
+// as zero-sized parts that collide with nothing.
+fn placeable_components(plan: BoardPlacementPlan) -> List<ComponentPlacement> {
+  fold(plan.components, init: [], f: fn(acc, c) {
+    match c.envelope {
+      EnvelopeNotEstablished { gap: _ } => acc
+      EnvelopeEstablished { envelope: e, source: _ } =>
+        concat(acc, [ComponentPlacement { identity: c.identity, body_envelope: e, origin: c.origin }])
+    }
+  })
+}
+
+fn established_envelope_count(plan: BoardPlacementPlan) -> Int {
+  fold(placeable_components(plan: plan), init: 0, f: fn(acc, _c) { acc + 1 })
+}
+
+fn outstanding_obligation_count(plan: BoardPlacementPlan) -> Int {
+  placement_refusal_count(cs: envelope_refusals(plan: plan))
+}
+
+// THE BOARD'S OWN FRAME AND OUTLINE, authored rather than cited because they are ours. 305 by 267
+// millimetres, drawn in micrometres because the frame is sub-millimetre registered; this is a
+// declared board size and NOT a claim of conformance to any mechanical standard. Conformance would
+// be a cited constraint checked against this outline, which is a different fact and is not made
+// here by choosing similar numbers.
+// The frame identity is MINTED, not named. A coordinate frame is an allocator occurrence in the
+// spatial-frame space rather than a string, and the distinction is not cosmetic: two frames with
+// the same spelling would compare equal while registering different quanta. The board's frame is
+// registered by its consumer with a micrometre quantum, which is what physical.dag's sub-millimetre
+// requirement checks — a half-millimetre package pitch is not expressible in whole millimetres.
+fn altra_board_frame() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 21) }
+
+fn altra_board_outline() -> OrthogonalConstruction<AxisAlignedRectangle2> {
+  axis_aligned_rectangle2(
+    min: point2(frame: altra_board_frame(), x: 0, y: 0),
+    max: point2(frame: altra_board_frame(), x: 305000, y: 267000)
+  )
+}
+
+// Vendor body length is the drawing major axis; map it to board X (body_width) and width to Y (body_height).
+fn envelope_from_package_body(b: PackageBodyDimensions, source: DeclarationRef) -> ComponentEnvelopeStanding {
+  EnvelopeEstablished {
+    envelope: PackageBodyEnvelope {
+      package_designator: b.designator,
+      body_width: b.body_length_max,
+      body_height: b.body_width_max,
+    },
+    source: source,
+  }
+}
+
+data host_phy_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
+  b: dp83867_rgz0048b_body,
+  source: decl_ref(module_path: "extdeps.network.ti_dp83867", decl_name: "dp83867_rgz0048b_body"),
+)
+
+data power_stage_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
+  b: tps53688_rsb0040a_body,
+  source: decl_ref(module_path: "extdeps.power.ti_tps53688", decl_name: "tps53688_rsb0040a_body"),
+)
+
+data power_good_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
+  b: tps3808_dbv0006a_body,
+  source: decl_ref(module_path: "extdeps.power.ti_tps3808", decl_name: "tps3808_dbv0006a_body"),
+)
+
+// THE ONE ESTABLISHED ENVELOPE. The board-control CPLD is an iCE40 in TQ144, whose body dimensions
+// come from the public Lattice datasheet this tree already cites, and are read from the package row
+// rather than retyped — so a correction there moves this placement instead of leaving it agreeing
+// with a number that has changed.
+data board_control_envelope: ComponentEnvelopeStanding = EnvelopeEstablished {
+  envelope: body_envelope_of_ice40_package(p: ice40_tq144_package),
+  source: decl_ref(module_path: "extdeps.programmable_logic.ice40.subject", decl_name: "ice40_tq144_package"),
+}
+
+// THE FIRST ENVELOPE THIS BOARD ESTABLISHES FROM A CITED AUTHORITY RATHER THAN OWING. Every other
+// obligation on this board is open because nobody has selected the part or found the document; the
+// processor package is the one subject where the fact IS established and the carriage decision IS
+// made, so the split standing has to be able to produce geometry and not only blockers. If this
+// module could still only emit obligations here, the two-axis standing would be decorative: an
+// established fact that no consumer can turn into a dimension is indistinguishable from an
+// unestablished one.
+//
+// AND IT IS THE PACKAGE'S ROLE, NOT THE SOCKET'S. The package occupies board volume once seated,
+// which constrains keepout and neighbour clearance; the socket's land pattern remains unknown and
+// its role remains an obligation. Two roles, two standings, and clearing one does not clear the
+// other — the distinction this PR's root defect erased.
+data processor_package_envelope: ComponentEnvelopeStanding = EnvelopeEstablished {
+  envelope: PackageBodyEnvelope {
+    package_designator: altra_package_body_designator,
+    body_width: altra_package_body_width,
+    body_height: altra_package_body_height,
+  },
+  source: decl_ref(module_path: "extdeps.cpu.ampere_altra_package", decl_name: "altra_package_body_width"),
+}
+
+// THE SOCKET IS NOT THE PACKAGE. Binding the socket role to processor_package_standing was this
+// PR's root defect: it reopened the category error the attachment stack exists to prevent, and a
+// witness had locked the wrong edge in. The socket's blocker is derived from the SOCKET layer's
+// own axes. Deriving it rather than asserting one also means the legal decision recorded against
+// the package cannot silently unblock the socket, which is precisely the false dependency this
+// module previously encoded.
+//
+// THE ABSENT ARM IS UNREACHABLE WHILE THE SOCKET IS UNRESOLVED, and it refuses rather than
+// inventing an obstacle. A socket layer reporting no blocker means the fact was established and
+// the carriage decided, at which point what is owed here is a real envelope binding to the socket
+// vendor's drawing — not a fabricated obligation standing in for one. Answering with a plausible
+// blocker would report an established subject as blocked, which is the fabricated plausible output
+// pointed the other way.
+fn socket_envelope_blocker() -> FactAuthorityBlocker {
+  match subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
+    Present { value: b } => b
+    Absent =>
+      NeedsSomeoneToFindTheDocument {
+        what_is_missing: "the socket layer reports no blocker, so a socket envelope binding is owed here rather than an obligation",
+      }
+  }
+}
+
+fn obligation(g: FactAuthorityBlocker, id: NonEmptyStr, r: BoardComponentRole, x: Int, y: Int) -> PlannedComponent {
+  PlannedComponent {
+    identity: id,
+    role: r,
+    envelope: EnvelopeNotEstablished { gap: g },
+    origin: point2(frame: altra_board_frame(), x: x, y: y),
+  }
+}
+
+// THE IDENTITY CARRIES BOTH COORDINATES, because the slot has two. Naming these by channel alone
+// would have given the two positions on one channel a single identity, which the identity-repeat
+// refusal above exists to catch -- but only once their envelopes land, and by then the board is
+// drawn. Naming them fully means the collision cannot be authored in the first place.
+fn memory_slot_obligations(d: AltraMinimalMotherboard) -> List<PlannedComponent> {
+  fold(topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
+    let ch = ddr_channel_ordinal(c: s.channel)
+    let pos = dimm_slot_position_ordinal(p: s.position)
+    concat(acc, [obligation(
+      g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the MemoryModuleSlot role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" },
+      id: "dimm_ddr{ch}_slot{pos}",
+      r: MemoryModuleSlot { slot: s },
+      x: 150000 + (pos * 14000),
+      y: 20000 + (ch * 12000)
+    )])
+  })
+}
+
+// THE REFERENCE PLAN, AND IT REFUSES. That is the honest state of this increment rather than a
+// defect in it: one envelope is established and the rest are obligations, so the plan names every
+// part the design requires and can place exactly one of them. The refusals are the increment's
+// deliverable — each is typed, carries its own cause, and is counted, so the remaining work is
+// visible and prioritisable instead of being absent.
+// ON THE REFUSED-OUTLINE ARM: A BOARD WITH NO OUTLINE IS NOT A BOARD WITH A SMALL OUTLINE. An
+// earlier draft answered a refused construction with a degenerate one-micrometre rectangle so the
+// return type could stay simple, which is the absorbing fallback in its purest form: every
+// component would then have been reported as outside the outline, and the real cause — that the
+// outline never constructed — replaced by a dozen plausible ones.
+fn altra_reference_plan() -> OrthogonalConstruction<BoardPlacementPlan> {
+  let fixed = [
+    PlannedComponent {
+      identity: "board_control_cpld",
+      role: BoardControlCpld,
+      envelope: board_control_envelope,
+      origin: point2(frame: altra_board_frame(), x: 240000, y: 200000),
+    },
+    obligation(
+      g: socket_envelope_blocker(),
+      id: "cpu_socket", r: ProcessorSocket, x: 60000, y: 90000
+    ),
+    PlannedComponent {
+      identity: "processor_package",
+      role: ProcessorPackage,
+      envelope: processor_package_envelope,
+      origin: point2(frame: altra_board_frame(), x: 60000, y: 90000),
+    },
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the BootFirmwareEeprom role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "boot_eeprom", r: BootFirmwareEeprom, x: 250000, y: 40000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the FirmwareFlash role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "spi_nor", r: FirmwareFlash, x: 260000, y: 60000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the ResetController role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "reset_ctl", r: ResetController, x: 220000, y: 170000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "processor rail enable sequencing is not established: cited rail order exists but no sequencer population is justified for this board" }, id: "power_seq", r: ProcessorRailSequencer, x: 30000, y: 220000),
+    PlannedComponent {
+      identity: "power_stage",
+      role: ProcessorPowerStage,
+      envelope: power_stage_envelope,
+      origin: point2(frame: altra_board_frame(), x: 40000, y: 220000),
+    },
+    PlannedComponent {
+      identity: "power_good",
+      role: ProcessorPowerGoodSupervisor,
+      envelope: power_good_envelope,
+      origin: point2(frame: altra_board_frame(), x: 50000, y: 220000),
+    },
+    PlannedComponent {
+      identity: "host_phy",
+      role: HostNetworkPhy,
+      envelope: host_phy_envelope,
+      origin: point2(frame: altra_board_frame(), x: 270000, y: 120000),
+    },
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "management network connectivity is not established: reference precedent names a BMC plus PHY path on a dual-socket reference board, not a selected management population for this single-socket design" }, id: "mgmt_net", r: ManagementNetworkPath, x: 280000, y: 120000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the StorageEndpoint role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "nvme_conn", r: StorageEndpoint, x: 280000, y: 90000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the DebugConnector role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "debug_hdr", r: DebugConnector, x: 200000, y: 250000),
+  ]
+  match altra_board_outline() {
+    OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
+    OrthogonalReady { value: o } =>
+      OrthogonalReady {
+        value: BoardPlacementPlan {
+          frame: altra_board_frame(),
+          outline: o,
+          design: altra_1p_minimum_ref(),
+          components: concat(fixed, memory_slot_obligations(d: altra_1p_minimum)),
+        }
+      }
+  }
+}
+
+// THE BOARD'S FRAME REGISTRATION, which is board configuration rather than a cited fact: we chose
+// to register this board at micrometre grain, and physical.dag checks that choice is fine enough
+// to express the geometry rather than trusting it. At millimetre grain a half-millimetre package
+// pitch is not expressible and two adjacent pins collapse onto one coordinate.
+// A REFUSED REGISTRATION IS REPORTED, NOT SWALLOWED. An earlier revision answered the EMPTY
+// registry when register_frame refused, discarding the cause. That is the absorbing fallback in
+// its quietest form: the board frame is then simply absent, the geometry check downstream reports
+// BoardFrameUnregistered, and the actual cause -- a non-decimal length scale, or a frame
+// registered twice -- is replaced by a symptom that names neither. The two states are different
+// (nobody registered it / registering it was refused, and for a stated reason) and only one of
+// them is a defect in this function's own argument.
+type AltraFrameRegistryStanding
+  = FrameRegistryEstablished { registry: SpatialFrameRegistry }
+  | FrameRegistryRefused { cause: FrameRegistrationRefusal }
+
+fn altra_frame_registry() -> AltraFrameRegistryStanding {
+  let r0 = empty_frame_registry()
+  match register_frame(r: r0, identity: altra_board_frame(), length_scale: Micro) {
+    FrameRegistered { frame: f } => FrameRegistryEstablished { registry: registry_with(r: r0, f: f) }
+    FrameRegistrationRefused { cause: c } => FrameRegistryRefused { cause: c }
+  }
+}
+
+fn board_article(plan: BoardPlacementPlan) -> BoardPhysicalArticle {
+  BoardPhysicalArticle {
+    frame: plan.frame,
+    outline: plan.outline,
+    placements: placeable_components(plan: plan),
+  }
+}
+
+// HOW MANY PARTS THE GEOMETRY CHECK DID NOT SEE, and it is counted from the causes rather than
+// assumed to be zero. Two refusal classes describe a part that will occupy board area later and
+// was not available to be checked now: a required role nothing fills, and a component whose
+// envelope is still owed. Realization refusals name functional gaps on identities that may already
+// have cited bodies on the plan — those parts were checked geometrically, so they do not belong
+// in this count. The other placement refusals describe parts that ARE present and are defects in
+// what was checked rather than gaps in what was not.
+fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> Int {
+  fold(placement_causes(d: d, d_ref: d_ref, plan: plan), init: 0, f: fn(acc, c) {
+    match c {
+      RequiredRoleUnfilled { role: _ } => acc + 1
+      ComponentEnvelopeNotEstablished { component: _, gap: _ } => acc + 1
+      ComponentFillsNoRequiredRole { component: _, role_named: _ } => acc
+      PlannedIdentityRepeated { component: _ } => acc
+      RoleFilledMoreThanOnce { role: _, fills: _ } => acc
+      PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => acc
+      RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => acc
+    }
+  })
+}
+
+// A CLEAN GEOMETRY ANSWER ON A PARTIAL BOARD IS NOT A CLEAN BOARD, and this coproduct is what
+// stops the two from being spelled the same way. Running the body-envelope check over the parts
+// whose size is known is worth doing and its result is worth reporting -- but the parts still
+// owed will occupy area too, and any of them may land on top of something. A single admitted arm
+// would let a board with one placed component and thirteen obligations report exactly what a
+// finished board reports, which is the rung inflation DESIGN 4b names: the honest answer and the
+// flattering one are indistinguishable, so the flattering one is what gets consumed downstream
+// and drawn as if it were checked.
+//
+// The scope is DERIVED from the count of unchecked parts, not authored beside it, so the complete
+// arm has no constructor reachable while anything is owed.
+type BoardBodyLayoutStanding
+  = BodyLayoutAdmittedOverEveryRequiredPart { article: BoardPhysicalArticle }
+  | BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: Int, geometry: PhysicalAdmission }
+  | BodyLayoutRefused { causes: PhysicalRefusalSet }
+
+fn board_body_layout_standing(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> BoardBodyLayoutStanding {
+  let owed = parts_not_geometrically_checked(d: d, d_ref: d_ref, plan: plan)
+  let geometry = match altra_frame_registry() {
+    FrameRegistryEstablished { registry: r } =>
+      admit_body_envelopes(registry: r, article: board_article(plan: plan))
+    FrameRegistryRefused { cause: c } =>
+      PhysicallyRefused { causes: PhysicalRefusalSet {
+        first: BoardFrameRegistrationRefused { cause: c },
+        rest: [],
+      } }
+  }
+  if owed > 0 {
+    BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: owed, geometry: geometry }
+  } else {
+    match geometry {
+      BodyEnvelopesAdmitted { article: a } => BodyLayoutAdmittedOverEveryRequiredPart { article: a }
+      PhysicallyRefused { causes: cs } => BodyLayoutRefused { causes: cs }
+    }
+  }
+}

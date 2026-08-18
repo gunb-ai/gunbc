@@ -1,10 +1,12 @@
 module gunbc.package_delivery
 
-import std.types { String, NonEmptyStr, List, FilePath, Bool, Int }
+import std.types { String, NonEmptyStr, List, FilePath, Bool, Int, Set }
+import std.algebra { trim }
 import std.content_hash {
   Sha512Digest,
   Sha1Digest,
   content_hash_of_value,
+  content_hash_atom,
   ContentHash,
   as_content_hash_sha512,
   Sha512Hash,
@@ -47,15 +49,23 @@ import extdeps.http.client
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io
+import extdeps.tools.npm
+import gunbc.host_cli_dependency {
+  observe_host_cli_dependency,
+  HostCliDependencyAbsent,
+  host_dependency_absent_wire,
+  first_absent_codex_wet_materialization_host_cli_dependency,
+}
 import extdeps.tools.sha512sum {
   sha512sum_observe_file,
   Sha512FileObserved,
   Sha512FileObservationRefused,
 }
-import extdeps.tools.npm
 import extdeps.tools.node
-import gunbc.host_layout {
-  srv1_provider_runtime_placement,
+import gunbc.codex_runtime_paths {
+  codex_runtime_current_link_path,
+  codex_bundled_executable_at_current_link,
+  srv1_codex_runtime_release_root,
 }
 import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
@@ -63,7 +73,23 @@ import extdeps.languages.json.emit {
 }
 import extdeps.languages.json.parse { parse_json }
 import gunbc.retained_shell_script { retained_foreign }
-
+import extdeps.ollama.binary_release {
+  OllamaBinaryRelease,
+  ollama_required_release,
+  ollama_binary_release_download_locator,
+  ollama_binary_release_asset_name,
+}
+import extdeps.tools.sha256sum {
+  sha256sum_verify_via_shell,
+  Sha256Matches,
+  Sha256Mismatch,
+  Sha256VerifyInfraFailure,
+}
+import gunbc.spark_serving_runtime_receipt {
+  SparkServingRuntimeArchiveAdmissionReceipt,
+  write_spark_serving_runtime_archive_admission_receipt,
+  spark_serving_runtime_receipt_wire_path,
+}
 
 data package_delivery_placement_note: String = "FIRST CONSUMED package materializer for gunbc. Lives here — not in std — until a second real consumer proves a shared abstraction. Owns Codex (and later other) product policy over upstream package facts from extdeps.npm / extdeps.package. Every production effect boundary RE-ADJUDICATES raw graphs via package_lock_admit_graph — never trusts a freely constructed PackageLockGraphAdmitted. Decoding lock SRI text is NOT artifact verification."
 
@@ -419,6 +445,34 @@ fn codex_expected_wrapper_version() -> NonEmptyStr {
   (codex_required_package_version as String) as NonEmptyStr
 }
 
+data codex_runtime_version_identity_note: String = "ONE runtime version marker for every Codex CLI identity probe. codex_required_package_version is the sole authority; the marker is codex-cli <version> as printed by codex --version. Weak codex-cli-only checks let srv1's ambient npm install (0.133.0) pass while extdeps.llm.codex_app_server cites 0.146.0 protocol facts — two runtimes producing incompatible protocol surfaces. SATISFACTION IS EXACT-LINE, not substring: a line trimmed must equal the marker, so codex-cli 0.146.01 / 0.146.0-rc1 / 0.146.0-dev cannot pass by prefix overlap."
+
+fn codex_runtime_version_identity_marker() -> String {
+  concat("codex-cli ", codex_required_package_version as String)
+}
+
+fn codex_runtime_version_identity_line_exact(line: String) -> Bool {
+  trim(s: line) == codex_runtime_version_identity_marker()
+}
+
+fn codex_runtime_version_identity_satisfied(combined_output: String) -> Bool {
+  fold(
+    split(s: combined_output, delimiter: "\n"),
+    init: false,
+    f: (acc, line) => acc || codex_runtime_version_identity_line_exact(line: line),
+  )
+}
+
+data publish_codex_runtime_current_link_note: String = "Typed symlink publish via extdeps.shell.Symlink.AtomicReplace (ln -sfnT argv binding). Runs inside materialize_codex_runtime_bundle during gunbc run materialize, not on the host_effect_apply observe/ensure/read-back transport."
+
+fn publish_codex_runtime_current_link(
+  release_parent: FilePath,
+  release_root: FilePath,
+) -> Bool {
+  let link = codex_runtime_current_link_path(release_parent: release_parent)
+  shell.Symlink.AtomicReplace(target: release_root, link: link).success
+}
+
 fn codex_expected_platform_version(target: CodexNpmRuntimeTarget) -> NonEmptyStr {
   concat(
     codex_required_package_version as String,
@@ -537,6 +591,28 @@ fn codex_native_executable_rel(target: CodexNpmRuntimeTarget) -> NonEmptyStr? {
     }
   } else {
     none
+  }
+}
+
+fn codex_linux_arm64_native_executable_rel() -> NonEmptyStr? {
+  codex_native_executable_rel(
+    target: CodexNpmRuntimeTarget {
+      os: "linux" as NonEmptyStr,
+      cpu: "arm64" as NonEmptyStr,
+    },
+  )
+}
+
+fn codex_bundled_executable_for_srv1() -> FilePath? {
+  match codex_linux_arm64_native_executable_rel() {
+    Absent => none
+    Present { value: rel } =>
+      Present {
+        value: codex_bundled_executable_at_current_link(
+          release_parent: srv1_codex_runtime_release_root,
+          native_executable_rel: rel,
+        )
+      }
   }
 }
 
@@ -805,11 +881,13 @@ fn lock_path_key_rel(key: NpmLockPathKey) -> NonEmptyStr? {
   }
 }
 
-data codex_runtime_release_parent: FilePath = srv1_provider_runtime_placement().runtime_release_root
+data codex_runtime_release_parent: FilePath = srv1_codex_runtime_release_root
 
 data codex_runtime_receipt_sidecar_name: NonEmptyStr = ".gunbc-codex-runtime-receipt" as NonEmptyStr
 
 data admitted_codex_runtime_source_note: String = "ONE carrier binds the bytes adjudicated to the bytes executed. materialize_codex_runtime_bundle admits lock_bytes, then Filesystem.Write those exact lock_bytes and manifest_bytes into the build root before npm ci. A path-based copy of a second lock file is unwritable on this path — the admitted/executed fork is construction-closed."
+
+data codex_runtime_materialize_memory_defect_note: String = "PRODUCTION DEFECT — CONFIRMED (srv1 2026-08-14, warm-dove-760 + eager-koi-458 independent replay, systemd MemoryMax=8G). ONE file codex_app_server_protocol.schemas.json, 506,984 bytes (~507 KB). Read + parse_json only (parse-only rung) pins 8 GiB (~16,500x input), no completion — curve 0.05→2.36→4.89→7.99 GiB flat. Parse+canonicalize on same file/cap is indistinguishable (0.05→2.36→2.97→7.99). DEFECT: parse_json / JsonValue representation it constructs. EXONERATED: canonicalize_json_value (no separate marginal blow-up), .dag caller (no fold/accumulator/cross-file retention). NOT a Codex/materialize caller problem — three .dag rewrites moved ceiling zero. Remedy: substrate JsonValue representation; operator design review BEFORE implementation. #8166: stop .dag optimisation here."
 
 type AdmittedCodexRuntimeSource {
   manifest_bytes: String
@@ -919,12 +997,15 @@ fn observe_admitted_package_set_identity(
   staging_dir: FilePath,
 ) -> ContentHash? {
   let ordered = sort_admitted_packages_by_lock_key(receipts: receipts)
-  let body = fold(
+  let lines = fold(
     ordered,
-    init: "" as String,
+    init: [] as List<String>,
     f: (acc, receipt) =>
-      concat(acc, concat(admitted_package_receipt_canonical_line(receipt: receipt), "\n")),
+      acc |> list_push(
+        concat(admitted_package_receipt_canonical_line(receipt: receipt), "\n"),
+      ),
   )
+  let body = join(lines, "")
   let path = concat(staging_dir as String, "/admitted-package-set.canonical")
   let wrote = Filesystem.Write(path: path, content: body)
   if wrote.success == false {
@@ -1157,14 +1238,14 @@ fn observe_package_materialized_tree(
 fn json_object_keys_unique(members: List<JsonKeyValue>) -> Bool {
   match fold(
     members,
-    init: Present { value: [] as List<String> },
+    init: Present { value: empty_set() as Set<String> },
     f: (acc, m) => match acc {
       Absent => none
       Present { value: seen } =>
-        if any(seen, k => k == m.key) {
+        if set_contains(seen, m.key) {
           none
         } else {
-          Present { value: list_push(seen, m.key) }
+          Present { value: set_insert(seen, m.key) }
         }
     },
   ) {
@@ -1173,52 +1254,8 @@ fn json_object_keys_unique(members: List<JsonKeyValue>) -> Bool {
   }
 }
 
-type JsonMemberSortAcc {
-  out: List<JsonKeyValue>
-  placed: Bool
-}
-
-fn insert_json_member_by_key(
-  sorted: List<JsonKeyValue>,
-  member: JsonKeyValue,
-) -> List<JsonKeyValue> {
-  let acc = fold(
-    sorted,
-    init: JsonMemberSortAcc {
-      out: [] as List<JsonKeyValue>,
-      placed: false,
-    },
-    f: (state, existing) =>
-      if state.placed {
-        JsonMemberSortAcc {
-          out: list_push(state.out, existing),
-          placed: true,
-        }
-      } else if member.key <= existing.key {
-        JsonMemberSortAcc {
-          out: list_push(list_push(state.out, member), existing),
-          placed: true,
-        }
-      } else {
-        JsonMemberSortAcc {
-          out: list_push(state.out, existing),
-          placed: false,
-        }
-      },
-  )
-  if acc.placed {
-    acc.out
-  } else {
-    list_push(acc.out, member)
-  }
-}
-
 fn sort_json_members_by_key(members: List<JsonKeyValue>) -> List<JsonKeyValue> {
-  fold(
-    members,
-    init: [] as List<JsonKeyValue>,
-    f: (sorted, member) => insert_json_member_by_key(sorted: sorted, member: member),
-  )
+  sort_by(members, m => m.key)
 }
 
 fn canonicalize_json_value(v: JsonValue) -> JsonValue? {
@@ -1277,6 +1314,92 @@ fn canonicalize_json_value(v: JsonValue) -> JsonValue? {
   }
 }
 
+data protocol_schema_bundle_identity_note: String = "Protocol schema bundle identity is a content-addressed manifest of per-file canonical digests: for each *.json under the generated schema tree, canonicalize JSON (set membership + sort_by on object members), SHA-512 canonical bytes via one staging file, append only relative-path TAB digest-hex to the manifest file incrementally, then SHA-512 the manifest. Fold retains only a success bit — not manifest lines or canonical bodies."
+
+fn protocol_schema_relative_path(abs_s: String, schema_prefix: String) -> String {
+  if abs_s.starts_with(prefix: schema_prefix) {
+    substring(
+      s: abs_s,
+      start: schema_prefix.length(),
+      end: abs_s.length(),
+    )
+  } else {
+    abs_s
+  }
+}
+
+fn protocol_schema_canonical_staging_path(
+  work_dir: FilePath,
+  rel: String,
+) -> FilePath {
+  concat(
+    work_dir as String,
+    concat(
+      "/schema-canonical/",
+      concat(
+        content_hash_atom(value: rel as NonEmptyStr).digest as String,
+        ".canonical.json",
+      ),
+    ),
+  ) as FilePath
+}
+
+fn append_text_to_file(path: String, extra: String) -> Bool {
+  let existing = Filesystem.Read(path: path)
+  if existing.success == false {
+    false
+  } else {
+    Filesystem.Write(path: path, content: concat(existing.content, extra)).success
+  }
+}
+
+fn protocol_schema_process_file_for_bundle(
+  abs_s: String,
+  schema_prefix: String,
+  work_dir: FilePath,
+  manifest_path: String,
+) -> Bool {
+  let rel = protocol_schema_relative_path(abs_s: abs_s, schema_prefix: schema_prefix)
+  let raw = Filesystem.Read(path: abs_s)
+  if raw.success == false {
+    false
+  } else {
+    match parse_json(s: raw.content) {
+      Absent => false
+      Present { value: parsed } =>
+        match canonicalize_json_value(v: parsed) {
+          Absent => false
+          Present { value: canon } => {
+            let canon_body = serialize_json(v: canon)
+            let canon_path = protocol_schema_canonical_staging_path(
+              work_dir: work_dir,
+              rel: rel,
+            )
+            let wrote_canon = Filesystem.Write(
+              path: canon_path as String,
+              content: canon_body,
+            ).success
+            if wrote_canon == false {
+              false
+            } else {
+              match sha512sum_observe_file(path: canon_path) {
+                Sha512FileObserved { digest } =>
+                  append_text_to_file(
+                    path: manifest_path,
+                    extra: concat(
+                      rel,
+                      concat("\t", concat(digest.hex as String, "\n")),
+                    ),
+                  )
+                Sha512FileObservationRefused { cause: _ } => false
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
 fn observe_protocol_schema_identity(
   native_executable: FilePath,
   work_dir: FilePath,
@@ -1322,56 +1445,38 @@ fn observe_protocol_schema_identity(
           none
         } else {
           let schema_prefix = concat(schema_dir as String, "/")
-          let records_acc = fold(
-            abs_paths,
-            init: Present { value: "" as String },
-            f: (acc, abs) => match acc {
-              Absent => none
-              Present { value: so_far } => {
-                let abs_s = abs as String
-                let rel = if abs_s.starts_with(prefix: schema_prefix) {
-                  substring(
-                    s: abs_s,
-                    start: schema_prefix.length(),
-                    end: abs_s.length(),
-                  )
-                } else {
-                  abs_s
-                }
-                let raw = Filesystem.Read(path: abs_s)
-                if raw.success == false {
-                  none
-                } else {
-                  match parse_json(s: raw.content) {
-                    Absent => none
-                    Present { value: parsed } =>
-                      match canonicalize_json_value(v: parsed) {
-                        Absent => none
-                        Present { value: canon } =>
-                          Present {
-                            value: concat(
-                              so_far,
-                              concat(
-                                rel,
-                                concat("\n", concat(serialize_json(v: canon), "\n")),
-                              ),
-                            ),
-                          }
-                      }
-                  }
-                }
-              }
-            },
+          let canon_staging_dir = concat(work_dir as String, "/schema-canonical") as FilePath
+          let made_canon = shell.Mkdir.Parents(path: canon_staging_dir)
+          let manifest_path = concat(
+            work_dir as String,
+            "/protocol-schema-bundle.manifest",
           )
-          match records_acc {
-            Absent => none
-            Present { value: body } => {
-              let path = concat(work_dir as String, "/protocol-schema-bundle.canonical")
-              let wrote = Filesystem.Write(path: path, content: body)
-              if wrote.success == false {
+          if made_canon.success == false {
+            none
+          } else {
+            let init_manifest = Filesystem.Write(path: manifest_path, content: "")
+            if init_manifest.success == false {
+              none
+            } else {
+              let all_ok = fold(
+                abs_paths,
+                init: true,
+                f: (ok, abs) =>
+                  if ok == false {
+                    false
+                  } else {
+                    protocol_schema_process_file_for_bundle(
+                      abs_s: abs as String,
+                      schema_prefix: schema_prefix,
+                      work_dir: work_dir,
+                      manifest_path: manifest_path,
+                    )
+                  },
+              )
+              if all_ok == false {
                 none
               } else {
-                match sha512sum_observe_file(path: path as FilePath) {
+                match sha512sum_observe_file(path: manifest_path as FilePath) {
                   Sha512FileObserved { digest } =>
                     Present { value: as_content_hash_sha512(digest: digest) }
                   Sha512FileObservationRefused { cause: _ } => none
@@ -1676,6 +1781,22 @@ fn rename_publishing_noreplace(
   shell.Exec.Run(script: script).success
 }
 
+fn codex_runtime_release_ready_with_current_link(
+  release_parent: FilePath,
+  root: FilePath,
+) -> CodexRuntimeReleaseOutcome {
+  if publish_codex_runtime_current_link(
+    release_parent: release_parent,
+    release_root: root,
+  ) {
+    CodexRuntimeReleaseReady { root: root }
+  } else {
+    CodexRuntimeReleaseFailed {
+      cause: "codex runtime current symlink publish refused" as NonEmptyStr,
+    }
+  }
+}
+
 fn release_codex_runtime_bundle_immutable(
   build_root: FilePath,
   receipt: CodexRuntimeBundleReceipt,
@@ -1709,7 +1830,10 @@ fn release_codex_runtime_bundle_immutable(
           match validated {
             CodexRuntimeReleaseReady { root } => {
               let _ = shell.Remove.RecursiveForce(path: build_root)
-              CodexRuntimeReleaseReady { root: root }
+              codex_runtime_release_ready_with_current_link(
+                release_parent: parent,
+                root: root,
+              )
             }
             CodexRuntimeReleaseFailed { cause } =>
               CodexRuntimeReleaseFailed { cause: cause }
@@ -1751,18 +1875,28 @@ fn release_codex_runtime_bundle_immutable(
                       publishing: publishing,
                       dest: dest,
                     ) {
-                      CodexRuntimeReleaseReady { root: dest }
+                      codex_runtime_release_ready_with_current_link(
+                        release_parent: parent,
+                        root: dest,
+                      )
                     } else {
                       let winner = shell.Test.IsDirectory(path: dest)
                       let _ = shell.Remove.RecursiveForce(path: publishing)
                       if winner.is_directory {
-                        validate_existing_codex_runtime_release(
+                        match validate_existing_codex_runtime_release(
                           existing_root: dest,
                           receipt: receipt,
                           native_executable_rel: native_executable_rel,
                           expected_hex: hex,
                           scratch_dir: scratch_dir,
-                        )
+                        ) {
+                          CodexRuntimeReleaseReady { root: winner_root } =>
+                            codex_runtime_release_ready_with_current_link(
+                              release_parent: parent,
+                              root: winner_root,
+                            )
+                          other => other
+                        }
                       } else {
                         CodexRuntimeReleaseFailed {
                           cause: "atomic no-replace rename to content-addressed release refused" as NonEmptyStr,
@@ -1826,6 +1960,47 @@ type CodexRuntimeMaterialization
       existing_root: FilePath
       cause: NonEmptyStr
     }
+  | CodexRuntimeHostDependencyRefused {
+      tool: NonEmptyStr
+      hint: String
+    }
+
+fn require_npm_host_dependency_for_materialization() -> CodexRuntimeMaterialization? {
+  match first_absent_codex_wet_materialization_host_cli_dependency() {
+    Present { value: HostCliDependencyAbsent { tool, hint } } =>
+      Present {
+        value: CodexRuntimeHostDependencyRefused { tool: tool, hint: hint },
+      }
+    Absent => none
+  }
+}
+
+fn codex_runtime_materialization_failure_receipt(
+  outcome: CodexRuntimeMaterialization,
+) -> String {
+  let generic = match codex_runtime_materialization_refusal_reason(outcome: outcome) {
+    Present { value: reason } => reason as String
+    Absent => ""
+  }
+  match outcome {
+    CodexRuntimeHostDependencyRefused { tool, hint } =>
+      host_dependency_absent_wire(tool: tool, hint: hint)
+    CodexRuntimeMaterialized { bundle: _ } => generic
+    CodexRuntimeLockRefused { admission: _ } => generic
+    CodexRuntimeExactClosureRefused { closure: _ } => generic
+    CodexRuntimeTargetObservationRefused { observation: _ } => generic
+    CodexRuntimeAcquisitionRefused { acquisition: _ } => generic
+    CodexRuntimeWorkspaceRefused { cause: _ } => generic
+    CodexRuntimeCacheSeedRefused { path: _, stderr: _ } => generic
+    CodexRuntimeNpmCiOfflineRefused { stderr: _ } => generic
+    CodexRuntimeExecutableAbsent { path: _ } => generic
+    CodexRuntimePlatformPackageAbsent { path: _ } => generic
+    CodexRuntimeIdentityObservationRefused => generic
+    CodexRuntimeReceiptObservationRefused { cause: _ } => generic
+    CodexRuntimeReleaseRefused { cause: _ } => generic
+    CodexRuntimeMaterializationReuseMismatch { existing_root: _, cause: _ } => generic
+  }
+}
 
 fn codex_runtime_materialization_refusal_reason(
   outcome: CodexRuntimeMaterialization,
@@ -1854,6 +2029,8 @@ fn codex_runtime_materialization_refusal_reason(
     CodexRuntimeReceiptObservationRefused { cause } => Present { value: cause }
     CodexRuntimeReleaseRefused { cause } => Present { value: cause }
     CodexRuntimeMaterializationReuseMismatch { existing_root: _, cause } => Present { value: cause }
+    CodexRuntimeHostDependencyRefused { tool: _, hint: _ } =>
+      Present { value: "codex runtime host dependency refused" as NonEmptyStr }
   }
 }
 
@@ -2104,123 +2281,193 @@ fn finish_codex_runtime_materialization_after_install(
   }
 }
 
-fn materialize_codex_runtime_bundle(
+type CodexRuntimeClosurePrepareOutcome
+  = CodexRuntimeClosurePrepared {
+      source: AdmittedCodexRuntimeSource
+      wrapper: CodexSelectedNodeAdmission
+      platform: CodexSelectedNodeAdmission
+      selected_target: CodexNpmRuntimeTarget
+      platform_lock_key: NonEmptyStr
+      native_executable_rel: NonEmptyStr
+    }
+  | CodexRuntimeClosurePrepareLockRefused {
+      admission: CodexPackageLockAdmission
+    }
+  | CodexRuntimeClosurePrepareTargetRefused {
+      observation: CodexNpmRuntimeTargetObservation
+    }
+  | CodexRuntimeClosurePrepareClosureRefused {
+      closure: CodexExactTargetClosure
+    }
+  | CodexRuntimeClosurePrepareHostDependencyRefused {
+      tool: NonEmptyStr
+      hint: String
+    }
+
+fn prepare_codex_runtime_closure(
   source: AdmittedCodexRuntimeSource,
-  release_parent: FilePath,
-) -> CodexRuntimeMaterialization {
-  match admit_codex_package_lock_text(text: source.lock_bytes) {
-    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
-      match observe_codex_npm_runtime_target() {
-        CodexNpmRuntimeTargetObserved { target } =>
-          match select_codex_exact_target_closure(graph: graph, target: target) {
-            CodexExactTargetClosureSelected {
-              wrapper,
-              platform,
-              target: selected_target,
-              platform_lock_key,
-              native_executable_rel,
-            } => {
-              let staging = shell.Mktemp.Dir()
-              if staging.success == false {
-                CodexRuntimeWorkspaceRefused {
-                  cause: "staging mktemp failed" as NonEmptyStr,
-                }
-              } else {
-                match acquire_and_admit_selected_pair(
-                  wrapper: wrapper,
-                  platform: platform,
-                  dest_dir: staging.path,
-                ) {
-                  TargetClosureAcquisitionFailed { acquisition } =>
-                    CodexRuntimeAcquisitionRefused { acquisition: acquisition }
-                  TargetClosureAcquisitionOk { admitted } => {
-                    let cache = shell.Mktemp.Dir()
-                    if cache.success == false {
-                      CodexRuntimeWorkspaceRefused {
-                        cause: "cache mktemp failed" as NonEmptyStr,
-                      }
+) -> CodexRuntimeClosurePrepareOutcome {
+  match first_absent_codex_wet_materialization_host_cli_dependency() {
+    Present { value: HostCliDependencyAbsent { tool, hint } } =>
+      CodexRuntimeClosurePrepareHostDependencyRefused { tool: tool, hint: hint }
+    Absent =>
+      match admit_codex_package_lock_text(text: source.lock_bytes) {
+        CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+          match observe_codex_npm_runtime_target() {
+            CodexNpmRuntimeTargetObserved { target } =>
+              match select_codex_exact_target_closure(graph: graph, target: target) {
+                CodexExactTargetClosureSelected {
+                  wrapper,
+                  platform,
+                  target: selected_target,
+                  platform_lock_key,
+                  native_executable_rel,
+                } =>
+                  CodexRuntimeClosurePrepared {
+                    source: source,
+                    wrapper: wrapper,
+                    platform: platform,
+                    selected_target: selected_target,
+                    platform_lock_key: platform_lock_key,
+                    native_executable_rel: native_executable_rel,
+                  }
+                other => CodexRuntimeClosurePrepareClosureRefused { closure: other }
+              }
+            other => CodexRuntimeClosurePrepareTargetRefused { observation: other }
+          }
+        other => CodexRuntimeClosurePrepareLockRefused { admission: other }
+      }
+  }
+}
+
+fn materialize_codex_runtime_bundle_through_prepare(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match prepare_codex_runtime_closure(source: source) {
+    CodexRuntimeClosurePrepared {
+      native_executable_rel,
+      platform_lock_key,
+      selected_target: _,
+      wrapper: _,
+      platform: _,
+      source: _,
+    } =>
+      (native_executable_rel as String) != ""
+        && (platform_lock_key as String) != ""
+    CodexRuntimeClosurePrepareLockRefused { admission: _ } => false
+    CodexRuntimeClosurePrepareTargetRefused { observation: _ } => false
+    CodexRuntimeClosurePrepareClosureRefused { closure: _ } => false
+    CodexRuntimeClosurePrepareHostDependencyRefused { tool: _, hint: _ } => false
+    CodexRuntimeClosurePrepareHostDependencyRefused { tool: _, hint: _ } => false
+  }
+}
+
+type CodexRuntimePostInstallContext {
+  build_root: FilePath
+  staging_dir: FilePath
+  cache_dir: FilePath
+  man_dest: FilePath
+  lock_dest: FilePath
+  native_path: FilePath
+  native_executable_rel: NonEmptyStr
+  platform_lock_key: NonEmptyStr
+  selected_target: CodexNpmRuntimeTarget
+  staged_admitted: List<StagedAdmittedPackageArtifact>
+}
+
+fn codex_runtime_install_from_prepared(
+  prepared: CodexRuntimeClosurePrepareOutcome,
+) -> CodexRuntimePostInstallContext? {
+  match prepared {
+    CodexRuntimeClosurePrepared {
+      source: admitted_source,
+      wrapper: wrapper,
+      platform: platform,
+      selected_target: selected_target,
+      platform_lock_key: platform_lock_key,
+      native_executable_rel: native_executable_rel,
+    } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        none
+      } else {
+        match acquire_and_admit_selected_pair(
+          wrapper: wrapper,
+          platform: platform,
+          dest_dir: staging.path,
+        ) {
+          TargetClosureAcquisitionFailed { acquisition: _ } => none
+          TargetClosureAcquisitionOk { admitted } => {
+            let cache = shell.Mktemp.Dir()
+            if cache.success == false {
+              none
+            } else {
+              match seed_npm_cache_from_admitted(
+                cache: cache.path,
+                admitted: admitted,
+              ) {
+                Present { value: _ } => none
+                Absent => {
+                  let build = shell.Mktemp.Dir()
+                  if build.success == false {
+                    none
+                  } else {
+                    let man_dest = concat(
+                      build.path as String,
+                      "/package.json",
+                    ) as FilePath
+                    let lock_dest = concat(
+                      build.path as String,
+                      "/package-lock.json",
+                    ) as FilePath
+                    let wrote_man = Filesystem.Write(
+                      path: man_dest as String,
+                      content: admitted_source.manifest_bytes,
+                    )
+                    let wrote_lock = Filesystem.Write(
+                      path: lock_dest as String,
+                      content: admitted_source.lock_bytes,
+                    )
+                    if wrote_man.success == false {
+                      none
+                    } else if wrote_lock.success == false {
+                      none
                     } else {
-                      match seed_npm_cache_from_admitted(
+                      let installed = npm.Ci.IgnoreScriptsOffline(
+                        workdir: build.path,
                         cache: cache.path,
-                        admitted: admitted,
-                      ) {
-                        Present { value: failed_path } =>
-                          CodexRuntimeCacheSeedRefused {
-                            path: failed_path,
-                            stderr: "npm cache add refused" as String,
-                          }
-                        Absent => {
-                          let build = shell.Mktemp.Dir()
-                          if build.success == false {
-                            CodexRuntimeWorkspaceRefused {
-                              cause: "build mktemp failed" as NonEmptyStr,
-                            }
-                          } else {
-                            let man_dest = concat(
-                              build.path as String,
-                              "/package.json",
-                            ) as FilePath
-                            let lock_dest = concat(
-                              build.path as String,
-                              "/package-lock.json",
-                            ) as FilePath
-                            let wrote_man = Filesystem.Write(
-                              path: man_dest as String,
-                              content: source.manifest_bytes,
-                            )
-                            let wrote_lock = Filesystem.Write(
-                              path: lock_dest as String,
-                              content: source.lock_bytes,
-                            )
-                            if wrote_man.success == false {
-                              CodexRuntimeWorkspaceRefused {
-                                cause: "write admitted package.json bytes failed" as NonEmptyStr,
-                              }
-                            } else if wrote_lock.success == false {
-                              CodexRuntimeWorkspaceRefused {
-                                cause: "write admitted package-lock.json bytes failed" as NonEmptyStr,
-                              }
-                            } else {
-                              let installed = npm.Ci.IgnoreScriptsOffline(
-                                workdir: build.path,
-                                cache: cache.path,
-                              )
-                              if installed.success == false {
-                                CodexRuntimeNpmCiOfflineRefused {
-                                  stderr: installed.stderr,
-                                }
-                              } else {
-                                let native_path = concat(
-                                  build.path as String,
-                                  concat("/", native_executable_rel as String),
-                                ) as FilePath
-                                let plat_path = concat(
-                                  build.path as String,
-                                  concat("/", platform_lock_key as String),
-                                ) as FilePath
-                                let native_present = shell.Test.IsFile(path: native_path)
-                                let plat_present = shell.Test.IsDirectory(path: plat_path)
-                                if native_present.is_file == false {
-                                  CodexRuntimeExecutableAbsent { path: native_path }
-                                } else if plat_present.is_directory == false {
-                                  CodexRuntimePlatformPackageAbsent { path: plat_path }
-                                } else {
-                                  finish_codex_runtime_materialization_after_install(
-                                    build_root: build.path,
-                                    staging_dir: staging.path,
-                                    cache_dir: cache.path,
-                                    man_dest: man_dest,
-                                    lock_dest: lock_dest,
-                                    native_path: native_path,
-                                    native_executable_rel: native_executable_rel,
-                                    platform_lock_key: platform_lock_key,
-                                    selected_target: selected_target,
-                                    staged_admitted: admitted,
-                                    release_parent: release_parent,
-                                  )
-                                }
-                              }
-                            }
+                      )
+                      if installed.success == false {
+                        none
+                      } else {
+                        let native_path = concat(
+                          build.path as String,
+                          concat("/", native_executable_rel as String),
+                        ) as FilePath
+                        let plat_path = concat(
+                          build.path as String,
+                          concat("/", platform_lock_key as String),
+                        ) as FilePath
+                        let native_present = shell.Test.IsFile(path: native_path)
+                        let plat_present = shell.Test.IsDirectory(path: plat_path)
+                        if native_present.is_file == false {
+                          none
+                        } else if plat_present.is_directory == false {
+                          none
+                        } else {
+                          Present {
+                            value: CodexRuntimePostInstallContext {
+                              build_root: build.path,
+                              staging_dir: staging.path,
+                              cache_dir: cache.path,
+                              man_dest: man_dest,
+                              lock_dest: lock_dest,
+                              native_path: native_path,
+                              native_executable_rel: native_executable_rel,
+                              platform_lock_key: platform_lock_key,
+                              selected_target: selected_target,
+                              staged_admitted: admitted,
+                            },
                           }
                         }
                       }
@@ -2229,10 +2476,744 @@ fn materialize_codex_runtime_bundle(
                 }
               }
             }
-            other => CodexRuntimeExactClosureRefused { closure: other }
           }
-        other => CodexRuntimeTargetObservationRefused { observation: other }
+        }
       }
-    other => CodexRuntimeLockRefused { admission: other }
+    }
+    CodexRuntimeClosurePrepareLockRefused { admission: _ } => none
+    CodexRuntimeClosurePrepareTargetRefused { observation: _ } => none
+    CodexRuntimeClosurePrepareClosureRefused { closure: _ } => none
+    CodexRuntimeClosurePrepareHostDependencyRefused { tool: _, hint: _ } => none
+  }
+}
+
+fn codex_runtime_install_context_from_source(
+  source: AdmittedCodexRuntimeSource,
+) -> CodexRuntimePostInstallContext? {
+  match prepare_codex_runtime_closure(source: source) {
+    CodexRuntimeClosurePrepared {
+      source: admitted_source,
+      wrapper: wrapper,
+      platform: platform,
+      selected_target: selected_target,
+      platform_lock_key: platform_lock_key,
+      native_executable_rel: native_executable_rel,
+    } =>
+      codex_runtime_install_from_prepared(
+        prepared: CodexRuntimeClosurePrepared {
+          source: admitted_source,
+          wrapper: wrapper,
+          platform: platform,
+          selected_target: selected_target,
+          platform_lock_key: platform_lock_key,
+          native_executable_rel: native_executable_rel,
+        },
+      )
+    CodexRuntimeClosurePrepareLockRefused { admission: _ } => none
+    CodexRuntimeClosurePrepareTargetRefused { observation: _ } => none
+    CodexRuntimeClosurePrepareClosureRefused { closure: _ } => none
+    CodexRuntimeClosurePrepareHostDependencyRefused { tool: _, hint: _ } => none
+  }
+}
+
+data protocol_schema_largest_file_rel: NonEmptyStr = "codex_app_server_protocol.schemas.json"
+
+data protocol_schema_interpreter_bisect_note: String = "INTERPRETER DEFECT CONFIRMED (srv1 2026-08-14, two sessions, two harnesses, hard 8G cap agrees with uncapped). Subject: codex_app_server_protocol.schemas.json, 506,984 bytes (~507 KB). parse-only and parse+canonicalize both pin 8 GiB without completion (~16,500x input) — indistinguishable curves. Defect is parse_json / JsonValue construction, not canonicalize_json_value or .dag caller shape. Witness + claim_batch recipe: dag/test/claim/json_protocol_schema_memory_split_wet_witness_test.dag witness_note. Substrate design review precedes fix."
+
+fn finish_bisect_observe_sha512_file(path: FilePath) -> Bool {
+  match observe_file_sha512(path: path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn finish_bisect_observe_admitted_package_set_identity(
+  ctx: CodexRuntimePostInstallContext,
+) -> Bool {
+  let durable = durable_admitted_receipts(staged: ctx.staged_admitted)
+  match observe_admitted_package_set_identity(
+    receipts: durable,
+    staging_dir: ctx.staging_dir,
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn finish_bisect_observe_codex_build_toolchain() -> Bool {
+  match observe_codex_build_toolchain() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn finish_bisect_observe_protocol_schema_identity(
+  ctx: CodexRuntimePostInstallContext,
+) -> Bool {
+  match observe_protocol_schema_identity(
+    native_executable: ctx.native_path,
+    work_dir: ctx.build_root,
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn finish_bisect_generate_protocol_schema_dir(
+  native_executable: FilePath,
+  work_dir: FilePath,
+) -> Bool {
+  let schema_dir = concat(work_dir as String, "/protocol-schema") as FilePath
+  let made = shell.Mkdir.Parents(path: schema_dir)
+  if made.success == false {
+    false
+  } else {
+    let script = retained_foreign(
+      body: concat(
+        "'",
+        concat(
+          native_executable as String,
+          concat(
+            "' app-server generate-json-schema -o '",
+            concat(schema_dir as String, "'"),
+          ),
+        ),
+      ),
+      reason: "Protocol schema interpreter bisect generate-json-schema pending typed WitnessBin argv enrollment" as NonEmptyStr,
+    )
+    shell.Exec.Run(script: script).success
+  }
+}
+
+fn finish_bisect_parse_protocol_schema_file(path: FilePath) -> Bool {
+  let raw = Filesystem.Read(path: path as String)
+  if raw.success == false {
+    false
+  } else {
+    match parse_json(s: raw.content) {
+      Absent => false
+      Present { value: _ } => true
+    }
+  }
+}
+
+fn finish_bisect_parse_canonicalize_protocol_schema_file(path: FilePath) -> Bool {
+  let raw = Filesystem.Read(path: path as String)
+  if raw.success == false {
+    false
+  } else {
+    match parse_json(s: raw.content) {
+      Absent => false
+      Present { value: parsed } =>
+        match canonicalize_json_value(v: parsed) {
+          Absent => false
+          Present { value: _ } => true
+        }
+    }
+  }
+}
+
+fn finish_bisect_parse_canonicalize_largest_protocol_schema_file(
+  native_executable: FilePath,
+  work_dir: FilePath,
+) -> Bool {
+  if finish_bisect_generate_protocol_schema_dir(
+    native_executable: native_executable,
+    work_dir: work_dir,
+  ) == false {
+    false
+  } else {
+    let schema_path = concat(
+      work_dir as String,
+      concat(
+        "/protocol-schema/",
+        protocol_schema_largest_file_rel as String,
+      ),
+    ) as FilePath
+    finish_bisect_parse_canonicalize_protocol_schema_file(path: schema_path)
+  }
+}
+
+fn finish_bisect_parse_largest_protocol_schema_file(
+  native_executable: FilePath,
+  work_dir: FilePath,
+) -> Bool {
+  if finish_bisect_generate_protocol_schema_dir(
+    native_executable: native_executable,
+    work_dir: work_dir,
+  ) == false {
+    false
+  } else {
+    let schema_path = concat(
+      work_dir as String,
+      concat(
+        "/protocol-schema/",
+        protocol_schema_largest_file_rel as String,
+      ),
+    ) as FilePath
+    finish_bisect_parse_protocol_schema_file(path: schema_path)
+  }
+}
+
+fn finish_bisect_observe_package_materialized_tree(
+  ctx: CodexRuntimePostInstallContext,
+) -> Bool {
+  match observe_package_materialized_tree(
+    root: ctx.build_root,
+    work_dir: ctx.staging_dir,
+  ) {
+    PackageMaterializedTreeObserved { receipt: _ } => true
+    PackageMaterializedTreeObservationRefused { cause: _ } => false
+  }
+}
+
+fn finish_bisect_observe_package_materialized_tree_tiny_fixture() -> Bool {
+  let root = shell.Mktemp.Dir()
+  let work = shell.Mktemp.Dir()
+  if root.success == false || work.success == false {
+    false
+  } else {
+    let path_a = concat(root.path as String, "/tiny-a.txt") as FilePath
+    let path_b = concat(root.path as String, "/tiny-b.txt") as FilePath
+    let wrote_a = Filesystem.Write(path: path_a as String, content: "a")
+    let wrote_b = Filesystem.Write(path: path_b as String, content: "bb")
+    if wrote_a.success == false || wrote_b.success == false {
+      false
+    } else {
+      match observe_package_materialized_tree(root: root.path, work_dir: work.path) {
+        PackageMaterializedTreeObserved { receipt } => count(receipt.entries) == 2
+        PackageMaterializedTreeObservationRefused { cause: _ } => false
+      }
+    }
+  }
+}
+
+fn finish_bisect_build_receipt_without_identity(
+  ctx: CodexRuntimePostInstallContext,
+) -> CodexRuntimeBundleReceipt? {
+  let durable = durable_admitted_receipts(staged: ctx.staged_admitted)
+  match observe_admitted_package_set_identity(
+    receipts: durable,
+    staging_dir: ctx.staging_dir,
+  ) {
+    Absent => none
+    Present { value: set_id } =>
+      match observe_file_sha512(path: ctx.man_dest) {
+        Absent => none
+        Present { value: man_digest } =>
+          match observe_file_sha512(path: ctx.lock_dest) {
+            Absent => none
+            Present { value: lock_digest } =>
+              match observe_file_sha512(path: ctx.native_path) {
+                Absent => none
+                Present { value: native_digest } =>
+                  match observe_codex_build_toolchain() {
+                    Absent => none
+                    Present { value: toolchain } =>
+                      match observe_protocol_schema_identity(
+                        native_executable: ctx.native_path,
+                        work_dir: ctx.build_root,
+                      ) {
+                        Absent => none
+                        Present { value: protocol_id } =>
+                          match observe_package_materialized_tree(
+                            root: ctx.build_root,
+                            work_dir: ctx.staging_dir,
+                          ) {
+                            PackageMaterializedTreeObservationRefused { cause: _ } => none
+                            PackageMaterializedTreeObserved { receipt: tree } => {
+                              let ordered = sort_admitted_packages_by_lock_key(
+                                receipts: durable,
+                              )
+                              Present {
+                                value: CodexRuntimeBundleReceipt {
+                                  manifest_digest: man_digest,
+                                  lock_digest: lock_digest,
+                                  target: ctx.selected_target,
+                                  admitted_packages: ordered,
+                                  admitted_package_set_identity: set_id,
+                                  materialized_tree: tree,
+                                  native_executable_digest: native_digest,
+                                  toolchain: toolchain,
+                                  protocol_schema_identity: protocol_id,
+                                  receipt_identity: set_id,
+                                },
+                              }
+                            }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn finish_bisect_observe_bundle_receipt_identity(
+  ctx: CodexRuntimePostInstallContext,
+) -> Bool {
+  match finish_bisect_build_receipt_without_identity(ctx: ctx) {
+    Absent => false
+    Present { value: receipt0 } =>
+      match observe_codex_runtime_bundle_receipt_identity(
+        receipt_without_identity: receipt0,
+        staging_dir: ctx.staging_dir,
+      ) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+fn materialize_codex_runtime_finish_bisect_observe_set_identity_only(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match codex_runtime_install_context_from_source(source: source) {
+    Present { value: ctx } =>
+      finish_bisect_observe_admitted_package_set_identity(ctx: ctx)
+    Absent => false
+  }
+}
+
+fn materialize_codex_runtime_finish_bisect_observe_manifest_digest_only(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match codex_runtime_install_context_from_source(source: source) {
+    Present { value: ctx } => finish_bisect_observe_sha512_file(path: ctx.man_dest)
+    Absent => false
+  }
+}
+
+fn materialize_codex_runtime_finish_bisect_observe_lock_digest_only(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match codex_runtime_install_context_from_source(source: source) {
+    Present { value: ctx } => finish_bisect_observe_sha512_file(path: ctx.lock_dest)
+    Absent => false
+  }
+}
+
+fn materialize_codex_runtime_finish_bisect_observe_native_digest_only(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match codex_runtime_install_context_from_source(source: source) {
+    Present { value: ctx } => finish_bisect_observe_sha512_file(path: ctx.native_path)
+    Absent => false
+  }
+}
+
+fn materialize_codex_runtime_finish_bisect_observe_toolchain_only(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match codex_runtime_install_context_from_source(source: source) {
+    Present { value: _ } => finish_bisect_observe_codex_build_toolchain()
+    Absent => false
+  }
+}
+
+fn materialize_codex_runtime_finish_bisect_observe_protocol_schema_only(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match codex_runtime_install_context_from_source(source: source) {
+    Present { value: ctx } => finish_bisect_observe_protocol_schema_identity(ctx: ctx)
+    Absent => false
+  }
+}
+
+fn materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match codex_runtime_install_context_from_source(source: source) {
+    Present { value: ctx } =>
+      finish_bisect_parse_largest_protocol_schema_file(
+        native_executable: ctx.native_path,
+        work_dir: ctx.build_root,
+      )
+    Absent => false
+  }
+}
+
+fn materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match codex_runtime_install_context_from_source(source: source) {
+    Present { value: ctx } =>
+      finish_bisect_parse_canonicalize_largest_protocol_schema_file(
+        native_executable: ctx.native_path,
+        work_dir: ctx.build_root,
+      )
+    Absent => false
+  }
+}
+
+fn materialize_codex_runtime_finish_bisect_observe_package_tree_only(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match codex_runtime_install_context_from_source(source: source) {
+    Present { value: ctx } => finish_bisect_observe_package_materialized_tree(ctx: ctx)
+    Absent => false
+  }
+}
+
+fn materialize_codex_runtime_finish_bisect_observe_receipt_identity_only(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match codex_runtime_install_context_from_source(source: source) {
+    Present { value: ctx } => finish_bisect_observe_bundle_receipt_identity(ctx: ctx)
+    Absent => false
+  }
+}
+
+fn materialize_codex_runtime_bundle_through_pair_acquire(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match prepare_codex_runtime_closure(source: source) {
+    CodexRuntimeClosurePrepared {
+      wrapper: wrapper,
+      platform: platform,
+      source: _,
+      selected_target: _,
+      platform_lock_key: _,
+      native_executable_rel: _,
+    } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        false
+      } else {
+        match acquire_and_admit_selected_pair(
+          wrapper: wrapper,
+          platform: platform,
+          dest_dir: staging.path,
+        ) {
+          TargetClosureAcquisitionOk { admitted: _ } => true
+          TargetClosureAcquisitionFailed { acquisition: _ } => false
+        }
+      }
+    }
+    CodexRuntimeClosurePrepareLockRefused { admission: _ } => false
+    CodexRuntimeClosurePrepareTargetRefused { observation: _ } => false
+    CodexRuntimeClosurePrepareClosureRefused { closure: _ } => false
+    CodexRuntimeClosurePrepareHostDependencyRefused { tool: _, hint: _ } => false
+  }
+}
+
+fn materialize_codex_runtime_bundle_through_npm_ci_offline(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match prepare_codex_runtime_closure(source: source) {
+    CodexRuntimeClosurePrepared {
+      source: admitted_source,
+      wrapper: wrapper,
+      platform: platform,
+      selected_target: selected_target,
+      platform_lock_key: platform_lock_key,
+      native_executable_rel: native_executable_rel,
+    } =>
+      match codex_runtime_install_from_prepared(
+        prepared: CodexRuntimeClosurePrepared {
+          source: admitted_source,
+          wrapper: wrapper,
+          platform: platform,
+          selected_target: selected_target,
+          platform_lock_key: platform_lock_key,
+          native_executable_rel: native_executable_rel,
+        },
+      ) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    CodexRuntimeClosurePrepareLockRefused { admission: _ } => false
+    CodexRuntimeClosurePrepareTargetRefused { observation: _ } => false
+    CodexRuntimeClosurePrepareClosureRefused { closure: _ } => false
+    CodexRuntimeClosurePrepareHostDependencyRefused { tool: _, hint: _ } => false
+  }
+}
+
+fn materialize_codex_runtime_bundle_finish_after_install(
+  source: AdmittedCodexRuntimeSource,
+  release_parent: FilePath,
+) -> Bool {
+  match prepare_codex_runtime_closure(source: source) {
+    CodexRuntimeClosurePrepared {
+      source: admitted_source,
+      wrapper: wrapper,
+      platform: platform,
+      selected_target: selected_target,
+      platform_lock_key: platform_lock_key,
+      native_executable_rel: native_executable_rel,
+    } =>
+      match codex_runtime_install_from_prepared(
+        prepared: CodexRuntimeClosurePrepared {
+          source: admitted_source,
+          wrapper: wrapper,
+          platform: platform,
+          selected_target: selected_target,
+          platform_lock_key: platform_lock_key,
+          native_executable_rel: native_executable_rel,
+        },
+      ) {
+        Present { value: ctx } =>
+          match finish_codex_runtime_materialization_after_install(
+            build_root: ctx.build_root,
+            staging_dir: ctx.staging_dir,
+            cache_dir: ctx.cache_dir,
+            man_dest: ctx.man_dest,
+            lock_dest: ctx.lock_dest,
+            native_path: ctx.native_path,
+            native_executable_rel: ctx.native_executable_rel,
+            platform_lock_key: ctx.platform_lock_key,
+            selected_target: ctx.selected_target,
+            staged_admitted: ctx.staged_admitted,
+            release_parent: release_parent,
+          ) {
+            CodexRuntimeMaterialized { bundle: _ } => true
+            _ => false
+          }
+        Absent => false
+      }
+    CodexRuntimeClosurePrepareLockRefused { admission: _ } => false
+    CodexRuntimeClosurePrepareTargetRefused { observation: _ } => false
+    CodexRuntimeClosurePrepareClosureRefused { closure: _ } => false
+    CodexRuntimeClosurePrepareHostDependencyRefused { tool: _, hint: _ } => false
+  }
+}
+
+fn materialize_codex_runtime_bundle(
+  source: AdmittedCodexRuntimeSource,
+  release_parent: FilePath,
+) -> CodexRuntimeMaterialization {
+  match prepare_codex_runtime_closure(source: source) {
+    CodexRuntimeClosurePrepared {
+      source: admitted_source,
+      wrapper: wrapper,
+      platform: platform,
+      selected_target: selected_target,
+      platform_lock_key: platform_lock_key,
+      native_executable_rel: native_executable_rel,
+    } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        CodexRuntimeWorkspaceRefused {
+          cause: "staging mktemp failed" as NonEmptyStr,
+        }
+      } else {
+        match acquire_and_admit_selected_pair(
+          wrapper: wrapper,
+          platform: platform,
+          dest_dir: staging.path,
+        ) {
+          TargetClosureAcquisitionFailed { acquisition } =>
+            CodexRuntimeAcquisitionRefused { acquisition: acquisition }
+          TargetClosureAcquisitionOk { admitted } => {
+            let cache = shell.Mktemp.Dir()
+            if cache.success == false {
+              CodexRuntimeWorkspaceRefused {
+                cause: "cache mktemp failed" as NonEmptyStr,
+              }
+            } else {
+              match seed_npm_cache_from_admitted(
+                cache: cache.path,
+                admitted: admitted,
+              ) {
+                Present { value: failed_path } =>
+                  CodexRuntimeCacheSeedRefused {
+                    path: failed_path,
+                    stderr: "npm cache add refused" as String,
+                  }
+                Absent => {
+                  let build = shell.Mktemp.Dir()
+                  if build.success == false {
+                    CodexRuntimeWorkspaceRefused {
+                      cause: "build mktemp failed" as NonEmptyStr,
+                    }
+                  } else {
+                    let man_dest = concat(
+                      build.path as String,
+                      "/package.json",
+                    ) as FilePath
+                    let lock_dest = concat(
+                      build.path as String,
+                      "/package-lock.json",
+                    ) as FilePath
+                    let wrote_man = Filesystem.Write(
+                      path: man_dest as String,
+                      content: admitted_source.manifest_bytes,
+                    )
+                    let wrote_lock = Filesystem.Write(
+                      path: lock_dest as String,
+                      content: admitted_source.lock_bytes,
+                    )
+                    if wrote_man.success == false {
+                      CodexRuntimeWorkspaceRefused {
+                        cause: "write admitted package.json bytes failed" as NonEmptyStr,
+                      }
+                    } else if wrote_lock.success == false {
+                      CodexRuntimeWorkspaceRefused {
+                        cause: "write admitted package-lock.json bytes failed" as NonEmptyStr,
+                      }
+                    } else {
+                      let installed = npm.Ci.IgnoreScriptsOffline(
+                        workdir: build.path,
+                        cache: cache.path,
+                      )
+                      if installed.success == false {
+                        CodexRuntimeNpmCiOfflineRefused {
+                          stderr: installed.stderr,
+                        }
+                      } else {
+                        let native_path = concat(
+                          build.path as String,
+                          concat("/", native_executable_rel as String),
+                        ) as FilePath
+                        let plat_path = concat(
+                          build.path as String,
+                          concat("/", platform_lock_key as String),
+                        ) as FilePath
+                        let native_present = shell.Test.IsFile(path: native_path)
+                        let plat_present = shell.Test.IsDirectory(path: plat_path)
+                        if native_present.is_file == false {
+                          CodexRuntimeExecutableAbsent { path: native_path }
+                        } else if plat_present.is_directory == false {
+                          CodexRuntimePlatformPackageAbsent { path: plat_path }
+                        } else {
+                          finish_codex_runtime_materialization_after_install(
+                            build_root: build.path,
+                            staging_dir: staging.path,
+                            cache_dir: cache.path,
+                            man_dest: man_dest,
+                            lock_dest: lock_dest,
+                            native_path: native_path,
+                            native_executable_rel: native_executable_rel,
+                            platform_lock_key: platform_lock_key,
+                            selected_target: selected_target,
+                            staged_admitted: admitted,
+                            release_parent: release_parent,
+                          )
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    CodexRuntimeClosurePrepareLockRefused { admission } =>
+      CodexRuntimeLockRefused { admission: admission }
+    CodexRuntimeClosurePrepareTargetRefused { observation } =>
+      CodexRuntimeTargetObservationRefused { observation: observation }
+    CodexRuntimeClosurePrepareClosureRefused { closure } =>
+      CodexRuntimeExactClosureRefused { closure: closure }
+    CodexRuntimeClosurePrepareHostDependencyRefused { tool, hint } =>
+      CodexRuntimeHostDependencyRefused { tool: tool, hint: hint }
+  }
+}
+
+data spark_serving_ollama_runtime_materialization_note: String = "Archive admission only — NOT runtime install. Downloads the cited extdeps.ollama.binary_release archive, admits SHA-256, writes an executor-local gunbc.spark_serving_runtime_receipt (release-asset digest only — no host claim), then deletes the staging copy (local_path is not consumed downstream because nothing extracts). Does not extract, place bin/ollama, enable gunbc-spark-serving.service, or pull gpt-oss:20b. This PR cannot make srv5/srv6 answer — wet observation is a separate SSH read path. Full per-host install is #8225 follow-on; fleet registration is #8230."
+
+type SparkServingOllamaArchiveAdmission
+  = SparkServingOllamaArchiveAdmitted {
+      local_path: FilePath
+      digest_hex: NonEmptyStr
+    }
+  | SparkServingOllamaArchiveDownloadRefused {
+      locator: NonEmptyStr
+    }
+  | SparkServingOllamaArchiveIntegrityRefused {
+      cause: NonEmptyStr
+    }
+
+type SparkServingOllamaRuntimeMaterialization
+  = SparkServingOllamaRuntimeMaterialized {
+      receipt: SparkServingRuntimeArchiveAdmissionReceipt
+    }
+  | SparkServingOllamaRuntimeDownloadRefused {
+      locator: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeIntegrityRefused {
+      cause: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeReceiptWriteRefused {
+      cause: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeWorkspaceRefused {
+      cause: NonEmptyStr
+    }
+
+fn spark_serving_ollama_runtime_materialization_receipt_write_path() -> FilePath {
+  spark_serving_runtime_receipt_wire_path()
+}
+
+fn acquire_and_admit_ollama_release_archive(
+  binary_release: OllamaBinaryRelease,
+  dest_dir: FilePath,
+) -> SparkServingOllamaArchiveAdmission {
+  let locator = ollama_binary_release_download_locator(binary_release: binary_release)
+  let dest = concat(
+    dest_dir as String,
+    concat("/", ollama_binary_release_asset_name(binary_release: binary_release) as String),
+  ) as FilePath
+  let downloaded = http.Client.DownloadToFile(
+    url: locator,
+    destination: dest as NonEmptyStr,
+  )
+  if downloaded.success == false {
+    SparkServingOllamaArchiveDownloadRefused { locator: locator }
+  } else {
+    match sha256sum_verify_via_shell(
+      path: dest as NonEmptyStr,
+      expected_digest: binary_release.digest.hex,
+    ) {
+      Sha256Matches =>
+        SparkServingOllamaArchiveAdmitted {
+          local_path: dest,
+          digest_hex: binary_release.digest.hex,
+        }
+      Sha256Mismatch =>
+        SparkServingOllamaArchiveIntegrityRefused {
+          cause: "ollama release archive sha256 mismatch" as NonEmptyStr,
+        }
+      Sha256VerifyInfraFailure { reason } =>
+        SparkServingOllamaArchiveIntegrityRefused { cause: reason }
+    }
+  }
+}
+
+fn materialize_spark_serving_ollama_runtime_bundle() -> SparkServingOllamaRuntimeMaterialization {
+  let staging = shell.Mktemp.Dir()
+  if staging.success == false {
+    SparkServingOllamaRuntimeWorkspaceRefused {
+      cause: "staging mktemp failed" as NonEmptyStr,
+    }
+  } else {
+    match acquire_and_admit_ollama_release_archive(
+      binary_release: ollama_required_release,
+      dest_dir: staging.path,
+    ) {
+      SparkServingOllamaArchiveDownloadRefused { locator } => {
+        let _ = shell.Remove.RecursiveForce(path: staging.path)
+        SparkServingOllamaRuntimeDownloadRefused { locator: locator }
+      }
+      SparkServingOllamaArchiveIntegrityRefused { cause } => {
+        let _ = shell.Remove.RecursiveForce(path: staging.path)
+        SparkServingOllamaRuntimeIntegrityRefused { cause: cause }
+      }
+      SparkServingOllamaArchiveAdmitted { local_path: _, digest_hex } => {
+        let receipt = SparkServingRuntimeArchiveAdmissionReceipt {
+          release_asset_digest_hex: digest_hex,
+        }
+        if write_spark_serving_runtime_archive_admission_receipt(receipt: receipt) {
+          let _ = shell.Remove.RecursiveForce(path: staging.path)
+          SparkServingOllamaRuntimeMaterialized { receipt: receipt }
+        } else {
+          let _ = shell.Remove.RecursiveForce(path: staging.path)
+          SparkServingOllamaRuntimeReceiptWriteRefused {
+            cause: "install receipt write refused" as NonEmptyStr,
+          }
+        }
+      }
+    }
   }
 }

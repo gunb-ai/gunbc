@@ -1,0 +1,161 @@
+module gunbc.model_artifact
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.content_hash { ContentHash, Sha256Digest, as_content_hash_cryptographic, serialize_content_hash, compare_content_hash, ContentHashComparison, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import std.decl_ref { decl_ref }
+import extdeps.ollama.api { OllamaModelRef, OllamaModelDigest, ollama_model_ref_wire, ollama_model_content_hash }
+
+// WHAT A SERVED MODEL IS, modeled before anything serves one, because the alternative is retrofitting
+// identity onto a deployment that already pinned a name.
+//
+// THE ORDERING ARGUMENT, since it is the reason this file exists now rather than later. Serving one
+// stock model needs no provenance: a reference and a digest would do. But fine-tuning is on the
+// roadmap, and a fine-tuned model is not a new NAME for the same thing -- it is a new artifact whose
+// identity depends on a base, a dataset and a run. If serving pins models by reference today, then
+// every tuned variant later is a second naming scheme for one concept, which is the nicknaming defect
+// this repository treats as a correctness concern rather than a style one. The cost of modeling it
+// now is this file; the cost of modeling it after a deployment exists is a migration of every pin,
+// every receipt and every comparison.
+//
+// So identity is the DIGEST and provenance is a separate axis. A stock model and a model tuned from
+// it are then distinguishable by structure rather than by convention, and a receipt can say which one
+// answered a request without anyone having agreed on a naming rule.
+
+// WHERE AN ARTIFACT CAME FROM. Two arms today, and the second is the one that pays for the file.
+//
+// PulledFromUpstream is a stock artifact obtained from a publisher: its identity is entirely the
+// publisher's, and this repository observes it rather than deriving it.
+//
+// DerivedByTuning names its inputs -- base artifact, dataset identity, run identity -- so the chain
+// is walkable. It carries the BASE'S IDENTITY rather than the base's reference for the same reason
+// the artifact is keyed by digest: a base named `gpt-oss:20b` is a base whose bytes can move, and a
+// lineage built on moving pointers records a story rather than a fact.
+type ModelArtifactProvenance
+  = PulledFromUpstream { publisher: NonEmptyStr, reference: OllamaModelRef }
+  | DerivedByTuning {
+      base_identity: ContentHash
+      dataset_identity: ContentHash
+      run_identity: NonEmptyStr
+    }
+
+// A MODEL ARTIFACT: identity first, provenance beside it, reference LAST and explicitly demoted to a
+// label. The field order is not cosmetic -- it is the claim that two artifacts are the same exactly
+// when their identities match, whatever they happen to be called.
+type ModelArtifact sole_constructor {
+  identity: ContentHash
+  provenance: ModelArtifactProvenance
+  serving_label: NonEmptyStr
+}
+
+// Sealed, and minted only from a digest that an endpoint actually returned. A caller cannot author a
+// ModelArtifact with an identity it chose -- which matters because the identity is what every
+// downstream comparison trusts, and an artifact whose digest was asserted rather than observed would
+// make those comparisons vacuous.
+fn model_artifact_seal(
+  identity: ContentHash,
+  provenance: ModelArtifactProvenance,
+  serving_label: NonEmptyStr,
+) -> ModelArtifact
+  admit_callers: [
+    decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_observed_digest"),
+    decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_tuning_run"),
+  ]
+  = ModelArtifact { identity: identity, provenance: provenance, serving_label: serving_label }
+
+// The stock path: an artifact whose digest came off /api/tags or /api/show.
+fn model_artifact_from_observed_digest(publisher: NonEmptyStr, observed: OllamaModelDigest) -> ModelArtifact {
+  model_artifact_seal(
+    identity: ollama_model_content_hash(digest: observed),
+    provenance: PulledFromUpstream { publisher: publisher, reference: observed.ref },
+    serving_label: ollama_model_ref_wire(ref: observed.ref) as NonEmptyStr,
+  )
+}
+
+// The tuned path. It exists now, unused, ON PURPOSE: it is what proves the identity carrier can
+// express a tuned artifact without a schema change, which is the claim this file makes. If it needed
+// a new field later, the argument for building it early would have been wrong.
+// PRODUCED_IDENTITY IS A Sha256Digest, NOT A ContentHash, and the witness is what forced it. The
+// first version took the union, and the lineage claim FAILED: a tuned identity minted by
+// content_hash_of_value lands in the Fnv1a64 structural family, a stock identity comes off an ollama
+// digest in the Sha256 family, and comparing them yields ContentHashCrossFamilyIncomparable -- so
+// "is the loaded model the tuned one we asked for" was not merely false, it was UNANSWERABLE.
+//
+// That is the cross-family wall doing exactly its job, and the lesson is about this domain rather
+// than about the wall: every model artifact must be identified in ONE family or stock-versus-tuned
+// comparison is structurally impossible, which would have surfaced the first time a tuned model was
+// deployed beside a stock one. Narrowing the parameter makes the mixed-family artifact unwritable
+// instead of merely unequal.
+fn model_artifact_from_tuning_run(
+  produced_digest: Sha256Digest,
+  base: ModelArtifact,
+  dataset_identity: ContentHash,
+  run_identity: NonEmptyStr,
+  serving_label: NonEmptyStr,
+) -> ModelArtifact {
+  model_artifact_seal(
+    identity: as_content_hash_cryptographic(digest: produced_digest),
+    provenance: DerivedByTuning {
+      base_identity: base.identity,
+      dataset_identity: dataset_identity,
+      run_identity: run_identity,
+    },
+    serving_label: serving_label,
+  )
+}
+
+// THE DESIRED-VS-LOADED COMPARISON, three-valued because the cross-family answer is real. Comparing
+// a desired artifact to whatever is actually loaded is the check that makes a serving receipt mean
+// something, and collapsing "could not compare" into "different" would turn an unanswerable question
+// into a spurious drift, while collapsing it into "same" would be the fail-open.
+type ModelArtifactAgreement
+  = ArtifactIdentical
+  | ArtifactDiffers { desired: ContentHash, loaded: ContentHash }
+  | ArtifactIncomparable { cause: NonEmptyStr }
+
+fn compare_model_artifact(desired: ModelArtifact, loaded: ModelArtifact) -> ModelArtifactAgreement {
+  match compare_content_hash(left: desired.identity, right: loaded.identity) {
+    ContentHashEqual => ArtifactIdentical
+    ContentHashDifferent => ArtifactDiffers { desired: desired.identity, loaded: loaded.identity }
+    ContentHashCrossFamilyIncomparable => ArtifactIncomparable {
+      cause: "desired and loaded model identities are in different hash families, so agreement was not established" as NonEmptyStr,
+    }
+  }
+}
+
+// THE SAME LABEL IS NOT THE SAME MODEL, and this predicate exists so a consumer can say so. Two
+// artifacts sharing a serving_label while differing in identity is the exact situation a
+// tag-pinned deployment cannot detect, and it is the situation upstream repointing a tag produces.
+fn model_label_collision(left: ModelArtifact, right: ModelArtifact) -> Bool {
+  (left.serving_label as String) == (right.serving_label as String) && !model_artifact_same(left: left, right: right)
+}
+
+fn model_artifact_same(left: ModelArtifact, right: ModelArtifact) -> Bool {
+  match compare_content_hash(left: left.identity, right: right.identity) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}
+
+// The lineage as a walkable fact rather than prose. Depth is bounded by construction: an artifact
+// carries its base's IDENTITY, not the base itself, so this reports one step and a consumer holding
+// a roster resolves further -- there is no recursive structure here to make unbounded.
+fn model_artifact_base_identity(artifact: ModelArtifact) -> ContentHash? {
+  match artifact.provenance {
+    PulledFromUpstream { publisher: _, reference: _ } => none
+    DerivedByTuning { base_identity: b, dataset_identity: _, run_identity: _ } => Present { value: b }
+  }
+}
+
+fn model_artifact_provenance_label(artifact: ModelArtifact) -> String {
+  match artifact.provenance {
+    PulledFromUpstream { publisher: p, reference: r } =>
+      join(["pulled publisher=", p as String, " reference=", ollama_model_ref_wire(ref: r)], "")
+    DerivedByTuning { base_identity: b, dataset_identity: d, run_identity: run } =>
+      join([
+        "tuned base=", serialize_content_hash(hash: b) as String,
+        " dataset=", serialize_content_hash(hash: d) as String,
+        " run=", run as String,
+      ], "")
+  }
+}

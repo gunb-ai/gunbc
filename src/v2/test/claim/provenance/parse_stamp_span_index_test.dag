@@ -17,7 +17,7 @@ fn parse_stamp_list_absent_diagnostic() -> Diagnostic {
 fn parse_stamp_token(start: Int, end: Int) -> Token {
   Token {
     class: ^parse_stamp_tok,
-    lexeme: Empty,
+    lexeme: std.algebra.Empty,
     file: ^parse_stamp_file,
     start: start,
     end: end
@@ -33,7 +33,7 @@ fn parse_stamp_terminal_root() -> GrammarRoot {
         expression: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
         emitted: grammar_atom(identity: ^parse_stamp_start)
       },
-      tail: Empty
+      tail: std.algebra.Empty
     },
     sync_tokens: grammar_empty_sync_tokens()
   }
@@ -51,7 +51,7 @@ fn parse_stamp_sequence_root() -> GrammarRoot {
         },
         emitted: grammar_atom(identity: ^parse_stamp_start)
       },
-      tail: Empty
+      tail: std.algebra.Empty
     },
     sync_tokens: grammar_empty_sync_tokens()
   }
@@ -128,7 +128,7 @@ test fn parse_stamp_terminal_from_source_holds() -> Bool {
       match parse_production(
         tokens: Cons {
           head: parse_stamp_token(start: 3, end: 8),
-          tail: Empty
+          tail: std.algebra.Empty
         },
         validated: validated,
         production_name: ^parse_stamp_start
@@ -164,7 +164,7 @@ test fn parse_stamp_sequence_derived_by_holds() -> Bool {
       match parse_production(
         tokens: Cons {
           head: parse_stamp_token(start: 0, end: 5),
-          tail: Cons { head: parse_stamp_token(start: 5, end: 10), tail: Empty }
+          tail: Cons { head: parse_stamp_token(start: 5, end: 10), tail: std.algebra.Empty }
         },
         validated: validated,
         production_name: ^parse_stamp_start

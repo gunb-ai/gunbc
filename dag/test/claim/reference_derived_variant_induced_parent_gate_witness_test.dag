@@ -1,0 +1,96 @@
+module test.claim.reference_derived_variant_induced_parent_gate_witness_test
+
+// Discriminating controls for the variant-induced half of the authored-source gate inside
+// reference_derived_use_lines (production authority: v1.compiler.emit_rust
+// reference_derived_candidate_authored and reference_derived_variant_induced_parent_spelled).
+//
+// The mirrored-oracle discipline and its reason are inherited verbatim from the sibling witness
+// reference_derived_authored_source_gate_witness_test: floor compile-clean witness_layer_roots do
+// not close over src/v1, so this module cannot import the production symbol without an
+// unresolved-import hard diagnostic, and the oracle below must stay identical to the production
+// predicate.
+//
+// What this witness establishes is the ADMISSION LAW only. The executed evidence that the law fixes
+// the emitter is a separate integration receipt and is deliberately NOT restated here as a claim
+// this module proves — it lives in the change that introduced the arm.
+//
+// Dissolve-on: identical to the sibling witness — derive use-lines from BoundReferenceProvider /
+// P2a candidate-producer, at which point the spelling question and both oracles disappear.
+
+fn authored_source_gate_oracle(module_source: String, name: String) -> Bool {
+  module_source != "" && string_contains(s: module_source, pattern: name)
+}
+
+fn variant_induced_parent_oracle(module_source: String, enum_name: String, variants: List<String>, variant_to_enum: Map<String, String>) -> Bool {
+  variants |> any(vn =>
+    match map_get(variant_to_enum, vn) {
+      Present { value: parent } => parent == enum_name && authored_source_gate_oracle(module_source: module_source, name: vn)
+      Absent => false
+    }
+  )
+}
+
+fn candidate_authored_oracle(module_source: String, name: String, variants: List<String>, variant_to_enum: Map<String, String>) -> Bool {
+  authored_source_gate_oracle(module_source: module_source, name: name)
+    || variant_induced_parent_oracle(module_source: module_source, enum_name: name, variants: variants, variant_to_enum: variant_to_enum)
+}
+
+data root_k_module_source: String = "fn kind_of type match n.kind case ComputationNode payload arrow true case wildcard arrow false"
+
+data node_kind_variants: List<String> = ["ComputationNode", "ValueNode"]
+
+data unambiguous_variant_to_enum: Map<String, String> = {
+  "ComputationNode": "NodeKind",
+  "ValueNode": "NodeKind"
+}
+
+data homonym_variant_to_enum: Map<String, String> = {
+  "Present": "",
+  "Absent": ""
+}
+
+test fn unspelled_parent_with_spelled_variant_admitted_holds() -> Bool {
+  authored_source_gate_oracle(module_source: root_k_module_source, name: "NodeKind") == false
+    && candidate_authored_oracle(
+      module_source: root_k_module_source,
+      name: "NodeKind",
+      variants: node_kind_variants,
+      variant_to_enum: unambiguous_variant_to_enum,
+    )
+}
+
+test fn unspelled_parent_with_no_spelled_variant_refused_holds() -> Bool {
+  !candidate_authored_oracle(
+    module_source: root_k_module_source,
+    name: "Behavior",
+    variants: ["TransformBehavior", "BranchBehavior"],
+    variant_to_enum: {"TransformBehavior": "Behavior", "BranchBehavior": "Behavior"},
+  )
+}
+
+test fn homonym_variant_admits_neither_enum_holds() -> Bool {
+  !candidate_authored_oracle(
+    module_source: "match r case Present binds value arrow v case Absent arrow zero",
+    name: "Optional",
+    variants: ["Present", "Absent"],
+    variant_to_enum: homonym_variant_to_enum,
+  )
+}
+
+test fn unspelled_authored_token_ordinal_still_refused_holds() -> Bool {
+  !candidate_authored_oracle(
+    module_source: root_k_module_source,
+    name: "AuthoredTokenOrdinal",
+    variants: [],
+    variant_to_enum: unambiguous_variant_to_enum,
+  )
+}
+
+test fn empty_module_source_refuses_all_holds() -> Bool {
+  !candidate_authored_oracle(
+    module_source: "",
+    name: "NodeKind",
+    variants: node_kind_variants,
+    variant_to_enum: unambiguous_variant_to_enum,
+  )
+}

@@ -2,34 +2,100 @@ module test.claim.spark_serving_release_witness_test
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.measure { byte_size }
+import std.content_hash { content_hash_of_value, ContentHash }
+import product.placement_supply { HostIdentity }
+import gunbc.spark_serving_realization {
+  SystemPrincipal, NamedPrincipal, ObservedGrantPopulation, GrantPopulationObserved,
+  GrantPopulationUnobserved,
+  SparkServingIntent, SurvivesReboot, RestartsOnFailure, ManagedConvergenceOwned,
+  NoLoginNoSudoIdentity, ExecutorOwnedIdentity, UnauthenticatedEndpoint, IndependentlyObservable,
+  SparkServingRealization, UserUnitRealization, SystemUnitRealization,
+}
 import gunbc.spark_serving_release {
-  SparkServingReleaseIdentity, SparkServingOccurrence, SecretVersionRef,
-  SparkServingRelease, RuntimeArtifactIdentity, ModelArtifactIdentity,
-  ServingConfigurationIdentity, InferenceCapacityPolicy, spark_serving_release_identity,
+  SparkServingReleaseIdentity, SparkServingOccurrence,
+  SparkServingRelease, RuntimeArtifactIdentity,
+  ServingConfigurationIdentity, InferenceCapacityPolicy,
+  SparkServingServingPolicy,
+  spark_serving_release_identity,
   SparkServingReconciliation, SparkServingAlreadyConverged, SparkServingDeltaRequired,
+  SparkServingInstallRequired,
   SparkServingRefused, SparkServingRefusal,
   SparkServingObservation, SparkServingObserved, SparkServingObservationRefused,
-  SparkServingPrerequisite, PrerequisiteAbsent, ManagedHostAccessGrounded,
+  SparkServingAbsent,
+  SparkServingPrerequisite, PrerequisiteAbsent, HostIdentityBindingAdmitted, ManagedHostAccessGrounded,
   reconcile_spark_serving,
+  SparkServingPlanRow, spark_serving_plan_row, plan_row_verdict, plan_verdict_label,
+  plan_row_applicable, spark_serving_target,
   spark_serving_may_actuate, spark_occurrences_share_release,
 }
 
+import gunbc.model_artifact { ModelArtifact, model_artifact_from_observed_digest }
+import std.content_hash { sha256_hex_digest }
+import extdeps.ollama.api { OllamaModelRef, OllamaModelDigest, ollama_model_digest_from_wire }
+
+data witness_model_digest_a: String = "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff0000000011111111"
+data witness_model_digest_b: String = "ffffffffeeeeeeeeddddddddccccccccbbbbbbbbaaaaaaaa9999999988888888"
+
+fn witness_model_ref() -> OllamaModelRef {
+  OllamaModelRef {
+    name: "Qwen/Qwen2.5-7B-Instruct" as NonEmptyStr,
+    tag: "main" as NonEmptyStr,
+  }
+}
+
+fn witness_model_artifact(hex: String) -> ModelArtifact {
+  match ollama_model_digest_from_wire(ref: witness_model_ref(), hex: hex) {
+    Present { value: d } =>
+      model_artifact_from_observed_digest(publisher: "ollama" as NonEmptyStr, observed: d)
+    Absent =>
+      match sha256_hex_digest(hex: witness_model_digest_a) {
+        Present { value: digest } =>
+          model_artifact_from_observed_digest(
+            publisher: "ollama" as NonEmptyStr,
+            observed: OllamaModelDigest { ref: witness_model_ref(), digest: digest },
+          )
+        Absent => witness_model_artifact(hex: witness_model_digest_a)
+      }
+  }
+}
+
 fn release_base() -> SparkServingRelease {
-  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "a09a35458c702b33eeacc393d103063234e8bc28" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 4096, shared_memory_budget_bytes: byte_size(127600816) } }
+  SparkServingRelease {
+    runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" },
+    model: witness_model_artifact(hex: witness_model_digest_a),
+  }
 }
 
 fn release_other_revision() -> SparkServingRelease {
-  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "0000000000000000000000000000000000000000" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 4096, shared_memory_budget_bytes: byte_size(127600816) } }
+  SparkServingRelease {
+    runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" },
+    model: witness_model_artifact(hex: witness_model_digest_b),
+  }
 }
 
-fn release_other_capacity() -> SparkServingRelease {
-  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "a09a35458c702b33eeacc393d103063234e8bc28" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 8192, shared_memory_budget_bytes: byte_size(127600816) } }
+fn policy_base() -> SparkServingServingPolicy {
+  SparkServingServingPolicy {
+    serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" },
+    capacity: InferenceCapacityPolicy {
+      max_model_len: 4096,
+      shared_memory_budget_bytes: byte_size(127600816),
+    },
+  }
+}
+
+fn policy_other_capacity() -> SparkServingServingPolicy {
+  SparkServingServingPolicy {
+    serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" },
+    capacity: InferenceCapacityPolicy {
+      max_model_len: 8192,
+      shared_memory_budget_bytes: byte_size(127600816),
+    },
+  }
 }
 
 // CONTROL 5: the identity is a FUNCTION OF THE RELEASE, both directions. An independently
-// constructed but identical release yields the IDENTICAL digest, and changing any single input --
-// here the model revision, and separately the capacity -- CHANGES it. Without the second direction
-// a constant function passes; without the first, a nondeterministic one does.
+// constructed but identical release yields the IDENTICAL digest, and changing the model manifest
+// digest CHANGES it. Capacity lives on serving_policy and must not affect release identity.
 fn digest_of(spec: SparkServingRelease) -> String {
   spark_serving_release_identity(spec: spec).digest.digest as String
 }
@@ -37,7 +103,11 @@ fn digest_of(spec: SparkServingRelease) -> String {
 test fn release_identity_is_derived_not_authored() -> Bool {
   digest_of(spec: release_base()) == digest_of(spec: release_base())
     && digest_of(spec: release_base()) != digest_of(spec: release_other_revision())
-    && digest_of(spec: release_base()) != digest_of(spec: release_other_capacity())
+}
+
+test fn serving_policy_capacity_does_not_change_release_identity() -> Bool {
+  digest_of(spec: release_base()) == digest_of(spec: release_base())
+    && policy_base().capacity.max_model_len != policy_other_capacity().capacity.max_model_len
 }
 
 fn refusal_specimen() -> SparkServingReconciliation {
@@ -45,15 +115,27 @@ fn refusal_specimen() -> SparkServingReconciliation {
 }
 
 fn occ_srv5() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv5", release_identity: spark_serving_release_identity(spec: release_base()), endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
+  SparkServingOccurrence {
+    host: "srv5",
+    release_identity: spark_serving_release_identity(spec: release_base()),
+    serving_policy: policy_base(),
+  }
 }
 
 fn occ_srv6_same() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv6", release_identity: spark_serving_release_identity(spec: release_base()), endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
+  SparkServingOccurrence {
+    host: "srv6",
+    release_identity: spark_serving_release_identity(spec: release_base()),
+    serving_policy: policy_base(),
+  }
 }
 
 fn occ_srv6_other() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv6", release_identity: spark_serving_release_identity(spec: release_other_revision()), endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
+  SparkServingOccurrence {
+    host: "srv6",
+    release_identity: spark_serving_release_identity(spec: release_other_revision()),
+    serving_policy: policy_base(),
+  }
 }
 
 // BOTH prerequisites, and both naming srv5. This list previously carried only the managed-access
@@ -67,17 +149,25 @@ data no_prereqs: List<SparkServingPrerequisite> = []
 data grounded_prereqs_srv6: List<SparkServingPrerequisite> = [HostIdentityBindingAdmitted { host: "srv6" }, ManagedHostAccessGrounded { host: "srv6" }]
 
 fn observed_on_srv6() -> SparkServingObservation {
-  SparkServingObserved { host: "srv6", loaded_release: spark_serving_release_identity(spec: release_base()) }
+  SparkServingObserved { host: "srv6", loaded_release: release_base() }
 }
 
 data absent_prereqs: List<SparkServingPrerequisite> = [PrerequisiteAbsent { host: "srv5", requirement: "managed automation principal", cause: "only the human bootstrap account is admitted" }]
 
 fn observed_matching() -> SparkServingObservation {
-  SparkServingObserved { host: "srv5", loaded_release: spark_serving_release_identity(spec: release_base()) }
+  SparkServingObserved { host: "srv5", loaded_release: release_base() }
 }
 
 fn observed_other() -> SparkServingObservation {
-  SparkServingObserved { host: "srv5", loaded_release: spark_serving_release_identity(spec: release_other_revision()) }
+  SparkServingObserved { host: "srv5", loaded_release: release_other_revision() }
+}
+
+fn observation_absent() -> SparkServingObservation {
+  SparkServingAbsent { host: "srv5" }
+}
+
+fn observation_absent_wrong_host() -> SparkServingObservation {
+  SparkServingAbsent { host: "srv6" }
 }
 
 fn observation_refused() -> SparkServingObservation {
@@ -87,6 +177,7 @@ fn observation_refused() -> SparkServingObservation {
 fn reconcile_arm(observation: SparkServingObservation, prereqs: List<SparkServingPrerequisite>) -> String {
   match reconcile_spark_serving(desired: occ_srv5(), observation: observation, prerequisites: prereqs) {
     SparkServingAlreadyConverged { converged_release: _ } => "converged"
+    SparkServingInstallRequired { subject: _, desired_release: _ } => "install"
     SparkServingDeltaRequired { plan_subject: _ } => "delta"
     SparkServingRefused { first: _, more: _ } => "refused"
   }
@@ -169,4 +260,288 @@ test fn refusal_cannot_actuate() -> Bool {
 test fn occurrences_replicate_exactly_when_release_identity_agrees() -> Bool {
   spark_occurrences_share_release(a: occ_srv5(), b: occ_srv6_same())
   && !spark_occurrences_share_release(a: occ_srv5(), b: occ_srv6_other())
+}
+
+
+// AN ABSENT HOST PROPOSES AN INSTALL, and this is the state both Sparks are actually in. Before the
+// SparkServingAbsent arm existed this reconciliation was unreachable: nothing serving on the host
+// could only be reported as an observation refusal, which answers "refused", so the first install
+// on a clean machine had no route through the fold at all.
+test fn w_a_host_serving_nothing_reconciles_to_install_required() -> Bool {
+  reconcile_arm(observation: observation_absent(), prereqs: grounded_prereqs) == "install"
+}
+
+// THE DISCRIMINATING PAIR: absence and unobservability are different answers. If these ever agree,
+// the arm added here has collapsed back into the refusal it was split out of.
+test fn w_absence_and_unobservability_do_not_agree() -> Bool {
+  reconcile_arm(observation: observation_absent(), prereqs: grounded_prereqs) != reconcile_arm(observation: observation_refused(), prereqs: grounded_prereqs)
+}
+
+// THE SUBJECT GUARD APPLIES TO THE NEW ARM TOO. srv6 reporting itself absent must not authorize an
+// install on srv5 -- the copied-receipt class the host_matches guard exists to refuse, which a new
+// observation arm could silently escape by not consulting it.
+test fn w_another_hosts_absence_does_not_authorize_this_hosts_install() -> Bool {
+  reconcile_arm(observation: observation_absent_wrong_host(), prereqs: grounded_prereqs) == "refused"
+}
+
+// An install-required reconciliation MAY actuate: it is a real delta, not a no-op and not a refusal.
+test fn w_install_required_may_actuate() -> Bool {
+  spark_serving_may_actuate(reconciliation: SparkServingInstallRequired {
+    subject: "srv5",
+    desired_release: spark_serving_release_identity(spec: release_base()),
+  })
+}
+
+// THE INTENT UNDER WHICH THE HEADLINE CLAIM HOLDS, stated rather than assumed (review 51835). The
+// first cut hardcoded UserUnitRealization with no intent in sight, so the claim "ready to apply" was
+// true of a realization the model refuses under a no-login-identity intent -- the regression suite
+// endorsing the wrong operator answer. ExecutorOwnedIdentity is the operator ruling for the first
+// production release: the serving process shares the automation account's Unix identity rather than
+// running under a separate gunbc-inference UID. That is a real trade, and separate-UID isolation
+// stays a named hardening target rather than a requirement the mechanism silently violates.
+fn executor_owned_intent() -> SparkServingIntent {
+  SparkServingIntent {
+    lifecycle: SurvivesReboot,
+    availability: RestartsOnFailure,
+    authority: ManagedConvergenceOwned,
+    service_identity: ExecutorOwnedIdentity,
+    endpoint: UnauthenticatedEndpoint,
+    observability: IndependentlyObservable,
+  }
+}
+
+fn no_login_intent() -> SparkServingIntent {
+  SparkServingIntent {
+    lifecycle: SurvivesReboot,
+    availability: RestartsOnFailure,
+    authority: ManagedConvergenceOwned,
+    service_identity: NoLoginNoSudoIdentity,
+    endpoint: UnauthenticatedEndpoint,
+    observability: IndependentlyObservable,
+  }
+}
+
+data fleet_key_identity: ContentHash = content_hash_of_value(value: "fleet-automation-key" as NonEmptyStr)
+
+data other_key_identity: ContentHash = content_hash_of_value(value: "operator-macbook-key" as NonEmptyStr)
+
+fn plan_row_under(
+  intent: SparkServingIntent,
+  realization: SparkServingRealization,
+  observation: SparkServingObservation,
+  grants: ObservedGrantPopulation,
+) -> SparkServingPlanRow {
+  spark_serving_plan_row(
+    desired: occ_srv5(), observation: observation, prerequisites: grounded_prereqs,
+    intent: intent, realization: realization,
+    actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr },
+    expected_credential: fleet_key_identity, observed_grants: grants)
+}
+
+fn plan_row_for(observation: SparkServingObservation, grants: ObservedGrantPopulation) -> SparkServingPlanRow {
+  plan_row_under(intent: executor_owned_intent(), realization: UserUnitRealization, observation: observation, grants: grants)
+}
+
+fn grants_on(host: HostIdentity, principal: String, commands: List<NonEmptyStr>) -> ObservedGrantPopulation {
+  grants_under(host: host, principal: principal, credential: fleet_key_identity, commands: commands)
+}
+
+fn grants_under(host: HostIdentity, principal: String, credential: ContentHash, commands: List<NonEmptyStr>) -> ObservedGrantPopulation {
+  GrantPopulationObserved {
+    host: host,
+    principal: principal as NonEmptyStr,
+    credential_identity: credential,
+    commands: commands,
+  }
+}
+
+data linger_command: NonEmptyStr = "/usr/bin/loginctl enable-linger gunbc-automation" as NonEmptyStr
+
+fn linger_granted() -> ObservedGrantPopulation { grants_on(host: "srv5", principal: "gunbc-automation", commands: [linger_command]) }
+
+fn nothing_granted() -> ObservedGrantPopulation { grants_on(host: "srv5", principal: "gunbc-automation", commands: []) }
+
+fn plan_verdict_for(observation: SparkServingObservation, grants: ObservedGrantPopulation) -> String {
+  plan_verdict_label(verdict: plan_row_verdict(row: plan_row_for(observation: observation, grants: grants)))
+}
+
+// THE ANSWER THE OPERATOR IS ACTUALLY ASKING FOR: a Spark serving nothing, with the grant it already
+// holds, is ready to apply. That is the whole arc of this branch reduced to one claim.
+test fn w_an_absent_spark_with_the_existing_grant_is_ready_to_apply() -> Bool {
+  plan_verdict_for(observation: observation_absent(), grants: linger_granted()) == "ready-to-apply"
+}
+
+// BOTH HALVES ARE CONSULTED, and this is the control that proves the join is real rather than the
+// verdict reading one side. Same host, same absent observation -- only the grant population differs,
+// and the verdict must change with it. If these agree, the shortfall is being ignored.
+test fn w_the_same_absent_host_is_blocked_when_the_grant_is_missing() -> Bool {
+  plan_verdict_for(observation: observation_absent(), grants: nothing_granted()) != plan_verdict_for(observation: observation_absent(), grants: linger_granted())
+}
+
+// A converged host is NO-CHANGE regardless of privilege: there is nothing to apply, so a missing
+// grant is not a blocker. A verdict that reported blocked here would ask an operator to obtain a
+// credential for work that does not exist.
+test fn w_a_converged_host_is_no_change_even_with_no_grants() -> Bool {
+  plan_verdict_for(observation: observed_matching(), grants: nothing_granted()) == "no-change"
+}
+
+// An unreachable host blocks on OBSERVATION, never on privilege -- the two have different remedies
+// and the verdict must say which one it is.
+test fn w_an_unobservable_host_blocks_on_observation_not_privilege() -> Bool {
+  plan_verdict_for(observation: observation_refused(), grants: linger_granted()) == "blocked-on-observation cause=loaded revision not observable from the unit MainPID"
+}
+
+// APPLICABILITY REQUIRES BOTH: a row ready to apply is applicable, and the same row without the
+// grant is not.
+test fn w_plan_row_applicable_requires_change_and_privilege() -> Bool {
+  plan_row_applicable(row: plan_row_for(observation: observation_absent(), grants: linger_granted()))
+    && !plan_row_applicable(row: plan_row_for(observation: observation_absent(), grants: nothing_granted()))
+    && !plan_row_applicable(row: plan_row_for(observation: observed_matching(), grants: linger_granted()))
+}
+
+
+// THE REGRESSION CONTROL FOR review 51835. Under an intent that requires a no-login service identity,
+// a user unit is structurally inadmissible -- a systemd user unit runs as the user whose manager owns
+// it -- so the plan must say so rather than reporting a privilege cost for a path that cannot satisfy
+// the intent. Before the contract check this exact row answered "ready-to-apply".
+test fn w_a_user_unit_is_inadmissible_under_a_no_login_identity_intent() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: no_login_intent(), realization: UserUnitRealization,
+      observation: observation_absent(), grants: linger_granted()))),
+    pattern: "realization-inadmissible")
+}
+
+// THE DISCRIMINATING PAIR: the SAME row differs only by intent. If these agree, the contract is not
+// being consulted and the headline claim is once again true of nothing in particular.
+test fn w_the_intent_decides_admissibility_of_the_same_realization() -> Bool {
+  plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+    intent: no_login_intent(), realization: UserUnitRealization,
+    observation: observation_absent(), grants: linger_granted()))) != plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+    intent: executor_owned_intent(), realization: UserUnitRealization,
+    observation: observation_absent(), grants: linger_granted())))
+}
+
+// AN INADMISSIBLE ROW IS NEVER APPLICABLE, whatever its reconciliation and privilege say.
+test fn w_an_inadmissible_realization_is_not_applicable() -> Bool {
+  !plan_row_applicable(row: plan_row_under(
+    intent: no_login_intent(), realization: UserUnitRealization,
+    observation: observation_absent(), grants: linger_granted()))
+}
+
+// THE OTHER DIRECTION: a system unit IS admissible under the no-login intent, and it is blocked on
+// PRIVILEGE rather than on the contract -- which is the answer the reviewer said the operator should
+// have been getting on that profile all along.
+test fn w_a_system_unit_under_the_no_login_intent_blocks_on_privilege() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: no_login_intent(), realization: SystemUnitRealization,
+      observation: observation_absent(), grants: linger_granted()))),
+    pattern: "blocked-on-privilege")
+}
+
+
+// EVIDENCE MUST BE ABOUT THE SUBJECT IT AUTHORIZES. A grant population measured on srv6 cannot
+// authorize srv5, and one measured for root cannot authorize gunbc-automation. Before the population
+// carried its subject, both of these read as ready-to-apply.
+test fn w_a_grant_observed_on_another_host_does_not_authorize_this_one() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: executor_owned_intent(), realization: UserUnitRealization,
+      observation: observation_absent(),
+      grants: grants_on(host: "srv6", principal: "gunbc-automation", commands: [linger_command])))),
+    pattern: "evidence-mismatch")
+}
+
+test fn w_a_grant_observed_for_another_principal_does_not_authorize_this_one() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: executor_owned_intent(), realization: UserUnitRealization,
+      observation: observation_absent(),
+      grants: grants_on(host: "srv5", principal: "root", commands: [linger_command])))),
+    pattern: "evidence-mismatch")
+}
+
+// A MISMATCH IS NOT UNDECIDABILITY. The two have different remedies -- a wiring defect versus an
+// unreachable host -- so they must not report the same thing.
+test fn w_evidence_mismatch_and_unobservability_are_different_answers() -> Bool {
+  plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+    intent: executor_owned_intent(), realization: UserUnitRealization,
+    observation: observation_absent(),
+    grants: grants_on(host: "srv6", principal: "gunbc-automation", commands: [linger_command])))) != plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+    intent: executor_owned_intent(), realization: UserUnitRealization,
+    observation: observation_absent(),
+    grants: GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as NonEmptyStr, cause: "sudo -n -l could not be reached" as NonEmptyStr })))
+}
+
+
+// THE KEY AXIS REFUSES. Same host, same principal, same commands -- observed under a different
+// credential. Before the check this authorized the plan, while the comment beside the field claimed
+// the key axis was the reason the field existed.
+test fn w_a_grant_observed_under_another_credential_does_not_authorize_the_plan() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: executor_owned_intent(), realization: UserUnitRealization,
+      observation: observation_absent(),
+      grants: grants_under(host: "srv5", principal: "gunbc-automation", credential: other_key_identity, commands: [linger_command])))),
+    pattern: "evidence-mismatch")
+}
+
+// AND THE POSITIVE CONTROL: the identical row under the EXPECTED credential is ready to apply, so the
+// refusal above is the credential axis rather than the row being unapprovable for some other reason.
+test fn w_the_same_grant_under_the_expected_credential_is_ready_to_apply() -> Bool {
+  plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+    intent: executor_owned_intent(), realization: UserUnitRealization,
+    observation: observation_absent(),
+    grants: grants_under(host: "srv5", principal: "gunbc-automation", credential: fleet_key_identity, commands: [linger_command])))) == "ready-to-apply"
+}
+
+
+// THE UNOBSERVED ARM CARRIES A SUBJECT TOO. A failure to observe srv6 cannot answer for srv5: that is
+// a wiring defect, not a reachability one, and reporting it as blocked-on-observation sends an
+// operator to check a host that is fine.
+test fn w_an_unobserved_record_for_another_host_is_a_mismatch_not_an_observation_block() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: executor_owned_intent(), realization: UserUnitRealization,
+      observation: observation_absent(),
+      grants: GrantPopulationUnobserved { host: "srv6", principal: "gunbc-automation" as NonEmptyStr, cause: "sudo -n -l could not be reached" as NonEmptyStr }))),
+    pattern: "evidence-mismatch")
+}
+
+// AND THE POSITIVE CONTROL: the same unobserved record for the RIGHT subject still blocks on
+// observation, so the mismatch above is the subject check rather than the arm being unusable.
+test fn w_an_unobserved_record_for_this_host_blocks_on_observation() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: executor_owned_intent(), realization: UserUnitRealization,
+      observation: observation_absent(),
+      grants: GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as NonEmptyStr, cause: "sudo -n -l could not be reached" as NonEmptyStr }))),
+    pattern: "blocked-on-observation")
+}
+
+// THE REFUSAL ARM CARRIES A SUBJECT TOO, and it was the last arm of this coproduct still discarding
+// it (review 51880). srv6 failing to be observed must not block srv5's reconciliation with srv6's
+// cause -- and because both Sparks deliberately share one release identity, a swapped subject is
+// invisible in every other field. The mismatch reports the SUBJECT, not the borrowed cause.
+test fn w_a_refusal_taken_on_another_host_does_not_block_this_one() -> Bool {
+  reconcile_arm(
+    observation: SparkServingObservationRefused { host: "srv6", cause: "loaded revision not observable from the unit MainPID" },
+    prereqs: grounded_prereqs) == "refused"
+    && spark_apply_refusal_subject(observation: SparkServingObservationRefused { host: "srv6", cause: "loaded revision not observable" }) == "observation subject"
+}
+
+fn spark_apply_refusal_subject(observation: SparkServingObservation) -> String {
+  match reconcile_spark_serving(desired: occ_srv5(), observation: observation, prerequisites: grounded_prereqs) {
+    SparkServingRefused { first: f, more: _ } => f.subject as String
+    SparkServingAlreadyConverged { converged_release: _ } => "converged"
+    SparkServingInstallRequired { subject: _, desired_release: _ } => "install"
+    SparkServingDeltaRequired { plan_subject: _ } => "delta"
+  }
+}
+
+// THE POSITIVE CONTROL: a refusal for the RIGHT host still surfaces its own cause, so the guard above
+// is the subject check rather than the arm being swallowed.
+test fn w_a_refusal_for_this_host_still_reports_its_own_cause() -> Bool {
+  spark_apply_refusal_subject(observation: observation_refused()) == "observation"
 }

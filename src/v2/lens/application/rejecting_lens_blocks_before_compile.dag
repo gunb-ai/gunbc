@@ -10,7 +10,8 @@ import v2.compiler.compile {
   validate_then_compile
 }
 import v2.compiler.infer { InferredTree }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.collection { empty_map }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_rejected, port_locus }
@@ -30,6 +31,7 @@ import v2.std.witness { Witness }
 import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
 
 data rejecting_lens_target_model_stub: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: Node {
     kind: TypeNode { connective: Conj },
     children: [],

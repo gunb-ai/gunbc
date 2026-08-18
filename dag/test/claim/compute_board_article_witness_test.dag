@@ -2,7 +2,21 @@ module test.claim.compute_board_article_witness
 
 import std.types { String, NonEmptyStr, List }
 import product.compute_board.digital_control { board_power_interlock_intent }
-import product.compute_board.analog { AnalogCircuitIntent, ComponentModelBinding, ElectricalModelAbsent, NetIdentity, ComponentInstanceIdentity, TerminalIdentity, terminal_ref }
+import product.compute_board.analog {
+  AnalogCircuitIntent,
+  ComponentModelBinding,
+  ElectricalModelAbsent,
+}
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  NetIdentity,
+  TerminalIdentity,
+  component_identity_eq,
+  component_local_label,
+  net_identity_eq,
+  net_local_label,
+  terminal_ref,
+}
 import product.compute_board.spice_projection {
   SpiceSliceProjected,
   SpiceSliceRefused,
@@ -11,6 +25,23 @@ import product.compute_board.spice_projection {
 }
 import product.compute_board.article {
   BoardPowerInterfaceArticle,
+  BaseboardManagementFirmware,
+  BootStorageReadable,
+  ConsoleAvailable,
+  EstablishedByBoardSignal,
+  EstablishedByPlatformComponent,
+  HostUefiFirmware,
+  NotEstablishedByThisArticle,
+  PlatformFirmwareRole,
+  PowerPermitAsserted,
+  RecoveryRequestObservable,
+  BoardProgrammableLogic,
+  SystemControlProcessorFirmware,
+  TrustedFirmwareSecureBootChain,
+  UpstreamCited,
+  UpstreamNotModelledHere,
+  platform_firmware_role_upstream,
+  ResetReleased,
   ChassisBond,
   ChassisBondProposed,
   ChassisBondObserved,
@@ -18,7 +49,7 @@ import product.compute_board.article {
   PowerReturnConnection,
   ProtectiveEarthBond,
   PhysicalRealizationPending,
-  RequiresSpatialAffineSubstrateLanded,
+  RequiresExactSubMillimeterCoordinateQuantum,
   ManufacturingProfileUnselected,
   SignalReferenceConnection,
   ShieldTermination,
@@ -31,6 +62,13 @@ import product.compute_board.article {
   article_physical_interface_admitted,
   power_interlock_article,
   power_good_model_bindings,
+}
+import product.compute_board.article { HostFirmwareStartPrecondition }
+import product.compute_board.admission {
+  AdmittedBoardPowerInterfaceArticle,
+  BoardArticleAdmitted,
+  BoardArticleRefused,
+  admit_board_article,
 }
 import product.compute_board.verilog_projection {
   VerilogModuleEmitted,
@@ -47,7 +85,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // a deck with an extra element, a missing element, a wrong reference node or a reordered
 // netlist, which are all different circuits. An earlier revision of this witness checked three
 // substrings and called the result byte-exact.
-data expected_spice_deck: String = "power-good conditioning network\nVlogic_in pg_raw 0 12\nRpg_cond pg_raw 0 10k\nCpg_filt pg_raw 0 100n"
+data expected_spice_deck: String = "power-good conditioning network\nVlogic_in pg_raw 0 12\nRpg_top pg_raw pg_cond 30k\nRpg_bot pg_cond 0 10k\nCpg_filt pg_cond 0 100n"
 
 data expected_verilog_source: String = "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n  assign power_permit = (conditioned_good & ~fault);\n  assign reset_release = (conditioned_good & power_permit);\nendmodule\n"
 
@@ -55,11 +93,32 @@ data expected_verilog_source: String = "module board_power_interlock (\n  input 
 // receipt is what makes this a claim about a shared root rather than a coincidence between two
 // fixtures: without it, two unrelated articles with equal extracted fields emit indistinguishable
 // output and this witness would still be green.
+// THE PRODUCTION ARTICLE IS ADMITTED HERE, and that is the whole flow rather than a preamble:
+// nothing constructs an AdmittedBoardPowerInterfaceArticle except admit_board_article, so this
+// match is the only route by which the production article reaches either projection. A refused
+// article fails the witness rather than being projected anyway.
+fn admitted_production_article() -> AdmittedBoardPowerInterfaceArticle? {
+  match admit_board_article(a: power_interlock_article) {
+    BoardArticleAdmitted { article: adm } => Present { value: adm }
+    BoardArticleRefused { causes: _ } => none
+  }
+}
+
+test fn w_the_production_article_is_admitted() -> Bool {
+  match admitted_production_article() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 test fn w_one_article_feeds_both_emissions() -> Bool {
-  match project_article_to_spice(article: power_interlock_article) {
+  match admitted_production_article() {
+    Absent => false
+    Present { value: admitted } =>
+  match project_article_to_spice(admitted: admitted) {
     SpiceSliceProjected { receipt: sr } =>
       match project_article_to_verilog(
-        article: power_interlock_article,
+        admitted: admitted,
         bindings: power_interlock_verilog_bindings
       ) {
         VerilogModuleEmitted { receipt: vr } =>
@@ -72,23 +131,33 @@ test fn w_one_article_feeds_both_emissions() -> Bool {
       }
     SpiceSliceRefused { cause: _ } => false
   }
+  }
 }
 
 // THE DISCRIMINATING RED for the SPICE oracle. Perturbing exactly one typed value in the model —
 // nothing else — must change the deck. If it did not, the emission would not be a function of
 // the model and the byte equality above would be pinning a constant.
-data perturbed_bindings: List<ComponentModelBinding> = [
-  ComponentModelBinding {
-    component: "pg_cond" as ComponentInstanceIdentity,
-    standing: ElectricalModelAbsent,
-  },
-]
+// The perturbation is derived from the article's OWN binding list with exactly one standing
+// flipped, rather than authored as a standalone list. An authored list names components by
+// literal, so when the conditioning network was rebuilt as a divider the literal named a
+// component that no longer exists — and the projection still refused, for the unrelated reason
+// that every real component had become unbound. The control would have stayed green while
+// measuring nothing.
+fn perturbed_bindings() -> List<ComponentModelBinding> {
+  fold(power_interlock_article.model_bindings, init: [], f: fn(acc, b) {
+    if component_local_label(c: b.component) == "pg_top" {
+      concat(acc, [ComponentModelBinding { component: b.component, standing: ElectricalModelAbsent }])
+    } else {
+      concat(acc, [b])
+    }
+  })
+}
 
 test fn w_spice_refuses_when_one_binding_is_perturbed() -> Bool {
   match project_analog_to_spice(
     article_identity: power_interlock_article.identity,
     intent: article_analog(a: power_interlock_article),
-    bindings: perturbed_bindings,
+    bindings: perturbed_bindings(),
     reference: power_interlock_article.reference_net
   ) {
     SpiceSliceProjected { receipt: _ } => false
@@ -100,12 +169,13 @@ test fn w_spice_refuses_when_one_binding_is_perturbed() -> Bool {
 // spelled by falling back to its logical name, which is the arm that would make a missing
 // binding unobservable.
 test fn w_verilog_refuses_unbound_signal() -> Bool {
-  match project_article_to_verilog(
-    article: power_interlock_article,
-    bindings: []
-  ) {
-    VerilogModuleEmitted { receipt: _ } => false
-    VerilogProjectionRefused { cause: _ } => true
+  match admitted_production_article() {
+    Absent => false
+    Present { value: admitted } =>
+      match project_article_to_verilog(admitted: admitted, bindings: []) {
+        VerilogModuleEmitted { receipt: _ } => false
+        VerilogProjectionRefused { cause: _ } => true
+      }
   }
 }
 
@@ -176,8 +246,8 @@ test fn w_bond_endpoints_join_the_analog_circuit_by_identity() -> Bool {
   fold(power_interlock_article.bonds, init: false, f: fn(acc, b) {
     acc || match b {
       PowerReturnConnection { domain: d, terminal: t } =>
-        (d as String) == "power_return"
-          && (t.component as String) == "logic_in"
+        net_local_label(n: d) == "power_return"
+          && component_local_label(c: t.component) == "logic_in"
           && (t.terminal as String) == "2"
       ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
       SignalReferenceConnection { signal_class: _, terminal: _ } => false
@@ -213,8 +283,7 @@ test fn w_physical_and_manufacturing_boundaries_refuse_with_named_causes() -> Bo
       PhysicalRealizationPending { causes: cs } =>
         fold(cs, init: false, f: fn(acc, c) {
           acc || match c {
-            RequiresSpatialAffineSubstrateLanded => true
-            RequiresExactSubMillimeterCoordinateQuantum => false
+            RequiresExactSubMillimeterCoordinateQuantum => true
             RequiresShapeAndTopology => false
             RequiresPackageFootprintAuthority => false
           }
@@ -226,4 +295,116 @@ test fn w_physical_and_manufacturing_boundaries_refuse_with_named_causes() -> Bo
         string_contains(s: p as String, pattern: "no fabricator selected")
       ManufacturingProfileSelected { fabricator: _, authority: _ } => false
     }
+}
+
+// EVERY PRECONDITION SAYS WHAT ESTABLISHES IT, and the three establishment arms are all present
+// in the production contract rather than one being decorative. The board's own two are signals it
+// drives; the console and the recovery request belong to platform components; boot storage is
+// explicitly NOT this article's, which is a claim and not an omission.
+fn establishment_kind(p: HostFirmwareStartPrecondition) -> String {
+  match p.establishment {
+    EstablishedByBoardSignal { signal: _ } => "signal"
+    EstablishedByPlatformComponent { role: _ } => "component"
+    NotEstablishedByThisArticle { owner: _ } => "not-ours"
+  }
+}
+
+fn establishment_count(kind: String) -> Int {
+  fold(power_interlock_article.platform_firmware.start_preconditions, init: 0, f: fn(acc, p) {
+    if establishment_kind(p: p) == kind { acc + 1 } else { acc }
+  })
+}
+
+test fn w_every_precondition_names_what_establishes_it() -> Bool {
+  establishment_count(kind: "signal") == 2
+    && establishment_count(kind: "component") == 2
+    && establishment_count(kind: "not-ours") == 1
+}
+
+// The two board-established preconditions name the signals the interlock actually drives, and the
+// admission join is what makes that a checked fact rather than a coincidence between two lists.
+// This asserts the pairing itself, so a contract that named the other output would still be
+// admitted and would fail here.
+fn precondition_signal_for(kind_matches: fn(HostFirmwareStartPrecondition) -> Bool) -> String {
+  fold(power_interlock_article.platform_firmware.start_preconditions, init: "", f: fn(acc, p) {
+    if kind_matches(p) {
+      match p.establishment {
+        EstablishedByBoardSignal { signal: s } => s as String
+        EstablishedByPlatformComponent { role: _ } => acc
+        NotEstablishedByThisArticle { owner: _ } => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+test fn w_the_permit_and_reset_preconditions_name_their_own_signals() -> Bool {
+  precondition_signal_for(kind_matches: fn(p) {
+    match p.kind {
+      PowerPermitAsserted => true
+      ResetReleased => false
+      BootStorageReadable => false
+      RecoveryRequestObservable => false
+      ConsoleAvailable => false
+    }
+  }) == "power_permit"
+    && precondition_signal_for(kind_matches: fn(p) {
+      match p.kind {
+        ResetReleased => true
+        PowerPermitAsserted => false
+        BootStorageReadable => false
+        RecoveryRequestObservable => false
+        ConsoleAvailable => false
+      }
+    }) == "reset_release"
+}
+
+// A ROLE FILLED BY A CITED PROJECT RESOLVES TO THAT PROJECT'S SUBJECT, and the two roles with no
+// upstream module say so rather than answering Absent. The distinction is the whole point: an
+// Optional would make "nobody has cited this yet" indistinguishable from "there is nothing to
+// cite", and only the first is an authoring gap someone can close.
+fn role_is_cited(role: PlatformFirmwareRole) -> Bool {
+  match platform_firmware_role_upstream(role: role) {
+    UpstreamCited { subject: _ } => true
+    UpstreamNotModelledHere { reason: _ } => false
+  }
+}
+
+test fn w_the_three_upstream_roles_resolve_to_cited_subjects() -> Bool {
+  role_is_cited(role: TrustedFirmwareSecureBootChain)
+    && role_is_cited(role: HostUefiFirmware)
+    && role_is_cited(role: BaseboardManagementFirmware)
+}
+
+test fn w_the_two_uncited_roles_name_why_rather_than_answering_absent() -> Bool {
+  match platform_firmware_role_upstream(role: SystemControlProcessorFirmware) {
+    UpstreamCited { subject: _ } => false
+    UpstreamNotModelledHere { reason: r } => (r as String) != ""
+  }
+    && match platform_firmware_role_upstream(role: BoardProgrammableLogic) {
+      UpstreamCited { subject: _ } => false
+      UpstreamNotModelledHere { reason: r } => (r as String) != ""
+    }
+}
+
+// The cited subjects are DISTINCT modules. Three roles resolving to one subject would mean the
+// decomposition bought nothing — which is the failure the split exists to avoid, and it is not
+// visible from the fact that each role answers UpstreamCited.
+test fn w_the_cited_roles_do_not_collapse_onto_one_subject() -> Bool {
+  match platform_firmware_role_upstream(role: TrustedFirmwareSecureBootChain) {
+    UpstreamNotModelledHere { reason: _ } => false
+    UpstreamCited { subject: a } =>
+      match platform_firmware_role_upstream(role: HostUefiFirmware) {
+        UpstreamNotModelledHere { reason: _ } => false
+        UpstreamCited { subject: b } =>
+          match platform_firmware_role_upstream(role: BaseboardManagementFirmware) {
+            UpstreamNotModelledHere { reason: _ } => false
+            UpstreamCited { subject: c } =>
+              a.module_path != b.module_path
+                && b.module_path != c.module_path
+                && a.module_path != c.module_path
+          }
+      }
+  }
 }

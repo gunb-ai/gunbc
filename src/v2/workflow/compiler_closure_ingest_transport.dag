@@ -18,24 +18,75 @@ import tools.host_prelude {
 
 data closure_source_root: String = "src/v2"
 data closure_entry: String = "src/v2/compiler/00_compile.dag"
+data closure_boundary_entry: String = "src/v2/compiler/07_target_carriers.dag"
 data closure_test_entry: String = "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag"
-data closure_witness_module_count: String = "compiler_closure_ingest_receipt_describes_carrier_holds"
+data closure_boundary_test_entry: String = "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag"
+data closure_witness_module_count: String = "compiler_closure_scoped_ingest_module_count_ok_holds"
+data closure_witness_receipt: String = "compiler_closure_ingest_receipt_describes_carrier_holds"
+data closure_boundary_witness: String = "compiler_closure_ingest_boundary_exact_cap_transport_holds"
+data closure_overflow_witness: String = "compiler_closure_ingest_overflow_refuses_never_empty_holds"
 
-data closure_witness_quarantine_note: String = "The gate asserted compiler_closure_scoped_ingest_module_count_ok_holds, which demands COMPLETE coverage. That witness was passing over an Empty carrier because the receipt hardcoded produced_row_count = read_count and coverage_complete = true; with the receipt made honest it correctly goes red, because the compiler closure is 91 reads against a 64-row inline cap and its manifest genuinely carries no rows.
-
-The completeness claim is therefore QUARANTINED as a known-red probe row (gunbc.explicit_witness_admission explicit_witness_admissions / known_red_frontier_note) — it expects red on the probe cadence, and greening is a counted un-quarantine event, not a silent pass. The gate now asserts compiler_closure_ingest_receipt_describes_carrier_holds instead: the receipt must describe the carrier that landed. That is deliberately NOT a weaker restatement of the same claim — it is the falsifiable property the repair established, it holds today, and it reds if the receipt ever drifts from the carrier again. Swapping in a claim that merely restates what is already true would have been vacuity with extra steps; this one can fail.
-
-Dissolve-on: the carrier redesign (manifest rows referencing source by ref/hash instead of inlining full text) lifts the cap constraint, the closure manifest carries its 91 rows, the quarantined row greens and un-quarantines, and this note deletes."
+data closure_witness_quarantine_note: String = "Capless closure-ref transport landed: manifest rows are SourceRef + content hash (no inlined Lossless text), consumers read through refs with hash verification, and produced_row_count tracks the full closure-ref list. Overflow past manifest_inline_list_max reports SourceRootManifestElided with typed read_count/cap while the ref population stays complete — never zero rows with a positive read count. compiler_closure_scoped_ingest_module_count_ok_holds un-quarantined from explicit_witness_admission when the completeness witness greened."
 data closure_witness_layer_roots: String = "self_host_closure_witness_layer_roots_reexports_authority_holds"
 data closure_gap4_entry: String = "src/v2/test/claim/long/gap4_parse_tokens_remain_test.dag"
 data closure_gap4_witness: String = "gap4_match_arm_let_stmt_parses_holds"
 
-fn closure_manifest_emit_args(manifest_dir: String) -> List<String> {
+fn closure_manifest_emit_args(entry: String, manifest_dir: String) -> List<String> {
   [
     "--source-root", closure_source_root,
-    "--entry", closure_entry,
+    "--entry", entry,
     "--emit-dag-manifest", concat(manifest_dir, "/host_source_root_ingest_manifest.dag")
   ]
+}
+
+fn run_closure_ingest_overlay_claims(
+  root: String,
+  manifest_dir: String,
+  claims: List<ClaimRun>
+) -> Bool {
+  let emitted = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
+    args: closure_manifest_emit_args(
+      entry: closure_entry,
+      manifest_dir: manifest_dir
+    )
+  )
+  if emitted.success {
+    run_gunbc_claims(
+      source_roots: concat(witness_layer_roots, [manifest_dir]),
+      claims: claims
+    )
+  } else {
+    false
+  }
+}
+
+fn run_closure_boundary_overlay_claims(
+  root: String,
+  manifest_dir: String
+) -> Bool {
+  let emitted = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
+    args: closure_manifest_emit_args(
+      entry: closure_boundary_entry,
+      manifest_dir: manifest_dir
+    )
+  )
+  if emitted.success {
+    run_gunbc_claims(
+      source_roots: concat(witness_layer_roots, [manifest_dir]),
+      claims: [
+        ClaimRun {
+          entry: closure_boundary_test_entry,
+          function: closure_boundary_witness
+        }
+      ]
+    )
+  } else {
+    false
+  }
 }
 
 func run_compiler_closure_ingest_gate_ready(root: String) -> Bool {
@@ -53,21 +104,30 @@ func run_compiler_closure_ingest_gate_ready(root: String) -> Bool {
           template: concat(root, "/target/closure-ingest-XXXXXX")
         )
         if manifest_dir.success {
-          let emitted = gunbc.WitnessBin.Run(
-            workdir: root,
-            bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
-            args: closure_manifest_emit_args(manifest_dir: manifest_dir.path)
+          let overlay = run_closure_ingest_overlay_claims(
+            root: root,
+            manifest_dir: manifest_dir.path,
+            claims: [
+              ClaimRun { entry: closure_test_entry, function: closure_witness_module_count },
+              ClaimRun { entry: closure_test_entry, function: closure_witness_receipt },
+              ClaimRun { entry: closure_test_entry, function: closure_overflow_witness }
+            ]
           )
-          let overlay = if emitted.success {
-            run_gunbc_claims(
-              source_roots: concat(witness_layer_roots, [manifest_dir.path]),
-              claims: [ClaimRun { entry: closure_test_entry, function: closure_witness_module_count }]
+          let boundary_dir = shell.Mktemp.DirWithTemplate(
+            template: concat(root, "/target/closure-ingest-boundary-XXXXXX")
+          )
+          let boundary = if boundary_dir.success {
+            let ran = run_closure_boundary_overlay_claims(
+              root: root,
+              manifest_dir: boundary_dir.path
             )
+            let cleaned = shell.Remove.RecursiveForce(path: boundary_dir.path)
+            ran && cleaned.success
           } else {
             false
           }
           let cleaned = shell.Remove.RecursiveForce(path: manifest_dir.path)
-          overlay && cleaned.success
+          overlay && boundary && cleaned.success
         } else {
           false
         }

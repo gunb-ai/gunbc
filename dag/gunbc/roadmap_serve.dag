@@ -56,12 +56,14 @@ import gunbc.roadmap_belt_actuate {
   BeltDispatchResult,
   DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
   DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
+  DispatchStaleSession, DispatchSessionLivenessUnobserved,
+  DispatchRevisionDrifted, DispatchRevisionUnobserved,
+  DispatchSessionMultiplicityConflict,
   belt_dispatch_node, belt_dispatch_node_for_instance,
   belt_dispatch_result_json_value,
   belt_dispatch_result_for_label,
   belt_dispatch_all_status_labels,
   BeltObserve, Observed, ObserveRefused,
-  belt_observe, belt_observe_for_instance,
   belt_sessions_observe_for_instance,
   belt_sessions_observed_json, belt_sessions_http_status,
   BeltAttempts, AttemptsObserved, AttemptsRefused,
@@ -274,6 +276,11 @@ fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
     DispatchObserveRefused { node_id: _, reason: _ } => 503
     DispatchAuthorityRefused { node_id: _, detail: _ } => 503
     DispatchSpawnFailed { node_id: _, step: _, detail: _, provider: _ } => 502
+    DispatchStaleSession { node_id: _, session_name: _, detail: _ } => 409
+    DispatchRevisionDrifted { node_id: _, desired: _, local: _ } => 409
+    DispatchRevisionUnobserved { node_id: _, cause: _ } => 503
+    DispatchSessionMultiplicityConflict { node_id: _, session_names: _, session_count: _ } => 409
+    DispatchSessionLivenessUnobserved { node_id: _, session_name: _, reason: _ } => 503
   }
 }
 

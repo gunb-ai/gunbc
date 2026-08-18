@@ -1,8 +1,10 @@
 module test.claim.workflow_dispatch_input_witness
 
 import extdeps.github.actions {
-  WorkflowDispatch, DispatchInput, InputString
+  WorkflowDispatch, DispatchInput, InputString, InputChoice
 }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow, expected_fleet_converge_yml }
+import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
@@ -76,4 +78,82 @@ test fn workflow_dispatch_empty_inputs_preserve_null_projection() -> Bool {
     YamlSequence { elements: _ } => false
     YamlMapping { entries: _ } => false
   }
+}
+
+fn mode_input_has_choice_options(v: YamlValue) -> Bool {
+  match v {
+    YamlMapping { entries } =>
+      fold(entries, init: false, f: fn(acc, entry) {
+        acc || (entry.key == "inputs" && match entry.value {
+          YamlMapping { entries: inputs } =>
+            fold(inputs, init: false, f: fn(found, row) {
+              found || (row.key == "mode" && match row.value {
+                YamlMapping { entries: fields } =>
+                  fold(fields, init: false, f: fn(has_opts, field) {
+                    has_opts || (field.key == "options" && match field.value {
+                      YamlSequence { elements: opts } =>
+                        length(opts) == 4
+                          && any(opts, o => match o { YamlString { value } => value == "plan"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "apply"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "spark_linger"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "spark_observe"  _ => false })
+                      YamlNull => false
+                      YamlBool { value: _ } => false
+                      YamlInt { lexeme: _ } => false
+                      YamlFloat { lexeme: _ } => false
+                      YamlString { value: _ } => false
+                      YamlMapping { entries: _ } => false
+                    })
+                  })
+                YamlNull => false
+                YamlBool { value: _ } => false
+                YamlInt { lexeme: _ } => false
+                YamlFloat { lexeme: _ } => false
+                YamlString { value: _ } => false
+                YamlSequence { elements: _ } => false
+              })
+            })
+          YamlNull => false
+          YamlBool { value: _ } => false
+          YamlInt { lexeme: _ } => false
+          YamlFloat { lexeme: _ } => false
+          YamlString { value: _ } => false
+          YamlSequence { elements: _ } => false
+        })
+      })
+    YamlNull => false
+    YamlBool { value: _ } => false
+    YamlInt { lexeme: _ } => false
+    YamlFloat { lexeme: _ } => false
+    YamlString { value: _ } => false
+    YamlSequence { elements: _ } => false
+  }
+}
+
+test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
+  let entry = workflow_trigger_entry(trigger: fleet_converge_workflow.on[0])
+  entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
+}
+
+test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
+  fleet_converge_workflow.jobs.length() == 2
+    && fleet_converge_workflow.jobs[0].id == "build"
+    && fleet_converge_workflow.jobs[1].id == "fleet-converge"
+    && fleet_converge_workflow.jobs[1].needs == ["build"]
+}
+
+test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool {
+  !string_contains(s: expected_fleet_converge_yml(), pattern: "expected_healed_sha")
+}
+
+test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> Bool {
+  string_contains(
+    s: expected_fleet_converge_yml(),
+    pattern: "EXPECTED_HASH: $\{\{ github.event.inputs.plan_artifact_hash \}\}",
+  )
+    && !string_contains(
+      s: expected_fleet_converge_yml(),
+      pattern: "EXPECTED=\"$\{\{ github.event.inputs.plan_artifact_hash \}\}\"",
+    )
+    && string_contains(s: gunbc_ci_fleet_converge_apply_invoke(), pattern: "$\{EXPECTED_HASH:-\}")
 }

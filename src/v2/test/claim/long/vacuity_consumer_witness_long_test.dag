@@ -39,11 +39,11 @@ fn vacuity_consumer_witness_live_derived_sites() -> List<VacuitySiteKey> {
     source_text: source_text,
     file: vacuity_bool_witness_file_anchor
   ) {
-    Rejected { diagnostics: _ } => Empty
+    Rejected { diagnostics: _ } => std.algebra.Empty
     Accepted { value: module_root, diagnostics: _ } =>
       fold_list(
-        xs: vacuity_collect_fn_decls(root: module_root, acc: Empty),
-        empty: Empty,
+        xs: vacuity_collect_fn_decls(root: module_root.root, acc: std.algebra.Empty),
+        empty: std.algebra.Empty,
         cons: fn(acc, fn_decl) {
           match vacuity_fn_decl_name_optional(fn_decl: fn_decl) {
             Absent => acc
@@ -72,7 +72,7 @@ data vacuity_consumer_witness_classified_sites_tautology_fix_note: String = "Cor
 fn vacuity_consumer_witness_classified_sites() -> List<VacuitySiteKey> {
   fold_list(
     xs: vacuity_consumer_witness_live_derived_sites(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, site) {
       match vacuity_consumer_witness_evidence_for_site(site: site) {
         ProvenDuplicate => list_append(left: acc, right: [site])
@@ -86,7 +86,7 @@ fn vacuity_consumer_witness_classified_sites() -> List<VacuitySiteKey> {
 fn vacuity_consumer_witness_live_shadows() -> List<VacuitySiteKey> {
   fold_list(
     xs: vacuity_consumer_witness_classified_sites(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, site) {
       if vacuity_evidence_eq(a: vacuity_consumer_witness_evidence_for_site(site: site), b: ProvenDuplicate) {
         list_append(left: acc, right: [site])
@@ -151,7 +151,7 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
     Rejected { diagnostics: _ } => false
     Accepted { value: module_root, diagnostics: _ } =>
       let fn_lookup = vacuity_find_fn_decl_by_name(
-        decls: vacuity_collect_fn_decls(root: module_root, acc: Empty),
+        decls: vacuity_collect_fn_decls(root: module_root.root, acc: std.algebra.Empty),
         name: target_fn
       )
       let fn_genuinely_absent = match fn_lookup {

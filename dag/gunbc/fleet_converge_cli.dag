@@ -1,10 +1,17 @@
 module gunbc.fleet_converge_cli
 
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
 import std.algebra { trim }
+import gunbc.command_runner { stat_owner_name_capture }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 
-import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
-import gunbc.fleet_converge_apply { converge_apply_for_host }
+import gunbc.hostname_read {
+  HostnameShortCaptured,
+  HostnameShortCaptureRefused,
+  hostname_short_read_local,
+}
+import gunbc.fleet_converge_apply { converge_apply_for_host, fleet_compute_host_for_identity }
 import gunbc.host_layout { fleet_converge_receipt_dir, srv1_gunbc_repo_root }
 import gunbc.fleet_desired_observe {
   FleetRevisionStanding,
@@ -25,7 +32,16 @@ import gunbc.host_converge_slice1 {
 }
 import gunbc.host_runner_memory_provision { runner_memory_host_converge }
 import gunbc.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
-import gunbc.host_converge { fleet_converge_policy, find_by_identity, converge_verdict, converge_verdict_label, converge_verdict_meet }
+import gunbc.host_converge { fleet_converge_policy, find_by_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob }
+import gunbc.host_effect {
+  HostOs,
+  ProvisionCodexRuntime,
+  host_effect_identity_evidence,
+  LocalShell,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import std.realization_reconcile { Converged, NotConverged }
+import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
   operator_host_srv1,
   operator_host_srv2,
@@ -35,9 +51,14 @@ import gunbc.fleet_intent_network {
   operator_host_srv6,
 }
 
-
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
-  reason: "stage0's `gunbc converge --host <h>` argv dispatch (src/v1/stage0/src/cli_run.rs::handle_converge) is the CLI transport handler for this .dag interface (DESIGN §3 transport-is-a-handler): argv parse -> resolve_entry_graph_shared -> run_in_context_with_args(converge_cli_output) -> stdout/exit-code projection, nothing else. All interpretation, the byte-locked receipt grammar, and typed refusal causes are modeled here (gunbc.fleet_converge_cli) and in gunbc.host_converge/gunbc.fleet_converge_apply; the Rust side carries no converge logic and is not scaffold pending dissolution."
+  reason: "THERE IS NO STAGE0 RECEIVER, AND THERE WILL NOT BE ONE — that is the terminal state this row records, not a gap awaiting repair. Corrected 2026-08-16 (PR #8286, review 52676) when the cli-run driver cut deleted cli_run handle_converge: until then this row named that handler as the live argv transport, so a canonical disposition asserted a terminal hand-Rust route that no longer existed. The stale half was not the arm but the reason — DESIGN §3's stale-citation class, in a carrier the cut itself falsified.
+
+WHY TERMINAL SURVIVES THE DELETION. Transport is a handler, one of N, never a fact about the interface (DESIGN §3), so removing the stage0 CLI transport does not demote this .dag interface — it removes one binding. All interpretation, the byte-locked receipt grammar, and every typed refusal cause remain modeled here and in gunbc.host_converge / gunbc.fleet_converge_apply, exactly as before; what changed is only which host reaches them.
+
+WHAT REACHES THIS INTERFACE NOW. The modeled convergence spine — gunbc.fleet_converge_timer -> gunbc.fleet_converge_apply -> gunbc.host_effect_realize host_effect_apply — consuming modeled desired state and native host-effect realizations. The stage0 driver refuses the converge and serve verbs with a typed status-2 reason naming that spine.
+
+WHY THE HANDLER WAS NOT REBUILT, since not-rebuilt is a decision and not an omission. The cheapest available implementation while the frozen v1 engine stands is resolve-a-.dag-entry plus build-an-interpreter-context plus run, and that is precisely why it is wrong: it would make the interpreter load-bearing for a capability at the moment two lanes are deleting it, converting removable debt into an architectural dependency (DESIGN §3, the deferred-deletion consequence catalogue). The Rust side carries no converge logic, and this row is not a scaffold pending dissolution: nothing here dissolves, because nothing temporary was built."
 }
 
 // SparkManagedAccessUnmeasured is the refusal for a Spark whose managed access nobody has looked
@@ -92,6 +113,128 @@ fn converge_cli_receipt_converged(r: ConvergeCliReceipt) -> Bool {
   r.verdict == VerdictConverged
 }
 
+fn converge_cli_is_fleet_compute_host(host: String) -> Bool {
+  host == (operator_host_srv1 as String)
+    || host == (operator_host_srv2 as String)
+    || host == (operator_host_srv3 as String)
+    || host == (operator_host_srv4 as String)
+}
+
+// Provider-runtime cadence (Option A): srv1–srv4 fleet compute converge runs reconcile the
+// pinned Codex bundle via converge_provider_runtime_codex_receipt after slice1/knob-frontier
+// work (converge_cli_run_host_knobs) and join the adjunct into the host receipt before
+// converge_cli_publish writes the converge-receipt line. The knob is registered in
+// fleet_converge_policy (CodexRuntimeBundle). LocalShell is intentional for the per-host
+// timer route (`--host self` → kernel hostname); cross-host named-host converge must refuse
+// until transport selects SshShell per target — see codex_runtime_converge_local_shell_locus_note.
+data codex_runtime_converge_local_shell_locus_note: String = "ProvisionCodexRuntime on the converge adjunct uses LocalShell — the observe/ensure/read-back script runs on the machine executing gunbc, not on a named remote host. Production cadence is the per-host timer (`gunbc converge --host self` resolves kernel hostname before routing). Named-host converge from another machine (e.g. converge_cli_run(\"srv2\") on srv1) must refuse until transport selects SshShell per target (review 51883; dissolve-on: fleet_ssh transport binding for ProvisionCodexRuntime, same class as realize_provision_build_cache SshShell arms)."
+
+fn converge_kernel_short_hostname_from_content(raw: String) -> String {
+  trim(s: raw)
+}
+
+fn converge_local_kernel_short_hostname() -> String {
+  match hostname_short_read_local() {
+    HostnameShortCaptured { value: v } => v
+    HostnameShortCaptureRefused { reason: _ } => ""
+  }
+}
+
+fn converge_codex_runtime_local_locus_matches_host(host: String) -> Bool {
+  let local = converge_local_kernel_short_hostname()
+  local != "" && host == local
+}
+
+fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? {
+  if !converge_cli_is_fleet_compute_host(host: host) {
+    none
+  } else {
+    let local_hostname = converge_local_kernel_short_hostname()
+    if local_hostname == "" || host != local_hostname {
+      Present {
+        value: ConvergeCliReceipt {
+          host: host,
+          applied: 0,
+          drifted: 0,
+          verdict: Absent,
+          reason: Present {
+            value: KnobFrontier {
+              reason: concat(
+                "converge_provider_runtime_codex: ProvisionCodexRuntime LocalShell refused — target host ",
+                host,
+                " does not match local kernel hostname ",
+                local_hostname,
+                "; cross-host transport is SshShell dissolve-on (review 51883)",
+              ),
+            },
+          },
+        },
+      }
+    } else {
+    match fleet_compute_host_for_identity(identity: host as HostIdentity) {
+      Present { value: compute_host } =>
+        Present {
+          value: match host_effect_apply(
+            target: HostOs { node: compute_host },
+            effect: ProvisionCodexRuntime {},
+            evidence: host_effect_identity_evidence,
+            transport: LocalShell,
+          ) {
+            Converged { evidence: _, applied: _ } =>
+              ConvergeCliReceipt {
+                host: host,
+                applied: 1,
+                drifted: 0,
+                verdict: VerdictConverged,
+                reason: none,
+              }
+            NotConverged { reason: why, applied: _ } =>
+              ConvergeCliReceipt {
+                host: host,
+                applied: 0,
+                drifted: 0,
+                verdict: Absent,
+                reason: Present { value: KnobFrontier { reason: why } },
+              }
+          }
+        }
+      Absent => none
+    }
+    }
+  }
+}
+
+// Join semantics: host_knobs is PRIMARY so enrolled knob-frontier/slice1 refusal
+// messages survive when the codex adjunct also reports a Present reason.
+fn converge_cli_receipt_join_steps(primary: ConvergeCliReceipt, adjunct: ConvergeCliReceipt) -> ConvergeCliReceipt {
+  ConvergeCliReceipt {
+    host: primary.host,
+    applied: primary.applied + adjunct.applied,
+    drifted: primary.drifted + adjunct.drifted,
+    verdict: converge_verdict_meet(a: primary.verdict, b: adjunct.verdict),
+    reason: match primary.reason {
+      Present { value: _ } => primary.reason
+      Absent => adjunct.reason
+    },
+  }
+}
+
+fn converge_cli_codex_runtime_knob_registered_for_host(host: HostIdentity) -> Bool {
+  match fleet_converge_policy() {
+    ConvergePolicyDerived { hosts: hosts } =>
+      match host_converge_for_identity(hosts: hosts, identity: host) {
+        Present { value: hc } =>
+          fold(
+            hc.knobs,
+            init: false,
+            f: (acc, knob) => acc || knob.name == codex_runtime_bundle_knob(host: host).name,
+          )
+        Absent => false
+      }
+    ConvergePolicyUnsound { reason: _ } => false
+  }
+}
+
 fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity) -> HostConverge? {
   find_by_identity(hosts, identity: identity, key: fn(h) { h.identity })
 }
@@ -107,6 +250,8 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     SudoNopasswdGrantListProbe { probe: _ } => fallback
     OsInstallActuatorToolchainEnsure {} => fallback
     ProvisionBuildCache { catalog_id: _ } => fallback
+    ProvisionCodexRuntime {} => fallback
+    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => fallback
     Srv3InstallMediaFetch => fallback
     Srv3SeededInstallMediaRemaster => fallback
     Srv3SeededInstallMediaToolchainEnsure => fallback
@@ -389,7 +534,9 @@ fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
 // Receipt publication (CONVERGE-0 loop leg): on the SELF route — the per-host timer's
 // route, where the deployment guarantees the host layout exists — the receipt line is
 // WRITTEN to the declared receipts path before being printed, so a fold-side observation
-// job can read the host's last converge standing without a new commit. Publication
+// job can read the host's last converge standing without a new commit. Publication uses
+// staging write + rename in the same directory (crash-safe; supersedes root-owned stale
+// files when the service principal owns the directory — no elevation). Publication
 // failure on that route FAILS CLOSED (converged=false with a typed reason): the loop's
 // product is the published receipt, so an unpublished converge must not report success.
 // Non-self routes (operator/CI supervised runs against a named host) are unchanged —
@@ -398,19 +545,84 @@ fn fleet_converge_receipt_path(host: String) -> String {
   join([fleet_converge_receipt_dir, "/", host, "-converge-receipt.txt"], "")
 }
 
+// Same directory as the published receipt — POSIX rename permission is on the directory,
+// not the file being replaced, so a root-owned stale receipt from the pre-b1 unit user
+// can be superseded without elevation when the service principal owns the directory.
+fn fleet_converge_receipt_staging_path(host: String) -> String {
+  join([fleet_converge_receipt_dir, "/", host, "-converge-receipt.staging"], "")
+}
+
+fn converge_cli_atomic_receipt_write(host: String, content: String) -> String? {
+  let staging = fleet_converge_receipt_staging_path(host: host)
+  let final_path = fleet_converge_receipt_path(host: host)
+  let w = Filesystem.Write(path: staging, content: content)
+  if !w.success {
+    Present { value: concat("gunbc converge: receipt staging write failed — ", w.error) }
+  } else {
+    let moved = shell.Move.File(source: staging as FilePath, destination: final_path as FilePath)
+    if moved.success {
+      none
+    } else {
+      Present { value: "gunbc converge: receipt rename failed after staging write (mv over root-owned stale file should succeed when the directory is owned by the service principal)" }
+    }
+  }
+}
+
+// Applied means committed plus independent read-back (DESIGN section 5): rename alone is not the claim.
+data converge_cli_receipt_owner_readback_required: Bool = true
+
+// Interim owner readback routes through gunbc.command_runner.stat_owner_name_capture
+// (command_runner_scaffold population). Dissolve-on: extdeps.filesystem.filesystem_io
+// typed owner observation retires the stat argv arm.
+data converge_cli_receipt_owner_readback_interim_note: String = "Owner readback uses command_runner stat_owner_name_capture (command_runner_scaffold) until extdeps.filesystem.filesystem_io carries a typed owner observation; then converge_cli_receipt_owner_readback routes through that extdep."
+
+fn converge_cli_expected_receipt_owner_name() -> String {
+  fleet_posix_operator_user.name
+}
+
+fn converge_cli_receipt_owner_readback(host: String) -> String? {
+  let path = fleet_converge_receipt_path(host: host)
+  let expected = converge_cli_expected_receipt_owner_name()
+  let r = stat_owner_name_capture(path: path)
+  if !r.success {
+    Present { value: concat("gunbc converge: receipt owner read-back refused (stat): ", trim(s: r.stderr)) }
+  } else {
+    let owner = trim(s: r.stdout)
+    if owner == expected {
+      none
+    } else {
+      Present {
+        value: concat(
+          concat("gunbc converge: receipt owner read-back mismatch — expected ", expected),
+          concat(" observed ", owner),
+        ),
+      }
+    }
+  }
+}
+
 fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line: String) -> ConvergeCliOutput {
-  let w = Filesystem.Write(
-    path: fleet_converge_receipt_path(host: resolved),
+  let publish_err = converge_cli_atomic_receipt_write(
+    host: resolved,
     content: join([out.line, "\n", revision_line, "\n"], ""),
   )
-  if w.success {
-    out
-  } else {
-    ConvergeCliOutput {
-      line: out.line,
-      converged: false,
-      reason: Present { value: concat("gunbc converge: receipt publication failed — ", w.error) },
-    }
+  match publish_err {
+    Absent =>
+      match converge_cli_receipt_owner_readback(host: resolved) {
+        Absent => out
+        Present { value: why } =>
+          ConvergeCliOutput {
+            line: out.line,
+            converged: false,
+            reason: Present { value: why },
+          }
+      }
+    Present { value: why } =>
+      ConvergeCliOutput {
+        line: out.line,
+        converged: false,
+        reason: Present { value: why },
+      }
   }
 }
 
@@ -543,15 +755,15 @@ fn converge_cli_verify_output(host: String) -> ConvergeCliOutput {
 // identity as a named ambiguity (never first-wins), so a collision surfaces as
 // NotConverged instead of one machine's receipt silently satisfying the other.
 // --host self (CONVERGE-0 loop leg): the per-host timer unit converges SELF, so the
-// literal "self" resolves to the machine's own kernel-reported short hostname before
-// routing — the ONE observation a host can always make about itself, read at the cited
-// procfs authority, never an env var or a config file a deploy could skew. Any other
-// value routes unchanged (the operator/CI form). An unresolvable read falls through as
-// the literal, landing in UnknownHost — a typed refusal, never a fabricated identity.
+// literal "self" resolves to the machine's own short hostname before routing — the ONE
+// observation a host can always make about itself, read via extdeps.tools.hostname
+// os.Hostname.ReadShort (hermetic mock: localhost), never an env var or a config file a
+// deploy could skew. Any other value routes unchanged (the operator/CI form). An
+// unresolvable read falls through as the literal, landing in UnknownHost — a typed
+// refusal, never a fabricated identity.
 fn converge_cli_resolve_self(host: String) -> String {
   if host == "self" {
-    let raw = filesystem_read(path: procfs_path_literal(p: ProcSysKernelHostname) as String).content
-    let line = raw.trim()
+    let line = converge_local_kernel_short_hostname()
     if line == "" {
       host
     } else {
@@ -580,6 +792,14 @@ fn converge_cli_output_with_verify(host: String, verify_only: Bool) -> ConvergeC
 }
 
 fn converge_cli_run(host: String) -> ConvergeCliReceipt {
+  let host_knobs = converge_cli_run_host_knobs(host: host)
+  match converge_provider_runtime_codex_receipt(host: host) {
+    Present { value: codex } => converge_cli_receipt_join_steps(primary: host_knobs, adjunct: codex)
+    Absent => host_knobs
+  }
+}
+
+fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
   match fleet_converge_policy() {
     ConvergePolicyUnsound { reason: why } =>
       ConvergeCliReceipt {

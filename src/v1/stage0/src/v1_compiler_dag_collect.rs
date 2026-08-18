@@ -13,7 +13,7 @@ pub use crate::v1_std_core::import_is_all;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::Resolved;
-use crate::v1_std_core::MatchPattern::*;
+use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 pub use crate::v1_std_core::{Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -151,6 +151,25 @@ pub fn dag_collect_inferred(
     }
 }
 
+pub fn dag_collect_match_pattern(
+    pattern: Option<Rc<MatchPattern>>,
+    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+    collision_errors: Rc<Vec<Rc<ErrorNode>>>,
+) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+    match pattern.clone().as_deref().cloned() {
+        Some(MatchPattern::Bind { declaration: d, .. }) => {
+            dag_collect_insert_slots(d.clone(), slots.clone(), collision_errors.clone())
+        }
+        Some(MatchPattern::VariantPattern {
+            field_bindings: fbs,
+            ..
+        }) => dag_collect_nodes_list(fbs.clone(), slots.clone(), collision_errors.clone()),
+        Some(MatchPattern::LitPattern { value: _, .. }) => slots.clone(),
+        Some(MatchPattern::Wildcard) => slots.clone(),
+        None => slots.clone(),
+    }
+}
+
 pub fn dag_collect_node_tree(
     node: Rc<Node>,
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
@@ -183,6 +202,11 @@ pub fn dag_collect_node_tree(
         );
         let slots = dag_collect_optional_node(
             node.type_annotation.clone(),
+            slots.clone(),
+            collision_errors.clone(),
+        );
+        let slots = dag_collect_match_pattern(
+            node.match_pattern.clone(),
             slots.clone(),
             collision_errors.clone(),
         );
