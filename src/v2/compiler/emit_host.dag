@@ -63,7 +63,7 @@ fn host_exit_failure_outcome(exit: v2.std.host_run.HostExit) -> v2.std.diagnosti
   match exit.outcome {
     v2.std.diagnostic.Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
       outcome_rejected(d: d)
-    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     _ => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
   }
 }
@@ -479,7 +479,7 @@ fn run_test_claim_emit_vs_eval_verdict(
   expected: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 ) -> Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue> {
   match expected {
-    v2.std.diagnostic.Accepted { value: exp_val, diagnostics: None } =>
+    Accepted { value: exp_val, diagnostics: None } =>
       if accepted_runtime_value_outcome_eq(
         a: v2.std.diagnostic.Accepted { value: host_actual, diagnostics: v2.std.diagnostic.None },
         b: expected
@@ -499,7 +499,7 @@ fn run_test_claim_emit_vs_eval_verdict(
           )
         )
       }
-    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+    Rejected { diagnostics: ds } =>
       verdict_build_failed(
         actual: expected,
         diagnostic: ds.head
@@ -531,7 +531,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
           diagnostics: None
         } =>
           match runtime_value_parse(target: target, stdout: stdout) {
-            v2.std.diagnostic.Accepted { value: host_actual, diagnostics: _ } =>
+            Accepted { value: host_actual, diagnostics: _ } =>
               run_test_claim_emit_vs_eval_verdict(
                 subject: subject,
                 target: target,
@@ -551,7 +551,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
             diagnostic: emit_host_run_failed_diagnostic()
           )
       }
-    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+    Rejected { diagnostics: ds } =>
       v2.std.verdict.Deferred {
         actual: v2.std.diagnostic.Rejected { diagnostics: ds },
         diagnostic: emit_host_emit_vs_eval_deferred_diagnostic(at: at)
@@ -569,7 +569,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source(
   at: Node
 ) -> Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue> {
   match source_outcome {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
+    Accepted { value: source, diagnostics: _ } =>
       run_test_claim_emit_vs_eval_verdict_from_run(
         subject: subject,
         target: target,
@@ -585,7 +585,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source(
         expected: expected,
         at: at
       )
-    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+    Rejected { diagnostics: ds } =>
       verdict_build_failed(
         actual: v2.std.diagnostic.Rejected { diagnostics: ds },
         diagnostic: emit_host_build_failed_diagnostic(at: at)
@@ -605,7 +605,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source_cached(
   at: Node
 ) -> Verdict<v2.compiler.eval.TestClaimEvalSubject<Node>, RuntimeValue> {
   match source_outcome {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
+    Accepted { value: source, diagnostics: _ } =>
       run_test_claim_emit_vs_eval_verdict_from_run(
         subject: subject,
         target: target,
@@ -623,7 +623,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source_cached(
         expected: expected,
         at: at
       )
-    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+    Rejected { diagnostics: ds } =>
       verdict_build_failed(
         actual: v2.std.diagnostic.Rejected { diagnostics: ds },
         diagnostic: emit_host_build_failed_diagnostic(at: at)

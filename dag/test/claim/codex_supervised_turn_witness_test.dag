@@ -31,14 +31,14 @@ test fn witness_supervised_binding_uses_held_session_lease_policy() -> std.types
     standing_receipt: none,
   )
   match binding.execution_policy {
-    std.temporal_effect.HeldSessionLease { lease_key: k } => k == ("attempt-1/turn-1" as std.types.NonEmptyStr)
+    HeldSessionLease { lease_key: k } => k == ("attempt-1/turn-1" as std.types.NonEmptyStr)
     _ => false
   }
 }
 
 test fn witness_idle_thread_without_terminal_receipt_refuses_duplicate_execution() -> std.types.Bool {
   match gunbc.codex_supervised_turn.codex_turn_start_admission(terminal_receipt: none, thread: gunbc.codex_supervised_turn.CodexThreadIdle) {
-    gunbc.codex_supervised_turn.CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+    CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
     _ => false
   }
 }
@@ -52,7 +52,7 @@ test fn witness_absent_thread_admits_turn_start() -> std.types.Bool {
 
 test fn witness_busy_thread_refuses_outcome_unobserved() -> std.types.Bool {
   match gunbc.codex_supervised_turn.codex_turn_start_admission(terminal_receipt: none, thread: gunbc.codex_supervised_turn.CodexThreadBusy) {
-    gunbc.codex_supervised_turn.CodexTurnStartRefusedOutcomeUnobserved { reason: _ } => true
+    CodexTurnStartRefusedOutcomeUnobserved { reason: _ } => true
     _ => false
   }
 }
@@ -74,10 +74,10 @@ test fn witness_running_lease_observation_is_expected_not_absent() -> std.types.
 test fn witness_parse_supervised_stdout_extracts_thread_and_turn_ids() -> std.types.Bool {
   let parse = gunbc.codex_supervised_turn.parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
   match parse.thread_start {
-    gunbc.codex_supervised_turn.SupervisedRpcOk { native_id: tid } =>
+    SupervisedRpcOk { native_id: tid } =>
       (tid as String) == "thread-uuid-1"
         && match parse.turn_start {
-          gunbc.codex_supervised_turn.SupervisedRpcOk { native_id: turn_id } => (turn_id as String) == "turn-uuid-1"
+          SupervisedRpcOk { native_id: turn_id } => (turn_id as String) == "turn-uuid-1"
           _ => false
         }
     _ => false
@@ -116,7 +116,7 @@ test fn witness_parse_turn_failed_notification_disposition() -> std.types.Bool {
   let stdout = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"u1\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"turn/failed\",\"params\":{}}\n"
   let parse = gunbc.codex_supervised_turn.parse_supervised_turn_stdout(stdout: stdout)
   match gunbc.codex_supervised_turn.disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
-    gunbc.provider_turn_adjudication.ProviderTurnFailed { cause: _ } => true
+    ProviderTurnFailed { cause: _ } => true
     _ => false
   }
 }
@@ -152,7 +152,7 @@ test fn witness_turn_start_line_escapes_json_unsafe_user_input() -> std.types.Bo
 test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> std.types.Bool {
   let parse = gunbc.codex_supervised_turn.empty_supervised_turn_parse_acc()
   match gunbc.codex_supervised_turn.disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 1 }) {
-    gunbc.provider_turn_adjudication.ProviderTurnFailed { cause: _ } => true
+    ProviderTurnFailed { cause: _ } => true
     _ => false
   }
 }
@@ -175,9 +175,9 @@ test fn witness_corrupt_generation_store_refuses_prior_read() -> std.types.Bool 
     content: "garbage",
   )
   match read {
-    gunbc.codex_supervised_turn.GenerationStoreMalformed { content: _ } =>
+    GenerationStoreMalformed { content: _ } =>
       match gunbc.codex_supervised_turn.codex_supervised_turn_generation_admission(read: read) {
-        gunbc.codex_supervised_turn.CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
         _ => false
       }
     _ => false
@@ -191,10 +191,10 @@ test fn witness_negative_generation_store_refuses_prior_read() -> std.types.Bool
     content: "-3",
   )
   match read {
-    gunbc.codex_supervised_turn.GenerationStoreNegative { value: v } =>
+    GenerationStoreNegative { value: v } =>
       v == -3
         && match gunbc.codex_supervised_turn.codex_supervised_turn_generation_admission(read: read) {
-          gunbc.codex_supervised_turn.CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+          CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
           _ => false
         }
     _ => false
@@ -207,7 +207,7 @@ test fn witness_whitespace_generation_store_is_malformed_not_absent() -> std.typ
     read_success: true,
     content: "   ",
   ) {
-    gunbc.codex_supervised_turn.GenerationStoreMalformed { content: _ } => true
+    GenerationStoreMalformed { content: _ } => true
     gunbc.codex_supervised_turn.GenerationAbsent => false
     _ => false
   }
@@ -220,9 +220,9 @@ test fn witness_unreadable_generation_store_refuses_prior_read() -> std.types.Bo
     content: "",
   )
   match read {
-    gunbc.codex_supervised_turn.GenerationStoreUnreadable { reason: _ } =>
+    GenerationStoreUnreadable { reason: _ } =>
       match gunbc.codex_supervised_turn.codex_supervised_turn_generation_admission(read: read) {
-        gunbc.codex_supervised_turn.CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
         _ => false
       }
     _ => false

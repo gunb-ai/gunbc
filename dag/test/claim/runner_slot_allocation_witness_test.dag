@@ -54,8 +54,8 @@ test fn runner_slot_allocation_committed_widths_match_memory_admission() -> Bool
 
 test fn runner_slot_allocation_srv4_disk_unconstrained_at_allocation() -> Bool {
   match gunbc.runner_slot_allocation.host_disk_admitted_width(host: operator_host_srv4) {
-    gunbc.runner_slot_allocation.DiskWidthUnconstrained { reason: r } => string_contains(s: r, pattern: "runner_width_disk_preflight")
-    gunbc.runner_slot_allocation.DiskAdmitsWidth { slots: _, provenance: _ } => false
+    DiskWidthUnconstrained { reason: r } => string_contains(s: r, pattern: "runner_width_disk_preflight")
+    DiskAdmitsWidth { slots: _, provenance: _ } => false
   }
 }
 
@@ -108,7 +108,7 @@ test fn witness_declared_row_pins_14_13_gib_from_floor_peak_calibration() -> Boo
 
 test fn witness_srv2_03_effective_cap_pins_16_15_gib_and_drifts() -> Bool {
   match gunbc.runner_slot_allocation.gunbc_srv2_03_effective_cap_observation {
-    gunbc.runner_slot_allocation.RunnerSlotEffectiveCapMeasured { runner_unit: unit, memory_max: max, memory_high: high, probed_at: _ } =>
+    RunnerSlotEffectiveCapMeasured { runner_unit: unit, memory_max: max, memory_high: high, probed_at: _ } =>
       unit == "actions-runner@srv2-03.service"
         && std.measure.byte_size_count(b: max) == std.measure.byte_size_count(b: std.measure.byte_size(17179869184))
         && std.measure.byte_size_count(b: high) == std.measure.byte_size_count(b: std.measure.byte_size(16106127360))

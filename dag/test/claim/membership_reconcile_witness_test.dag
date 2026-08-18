@@ -149,8 +149,8 @@ fn effects_has_teardown(es: std.types.List<gunbc.membership_reconcile.MemberEffe
   any(es, e =>
     match e {
       EffectRemove { from: m } => m.mid == mid
-      gunbc.membership_reconcile.EffectAdd { to: _ } => false
-      gunbc.membership_reconcile.EffectReplace { from: _, to: _ } => false
+      EffectAdd { to: _ } => false
+      EffectReplace { from: _, to: _ } => false
     }
   )
 }
@@ -163,15 +163,15 @@ test fn w_change_projects_to_effect_replace_with_both_sides() -> std.types.Bool 
     observed: [tm_owned(mid: "a", ver: "1")],
   )
   match gunbc.membership_reconcile.membership_effects(plan: plan) {
-    gunbc.membership_reconcile.EffectsReady { effects: es } =>
+    EffectsReady { effects: es } =>
       count(es) == 1
         && any(es, e =>
              match e {
                EffectReplace { from: f, to: t } => f.ver == "1" && t.ver == "2" && f.mid == "a"
-               gunbc.membership_reconcile.EffectAdd { to: _ } => false
-               gunbc.membership_reconcile.EffectRemove { from: _ } => false
+               EffectAdd { to: _ } => false
+               EffectRemove { from: _ } => false
              })
-    gunbc.membership_reconcile.ApplyRefused { refusals: _ } => false
+    ApplyRefused { refusals: _ } => false
   }
 }
 
@@ -183,21 +183,21 @@ test fn w_effects_refuses_wholesale_on_any_refusal() -> std.types.Bool {
     observed: [tm_owned(mid: "o", ver: "1"), tm_ensured(mid: "e", ver: "1")],
   )
   match gunbc.membership_reconcile.membership_effects(plan: plan) {
-    gunbc.membership_reconcile.ApplyRefused { refusals: rs } =>
+    ApplyRefused { refusals: rs } =>
       count(rs) == 1
         && any(rs, r =>
              r.member.mid == "e"
                && (match r.cause { gunbc.membership_reconcile.MemberNotOwned => true  gunbc.membership_reconcile.OwnershipUnknown => false  gunbc.membership_reconcile.RosterDuplicateKey { roster: _ } => false }))
-    gunbc.membership_reconcile.EffectsReady { effects: _ } => false
+    EffectsReady { effects: _ } => false
   }
 }
 
 test fn w_effects_ready_when_no_refusal() -> std.types.Bool {
   let plan = t_reconcile(desired: [], observed: [tm_owned(mid: "o", ver: "1")])
   match gunbc.membership_reconcile.membership_effects(plan: plan) {
-    gunbc.membership_reconcile.EffectsReady { effects: es } =>
+    EffectsReady { effects: es } =>
       count(es) == 1 && effects_has_teardown(es: es, mid: "o")
-    gunbc.membership_reconcile.ApplyRefused { refusals: _ } => false
+    ApplyRefused { refusals: _ } => false
   }
 }
 
@@ -305,12 +305,12 @@ test fn w_duplicate_plain_key_refuses_with_roster_cause() -> std.types.Bool {
     }
   )
     && match gunbc.membership_reconcile.membership_effects(plan: plan) {
-      gunbc.membership_reconcile.ApplyRefused { refusals: rs } =>
+      ApplyRefused { refusals: rs } =>
         count(rs) == 1
           && any(rs, r =>
                r.member.mid == "dup"
                  && (match r.cause { gunbc.membership_reconcile.RosterDuplicateKey { roster: gunbc.membership_reconcile.MembershipDesiredRoster } => true  _ => false }))
-      gunbc.membership_reconcile.EffectsReady { effects: _ } => false
+      EffectsReady { effects: _ } => false
     }
 }
 
@@ -325,9 +325,9 @@ test fn w_duplicate_scoped_key_refuses() -> std.types.Bool {
     resource: scoped_witness_resource,
     ownership_of: scoped_witness_own,
   ) {
-    gunbc.membership_reconcile.MembershipReconcileDuplicateScopedKey { roster: gunbc.membership_reconcile.MembershipDesiredRoster, first: f, duplicate: d, key: _ } =>
+    MembershipReconcileDuplicateScopedKey { roster: gunbc.membership_reconcile.MembershipDesiredRoster, first: f, duplicate: d, key: _ } =>
       f.value.mid == "route" && d.value.mid == "route" && f.value.ver == "1" && d.value.ver == "2"
-    gunbc.membership_reconcile.MembershipReconcileScopedReady { plan: _ } => false
+    MembershipReconcileScopedReady { plan: _ } => false
   }
 }
 

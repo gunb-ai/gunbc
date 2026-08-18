@@ -1969,7 +1969,7 @@ fn deploy_access_shell_apply_success_stdout(
     evidence: host_effect_read_evidence,
     transport: access.transport,
   ) {
-    std.realization_reconcile.Converged { evidence: e, applied: _ } =>
+    Converged { evidence: e, applied: _ } =>
       match e {
         ShellEffectApplied { stdout: out, exit_code: code, stderr: _ } =>
           if code == 0 {
@@ -1979,7 +1979,7 @@ fn deploy_access_shell_apply_success_stdout(
           }
         ConvergePlanApplied { stdout: _, exit_code: _ } => Absent
       }
-    std.realization_reconcile.NotConverged { reason: _, applied: _ } => Absent
+    NotConverged { reason: _, applied: _ } => Absent
   }
 }
 
@@ -2146,7 +2146,7 @@ fn not_converged_directive(drive: gunbc.host_effect.Drive) -> ConvergeDirective 
 
 fn host_effect_drive_directive(r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>) -> ConvergeDirective {
   match r {
-    std.realization_reconcile.Converged { evidence: _, applied: _ } => Settled
+    Converged { evidence: _, applied: _ } => Settled
     NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
         Present { value: Deny { refusal: _ } } => Refused { reason: why }

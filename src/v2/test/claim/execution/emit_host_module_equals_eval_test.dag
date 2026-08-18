@@ -36,14 +36,14 @@ fn emit_module_two_text() -> v2.std.diagnostic.Outcome<String> {
   match emit_module(decls: emit_module_two_add_decls(), target: rust_target_model_staging()) {
     Accepted { value: medium, diagnostics: _ } =>
       v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn emit_module_two_text_matches(golden: String) -> Bool {
   match emit_module_two_text() {
-    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
   }
 }
 

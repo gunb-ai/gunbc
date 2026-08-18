@@ -99,7 +99,7 @@ test fn occurrence_identity_v2_shared_constructor_equivalence_holds() -> Bool {
   match v2.std.node.node_occurrence_id_to_shared(
     occurrence: v2.std.node.node_occurrence_id_from_shared(occurrence: shared)
   ) {
-    std.occurrence_identity.OccurrenceMinted { id: id } => id.value == 12
+    OccurrenceMinted { id: id } => id.value == 12
     _ => false
   }
 }

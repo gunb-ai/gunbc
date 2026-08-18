@@ -12,12 +12,12 @@ fn list_eq(xs: std.algebra.FreeMonoid<Int>, ys: std.algebra.FreeMonoid<Int>) -> 
     std.algebra.Empty =>
       match ys {
         std.algebra.Empty => true
-        std.algebra.Cons { head: _, tail: _ } => false
+        Cons { head: _, tail: _ } => false
       }
-    std.algebra.Cons { head: xh, tail: xt } =>
+    Cons { head: xh, tail: xt } =>
       match ys {
         std.algebra.Empty => false
-        std.algebra.Cons { head: yh, tail: yt } =>
+        Cons { head: yh, tail: yt } =>
           (xh == yh) && list_eq(xs: xt, ys: yt)
       }
   }

@@ -105,8 +105,8 @@ fn quad_admission() -> v2.compiler.name_resolve.Admission {
 
 test fn quad_namespace_only_resolve_accepts_holds() -> Bool {
   match quad_roots() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
-    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model(),
       roots: admitted,
@@ -115,16 +115,16 @@ test fn quad_namespace_only_resolve_accepts_holds() -> Bool {
       active_roots: std.algebra.Empty,
       policy: NamespaceOnlyY
     ) {
-      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-      v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn quad_import_scoped_admission_reds_ambiguous_export_holds() -> Bool {
   match quad_roots() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
-    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model(),
       roots: admitted,
@@ -133,8 +133,8 @@ test fn quad_import_scoped_admission_reds_ambiguous_export_holds() -> Bool {
       active_roots: std.algebra.Empty,
       policy: ImportScoped
     ) {
-      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-      v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^resolve_ambiguous_export
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } => d.head.reason == ^resolve_ambiguous_export
     }
   }
 }

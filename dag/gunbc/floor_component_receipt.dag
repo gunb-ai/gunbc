@@ -230,10 +230,10 @@ fn floor_component_row_label(row: FloorComponentRow) -> String {
 
 fn floor_component_wall_members(w: std.observation.Measured<std.measure.Nanosecond>) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   match w {
-    std.observation.MeasuredValue { value: ns } => [
+    MeasuredValue { value: ns } => [
       json_kv(key: "wall_ms", value: json_int(n: nanosecond_count(n: ns) / 1000000))
     ]
-    std.observation.MeasuredUnavailable { cause: c } => [
+    MeasuredUnavailable { cause: c } => [
       json_kv(key: "wall_ms", value: json_null()),
       json_kv(key: "wall_unavailable_cause", value: json_string(s: c as String))
     ]

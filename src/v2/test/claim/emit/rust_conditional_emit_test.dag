@@ -18,23 +18,23 @@ fn rust_conditional_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.Infe
 
 fn rust_conditional_emit_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_pick_if_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
+    Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: rust_conditional_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn rust_conditional_emit_swapped_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_pick_if_arrow_with_body_swapped_arms() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
+    Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: rust_conditional_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -60,7 +60,7 @@ test fn rust_conditional_emit_pick_fn_accepts() -> Bool {
   match rust_conditional_emit_from_tree(target: rust_pick_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_pick_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -70,7 +70,7 @@ test fn rust_conditional_emit_swapped_arms_discriminates() -> Bool {
       (source.carried == rust_conditional_emit_swapped_source_text) &&
       (source.carried != rust_pick_source_text) &&
       (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

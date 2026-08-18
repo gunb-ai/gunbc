@@ -44,7 +44,7 @@ fn settlement_is_immediate(s: v2.extdeps.coordination.SettlementGuarantee<v2.ext
 
 fn settlement_is_within(s: v2.extdeps.coordination.SettlementGuarantee<v2.extdeps.coordination.RequiredSettleBound>) -> Bool {
   match s {
-    v2.extdeps.coordination.SettlesWithin { bound: _ } => true
+    SettlesWithin { bound: _ } => true
     _ => false
   }
 }

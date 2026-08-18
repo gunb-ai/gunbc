@@ -16,10 +16,10 @@ data srv3_installed_cooling: product.cooling_qualification.InstalledCoolingReali
 // 250 W design power covers the M128-30's 183 W TDP.
 test fn installed_srv3_cooling_is_catalog_compatible() -> std.types.Bool {
   match product.cooling_qualification.cooling_catalog_verdict(realization: srv3_installed_cooling) {
-    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
-    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: _ } => false
-    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
-    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
+    CoolingCatalogRefused { host: _, cause: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -47,21 +47,21 @@ test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> std.t
       baseboard_model: srv3_installed_cooling.baseboard_model,
     },
   ) {
-    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: cause } =>
+    CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
         product.cooling_qualification.CoolerMountDoesNotMatchProcessorMount {
           cooler_mount: _,
           processor_mount: _,
         } => true
-        product.cooling_qualification.BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
+        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
         product.cooling_qualification.CoolerDesignPowerBelowProcessorTdp {
           cooler_max_design_power: _,
           processor_tdp: _,
         } => false
       }
-    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
-    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
-    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -87,9 +87,9 @@ test fn baseboard_absent_from_supported_population_is_refused() -> std.types.Boo
       baseboard_model: srv3_installed_cooling.baseboard_model,
     },
   ) {
-    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: cause } =>
+    CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
-        product.cooling_qualification.BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => true
+        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => true
         product.cooling_qualification.CoolerMountDoesNotMatchProcessorMount {
           cooler_mount: _,
           processor_mount: _,
@@ -99,9 +99,9 @@ test fn baseboard_absent_from_supported_population_is_refused() -> std.types.Boo
           processor_tdp: _,
         } => false
       }
-    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
-    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
-    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -126,7 +126,7 @@ test fn design_power_one_watt_below_tdp_is_refused() -> std.types.Bool {
       baseboard_model: srv3_installed_cooling.baseboard_model,
     },
   ) {
-    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: cause } =>
+    CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
         product.cooling_qualification.CoolerDesignPowerBelowProcessorTdp {
           cooler_max_design_power: _,
@@ -136,11 +136,11 @@ test fn design_power_one_watt_below_tdp_is_refused() -> std.types.Bool {
           cooler_mount: _,
           processor_mount: _,
         } => false
-        product.cooling_qualification.BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
+        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
       }
-    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
-    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
-    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -176,10 +176,10 @@ test fn host_without_modeled_cooler_is_unobserved_not_compatible() -> std.types.
     host: gunbc.fleet_physical_inventory.host_srv1,
     realizations: gunbc.fleet_physical_inventory.installed_cooling_realizations,
   ) {
-    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => true
-    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
-    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
-    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: _ } => false
+    InstalledCoolingUnobserved { host: _ } => true
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    CoolingCatalogRefused { host: _, cause: _ } => false
   }
 }
 
@@ -216,11 +216,11 @@ data cooling_catalog_carries_no_runtime_evidence_note: std.types.Bool = true
 // a measurement.
 test fn catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence() -> std.types.Bool {
   match product.cooling_qualification.cooling_catalog_verdict(realization: srv3_installed_cooling) {
-    product.cooling_qualification.CoolingCatalogCompatible { host: host, cooler_asset: asset } =>
+    CoolingCatalogCompatible { host: host, cooler_asset: asset } =>
       host == gunbc.fleet_physical_inventory.host_srv3 && asset == gunbc.fleet_physical_inventory.cooler_srv3
-    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: _ } => false
-    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
-    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    CoolingCatalogRefused { host: _, cause: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -250,11 +250,11 @@ data duplicate_cooling_ba: std.types.List<product.cooling_qualification.Installe
 
 fn verdict_is_ambiguous(v: product.cooling_qualification.CoolingCatalogVerdict) -> std.types.Bool {
   match v {
-    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: n } => n == 2
-    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
-    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: _ } => false
-    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
-    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: n } => n == 2
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    CoolingCatalogRefused { host: _, cause: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -299,7 +299,7 @@ test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> std.type
       baseboard_model: srv3_installed_cooling.baseboard_model,
     },
   ) {
-    product.cooling_qualification.CoolingCatalogRefused { host: _, cause: cause } =>
+    CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
         product.cooling_qualification.CoolerMountDoesNotMatchProcessorMount {
           cooler_mount: cm,
@@ -307,15 +307,15 @@ test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> std.type
         } =>
           cm.designation == pm.designation
             && cm.platform_owner != pm.platform_owner
-        product.cooling_qualification.BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
+        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
         product.cooling_qualification.CoolerDesignPowerBelowProcessorTdp {
           cooler_max_design_power: _,
           processor_tdp: _,
         } => false
       }
-    product.cooling_qualification.CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
-    product.cooling_qualification.InstalledCoolingUnobserved { host: _ } => false
-    product.cooling_qualification.InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 

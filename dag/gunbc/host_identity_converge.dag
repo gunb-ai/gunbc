@@ -173,7 +173,7 @@ fn host_identity_unprivileged_refusal_has_no_marker(
           Present { value: Deny { refusal: _ } } => true
           _ => false
         }
-    std.realization_reconcile.Converged { evidence: _, applied: _ } => false
+    Converged { evidence: _, applied: _ } => false
   }
 }
 
@@ -186,7 +186,7 @@ fn host_identity_privilege_denial_reason(
         Present { value: d } => deploy_access_decision_reason(d: d)
         Absent => why
       }
-    std.realization_reconcile.Converged { evidence: _, applied: _ } => ""
+    Converged { evidence: _, applied: _ } => ""
   }
 }
 

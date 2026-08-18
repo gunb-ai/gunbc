@@ -295,7 +295,7 @@ fn program_eval_root(root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std
 
 fn program_branch_effect_io_holds() -> Bool {
   match program_eval_root(root: program_pick_if_branch_with_effect_io) {
-    v2.std.diagnostic.Accepted { value: v, diagnostics: None } => v == program_unit_value()
+    Accepted { value: v, diagnostics: None } => v == program_unit_value()
     _ => false
   }
 }
@@ -325,14 +325,14 @@ fn program_pick_if_arrow_tree(callee: v2.std.node.Node) -> v2.compiler.infer.Inf
 
 fn program_pick_if_arrow_holds() -> Bool {
   match ingested_pick_if_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } => {
+    Accepted { value: arrow, diagnostics: _ } => {
       let call = program_pick_if_call(callee: arrow)
       match eval_with_context(
         tree: program_pick_if_arrow_tree(callee: arrow),
         context: program_context_with_effect_io(),
         inputs: inputs_root_only(root: call)
       ) {
-        v2.std.diagnostic.Accepted { value: v, diagnostics: None } => v == program_int_one_value()
+        Accepted { value: v, diagnostics: None } => v == program_int_one_value()
         _ => false
       }
     }

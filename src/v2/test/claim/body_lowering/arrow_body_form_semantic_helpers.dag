@@ -55,13 +55,13 @@ fn arrow_body_form_semantic_unary_int_if_body_admits_holds(
   mirror: ArrowBodyFormAdmissionMirror
 ) -> Bool {
   match find_arrow_body_child(root: callee) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       if arrow_body_form_admits_body_with_mirror(target: body, mirror: mirror) {
         arrow_body_form_eval_unary_int_holds(callee: callee, arg_lex: arg_lex, expected: expected)
       } else {
         false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -71,13 +71,13 @@ fn arrow_body_form_semantic_nullary_int_if_body_admits_holds(
   mirror: ArrowBodyFormAdmissionMirror
 ) -> Bool {
   match find_arrow_body_child(root: callee) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       if arrow_body_form_admits_body_with_mirror(target: body, mirror: mirror) {
         arrow_body_form_eval_nullary_int_holds(callee: callee, expected: expected)
       } else {
         false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -89,7 +89,7 @@ fn arrow_body_form_semantic_binary_int_if_body_admits_holds(
   mirror: ArrowBodyFormAdmissionMirror
 ) -> Bool {
   match find_arrow_body_child(root: callee) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       if arrow_body_form_admits_body_with_mirror(target: body, mirror: mirror) {
         arrow_body_form_eval_binary_int_holds(
           callee: callee,
@@ -100,7 +100,7 @@ fn arrow_body_form_semantic_binary_int_if_body_admits_holds(
       } else {
         false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -110,8 +110,8 @@ fn arrow_body_form_eval_int_type_node() -> v2.std.node.Node {
 
 fn arrow_body_form_eval_int_literal_optional(lexeme: String) -> Optional<v2.std.node.Node> {
   match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
-    v2.std.diagnostic.Accepted { value: node, diagnostics: _ } => optional_present(value: node)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: node, diagnostics: _ } => optional_present(value: node)
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
@@ -119,8 +119,8 @@ fn arrow_body_form_eval_runtime_int_equals(value: v2.std.runtime.RuntimeValue, n
   match value {
     RuntimePrimitive { value: p } =>
       match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
-        v2.std.diagnostic.Accepted { value: magnitude, diagnostics: _ } => magnitude == n
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Accepted { value: magnitude, diagnostics: _ } => magnitude == n
+        Rejected { diagnostics: _ } => false
       }
     _ => false
   }
@@ -182,7 +182,7 @@ fn arrow_body_form_eval_call_outcome_for_call(call: v2.std.node.Node) -> v2.std.
 
 fn arrow_body_form_eval_int_result_equals_for_call(call: v2.std.node.Node, expected: Int) -> Bool {
   match arrow_body_form_eval_call_outcome_for_call(call: call) {
-    v2.std.diagnostic.Accepted { value: actual, diagnostics: _ } =>
+    Accepted { value: actual, diagnostics: _ } =>
       arrow_body_form_eval_runtime_int_equals(value: actual, n: expected)
     _ => false
   }
@@ -228,7 +228,7 @@ fn arrow_body_form_eval_binary_int_holds(
 
 fn arrow_body_form_eval_call_does_not_reject_unsupported_callee(call: v2.std.node.Node) -> Bool {
   match arrow_body_form_eval_call_outcome_for_call(call: call) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: None } => true
-    v2.std.diagnostic.Rejected { diagnostics: ds } => ds.head.reason != ^eval_rejected_unsupported_callee
+    Accepted { value: _, diagnostics: None } => true
+    Rejected { diagnostics: ds } => ds.head.reason != ^eval_rejected_unsupported_callee
   }
 }

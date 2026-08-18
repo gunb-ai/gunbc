@@ -48,7 +48,7 @@ fn arrow_body_form_id_arrow_fixture() -> Node {
 
 fn arrow_body_form_zero_arrow_fixture() -> Optional<Node> {
   match dag_int_literal_node_from_lexeme(lexeme: "0", occurrence_id: SyntheticOccurrence) {
-    v2.std.diagnostic.Accepted { value: zero_lit, diagnostics: _ } =>
+    Accepted { value: zero_lit, diagnostics: _ } =>
       optional_present(
         value: dag_arrow_with_body_node(
           domain: node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: []),
@@ -56,7 +56,7 @@ fn arrow_body_form_zero_arrow_fixture() -> Optional<Node> {
           body: zero_lit
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
@@ -76,10 +76,10 @@ test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
     Absent => false
     Present { value: zero_arrow } =>
       match abf_admitted_add_arrow_tree() {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
-        v2.std.diagnostic.Accepted { value: admitted_tree, diagnostics: _ } =>
+        Rejected { diagnostics: _ } => false
+        Accepted { value: admitted_tree, diagnostics: _ } =>
           match v2.compiler.resolve.resolve(tree: admitted_tree, lm: lm) {
-            v2.std.diagnostic.Accepted { value: add_arrow, diagnostics: _ } =>
+            Accepted { value: add_arrow, diagnostics: _ } =>
               arrow_body_form_eval_unary_int_holds(
                 callee: arrow_body_form_id_arrow_fixture(),
                 arg_lex: "7",
@@ -92,7 +92,7 @@ test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
                   right_lex: "3",
                   expected: 5
                 )
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
       }
   }

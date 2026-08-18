@@ -40,8 +40,8 @@ fn derisk_assemble_for(src: String) -> v2.std.diagnostic.Outcome<Node> {
 
 fn derisk_assemble_accepts(src: String) -> Bool {
   match derisk_assemble_for(src: src) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -51,8 +51,8 @@ fn derisk_infer_outcome_for(src: String) -> v2.std.diagnostic.Outcome<v2.compile
 
 fn derisk_infer_accepts(src: String) -> Bool {
   match derisk_infer_outcome_for(src: src) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -62,8 +62,8 @@ fn derisk_emit_accepts(src: String) -> Bool {
     admission: derisk_module_admission(),
     target: rust_target_model()
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 

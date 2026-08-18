@@ -269,10 +269,10 @@ data vacuity_bool_witness_fn_decl_collection_ceiling_note: String = "THIRD, BROA
 fn vacuity_witness_ingest_source_text(source_text: v2.std.text.String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: ts, diagnostics: _ } =>
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: artifact, diagnostics: _ } =>
           normalize(parse_tree: artifact.tree)
       }
@@ -364,8 +364,8 @@ fn vacuity_transform_is_equality(transform: v2.std.node.Node) -> Bool {
 
 fn vacuity_operand_provenance_from_node(node: v2.std.node.Node) -> TestClaimOperandProvenance {
   match dag_canonical_literal_from_node(node: node) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => LiteralOracle
-    v2.std.diagnostic.Rejected { diagnostics: _ } => OperandProvenanceUnknown
+    Accepted { value: _, diagnostics: _ } => LiteralOracle
+    Rejected { diagnostics: _ } => OperandProvenanceUnknown
   }
 }
 
@@ -419,7 +419,7 @@ fn vacuity_bool_witness_evidence(witness: v2.std.verification.BoolWitness) -> Va
     source_text: source_text,
     file: vacuity_bool_witness_file_anchor
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => Unknown
+    Rejected { diagnostics: _ } => Unknown
     Accepted { value: module_root, diagnostics: _ } =>
       match vacuity_find_fn_decl_by_name(
         decls: vacuity_collect_fn_decls(root: module_root.root, acc: std.algebra.Empty),

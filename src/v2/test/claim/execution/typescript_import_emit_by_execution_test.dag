@@ -185,7 +185,7 @@ fn ts_emit_import_from_carrier(carrier: Node) -> v2.std.diagnostic.Outcome<Mediu
 fn ts_import_emit_text(carrier: Node) -> String {
   match ts_emit_import_from_carrier(carrier: carrier) {
     Accepted { value: source, diagnostics: _ } => source.carried
-    v2.std.diagnostic.Rejected { diagnostics: _ } => "TS_IMPORT_EMIT_REJECTED"
+    Rejected { diagnostics: _ } => "TS_IMPORT_EMIT_REJECTED"
   }
 }
 
@@ -236,14 +236,14 @@ test fn ts_import_emit_other_path_discriminates_holds() -> Bool {
 
 test fn ts_import_emit_missing_qn_fails_closed_holds() -> Bool {
   match ts_emit_import_from_carrier(carrier: ts_import_missing_qn_carrier()) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
 test fn ts_import_emit_empty_names_fails_closed_holds() -> Bool {
   match ts_emit_import_from_carrier(carrier: ts_import_empty_names_carrier()) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }

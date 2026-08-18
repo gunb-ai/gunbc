@@ -223,14 +223,14 @@ fn live_deploy_apply_readiness_gate_with_readiness(
       mutation
     } else {
       match readiness {
-        std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
+        NotConverged { reason: why, applied: _ } =>
           match mutation {
-            std.realization_reconcile.Converged { evidence: _, applied: intent } =>
+            Converged { evidence: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
-            std.realization_reconcile.NotConverged { reason: _, applied: intent } =>
+            NotConverged { reason: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
           }
-        std.realization_reconcile.Converged { evidence: _, applied: _ } => mutation
+        Converged { evidence: _, applied: _ } => mutation
       }
     }
   }
@@ -282,14 +282,14 @@ fn live_deploy_apply_via_transport(
       gated
     } else {
       match digest {
-        std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
+        NotConverged { reason: why, applied: _ } =>
           match gated {
-            std.realization_reconcile.Converged { evidence: _, applied: intent } =>
+            Converged { evidence: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
-            std.realization_reconcile.NotConverged { reason: _, applied: intent } =>
+            NotConverged { reason: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
           }
-        std.realization_reconcile.Converged { evidence: _, applied: _ } => gated
+        Converged { evidence: _, applied: _ } => gated
       }
     }
   }
@@ -395,8 +395,8 @@ fn live_deploy_reconciliation_exit(r: std.realization_reconcile.Reconciliation<g
     ExitSuccess
   } else {
     match r {
-      std.realization_reconcile.NotConverged { reason: why, applied: _ } => exit_failure(reason: why)
-      std.realization_reconcile.Converged { evidence: _, applied: _ } => ExitSuccess
+      NotConverged { reason: why, applied: _ } => exit_failure(reason: why)
+      Converged { evidence: _, applied: _ } => ExitSuccess
     }
   }
 }

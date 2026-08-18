@@ -84,7 +84,7 @@ fn classical_not_family_cached_run_with_source(
             && stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -95,7 +95,7 @@ fn classical_not_family_cached_run_checks(
   expected_octet: Int
 ) -> Bool {
   match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
+    Accepted { value: source, diagnostics: _ } =>
       classical_not_family_cached_run_with_source(
         workspace: workspace,
         tree: tree,
@@ -103,7 +103,7 @@ fn classical_not_family_cached_run_checks(
         expect_compile_skipped: expect_compile_skipped,
         expected_octet: expected_octet
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -113,7 +113,7 @@ fn classical_not_family_cached_cold_then_warm(
   expected_octet: Int
 ) -> Bool {
   match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
+    Accepted { value: source, diagnostics: _ } =>
       classical_not_family_cached_run_with_source(
         workspace: workspace,
         tree: tree,
@@ -128,13 +128,13 @@ fn classical_not_family_cached_cold_then_warm(
           expect_compile_skipped: true,
           expected_octet: expected_octet
         )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_on_demand_classical_not_grain_keys_differ_holds() -> Bool {
   match classical_not_family_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       let digest = inferred_tree_digest(tree: tree)
       let source = emit_on_demand_key(
         closure_digest: digest,
@@ -149,13 +149,13 @@ test fn emit_on_demand_classical_not_grain_keys_differ_holds() -> Bool {
         grain: NativeArtifact
       )
       (source == native) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_on_demand_classical_not_materialize_share_on_hit_holds() -> Bool {
   match classical_not_family_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       let key = classical_not_family_native_key_for(tree: tree)
       store_put_fold(
         outcome: store_put(store: classical_not_family_test_store(), key: key, artifact_bytes: byte_size(count: 64)),
@@ -170,13 +170,13 @@ test fn emit_on_demand_classical_not_materialize_share_on_hit_holds() -> Bool {
         },
         did_not_fit: (a, b) => false
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_on_demand_classical_not_materialize_recompute_on_miss_holds() -> Bool {
   match classical_not_family_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       let lookup = emit_on_demand_lookup(
         store: classical_not_family_test_store(),
         key: classical_not_family_native_key_for(tree: tree)
@@ -185,7 +185,7 @@ test fn emit_on_demand_classical_not_materialize_recompute_on_miss_holds() -> Bo
         EmitOnDemandMiss => materialization_for_lookup(lookup: lookup) == std.realization.Recompute
         EmitOnDemandHit { receipt: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -206,21 +206,21 @@ test fn emit_on_demand_classical_not_schedule_refuses_unreadable_budget_holds() 
         PackedWidth { width: _ } => false
         MaturationReserve { width: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_on_demand_classical_not_closure_keys_differ_for_distinct_trees_holds() -> Bool {
   match classical_not_family_tree() {
-    v2.std.diagnostic.Accepted { value: tree_primary, diagnostics: _ } =>
+    Accepted { value: tree_primary, diagnostics: _ } =>
       match classical_not_family_alt_tree() {
-        v2.std.diagnostic.Accepted { value: tree_alt, diagnostics: _ } =>
+        Accepted { value: tree_alt, diagnostics: _ } =>
           let key_primary = classical_not_family_native_key_for(tree: tree_primary)
           let key_alt = classical_not_family_native_key_for(tree: tree_alt)
           key_primary != key_alt
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -250,9 +250,9 @@ fn classical_not_cached_wrong_fixture_mismatch(workspace: String, tree: v2.compi
 
 test fn emit_on_demand_classical_not_native_one_build_holds() -> Bool {
   match classical_not_family_tree() {
-    v2.std.diagnostic.Accepted { value: tree_primary, diagnostics: _ } =>
+    Accepted { value: tree_primary, diagnostics: _ } =>
       match classical_not_family_alt_tree() {
-        v2.std.diagnostic.Accepted { value: tree_alt, diagnostics: _ } =>
+        Accepted { value: tree_alt, diagnostics: _ } =>
           let shared_parent = classical_not_family_cache_root_for(test_id: "native_one_build")
           let key_primary = classical_not_family_native_key_for(tree: tree_primary)
           let key_alt = classical_not_family_native_key_for(tree: tree_alt)
@@ -284,9 +284,9 @@ test fn emit_on_demand_classical_not_native_one_build_holds() -> Bool {
                 tree: tree_alt
               )
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

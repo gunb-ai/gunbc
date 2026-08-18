@@ -9,20 +9,20 @@ data rust_produced_add2_golden: String = "fn add2(x: i32, y: i32) -> i32 { x + y
 
 fn rust_produced_decl_text(fn_name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<String> {
   match table_fixture_add_decl_node(fn_name: fn_name) {
-    v2.std.diagnostic.Accepted { value: decl, diagnostics: _ } =>
+    Accepted { value: decl, diagnostics: _ } =>
       match emit_produced_decl(decl: decl, target: rust_target_model()) {
         Accepted { value: medium, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn rust_produced_decl_matches(fn_name: v2.std.node.Symbol, golden: String) -> Bool {
   match rust_produced_decl_text(fn_name: fn_name) {
-    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
   }
 }
 

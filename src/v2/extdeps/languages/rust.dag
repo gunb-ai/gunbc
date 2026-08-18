@@ -3153,13 +3153,13 @@ fn rust_insert_per_language_fact_bundle_entry_outcome(
   entry: v2.std.grounding.PerLanguageFactBundleEntry
 ) -> v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
   match acc {
-    v2.std.diagnostic.Accepted { value: registry, diagnostics: _ } =>
+    Accepted { value: registry, diagnostics: _ } =>
       insert_per_language_fact_bundle_entry(
         registry: registry,
         key: entry.key,
         fact_value: entry.fact_value
       )
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3179,19 +3179,19 @@ fn rust_snoc_primitive_bundle(
   subject_carrier: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   match acc {
-    v2.std.diagnostic.Accepted { value: bundles, diagnostics: _ } => match primitive_fact_bundle_for_subject(
+    Accepted { value: bundles, diagnostics: _ } => match primitive_fact_bundle_for_subject(
       registry: registry,
       subject_carrier: subject_carrier,
       target: rust_target_model()
     ) {
-      v2.std.diagnostic.Accepted { value: bundle, diagnostics: d } =>
+      Accepted { value: bundle, diagnostics: d } =>
         v2.std.diagnostic.Accepted {
           value: list_snoc_item(xs: bundles, item: bundle),
           diagnostics: d
         }
-      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3248,12 +3248,12 @@ fn rust_append_primitive_bundle_outcomes(
   right: v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>>
 ) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   match left {
-    v2.std.diagnostic.Accepted { value: l, diagnostics: _ } => match right {
-      v2.std.diagnostic.Accepted { value: r, diagnostics: d } =>
+    Accepted { value: l, diagnostics: _ } => match right {
+      Accepted { value: r, diagnostics: d } =>
         v2.std.diagnostic.Accepted { value: list_append(left: l, right: r), diagnostics: d }
-      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3271,9 +3271,9 @@ fn rust_primitive_fact_bundles_from_registry(
 
 fn rust_model_core() -> v2.std.diagnostic.Outcome<v2.std.model_core.ModelCore> {
   match rust_per_language_fact_bundle_registry() {
-    v2.std.diagnostic.Accepted { value: registry, diagnostics: _ } =>
+    Accepted { value: registry, diagnostics: _ } =>
       match rust_primitive_fact_bundles_from_registry(registry: registry) {
-        v2.std.diagnostic.Accepted { value: primitives, diagnostics: d } =>
+        Accepted { value: primitives, diagnostics: d } =>
           v2.std.diagnostic.Accepted {
             value: v2.std.model_core.ModelCore {
               primitives: primitives,
@@ -3284,15 +3284,15 @@ fn rust_model_core() -> v2.std.diagnostic.Outcome<v2.std.model_core.ModelCore> {
             },
             diagnostics: d
           }
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
 fn rust_fn_add_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.LanguageModel> {
   match rust_model_core() {
-    v2.std.diagnostic.Accepted { value: core, diagnostics: d } =>
+    Accepted { value: core, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.language_model.LanguageModel {
           lex: rust_fn_add_lex(),
@@ -3303,7 +3303,7 @@ fn rust_fn_add_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_mod
         },
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3937,7 +3937,7 @@ fn rust_canonical_symbols() -> Set<v2.std.node.Symbol> {
 
 fn rust_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.LanguageModel> {
   match rust_model_core() {
-    v2.std.diagnostic.Accepted { value: core, diagnostics: d } =>
+    Accepted { value: core, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.language_model.LanguageModel {
           lex: rust_lex(),
@@ -3948,7 +3948,7 @@ fn rust_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.Lang
         },
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 

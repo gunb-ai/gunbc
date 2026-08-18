@@ -69,9 +69,9 @@ fn tailscale_serve_mount_status_key(mount: TailscaleServeMount) -> String {
 
 fn json_unique_member_value(v: extdeps.languages.json.emit.JsonValue, key: String) -> extdeps.languages.json.emit.JsonValue? {
   match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
-    extdeps.languages.json.parse.JsonMemberFound { value } => Present { value: value }
+    JsonMemberFound { value } => Present { value: value }
     extdeps.languages.json.parse.JsonMemberAbsent => none
-    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => none
+    JsonMemberDuplicated { count: _ } => none
     extdeps.languages.json.parse.JsonMemberNotAnObject => none
   }
 }
@@ -97,12 +97,12 @@ fn tailscale_status_web_entry_proxies(entry: extdeps.languages.json.emit.JsonVal
 
 fn tailscale_status_web_proxies(web: extdeps.languages.json.emit.JsonValue, mount: TailscaleServeMount) -> std.types.List<String> {
   match web {
-    extdeps.languages.json.emit.JsonObject { members } => flat_map(members, member => tailscale_status_web_entry_proxies(entry: member.value, mount: mount))
+    JsonObject { members } => flat_map(members, member => tailscale_status_web_entry_proxies(entry: member.value, mount: mount))
     extdeps.languages.json.emit.JsonNull => []
-    extdeps.languages.json.emit.JsonBool { value: _ } => []
-    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => []
-    extdeps.languages.json.emit.JsonString { value: _ } => []
-    extdeps.languages.json.emit.JsonArray { elements: _ } => []
+    JsonBool { value: _ } => []
+    JsonNumber { lexeme: _ } => []
+    JsonString { value: _ } => []
+    JsonArray { elements: _ } => []
   }
 }
 

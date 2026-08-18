@@ -14,14 +14,14 @@ data bodyless_fold_snippet: String = "module bodyless_probe\n\nfn f(xs: List<Int
 fn ingest(source_text: String, file: v2.std.node.Symbol) -> Optional<Node> {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
-    v2.std.diagnostic.Accepted { value: ts, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+        Rejected { diagnostics: _ } => Absent
         Accepted { value: artifact, diagnostics: _ } =>
           match normalize(parse_tree: artifact.tree) {
-            v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
-            v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: tree, diagnostics: _ } => Present { value: tree }
           }
       }
   }
@@ -51,8 +51,8 @@ fn is_proven_termination(m: v2.std.cardinality.Multiplicity) -> Bool {
 
 fn outcome_is_rejected(o: v2.std.diagnostic.Outcome<Node>) -> Bool {
   match o {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -99,9 +99,9 @@ test fn fold_call_lowers_to_terminating_loop() -> Bool {
     Absent => false
     Present { value: call } =>
       match fold_call_to_loop(fold_call: call) {
-        v2.std.diagnostic.Accepted { value: loop, diagnostics: _ } =>
+        Accepted { value: loop, diagnostics: _ } =>
           is_proven_termination(m: loop_multiplicity(n: loop))
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
   }
 }
@@ -111,8 +111,8 @@ fn lowered_fixture_loop() -> Optional<Node> {
     Absent => Absent
     Present { value: call } =>
       match fold_call_to_loop(fold_call: call) {
-        v2.std.diagnostic.Accepted { value: loop, diagnostics: _ } => Present { value: loop }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+        Accepted { value: loop, diagnostics: _ } => Present { value: loop }
+        Rejected { diagnostics: _ } => Absent
       }
   }
 }

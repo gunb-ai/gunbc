@@ -38,19 +38,19 @@ test fn python_add_emit_holds() -> Bool {
     target: python_target_model(),
     emitted: python_emitted_add_fn_node()
   ) {
-    v2.std.diagnostic.Accepted { value: authority, diagnostics: ad } =>
+    Accepted { value: authority, diagnostics: ad } =>
       match python_add_emit_from_tree(target: python_target_model()) {
-        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+        Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn python_add_emit_perturbed_spellings_discriminates() -> Bool {
   match python_add_emit_from_tree(target: python_target_model()) {
-    v2.std.diagnostic.Accepted { value: canonical, diagnostics: dc } =>
+    Accepted { value: canonical, diagnostics: dc } =>
       match python_add_emit_from_tree(
         target: python_add_emit_perturbed_target_model()
       ) {
@@ -59,9 +59,9 @@ test fn python_add_emit_perturbed_spellings_discriminates() -> Bool {
             && (perturbed.carried == python_add_emit_perturbed_source_text)
             && (dc == v2.std.diagnostic.None)
             && (dp == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

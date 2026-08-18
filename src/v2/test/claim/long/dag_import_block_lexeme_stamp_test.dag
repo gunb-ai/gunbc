@@ -60,8 +60,8 @@ fn dag_lex_stamp_block_idents() -> v2.std.diagnostic.Outcome<List<v2.std.node.Sy
 
 test fn dag_import_block_lexeme_stamp_holds() -> Bool {
   match dag_lex_stamp_block_idents() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
-    v2.std.diagnostic.Accepted { value: idents, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => false
+    Accepted { value: idents, diagnostics: _ } =>
       (idents == [^Cons, ^Empty])
         && (idents != [^dag_token_ident, ^dag_token_ident])
   }

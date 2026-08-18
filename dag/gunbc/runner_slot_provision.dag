@@ -133,9 +133,9 @@ fn runner_slot_provision_plan(
             slot_dir: m.slot_dir,
             job_user: deploy.job_user,
           )]
-        gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => []
-        gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => []
-        gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => []
+        MemberChanged { at: _, from: _, to: _ } => []
+        MemberRemoved { at: _, from: _ } => []
+        MemberRemovalRefused { from: _, cause: _ } => []
         MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
       }
     ),

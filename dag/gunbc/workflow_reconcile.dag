@@ -470,7 +470,7 @@ fn workflow_reconcile_report(
   )
   let observed_verdict = workflow_fact_forest_verdict(forest: observed)
   let verdict = match observed_verdict {
-    std.reducible.Unknown { missing: _ } => observed_verdict
+    Unknown { missing: _ } => observed_verdict
     _ =>
       if folded.remaining == 0 {
         observed_verdict
@@ -502,7 +502,7 @@ fn workflow_reconcile_status_key(
     "not_converged"
   } else {
     match report.verdict {
-      std.reducible.Unknown { missing: _ } => "refused"
+      Unknown { missing: _ } => "refused"
       _ => "converged"
     }
   }

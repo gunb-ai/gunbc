@@ -5,88 +5,88 @@ data wave1_gate1_d_note: String = "Wave 1 Gate 1 Stage D long-lane helpers: cens
 
 fn wave1_gate1_d_arrow_well_formed_with_body(o: v2.std.diagnostic.Outcome<Node>) -> Bool {
   match o {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       well_formed(n: arrow)
         && match find_arrow_body_child(root: arrow) {
-          v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-          v2.std.diagnostic.Rejected { diagnostics: _ } => false
+          Accepted { value: _, diagnostics: _ } => true
+          Rejected { diagnostics: _ } => false
         }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn wave1_gate1_d_arrow_body_is_transform(o: v2.std.diagnostic.Outcome<Node>) -> Bool {
   match o {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Transform } => true
             _ => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn wave1_gate1_d_arrow_body_is_branch(o: v2.std.diagnostic.Outcome<Node>) -> Bool {
   match o {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Branch } => true
             _ => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn wave1_gate1_d_arrow_body_is_bind(o: v2.std.diagnostic.Outcome<Node>) -> Bool {
   match o {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Bind } => true
             _ => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn wave1_gate1_d_arrow_body_is_loop(o: v2.std.diagnostic.Outcome<Node>) -> Bool {
   match o {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Loop } => true
             _ => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn wave1_gate1_d_arrow_body_is_match(o: v2.std.diagnostic.Outcome<Node>) -> Bool {
   match o {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Match } => true
             _ => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

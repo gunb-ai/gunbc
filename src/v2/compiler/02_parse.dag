@@ -271,9 +271,9 @@ fn parse_table_memo_insert_refused(
 ) -> Bool {
   let after = parse_table_insert(table: table, key: key, value: value)
   match v2.std.collection.map_get(m: after.entries, key: key) {
-    v2.std.diagnostic.Accepted { value: Absent } => true
+    Accepted { value: Absent } => true
     v2.std.diagnostic.Accepted { value: Present { value: _ } } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -1066,8 +1066,8 @@ fn first_list_intersect(left: List<v2.std.node.Symbol>, right: List<v2.std.node.
 fn production_first_row_lookup(rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>, name: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
   match v2.std.collection.map_get(m: rows, key: name) {
     v2.std.diagnostic.Accepted { value: Present { value: terminals }, diagnostics: _ } => terminals
-    v2.std.diagnostic.Accepted { value: Absent, diagnostics: _ } => grammar_empty_terminal_list()
-    v2.std.diagnostic.Rejected { diagnostics: _ } => grammar_empty_terminal_list()
+    Accepted { value: Absent, diagnostics: _ } => grammar_empty_terminal_list()
+    Rejected { diagnostics: _ } => grammar_empty_terminal_list()
   }
 }
 
@@ -1612,7 +1612,7 @@ fn grammar_validate_and_analyze(root: v2.std.grammar.GrammarRoot, at: v2.std.dia
 
 fn grammar_validate_for_parse(root: v2.std.grammar.GrammarRoot, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<v2.std.grammar.ValidatedGrammarRoot> {
   match grammar_validate_and_analyze(root: root, at: at) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: modeled, diagnostics: residue } =>
       v2.std.diagnostic.Accepted { value: modeled.validated, diagnostics: residue }
   }
@@ -1681,7 +1681,7 @@ fn parse_expr_terminal(
                   lexeme: tok.lexeme,
                   occurrence_id: node_occurrence_minted(id: minted.id)
                 ) {
-                  v2.std.diagnostic.Accepted { value: captured, diagnostics: _ } =>
+                  Accepted { value: captured, diagnostics: _ } =>
                     ParseExprAccepted {
                       remaining: remaining,
                       captured: captured,
@@ -1689,7 +1689,7 @@ fn parse_expr_terminal(
                       prov: minted.prov,
                       table: table
                     }
-                  v2.std.diagnostic.Rejected { diagnostics: d } =>
+                  Rejected { diagnostics: d } =>
                     ParseExprRejected { diagnostics: d, table: table }
                 }
               } else {
@@ -2163,7 +2163,7 @@ fn parse_production_tree(
   ) {
     Accepted { value: artifact, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
@@ -2176,8 +2176,8 @@ fn prepare_grammar(grammar: v2.std.grammar.ParseGrammar) -> v2.std.diagnostic.Ou
         v2.std.diagnostic.Accepted { value: PreparedVoidGrammar, diagnostics: v2.std.diagnostic.None }
       ModeledGrammar { root: root } =>
         match grammar_validate_and_analyze(root: root, at: at) {
-          v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-          v2.std.diagnostic.Accepted { value: modeled, diagnostics: validation_residue } =>
+          Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+          Accepted { value: modeled, diagnostics: validation_residue } =>
             v2.std.diagnostic.Accepted {
               value: PreparedModeled { modeled: modeled },
               diagnostics: validation_residue
@@ -2198,8 +2198,8 @@ fn overlap_residue_stage_from_prepared(prepared: PreparedGrammar) -> Optional<v2
 
 fn overlap_residue_stage_from_parse_grammar(grammar: v2.std.grammar.ParseGrammar) -> Optional<v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics> {
   match prepare_grammar(grammar: grammar) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
-    v2.std.diagnostic.Accepted { value: prepared, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: prepared, diagnostics: _ } =>
       overlap_residue_stage_from_prepared(prepared: prepared)
   }
 }
@@ -2228,12 +2228,12 @@ fn parse_module_prepared(
         analysis: modeled.analysis,
         production_name: modeled.validated.root.start
       ) {
-        v2.std.diagnostic.Accepted { value: artifact, diagnostics: parse_diags } =>
+        Accepted { value: artifact, diagnostics: parse_diags } =>
           v2.std.diagnostic.Accepted {
             value: artifact,
             diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
           }
-        v2.std.diagnostic.Rejected { diagnostics: parse_rejected } =>
+        Rejected { diagnostics: parse_rejected } =>
           v2.std.diagnostic.Rejected {
             diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
           }
@@ -2243,8 +2243,8 @@ fn parse_module_prepared(
 
 fn parse_module(tokens: v2.std.compilers.lexing.TokenStream, grammar: v2.std.grammar.ParseGrammar) -> v2.std.diagnostic.Outcome<ParseArtifact> {
   match prepare_grammar(grammar: grammar) {
-    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-    v2.std.diagnostic.Accepted { value: prepared, diagnostics: validation_residue } =>
+    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    Accepted { value: prepared, diagnostics: validation_residue } =>
       parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: validation_residue)
   }
 }
@@ -2253,7 +2253,7 @@ fn parse(tokens: v2.std.compilers.lexing.TokenStream, grammar: v2.std.grammar.Pa
   match parse_module(tokens: tokens, grammar: grammar) {
     Accepted { value: artifact, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }

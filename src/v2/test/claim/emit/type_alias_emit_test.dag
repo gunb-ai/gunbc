@@ -109,15 +109,15 @@ fn type_alias_emit_source_text(emitted: Node) -> v2.std.diagnostic.Outcome<Strin
 
 fn type_alias_emit_matches_golden(emitted: Node, golden: String) -> Bool {
   match type_alias_emit_source_text(emitted: emitted) {
-    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn type_alias_construct_refused(emitted: Node) -> Bool {
   match type_alias_emit_source_text(emitted: emitted) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 

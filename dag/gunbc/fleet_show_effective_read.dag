@@ -372,8 +372,8 @@ fn runner_width_converge_verdict(observed: Int, desired: Int) -> gunbc.host_conv
 
 fn show_effective_read_cannot_converge(read: std.realization_reconcile.ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness>) -> Bool {
   match read {
-    std.realization_reconcile.ReadAbsent { reason: _ } => true
-    std.realization_reconcile.ReadObserved { value: CapUnbounded } => true
+    ReadAbsent { reason: _ } => true
+    ReadObserved { value: CapUnbounded } => true
     std.realization_reconcile.ReadObserved { value: CapEffective { bytes: _ } } => false
   }
 }
@@ -471,15 +471,15 @@ fn fleet_receipt_lists_unit(receipt: FleetHostEffectiveReadReceipt, unit: std.ty
 
 fn grounded_receipt_has_observed_v0_knobs(r: FleetHostEffectiveReadGroundedReceipt) -> Bool {
   match r.runner_slice_cap_read {
-    std.realization_reconcile.ReadObserved { value: _ } => true
-    std.realization_reconcile.ReadAbsent { reason: _ } => false
+    ReadObserved { value: _ } => true
+    ReadAbsent { reason: _ } => false
   }
     && match r.runner_units_read {
       ReadObserved { value: units } => units.units.length() > 0
-      std.realization_reconcile.ReadAbsent { reason: _ } => false
+      ReadAbsent { reason: _ } => false
     }
     && match r.runner_width_read {
-      std.realization_reconcile.ReadObserved { value: _ } => true
-      std.realization_reconcile.ReadAbsent { reason: _ } => false
+      ReadObserved { value: _ } => true
+      ReadAbsent { reason: _ } => false
     }
 }

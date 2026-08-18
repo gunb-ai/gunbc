@@ -68,18 +68,18 @@ data other_authority: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef 
 
 fn admitted_board(s: product.pcb.stackup.Stackup, authority: std.decl_ref.DeclarationRef) -> product.pcb.stackup.AdmittedStackup? {
   match product.pcb.stackup.admit_stackup(s: s, authority: authority) {
-    product.pcb.stackup.StackupAdmitted { admitted: a } => Present { value: a }
-    product.pcb.stackup.StackupRefused { causes: _ } => none
+    StackupAdmitted { admitted: a } => Present { value: a }
+    StackupRefused { causes: _ } => none
   }
 }
 
 fn admitted_three_layer_selection(ordinal: Int) -> Bool {
   match product.pcb.stackup.admit_stackup(s: three_layer, authority: board_authority) {
-    product.pcb.stackup.StackupRefused { causes: _ } => false
-    product.pcb.stackup.StackupAdmitted { admitted: a } =>
+    StackupRefused { causes: _ } => false
+    StackupAdmitted { admitted: a } =>
       match product.pcb.copper.select_copper_layer(a: a, ordinal: ordinal) {
-        product.pcb.copper.LayerSelected { layer: _ } => true
-        product.pcb.copper.LayerOutsideStackup { requested: _, layer_count: _ } => false
+        LayerSelected { layer: _ } => true
+        LayerOutsideStackup { requested: _, layer_count: _ } => false
       }
   }
 }
@@ -89,11 +89,11 @@ fn admitted_three_layer_selection(ordinal: Int) -> Bool {
 // the request. Ordinal 1 is the ground plane, and the reference knows it.
 test fn w_a_selected_layer_carries_the_function_it_found() -> Bool {
   match product.pcb.stackup.admit_stackup(s: three_layer, authority: board_authority) {
-    product.pcb.stackup.StackupRefused { causes: _ } => false
-    product.pcb.stackup.StackupAdmitted { admitted: a } =>
+    StackupRefused { causes: _ } => false
+    StackupAdmitted { admitted: a } =>
       match product.pcb.copper.select_copper_layer(a: a, ordinal: 1) {
-        product.pcb.copper.LayerOutsideStackup { requested: _, layer_count: _ } => false
-        product.pcb.copper.LayerSelected { layer: l } =>
+        LayerOutsideStackup { requested: _, layer_count: _ } => false
+        LayerSelected { layer: l } =>
           product.pcb.copper.copper_layer_ordinal(r: l) == 1
             && match product.pcb.copper.copper_layer_function(r: l) {
               product.pcb.stackup.GroundPlane => true
@@ -109,14 +109,14 @@ test fn w_a_selected_layer_carries_the_function_it_found() -> Bool {
 // distinguish a real lookup from a constant. Reading 0 and 2 as well pins that the fold walks.
 test fn w_selection_distinguishes_the_layers_it_walks_past() -> Bool {
   match product.pcb.stackup.admit_stackup(s: three_layer, authority: board_authority) {
-    product.pcb.stackup.StackupRefused { causes: _ } => false
-    product.pcb.stackup.StackupAdmitted { admitted: a } =>
+    StackupRefused { causes: _ } => false
+    StackupAdmitted { admitted: a } =>
       match product.pcb.copper.select_copper_layer(a: a, ordinal: 0) {
-        product.pcb.copper.LayerOutsideStackup { requested: _, layer_count: _ } => false
-        product.pcb.copper.LayerSelected { layer: top } =>
+        LayerOutsideStackup { requested: _, layer_count: _ } => false
+        LayerSelected { layer: top } =>
           match product.pcb.copper.select_copper_layer(a: a, ordinal: 2) {
-            product.pcb.copper.LayerOutsideStackup { requested: _, layer_count: _ } => false
-            product.pcb.copper.LayerSelected { layer: bottom } =>
+            LayerOutsideStackup { requested: _, layer_count: _ } => false
+            LayerSelected { layer: bottom } =>
               product.pcb.copper.copper_layer_ordinal(r: top) == 0
                 && product.pcb.copper.copper_layer_ordinal(r: bottom) == 2
                 && match product.pcb.copper.copper_layer_function(r: top) {
@@ -134,11 +134,11 @@ test fn w_selection_distinguishes_the_layers_it_walks_past() -> Bool {
 // clamping to the nearest real layer. A clamp would put copper on a layer nobody asked for.
 test fn w_red_an_ordinal_outside_the_stackup_refuses_with_both_numbers() -> Bool {
   match product.pcb.stackup.admit_stackup(s: three_layer, authority: board_authority) {
-    product.pcb.stackup.StackupRefused { causes: _ } => false
-    product.pcb.stackup.StackupAdmitted { admitted: a } =>
+    StackupRefused { causes: _ } => false
+    StackupAdmitted { admitted: a } =>
       match product.pcb.copper.select_copper_layer(a: a, ordinal: 3) {
-        product.pcb.copper.LayerSelected { layer: _ } => false
-        product.pcb.copper.LayerOutsideStackup { requested: r, layer_count: n } => r == 3 && n == 3
+        LayerSelected { layer: _ } => false
+        LayerOutsideStackup { requested: r, layer_count: n } => r == 3 && n == 3
       }
   }
 }
@@ -150,22 +150,22 @@ test fn w_red_a_negative_ordinal_refuses() -> Bool {
 
 fn realization_against(s: product.pcb.stackup.Stackup, authority: std.decl_ref.DeclarationRef, net: product.electrical.connectivity.NetIdentity, ordinal: Int) -> List<product.pcb.copper.NetCopperRealization> {
   match product.pcb.stackup.admit_stackup(s: s, authority: authority) {
-    product.pcb.stackup.StackupRefused { causes: _ } => []
-    product.pcb.stackup.StackupAdmitted { admitted: a } =>
+    StackupRefused { causes: _ } => []
+    StackupAdmitted { admitted: a } =>
       match product.pcb.copper.select_copper_layer(a: a, ordinal: ordinal) {
-        product.pcb.copper.LayerOutsideStackup { requested: _, layer_count: _ } => []
-        product.pcb.copper.LayerSelected { layer: l } => [product.pcb.copper.NetCopperRealization { net: net, layer: l }]
+        LayerOutsideStackup { requested: _, layer_count: _ } => []
+        LayerSelected { layer: l } => [product.pcb.copper.NetCopperRealization { net: net, layer: l }]
       }
   }
 }
 
 fn realization_on(net: product.electrical.connectivity.NetIdentity, ordinal: Int) -> List<product.pcb.copper.NetCopperRealization> {
   match product.pcb.stackup.admit_stackup(s: three_layer, authority: board_authority) {
-    product.pcb.stackup.StackupRefused { causes: _ } => []
-    product.pcb.stackup.StackupAdmitted { admitted: a } =>
+    StackupRefused { causes: _ } => []
+    StackupAdmitted { admitted: a } =>
       match product.pcb.copper.select_copper_layer(a: a, ordinal: ordinal) {
-        product.pcb.copper.LayerOutsideStackup { requested: _, layer_count: _ } => []
-        product.pcb.copper.LayerSelected { layer: l } => [product.pcb.copper.NetCopperRealization { net: net, layer: l }]
+        LayerOutsideStackup { requested: _, layer_count: _ } => []
+        LayerSelected { layer: l } => [product.pcb.copper.NetCopperRealization { net: net, layer: l }]
       }
   }
 }
@@ -176,8 +176,8 @@ test fn w_copper_naming_real_nets_admits() -> Bool {
     Present { value: board } => {
   let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: gnd_net, ordinal: 1)
   match product.pcb.copper.admit_copper(nets: board_nets, board: board, rs: rs, vs: []) {
-    product.pcb.copper.CopperAdmitted { admitted: out } => count(product.pcb.copper.admitted_copper_realizations(a: out)) == 2
-    product.pcb.copper.CopperRefused { causes: _ } => false
+    CopperAdmitted { admitted: out } => count(product.pcb.copper.admitted_copper_realizations(a: out)) == 2
+    CopperRefused { causes: _ } => false
   }
 }
   }
@@ -193,18 +193,18 @@ test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> Bool {
   let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: absent_net, ordinal: 1)
   count(rs) == count(board_nets)
     && match product.pcb.copper.admit_copper(nets: board_nets, board: board, rs: rs, vs: []) {
-      product.pcb.copper.CopperAdmitted { admitted: _ } => false
-      product.pcb.copper.CopperRefused { causes: c } =>
+      CopperAdmitted { admitted: _ } => false
+      CopperRefused { causes: c } =>
         count(c) == 1
           && count(filter(c, x => match x {
-            product.pcb.copper.RealizationNamesNoSuchNet { net: n } => n == absent_net
-            product.pcb.copper.NetHasTwoConductorsOnOneLayer { net: _ } => false
-          product.pcb.copper.NetSplitAcrossLayersWithoutAConnection { net: _ } => false
-            product.pcb.copper.InterlayerConnectionNamesNoSuchNet { net: _ } => false
-            product.pcb.copper.InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
-            product.pcb.copper.InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
-                    product.pcb.copper.InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
-            product.pcb.copper.RealizationSelectedAgainstAnotherStackup { net: _ } => false
+            RealizationNamesNoSuchNet { net: n } => n == absent_net
+            NetHasTwoConductorsOnOneLayer { net: _ } => false
+          NetSplitAcrossLayersWithoutAConnection { net: _ } => false
+            InterlayerConnectionNamesNoSuchNet { net: _ } => false
+            InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
+            InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
+                    InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
+            RealizationSelectedAgainstAnotherStackup { net: _ } => false
           })) == 1
     }
 }
@@ -220,19 +220,19 @@ test fn w_red_a_net_split_across_layers_without_a_via_is_refused() -> Bool {
     Present { value: board } => {
   let rs = realization_on(net: vcc, ordinal: 0) + realization_on(net: vcc, ordinal: 2)
   match product.pcb.copper.admit_copper(nets: board_nets, board: board, rs: rs, vs: []) {
-    product.pcb.copper.CopperAdmitted { admitted: _ } => false
-    product.pcb.copper.CopperRefused { causes: c } =>
+    CopperAdmitted { admitted: _ } => false
+    CopperRefused { causes: c } =>
       count(rs) == 2
         && count(c) == 1
         && count(filter(c, x => match x {
-          product.pcb.copper.NetHasTwoConductorsOnOneLayer { net: _ } => false
-          product.pcb.copper.NetSplitAcrossLayersWithoutAConnection { net: n } => n == vcc
-          product.pcb.copper.RealizationNamesNoSuchNet { net: _ } => false
-          product.pcb.copper.RealizationSelectedAgainstAnotherStackup { net: _ } => false
-          product.pcb.copper.InterlayerConnectionNamesNoSuchNet { net: _ } => false
-          product.pcb.copper.InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
-          product.pcb.copper.InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
-                    product.pcb.copper.InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
+          NetHasTwoConductorsOnOneLayer { net: _ } => false
+          NetSplitAcrossLayersWithoutAConnection { net: n } => n == vcc
+          RealizationNamesNoSuchNet { net: _ } => false
+          RealizationSelectedAgainstAnotherStackup { net: _ } => false
+          InterlayerConnectionNamesNoSuchNet { net: _ } => false
+          InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
+          InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
+                    InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
         })) == 1
   }
 }
@@ -247,8 +247,8 @@ test fn w_an_empty_board_admits_and_covers_nothing() -> Bool {
     Absent => false
     Present { value: board } => {
   match product.pcb.copper.admit_copper(nets: board_nets, board: board, rs: [], vs: []) {
-    product.pcb.copper.CopperRefused { causes: _ } => false
-    product.pcb.copper.CopperAdmitted { admitted: _ } =>
+    CopperRefused { causes: _ } => false
+    CopperAdmitted { admitted: _ } =>
       count(product.pcb.copper.unrealized_nets(nets: board_nets, rs: [])) == 2
         && !product.pcb.copper.copper_is_complete_over_nets(nets: board_nets, rs: [])
   }
@@ -278,20 +278,20 @@ test fn w_red_copper_selected_against_another_stackup_is_refused() -> Bool {
       count(foreign) == 1
         && count(native) == 1
         && match product.pcb.copper.admit_copper(nets: board_nets, board: board, rs: native, vs: []) {
-          product.pcb.copper.CopperRefused { causes: _ } => false
-          product.pcb.copper.CopperAdmitted { admitted: _ } =>
+          CopperRefused { causes: _ } => false
+          CopperAdmitted { admitted: _ } =>
             match product.pcb.copper.admit_copper(nets: board_nets, board: board, rs: foreign, vs: []) {
-              product.pcb.copper.CopperAdmitted { admitted: _ } => false
-              product.pcb.copper.CopperRefused { causes: c } =>
+              CopperAdmitted { admitted: _ } => false
+              CopperRefused { causes: c } =>
                 count(filter(c, x => match x {
-                  product.pcb.copper.RealizationSelectedAgainstAnotherStackup { net: n } => n == vcc
-                  product.pcb.copper.RealizationNamesNoSuchNet { net: _ } => false
-                  product.pcb.copper.NetHasTwoConductorsOnOneLayer { net: _ } => false
-                product.pcb.copper.NetSplitAcrossLayersWithoutAConnection { net: _ } => false
-            product.pcb.copper.InterlayerConnectionNamesNoSuchNet { net: _ } => false
-            product.pcb.copper.InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
-            product.pcb.copper.InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
-                    product.pcb.copper.InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
+                  RealizationSelectedAgainstAnotherStackup { net: n } => n == vcc
+                  RealizationNamesNoSuchNet { net: _ } => false
+                  NetHasTwoConductorsOnOneLayer { net: _ } => false
+                NetSplitAcrossLayersWithoutAConnection { net: _ } => false
+            InterlayerConnectionNamesNoSuchNet { net: _ } => false
+            InterlayerConnectionSelectedAgainstAnotherStackup { net: _ } => false
+            InterlayerConnectionJoinsALayerToItself { net: _, ordinal: _ } => false
+                    InterlayerConnectionEndpointHasNoConductor { net: _, ordinal: _ } => false
                 })) == 1
             }
         }

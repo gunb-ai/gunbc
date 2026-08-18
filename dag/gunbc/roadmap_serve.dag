@@ -481,7 +481,7 @@ fn roadmap_serve_selection_response_for_instance(
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeHttpResponse {
   match sel {
-    extdeps.http.server.SelectedDynamic { handler: h, params: ps } =>
+    SelectedDynamic { handler: h, params: ps } =>
       roadmap_serve_invoke_for_instance(
         instance: instance,
         handler: h,
@@ -489,9 +489,9 @@ fn roadmap_serve_selection_response_for_instance(
         request: request,
         release_revision: release_revision,
       )
-    extdeps.http.server.SelectedStatic { route: r } =>
+    SelectedStatic { route: r } =>
       extdeps.http.server.ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
-    extdeps.http.server.MethodNotAllowed { allowed: ms } =>
+    MethodNotAllowed { allowed: ms } =>
       serve_text_response(
         status: 405,
         content_type: text_plain_utf8,

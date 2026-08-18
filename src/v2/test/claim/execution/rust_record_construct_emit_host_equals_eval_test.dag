@@ -140,7 +140,7 @@ fn rust_rec_nine_eval_call_primitive(
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match rust_rec_nine_eval_field_index_from_transform(node: node) {
-    v2.std.diagnostic.Accepted { value: field_index, diagnostics: _ } =>
+    Accepted { value: field_index, diagnostics: _ } =>
       if field_index == 0 {
         if length(xs: args) == 2 {
           match list_at_optional(xs: args, index: 0) {
@@ -164,7 +164,7 @@ fn rust_rec_nine_eval_call_primitive(
       } else {
         outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 0))
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

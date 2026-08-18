@@ -83,12 +83,12 @@ fn srv3_shell_stdout_from_apply(
   r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>,
 ) -> String? {
   match r {
-    std.realization_reconcile.Converged { evidence: e, applied: _ } =>
+    Converged { evidence: e, applied: _ } =>
       match e {
         ShellEffectApplied { stdout: out, exit_code: _ } => Present { value: out }
         ConvergePlanApplied { stdout: _, exit_code: _ } => none
       }
-    std.realization_reconcile.NotConverged { reason: _, applied: _ } => none
+    NotConverged { reason: _, applied: _ } => none
   }
 }
 
@@ -96,8 +96,8 @@ fn srv3_reconciliation_failure_reason(
   r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>,
 ) -> String? {
   match r {
-    std.realization_reconcile.Converged { evidence: _, applied: _ } => none
-    std.realization_reconcile.NotConverged { reason: why, applied: _ } => Present { value: why }
+    Converged { evidence: _, applied: _ } => none
+    NotConverged { reason: why, applied: _ } => Present { value: why }
   }
 }
 

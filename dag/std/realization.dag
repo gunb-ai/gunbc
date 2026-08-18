@@ -7,33 +7,33 @@ fn independence_from_effect_shapes(left: std.effects.EffectShape<std.effects.Key
   match left {
     std.effects.ReadEffect => match right {
       std.effects.ReadEffect => Independent
-      std.effects.UpsertEffect { key_source: _ } => Unknown
-      std.effects.DeleteEffect { key_source: _ } => Unknown
-      std.effects.CreateEffect { cause: _ } => Unknown
+      UpsertEffect { key_source: _ } => Unknown
+      DeleteEffect { key_source: _ } => Unknown
+      CreateEffect { cause: _ } => Unknown
       std.effects.AppendEffect => Unknown
       std.effects.ExecuteEffect => Unknown
     }
-    std.effects.UpsertEffect { key_source: lk } => match right {
+    UpsertEffect { key_source: lk } => match right {
       std.effects.ReadEffect => Unknown
-      std.effects.UpsertEffect { key_source: rk } =>
+      UpsertEffect { key_source: rk } =>
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
-      std.effects.DeleteEffect { key_source: rk } =>
+      DeleteEffect { key_source: rk } =>
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
-      std.effects.CreateEffect { cause: _ } => Unknown
+      CreateEffect { cause: _ } => Unknown
       std.effects.AppendEffect => Unknown
       std.effects.ExecuteEffect => Unknown
     }
-    std.effects.DeleteEffect { key_source: lk } => match right {
+    DeleteEffect { key_source: lk } => match right {
       std.effects.ReadEffect => Unknown
-      std.effects.UpsertEffect { key_source: rk } =>
+      UpsertEffect { key_source: rk } =>
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
-      std.effects.DeleteEffect { key_source: rk } =>
+      DeleteEffect { key_source: rk } =>
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
-      std.effects.CreateEffect { cause: _ } => Unknown
+      CreateEffect { cause: _ } => Unknown
       std.effects.AppendEffect => Unknown
       std.effects.ExecuteEffect => Unknown
     }
-    std.effects.CreateEffect { cause: _ } => Unknown
+    CreateEffect { cause: _ } => Unknown
     std.effects.AppendEffect => Unknown
     std.effects.ExecuteEffect => Unknown
   }

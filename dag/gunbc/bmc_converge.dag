@@ -358,8 +358,8 @@ fn bmc_fan_durability_refusal_reason(
   verdict: std.state_durability.StateDurabilityVerdict<product.placement_supply.HostIdentity, gunbc.bmc_fan_projection.BmcFanConfigReadbackSubject>,
 ) -> String {
   match verdict {
-    std.state_durability.StateDurabilityQualified { qualification: _ } => ""
-    std.state_durability.StateDurabilityRefused { cause: cause } =>
+    StateDurabilityQualified { qualification: _ } => ""
+    StateDurabilityRefused { cause: cause } =>
       match cause {
         DurabilityDefinitionLinkageUnavailable {
           assertions: assertions,
@@ -584,9 +584,9 @@ fn bmc_fan_policy_durability_gate(
     durability_evidence: qualification_evidence,
   )
   match durability {
-    std.state_durability.StateDurabilityRefused { cause: _ } =>
+    StateDurabilityRefused { cause: _ } =>
       BmcFanPolicyDurabilityVerdictRefused { verdict: durability }
-    std.state_durability.StateDurabilityQualified { qualification: qualification } =>
+    StateDurabilityQualified { qualification: qualification } =>
       BmcFanPolicyDurabilityQualified { qualification: qualification }
   }
 }

@@ -430,9 +430,9 @@ test fn witness_three_way_conflict() -> Bool {
     equal: fixture_val_eq,
   ) {
     KeyedConflict => true
-    std.change.KeyedApplyHunk { from: _, to: _ } => false
-    std.change.KeyedVerdictAdded { value: _ } => false
-    std.change.KeyedVerdictRemoved { value: _ } => false
+    KeyedApplyHunk { from: _, to: _ } => false
+    KeyedVerdictAdded { value: _ } => false
+    KeyedVerdictRemoved { value: _ } => false
     KeyedUnchanged => false
   }
 }
@@ -442,9 +442,9 @@ test fn witness_conflict_has_no_mutation_arm() -> Bool {
   match blocked {
     KeyedConflict => true
     KeyedUnchanged => false
-    std.change.KeyedApplyHunk { from: _, to: _ } => false
-    std.change.KeyedVerdictAdded { value: _ } => false
-    std.change.KeyedVerdictRemoved { value: _ } => false
+    KeyedApplyHunk { from: _, to: _ } => false
+    KeyedVerdictAdded { value: _ } => false
+    KeyedVerdictRemoved { value: _ } => false
   }
 }
 

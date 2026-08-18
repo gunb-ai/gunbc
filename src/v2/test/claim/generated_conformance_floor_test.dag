@@ -6,8 +6,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn generated_claim_emitted(o: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim>) -> Bool {
   match o {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 

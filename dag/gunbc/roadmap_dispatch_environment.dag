@@ -56,9 +56,9 @@ fn capability_ensure_decision(
 
 fn ensure_observation_evidence(observation: gunbc.ensure.EnsureObservation<String>) -> String {
   match observation {
-    gunbc.ensure.EnsureObserved { evidence } => evidence
-    gunbc.ensure.EnsureAbsent { reason } => reason
-    gunbc.ensure.EnsureInaccessible { reason } => reason
+    EnsureObserved { evidence } => evidence
+    EnsureAbsent { reason } => reason
+    EnsureInaccessible { reason } => reason
   }
 }
 
@@ -96,7 +96,7 @@ fn capability_ensure_receipt(
           "independent Ensure readback did not ground the capability"
         },
       }
-    std.upsert_decision.Apply { plan: _ } =>
+    Apply { plan: _ } =>
       CapabilityEnsureReceipt {
         capability: realization.capability,
         capability_label: execution_capability_label(capability: realization.capability),
@@ -106,7 +106,7 @@ fn capability_ensure_receipt(
         evidence: ensure_observation_evidence(observation: observation),
         reason: "capability-specific apply is required before admission; no effect ran in the decision layer",
       }
-    std.upsert_decision.Refuse { reason } =>
+    Refuse { reason } =>
       CapabilityEnsureReceipt {
         capability: realization.capability,
         capability_label: execution_capability_label(capability: realization.capability),

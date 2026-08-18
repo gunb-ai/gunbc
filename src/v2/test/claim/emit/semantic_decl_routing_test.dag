@@ -35,14 +35,14 @@ fn semantic_bool_emit_text() -> v2.std.diagnostic.Outcome<String> {
     target: rust_target_model()
   ) {
     Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn semantic_bool_matches(golden: String) -> Bool {
   match semantic_bool_emit_text() {
-    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -70,14 +70,14 @@ fn semantic_record_emit_text() -> v2.std.diagnostic.Outcome<String> {
     target: rust_target_model()
   ) {
     Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn semantic_record_matches(golden: String) -> Bool {
   match semantic_record_emit_text() {
-    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -106,8 +106,8 @@ fn semantic_arrow_refuses() -> Bool {
     node: semantic_arrow_type(),
     target: rust_target_model()
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 

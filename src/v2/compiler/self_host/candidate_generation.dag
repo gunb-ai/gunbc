@@ -211,20 +211,20 @@ fn observe_provenanced_rust_emission_from_ingest(
 ) -> ProvenancedRustEmissionObservation {
   let lm = dag_language_model()
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => AssemblyRejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: resolved, diagnostics: _ } =>
+    Rejected { diagnostics: d } => AssemblyRejected { diagnostics: d }
+    Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => InferenceRejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
+        Rejected { diagnostics: d } => InferenceRejected { diagnostics: d }
+        Accepted { value: inferred, diagnostics: _ } =>
           match generate_rust_emission_candidate(inferred: inferred, target: target) {
-            v2.std.diagnostic.Rejected { diagnostics: d } => EmissionRejected { diagnostics: d }
-            v2.std.diagnostic.Accepted { value: candidate, diagnostics: _ } =>
+            Rejected { diagnostics: d } => EmissionRejected { diagnostics: d }
+            Accepted { value: candidate, diagnostics: _ } =>
               match mint_artifact_from_rust_emission_candidate(
                 candidate: candidate,
                 module_path: module_path
               ) {
-                v2.std.diagnostic.Rejected { diagnostics: d } => ProducerReceiptRejected { diagnostics: d }
-                v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+                Rejected { diagnostics: d } => ProducerReceiptRejected { diagnostics: d }
+                Accepted { value: artifact, diagnostics: _ } =>
                   ArtifactProduced { artifact: artifact }
               }
           }

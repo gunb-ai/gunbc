@@ -113,8 +113,8 @@ fn sugar_positional_unwrap_child(children: List<v2.std.node.Edge>) -> v2.std.nod
 
 fn sugar_named_child_optional(root: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.node.Node? {
   match find_named_child(root: root, name: name) {
-    v2.std.diagnostic.Accepted { value: child, diagnostics: _ } => optional_present(value: child)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: child, diagnostics: _ } => optional_present(value: child)
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
@@ -230,7 +230,7 @@ fn sugar_fold_coproduct_pipe_chain(captured: v2.std.node.Node, shell: v2.std.nod
     v2.std.diagnostic.Accepted { value: captured, diagnostics: v2.std.diagnostic.None }
   } else {
     match sugar_variants_to_disj_edges(variants: variants) {
-      v2.std.diagnostic.Accepted { value: edges, diagnostics: d } =>
+      Accepted { value: edges, diagnostics: d } =>
         if edges_conform(children: edges, d: LabeledEdges) {
           v2.std.diagnostic.Accepted {
             value: sugar_type_node(connective: Disj, children: edges, n: shell),
@@ -239,7 +239,7 @@ fn sugar_fold_coproduct_pipe_chain(captured: v2.std.node.Node, shell: v2.std.nod
         } else {
           v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
         }
-      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   }
 }
@@ -266,7 +266,7 @@ fn apply_sugar(rule: SugarRule, n: v2.std.node.Node, folded: v2.std.node.Node) -
       match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
         Present { value: captured } =>
           match sugar_fold_coproduct_pipe_chain(captured: captured, shell: n) {
-            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
             Accepted { value: result, diagnostics: d } =>
               match result.kind {
                 TypeNode { connective: Disj } =>

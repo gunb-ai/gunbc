@@ -5,21 +5,21 @@ data interpreter_replacement_cut_witness_note: String = "The first production Re
 
 fn causes_of(admission: gunbc.replacement_cut.PlanAdmission) -> List<gunbc.replacement_cut.CutRefusalCause> {
   match admission {
-    gunbc.replacement_cut.PlanAdmitted { admitted: _ } => []
-    gunbc.replacement_cut.PlanRefused { causes: cs } => cs
+    PlanAdmitted { admitted: _ } => []
+    PlanRefused { causes: cs } => cs
   }
 }
 
 fn is_undecided_consumer(c: gunbc.replacement_cut.CutRefusalCause) -> Bool {
   match c {
-    gunbc.replacement_cut.UndispositionedConsumer { consumer: _ } => true
-    gunbc.replacement_cut.UncoveredSurvivingConsumer { consumer: _ } => false
-    gunbc.replacement_cut.UndispositionedEvidence { evidence: _ } => false
-    gunbc.replacement_cut.CoveredByOldRoot { consumer: _ } => false
-    gunbc.replacement_cut.ReplacementNamesOldRoot { consumer: _ } => false
-    gunbc.replacement_cut.ConsumerDuplicated { consumer: _ } => false
-    gunbc.replacement_cut.EvidenceDuplicated { evidence: _ } => false
-    gunbc.replacement_cut.RegionMemberDuplicated { member: _ } => false
+    UndispositionedConsumer { consumer: _ } => true
+    UncoveredSurvivingConsumer { consumer: _ } => false
+    UndispositionedEvidence { evidence: _ } => false
+    CoveredByOldRoot { consumer: _ } => false
+    ReplacementNamesOldRoot { consumer: _ } => false
+    ConsumerDuplicated { consumer: _ } => false
+    EvidenceDuplicated { evidence: _ } => false
+    RegionMemberDuplicated { member: _ } => false
     gunbc.replacement_cut.EnumeratedCensusEmpty => false
     gunbc.replacement_cut.ExternalRolesEnumeratedEmpty => false
     gunbc.replacement_cut.EmptyCoveredRegion => false
@@ -30,14 +30,14 @@ fn is_undecided_consumer(c: gunbc.replacement_cut.CutRefusalCause) -> Bool {
 
 fn is_uncovered_surviving(c: gunbc.replacement_cut.CutRefusalCause) -> Bool {
   match c {
-    gunbc.replacement_cut.UncoveredSurvivingConsumer { consumer: _ } => true
-    gunbc.replacement_cut.UndispositionedConsumer { consumer: _ } => false
-    gunbc.replacement_cut.UndispositionedEvidence { evidence: _ } => false
-    gunbc.replacement_cut.CoveredByOldRoot { consumer: _ } => false
-    gunbc.replacement_cut.ReplacementNamesOldRoot { consumer: _ } => false
-    gunbc.replacement_cut.ConsumerDuplicated { consumer: _ } => false
-    gunbc.replacement_cut.EvidenceDuplicated { evidence: _ } => false
-    gunbc.replacement_cut.RegionMemberDuplicated { member: _ } => false
+    UncoveredSurvivingConsumer { consumer: _ } => true
+    UndispositionedConsumer { consumer: _ } => false
+    UndispositionedEvidence { evidence: _ } => false
+    CoveredByOldRoot { consumer: _ } => false
+    ReplacementNamesOldRoot { consumer: _ } => false
+    ConsumerDuplicated { consumer: _ } => false
+    EvidenceDuplicated { evidence: _ } => false
+    RegionMemberDuplicated { member: _ } => false
     gunbc.replacement_cut.EnumeratedCensusEmpty => false
     gunbc.replacement_cut.ExternalRolesEnumeratedEmpty => false
     gunbc.replacement_cut.EmptyCoveredRegion => false
@@ -71,18 +71,18 @@ test fn every_refusal_cause_is_an_open_decision_not_a_defect() -> Bool {
 
 fn census_rows(census: gunbc.replacement_cut.BoundaryCensus) -> List<gunbc.replacement_cut.BoundaryConsumer> {
   match census {
-    gunbc.replacement_cut.ConsumersEnumerated { consumers: rows } => rows
-    gunbc.replacement_cut.BoundaryDeclaredEmpty { basis: _ } => []
+    ConsumersEnumerated { consumers: rows } => rows
+    BoundaryDeclaredEmpty { basis: _ } => []
   }
 }
 
 fn is_causeless_disposition(d: gunbc.replacement_cut.ConsumerDisposition) -> Bool {
   match d {
-    gunbc.replacement_cut.Retire { reason: _ } => true
-    gunbc.replacement_cut.ReplacedByY { new_authority: _ } => true
-    gunbc.replacement_cut.RetainSameContract { justification: _, coverage: _ } => false
-    gunbc.replacement_cut.RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
-    gunbc.replacement_cut.EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+    Retire { reason: _ } => true
+    ReplacedByY { new_authority: _ } => true
+    RetainSameContract { justification: _, coverage: _ } => false
+    RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
     gunbc.replacement_cut.Undecided => false
   }
 }
@@ -93,22 +93,22 @@ fn count_consumers(rows: List<gunbc.replacement_cut.BoundaryConsumer>, p: fn(gun
 
 fn is_retire(d: gunbc.replacement_cut.ConsumerDisposition) -> Bool {
   match d {
-    gunbc.replacement_cut.Retire { reason: _ } => true
-    gunbc.replacement_cut.ReplacedByY { new_authority: _ } => false
-    gunbc.replacement_cut.RetainSameContract { justification: _, coverage: _ } => false
-    gunbc.replacement_cut.RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
-    gunbc.replacement_cut.EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+    Retire { reason: _ } => true
+    ReplacedByY { new_authority: _ } => false
+    RetainSameContract { justification: _, coverage: _ } => false
+    RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
     gunbc.replacement_cut.Undecided => false
   }
 }
 
 fn is_replaced(d: gunbc.replacement_cut.ConsumerDisposition) -> Bool {
   match d {
-    gunbc.replacement_cut.ReplacedByY { new_authority: _ } => true
-    gunbc.replacement_cut.Retire { reason: _ } => false
-    gunbc.replacement_cut.RetainSameContract { justification: _, coverage: _ } => false
-    gunbc.replacement_cut.RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
-    gunbc.replacement_cut.EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+    ReplacedByY { new_authority: _ } => true
+    Retire { reason: _ } => false
+    RetainSameContract { justification: _, coverage: _ } => false
+    RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
     gunbc.replacement_cut.Undecided => false
   }
 }
@@ -134,10 +134,10 @@ test fn retiring_with_x_needs_no_coverage_authority() -> Bool {
 // that the honest arm was not quietly upgraded into the joinable one.
 test fn descent_names_a_boundary_and_carries_no_cut_id() -> Bool {
   match gunbc.interpreter_replacement_cut.interpreter_cut_why_not_higher() {
-    gunbc.replacement_cut.DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
+    DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
       (b as String) == "the engine cut through the v1 driver region"
     gunbc.replacement_cut.OutermostBoundary => false
-    gunbc.replacement_cut.DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
+    DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
   }
 }
 

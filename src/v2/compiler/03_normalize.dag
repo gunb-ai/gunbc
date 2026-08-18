@@ -16,10 +16,10 @@ fn normalize_fold_init(n: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.
 
 fn normalize_fold_step(acc: v2.std.diagnostic.Outcome<v2.std.node.Node>, edge: v2.std.node.Edge, child: v2.std.diagnostic.Outcome<v2.std.node.Node>) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match acc {
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    v2.std.diagnostic.Accepted { value: shell, diagnostics: ad } =>
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: shell, diagnostics: ad } =>
       match child {
-        v2.std.diagnostic.Rejected { diagnostics: cr } =>
+        Rejected { diagnostics: cr } =>
           v2.std.diagnostic.Rejected {
             diagnostics: rejected_with_pending(pending: ad, rejected: cr)
           }
@@ -58,11 +58,11 @@ fn normalize_sugar_finish(n: v2.std.node.Node, folded: v2.std.node.Node, cd: v2.
       match sugar_rule_for_key(key: key) {
         Present { value: rule } =>
           match apply_sugar(rule: rule, n: n, folded: folded) {
-            v2.std.diagnostic.Rejected { diagnostics: r } =>
+            Rejected { diagnostics: r } =>
               v2.std.diagnostic.Rejected {
                 diagnostics: rejected_with_pending(pending: cd, rejected: r)
               }
-            v2.std.diagnostic.Accepted { value: v, diagnostics: d } =>
+            Accepted { value: v, diagnostics: d } =>
               v2.std.diagnostic.Accepted {
                 value: v,
                 diagnostics: diagnostics_merge(outer: cd, inner: d)
@@ -107,8 +107,8 @@ fn normalize_node_ctx(n: v2.std.node.Node, under_fn_decl: Bool) -> v2.std.diagno
             )
           )
         ) {
-          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-          v2.std.diagnostic.Accepted { value: after_body, diagnostics: cd0 } =>
+          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          Accepted { value: after_body, diagnostics: cd0 } =>
             normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
         }
       } else {
@@ -127,11 +127,11 @@ fn normalize_node_ctx(n: v2.std.node.Node, under_fn_decl: Bool) -> v2.std.diagno
 fn normalize_module_graft_finish(folded: v2.std.node.Node, cd: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if namespace_graft_is_graft_candidate(root: folded) {
     match module_header_containment_graft(root: folded) {
-      v2.std.diagnostic.Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r } =>
         v2.std.diagnostic.Rejected {
           diagnostics: rejected_with_pending(pending: cd, rejected: r)
         }
-      v2.std.diagnostic.Accepted { value: grafted, diagnostics: d } =>
+      Accepted { value: grafted, diagnostics: d } =>
         v2.std.diagnostic.Accepted {
           value: grafted,
           diagnostics: diagnostics_merge(outer: cd, inner: d)
@@ -150,16 +150,16 @@ fn normalize_node_fold_children_ctx(n: v2.std.node.Node, under_fn_decl: Bool) ->
       child: normalize_node_ctx(n: e.target, under_fn_decl: under_fn_decl)
     )
   }) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    v2.std.diagnostic.Accepted { value: folded, diagnostics: cd } =>
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: folded, diagnostics: cd } =>
       match body_lower_finish_for_normalize(
         n: n,
         folded: folded,
         cd: cd,
         fn_body_pass_through: false
       ) {
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        v2.std.diagnostic.Accepted { value: after_body, diagnostics: cd0 } =>
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Accepted { value: after_body, diagnostics: cd0 } =>
           normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
       }
   }
@@ -167,11 +167,11 @@ fn normalize_node_fold_children_ctx(n: v2.std.node.Node, under_fn_decl: Bool) ->
 
 fn normalize(parse_tree: v2.std.grammar.ParseTree) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   match normalize_node(n: parse_tree) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    v2.std.diagnostic.Accepted { value: normalized, diagnostics: d } =>
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: normalized, diagnostics: d } =>
       match normalize_module_graft_finish(folded: normalized, cd: d) {
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        v2.std.diagnostic.Accepted { value: grafted, diagnostics: d1 } =>
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Accepted { value: grafted, diagnostics: d1 } =>
           if well_formed(n: grafted) {
             admit_normalized_tree(root: grafted, diagnostics: d1)
           } else {

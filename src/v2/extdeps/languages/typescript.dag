@@ -865,7 +865,7 @@ fn ts_grammar_relation_row_token_edges_witness(row: v2.std.node.Node) -> Witness
             }
           }
       }
-    v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+    Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
   }
 }
 
@@ -3062,7 +3062,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
     axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
     value: ts_inhabitant_atom(id: ts_facts_number.surface_spelling)
   ) {
-    v2.std.diagnostic.Accepted { value: r0, diagnostics: _ } =>
+    Accepted { value: r0, diagnostics: _ } =>
       match ts_insert_per_language_primitive_axis(
         registry: r0,
         subject: number_subject,
@@ -3070,7 +3070,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
         axis: v2.std.model_core.ModelCoreFactAxisWidth {},
         value: ts_inhabitant_atom(id: ^ts_tag_bits64)
       ) {
-        v2.std.diagnostic.Accepted { value: r1, diagnostics: _ } =>
+        Accepted { value: r1, diagnostics: _ } =>
           match ts_insert_per_language_primitive_axis(
             registry: r1,
             subject: number_subject,
@@ -3078,7 +3078,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
             axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
             value: ts_inhabitant_atom(id: ts_facts_number.ieee754_binary)
           ) {
-            v2.std.diagnostic.Accepted { value: r2, diagnostics: _ } =>
+            Accepted { value: r2, diagnostics: _ } =>
               match ts_insert_per_language_primitive_axis(
                 registry: r2,
                 subject: bigint_subject,
@@ -3086,7 +3086,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                 axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
                 value: ts_inhabitant_atom(id: ts_facts_bigint.surface_spelling)
               ) {
-                v2.std.diagnostic.Accepted { value: r3, diagnostics: _ } =>
+                Accepted { value: r3, diagnostics: _ } =>
                   match ts_insert_per_language_primitive_axis(
                     registry: r3,
                     subject: bigint_subject,
@@ -3094,7 +3094,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                     axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                     value: ts_inhabitant_atom(id: ts_facts_bigint.encoding)
                   ) {
-                    v2.std.diagnostic.Accepted { value: r4, diagnostics: _ } =>
+                    Accepted { value: r4, diagnostics: _ } =>
                       match ts_insert_per_language_primitive_axis(
                         registry: r4,
                         subject: bool_subject,
@@ -3102,7 +3102,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                         axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
                         value: ts_inhabitant_atom(id: ts_facts_boolean.surface_spelling)
                       ) {
-                        v2.std.diagnostic.Accepted { value: r5, diagnostics: _ } =>
+                        Accepted { value: r5, diagnostics: _ } =>
                           match ts_insert_per_language_primitive_axis(
                             registry: r5,
                             subject: bool_subject,
@@ -3110,7 +3110,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                             axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                             value: ts_inhabitant_atom(id: ts_facts_boolean.encoding)
                           ) {
-                            v2.std.diagnostic.Accepted { value: r6, diagnostics: _ } =>
+                            Accepted { value: r6, diagnostics: _ } =>
                               match ts_insert_per_language_primitive_axis(
                                 registry: r6,
                                 subject: string_subject,
@@ -3118,7 +3118,7 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                                 axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
                                 value: ts_inhabitant_atom(id: ts_facts_string.surface_spelling)
                               ) {
-                                v2.std.diagnostic.Accepted { value: r7, diagnostics: _ } =>
+                                Accepted { value: r7, diagnostics: _ } =>
                                   ts_insert_per_language_primitive_axis(
                                     registry: r7,
                                     subject: string_subject,
@@ -3126,28 +3126,28 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                                     axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                                     value: ts_inhabitant_atom(id: ts_facts_string.encoding)
                                   )
-                                v2.std.diagnostic.Rejected { diagnostics: d } =>
+                                Rejected { diagnostics: d } =>
                                   v2.std.diagnostic.Rejected { diagnostics: d }
                               }
-                            v2.std.diagnostic.Rejected { diagnostics: d } =>
+                            Rejected { diagnostics: d } =>
                               v2.std.diagnostic.Rejected { diagnostics: d }
                           }
-                        v2.std.diagnostic.Rejected { diagnostics: d } =>
+                        Rejected { diagnostics: d } =>
                           v2.std.diagnostic.Rejected { diagnostics: d }
                       }
-                    v2.std.diagnostic.Rejected { diagnostics: d } =>
+                    Rejected { diagnostics: d } =>
                       v2.std.diagnostic.Rejected { diagnostics: d }
                   }
-                v2.std.diagnostic.Rejected { diagnostics: d } =>
+                Rejected { diagnostics: d } =>
                   v2.std.diagnostic.Rejected { diagnostics: d }
               }
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
+            Rejected { diagnostics: d } =>
               v2.std.diagnostic.Rejected { diagnostics: d }
           }
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           v2.std.diagnostic.Rejected { diagnostics: d }
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

@@ -587,8 +587,8 @@ fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> v2.std.diagnost
   match source_root_ingest_build_from_source_refs(refs: refs) {
     SourceRootIngestBuildReadFailed { result: r } =>
       match source_ref_read_result_to_outcome(result: r) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Accepted { value: _, diagnostics: _ } =>
           outcome_rejected(
             d: source_ref_read_failed_diagnostic(
               ref: source_ref_for_storage_path(path: "source-root-ingest-build-impossible"),
@@ -791,7 +791,7 @@ fn module_storage_binding_from_provenance(
   source_root: v2.std.cross_tree.import_model.SourceRootRef
 ) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
   match qualified_name_from_module_node(root: prov.node) {
-    v2.std.diagnostic.Accepted { value: qn, diagnostics: _ } =>
+    Accepted { value: qn, diagnostics: _ } =>
       outcome_accepted(
         value: ModuleStorageBinding {
           module: qn,
@@ -802,7 +802,7 @@ fn module_storage_binding_from_provenance(
           source_root: source_root
         }
       )
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -867,8 +867,8 @@ fn module_storage_binding_from_read_with_model(
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
   match prepare_grammar(grammar: lm.grammar) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: prepared, diagnostics: residue } =>
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
       module_storage_binding_from_read_prepared(
         source_read: source_read,
         lm: lm,
@@ -936,13 +936,13 @@ fn module_storage_fold_step(
         prepared: prepared,
         residue: residue
       ) {
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           ModuleStorageFoldFailed { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: binding, diagnostics: _ } =>
+        Accepted { value: binding, diagnostics: _ } =>
           match module_storage_index_insert(index: acc, binding: binding) {
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
+            Rejected { diagnostics: d } =>
               ModuleStorageFoldFailed { diagnostics: d }
-            v2.std.diagnostic.Accepted { value: next, diagnostics: _ } =>
+            Accepted { value: next, diagnostics: _ } =>
               ModuleStorageFoldOk { bindings: next }
           }
       }
@@ -981,8 +981,8 @@ fn module_storage_bindings_from_ingest_with_model(
     Empty => outcome_accepted(value: std.algebra.Empty)
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: prepared, diagnostics: residue } =>
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Accepted { value: prepared, diagnostics: residue } =>
           module_storage_bindings_from_ingest_prepared(
             ingest: ingest,
             lm: lm,
@@ -1180,7 +1180,7 @@ fn source_ir_node_artifact_provenance_from_model(
           artifact: prov.artifact
         }
       )
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -1212,11 +1212,11 @@ fn node_artifact_provenance_fold_step(
       NodeArtifactProvenanceFoldFailed { diagnostics: d }
     NodeArtifactProvenanceFoldOk { provenance: acc } =>
       match source_ir_node_artifact_provenance(source_read: read) {
-        v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
+        Accepted { value: row, diagnostics: _ } =>
           NodeArtifactProvenanceFoldOk {
             provenance: list_snoc_item(xs: acc, item: row)
           }
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           NodeArtifactProvenanceFoldFailed { diagnostics: d }
       }
   }

@@ -155,7 +155,7 @@ fn occurrence_containment_parent_scope(
 ) -> std.occurrence_identity.OccurrenceContainmentPath? {
   match reverse(ancestors) {
     std.algebra.Empty => none
-    std.algebra.Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
+    Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
       Present {
         value: std.occurrence_identity.OccurrenceContainmentPath {
           ancestors: reverse(parent_ancestors_reversed),
@@ -176,7 +176,7 @@ fn declaration_exposure_module_local_member(
       match exposing_scope.ancestors {
         std.algebra.Empty =>
           ModuleExposure { module: module_path }
-        std.algebra.Cons { head: _, tail: _ } =>
+        Cons { head: _, tail: _ } =>
           LexicalExposure { exposing_scope: exposing_scope }
       }
   }
@@ -197,7 +197,7 @@ fn declaration_exposure_namespace_structural_root(
         std.algebra.Empty =>
           ModuleExposure { module: module_path }
 
-        std.algebra.Cons { head: _, tail: _ } =>
+        Cons { head: _, tail: _ } =>
           LexicalExposure { exposing_scope: exposing_scope }
       }
   }

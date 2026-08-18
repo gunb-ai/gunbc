@@ -61,23 +61,23 @@ fn rust_bind_let_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree
 
 fn rust_bind_let_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_bind_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
+    Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: rust_bind_let_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn rust_bind_let_wrong_value_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_bind_wrong_value_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
+    Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: rust_bind_let_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -103,21 +103,21 @@ test fn rust_bind_let_emit_holds() -> Bool {
   match rust_bind_let_emit_from_producer(target: rust_bind_let_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_let_expected_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn rust_bind_let_emit_wrong_value_discriminates() -> Bool {
   match rust_bind_let_emit_from_producer(target: rust_bind_let_target_model()) {
-    v2.std.diagnostic.Accepted { value: canonical, diagnostics: dc } =>
+    Accepted { value: canonical, diagnostics: dc } =>
       match rust_bind_let_emit_wrong_value_from_producer(target: rust_bind_let_target_model()) {
         Accepted { value: wrong, diagnostics: dw } =>
           (wrong.carried == rust_bind_let_wrong_value_source_text) &&
           (wrong.carried != canonical.carried) &&
           (dc == v2.std.diagnostic.None) && (dw == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

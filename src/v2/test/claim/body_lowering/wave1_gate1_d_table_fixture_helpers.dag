@@ -5,12 +5,12 @@ data wave1_gate1_d_table_fixture_note: String = "Wave 1 Gate 1 Stage D fast-lane
 
 fn wave1_gate1_d_table_fixture_arrow_accepts(o: v2.std.diagnostic.Outcome<Node>) -> Bool {
   match o {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

@@ -258,11 +258,11 @@ fn find_witness_derivation_rejection_better(
   candidate: v2.std.diagnostic.Outcome<FindWitnessResult>
 ) -> v2.std.diagnostic.Outcome<FindWitnessResult> {
   match current {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => current
-    v2.std.diagnostic.Rejected { diagnostics: current_diagnostics } =>
+    Accepted { value: _, diagnostics: _ } => current
+    Rejected { diagnostics: current_diagnostics } =>
       match candidate {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => candidate
-        v2.std.diagnostic.Rejected { diagnostics: candidate_diagnostics } =>
+        Accepted { value: _, diagnostics: _ } => candidate
+        Rejected { diagnostics: candidate_diagnostics } =>
           if find_witness_rejection_priority(reason: candidate_diagnostics.head.reason) > find_witness_rejection_priority(reason: current_diagnostics.head.reason) {
             candidate
           } else {
@@ -283,8 +283,8 @@ fn find_witness_derives(
     init: outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts)),
     f: fn(acc, rule) {
 	      match acc {
-	        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => acc
-	        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+	        Accepted { value: _, diagnostics: _ } => acc
+	        Rejected { diagnostics: _ } =>
 	          match find_witness(
 	            source_facts: source_facts,
 	            candidates: candidates,
@@ -295,8 +295,8 @@ fn find_witness_derives(
             ),
 	            multiplicity_policy: multiplicity_policy
 	          ) {
-	            v2.std.diagnostic.Accepted { value: fw, diagnostics: d } => v2.std.diagnostic.Accepted { value: fw, diagnostics: d }
-	            v2.std.diagnostic.Rejected { diagnostics: r } =>
+	            Accepted { value: fw, diagnostics: d } => v2.std.diagnostic.Accepted { value: fw, diagnostics: d }
+	            Rejected { diagnostics: r } =>
 	              find_witness_derivation_rejection_better(
 	                current: acc,
 	                candidate: v2.std.diagnostic.Rejected { diagnostics: r }
@@ -327,12 +327,12 @@ fn find_witness_realized(
       candidates: candidates,
       predicate: predicate
     ) {
-      v2.std.diagnostic.Accepted { value: only, diagnostics: _ } => accepted_witness_result(
+      Accepted { value: only, diagnostics: _ } => accepted_witness_result(
         candidate: only,
         candidates: candidates,
         predicate: predicate
       )
-      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
     _ => match multiplicity_policy {
       UniqueOnly =>

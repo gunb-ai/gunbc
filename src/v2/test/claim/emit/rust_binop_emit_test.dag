@@ -104,8 +104,8 @@ fn rust_binop_vep_emit_accepts(operation: v2.std.compilers.target_model.Canonica
     operation: operation,
     catalog: rust_operator_realizations_catalog_node()
   ) {
-    v2.std.diagnostic.Accepted { value: s, diagnostics: d } => (s == expected) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: s, diagnostics: d } => (s == expected) && (d == v2.std.diagnostic.None)
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -114,9 +114,9 @@ fn rust_binop_vep_emit_differs_from_add(operation: v2.std.compilers.target_model
     operation: operation,
     catalog: rust_operator_realizations_catalog_node()
   ) {
-    v2.std.diagnostic.Accepted { value: s, diagnostics: _ } =>
+    Accepted { value: s, diagnostics: _ } =>
       (s != "x + y") && rust_binop_vep_emit_accepts(operation: canonical_operation_op_add(), expected: "x + y")
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -127,7 +127,7 @@ fn rust_binop_producer_emit_accepts(operator_token: v2.std.node.Symbol, expected
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -159,8 +159,8 @@ test fn rust_binop_vep_emit_wrong_token_discriminates() -> Bool {
     operation: canonical_operation_op_sub(),
     catalog: rust_binop_sub_mistoken_catalog()
   ) {
-    v2.std.diagnostic.Accepted { value: s, diagnostics: _ } => (s == "x + y") && (s != "x - y")
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: s, diagnostics: _ } => (s == "x + y") && (s != "x - y")
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -169,8 +169,8 @@ test fn rust_binop_vep_emit_missing_catalog_rejects() -> Bool {
     operation: canonical_operation_op_sub(),
     catalog: rust_binop_add_only_catalog()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 

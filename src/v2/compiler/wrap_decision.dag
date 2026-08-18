@@ -92,12 +92,12 @@ fn wrap_decision_bundle_edge_present(
   edge_name: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<Bool> {
   match wrap_decision_bundle_optional_child(target: target, edge_name: edge_name) {
-    v2.std.diagnostic.Accepted { value: optional_child, diagnostics: _ } =>
+    Accepted { value: optional_child, diagnostics: _ } =>
       match optional_child {
         Absent => outcome_accepted(false)
         Present { value: _ } => outcome_accepted(true)
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -267,9 +267,9 @@ fn wrap_decision_gate(
     target: target,
     source_carrier: source_carrier
   ) {
-    v2.std.diagnostic.Accepted { value: false, diagnostics: _ } =>
+    Accepted { value: false, diagnostics: _ } =>
       outcome_accepted(WrapGateInapplicable)
-    v2.std.diagnostic.Accepted { value: true, diagnostics: _ } =>
+    Accepted { value: true, diagnostics: _ } =>
       bind_outcome(
         o: wrap_decision_bundle_optional_child(
           target: target,
@@ -313,6 +313,6 @@ fn wrap_decision_gate(
           }
         }
       )
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }

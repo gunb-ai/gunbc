@@ -121,9 +121,9 @@ fn apply_compile_lens_introspect(
   inferred: v2.compiler.infer.InferredTree
 ) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   match run_compile_lens_gate(lens: lens, inferred: inferred) {
-    v2.std.diagnostic.Accepted { value: w, diagnostics: od } =>
+    Accepted { value: w, diagnostics: od } =>
       outcome_with_diagnostics(value: w, diagnostics: od)
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       outcome_with_diagnostics(
         value: v2.std.witness.Violates { diagnostic: d.head },
         diagnostics: v2.std.diagnostic.Some { diagnostics: d }
@@ -163,8 +163,8 @@ fn run_required_lens_gates(
       init: outcome_accepted(value: empty_lens_gate_witnesses()),
       f: fn(acc_outcome, lens) {
         match acc_outcome {
-          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-          v2.std.diagnostic.Accepted { value: witnesses, diagnostics: od } =>
+          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          Accepted { value: witnesses, diagnostics: od } =>
             bind_outcome_accepted(
               od: od,
               inner: bind_outcome(

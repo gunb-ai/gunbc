@@ -40,24 +40,24 @@ test fn emit_typescript_backward_selects_canonical_row_holds() -> Bool {
     rules: emit_ingest_typescript_shared_rules(),
     emitted: emit_ingest_typescript_canonical_emitted()
   ) {
-    v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
+    Accepted { value: row, diagnostics: _ } =>
       row == emit_ingest_typescript_canonical_row()
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn ingest_typescript_forward_selects_canonical_emitted_holds() -> Bool {
   match emit_ingest_typescript_row_token_spine_classes(row: emit_ingest_typescript_canonical_row()) {
-    v2.std.diagnostic.Accepted { value: frontier, diagnostics: _ } =>
+    Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
         frontier: frontier,
         rules: emit_ingest_typescript_shared_rules()
       ) {
-        v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } =>
+        Accepted { value: emitted, diagnostics: _ } =>
           emitted == emit_ingest_typescript_canonical_emitted()
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -66,56 +66,56 @@ test fn emit_then_ingest_typescript_selector_identity_holds() -> Bool {
     rules: emit_ingest_typescript_shared_rules(),
     emitted: emit_ingest_typescript_canonical_emitted()
   ) {
-    v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
+    Accepted { value: row, diagnostics: _ } =>
       match emit_ingest_typescript_row_token_spine_classes(row: row) {
-        v2.std.diagnostic.Accepted { value: frontier, diagnostics: _ } =>
+        Accepted { value: frontier, diagnostics: _ } =>
           match grammar_relation_row_forward_selection(
             frontier: frontier,
             rules: emit_ingest_typescript_shared_rules()
           ) {
-            v2.std.diagnostic.Accepted { value: recovered, diagnostics: _ } =>
+            Accepted { value: recovered, diagnostics: _ } =>
               recovered == emit_ingest_typescript_canonical_emitted()
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn ingest_then_emit_typescript_selector_identity_holds() -> Bool {
   match emit_ingest_typescript_row_token_spine_classes(row: emit_ingest_typescript_canonical_row()) {
-    v2.std.diagnostic.Accepted { value: frontier, diagnostics: _ } =>
+    Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
         frontier: frontier,
         rules: emit_ingest_typescript_shared_rules()
       ) {
-        v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } =>
+        Accepted { value: emitted, diagnostics: _ } =>
           match grammar_relation_row_for_emitted(
             rules: emit_ingest_typescript_shared_rules(),
             emitted: emitted
           ) {
-            v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
+            Accepted { value: row, diagnostics: _ } =>
               row == emit_ingest_typescript_canonical_row()
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_ingest_typescript_perturbed_frontier_fails_closed() -> Bool {
   match emit_ingest_typescript_row_token_spine_classes(row: emit_ingest_typescript_canonical_row()) {
-    v2.std.diagnostic.Accepted { value: frontier, diagnostics: _ } =>
+    Accepted { value: frontier, diagnostics: _ } =>
       match grammar_relation_row_forward_selection(
         frontier: list_append(left: frontier, right: [^emit_ingest_typescript_perturb_bogus_tok]),
         rules: emit_ingest_typescript_shared_rules()
       ) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -124,8 +124,8 @@ test fn ingest_typescript_forward_fails_closed_off_frontier_holds() -> Bool {
     frontier: std.algebra.Cons { head: ^emit_ingest_typescript_perturb_bogus_tok, tail: std.algebra.Empty },
     rules: emit_ingest_typescript_shared_rules()
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -134,29 +134,29 @@ test fn emit_typescript_backward_fails_closed_on_foreign_emitted_holds() -> Bool
     rules: emit_ingest_typescript_shared_rules(),
     emitted: dag_fixture_emitted_add_fn
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
 test fn typescript_same_language_parse_bridge_holds() -> Bool {
   match typescript_grammar_parse_fixture() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_target_model_bridge(
         parse_tree: tree,
         source_model: ts_target_model()
       ) {
-        v2.std.diagnostic.Accepted { value: recovered, diagnostics: _ } =>
+        Accepted { value: recovered, diagnostics: _ } =>
           recovered == emit_ingest_typescript_canonical_emitted()
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn typescript_same_language_source_emit_round_trip_holds() -> Bool {
   match typescript_grammar_parse_fixture() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
         parse_tree: tree,
         source_model: ts_target_model(),
@@ -165,23 +165,23 @@ test fn typescript_same_language_source_emit_round_trip_holds() -> Bool {
         Accepted { value: source, diagnostics: _ } =>
           (source.carried == ts_source_text)
             && typescript_same_language_discriminates_on_real_tree()
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn typescript_same_language_discriminates_on_real_tree() -> Bool {
   match typescript_grammar_parse_fixture() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
         parse_tree: tree,
         source_model: dag_target_model()
       ) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

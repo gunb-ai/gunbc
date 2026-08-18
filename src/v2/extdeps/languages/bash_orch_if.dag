@@ -970,7 +970,7 @@ fn bash_nearest_ancestor_locate_cond_command(spec: std.path_intent.NearestAncest
         None => source.authority_source_text
         Some { diagnostics: _ } => ""
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -983,6 +983,6 @@ fn bash_nearest_ancestor_locate_body_command(spec: std.path_intent.NearestAncest
         None => source.authority_source_text
         Some { diagnostics: _ } => ""
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: _ } => ""
   }
 }

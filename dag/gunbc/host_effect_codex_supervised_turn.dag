@@ -46,21 +46,21 @@ fn host_effect_codex_supervised_turn_apply_refused(
         "CodexSupervisedWorkerTurn requires LocalShell on the executor host; got unsupported transport",
       ),
     }
-    gunbc.host_effect.SshShell { ssh_host: h } =>
+    SshShell { ssh_host: h } =>
       CodexSupervisedSessionApplyRefused {
         reason: concat(
           "CodexSupervisedWorkerTurn app-server stdio session refused over ssh host=",
           concat(h, ": in-band coprocess must run on executor HostOs"),
         ),
       }
-    gunbc.host_effect.FleetSsh { target: t, context: _ } =>
+    FleetSsh { target: t, context: _ } =>
       CodexSupervisedSessionApplyRefused {
         reason: concat(
           "CodexSupervisedWorkerTurn app-server stdio session refused over fleet ssh endpoint=",
           concat(t.endpoint as String, ": in-band coprocess must run on executor HostOs"),
         ),
       }
-    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       CodexSupervisedSessionApplyRefused {
         reason: "CodexSupervisedWorkerTurn app-server stdio session refused over EmitArtifactThenThinRun",
       }

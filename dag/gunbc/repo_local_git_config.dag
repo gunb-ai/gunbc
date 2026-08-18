@@ -142,8 +142,8 @@ fn apply_repo_local_git_config_action_at_repo(
     acc
   } else {
     match action {
-      gunbc.membership_reconcile.MemberAdded { at: _, to: binding } => apply_repo_local_git_config_binding(repo: repo, binding: binding, acc: acc)
-      gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: binding } => apply_repo_local_git_config_binding(repo: repo, binding: binding, acc: acc)
+      MemberAdded { at: _, to: binding } => apply_repo_local_git_config_binding(repo: repo, binding: binding, acc: acc)
+      MemberChanged { at: _, from: _, to: binding } => apply_repo_local_git_config_binding(repo: repo, binding: binding, acc: acc)
       _ => acc
     }
   }
@@ -231,8 +231,8 @@ fn repo_local_git_config_converge_actuate() -> std.realization_reconcile.Reconci
 
 func converge() -> std.process.ProcessExit {
   match repo_local_git_config_converge_actuate() {
-    std.realization_reconcile.Converged { evidence: _, applied: _ } => std.process.ExitSuccess
-    std.realization_reconcile.NotConverged { reason: r, applied: _ } =>
+    Converged { evidence: _, applied: _ } => std.process.ExitSuccess
+    NotConverged { reason: r, applied: _ } =>
       std.process.exit_failure(reason: concat("repo local git config converge refused: ", r))
   }
 }

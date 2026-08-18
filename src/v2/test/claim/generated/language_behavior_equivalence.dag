@@ -167,9 +167,9 @@ fn lbe_run_test_claim_assert_from_emit(
   mock: v2.lens.testgen.LanguageBehaviorIoMock
 ) -> v2.std.verdict.Verdict<TestClaimEvalSubject<Node>, Node> {
   match lbe_claim_from_testgen_emit(anchor: anchor, label: label, mock: mock) {
-    v2.std.diagnostic.Accepted { value: claim, diagnostics: None } =>
+    Accepted { value: claim, diagnostics: None } =>
       lbe_run_test_claim_assert_from_mock(claim: claim, mock: mock)
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.verdict.SemanticMismatch { actual: v2.std.diagnostic.Rejected { diagnostics: d }, falsification: Absent }
   }
 }
@@ -180,9 +180,9 @@ fn lbe_test_claim_run_from_emit(
   mock: v2.lens.testgen.LanguageBehaviorIoMock
 ) -> TestClaimRun<Node, RuntimeValue> {
   match lbe_claim_from_testgen_emit(anchor: anchor, label: label, mock: mock) {
-    v2.std.diagnostic.Accepted { value: claim, diagnostics: None } =>
+    Accepted { value: claim, diagnostics: None } =>
       lbe_run_via_test_claim(claim: claim)
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.compiler.eval.TestClaimRun {
         cache: lbe_rejected_emit_cache_receipt(label: label, mock: mock, expected: d),
         verdict: v2.std.verdict.SemanticMismatch { actual: v2.std.diagnostic.Rejected { diagnostics: d }, falsification: Absent }
@@ -214,10 +214,10 @@ data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   mock: lbe_io_mock_conj_dag_surface()
 ) {
   v2.std.verdict.Pass => true
-  v2.std.verdict.SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
-    v2.std.verdict.RunFailed { actual: _, diagnostic: _ } => false
-  v2.std.verdict.Deferred { actual: _, diagnostic: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
 }
 
 data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
@@ -226,10 +226,10 @@ data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   mock: lbe_io_mock_disj_dag_surface()
 ) {
   v2.std.verdict.Pass => true
-  v2.std.verdict.SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
-    v2.std.verdict.RunFailed { actual: _, diagnostic: _ } => false
-  v2.std.verdict.Deferred { actual: _, diagnostic: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
 }
 
 data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
@@ -238,10 +238,10 @@ data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert
   mock: lbe_io_mock_transform_dag_surface()
 ) {
   v2.std.verdict.Pass => true
-  v2.std.verdict.SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
-    v2.std.verdict.RunFailed { actual: _, diagnostic: _ } => false
-  v2.std.verdict.Deferred { actual: _, diagnostic: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
 }
 
 data run_lbe_conj_via_run_test_claim: TestClaimRun<Node, RuntimeValue> = lbe_test_claim_run_from_emit(

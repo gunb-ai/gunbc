@@ -35,8 +35,8 @@ fn rust_signature_add_text() -> v2.std.diagnostic.Outcome<String> {
 
 fn rust_signature_add_matches(golden: String) -> Bool {
   match rust_signature_add_text() {
-    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
   }
 }
 

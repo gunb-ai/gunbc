@@ -159,7 +159,7 @@ fn effect_io_pure_store_lookup(
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
     match map_get(m: store.entries, key: locator.identity) {
-      v2.std.diagnostic.Accepted { value: opt, diagnostics: None } =>
+      Accepted { value: opt, diagnostics: None } =>
         match opt {
           Present { value: payload } =>
             v2.std.diagnostic.Accepted { value: payload, diagnostics: v2.std.diagnostic.None }
@@ -357,7 +357,7 @@ fn effect_io_pure_roundtrip_through_store(
   let write_request = effect_io_pure_write_request(args: write_args)
   let write_handler = effect_handler_for_kind(binding: bundle0.handlers, kind: WriteResource)
   match effect_io_pure_invoke_handler(handler: write_handler, request: write_request) {
-    v2.std.diagnostic.Accepted { value: written, diagnostics: None } =>
+    Accepted { value: written, diagnostics: None } =>
       if written == payload {
         let store1 = effect_io_pure_apply_write(
           store: store0,
@@ -369,7 +369,7 @@ fn effect_io_pure_roundtrip_through_store(
         let read_request = effect_io_pure_read_request(args: read_args)
         let read_handler = effect_handler_for_kind(binding: bundle1.handlers, kind: ReadResource)
         match effect_io_pure_invoke_handler(handler: read_handler, request: read_request) {
-          v2.std.diagnostic.Accepted { value: read_back, diagnostics: None } => read_back == written
+          Accepted { value: read_back, diagnostics: None } => read_back == written
           _ => false
         }
       } else {

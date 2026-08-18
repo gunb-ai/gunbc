@@ -537,11 +537,11 @@ type ChangePresentation {
 
 fn observation_change_presentation<K, V>(hunk: std.change.KeyedDiffHunk<K, V>) -> ChangePresentation {
   match hunk {
-    std.change.KeyedDiffAddedHunk { hunk_key: _, to: _ } =>
+    KeyedDiffAddedHunk { hunk_key: _, to: _ } =>
       ChangePresentation { symbol: ChangeAdded, tag: "new" as std.types.NonEmptyStr }
-    std.change.KeyedDiffRemovedHunk { hunk_key: _, from: _ } =>
+    KeyedDiffRemovedHunk { hunk_key: _, from: _ } =>
       ChangePresentation { symbol: ChangeRemoved, tag: "removed" as std.types.NonEmptyStr }
-    std.change.KeyedDiffModifiedHunk { hunk_key: _, from: _, to: _ } =>
+    KeyedDiffModifiedHunk { hunk_key: _, from: _, to: _ } =>
       ChangePresentation { symbol: ChangeModified, tag: "edited" as std.types.NonEmptyStr }
   }
 }

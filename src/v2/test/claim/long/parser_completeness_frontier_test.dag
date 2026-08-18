@@ -39,8 +39,8 @@ fn parser_frontier_assemble_for(src: String) -> v2.std.diagnostic.Outcome<Node> 
 
 fn parser_frontier_assemble_accepts(src: String) -> Bool {
   match parser_frontier_assemble_for(src: src) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -49,8 +49,8 @@ fn parser_frontier_infer_accepts(src: String) -> Bool {
     o: parser_frontier_assemble_for(src: src),
     f: fn(resolved) { infer(tree: resolved) }
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 

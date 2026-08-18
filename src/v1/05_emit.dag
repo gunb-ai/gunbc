@@ -137,7 +137,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
   match interp.style {
     FormatArgs { placeholder: ph } =>
       let fmt_parts = parts |> map(p => match p {
-        v1.std.core.Text { value: v } =>
+        Text { value: v } =>
           let base = escape_string_literal_body(s: v)
           let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
           InterpPart { format_segment: escaped, arg_expr: "" }
@@ -156,7 +156,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
       }
     InlineExpr =>
       let segments = parts |> map(p => match p {
-        v1.std.core.Text { value: v } =>
+        Text { value: v } =>
           let base = escape_string_literal_body(s: v)
           if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
         Interpolation { expr: e } =>
@@ -1994,7 +1994,7 @@ fn emit_typed_string_interp_unified(parts: List<StringPart>, target: RenderTarge
   match interp.style {
     FormatArgs { placeholder: ph } =>
       let fmt_parts = parts |> map(p => match p {
-        v1.std.core.Text { value: v } =>
+        Text { value: v } =>
           let base = escape_string_literal_body(s: v)
           let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
           InterpPart { format_segment: escaped, arg_expr: "" }
@@ -2011,7 +2011,7 @@ fn emit_typed_string_interp_unified(parts: List<StringPart>, target: RenderTarge
       }
     InlineExpr =>
       let segments = parts |> map(p => match p {
-        v1.std.core.Text { value: v } =>
+        Text { value: v } =>
           let base = escape_string_literal_body(s: v)
           if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
         Interpolation { expr: e } =>

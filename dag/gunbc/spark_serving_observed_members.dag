@@ -119,7 +119,7 @@ fn spark_serving_observed_members(
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
   match observation {
-    gunbc.spark_serving_release.SparkServingObservationRefused { host: h, cause: cause } =>
+    SparkServingObservationRefused { host: h, cause: cause } =>
       SparkServingObservedMembersRefused {
         cause: join([
           "spark serving observed members refused for host=", h as String,
@@ -127,7 +127,7 @@ fn spark_serving_observed_members(
           "), and an observation that could not be made must not be rendered as an empty population",
         ], ""),
       }
-    gunbc.spark_serving_release.SparkServingAbsent { host: h } =>
+    SparkServingAbsent { host: h } =>
       SparkServingObservedMembers {
         members: concat(
           spark_serving_observed_unit_members(host: h, unit: unit),
@@ -135,7 +135,7 @@ fn spark_serving_observed_members(
         ),
         unit_observed: spark_serving_unit_state_was_observed(unit: unit),
       }
-    gunbc.spark_serving_release.SparkServingObserved { host: h, loaded_release: loaded } =>
+    SparkServingObserved { host: h, loaded_release: loaded } =>
       SparkServingObservedMembers {
         members: concat(
           [

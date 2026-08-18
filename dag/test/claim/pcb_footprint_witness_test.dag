@@ -33,15 +33,15 @@ data vcc: product.electrical.connectivity.NetIdentity = product.electrical.conne
 
 fn admitted_board(s: product.pcb.stackup.Stackup, authority: std.decl_ref.DeclarationRef) -> product.pcb.stackup.AdmittedStackup? {
   match product.pcb.stackup.admit_stackup(s: s, authority: authority) {
-    product.pcb.stackup.StackupAdmitted { admitted: a } => Present { value: a }
-    product.pcb.stackup.StackupRefused { causes: _ } => none
+    StackupAdmitted { admitted: a } => Present { value: a }
+    StackupRefused { causes: _ } => none
   }
 }
 
 fn layer_of(a: product.pcb.stackup.AdmittedStackup, ordinal: Int) -> product.pcb.copper.CopperLayerRef? {
   match product.pcb.copper.select_copper_layer(a: a, ordinal: ordinal) {
-    product.pcb.copper.LayerSelected { layer: l } => Present { value: l }
-    product.pcb.copper.LayerOutsideStackup { requested: _, layer_count: _ } => none
+    LayerSelected { layer: l } => Present { value: l }
+    LayerOutsideStackup { requested: _, layer_count: _ } => none
   }
 }
 
@@ -87,8 +87,8 @@ test fn w_a_net_whose_terminals_all_have_pads_admits() -> Bool {
             nets: net_over(members: [t(component: "u1", terminal: "1")]),
             fs: [f],
           ) {
-            product.pcb.footprint.FootprintsRefused { causes: _ } => false
-            product.pcb.footprint.FootprintsAdmitted { admitted: a } =>
+            FootprintsRefused { causes: _ } => false
+            FootprintsAdmitted { admitted: a } =>
               count(product.pcb.footprint.admitted_footprints_rows(a: a)) == 1
                 && product.pcb.footprint.footprint_pad_count(f: f) == 2
           }
@@ -114,14 +114,14 @@ test fn w_red_a_net_member_with_no_pad_refuses() -> Bool {
             nets: net_over(members: [t(component: "u1", terminal: "1"), t(component: "u1", terminal: "9")]),
             fs: [f],
           ) {
-            product.pcb.footprint.FootprintsAdmitted { admitted: _ } => false
-            product.pcb.footprint.FootprintsRefused { causes: c } =>
+            FootprintsAdmitted { admitted: _ } => false
+            FootprintsRefused { causes: c } =>
               count(filter(c, x => match x {
-                product.pcb.footprint.NetMemberHasNoPad { net: n, component: comp, terminal: term } =>
+                NetMemberHasNoPad { net: n, component: comp, terminal: term } =>
                   n == vcc && product.electrical.connectivity.component_local_label(c: comp) == "u1" && (term as std.types.NonEmptyStr) == "9"
-                product.pcb.footprint.TerminalHasTwoPads { component: _, terminal: _ } => false
-                product.pcb.footprint.PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
-                product.pcb.footprint.TwoFootprintsForOneComponent { component: _ } => false
+                TerminalHasTwoPads { component: _, terminal: _ } => false
+                PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
+                TwoFootprintsForOneComponent { component: _ } => false
               })) == 1
           }
         }
@@ -145,13 +145,13 @@ test fn w_red_a_pad_on_another_component_does_not_satisfy_the_member() -> Bool {
             nets: net_over(members: [t(component: "u2", terminal: "1")]),
             fs: [f],
           ) {
-            product.pcb.footprint.FootprintsAdmitted { admitted: _ } => false
-            product.pcb.footprint.FootprintsRefused { causes: c } =>
+            FootprintsAdmitted { admitted: _ } => false
+            FootprintsRefused { causes: c } =>
               count(filter(c, x => match x {
-                product.pcb.footprint.NetMemberHasNoPad { net: _, component: comp, terminal: _ } => product.electrical.connectivity.component_local_label(c: comp) == "u2"
-                product.pcb.footprint.TerminalHasTwoPads { component: _, terminal: _ } => false
-                product.pcb.footprint.PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
-                product.pcb.footprint.TwoFootprintsForOneComponent { component: _ } => false
+                NetMemberHasNoPad { net: _, component: comp, terminal: _ } => product.electrical.connectivity.component_local_label(c: comp) == "u2"
+                TerminalHasTwoPads { component: _, terminal: _ } => false
+                PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
+                TwoFootprintsForOneComponent { component: _ } => false
               })) == 1
           }
         }
@@ -176,14 +176,14 @@ test fn w_red_two_pads_on_one_terminal_refuse() -> Bool {
             nets: net_over(members: [t(component: "u1", terminal: "1")]),
             fs: [f],
           ) {
-            product.pcb.footprint.FootprintsAdmitted { admitted: _ } => false
-            product.pcb.footprint.FootprintsRefused { causes: c } =>
+            FootprintsAdmitted { admitted: _ } => false
+            FootprintsRefused { causes: c } =>
               count(filter(c, x => match x {
-                product.pcb.footprint.TerminalHasTwoPads { component: comp, terminal: term } =>
+                TerminalHasTwoPads { component: comp, terminal: term } =>
                   product.electrical.connectivity.component_local_label(c: comp) == "u1" && (term as std.types.NonEmptyStr) == "1"
-                product.pcb.footprint.NetMemberHasNoPad { net: _, component: _, terminal: _ } => false
-                product.pcb.footprint.PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
-                product.pcb.footprint.TwoFootprintsForOneComponent { component: _ } => false
+                NetMemberHasNoPad { net: _, component: _, terminal: _ } => false
+                PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
+                TwoFootprintsForOneComponent { component: _ } => false
               })) > 0
           }
         }
@@ -209,14 +209,14 @@ test fn w_red_a_pad_on_another_boards_layer_refuses() -> Bool {
                 nets: net_over(members: [t(component: "u1", terminal: "1")]),
                 fs: [f],
               ) {
-                product.pcb.footprint.FootprintsAdmitted { admitted: _ } => false
-                product.pcb.footprint.FootprintsRefused { causes: c } =>
+                FootprintsAdmitted { admitted: _ } => false
+                FootprintsRefused { causes: c } =>
                   count(filter(c, x => match x {
-                    product.pcb.footprint.PadSelectedAgainstAnotherStackup { component: comp, terminal: _ } =>
+                    PadSelectedAgainstAnotherStackup { component: comp, terminal: _ } =>
                       product.electrical.connectivity.component_local_label(c: comp) == "u1"
-                    product.pcb.footprint.NetMemberHasNoPad { net: _, component: _, terminal: _ } => false
-                    product.pcb.footprint.TerminalHasTwoPads { component: _, terminal: _ } => false
-                    product.pcb.footprint.TwoFootprintsForOneComponent { component: _ } => false
+                    NetMemberHasNoPad { net: _, component: _, terminal: _ } => false
+                    TerminalHasTwoPads { component: _, terminal: _ } => false
+                    TwoFootprintsForOneComponent { component: _ } => false
                   })) > 0
               }
             }
@@ -240,13 +240,13 @@ test fn w_red_two_footprints_for_one_component_refuse() -> Bool {
             nets: net_over(members: [t(component: "u1", terminal: "1")]),
             fs: [a, b],
           ) {
-            product.pcb.footprint.FootprintsAdmitted { admitted: _ } => false
-            product.pcb.footprint.FootprintsRefused { causes: c } =>
+            FootprintsAdmitted { admitted: _ } => false
+            FootprintsRefused { causes: c } =>
               count(filter(c, x => match x {
-                product.pcb.footprint.TwoFootprintsForOneComponent { component: comp } => product.electrical.connectivity.component_local_label(c: comp) == "u1"
-                product.pcb.footprint.NetMemberHasNoPad { net: _, component: _, terminal: _ } => false
-                product.pcb.footprint.TerminalHasTwoPads { component: _, terminal: _ } => false
-                product.pcb.footprint.PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
+                TwoFootprintsForOneComponent { component: comp } => product.electrical.connectivity.component_local_label(c: comp) == "u1"
+                NetMemberHasNoPad { net: _, component: _, terminal: _ } => false
+                TerminalHasTwoPads { component: _, terminal: _ } => false
+                PadSelectedAgainstAnotherStackup { component: _, terminal: _ } => false
               })) > 0
           }
         }

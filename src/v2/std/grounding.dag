@@ -45,7 +45,7 @@ fn insert_per_language_fact_bundle_entry(
   fact_value: Node
 ) -> v2.std.diagnostic.Outcome<PerLanguageFactBundleRegistry> {
   match v2.std.collection.map_get(m: registry.by_key, key: key) {
-    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } => match opt {
+    Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: _ } =>
         outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
       Absent =>
@@ -55,7 +55,7 @@ fn insert_per_language_fact_bundle_entry(
           }
         )
     }
-    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 
@@ -86,7 +86,7 @@ fn per_language_fact_bundle_insert_subject_axis(
       fact_axis: fact_axis
     )
   ) {
-    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } => match opt {
+    Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: fact_value } =>
         outcome_accepted(
           value: PerLanguageFactBundleSpecFactsFoldState {
@@ -101,7 +101,7 @@ fn per_language_fact_bundle_insert_subject_axis(
       Absent =>
         outcome_accepted(value: state)
     }
-    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 
@@ -113,7 +113,7 @@ fn per_language_fact_bundle_spec_facts_after_axis(
   fact_axis: v2.std.model_core.ModelCorePrimitiveFactAxis
 ) -> v2.std.diagnostic.Outcome<PerLanguageFactBundleSpecFactsFoldState> {
   match acc {
-    v2.std.diagnostic.Accepted { value: state, diagnostics: _ } =>
+    Accepted { value: state, diagnostics: _ } =>
       per_language_fact_bundle_insert_subject_axis(
         registry: registry,
         state: state,
@@ -121,7 +121,7 @@ fn per_language_fact_bundle_spec_facts_after_axis(
         target: target,
         fact_axis: fact_axis
       )
-    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 
@@ -193,7 +193,7 @@ fn per_language_fact_bundle_spec_facts_for_subject(
       false =>
         outcome_rejected(d: per_language_fact_bundle_ungrounded_subject_diagnostic(subject_carrier: subject_carrier))
     }
-    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 
@@ -207,7 +207,7 @@ fn primitive_fact_bundle_for_subject(
     subject_carrier: subject_carrier,
     target: target
   ) {
-    v2.std.diagnostic.Accepted { value: spec_facts, diagnostics: d } =>
+    Accepted { value: spec_facts, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.model_core.PrimitiveFactBundle {
           substrate_carrier: subject_carrier,
@@ -215,7 +215,7 @@ fn primitive_fact_bundle_for_subject(
         },
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 

@@ -56,8 +56,8 @@ data ci_human_duration_note: String = "A second duration projection beside gunbc
 // ObservationEvent retains exact Nanosecond wall time through classification and ordering. Arm's-length lines keep existing millisecond-and-larger spelling byte-stable, while a sub-millisecond event prints its exact nanosecond count instead of fabricating 0ms. The floor conversion is confined to this named presentation boundary.
 fn ci_measured_bytes_text(m: std.observation.Measured<std.measure.ByteSize>) -> String {
   match m {
-    std.observation.MeasuredValue { value: b } => ci_human_bytes(b: b)
-    std.observation.MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+    MeasuredValue { value: b } => ci_human_bytes(b: b)
+    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
   }
 }
 
@@ -66,15 +66,15 @@ fn ci_measured_bytes_text(m: std.observation.Measured<std.measure.ByteSize>) -> 
 // indistinguishable from one that finished instantly.
 fn ci_measured_elapsed_text(m: std.observation.Measured<std.measure.Nanosecond>) -> String {
   match m {
-    std.observation.MeasuredValue { value: d } => ci_human_elapsed(d: d)
-    std.observation.MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+    MeasuredValue { value: d } => ci_human_elapsed(d: d)
+    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
   }
 }
 
 fn ci_measured_percent_text(m: std.observation.Measured<std.measure.BasisPoint>) -> String {
   match m {
-    std.observation.MeasuredValue { value: bp } => ci_human_percent(bp: bp)
-    std.observation.MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+    MeasuredValue { value: bp } => ci_human_percent(bp: bp)
+    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
   }
 }
 
@@ -212,8 +212,8 @@ fn ci_outcome_text(o: std.observation.ObservationOutcome) -> String {
 
 fn ci_duration_suffix(wall: std.observation.Measured<std.measure.Nanosecond>) -> String {
   match wall {
-    std.observation.MeasuredValue { value: w } => concat(" in ", ci_human_elapsed(d: w))
-    std.observation.MeasuredUnavailable { cause: c } => concat(" (duration unmeasured: ", concat(c, ")"))
+    MeasuredValue { value: w } => concat(" in ", ci_human_elapsed(d: w))
+    MeasuredUnavailable { cause: c } => concat(" (duration unmeasured: ", concat(c, ")"))
   }
 }
 
@@ -506,8 +506,8 @@ fn ci_rollup_measurement_note(rollup: std.observation.ObservationRollup) -> Stri
 // wrong number. Absence is disclosed by ci_rollup_measurement_note rather than filled in.
 fn ci_rollup_peak_text(rollup: std.observation.ObservationRollup) -> String {
   match rollup.peak_rss {
-    std.observation.MeasuredValue { value: v } => concat(" · peak ", ci_measured_bytes_text(m: rollup.peak_rss))
-    std.observation.MeasuredUnavailable { cause: _ } => ""
+    MeasuredValue { value: v } => concat(" · peak ", ci_measured_bytes_text(m: rollup.peak_rss))
+    MeasuredUnavailable { cause: _ } => ""
   }
 }
 

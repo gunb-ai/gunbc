@@ -125,8 +125,8 @@ fn emit_complement_eval_nth_arm_wire(node: v2.std.node.Node, wanted: Int) -> v2.
 
 fn emit_complement_eval_arm_body_node(arm_wire: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match find_named_child(root: arm_wire, name: match_arm_body) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -137,15 +137,15 @@ fn emit_complement_eval_choose_arm(
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if emit_complement_eval_bool_true(value: scrutinee) {
     match emit_complement_eval_nth_arm_wire(node: node, wanted: 1) {
-      v2.std.diagnostic.Accepted { value: arm, diagnostics: _ } =>
+      Accepted { value: arm, diagnostics: _ } =>
         emit_complement_eval_arm_body_node(arm_wire: arm)
-      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else if emit_complement_eval_bool_false(value: scrutinee) {
     match emit_complement_eval_nth_arm_wire(node: node, wanted: 2) {
-      v2.std.diagnostic.Accepted { value: arm, diagnostics: _ } =>
+      Accepted { value: arm, diagnostics: _ } =>
         emit_complement_eval_arm_body_node(arm_wire: arm)
-      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else {
     outcome_rejected(

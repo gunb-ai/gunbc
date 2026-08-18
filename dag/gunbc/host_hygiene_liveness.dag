@@ -101,13 +101,13 @@ fn reconcile_fleet_listening(
   read: std.realization_reconcile.ShowEffectiveRead<List<SlotListeningVerdict>>,
 ) -> Reconciliation<String, FleetListeningEvidence> {
   match read {
-    std.realization_reconcile.ReadAbsent { reason: why } =>
+    ReadAbsent { reason: why } =>
       reconcile_grounded(
         apply_effect: "host_hygiene_liveness.timer",
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    std.realization_reconcile.ReadObserved { value: verdicts } =>
+    ReadObserved { value: verdicts } =>
       reconcile_grounded(
         apply_effect: "host_hygiene_liveness.timer",
         show_read: read,

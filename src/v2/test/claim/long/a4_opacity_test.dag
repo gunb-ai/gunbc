@@ -34,15 +34,15 @@ fn a4_opacity_compile(source: Medium<String>) -> v2.std.diagnostic.Outcome<Mediu
 
 fn a4_opacity_rejects(source: Medium<String>) -> Bool {
   match a4_opacity_compile(source: source) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
 fn a4_opacity_accepts(source: Medium<String>) -> Bool {
   match a4_opacity_compile(source: source) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 

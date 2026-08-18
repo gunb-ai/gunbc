@@ -105,8 +105,8 @@ fn body_producer_forward_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.s
 
 fn body_producer_forward_row_for_behavior_identity(surface_identity: v2.std.node.Symbol) -> Optional<Node> {
   match body_producer_forward_select_row(surface_identity: surface_identity) {
-    v2.std.diagnostic.Accepted { value: row, diagnostics: _ } => optional_present(value: row)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: row, diagnostics: _ } => optional_present(value: row)
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 

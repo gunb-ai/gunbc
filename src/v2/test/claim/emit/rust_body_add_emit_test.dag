@@ -20,23 +20,23 @@ fn rust_body_add_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree
 
 fn rust_body_add_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_add_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
+    Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: rust_body_add_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn rust_body_add_producer_swapped_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_add_arrow_with_body_swapped_operands() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
+    Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: rust_body_add_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -91,7 +91,7 @@ test fn rust_body_add_emit_add_fn_accepts_holds() -> Bool {
   match rust_body_add_emit_from_tree(target: rust_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -101,7 +101,7 @@ test fn rust_body_add_emit_operand_swap_discriminates() -> Bool {
       (source.carried == rust_body_add_swapped_source_text) &&
       (source.carried != rust_source_text) &&
       (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -111,13 +111,13 @@ test fn rust_body_add_emit_catalog_minus_discriminates() -> Bool {
       (source.carried == rust_body_add_minus_source_text) &&
       (source.carried != rust_source_text) &&
       (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn rust_body_add_emit_missing_catalog_rejects() -> Bool {
   match rust_body_add_emit_from_tree(target: rust_body_add_missing_catalog_target_model()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }

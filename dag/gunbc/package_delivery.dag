@@ -280,7 +280,7 @@ fn admit_codex_package_lock_text(text: String) -> CodexPackageLockAdmission {
         CodexPackageLockUnsupportedNodes { unsupported: unsupported }
       } else {
         match admit_codex_package_lock_graph(raw_graph: graph) {
-          extdeps.package.PackageLockGraphAdmitted { graph: admitted } =>
+          PackageLockGraphAdmitted { graph: admitted } =>
             CodexPackageLockAdmitted {
               graph: admitted,
               nodes: nodes,

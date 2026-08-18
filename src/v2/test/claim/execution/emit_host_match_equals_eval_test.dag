@@ -24,27 +24,27 @@ fn emit_match_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler
 
 fn emit_match_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_match_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: _ } =>
+    Accepted { value: root, diagnostics: _ } =>
       outcome_accepted(
         value: v2.compiler.infer.InferredTree {
           root: root,
           facts: std.types.Map { lookup: emit_match_eval_composed_facts }
         }
       )
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn emit_match_eval_swapped_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_match_arrow_with_body_swapped_arms() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: _ } =>
+    Accepted { value: root, diagnostics: _ } =>
       outcome_accepted(
         value: v2.compiler.infer.InferredTree {
           root: root,
           facts: std.types.Map { lookup: emit_match_eval_composed_facts }
         }
       )
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -150,8 +150,8 @@ fn emit_match_eval_nth_arm_wire(node: v2.std.node.Node, wanted: Int) -> v2.std.d
 
 fn emit_match_eval_arm_body_node(arm_wire: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match find_named_child(root: arm_wire, name: match_arm_body) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -162,15 +162,15 @@ fn emit_match_eval_choose_arm(
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if emit_match_eval_bool_true(value: scrutinee) {
     match emit_match_eval_nth_arm_wire(node: node, wanted: 1) {
-      v2.std.diagnostic.Accepted { value: arm, diagnostics: _ } =>
+      Accepted { value: arm, diagnostics: _ } =>
         emit_match_eval_arm_body_node(arm_wire: arm)
-      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else if emit_match_eval_bool_false(value: scrutinee) {
     match emit_match_eval_nth_arm_wire(node: node, wanted: 2) {
-      v2.std.diagnostic.Accepted { value: arm, diagnostics: _ } =>
+      Accepted { value: arm, diagnostics: _ } =>
         emit_match_eval_arm_body_node(arm_wire: arm)
-      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else {
     outcome_rejected(
@@ -257,43 +257,43 @@ fn emit_match_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimR
 
 test fn emit_host_match_equals_eval_holds() -> Bool {
   match emit_match_eval_producer_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       emit_match_eval_verdict_is_pass(run: emit_match_eval_run(tree: tree))
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_host_match_wrong_fixture_refuses_holds() -> Bool {
   match emit_match_eval_swapped_producer_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       emit_match_eval_verdict_is_semantic_mismatch(run: emit_match_eval_run(tree: tree))
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_host_match_eval_only_accepts() -> Bool {
   match emit_match_eval_producer_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       match eval(
         tree: tree,
         interpretation: emit_match_eval_interpretation(),
         inputs: inputs_root_only(root: emit_match_eval_subgraph_node)
       ) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_host_match_emit_only_accepts() -> Bool {
   match emit_match_eval_producer_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_match_target_model_staging()) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

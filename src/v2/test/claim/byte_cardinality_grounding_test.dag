@@ -23,14 +23,14 @@ fn seven_bits() -> List<Int> { [1, 0, 1, 0, 1, 0, 1] }
 
 fn is_accepted(o: v2.std.diagnostic.Outcome<Byte>) -> Bool {
   match o {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 fn is_rejected(o: v2.std.diagnostic.Outcome<Byte>) -> Bool {
   match o {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 

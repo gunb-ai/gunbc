@@ -157,11 +157,11 @@ fn placement_refusals(
       []
     } else {
       match placement_extent(p: p) {
-        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => [PlacementExtentNotPositive { placement: p.identity }]
-        std.orthogonal_geometry.OrthogonalReady { value: rect } =>
+        OrthogonalRefused { cause: _ } => [PlacementExtentNotPositive { placement: p.identity }]
+        OrthogonalReady { value: rect } =>
           match rectangle2_contains_rectangle(outer: article.outline, inner: rect) {
-            std.orthogonal_geometry.OrthogonalRefused { cause: _ } => [PlacementNotWithinOutline { placement: p.identity }]
-            std.orthogonal_geometry.OrthogonalReady { value: inside } =>
+            OrthogonalRefused { cause: _ } => [PlacementNotWithinOutline { placement: p.identity }]
+            OrthogonalReady { value: inside } =>
               if inside { [] } else { [PlacementNotWithinOutline { placement: p.identity }] }
           }
       }
@@ -199,14 +199,14 @@ fn overlap_refusals(article: BoardPhysicalArticle) -> List<PhysicalRefusal> {
     let inner = fold(article.placements, init: OverlapScan { index: 0, out: [] }, f: fn(bacc, b) {
       let hits = if bacc.index > acc.index {
         match placement_extent(p: a) {
-          std.orthogonal_geometry.OrthogonalRefused { cause: _ } => []
-          std.orthogonal_geometry.OrthogonalReady { value: ra } =>
+          OrthogonalRefused { cause: _ } => []
+          OrthogonalReady { value: ra } =>
             match placement_extent(p: b) {
-              std.orthogonal_geometry.OrthogonalRefused { cause: _ } => []
-              std.orthogonal_geometry.OrthogonalReady { value: rb } =>
+              OrthogonalRefused { cause: _ } => []
+              OrthogonalReady { value: rb } =>
                 match rectangle2_overlaps(a: ra, b: rb) {
-                  std.orthogonal_geometry.OrthogonalRefused { cause: _ } => []
-                  std.orthogonal_geometry.OrthogonalReady { value: hit } =>
+                  OrthogonalRefused { cause: _ } => []
+                  OrthogonalReady { value: hit } =>
                     if hit { [PlacementsOverlap { first: a.identity, second: b.identity }] } else { [] }
                 }
             }

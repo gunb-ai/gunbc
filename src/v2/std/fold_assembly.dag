@@ -116,8 +116,8 @@ fn decode_node_list_conj(node: v2.std.node.Node, head: v2.std.node.NamedEdgeTarg
 
 fn decode_node_list_cons(head_node: v2.std.node.Node, tail_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>> {
   match decode_node_list(node: tail_node) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: rest, diagnostics: _ } =>
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Accepted { value: rest, diagnostics: _ } =>
       outcome_accepted(value: list_append(left: list_snoc_item(xs: freemonoid_empty(), item: head_node), right: rest))
   }
 }
@@ -128,11 +128,11 @@ fn decode_node_list_item_step<T>(
   decode_item: fn(v2.std.node.Node) -> v2.std.diagnostic.Outcome<T>
 ) -> v2.std.diagnostic.Outcome<FreeMonoid<T>> {
   match acc {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: items, diagnostics: _ } =>
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Accepted { value: items, diagnostics: _ } =>
       match decode_item(item_node) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: item, diagnostics: _ } =>
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Accepted { value: item, diagnostics: _ } =>
           outcome_accepted(value: list_snoc_item(xs: items, item: item))
       }
   }
@@ -143,8 +143,8 @@ fn node_list_from_node<T>(
   decode_item: fn(v2.std.node.Node) -> v2.std.diagnostic.Outcome<T>
 ) -> v2.std.diagnostic.Outcome<FreeMonoid<T>> {
   match decode_node_list(node: node) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: item_nodes, diagnostics: _ } =>
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Accepted { value: item_nodes, diagnostics: _ } =>
       fold_list(
         xs: item_nodes,
         empty: outcome_accepted(value: freemonoid_empty()),
@@ -161,8 +161,8 @@ fn node_list_from_node<T>(
 
 fn decode_per_element(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<FreeMonoid<FreeMonoid<v2.std.node.Node>>> {
   match decode_node_list(node: node) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: elem_nodes, diagnostics: _ } => decode_inner_lists(elem_nodes: elem_nodes)
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Accepted { value: elem_nodes, diagnostics: _ } => decode_inner_lists(elem_nodes: elem_nodes)
   }
 }
 
@@ -176,11 +176,11 @@ fn decode_inner_lists(elem_nodes: FreeMonoid<v2.std.node.Node>) -> v2.std.diagno
 
 fn decode_inner_step(acc: v2.std.diagnostic.Outcome<FreeMonoid<FreeMonoid<v2.std.node.Node>>>, elem_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<FreeMonoid<FreeMonoid<v2.std.node.Node>>> {
   match acc {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: so_far, diagnostics: _ } =>
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Accepted { value: so_far, diagnostics: _ } =>
       match decode_node_list(node: elem_node) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: fills, diagnostics: _ } =>
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Accepted { value: fills, diagnostics: _ } =>
           outcome_accepted(value: list_snoc_item(xs: so_far, item: fills))
       }
   }
@@ -219,11 +219,11 @@ fn fold_per_element_of(fold_form: v2.std.node.Node) -> v2.std.diagnostic.Outcome
 
 fn expand_fold(fold_form: v2.std.node.Node) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>> {
   match fold_template_of(fold_form: fold_form) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: template, diagnostics: _ } =>
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Accepted { value: template, diagnostics: _ } =>
       match fold_per_element_of(fold_form: fold_form) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: per_element, diagnostics: _ } =>
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Accepted { value: per_element, diagnostics: _ } =>
           expand_elements(template: template, per_element: per_element)
       }
   }
@@ -239,8 +239,8 @@ fn expand_elements(template: v2.std.node.Node, per_element: FreeMonoid<FreeMonoi
 
 fn expand_element_step(template: v2.std.node.Node, acc: v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>>, fills: FreeMonoid<v2.std.node.Node>) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>> {
   match acc {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: so_far, diagnostics: _ } =>
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Accepted { value: so_far, diagnostics: _ } =>
       if template_hole_count(template: template) == length(xs: fills) {
         outcome_accepted(value: list_snoc_item(xs: so_far, item: apply_fills(template: template, fills: fills)))
       } else {

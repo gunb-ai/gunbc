@@ -58,15 +58,15 @@ fn refined_base<B>(r: Refined<B>) -> B {
 fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Refined<B>> {
   let validation = validation_from_vacuous(by: by)
   match refine(base: base, by: validation, at: at) {
-    v2.std.diagnostic.Accepted { value: refined, diagnostics: _ } => v2.std.diagnostic.Accepted { value: refined, diagnostics: v2.std.diagnostic.None }
-    v2.std.diagnostic.Rejected { diagnostics: rejected } => v2.std.diagnostic.Rejected { diagnostics: rejected }
+    Accepted { value: refined, diagnostics: _ } => v2.std.diagnostic.Accepted { value: refined, diagnostics: v2.std.diagnostic.None }
+    Rejected { diagnostics: rejected } => v2.std.diagnostic.Rejected { diagnostics: rejected }
   }
 }
 
 fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: v2.std.diagnostic.Locus) -> Refined<B> {
   match refined_vacuous_oracle_terminal(base: base, by: by, at: at) {
-    v2.std.diagnostic.Accepted { value: refined, diagnostics: _ } => refined
-    v2.std.diagnostic.Rejected { diagnostics: _ } => Refined { base: base }
+    Accepted { value: refined, diagnostics: _ } => refined
+    Rejected { diagnostics: _ } => Refined { base: base }
   }
 }
 
@@ -157,56 +157,56 @@ fn exact_one_int_value(p: ExactOneInt) -> Int {
 
 fn make_positive_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<PositiveInt> {
   match refine(base: value, by: positive_int_validation, at: at) {
-    v2.std.diagnostic.Accepted { value: refined, diagnostics: diagnostics } =>
+    Accepted { value: refined, diagnostics: diagnostics } =>
       v2.std.diagnostic.Accepted {
         value: PositiveInt { refined: refined },
         diagnostics: diagnostics
       }
-    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
 fn make_non_negative_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<NonNegativeInt> {
   match refine(base: value, by: non_negative_int_validation, at: at) {
-    v2.std.diagnostic.Accepted { value: refined, diagnostics: diagnostics } =>
+    Accepted { value: refined, diagnostics: diagnostics } =>
       v2.std.diagnostic.Accepted {
         value: NonNegativeInt { refined: refined },
         diagnostics: diagnostics
       }
-    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
 fn make_at_least_minus_one_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<AtLeastMinusOneInt> {
   match refine(base: value, by: at_least_minus_one_int_validation, at: at) {
-    v2.std.diagnostic.Accepted { value: refined, diagnostics: diagnostics } =>
+    Accepted { value: refined, diagnostics: diagnostics } =>
       v2.std.diagnostic.Accepted {
         value: AtLeastMinusOneInt { refined: refined },
         diagnostics: diagnostics
       }
-    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
 fn make_at_least_minus_two_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<AtLeastMinusTwoInt> {
   match refine(base: value, by: at_least_minus_two_int_validation, at: at) {
-    v2.std.diagnostic.Accepted { value: refined, diagnostics: diagnostics } =>
+    Accepted { value: refined, diagnostics: diagnostics } =>
       v2.std.diagnostic.Accepted {
         value: AtLeastMinusTwoInt { refined: refined },
         diagnostics: diagnostics
       }
-    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
 fn make_exact_one_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<ExactOneInt> {
   match refine(base: value, by: exact_one_int_validation, at: at) {
-    v2.std.diagnostic.Accepted { value: refined, diagnostics: diagnostics } =>
+    Accepted { value: refined, diagnostics: diagnostics } =>
       v2.std.diagnostic.Accepted {
         value: ExactOneInt { refined: refined },
         diagnostics: diagnostics
       }
-    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 

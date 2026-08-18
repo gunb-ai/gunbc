@@ -109,7 +109,7 @@ fn branch_kw_false_node() -> v2.std.node.Node {
 fn branch_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if dag_node_is_int_literal_atom(node: node) {
     match dag_int_literal_magnitude_int_from_node(node: node) {
-      v2.std.diagnostic.Accepted { value: mag, diagnostics: _ } =>
+      Accepted { value: mag, diagnostics: _ } =>
         if mag == 1 {
           outcome_accepted(value: branch_one_value())
         } else if mag == 2 {
@@ -117,7 +117,7 @@ fn branch_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.Evaluati
         } else {
           outcome_rejected(d: branch_runtime_diagnostic(n: node))
         }
-      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else if node == branch_kw_true_node() {
     outcome_accepted(value: branch_bool_value(is_true: true))
@@ -314,109 +314,109 @@ fn branch_run(
 
 fn branch_run_passes(run: v2.std.diagnostic.Outcome<TestClaimRun<v2.std.node.Node, RuntimeValue>>) -> Bool {
   match run {
-    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
+    Accepted { value: r, diagnostics: _ } =>
       match test_claim_run_verdict(run: r) {
         Pass => true
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn branch_source_pipeline_admits_holds() -> Bool {
   match table_fixture_pick_if_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn branch_source_driven_pick_true_executes_holds() -> Bool {
   match table_fixture_pick_if_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(
           callee: arrow,
           expected: branch_literal_one_node()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn branch_source_driven_pick_false_executes_holds() -> Bool {
   match table_fixture_pick_false_if_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(
           callee: arrow,
           expected: branch_literal_two_node()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn branch_condition_perturbation_red_holds() -> Bool {
   match table_fixture_pick_if_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(
           callee: arrow,
           expected: branch_literal_two_node()
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn branch_direct_runtime_true_holds() -> Bool {
   match table_fixture_pick_if_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } => {
+    Accepted { value: arrow, diagnostics: _ } => {
       let input = branch_pick_call(callee: arrow)
       match branch_inferred_run_tree(
         callee: arrow,
         expected: branch_literal_one_node()
       ) {
-        v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+        Accepted { value: tree, diagnostics: _ } =>
           match eval(
             tree: tree,
             interpretation: branch_interpretation(),
             inputs: inputs_root_only(root: input)
           ) {
-            v2.std.diagnostic.Accepted { value: actual, diagnostics: None } =>
+            Accepted { value: actual, diagnostics: None } =>
               branch_runtime_int_is_one(value: actual)
             _ => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
     }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn branch_swapped_arms_red_holds() -> Bool {
   match table_fixture_pick_if_arrow_with_body_swapped_arms() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(
           callee: arrow,
           expected: branch_literal_one_node()
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn branch_fixture_producer_holds() -> Bool {
   match table_fixture_pick_if_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(
           callee: arrow,
           expected: branch_literal_one_node()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

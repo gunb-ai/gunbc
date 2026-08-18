@@ -165,7 +165,7 @@ fn teardown_refusal_cause_label(cause: gunbc.membership_reconcile.TeardownRefusa
   match cause {
     gunbc.membership_reconcile.MemberNotOwned => "MemberNotOwned"
     gunbc.membership_reconcile.OwnershipUnknown => "OwnershipUnknown"
-    gunbc.membership_reconcile.RosterDuplicateKey { roster: _ } => "RosterDuplicateKey"
+    RosterDuplicateKey { roster: _ } => "RosterDuplicateKey"
   }
 }
 
@@ -180,7 +180,7 @@ fn timer_action_line(action: gunbc.membership_reconcile.MemberAction<TimerRetire
         concat("REFUSED-REMOVAL timer-unit ", m.unit_name as String),
         concat(" cause=", teardown_refusal_cause_label(cause: c)),
       )
-    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
   }
 }
 
@@ -195,7 +195,7 @@ fn cap_action_line(action: gunbc.membership_reconcile.MemberAction<gunbc.host_ax
         concat("REFUSED-REMOVAL cap ", m.dropin_path as String),
         concat(" cause=", teardown_refusal_cause_label(cause: c)),
       )
-    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
   }
 }
 
@@ -288,21 +288,21 @@ fn fleet_converge_spark_serving_effect_wire(effect: gunbc.spark_serving_realizat
 
 fn fleet_converge_spark_serving_action_kind(action: gunbc.membership_reconcile.MemberAction<gunbc.spark_serving_membership.SparkServingMember, gunbc.spark_serving_membership.SparkServingMemberAt>) -> String {
   match action {
-    gunbc.membership_reconcile.MemberAdded { at: _, to: _ } => "ADD"
-    gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => "CHANGE"
-    gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => "REMOVE"
-    gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => "REFUSED-REMOVAL"
-    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+    MemberAdded { at: _, to: _ } => "ADD"
+    MemberChanged { at: _, from: _, to: _ } => "CHANGE"
+    MemberRemoved { at: _, from: _ } => "REMOVE"
+    MemberRemovalRefused { from: _, cause: _ } => "REFUSED-REMOVAL"
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
   }
 }
 
 fn fleet_converge_spark_serving_action_line(row: FleetConvergeSparkServingTypedAction) -> String {
   let member = match row.action {
-    gunbc.membership_reconcile.MemberAdded { at: _, to: m } => m
-    gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: m } => m
-    gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => m
-    gunbc.membership_reconcile.MemberRemovalRefused { from: m, cause: _ } => m
-    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: _ } => f
+    MemberAdded { at: _, to: m } => m
+    MemberChanged { at: _, from: _, to: m } => m
+    MemberRemoved { at: _, from: m } => m
+    MemberRemovalRefused { from: m, cause: _ } => m
+    MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: _ } => f
   }
   join(
     [
@@ -491,11 +491,11 @@ fn timer_retirement_remove_line(unit_name: std.types.NonEmptyStr) -> String {
 
 fn cap_apply_line(action: gunbc.membership_reconcile.MemberAction<gunbc.host_axis_caps.CapMember, gunbc.host_axis_caps.CapMemberAt>) -> String {
   match action {
-    gunbc.membership_reconcile.MemberAdded { at: _, to: m } => gunbc.host_axis_caps.cap_upsert_script(m: m)
-    gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: t } => gunbc.host_axis_caps.cap_upsert_script(m: t)
+    MemberAdded { at: _, to: m } => gunbc.host_axis_caps.cap_upsert_script(m: m)
+    MemberChanged { at: _, from: _, to: t } => gunbc.host_axis_caps.cap_upsert_script(m: t)
     MemberRemoved { at: _, from: m } => concat("rm -f ", m.dropin_path as String)
-    gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => ""
-    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
+    MemberRemovalRefused { from: _, cause: _ } => ""
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
   }
 }
 
@@ -506,10 +506,10 @@ fn timer_apply_lines(plan: gunbc.membership_reconcile.MembershipPlan<TimerRetire
     match a {
       MemberRemoved { at: _, from: m } =>
         [timer_retirement_disable_line(unit_name: m.unit_name), timer_retirement_remove_line(unit_name: m.unit_name)]
-      gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => []
-      gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
-      gunbc.membership_reconcile.MemberAdded { at: _, to: _ } => []
-      gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => []
+      MemberRemovalRefused { from: _, cause: _ } => []
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+      MemberAdded { at: _, to: _ } => []
+      MemberChanged { at: _, from: _, to: _ } => []
     }
   )
 }

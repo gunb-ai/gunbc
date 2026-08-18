@@ -11,7 +11,7 @@ fn spark_serving_install_effects_for_address(address: gunbc.spark_serving_member
   match address {
     gunbc.spark_serving_membership.SparkServingRuntimeRootAddress => [gunbc.spark_serving_realization.InstallOwnedRuntimeClosure]
     gunbc.spark_serving_membership.SparkServingUserUnitAddress => spark_serving_user_unit_install_effects()
-    gunbc.spark_serving_membership.SparkServingModelSlotAddress { slot: _ } => [gunbc.spark_serving_realization.PullModelArtifact]
+    SparkServingModelSlotAddress { slot: _ } => [gunbc.spark_serving_realization.PullModelArtifact]
     gunbc.spark_serving_membership.SparkServingLingerAddress => [gunbc.spark_serving_realization.EnableLingerForOwnAccount]
   }
 }
@@ -50,10 +50,10 @@ fn spark_serving_install_effects_for_member_effect(
   effect: gunbc.membership_reconcile.MemberEffect<gunbc.spark_serving_membership.SparkServingMember>,
 ) -> std.types.List<gunbc.spark_serving_realization.ServingInstallEffect> {
   match effect {
-    gunbc.membership_reconcile.EffectAdd { to: member } => spark_serving_install_effects_for_add(member: member)
-    gunbc.membership_reconcile.EffectReplace { from: f, to: t } =>
+    EffectAdd { to: member } => spark_serving_install_effects_for_add(member: member)
+    EffectReplace { from: f, to: t } =>
       spark_serving_install_effects_for_change(from: f, to: t)
-    gunbc.membership_reconcile.EffectRemove { from: member } => spark_serving_install_effects_for_remove(member: member)
+    EffectRemove { from: member } => spark_serving_install_effects_for_remove(member: member)
   }
 }
 

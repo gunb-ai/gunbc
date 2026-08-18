@@ -81,7 +81,7 @@ fn is_read(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
 
 fn is_create(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    std.effects.CreateEffect { cause: cause } => true
+    CreateEffect { cause: cause } => true
     _ => false
   }
 }
@@ -90,7 +90,7 @@ data keyless_fallback_witness_note: String = "Discriminating control for the Pos
 
 fn derived_cause_is_keyless_with_method(shape: std.effects.EffectShape<std.effects.KeySource>, expected: std.types.HttpMethod) -> Bool {
   match shape {
-    std.effects.CreateEffect { cause: cause } =>
+    CreateEffect { cause: cause } =>
       match cause {
         KeylessFallback { method: m } =>
           match m {
@@ -109,7 +109,7 @@ fn derived_cause_is_keyless_with_method(shape: std.effects.EffectShape<std.effec
 
 fn derived_cause_is_post_always(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    std.effects.CreateEffect { cause: cause } =>
+    CreateEffect { cause: cause } =>
       match cause {
         PostAlways => true
         KeylessFallback { method: m } => false
@@ -143,14 +143,14 @@ fn derived_raw_cause_is_post_always(name: String, method: std.types.HttpMethod, 
 
 fn is_upsert(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    std.effects.UpsertEffect { key_source: key_source } => true
+    UpsertEffect { key_source: key_source } => true
     _ => false
   }
 }
 
 fn is_delete(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    std.effects.DeleteEffect { key_source: key_source } => true
+    DeleteEffect { key_source: key_source } => true
     _ => false
   }
 }

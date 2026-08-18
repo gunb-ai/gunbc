@@ -183,12 +183,12 @@ fn apply_hunk(acc: ApplyAcc, hunk: std.change.KeyedDiffHunk<product.placement_su
     Present { value: r } => ApplyAcc { rooms: acc.rooms, refusal: Present { value: r } }
     Absent =>
       match hunk {
-        std.change.KeyedDiffAddedHunk { hunk_key: key, to: to } =>
+        KeyedDiffAddedHunk { hunk_key: key, to: to } =>
           match find_room(rooms: acc.rooms, identity: key) {
             Present { value: _ } => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetAlreadyPresent { identity: key } } }
             Absent => ApplyAcc { rooms: concat(acc.rooms, [PlacedSpace { identity: key, space: to }]), refusal: none }
           }
-        std.change.KeyedDiffRemovedHunk { hunk_key: key, from: from } =>
+        KeyedDiffRemovedHunk { hunk_key: key, from: from } =>
           match find_room(rooms: acc.rooms, identity: key) {
             Absent => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetMissing { identity: key } } }
             Present { value: current } =>
@@ -198,7 +198,7 @@ fn apply_hunk(acc: ApplyAcc, hunk: std.change.KeyedDiffHunk<product.placement_su
                 ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantBaseChanged { identity: key } } }
               }
           }
-        std.change.KeyedDiffModifiedHunk { hunk_key: key, from: from, to: to } =>
+        KeyedDiffModifiedHunk { hunk_key: key, from: from, to: to } =>
           match find_room(rooms: acc.rooms, identity: key) {
             Absent => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetMissing { identity: key } } }
             Present { value: current } =>

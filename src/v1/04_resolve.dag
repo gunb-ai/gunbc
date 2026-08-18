@@ -596,7 +596,7 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
   if n == none { NodeResolveResult { resolved: unit_type, diagnostics: [] } }
   else {
     match n.value {
-      v1.std.core.Resolved { node: inner } => resolve_node(n: inner, env: env, module_name: module_name)
+      Resolved { node: inner } => resolve_node(n: inner, env: env, module_name: module_name)
       CompilerError { message: msg, span: sp } =>
         NodeResolveResult {
           resolved: make_expr_error_node(kind: SemanticExprError, message: msg, span: sp),

@@ -64,13 +64,13 @@ fn host_identity_observation_from_apply(
   probed_at: std.types.NonEmptyStr,
 ) -> HostIdentityObservation? {
   match r {
-    std.realization_reconcile.Converged { evidence: e, applied: _ } =>
+    Converged { evidence: e, applied: _ } =>
       match e {
         ShellEffectApplied { stdout: out, exit_code: _ } =>
           host_identity_observation_from_stdout(stdout: out, probed_at: probed_at)
         ConvergePlanApplied { stdout: _, exit_code: _ } => none
       }
-    std.realization_reconcile.NotConverged { reason: _, applied: _ } => none
+    NotConverged { reason: _, applied: _ } => none
   }
 }
 

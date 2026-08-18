@@ -126,8 +126,8 @@ fn reference_qn_from_qualified_name_production_strict(
       })
     Present { value: capture } =>
       match parse_qualified_name_segments_from_capture(qn_capture: capture, root: module_root) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: segments, diagnostics: _ } =>
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Accepted { value: segments, diagnostics: _ } =>
           v2.extdeps.languages.dag.qualified_name_from_symbol_segments(segments: segments, root: module_root)
       }
   }
@@ -140,14 +140,14 @@ fn reference_qn_from_import_decl_strict(node: Node, module_root: Node) -> v2.std
   ) {
     ParseSubtreeAbsent =>
       match find_named_child(root: node, name: ^dag_surface_import_decl_qualified_name) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: qn_node, diagnostics: _ } =>
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Accepted { value: qn_node, diagnostics: _ } =>
           qualified_name_from_node(root: qn_node)
       }
     ParseSubtreeFound { captured: qn_capture } =>
       match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: module_root) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: segments, diagnostics: _ } =>
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Accepted { value: segments, diagnostics: _ } =>
           v2.extdeps.languages.dag.qualified_name_from_symbol_segments(segments: segments, root: module_root)
       }
   }
@@ -180,8 +180,8 @@ fn reference_sites_collect_edges(
         module_qn: module_qn,
         acc: acc
       ) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        v2.std.diagnostic.Accepted { value: next_acc, diagnostics: _ } =>
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Accepted { value: next_acc, diagnostics: _ } =>
           reference_sites_collect_edges(
             edges: edges |> skip(1),
             module_root: module_root,
@@ -205,8 +205,8 @@ fn reference_sites_collect_node(
           production_node: node,
           module_root: module_root
         ) {
-          v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-          v2.std.diagnostic.Accepted { value: site_qn, diagnostics: _ } =>
+          Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+          Accepted { value: site_qn, diagnostics: _ } =>
             reference_sites_collect_edges(
               edges: node.children,
               module_root: module_root,
@@ -220,8 +220,8 @@ fn reference_sites_collect_node(
         }
       } else if id == ^dag_surface_import_decl {
         match reference_qn_from_import_decl_strict(node: node, module_root: module_root) {
-          v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-          v2.std.diagnostic.Accepted { value: site_qn, diagnostics: _ } =>
+          Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+          Accepted { value: site_qn, diagnostics: _ } =>
             reference_sites_collect_edges(
               edges: node.children,
               module_root: module_root,
@@ -253,8 +253,8 @@ fn reference_sites_collect_node(
 
 fn reference_sites_from_parsed_module(module_root: Node) -> v2.std.diagnostic.Outcome<List<v2.std.qualified_name.QualifiedName>> {
   match qualified_name_from_module_node(root: module_root) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: module_qn, diagnostics: _ } =>
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Accepted { value: module_qn, diagnostics: _ } =>
       reference_sites_collect_node(
         node: module_root,
         module_root: module_root,
@@ -402,13 +402,13 @@ fn reference_file_census_parsed(
   module_to_path: Map<String, String>
 ) -> ReferenceResolutionCensus {
   match reference_sites_from_parsed_module(module_root: module_root) {
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       reference_file_census_refused(
         rel_path: rel_path,
         stage: "reference_site",
         reason: d.head.reason
       )
-    v2.std.diagnostic.Accepted { value: sites, diagnostics: _ } =>
+    Accepted { value: sites, diagnostics: _ } =>
       ReferenceResolutionCensus {
         facts: reference_facts_for_qn_sites(
           rel_path: rel_path,
@@ -446,13 +446,13 @@ fn reference_file_census_from_source(
   module_to_path: Map<String, String>
 ) -> ReferenceResolutionCensus {
   match reference_deps_ingest_source_text(source_text: source_text, file: reference_deps_file_anchor) {
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       reference_file_census_refused(
         rel_path: rel_path,
         stage: "ingest",
         reason: d.head.reason
       )
-    v2.std.diagnostic.Accepted { value: module_root, diagnostics: _ } =>
+    Accepted { value: module_root, diagnostics: _ } =>
       reference_file_census_parsed(
         rel_path: rel_path,
         module_root: module_root,

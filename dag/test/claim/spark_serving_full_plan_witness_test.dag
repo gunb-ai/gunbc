@@ -8,8 +8,8 @@ data subject_host: product.placement_supply.HostIdentity = "srv6" as product.pla
 // witness says so rather than substituting one.
 fn subject_release() -> gunbc.spark_serving_release.SparkServingRelease? {
   match gunbc.spark_serving_desired.spark_serving_desired_admission {
-    gunbc.spark_serving_desired.SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
-    gunbc.spark_serving_desired.SparkServingDesiredRefused { cause: _ } => none
+    SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
+    SparkServingDesiredRefused { cause: _ } => none
   }
 }
 
@@ -23,15 +23,15 @@ fn project(
 
 fn observed_count(p: gunbc.spark_serving_observed_members.SparkServingObservedMemberProjection) -> Int {
   match p {
-    gunbc.spark_serving_observed_members.SparkServingObservedMembersRefused { cause: _ } => 0 - 1
-    gunbc.spark_serving_observed_members.SparkServingObservedMembers { members: ms, unit_observed: _ } => length(ms)
+    SparkServingObservedMembersRefused { cause: _ } => 0 - 1
+    SparkServingObservedMembers { members: ms, unit_observed: _ } => length(ms)
   }
 }
 
 fn plan_writes(p: gunbc.spark_serving_converge_plan.SparkServingFullMembershipPlan) -> Int {
   match p {
-    gunbc.spark_serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: _ } => 0 - 1
-    gunbc.spark_serving_converge_plan.SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _ } =>
+    SparkServingFullMembershipPlanRefused { cause: _ } => 0 - 1
+    SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _ } =>
       gunbc.membership_reconcile.membership_write_count(plan: plan)
   }
 }
@@ -67,8 +67,8 @@ fn full_plan_refuses(
         serving_release: r,
         projection: project(obs: obs, unit: unit, linger: linger),
       ) {
-        gunbc.spark_serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: c } => string_contains(c, "refused")
-        gunbc.spark_serving_converge_plan.SparkServingFullMembershipPlanReady { plan: _, unit_observed: _ } => false
+        SparkServingFullMembershipPlanRefused { cause: c } => string_contains(c, "refused")
+        SparkServingFullMembershipPlanReady { plan: _, unit_observed: _ } => false
       }
   }
 }
@@ -137,8 +137,8 @@ test fn a_refused_observation_refuses_the_projection() -> Bool {
     unit: gunbc.spark_serving_observed_members.UserUnitStateUnobserved,
     linger: gunbc.spark_serving_observed_members.LingerUnobservedState,
   ) {
-    gunbc.spark_serving_observed_members.SparkServingObservedMembersRefused { cause: _ } => true
-    gunbc.spark_serving_observed_members.SparkServingObservedMembers { members: _, unit_observed: _ } => false
+    SparkServingObservedMembersRefused { cause: _ } => true
+    SparkServingObservedMembers { members: _, unit_observed: _ } => false
   }
 }
 
@@ -157,9 +157,9 @@ test fn the_projection_refusal_names_the_host() -> Bool {
     unit: gunbc.spark_serving_observed_members.UserUnitStateUnobserved,
     linger: gunbc.spark_serving_observed_members.LingerUnobservedState,
   ) {
-    gunbc.spark_serving_observed_members.SparkServingObservedMembersRefused { cause: c } =>
+    SparkServingObservedMembersRefused { cause: c } =>
       string_contains(c, "srv6") && string_contains(c, "ssh unreachable")
-    gunbc.spark_serving_observed_members.SparkServingObservedMembers { members: _, unit_observed: _ } => false
+    SparkServingObservedMembers { members: _, unit_observed: _ } => false
   }
 }
 
@@ -205,9 +205,9 @@ fn removal_refusing_plan() -> gunbc.membership_reconcile.MembershipPlan<gunbc.sp
 
 test fn a_plan_whose_member_cannot_translate_refuses_the_typed_projection() -> Bool {
   match gunbc.spark_serving_converge_plan.fleet_converge_spark_serving_typed_actions(plan: removal_refusing_plan()) {
-    gunbc.spark_serving_converge_plan.SparkServingTypedActionsRefused { cause: c } =>
+    SparkServingTypedActionsRefused { cause: c } =>
       string_contains(c, "dropped") && string_contains(c, "1 planned member actions")
-    gunbc.spark_serving_converge_plan.SparkServingTypedActionsProjected { rows: _ } => false
+    SparkServingTypedActionsProjected { rows: _ } => false
   }
 }
 
@@ -217,8 +217,8 @@ test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
   match gunbc.spark_serving_converge_plan.fleet_converge_spark_serving_typed_actions(
     plan: gunbc.spark_serving_converge_plan.spark_serving_linger_membership_plan(host: subject_host, linger_enabled: false),
   ) {
-    gunbc.spark_serving_converge_plan.SparkServingTypedActionsProjected { rows: rows } => length(rows) == 1
-    gunbc.spark_serving_converge_plan.SparkServingTypedActionsRefused { cause: _ } => false
+    SparkServingTypedActionsProjected { rows: rows } => length(rows) == 1
+    SparkServingTypedActionsRefused { cause: _ } => false
   }
 }
 

@@ -124,7 +124,7 @@ fn emit_field_eval_call_primitive(
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match emit_field_eval_field_index_from_transform(node: node) {
-    v2.std.diagnostic.Accepted { value: field_index, diagnostics: _ } =>
+    Accepted { value: field_index, diagnostics: _ } =>
       if field_index == 0 {
         if length(xs: args) == 2 {
           match list_at_optional(xs: args, index: 0) {
@@ -143,7 +143,7 @@ fn emit_field_eval_call_primitive(
       } else {
         outcome_accepted(value: emit_field_eval_octet_value(n: 0))
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -292,27 +292,27 @@ fn emit_field_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimR
 
 test fn emit_host_field_access_equals_eval_holds() -> Bool {
   match emit_field_eval_producer_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       emit_field_eval_verdict_is_pass(run: emit_field_eval_run(tree: tree))
         && match emit_field_eval_alt_descent_producer_tree() {
-          v2.std.diagnostic.Accepted { value: alt, diagnostics: _ } =>
+          Accepted { value: alt, diagnostics: _ } =>
             emit_field_eval_verdict_is_pass(run: emit_field_eval_run(tree: alt))
-          v2.std.diagnostic.Rejected { diagnostics: _ } => false
+          Rejected { diagnostics: _ } => false
         }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_host_field_access_wrong_fixture_refuses_holds() -> Bool {
   match emit_field_eval_producer_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       emit_field_eval_verdict_is_semantic_mismatch(
         run: run_test_claim_emit_vs_eval(
           subject: emit_field_eval_wrong_fixture_subject(tree: tree),
           target: rust_field_access_target_model_staging()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

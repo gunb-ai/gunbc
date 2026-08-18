@@ -108,21 +108,21 @@ fn cut_with(
 
 fn causes_of(admission: gunbc.replacement_cut.PlanAdmission) -> std.types.List<gunbc.replacement_cut.CutRefusalCause> {
   match admission {
-    gunbc.replacement_cut.PlanAdmitted { admitted: _ } => []
-    gunbc.replacement_cut.PlanRefused { causes: cs } => cs
+    PlanAdmitted { admitted: _ } => []
+    PlanRefused { causes: cs } => cs
   }
 }
 
 fn cause_matches(c: gunbc.replacement_cut.CutRefusalCause, tag: String, subject: String) -> std.types.Bool {
   match c {
-    gunbc.replacement_cut.UndispositionedConsumer { consumer: w } => tag == "undispositioned-consumer" && (w as String) == subject
-    gunbc.replacement_cut.UncoveredSurvivingConsumer { consumer: w } => tag == "uncovered-surviving" && (w as String) == subject
-    gunbc.replacement_cut.UndispositionedEvidence { evidence: w } => tag == "undispositioned-evidence" && (w as String) == subject
-    gunbc.replacement_cut.CoveredByOldRoot { consumer: w } => tag == "covered-by-old-root" && (w as String) == subject
-    gunbc.replacement_cut.ReplacementNamesOldRoot { consumer: w } => tag == "replacement-names-old-root" && (w as String) == subject
-    gunbc.replacement_cut.ConsumerDuplicated { consumer: w } => tag == "consumer-duplicated" && (w as String) == subject
-    gunbc.replacement_cut.EvidenceDuplicated { evidence: w } => tag == "evidence-duplicated" && (w as String) == subject
-    gunbc.replacement_cut.RegionMemberDuplicated { member: w } => tag == "region-member-duplicated" && (w as String) == subject
+    UndispositionedConsumer { consumer: w } => tag == "undispositioned-consumer" && (w as String) == subject
+    UncoveredSurvivingConsumer { consumer: w } => tag == "uncovered-surviving" && (w as String) == subject
+    UndispositionedEvidence { evidence: w } => tag == "undispositioned-evidence" && (w as String) == subject
+    CoveredByOldRoot { consumer: w } => tag == "covered-by-old-root" && (w as String) == subject
+    ReplacementNamesOldRoot { consumer: w } => tag == "replacement-names-old-root" && (w as String) == subject
+    ConsumerDuplicated { consumer: w } => tag == "consumer-duplicated" && (w as String) == subject
+    EvidenceDuplicated { evidence: w } => tag == "evidence-duplicated" && (w as String) == subject
+    RegionMemberDuplicated { member: w } => tag == "region-member-duplicated" && (w as String) == subject
     gunbc.replacement_cut.EnumeratedCensusEmpty => tag == "enumerated-census-empty" && subject == ""
     gunbc.replacement_cut.ExternalRolesEnumeratedEmpty => tag == "external-roles-enumerated-empty" && subject == ""
     gunbc.replacement_cut.EmptyCoveredRegion => tag == "empty-covered-region" && subject == ""
@@ -142,10 +142,10 @@ test fn fully_dispositioned_cut_admits_with_exact_counts() -> std.types.Bool {
     evidence: dispositioned_evidence(),
   ))
   match admission {
-    gunbc.replacement_cut.PlanAdmitted { admitted: a } =>
+    PlanAdmitted { admitted: a } =>
       a.retained_count == 1 && a.replaced_count == 1 && a.evidence_only_count == 1
         && a.retired_count == 1 && a.covered_region_count == 2
-    gunbc.replacement_cut.PlanRefused { causes: _ } => false
+    PlanRefused { causes: _ } => false
   }
 }
 
@@ -161,9 +161,9 @@ test fn admitted_verdict_is_bound_to_the_plan_it_judged() -> std.types.Bool {
     evidence: [],
   )
   match gunbc.replacement_cut.admit_replacement_cut_plan(cut: plan) {
-    gunbc.replacement_cut.PlanAdmitted { admitted: a } =>
+    PlanAdmitted { admitted: a } =>
       gunbc.replacement_cut.admitted_matches_plan(admitted: a, cut: plan) && !gunbc.replacement_cut.admitted_matches_plan(admitted: a, cut: mutated)
-    gunbc.replacement_cut.PlanRefused { causes: _ } => false
+    PlanRefused { causes: _ } => false
   }
 }
 
@@ -204,9 +204,9 @@ test fn retired_consumer_needs_no_coverage() -> std.types.Bool {
     evidence: dispositioned_evidence(),
   ))
   match admission {
-    gunbc.replacement_cut.PlanAdmitted { admitted: a } =>
+    PlanAdmitted { admitted: a } =>
       a.retained_count == 0 && a.replaced_count == 0 && a.evidence_only_count == 0 && a.retired_count == 1
-    gunbc.replacement_cut.PlanRefused { causes: _ } => false
+    PlanRefused { causes: _ } => false
   }
 }
 
@@ -332,8 +332,8 @@ test fn enumerated_empty_census_refuses_but_declared_empty_admits() -> std.types
   }
   causes_include(causes: causes_of(admission: ambiguous), tag: "enumerated-census-empty", subject: "")
     && (match gunbc.replacement_cut.admit_replacement_cut_plan(cut: declared) {
-      gunbc.replacement_cut.PlanAdmitted { admitted: a } => a.retained_count == 0 && a.covered_region_count == 2
-      gunbc.replacement_cut.PlanRefused { causes: _ } => false
+      PlanAdmitted { admitted: a } => a.retained_count == 0 && a.covered_region_count == 2
+      PlanRefused { causes: _ } => false
     })
 }
 
@@ -355,8 +355,8 @@ test fn empty_external_role_list_refuses_but_justified_no_oracle_admits() -> std
   causes_include(causes: causes_of(admission: ambiguous), tag: "external-roles-enumerated-empty", subject: "")
     && std.types.list_length(items: causes_of(admission: ambiguous)) == 1
     && (match justified {
-      gunbc.replacement_cut.PlanAdmitted { admitted: a } => a.covered_region_count == 2
-      gunbc.replacement_cut.PlanRefused { causes: _ } => false
+      PlanAdmitted { admitted: a } => a.covered_region_count == 2
+      PlanRefused { causes: _ } => false
     })
 }
 
@@ -396,17 +396,17 @@ test fn descended_cut_names_its_parent_by_typed_identity() -> std.types.Bool {
     evidence_dispositions: [],
   }
   match cut.why_not_higher {
-    gunbc.replacement_cut.DescendedFromRefusedCut { parent_cut: p, refusal_summary: r } =>
+    DescendedFromRefusedCut { parent_cut: p, refusal_summary: r } =>
       (p as String) == "cut-a0" && (r as String) == "escaping consumer q0 uncovered"
     gunbc.replacement_cut.OutermostBoundary => false
-    gunbc.replacement_cut.DescentParentUnauthored { intended_parent_boundary: _, basis: _ } => false
+    DescentParentUnauthored { intended_parent_boundary: _, basis: _ } => false
   }
 }
 
 fn is_admitted(a: gunbc.replacement_cut.PlanAdmission) -> std.types.Bool {
   match a {
-    gunbc.replacement_cut.PlanAdmitted { admitted: _ } => true
-    gunbc.replacement_cut.PlanRefused { causes: _ } => false
+    PlanAdmitted { admitted: _ } => true
+    PlanRefused { causes: _ } => false
   }
 }
 
@@ -438,10 +438,10 @@ test fn unauthored_parent_boundary_admits_without_naming_an_id() -> std.types.Bo
   )
   is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut))
     && match cut.why_not_higher {
-      gunbc.replacement_cut.DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
+      DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
         (b as String) == "the engine cut through the v1 driver region"
       gunbc.replacement_cut.OutermostBoundary => false
-      gunbc.replacement_cut.DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
+      DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
     }
 }
 

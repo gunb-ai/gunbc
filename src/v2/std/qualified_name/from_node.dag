@@ -19,15 +19,15 @@ fn qn_bool_atom(b: Bool) -> Node {
 
 fn qn_outcome_accepted(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> Bool {
   match out {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn qn_value_eq(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> Bool {
   match out {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
-    v2.std.diagnostic.Accepted { value: actual, diagnostics: _ } => actual == expected
+    Rejected { diagnostics: _ } => false
+    Accepted { value: actual, diagnostics: _ } => actual == expected
   }
 }
 

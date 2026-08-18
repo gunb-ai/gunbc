@@ -97,16 +97,16 @@ fn cld_emit(projection: v2.std.compilers.target_model.TargetValueExpressionProje
     projection: projection,
     catalog: rust_operator_realizations_catalog_node()
   ) {
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+    Accepted { value: tokens, diagnostics: _ } =>
       match serialize_concrete_syntax_tokens_to_source_string(
         target: cld_target(),
         tokens: tokens
       ) {
-        v2.std.diagnostic.Accepted { value: text, diagnostics: _ } =>
+        Accepted { value: text, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -116,8 +116,8 @@ fn cld_emits(delimiting_closed: Bool, golden: String) -> Bool {
       conditional_form: cld_conditional_form_with(delimiting_closed: delimiting_closed)
     )
   ) {
-    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -137,8 +137,8 @@ test fn conditional_close_is_derived_from_declared_discipline() -> Bool {
 // while the Rust target still declared nothing.
 test fn production_rust_conditional_declares_a_close() -> Bool {
   match cld_emit(projection: rust_value_expression_projection()) {
-    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == conditional_closed_golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } => text == conditional_closed_golden
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -167,8 +167,8 @@ fn cld_bundle_with(discriminant: v2.std.node.Symbol) -> Node {
 
 fn cld_decodes(discriminant: v2.std.node.Symbol) -> Bool {
   match decode_conditional_shape_bundle(bundle: cld_bundle_with(discriminant: discriminant)) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 

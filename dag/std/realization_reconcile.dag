@@ -65,12 +65,12 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
       }
     Grounds { evidence: evidence } =>
       match durability {
-        std.state_durability.StateDurabilityQualified { qualification: qualification } =>
+        StateDurabilityQualified { qualification: qualification } =>
           DurabilityGrounds {
             effective_state_evidence: evidence,
             durability_evidence: qualification,
           }
-        std.state_durability.StateDurabilityRefused { cause: cause } =>
+        StateDurabilityRefused { cause: cause } =>
           DurabilityDoesNotGround {
             cause: DeclaredLifetimeDoesNotGround { cause: cause },
           }

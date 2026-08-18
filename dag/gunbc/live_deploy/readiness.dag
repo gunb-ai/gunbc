@@ -311,13 +311,13 @@ fn reconcile_service_ready_read_for_bundle(
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
 ) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match read {
-    std.realization_reconcile.ReadAbsent { reason: why } =>
+    ReadAbsent { reason: why } =>
       reconcile_grounded(
         apply_effect: effect,
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    std.realization_reconcile.ReadObserved { value: observed } =>
+    ReadObserved { value: observed } =>
       reconcile_grounded(
         apply_effect: effect,
         show_read: read,
@@ -352,13 +352,13 @@ fn reconcile_service_ready_read_for_effect(
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
 ) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match read {
-    std.realization_reconcile.ReadAbsent { reason: why } =>
+    ReadAbsent { reason: why } =>
       reconcile_grounded(
         apply_effect: effect,
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    std.realization_reconcile.ReadObserved { value: observed } =>
+    ReadObserved { value: observed } =>
       reconcile_grounded(
         apply_effect: effect,
         show_read: read,
@@ -517,8 +517,8 @@ fn last_probe_from_attempt(
   attempt: std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence>
 ) -> String {
   match attempt {
-    std.realization_reconcile.NotConverged { reason: why, applied: _ } => why
-    std.realization_reconcile.Converged { evidence: _, applied: _ } => "converged"
+    NotConverged { reason: why, applied: _ } => why
+    Converged { evidence: _, applied: _ } => "converged"
   }
 }
 

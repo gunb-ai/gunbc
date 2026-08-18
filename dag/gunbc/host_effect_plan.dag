@@ -35,24 +35,24 @@ fn host_effect_plan_apply_step(
   ctx: HostEffectPlanContext,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match step {
-    v2.std.effect_plan.Do { effect: e } =>
+    Do { effect: e } =>
       host_effect_apply(
         target: ctx.target,
         effect: e,
         evidence: ctx.evidence,
         transport: ctx.transport,
       )
-    v2.std.effect_plan.If { cond: _, then_: _, else_: _ } =>
+    If { cond: _, then_: _, else_: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
-    v2.std.effect_plan.For { binder: _, over: _, body: _ } =>
+    For { binder: _, over: _, body: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
-    v2.std.effect_plan.While { cond: _, body: _ } =>
+    While { cond: _, body: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
-    v2.std.effect_plan.Retry { body: _, escalations: _, on_exhausted: _ } =>
+    Retry { body: _, escalations: _, on_exhausted: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
-    v2.std.effect_plan.Let { name: _, value: _ } =>
+    Let { name: _, value: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
-    v2.std.effect_plan.Call { callee: _, args: _ } =>
+    Call { callee: _, args: _ } =>
       host_effect_plan_unsupported_step_refusal(ctx: ctx)
   }
 }

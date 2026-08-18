@@ -93,17 +93,17 @@ fn pinned_tool_readiness(
     context: context,
     tool_name: extdeps.tools.pin.cli_tool_pin_key_of(pin: pin),
   ) {
-    extdeps.realization.emit_on_demand_host.ObservedToolIdentityMissing { tool_name: name } =>
+    ObservedToolIdentityMissing { tool_name: name } =>
       tool_refused(
         tool: pin.subject,
         cause: ToolObservationMissing { tool_name: name },
       )
-    extdeps.realization.emit_on_demand_host.ObservedToolIdentityDuplicate { tool_name: name, count: n } =>
+    ObservedToolIdentityDuplicate { tool_name: name, count: n } =>
       tool_refused(
         tool: pin.subject,
         cause: ToolObservationDuplicate { tool_name: name, count: n },
       )
-    extdeps.realization.emit_on_demand_host.ObservedToolIdentityFound { row: observation } => {
+    ObservedToolIdentityFound { row: observation } => {
       let plan = tool_pin_reconcile(
         desired: [pin],
         observed: [observed_pin(desired: pin, observation: observation)],
@@ -123,9 +123,9 @@ fn pinned_tool_readiness(
         )
       } else {
         match admission {
-          extdeps.pin.PinIntegrityAdmitted { pin: admitted } =>
+          PinIntegrityAdmitted { pin: admitted } =>
             PinnedAdmitted { pin: admitted, plan: plan }
-          extdeps.pin.PinRefused { subject: _, cause: cause } =>
+          PinRefused { subject: _, cause: cause } =>
             tool_refused(
               tool: pin.subject,
               cause: ToolPinIntegrityRefused { cause: cause, plan: plan },
@@ -161,17 +161,17 @@ fn unpinned_tool_readiness(
       Absent => tool_refused(tool: tool, cause: UnpinnedToolUndeclared)
       Present { value: frontier_row } =>
         match extdeps.realization.emit_on_demand_host.observed_tool_identity(context: context, tool_name: tool.name) {
-          extdeps.realization.emit_on_demand_host.ObservedToolIdentityMissing { tool_name: name } =>
+          ObservedToolIdentityMissing { tool_name: name } =>
             tool_refused(
               tool: tool,
               cause: ToolObservationMissing { tool_name: name },
             )
-          extdeps.realization.emit_on_demand_host.ObservedToolIdentityDuplicate { tool_name: name, count: n } =>
+          ObservedToolIdentityDuplicate { tool_name: name, count: n } =>
             tool_refused(
               tool: tool,
               cause: ToolObservationDuplicate { tool_name: name, count: n },
             )
-          extdeps.realization.emit_on_demand_host.ObservedToolIdentityFound { row: observation } =>
+          ObservedToolIdentityFound { row: observation } =>
             UnpinnedFrontier { row: frontier_row, observed: observation }
         }
     }

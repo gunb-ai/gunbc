@@ -605,8 +605,8 @@ fn altra_reference_plan() -> std.orthogonal_geometry.OrthogonalConstruction<Boar
     obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the DebugConnector role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "debug_hdr", r: DebugConnector, x: 200000, y: 250000),
   ]
   match altra_board_outline() {
-    std.orthogonal_geometry.OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
-    std.orthogonal_geometry.OrthogonalReady { value: o } =>
+    OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
+    OrthogonalReady { value: o } =>
       std.orthogonal_geometry.OrthogonalReady {
         value: BoardPlacementPlan {
           frame: altra_board_frame(),

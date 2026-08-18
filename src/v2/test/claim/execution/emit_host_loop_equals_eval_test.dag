@@ -24,27 +24,27 @@ fn emit_loop_eval_composed_facts(key: Node) -> Optional<v2.compiler.infer.Inferr
 
 fn emit_loop_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_loop_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: _ } =>
+    Accepted { value: root, diagnostics: _ } =>
       outcome_accepted(
         value: v2.compiler.infer.InferredTree {
           root: root,
           facts: std.types.Map { lookup: emit_loop_eval_composed_facts }
         }
       )
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn emit_loop_eval_wrong_value_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_loop_wrong_value_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: root, diagnostics: _ } =>
+    Accepted { value: root, diagnostics: _ } =>
       outcome_accepted(
         value: v2.compiler.infer.InferredTree {
           root: root,
           facts: std.types.Map { lookup: emit_loop_eval_composed_facts }
         }
       )
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -68,9 +68,9 @@ fn emit_loop_eval_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.std.d
 fn emit_loop_eval_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if dag_node_is_int_literal_atom(node: node) {
     match dag_int_literal_magnitude_int_from_node(node: node) {
-      v2.std.diagnostic.Accepted { value: mag, diagnostics: _ } =>
+      Accepted { value: mag, diagnostics: _ } =>
         outcome_accepted(value: emit_loop_eval_octet_value(n: mag))
-      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     outcome_rejected(
@@ -206,17 +206,17 @@ fn emit_loop_eval_verdict_is_fail(run: v2.compiler.eval.TestClaimRun<Node, v2.st
 
 test fn emit_host_loop_equals_eval_holds() -> Bool {
   match emit_loop_eval_producer_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       emit_loop_eval_verdict_is_pass(run: emit_loop_eval_run(tree: tree))
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_host_loop_wrong_fixture_refuses_holds() -> Bool {
   match emit_loop_eval_wrong_value_producer_tree() {
-    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: _ } =>
       emit_loop_eval_verdict_is_fail(run: emit_loop_eval_run(tree: tree))
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

@@ -568,8 +568,8 @@ fn portable_remote_words(raws: std.types.List<String>) -> PortableRemoteWords? {
     Absent => none
     Present { value: ws } => match v2.std.algebra.list_head(ws) {
       v2.std.algebra.HeadAbsent => none
-      v2.std.algebra.HeadFound { value: h } => match v2.std.algebra.list_tail(ws) {
-        v2.std.algebra.TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
+      HeadFound { value: h } => match v2.std.algebra.list_tail(ws) {
+        TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
         v2.std.algebra.TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
       }
     }

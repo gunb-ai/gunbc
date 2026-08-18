@@ -207,9 +207,9 @@ fn norm3(registry: std.spatial_frame.SpatialFrameRegistry, v: std.affine_space.V
     }
   } else {
     match norm_squared3(registry: registry, v: v) {
-      std.affine_space.SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-      std.affine_space.SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
-      std.affine_space.SpatialReady { value: sq } =>
+      SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+      SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
+      SpatialReady { value: sq } =>
         std.affine_space.SpatialReady { value: LengthRootUnresolvedInExactKernel {
           squared: sq,
           reason: "this exact kernel resolves a magnitude only for an axis-aligned displacement; the root may itself be exact ((3,4,0) has magnitude 5, which an integer square root would find) or irrational ((1,1,0) has none), and this arm distinguishes neither",
@@ -228,18 +228,18 @@ fn axis_count(value: Int) -> std.nat.Nat {
 // subtraction is itself bounded, which is the third place this composite can refuse.
 fn distance3(registry: std.spatial_frame.SpatialFrameRegistry, from: std.affine_space.Point3, to: std.affine_space.Point3) -> std.affine_space.SpatialResult<ExactLength> {
   match displacement_between3(from: from, to: to) {
-    std.affine_space.SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-    std.affine_space.SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
-    std.affine_space.SpatialReady { value: d } => norm3(registry: registry, v: d)
+    SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+    SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
+    SpatialReady { value: d } => norm3(registry: registry, v: d)
   }
 }
 
 // Squared distance takes no root, and is what a comparison should use.
 fn distance_squared3(registry: std.spatial_frame.SpatialFrameRegistry, from: std.affine_space.Point3, to: std.affine_space.Point3) -> std.affine_space.SpatialResult<std.measure.SquareMillimeter> {
   match displacement_between3(from: from, to: to) {
-    std.affine_space.SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-    std.affine_space.SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
-    std.affine_space.SpatialReady { value: d } => norm_squared3(registry: registry, v: d)
+    SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+    SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
+    SpatialReady { value: d } => norm_squared3(registry: registry, v: d)
   }
 }
 
@@ -249,13 +249,13 @@ fn distance_squared3(registry: std.spatial_frame.SpatialFrameRegistry, from: std
 // cannot be computed has no answer, and returning false would be a verdict rather than a refusal.
 fn closer_than3(registry: std.spatial_frame.SpatialFrameRegistry, a_from: std.affine_space.Point3, a_to: std.affine_space.Point3, b_from: std.affine_space.Point3, b_to: std.affine_space.Point3) -> std.affine_space.SpatialResult<Bool> {
   match distance_squared3(registry: registry, from: a_from, to: a_to) {
-    std.affine_space.SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-    std.affine_space.SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
-    std.affine_space.SpatialReady { value: a2 } =>
+    SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+    SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
+    SpatialReady { value: a2 } =>
       match distance_squared3(registry: registry, from: b_from, to: b_to) {
-        std.affine_space.SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-        std.affine_space.SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
-        std.affine_space.SpatialReady { value: b2 } =>
+        SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+        SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
+        SpatialReady { value: b2 } =>
           std.affine_space.SpatialReady {
             value: square_millimeter_count(m: a2) < square_millimeter_count(m: b2)
           }
@@ -377,9 +377,9 @@ fn normalize3(registry: std.spatial_frame.SpatialFrameRegistry, v: std.affine_sp
       } }
     } else {
       match norm_squared3(registry: registry, v: v) {
-        std.affine_space.SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-        std.affine_space.SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
-        std.affine_space.SpatialReady { value: sq } =>
+        SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+        SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
+        SpatialReady { value: sq } =>
           std.affine_space.SpatialReady { value: DirectionUnresolvedInAxisKernel {
             squared_magnitude: sq,
             reason: "this axis kernel resolves a unit direction only for an axis-aligned displacement; the direction may still be exactly representable ((3,4,0) is exactly (3/5,4/5,0)) and a richer realization - rational, algebraic, or error-bounded approximate - resolves it",

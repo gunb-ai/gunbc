@@ -25,7 +25,7 @@ type FreeMonoidUniqueState<T> {
 fn fold_list<T, A>(xs: std.algebra.FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
   match xs {
     std.algebra.Empty => empty
-    std.algebra.Cons { head: h, tail: t } => fold_list(xs: t, empty: cons(empty, h), cons: cons)
+    Cons { head: h, tail: t } => fold_list(xs: t, empty: cons(empty, h), cons: cons)
   }
 }
 fn fold_non_empty<T>(head: T, tail: std.algebra.FreeMonoid<T>, cons: fn(T, T) -> T) -> T {
@@ -35,7 +35,7 @@ fn fold_non_empty<T>(head: T, tail: std.algebra.FreeMonoid<T>, cons: fn(T, T) ->
 fn fold_list_right<T, A>(xs: std.algebra.FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A {
   match xs {
     std.algebra.Empty => empty
-    std.algebra.Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
+    Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
   }
 }
 
@@ -66,7 +66,7 @@ type ListTailResult<T>
 fn list_tail<T>(xs: std.algebra.FreeMonoid<T>) -> ListTailResult<T> {
   match xs {
     std.algebra.Empty => TailAbsent
-    std.algebra.Cons { head: _, tail: t } => TailFound { tail: t }
+    Cons { head: _, tail: t } => TailFound { tail: t }
   }
 }
 
@@ -77,7 +77,7 @@ type ListHeadResult<T>
 fn list_head<T>(xs: std.algebra.FreeMonoid<T>) -> ListHeadResult<T> {
   match xs {
     std.algebra.Empty => HeadAbsent
-    std.algebra.Cons { head: h, tail: _ } => HeadFound { value: h }
+    Cons { head: h, tail: _ } => HeadFound { value: h }
   }
 }
 
@@ -87,7 +87,7 @@ fn skip<T>(xs: std.algebra.FreeMonoid<T>, n: Int) -> std.algebra.FreeMonoid<T> {
   } else {
     match xs {
       std.algebra.Empty => std.algebra.Empty
-      std.algebra.Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
+      Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
     }
   }
 }
@@ -585,7 +585,7 @@ fn free_monoid_node(inhabitant: Node) -> Node {
 fn is_empty<T>(xs: std.algebra.FreeMonoid<T>) -> Bool {
   match xs {
     std.algebra.Empty => true
-    std.algebra.Cons { head: _, tail: _ } => false
+    Cons { head: _, tail: _ } => false
   }
 }
 
@@ -690,8 +690,8 @@ fn non_empty_to_list<T>(xs: std.algebra.FreeSemigroup<T>) -> std.algebra.FreeMon
 fn list_init<T>(xs: std.algebra.FreeMonoid<T>) -> std.algebra.FreeMonoid<T> {
   match xs {
     std.algebra.Empty => std.algebra.Empty
-    std.algebra.Cons { head: _, tail: std.algebra.Empty } => std.algebra.Empty
-    std.algebra.Cons { head: h, tail: t } => std.algebra.Cons { head: h, tail: list_init(xs: t) }
+    Cons { head: _, tail: std.algebra.Empty } => std.algebra.Empty
+    Cons { head: h, tail: t } => std.algebra.Cons { head: h, tail: list_init(xs: t) }
   }
 }
 
@@ -721,12 +721,12 @@ fn zip_eq<T>(
     std.algebra.Empty =>
       match b {
         std.algebra.Empty => true
-        std.algebra.Cons { head: _, tail: _ } => false
+        Cons { head: _, tail: _ } => false
       }
-    std.algebra.Cons { head: ha, tail: ta } =>
+    Cons { head: ha, tail: ta } =>
       match b {
         std.algebra.Empty => false
-        std.algebra.Cons { head: hb, tail: tb } =>
+        Cons { head: hb, tail: tb } =>
           eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)
       }
   }
@@ -739,10 +739,10 @@ fn zip_map<A, B, C>(
 ) -> std.algebra.FreeMonoid<C> {
   match a {
     std.algebra.Empty => std.algebra.Empty
-    std.algebra.Cons { head: ha, tail: ta } =>
+    Cons { head: ha, tail: ta } =>
       match b {
         std.algebra.Empty => std.algebra.Empty
-        std.algebra.Cons { head: hb, tail: tb } =>
+        Cons { head: hb, tail: tb } =>
           std.algebra.Cons { head: f(ha, hb), tail: zip_map(a: ta, b: tb, f: f) }
       }
   }
@@ -751,7 +751,7 @@ fn zip_map<A, B, C>(
 fn reduce_or<T>(xs: std.algebra.FreeMonoid<T>, fallback: T, combine: fn(T, T) -> T) -> T {
   match xs {
     std.algebra.Empty => fallback
-    std.algebra.Cons { head: h, tail: t } => fold_non_empty(head: h, tail: t, cons: combine)
+    Cons { head: h, tail: t } => fold_non_empty(head: h, tail: t, cons: combine)
   }
 }
 
@@ -762,10 +762,10 @@ fn is_prefix_of<T>(
 ) -> Bool {
   match prefix {
     std.algebra.Empty => true
-    std.algebra.Cons { head: h_prefix, tail: t_prefix } =>
+    Cons { head: h_prefix, tail: t_prefix } =>
       match xs {
         std.algebra.Empty => false
-        std.algebra.Cons { head: h_xs, tail: t_xs } =>
+        Cons { head: h_xs, tail: t_xs } =>
           eq(h_prefix, h_xs) && is_prefix_of(prefix: t_prefix, xs: t_xs, eq: eq)
       }
   }

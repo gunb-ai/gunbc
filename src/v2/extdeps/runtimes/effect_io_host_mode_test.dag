@@ -45,8 +45,8 @@ test fn effect_io_host_hermetic_replay_hit_holds() -> Bool {
     fixture: mode_populated_http_fixture()
   )
   match mode_host_read(runtime: runtime, arg: mode_resource_a()) {
-    v2.std.diagnostic.Accepted { value: v, diagnostics: None } => v == mode_payload()
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: v, diagnostics: None } => v == mode_payload()
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -57,8 +57,8 @@ test fn effect_io_host_hermetic_miss_fail_closed_holds() -> Bool {
     fixture: mode_populated_http_fixture()
   )
   match mode_host_read(runtime: runtime, arg: mode_resource_b()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -69,8 +69,8 @@ test fn effect_io_host_wet_does_not_replay_holds() -> Bool {
     fixture: mode_populated_http_fixture()
   )
   match mode_host_read(runtime: runtime, arg: mode_resource_a()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -85,7 +85,7 @@ test fn effect_io_host_hermetic_write_fail_closed_holds() -> Bool {
     handler: handler,
     request: effect_io_pure_write_request(args: [mode_resource_b(), mode_payload()])
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^effect_io_host_write_outside_grant
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^effect_io_host_write_outside_grant
+    Accepted { value: _, diagnostics: _ } => false
   }
 }

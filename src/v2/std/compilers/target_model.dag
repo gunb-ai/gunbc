@@ -201,9 +201,9 @@ fn target_concrete_token_kind_invalid_diagnostic(token: v2.std.node.Node) -> v2.
 
 fn target_optional_named_child(root: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<Optional<v2.std.node.Node>> {
   match find_named_child(root: root, name: name) {
-    v2.std.diagnostic.Accepted { value: child, diagnostics: d } =>
+    Accepted { value: child, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: optional_present(value: child), diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => outcome_accepted(optional_absent())
+    Rejected { diagnostics: _ } => outcome_accepted(optional_absent())
   }
 }
 
@@ -304,8 +304,8 @@ fn target_lex_rule_literal_step(
   token_class: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<String> {
   match acc {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => acc
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Accepted { value: _, diagnostics: _ } => acc
+    Rejected { diagnostics: _ } =>
       match rule {
         TokenRule { token_class: c, pattern: pattern } =>
           if c == token_class {
@@ -360,11 +360,11 @@ fn bound_spelling_from_map(
   binding: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<String> {
   match map_get(binding_spellings, binding) {
-    v2.std.diagnostic.Accepted { value: opt, diagnostics: pending } => match opt {
+    Accepted { value: opt, diagnostics: pending } => match opt {
       Present { value: spelling } => v2.std.diagnostic.Accepted { value: spelling, diagnostics: pending }
       Absent => symbol_interned_spelling(binding: binding)
     }
-    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 
@@ -400,8 +400,8 @@ fn bound_tokens_source_text(
     empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, token) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        v2.std.diagnostic.Accepted { value: partial, diagnostics: ad } =>
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
           match token {
             FixedToken { token_class: tc } =>
               bind_outcome(
@@ -463,9 +463,9 @@ fn fixed_token_spelling_from_model(
             value: apply_emit_spelling_transform(transform: transform, spelling: spelling),
             diagnostics: d
           )
-        v2.std.diagnostic.Accepted { value: Absent, diagnostics: d } =>
+        Accepted { value: Absent, diagnostics: d } =>
           outcome_with_diagnostics(value: spelling, diagnostics: d)
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )
@@ -485,9 +485,9 @@ fn bound_token_spelling_from_model(
             value: apply_emit_spelling_transform(transform: transform, spelling: spelling),
             diagnostics: d
           )
-        v2.std.diagnostic.Accepted { value: Absent, diagnostics: d } =>
+        Accepted { value: Absent, diagnostics: d } =>
           outcome_with_diagnostics(value: spelling, diagnostics: d)
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )
@@ -1203,9 +1203,9 @@ fn canonical_operation_wire_matches_operation(
   operation: CanonicalOperation
 ) -> Bool {
   match canonical_operation_from_wire_node(wire: wire) {
-    v2.std.diagnostic.Accepted { value: decoded, diagnostics: _ } =>
+    Accepted { value: decoded, diagnostics: _ } =>
       canonical_operation_equal(left: decoded, right: operation)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -2040,8 +2040,8 @@ fn decode_effect_apply_callee_rows(bundle: v2.std.node.Node) -> v2.std.diagnosti
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, edge) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: r } => acc
-        v2.std.diagnostic.Accepted { value: rows, diagnostics: d } =>
+        Rejected { diagnostics: r } => acc
+        Accepted { value: rows, diagnostics: d } =>
           match edge.label {
             Named { name: n } =>
               if n == ^target_value_expr_effect_callee_row_edge {
@@ -2059,8 +2059,8 @@ fn decode_effect_apply_callee_rows(bundle: v2.std.node.Node) -> v2.std.diagnosti
       }
     }
   ) {
-    v2.std.diagnostic.Accepted { value: rows, diagnostics: d } => v2.std.diagnostic.Accepted { value: rows, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: rows, diagnostics: d } => v2.std.diagnostic.Accepted { value: rows, diagnostics: d }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -2550,7 +2550,7 @@ fn decode_optional_projection_bundle_symbol_field(
             target_type_expr_projection_bundle_malformed_diagnostic(bundle: bundle)
           )
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => outcome_accepted(optional_absent())
+    Rejected { diagnostics: _ } => outcome_accepted(optional_absent())
   }
 }
 
@@ -2865,14 +2865,14 @@ fn bodied_arrow_scaffold_from_grammar_relation_row(
   row: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<TargetBodiedArrowStatementScaffold> {
   match find_named_child(root: row, name: ^grammar_relation_field_bodied_scaffold) {
-    v2.std.diagnostic.Accepted { value: scaffold_bundle, diagnostics: d } =>
+    Accepted { value: scaffold_bundle, diagnostics: d } =>
       bind_outcome(
         o: decode_bodied_arrow_statement_scaffold_bundle(bundle: scaffold_bundle),
         f: fn(scaffold) {
           v2.std.diagnostic.Accepted { value: scaffold, diagnostics: d }
         }
       )
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
@@ -2926,8 +2926,8 @@ fn concrete_syntax_token_list_from_node(list_node: v2.std.node.Node) -> v2.std.d
         empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
         cons: fn(acc, token_node) {
           match acc {
-            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-            v2.std.diagnostic.Accepted { value: partial, diagnostics: ad } =>
+            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            Accepted { value: partial, diagnostics: ad } =>
               bind_outcome(
                 o: concrete_syntax_token_from_wire_node(token: token_node),
                 f: fn(tok) {
@@ -3228,9 +3228,9 @@ fn source_atom_string_projection_from_node_bounded(source: v2.std.node.Node, fue
           optional_absent()
         } else {
           match find_named_child(root: source, name: ^free_monoid_field_head) {
-            v2.std.diagnostic.Accepted { value: head } =>
+            Accepted { value: head } =>
               match find_named_child(root: source, name: ^free_monoid_field_tail) {
-                v2.std.diagnostic.Accepted { value: tail } =>
+                Accepted { value: tail } =>
                   match source_atom_char_projection_from_node(source: head) {
                     Present { value: _ } =>
                       match source_atom_string_projection_from_node_bounded(source: tail, fuel: fuel - 1) {
@@ -3239,9 +3239,9 @@ fn source_atom_string_projection_from_node_bounded(source: v2.std.node.Node, fue
                       }
                     Absent => optional_absent()
                   }
-                v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+                Rejected { diagnostics: _ } => optional_absent()
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+            Rejected { diagnostics: _ } => optional_absent()
           }
         }
       _ => optional_absent()
@@ -3653,8 +3653,8 @@ fn target_value_expr_primitive_apply_operand_bindings(wire: v2.std.node.Node) ->
         init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
         f: fn(acc, edge) {
           match acc {
-            v2.std.diagnostic.Rejected { diagnostics: r } => acc
-            v2.std.diagnostic.Accepted { value: bindings, diagnostics: d } =>
+            Rejected { diagnostics: r } => acc
+            Accepted { value: bindings, diagnostics: d } =>
               match edge.label {
                 Named { name: n } =>
                   if n == ^target_value_expr_field_operation {
@@ -3681,9 +3681,9 @@ fn target_value_expr_primitive_apply_operand_bindings(wire: v2.std.node.Node) ->
           }
         }
       ) {
-        v2.std.diagnostic.Accepted { value: bindings, diagnostics: d } =>
+        Accepted { value: bindings, diagnostics: d } =>
           v2.std.diagnostic.Accepted { value: bindings, diagnostics: d }
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )
@@ -3823,8 +3823,8 @@ fn target_value_expr_effect_apply_operand_bindings(wire: v2.std.node.Node) -> v2
         init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
         f: fn(acc, edge) {
           match acc {
-            v2.std.diagnostic.Rejected { diagnostics: r } => acc
-            v2.std.diagnostic.Accepted { value: bindings, diagnostics: d } =>
+            Rejected { diagnostics: r } => acc
+            Accepted { value: bindings, diagnostics: d } =>
               match edge.label {
                 Named { name: n } =>
                   if n == ^target_value_expr_field_effect_kind {
@@ -3851,9 +3851,9 @@ fn target_value_expr_effect_apply_operand_bindings(wire: v2.std.node.Node) -> v2
           }
         }
       ) {
-        v2.std.diagnostic.Accepted { value: bindings, diagnostics: d } =>
+        Accepted { value: bindings, diagnostics: d } =>
           v2.std.diagnostic.Accepted { value: bindings, diagnostics: d }
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )
@@ -3872,7 +3872,7 @@ fn target_value_expr_effect_apply_callee(
     ),
     key: effect_kind
   ) {
-    v2.std.diagnostic.Accepted { value: found, diagnostics: _ } =>
+    Accepted { value: found, diagnostics: _ } =>
       match found {
         Present { value: callee } => outcome_accepted(callee)
         Absent =>
@@ -3880,7 +3880,7 @@ fn target_value_expr_effect_apply_callee(
             target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
           )
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -4288,12 +4288,12 @@ fn target_operator_realization_row_matches_canonical_op(
   canonical_op: CanonicalOperation
 ) -> Bool {
   match find_named_child(root: row, name: ^target_operator_realization_field_operation) {
-    v2.std.diagnostic.Accepted { value: operation_wire, diagnostics: _ } =>
+    Accepted { value: operation_wire, diagnostics: _ } =>
       canonical_operation_wire_matches_operation(
         wire: operation_wire,
         operation: canonical_op
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -4333,20 +4333,20 @@ fn target_operator_realization_catalog_lookup_step(
   canonical_op: CanonicalOperation
 ) -> v2.std.passing_candidate_fold.PassingCandidateFold<v2.std.node.Node> {
   match target_operator_realization_row_wire_schema_valid(row: row_node) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+    Accepted { value: _, diagnostics: _ } =>
       if target_operator_realization_row_matches_canonical_op(
         row: row_node,
         canonical_op: canonical_op
       ) {
         match acc {
           v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row_node }
-          v2.std.passing_candidate_fold.OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
+          OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
           v2.std.passing_candidate_fold.ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
         }
       } else {
         acc
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => acc
+    Rejected { diagnostics: _ } => acc
   }
 }
 
@@ -4382,7 +4382,7 @@ fn target_operator_realization_catalog_lookup(
               outcome_rejected(
                 target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
               )
-            v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row_node } =>
+            OnePassingCandidate { candidate: row_node } =>
               target_operator_realization_from_wire_row(row: row_node)
             v2.std.passing_candidate_fold.ManyPassingCandidates =>
               outcome_rejected(
@@ -4410,9 +4410,9 @@ fn target_value_expr_primitive_apply_operation_from_wire(wire: v2.std.node.Node)
             Named { name: n } =>
               if n == ^target_value_expr_field_operation {
                 match canonical_operation_from_wire_node(wire: e.target) {
-                  v2.std.diagnostic.Accepted { value: canonical_op, diagnostics: _ } =>
+                  Accepted { value: canonical_op, diagnostics: _ } =>
                     optional_present(value: canonical_op)
-                  v2.std.diagnostic.Rejected { diagnostics: _ } => acc
+                  Rejected { diagnostics: _ } => acc
                 }
               } else {
                 acc
@@ -5242,8 +5242,8 @@ fn target_value_expr_record_construct_field_slots_from_wire(
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, edge) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: r } => acc
-        v2.std.diagnostic.Accepted { value: slots, diagnostics: d } =>
+        Rejected { diagnostics: r } => acc
+        Accepted { value: slots, diagnostics: d } =>
           match edge.label {
             Named { name: n } =>
               if n == ^target_value_expr_field_record_type {
@@ -5269,8 +5269,8 @@ fn target_value_expr_record_construct_field_slots_from_wire(
       }
     }
   ) {
-    v2.std.diagnostic.Accepted { value: slots, diagnostics: d } => v2.std.diagnostic.Accepted { value: slots, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: slots, diagnostics: d } => v2.std.diagnostic.Accepted { value: slots, diagnostics: d }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -5300,8 +5300,8 @@ fn target_value_expr_record_construct_field_tokens(
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, slot) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: r } => acc
-        v2.std.diagnostic.Accepted { value: prior_tokens, diagnostics: d } =>
+        Rejected { diagnostics: r } => acc
+        Accepted { value: prior_tokens, diagnostics: d } =>
           bind_outcome(
             o: target_value_expression_to_concrete_tokens(
               expr: slot.value,
@@ -5350,8 +5350,8 @@ fn target_value_expr_record_construct_field_tokens(
       }
     }
   ) {
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: d } => v2.std.diagnostic.Accepted { value: tokens, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: tokens, diagnostics: d } => v2.std.diagnostic.Accepted { value: tokens, diagnostics: d }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -5944,8 +5944,8 @@ fn target_value_expr_match_wire_schema_valid(wire: v2.std.node.Node) -> v2.std.d
           init: v2.std.diagnostic.Accepted { value: true, diagnostics: v2.std.diagnostic.None },
           f: fn(acc, edge) {
             match acc {
-              v2.std.diagnostic.Rejected { diagnostics: r } => acc
-              v2.std.diagnostic.Accepted { value: ok, diagnostics: d } =>
+              Rejected { diagnostics: r } => acc
+              Accepted { value: ok, diagnostics: d } =>
                 if !ok {
                   acc
                 } else {
@@ -5970,12 +5970,12 @@ fn target_value_expr_match_wire_schema_valid(wire: v2.std.node.Node) -> v2.std.d
             }
           }
         ) {
-          v2.std.diagnostic.Accepted { value: true, diagnostics: d } => v2.std.diagnostic.Accepted { value: true, diagnostics: d }
-          v2.std.diagnostic.Accepted { value: false, diagnostics: d } =>
+          Accepted { value: true, diagnostics: d } => v2.std.diagnostic.Accepted { value: true, diagnostics: d }
+          Accepted { value: false, diagnostics: d } =>
             outcome_rejected(
               target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
             )
-          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         }
       }
     _ =>
@@ -6034,8 +6034,8 @@ fn target_value_expr_match_arms_from_wire(
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, edge) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: r } => acc
-        v2.std.diagnostic.Accepted { value: arms, diagnostics: d } =>
+        Rejected { diagnostics: r } => acc
+        Accepted { value: arms, diagnostics: d } =>
           match edge.label {
             Named { name: _ } => acc
             Positional =>
@@ -6049,8 +6049,8 @@ fn target_value_expr_match_arms_from_wire(
       }
     }
   ) {
-    v2.std.diagnostic.Accepted { value: arms, diagnostics: d } => v2.std.diagnostic.Accepted { value: arms, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: arms, diagnostics: d } => v2.std.diagnostic.Accepted { value: arms, diagnostics: d }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -6081,8 +6081,8 @@ fn target_value_expr_match_arm_tokens(
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, arm) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: r } => acc
-        v2.std.diagnostic.Accepted { value: prior_tokens, diagnostics: d } =>
+        Rejected { diagnostics: r } => acc
+        Accepted { value: prior_tokens, diagnostics: d } =>
           bind_outcome(
             o: target_value_expression_to_concrete_tokens(
               expr: arm.pattern,
@@ -6124,8 +6124,8 @@ fn target_value_expr_match_arm_tokens(
       }
     }
   ) {
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: d } => v2.std.diagnostic.Accepted { value: tokens, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: tokens, diagnostics: d } => v2.std.diagnostic.Accepted { value: tokens, diagnostics: d }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -6192,12 +6192,12 @@ fn target_value_expr_bool_literal_value_from_expression(
       target_value_expression_bool_literal_value_from_wire(wire: expr.node)
     TargetValueExprSymbolIdentity =>
       match target_value_expression_symbol_identity_from_wire(wire: expr.node) {
-        v2.std.diagnostic.Accepted { value: id, diagnostics: _ } =>
+        Accepted { value: id, diagnostics: _ } =>
           target_value_expr_bool_literal_value_from_source_symbol(
             id: id,
             source_bool_form: source_bool_form
           )
-        v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+        Rejected { diagnostics: _ } => optional_absent()
       }
     _ => optional_absent()
   }
@@ -6355,8 +6355,8 @@ fn target_value_expr_match_arm_tokens_int_bool_octet_channel(
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, arm) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: r } => acc
-        v2.std.diagnostic.Accepted { value: prior_tokens, diagnostics: d } =>
+        Rejected { diagnostics: r } => acc
+        Accepted { value: prior_tokens, diagnostics: d } =>
           bind_outcome(
             o: target_value_expression_to_concrete_tokens(
               expr: arm.pattern,
@@ -6397,8 +6397,8 @@ fn target_value_expr_match_arm_tokens_int_bool_octet_channel(
       }
     }
   ) {
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: d } => v2.std.diagnostic.Accepted { value: tokens, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: tokens, diagnostics: d } => v2.std.diagnostic.Accepted { value: tokens, diagnostics: d }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -6747,8 +6747,8 @@ fn target_value_expr_callable_apply_args_from_wire(
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, edge) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => acc
-        v2.std.diagnostic.Accepted { value: args, diagnostics: _ } =>
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: args, diagnostics: _ } =>
           match edge.label {
             Named { name: n } =>
               if n == ^target_value_expr_field_callable_arg {
@@ -6786,8 +6786,8 @@ fn target_value_expr_tokenize_intersperse(
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, e) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => acc
-        v2.std.diagnostic.Accepted { value: toks, diagnostics: _ } =>
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: toks, diagnostics: _ } =>
           bind_outcome(
             o: target_value_expression_to_concrete_tokens(
               expr: e,
@@ -6876,8 +6876,8 @@ fn target_value_expr_closure_params_from_wire(wire: v2.std.node.Node) -> v2.std.
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, edge) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => acc
-        v2.std.diagnostic.Accepted { value: ps, diagnostics: _ } =>
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: ps, diagnostics: _ } =>
           match edge.label {
             Named { name: n } =>
               if n == ^target_value_expr_field_closure_param {
@@ -7727,7 +7727,7 @@ fn target_atom_realization_lookup_step(
   if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
     match acc {
       v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row.source_carrier }
-      v2.std.passing_candidate_fold.OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
+      OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
       v2.std.passing_candidate_fold.ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
     }
   } else {
@@ -7781,7 +7781,7 @@ fn target_atom_realization_lookup_in_catalog(
   ) {
     v2.std.passing_candidate_fold.NoPassingCandidate =>
       outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
-    v2.std.passing_candidate_fold.OnePassingCandidate { candidate: _ } =>
+    OnePassingCandidate { candidate: _ } =>
       match target_atom_realization_lookup_extract_row(
         catalog: catalog,
         source_carrier: source_carrier
@@ -8054,13 +8054,13 @@ fn target_atom_realization_catalog_lookup_step(
       if content_hash(n: row.source_carrier) == content_hash(n: source_carrier) {
         match acc {
           v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row_node }
-          v2.std.passing_candidate_fold.OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
+          OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
           v2.std.passing_candidate_fold.ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
         }
       } else {
         acc
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => acc
+    Rejected { diagnostics: _ } => acc
   }
 }
 
@@ -8110,8 +8110,8 @@ fn target_atom_realization_from_row_node(
       ),
       source_carrier: source_carrier
     ) {
-      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-      v2.std.diagnostic.Accepted { value: type_form, diagnostics: _ } =>
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      Accepted { value: type_form, diagnostics: _ } =>
         match target_value_template_from_node(
           n: target_atom_realization_conj_child(
             row_node: row_node,
@@ -8119,8 +8119,8 @@ fn target_atom_realization_from_row_node(
           ),
           source_carrier: source_carrier
         ) {
-          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-          v2.std.diagnostic.Accepted { value: value_form, diagnostics: _ } =>
+          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          Accepted { value: value_form, diagnostics: _ } =>
             match target_constructor_template_from_node(
               n: target_atom_realization_conj_child(
                 row_node: row_node,
@@ -8128,14 +8128,14 @@ fn target_atom_realization_from_row_node(
               ),
               source_carrier: source_carrier
             ) {
-              v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-              v2.std.diagnostic.Accepted { value: constructor_form, diagnostics: _ } =>
+              Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+              Accepted { value: constructor_form, diagnostics: _ } =>
                 match target_atom_realization_display_name_from_row(
                   row_node: row_node,
                   source_carrier: source_carrier
                 ) {
-                  v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-                  v2.std.diagnostic.Accepted { value: display_name, diagnostics: _ } =>
+                  Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                  Accepted { value: display_name, diagnostics: _ } =>
                     outcome_accepted(
                       TargetAtomRealization {
                         source_carrier: source_carrier,
@@ -8288,7 +8288,7 @@ fn target_atom_realization_lookup_in_catalog_node(
       ) {
         v2.std.passing_candidate_fold.NoPassingCandidate =>
           outcome_rejected(target_atom_realization_lookup_miss_diagnostic(source_carrier: source_carrier))
-        v2.std.passing_candidate_fold.OnePassingCandidate { candidate: row_node } =>
+        OnePassingCandidate { candidate: row_node } =>
           target_atom_realization_from_row_node(
             row_node: row_node,
             host_target_model: host_target_model
@@ -8481,8 +8481,8 @@ fn target_function_signature_realization_from_row_node(
       ),
       source_carrier: source_carrier
     ) {
-      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-      v2.std.diagnostic.Accepted { value: boundary_site, diagnostics: _ } =>
+      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      Accepted { value: boundary_site, diagnostics: _ } =>
         match target_type_expression_from_node(
           n: target_atom_realization_conj_child(
             row_node: row_node,
@@ -8490,8 +8490,8 @@ fn target_function_signature_realization_from_row_node(
           ),
           source_carrier: source_carrier
         ) {
-          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-          v2.std.diagnostic.Accepted { value: signature_type_form, diagnostics: _ } =>
+          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          Accepted { value: signature_type_form, diagnostics: _ } =>
             outcome_accepted(
               TargetFunctionSignatureRealization {
                 source_carrier: source_carrier,
@@ -8544,7 +8544,7 @@ fn target_function_signature_realization_catalog_lookup_step(
       } else {
         acc
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => TargetFunctionSignatureRealizationCatalogInvalid
+    Rejected { diagnostics: _ } => TargetFunctionSignatureRealizationCatalogInvalid
   }
 }
 
@@ -8607,9 +8607,9 @@ fn target_type_expr_arrow_wire_shape(node: v2.std.node.Node) -> v2.std.diagnosti
   let positional = node_positional_child_targets(node: node)
   if is_empty(xs: positional) {
     match find_named_child(root: node, name: ^target_type_expr_field_codomain) {
-      v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
+      Accepted { value: _, diagnostics: d } =>
         v2.std.diagnostic.Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d }
-      v2.std.diagnostic.Rejected { diagnostics: _ } =>
+      Rejected { diagnostics: _ } =>
         outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
     }
   } else {
@@ -9009,14 +9009,14 @@ fn target_type_expr_emitted_surface_identity(node: v2.std.node.Node) -> v2.std.d
           v2.std.diagnostic.Accepted { value: id, diagnostics: d }
         _ => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn target_type_expression_spelling(form: TargetTypeExpression) -> v2.std.node.Symbol {
   match target_type_expr_emitted_surface_identity(node: form.node) {
-    v2.std.diagnostic.Accepted { value: surface, diagnostics: _ } => surface
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ^target_type_expression_decode_invalid
+    Accepted { value: surface, diagnostics: _ } => surface
+    Rejected { diagnostics: _ } => ^target_type_expression_decode_invalid
   }
 }
 
@@ -9064,11 +9064,11 @@ fn target_type_expr_emitted_validate_positional_arity(
       }
     TargetTypeExprArrow =>
       match target_type_expr_arrow_wire_shape(node: node) {
-        v2.std.diagnostic.Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: v2.std.diagnostic.None } =>
+        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: v2.std.diagnostic.None } =>
           v2.std.diagnostic.Accepted { value: true, diagnostics: v2.std.diagnostic.None }
-        v2.std.diagnostic.Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: v2.std.diagnostic.None } =>
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: v2.std.diagnostic.None } =>
           outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     TargetTypeExprRecord =>
       outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
@@ -9088,17 +9088,17 @@ fn target_type_expr_emitted_validate_positional_wire(
         match target_type_expr_fold_named_metadata_edges(node: node) {
           NamedMetadataFoldOk { kind_seen: true, surface_seen: true, extra_named: 0 } =>
             match target_type_expr_emitted_surface_identity(node: node) {
-              v2.std.diagnostic.Accepted { value: surface, diagnostics: d } =>
+              Accepted { value: surface, diagnostics: d } =>
                 if surface == target_type_expr_expected_surface_for_kind(kind: kind, projection: projection) {
                   match target_type_expr_emitted_validate_positional_arity(node: node, kind: kind) {
-                    v2.std.diagnostic.Accepted { value: true, diagnostics: d2 } =>
+                    Accepted { value: true, diagnostics: d2 } =>
                       v2.std.diagnostic.Accepted { value: true, diagnostics: diagnostics_merge(outer: d, inner: d2) }
-                    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
                   }
                 } else {
                   outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
                 }
-              v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+              Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
             }
           _ => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
         }
@@ -9124,13 +9124,13 @@ fn target_type_expr_emitted_validate_labeled_wire(
           match target_type_expr_fold_named_metadata_edges(node: node) {
             NamedMetadataFoldOk { kind_seen: true, surface_seen: true, extra_named: _ } =>
               match target_type_expr_emitted_surface_identity(node: node) {
-                v2.std.diagnostic.Accepted { value: surface, diagnostics: d } =>
+                Accepted { value: surface, diagnostics: d } =>
                   if surface == target_type_expr_expected_surface_for_kind(kind: kind, projection: projection) {
                     v2.std.diagnostic.Accepted { value: true, diagnostics: d }
                   } else {
                     outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
                   }
-                v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
               }
             _ => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
           }
@@ -9167,19 +9167,19 @@ fn target_type_expr_emitted_validate_wire_shape(
       )
     TargetTypeExprArrow =>
       match target_type_expr_arrow_wire_shape(node: node) {
-        v2.std.diagnostic.Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: v2.std.diagnostic.None } =>
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: v2.std.diagnostic.None } =>
           target_type_expr_emitted_validate_labeled_wire(
             node: node,
             kind: kind,
             projection: projection
           )
-        v2.std.diagnostic.Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: v2.std.diagnostic.None } =>
+        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: v2.std.diagnostic.None } =>
           target_type_expr_emitted_validate_positional_wire(
             node: node,
             kind: kind,
             projection: projection
           )
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     _ =>
       target_type_expr_emitted_validate_positional_wire(
@@ -9201,12 +9201,12 @@ fn target_type_expr_emitted_wire_decode(
         kind: kind,
         projection: projection
       ) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
+        Accepted { value: _, diagnostics: d } =>
           v2.std.diagnostic.Accepted {
             value: TargetTypeExpression { kind: kind, node: node },
             diagnostics: d
           }
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     TypeExprKindNotEmitted =>
       outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
@@ -9304,25 +9304,25 @@ fn target_type_expr_arrow_emitted_named(
 
 fn target_type_expr_arrow_labeled_codomain(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match target_type_expr_arrow_wire_shape(node: node) {
-    v2.std.diagnostic.Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
+    Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
       match find_named_child(root: node, name: ^target_type_expr_field_codomain) {
-        v2.std.diagnostic.Accepted { value: child, diagnostics: dc } =>
+        Accepted { value: child, diagnostics: dc } =>
           v2.std.diagnostic.Accepted {
             value: child,
             diagnostics: diagnostics_merge(outer: d, inner: dc)
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: _ } =>
           outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
       }
-    v2.std.diagnostic.Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } =>
+    Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } =>
       outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn target_type_expr_arrow_labeled_param_slots(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<TargetTypeExprArrowParamSlot>> {
   match target_type_expr_arrow_wire_shape(node: node) {
-    v2.std.diagnostic.Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
+    Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
       bind_outcome(
         o: target_type_expr_arrow_labeled_codomain(node: node),
         f: fn(_codomain) {
@@ -9355,9 +9355,9 @@ fn target_type_expr_arrow_labeled_param_slots(node: v2.std.node.Node) -> v2.std.
           }
         }
       )
-    v2.std.diagnostic.Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } =>
+    Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: _ } =>
       outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -9807,8 +9807,8 @@ fn target_representation_parameter_slots_from_node(
         ),
         cons: fn(acc, parameter) {
           match acc {
-            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-            v2.std.diagnostic.Accepted { value: slots, diagnostics: _ } =>
+            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            Accepted { value: slots, diagnostics: _ } =>
               match slots.lookup(parameter) {
                 Present { value: _ } =>
                   outcome_rejected(
@@ -9869,8 +9869,8 @@ fn target_derive_supplemental_generic_bound_wire_requirement_apply(
   at: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<Map<v2.std.node.Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>> {
   match acc {
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    v2.std.diagnostic.Accepted { value: requirements, diagnostics: _ } =>
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: requirements, diagnostics: _ } =>
       match representation_parameters.lookup(requirement.representation_parameter) {
         Absent =>
           outcome_rejected(
@@ -9935,7 +9935,7 @@ fn target_derive_supplemental_generic_bound_contract_catalog_insert_wire(
   at: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<TargetDeriveSupplementalGenericBoundContractCatalog> {
   match acc {
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: catalog, diagnostics: _ } =>
       let derive_key = target_grounding_derive_trait_key(
         derive_trait: row.derive_trait
@@ -10878,7 +10878,7 @@ fn target_use_site_ownership_catalog_lookup_step_for_row(
     display_name: display_name,
     source_carrier: source_carrier
   ) {
-    v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
+    Accepted { value: row, diagnostics: _ } =>
       match target_use_site_ownership_lookup_step(
         acc: match acc {
           TargetUseSiteOwnershipCatalogMissing => TargetUseSiteOwnershipMissing
@@ -10897,7 +10897,7 @@ fn target_use_site_ownership_catalog_lookup_step_for_row(
           TargetUseSiteOwnershipCatalogUnique { row: row }
         TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipCatalogAmbiguous
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => TargetUseSiteOwnershipCatalogInvalid
+    Rejected { diagnostics: _ } => TargetUseSiteOwnershipCatalogInvalid
   }
 }
 
@@ -11573,7 +11573,7 @@ fn target_reference_layer_probe_from_emitted_type(
           ) {
             Present { value: head } =>
               match target_model_node_atom_identity(node: head, source_carrier: emitted) {
-                v2.std.diagnostic.Accepted { value: head_id, diagnostics: _ } =>
+                Accepted { value: head_id, diagnostics: _ } =>
                   if head_id == tokens.rc_type_head {
                     ReferenceLayerProbe { value: WrappedReferenceLayerRc }
                   } else {
@@ -11583,13 +11583,13 @@ fn target_reference_layer_probe_from_emitted_type(
                       ReferenceLayerProbeNotWrapped
                     }
                   }
-                v2.std.diagnostic.Rejected { diagnostics: _ } => ReferenceLayerProbeInvalid
+                Rejected { diagnostics: _ } => ReferenceLayerProbeInvalid
               }
             Absent => ReferenceLayerProbeInvalid
           }
         _ => ReferenceLayerProbeNotWrapped
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ReferenceLayerProbeInvalid
+    Rejected { diagnostics: _ } => ReferenceLayerProbeInvalid
   }
 }
 
@@ -11901,7 +11901,7 @@ fn type_expr_projection_row_witness_gate_with_rule(
       ) {
         Accepted { value: fw, diagnostics: d } =>
           outcome_accepted(fw.candidate)
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )
@@ -12016,12 +12016,12 @@ fn target_value_expr_add_signature_matches_for_target(
   target: TargetModel
 ) -> Bool {
   match target_value_expr_declared_inhabitants_from_target(target: target) {
-    v2.std.diagnostic.Accepted { value: inhabitants_root, diagnostics: _ } =>
+    Accepted { value: inhabitants_root, diagnostics: _ } =>
       target_add_signature_matches(
         arrow: arrow,
         inhabitants_root: inhabitants_root
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -12032,7 +12032,7 @@ fn target_value_expr_arrow_has_transform_body(arrow: v2.std.node.Node) -> Bool {
         ComputationNode { behavior: Transform } => true
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -12044,39 +12044,39 @@ fn target_value_expr_arrow_has_branch_body(arrow: v2.std.node.Node) -> Bool {
           length(xs: node_positional_child_targets(node: body)) == 3
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn target_value_expr_arrow_has_bind_body(arrow: v2.std.node.Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       target_value_expr_bind_let_gate(node: body)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn target_value_expr_arrow_has_loop_body(arrow: v2.std.node.Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       target_value_expr_loop_gate(node: body)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn target_value_expr_arrow_has_match_body(arrow: v2.std.node.Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       target_value_expr_match_gate(node: body)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn target_value_expr_arrow_has_record_construct_body(arrow: v2.std.node.Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
-    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+    Accepted { value: body, diagnostics: _ } =>
       target_value_expr_record_construct_gate(node: body)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -12113,7 +12113,7 @@ fn target_value_expr_param_binding_for_referent(
     optional_present(value: referent)
   } else {
     match target_binding_spelling_lookup(target: target, binding: referent) {
-      v2.std.diagnostic.Accepted { value: referent_spelling, diagnostics: _ } =>
+      Accepted { value: referent_spelling, diagnostics: _ } =>
         fold_list(
           xs: bindings,
           empty: optional_absent(),
@@ -12125,18 +12125,18 @@ fn target_value_expr_param_binding_for_referent(
                   target: target,
                   binding: param_binding
                 ) {
-                  v2.std.diagnostic.Accepted { value: param_spelling, diagnostics: _ } =>
+                  Accepted { value: param_spelling, diagnostics: _ } =>
                     if param_spelling == referent_spelling {
                       optional_present(value: param_binding)
                     } else {
                       acc
                     }
-                  v2.std.diagnostic.Rejected { diagnostics: _ } => acc
+                  Rejected { diagnostics: _ } => acc
                 }
             }
           }
         )
-      v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+      Rejected { diagnostics: _ } => optional_absent()
     }
   }
 }
@@ -12298,8 +12298,8 @@ fn target_project_transform_callable_apply_in_arrow_scope(
               empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
               cons: fn(acc, arg) {
                 match acc {
-                  v2.std.diagnostic.Rejected { diagnostics: _ } => acc
-                  v2.std.diagnostic.Accepted { value: args, diagnostics: _ } =>
+                  Rejected { diagnostics: _ } => acc
+                  Accepted { value: args, diagnostics: _ } =>
                     bind_outcome(
                       o: target_project_callable_arg_in_arrow_scope(
                         arrow: arrow,
@@ -12394,7 +12394,7 @@ fn target_value_expr_project_int_literal_atom(node: v2.std.node.Node) -> v2.std.
   match target_value_expr_int_literal_magnitude_node_optional(node: node) {
     Present { value: magnitude_node } =>
       match integer_decimal_magnitude_node_to_int(node: magnitude_node) {
-        v2.std.diagnostic.Accepted { value: magnitude, diagnostics: _ } =>
+        Accepted { value: magnitude, diagnostics: _ } =>
           match target_value_expr_int_literal_magnitude_binding(magnitude: magnitude) {
             Present { value: binding } =>
               outcome_accepted(
@@ -12408,7 +12408,7 @@ fn target_value_expr_project_int_literal_atom(node: v2.std.node.Node) -> v2.std.
                 )
               )
           }
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     Absent =>
       outcome_rejected(
@@ -12485,11 +12485,11 @@ fn target_value_expr_project_atom_in_arrow_scope(
             binding: id,
             target: target
           ) {
-            v2.std.diagnostic.Accepted { value: scoped, diagnostics: d } =>
+            Accepted { value: scoped, diagnostics: d } =>
               outcome_accepted(
                 target_value_expression_binding_ref(binding: scoped)
               )
-            v2.std.diagnostic.Rejected { diagnostics: _ } =>
+            Rejected { diagnostics: _ } =>
               target_value_expr_project_atom_literal(
                 node: node,
                 source_bool_form: source_bool_form
@@ -12579,8 +12579,8 @@ fn target_value_expr_record_construct_field_slots_from_edges(
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, edge) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: r } => acc
-        v2.std.diagnostic.Accepted { value: slots, diagnostics: d } =>
+        Rejected { diagnostics: r } => acc
+        Accepted { value: slots, diagnostics: d } =>
           match edge.label {
             Named { name: field_label } =>
               bind_outcome(
@@ -12614,8 +12614,8 @@ fn target_value_expr_record_construct_field_slots_from_edges(
       }
     }
   ) {
-    v2.std.diagnostic.Accepted { value: slots, diagnostics: d } => v2.std.diagnostic.Accepted { value: slots, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: slots, diagnostics: d } => v2.std.diagnostic.Accepted { value: slots, diagnostics: d }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -12832,8 +12832,8 @@ fn target_value_expr_match_project_arms(
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, arm_edge) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: r } => acc
-        v2.std.diagnostic.Accepted { value: slots, diagnostics: d } =>
+        Rejected { diagnostics: r } => acc
+        Accepted { value: slots, diagnostics: d } =>
           bind_outcome(
             o: target_value_expr_match_arm_slot_from_arm_edge(
               arrow: arrow,
@@ -12849,8 +12849,8 @@ fn target_value_expr_match_project_arms(
       }
     }
   ) {
-    v2.std.diagnostic.Accepted { value: slots, diagnostics: d } => v2.std.diagnostic.Accepted { value: slots, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Accepted { value: slots, diagnostics: d } => v2.std.diagnostic.Accepted { value: slots, diagnostics: d }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -13218,7 +13218,7 @@ fn target_project_closure_in_arrow_scope(
     o: arrow_domain_named_param_bindings(arrow: closure),
     f: fn(params) {
       match find_arrow_body_child(root: closure) {
-        v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+        Accepted { value: body, diagnostics: _ } =>
           bind_outcome(
             o: target_value_expr_project_body_subexpression(
               arrow: closure,
@@ -13233,7 +13233,7 @@ fn target_project_closure_in_arrow_scope(
               )
             }
           )
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )
@@ -13351,7 +13351,7 @@ fn target_project_arrow_body_to_value_expression(
             )
           )
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

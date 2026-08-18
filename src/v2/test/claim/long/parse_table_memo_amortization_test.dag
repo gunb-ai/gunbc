@@ -59,7 +59,7 @@ fn memo_amort_single_root_content_hash(ingest: v2.compiler.source_authority.Sour
     ingest: ingest,
     lm: dag_language_model()
   ) {
-    v2.std.diagnostic.Accepted { value: roots, diagnostics: _ } =>
+    Accepted { value: roots, diagnostics: _ } =>
       match length(xs: roots) == 1 {
         true =>
           fold_list(
@@ -72,7 +72,7 @@ fn memo_amort_single_root_content_hash(ingest: v2.compiler.source_authority.Sour
         false =>
           v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.None }
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -82,8 +82,8 @@ test fn memo_amort_parse_one_file_holds() -> Bool {
     ingest: memo_amort_ingest_one_file,
     lm: dag_language_model()
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -92,8 +92,8 @@ fn memo_amort_parse_two_files_holds() -> Bool {
     ingest: memo_amort_ingest_two_files,
     lm: dag_language_model()
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -103,17 +103,17 @@ test fn memo_amort_parse_two_files_twice_holds() -> Bool {
 
 fn witness_parse_table_memo_hit_path_content_hash_stable() -> Bool {
   match memo_amort_single_root_content_hash(ingest: memo_amort_ingest_bisect_add) {
-    v2.std.diagnostic.Accepted { value: hash_miss, diagnostics: _ } =>
+    Accepted { value: hash_miss, diagnostics: _ } =>
       match memo_amort_single_root_content_hash(ingest: memo_amort_ingest_bisect_add) {
-        v2.std.diagnostic.Accepted { value: hash_hit, diagnostics: _ } =>
+        Accepted { value: hash_hit, diagnostics: _ } =>
           match memo_amort_single_root_content_hash(ingest: memo_amort_ingest_one_file) {
-            v2.std.diagnostic.Accepted { value: hash_empty, diagnostics: _ } =>
+            Accepted { value: hash_empty, diagnostics: _ } =>
               hash_miss == hash_hit && hash_miss != hash_empty
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -132,7 +132,7 @@ test fn empty_ingest_assembles_to_empty_roots_without_prepare() -> Bool {
     ingest: Empty,
     lm: dag_language_model()
   ) {
-    v2.std.diagnostic.Accepted { value: roots, diagnostics: _ } => length(xs: roots) == 0
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } => length(xs: roots) == 0
+    Rejected { diagnostics: _ } => false
   }
 }

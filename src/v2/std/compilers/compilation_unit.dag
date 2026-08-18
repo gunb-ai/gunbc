@@ -113,8 +113,8 @@ fn module_unit_id_outcome(
   module: ModuleId
 ) -> v2.std.diagnostic.Outcome<Optional<CompilationUnitId>> {
   match map_get(assignment, module) {
-    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } => outcome_accepted(value: opt)
-    v2.std.diagnostic.Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    Accepted { value: opt, diagnostics: _ } => outcome_accepted(value: opt)
+    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
   }
 }
 
@@ -123,8 +123,8 @@ fn module_unit_id(
   module: ModuleId
 ) -> Optional<CompilationUnitId> {
   match map_get(assignment, module) {
-    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } => opt
-    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+    Accepted { value: opt, diagnostics: _ } => opt
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
@@ -133,9 +133,9 @@ fn module_assigned_unit_fold(
   module: ModuleId
 ) -> Optional<PartitionFoldRefusalCause> {
   match module_unit_id_outcome(assignment: assignment, module: module) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       optional_present(value: ModuleAssignmentLookupRejected { module: module })
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => Absent
+    Accepted { value: _, diagnostics: _ } => Absent
   }
 }
 
@@ -220,12 +220,12 @@ fn module_export_declarations_outcome(
   module: ModuleId
 ) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   match map_get(module_dag.exports, module) {
-    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } =>
+    Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
         Present { value: nodes } => nodes
         Absent => std.algebra.Empty
       })
-    v2.std.diagnostic.Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
   }
 }
 
@@ -234,26 +234,26 @@ fn module_type_definition_rows_outcome(
   module: ModuleId
 ) -> v2.std.diagnostic.Outcome<List<ModuleTypeDefinitionRow>> {
   match map_get(module_dag.type_definitions, module) {
-    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } =>
+    Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
         Present { value: rows } => rows
         Absent => std.algebra.Empty
       })
-    v2.std.diagnostic.Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
   }
 }
 
 fn module_export_declarations(module_dag: ModuleDag, module: ModuleId) -> List<v2.std.node.Node> {
   match module_export_declarations_outcome(module_dag: module_dag, module: module) {
-    v2.std.diagnostic.Accepted { value: nodes, diagnostics: _ } => nodes
-    v2.std.diagnostic.Rejected { diagnostics: _ } => []
+    Accepted { value: nodes, diagnostics: _ } => nodes
+    Rejected { diagnostics: _ } => []
   }
 }
 
 fn module_type_definition_rows(module_dag: ModuleDag, module: ModuleId) -> List<ModuleTypeDefinitionRow> {
   match module_type_definition_rows_outcome(module_dag: module_dag, module: module) {
-    v2.std.diagnostic.Accepted { value: rows, diagnostics: _ } => rows
-    v2.std.diagnostic.Rejected { diagnostics: _ } => []
+    Accepted { value: rows, diagnostics: _ } => rows
+    Rejected { diagnostics: _ } => []
   }
 }
 
@@ -609,17 +609,17 @@ fn module_member_dag_lookup_cause_if_rejected(
   member: ModuleId
 ) -> Optional<PartitionFoldRefusalCause> {
   match module_export_declarations_outcome(module_dag: module_dag, module: member) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       optional_present(
         value: ModuleDagExportsLookupRejected { module: member }
       )
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+    Accepted { value: _, diagnostics: _ } =>
       match module_type_definition_rows_outcome(module_dag: module_dag, module: member) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: _ } =>
           optional_present(
             value: ModuleDagTypeDefinitionsLookupRejected { module: member }
           )
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => Absent
+        Accepted { value: _, diagnostics: _ } => Absent
       }
   }
 }
@@ -670,14 +670,14 @@ fn partition_cross_boundary_exports_fold(
                 member: member
               ) {
                 match module_export_declarations_outcome(module_dag: module_dag, module: member) {
-                  v2.std.diagnostic.Accepted { value: exports, diagnostics: _ } =>
+                  Accepted { value: exports, diagnostics: _ } =>
                     InterfaceBuildOk {
                       nodes: exports
                         |> fold(init: acc_nodes, f: fn(inner, decl) {
                           list_snoc_unique_node(items: inner, item: decl)
                         }),
                     }
-                  v2.std.diagnostic.Rejected { diagnostics: _ } =>
+                  Rejected { diagnostics: _ } =>
                     InterfaceBuildRefused {
                       cause: ModuleDagExportsLookupRejected { module: member },
                     }

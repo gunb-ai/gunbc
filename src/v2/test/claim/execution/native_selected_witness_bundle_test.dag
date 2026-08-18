@@ -110,14 +110,14 @@ fn interpreted_meet_join_verdict(
   expected_true: Bool
 ) -> std.selected_witness_bundle.SelectedWitnessVerdict {
   match interpreted_value(tree: tree, context: meet_join_eval_context(), root: root) {
-    v2.std.diagnostic.Accepted { value: value, diagnostics: _ } =>
+    Accepted { value: value, diagnostics: _ } =>
       if (expected_true && meet_join_eval_bool_true(value: value))
         || (!expected_true && meet_join_eval_bool_false(value: value)) {
         SelectedWitnessPassed
       } else {
         SelectedWitnessFailed
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => SelectedWitnessFailed
+    Rejected { diagnostics: _ } => SelectedWitnessFailed
   }
 }
 
@@ -130,14 +130,14 @@ fn interpreted_complement_verdict(
     context: emit_complement_eval_context(),
     root: dag_complement_eval_subgraph_fixture
   ) {
-    v2.std.diagnostic.Accepted { value: value, diagnostics: _ } =>
+    Accepted { value: value, diagnostics: _ } =>
       if (expected_true && emit_complement_eval_bool_true(value: value))
         || (!expected_true && emit_complement_eval_bool_false(value: value)) {
         SelectedWitnessPassed
       } else {
         SelectedWitnessFailed
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => SelectedWitnessFailed
+    Rejected { diagnostics: _ } => SelectedWitnessFailed
   }
 }
 
@@ -147,13 +147,13 @@ fn interpreted_value_meet_join_equals(
   expected_true: Bool
 ) -> Bool {
   match interpreted_value(tree: tree, context: meet_join_eval_context(), root: root) {
-    v2.std.diagnostic.Accepted { value: value, diagnostics: _ } =>
+    Accepted { value: value, diagnostics: _ } =>
       if expected_true {
         meet_join_eval_bool_true(value: value)
       } else {
         meet_join_eval_bool_false(value: value)
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -163,13 +163,13 @@ fn interpreted_value_complement_equals(tree: v2.compiler.infer.InferredTree, exp
     context: emit_complement_eval_context(),
     root: dag_complement_eval_subgraph_fixture
   ) {
-    v2.std.diagnostic.Accepted { value: value, diagnostics: _ } =>
+    Accepted { value: value, diagnostics: _ } =>
       if expected_true {
         emit_complement_eval_bool_true(value: value)
       } else {
         emit_complement_eval_bool_false(value: value)
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -314,7 +314,7 @@ fn observe_selected_bundle_native(
     source: source,
     fixture_inputs: family_crate_fixture_inputs()
   ) {
-    v2.std.diagnostic.Accepted { value: cold, diagnostics: _ } => {
+    Accepted { value: cold, diagnostics: _ } => {
       let start = observed_monotonic_nanos("selected-bundle-native-warm-start")
       match run_emit_host_cached(
         workspace_dir: workspace,
@@ -322,7 +322,7 @@ fn observe_selected_bundle_native(
         source: source,
         fixture_inputs: family_crate_fixture_inputs()
       ) {
-        v2.std.diagnostic.Accepted { value: warm, diagnostics: _ } => {
+        Accepted { value: warm, diagnostics: _ } => {
           let finish = observed_monotonic_nanos("selected-bundle-native-warm-finish")
           v2.std.diagnostic.Accepted {
             value: SelectedBundleNativeObservation {
@@ -333,10 +333,10 @@ fn observe_selected_bundle_native(
             diagnostics: v2.std.diagnostic.None
           }
         }
-        v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+        Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
       }
     }
-    v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
@@ -588,7 +588,7 @@ fn selected_logic_execution_holds(
     members: members,
     transport_target: rust_logic_selected_bundle_target_model_staging()
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
+    Accepted { value: source, diagnostics: _ } =>
       match observe_selected_bundle_native(workspace: workspace, source: source) {
         Accepted { value: observation, diagnostics: _ } =>
           match selected_logic_stdout(receipt: observation.cold) {
@@ -637,9 +637,9 @@ fn selected_logic_execution_holds(
               }
             Absent => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -671,7 +671,7 @@ fn selected_logic_discriminating_red_evidence() -> List<std.selected_witness_bun
     members: family_crate_alt_members(),
     transport_target: rust_logic_selected_bundle_target_model_staging()
   ) {
-    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
+    Accepted { value: source, diagnostics: _ } =>
       match observe_selected_bundle_native(workspace: workspace, source: source) {
         Accepted { value: observation, diagnostics: _ } =>
           match selected_logic_stdout(receipt: observation.cold) {
@@ -715,9 +715,9 @@ fn selected_logic_discriminating_red_evidence() -> List<std.selected_witness_bun
               }
             Absent => []
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => []
+        Rejected { diagnostics: _ } => []
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => []
+    Rejected { diagnostics: _ } => []
   }
 }
 

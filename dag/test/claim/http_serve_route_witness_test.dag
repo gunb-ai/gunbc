@@ -30,23 +30,23 @@ fn probe_table() -> ServedRouteTable<ProbeHandler> {
 
 fn selected_dynamic_is(sel: extdeps.http.server.RouteSelection<ProbeHandler>, want_dispatch: Bool) -> Bool {
   match sel {
-    extdeps.http.server.SelectedDynamic { handler: h, params: _ } =>
+    SelectedDynamic { handler: h, params: _ } =>
       match h {
         ProbePage => !want_dispatch
         ProbeDispatch => want_dispatch
       }
-    extdeps.http.server.SelectedStatic { route: _ } => false
-    extdeps.http.server.MethodNotAllowed { allowed: _ } => false
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
     extdeps.http.server.NoRouteMatched => false
   }
 }
 
 fn selection_param(sel: extdeps.http.server.RouteSelection<ProbeHandler>, name: String) -> String {
   match sel {
-    extdeps.http.server.SelectedDynamic { handler: _, params: ps } =>
+    SelectedDynamic { handler: _, params: ps } =>
       fold(ps, init: "", f: (acc, p) => if p.name == name { p.value } else { acc })
-    extdeps.http.server.SelectedStatic { route: _ } => ""
-    extdeps.http.server.MethodNotAllowed { allowed: _ } => ""
+    SelectedStatic { route: _ } => ""
+    MethodNotAllowed { allowed: _ } => ""
     extdeps.http.server.NoRouteMatched => ""
   }
 }
@@ -57,9 +57,9 @@ test fn witness_root_selects_page_handler() -> Bool {
 
 test fn witness_static_row_selects_static() -> Bool {
   match serve_select_route(table: probe_table(), method: GET, path: "/healthz") {
-    extdeps.http.server.SelectedStatic { route: r } => r.body == "ok" && r.status_on_hit == 200
-    extdeps.http.server.SelectedDynamic { handler: _, params: _ } => false
-    extdeps.http.server.MethodNotAllowed { allowed: _ } => false
+    SelectedStatic { route: r } => r.body == "ok" && r.status_on_hit == 200
+    SelectedDynamic { handler: _, params: _ } => false
+    MethodNotAllowed { allowed: _ } => false
     extdeps.http.server.NoRouteMatched => false
   }
 }
@@ -72,10 +72,10 @@ test fn witness_dispatch_post_binds_param() -> Bool {
 
 test fn witness_wrong_method_folds_405_with_allowed() -> Bool {
   match serve_select_route(table: probe_table(), method: GET, path: "/dispatch/x") {
-    extdeps.http.server.MethodNotAllowed { allowed: ms } =>
+    MethodNotAllowed { allowed: ms } =>
       count(ms) == 1 && any(ms, m => m == std.types.POST)
-    extdeps.http.server.SelectedStatic { route: _ } => false
-    extdeps.http.server.SelectedDynamic { handler: _, params: _ } => false
+    SelectedStatic { route: _ } => false
+    SelectedDynamic { handler: _, params: _ } => false
     extdeps.http.server.NoRouteMatched => false
   }
 }
@@ -83,9 +83,9 @@ test fn witness_wrong_method_folds_405_with_allowed() -> Bool {
 test fn witness_unknown_path_folds_404() -> Bool {
   match serve_select_route(table: probe_table(), method: GET, path: "/nope") {
     extdeps.http.server.NoRouteMatched => true
-    extdeps.http.server.SelectedStatic { route: _ } => false
-    extdeps.http.server.SelectedDynamic { handler: _, params: _ } => false
-    extdeps.http.server.MethodNotAllowed { allowed: _ } => false
+    SelectedStatic { route: _ } => false
+    SelectedDynamic { handler: _, params: _ } => false
+    MethodNotAllowed { allowed: _ } => false
   }
 }
 

@@ -63,7 +63,7 @@ fn loop_runtime_int_is_one(value: v2.std.runtime.RuntimeValue) -> Bool {
 fn loop_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if dag_node_is_int_literal_atom(node: node) {
     match dag_int_literal_magnitude_int_from_node(node: node) {
-      v2.std.diagnostic.Accepted { value: mag, diagnostics: _ } =>
+      Accepted { value: mag, diagnostics: _ } =>
         if mag == 1 {
           outcome_accepted(value: loop_one_value())
         } else if mag == 2 {
@@ -71,7 +71,7 @@ fn loop_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.Evaluation
         } else {
           outcome_rejected(d: loop_runtime_diagnostic(n: node))
         }
-      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     outcome_rejected(d: loop_runtime_diagnostic(n: node))
@@ -273,135 +273,135 @@ fn loop_run(
 
 fn loop_run_passes(run: v2.std.diagnostic.Outcome<TestClaimRun<v2.std.node.Node, RuntimeValue>>) -> Bool {
   match run {
-    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
+    Accepted { value: r, diagnostics: _ } =>
       match test_claim_run_verdict(run: r) {
         Pass => true
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_source_pipeline_admits_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_source_driven_executes_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_source_driven_wrong_value_red_holds() -> Bool {
   match table_fixture_loop_wrong_value_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_direct_runtime_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } => {
+    Accepted { value: arrow, diagnostics: _ } => {
       let input = loop_pick_call(callee: arrow)
       match loop_inferred_run_tree(
         callee: arrow,
         expected: loop_literal_one_node()
       ) {
-        v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+        Accepted { value: tree, diagnostics: _ } =>
           match eval(
             tree: tree,
             interpretation: loop_interpretation(),
             inputs: inputs_root_only(root: input)
           ) {
-            v2.std.diagnostic.Accepted { value: actual, diagnostics: None } =>
+            Accepted { value: actual, diagnostics: None } =>
               loop_runtime_int_is_one(value: actual)
             _ => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
     }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_value_perturbation_red_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_two_node()
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_fixture_producer_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_fixture_wrong_value_red_holds() -> Bool {
   match table_fixture_loop_wrong_value_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_census_ingested_executes_holds() -> Bool {
   match ingested_loop_arrow_with_body() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn loop_census_ingested_wrong_value_red_holds() -> Bool {
   match ingested_loop_arrow_with_body_wrong_value() {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

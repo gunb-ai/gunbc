@@ -37,13 +37,13 @@ fn reconcile_runner_slot(
   apply: RunnerSlotApplyEffect
 ) -> std.realization_reconcile.Reconciliation<RunnerSlotApplyEffect, RunnerSlotEnforcement> {
   match read {
-    std.realization_reconcile.ReadAbsent { reason: why } =>
+    ReadAbsent { reason: why } =>
       reconcile_grounded(
         apply_effect: apply,
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    std.realization_reconcile.ReadObserved { value: observed } =>
+    ReadObserved { value: observed } =>
       reconcile_grounded(
         apply_effect: apply,
         show_read: read,
@@ -54,8 +54,8 @@ fn reconcile_runner_slot(
 
 fn runner_slot_evidence_from_reconciliation(r: std.realization_reconcile.Reconciliation<RunnerSlotApplyEffect, RunnerSlotEnforcement>) -> RunnerSlotEnforcement {
   match r {
-    std.realization_reconcile.Converged { evidence: e, applied: _ } => e
-    std.realization_reconcile.NotConverged { reason: why, applied: _ } => RunnerSlotUnenforced { reason: why }
+    Converged { evidence: e, applied: _ } => e
+    NotConverged { reason: why, applied: _ } => RunnerSlotUnenforced { reason: why }
   }
 }
 

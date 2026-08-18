@@ -1102,13 +1102,13 @@ fn eval_type_node_atom(
         interpretation.value.allocate_literal(node, environment)
       } else {
         match eval_runtime_binding_lookup(node: node, environment: environment) {
-          v2.std.diagnostic.Accepted { value: v, diagnostics: d } =>
+          Accepted { value: v, diagnostics: d } =>
             v2.std.diagnostic.Accepted { value: v, diagnostics: d }
-          v2.std.diagnostic.Rejected { diagnostics: bind_ds } =>
+          Rejected { diagnostics: bind_ds } =>
             match interpretation.value.allocate_literal(node, environment) {
-              v2.std.diagnostic.Accepted { value: v, diagnostics: d } =>
+              Accepted { value: v, diagnostics: d } =>
                 v2.std.diagnostic.Accepted { value: v, diagnostics: d }
-              v2.std.diagnostic.Rejected { diagnostics: _ } =>
+              Rejected { diagnostics: _ } =>
                 v2.std.diagnostic.Rejected { diagnostics: bind_ds }
             }
         }
@@ -1133,9 +1133,9 @@ fn eval_bind_param_edge_step(
   node: v2.std.node.Node
 ) -> EvalParamBindAcc {
   match state.acc {
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       EvalParamBindAcc { idx: state.idx + 1, acc: v2.std.diagnostic.Rejected { diagnostics: r } }
-    v2.std.diagnostic.Accepted { value: env, diagnostics: _ } =>
+    Accepted { value: env, diagnostics: _ } =>
       match param_edge.label {
         Named { name: binding_id } =>
           EvalParamBindAcc {
@@ -1239,8 +1239,8 @@ fn eval_child_absent(node: v2.std.node.Node, wanted: Int) -> Bool {
     wanted: wanted,
     absent_reason: ^eval_rejected_unsupported_callee
   ) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -1265,7 +1265,7 @@ fn eval_transform_has_callee_reference(node: v2.std.node.Node) -> Bool {
             Positional => eval_node_is_callee_reference(node: e0.target)
             Named { name: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
     _ => false
   }
@@ -1344,12 +1344,12 @@ fn eval_yield_effect_request(
     result: result
   )
   match result {
-    v2.std.diagnostic.Accepted { value: v, diagnostics: None } =>
+    Accepted { value: v, diagnostics: None } =>
       v2.std.diagnostic.Accepted {
         value: EffectIoYieldOutcome { bundle: logged_bundle, value: v },
         diagnostics: v2.std.diagnostic.None
       }
-    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 
@@ -1470,7 +1470,7 @@ fn eval_transform_node(
           o: eval_transform_callee_edge(node: node),
           f: fn(callee_edge) {
             match find_arrow_body_child(root: callee_edge.target) {
-              v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+              Accepted { value: body, diagnostics: _ } =>
                 let body_form = classify_arrow_body_form(target: body)
                 if eval_arrow_admits_callee_dispatch(arrow: callee_edge.target)
                   && arrow_body_admits_eval_entry(form: body_form) {
@@ -1507,7 +1507,7 @@ fn eval_transform_node(
                     d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_edge.target)
                   )
                 }
-              v2.std.diagnostic.Rejected { diagnostics: _ } =>
+              Rejected { diagnostics: _ } =>
                 if eval_node_is_arrow(node: callee_edge.target) {
                   outcome_rejected(
                     d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_edge.target)
@@ -2484,8 +2484,8 @@ fn run_test_claim_round_trip_verdict(
   at: v2.std.node.Node
 ) -> Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.node.Node> {
   match actual {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => verdict_fail(actual: actual)
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => verdict_fail(actual: actual)
+    Accepted { value: _, diagnostics: _ } =>
       if dag_round_trip_authorities_ready() {
         Pass
       } else {
@@ -2503,13 +2503,13 @@ fn run_test_claim_round_trip_verdict_runtime(
   at: v2.std.node.Node
 ) -> Verdict<TestClaimEvalSubject<v2.std.node.Node>, RuntimeValue> {
   match actual {
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       verdict_fail(
         actual: outcome_rejected(
           d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)
         )
       )
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+    Accepted { value: _, diagnostics: _ } =>
       if dag_round_trip_authorities_ready() {
         Pass
       } else {
@@ -2536,13 +2536,13 @@ fn run_test_claim_structural_equals_verdict(
   at: v2.std.node.Node
 ) -> Verdict<TestClaimEvalSubject<v2.std.node.Node>, RuntimeValue> {
   match actual {
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       verdict_fail(
         actual: outcome_rejected(
           d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)
         )
       )
-    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
+    Accepted { value: admitted, diagnostics: _ } =>
       if outcome_node_eq(
         a: v2.std.diagnostic.Accepted { value: admitted, diagnostics: v2.std.diagnostic.None },
         b: v2.std.diagnostic.Accepted { value: rhs, diagnostics: v2.std.diagnostic.None }
@@ -2592,7 +2592,7 @@ fn run_test_claim_assert_decided(
       )
     DiagnosticClaim { expected_rejection: expected, input: input, label: _, anchor: _, classification: _ } =>
       match actual {
-        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: _ } =>
           if outcome_node_eq(a: actual, b: v2.std.diagnostic.Rejected { diagnostics: expected }) {
             Pass
           } else {
@@ -2613,8 +2613,8 @@ fn outcome_runtime_value_eq(a: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeV
 
 fn accepted_runtime_value_outcome_eq(a: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>, b: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>) -> Bool {
   match b {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => outcome_runtime_value_eq(a: a, b: b)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => outcome_runtime_value_eq(a: a, b: b)
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -2658,7 +2658,7 @@ fn run_test_claim_runtime_assert(
       )
     DiagnosticClaim { expected_rejection: expected, input: _, label: _, anchor: _, classification: _ } =>
       match actual {
-        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: _ } =>
           if outcome_runtime_value_eq(a: actual, b: v2.std.diagnostic.Rejected { diagnostics: expected }) {
             Pass
           } else {

@@ -94,9 +94,9 @@ fn plain_hunk_to_action<M, K>(
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
 ) -> MemberAction<M, K> {
   match hunk {
-    std.change.KeyedDiffAddedHunk { hunk_key: at, to: m } => MemberAdded { at: at, to: m }
-    std.change.KeyedDiffModifiedHunk { hunk_key: at, from: f, to: t } => MemberChanged { at: at, from: f, to: t }
-    std.change.KeyedDiffRemovedHunk { hunk_key: at, from: m } =>
+    KeyedDiffAddedHunk { hunk_key: at, to: m } => MemberAdded { at: at, to: m }
+    KeyedDiffModifiedHunk { hunk_key: at, from: f, to: t } => MemberChanged { at: at, from: f, to: t }
+    KeyedDiffRemovedHunk { hunk_key: at, from: m } =>
       match removal_admission(existing: m, ownership_of: ownership_of) {
         RemovalAdmitted => MemberRemoved { at: at, from: m }
         RemovalRefused { cause: c } => MemberRemovalRefused { from: m, cause: c }
@@ -131,23 +131,23 @@ fn membership_reconcile<M, K>(
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
 ) -> MembershipReconcileOutcome<M, K> {
   match membership_plain_roster_build(members: desired, key_of: key_of, key_eq: key_eq) {
-    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       MembershipReconcileDuplicateKey {
         roster: MembershipDesiredRoster,
         key: k,
         first: f,
         duplicate: d,
       }
-    std.keyed_roster.KeyedRosterBuilt { rows: desired_rows } =>
+    KeyedRosterBuilt { rows: desired_rows } =>
       match membership_plain_roster_build(members: observed, key_of: key_of, key_eq: key_eq) {
-        std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+        KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
           MembershipReconcileDuplicateKey {
             roster: MembershipObservedRoster,
             key: k,
             first: f,
             duplicate: d,
           }
-        std.keyed_roster.KeyedRosterBuilt { rows: observed_rows } =>
+        KeyedRosterBuilt { rows: observed_rows } =>
           MembershipReconcileReady {
             plan: membership_reconcile_built(
               desired_rows: desired_rows,
@@ -202,9 +202,9 @@ fn scoped_hunk_to_action<M, Relation, Scope, K>(
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
 ) -> MemberAction<M, std.key_relation.ScopedKey<Relation, Scope, K>> {
   match hunk {
-    std.change.KeyedDiffAddedHunk { hunk_key: at, to: m } => MemberAdded { at: at, to: m }
-    std.change.KeyedDiffModifiedHunk { hunk_key: at, from: f, to: t } => MemberChanged { at: at, from: f, to: t }
-    std.change.KeyedDiffRemovedHunk { hunk_key: at, from: m } =>
+    KeyedDiffAddedHunk { hunk_key: at, to: m } => MemberAdded { at: at, to: m }
+    KeyedDiffModifiedHunk { hunk_key: at, from: f, to: t } => MemberChanged { at: at, from: f, to: t }
+    KeyedDiffRemovedHunk { hunk_key: at, from: m } =>
       match removal_admission(existing: m, ownership_of: ownership_of) {
         RemovalAdmitted => MemberRemoved { at: at, from: m }
         RemovalRefused { cause: c } => MemberRemovalRefused { from: m, cause: c }
@@ -239,23 +239,23 @@ fn membership_reconcile_scoped<M, Relation, Scope, K, State>(
 ) -> MembershipReconcileScopedOutcome<M, Relation, Scope, K> {
   let relation = resource.key
   match membership_scoped_roster_build(members: desired, relation: relation) {
-    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       MembershipReconcileDuplicateScopedKey {
         roster: MembershipDesiredRoster,
         key: k,
         first: f,
         duplicate: d,
       }
-    std.keyed_roster.KeyedRosterBuilt { rows: desired_rows } =>
+    KeyedRosterBuilt { rows: desired_rows } =>
       match membership_scoped_roster_build(members: observed, relation: relation) {
-        std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+        KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
           MembershipReconcileDuplicateScopedKey {
             roster: MembershipObservedRoster,
             key: k,
             first: f,
             duplicate: d,
           }
-        std.keyed_roster.KeyedRosterBuilt { rows: observed_rows } =>
+        KeyedRosterBuilt { rows: observed_rows } =>
           MembershipReconcileScopedReady {
             plan: membership_reconcile_scoped_built(
               desired_rows: desired_rows,

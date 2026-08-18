@@ -334,11 +334,11 @@ fn e0599_classify_from_blob(blob: String) -> std.error_primitives.Result<String,
   let lines = if blob == "" { [] } else { blob |> split(delimiter: "\n") }
   fold(lines, init: std.error_primitives.Ok { value: "" }, f: fn(acc, line) {
     match acc {
-      std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
-      std.error_primitives.Ok { value: prior } =>
+      Err { value: e } => std.error_primitives.Err { value: e }
+      Ok { value: prior } =>
         match e0599_classify_tuple_line(line: line) {
-          std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
-          std.error_primitives.Ok { value: out } =>
+          Err { value: e } => std.error_primitives.Err { value: e }
+          Ok { value: out } =>
             if prior == "" {
               std.error_primitives.Ok { value: out }
             } else {
@@ -424,8 +424,8 @@ fn e0599_write_classify_from_blob(blob: String, out_path: String) -> std.process
     exit_failure(reason: "e0599_classify_from_blob: refused empty input blob")
   }
   match e0599_classify_from_blob(blob: blob) {
-    std.error_primitives.Err { value: e } => exit_failure(reason: e0599_census_parse_error_message(err: e))
-    std.error_primitives.Ok { value: out } =>
+    Err { value: e } => exit_failure(reason: e0599_census_parse_error_message(err: e))
+    Ok { value: out } =>
       e0599_write_census_blob(path: out_path, content: out, label: "e0599_classify_from_blob")
   }
 }

@@ -37,8 +37,8 @@ fn pick_eval_runtime_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagno
 
 fn pick_eval_int_literal_optional(lexeme: String) -> Optional<v2.std.node.Node> {
   match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
-    v2.std.diagnostic.Accepted { value: node, diagnostics: _ } => Present { value: node }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+    Accepted { value: node, diagnostics: _ } => Present { value: node }
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
@@ -96,18 +96,18 @@ fn pick_ingested_normalized_arrow_has_branch_body(source: String) -> Bool {
                 ComputationNode { behavior: Branch } => true
                 _ => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
         Absent => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn pick_ingested_deep_unwrap(node: v2.std.node.Node) -> v2.std.node.Node {
   match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
-    v2.std.diagnostic.Accepted { value: child, diagnostics: _ } => pick_ingested_deep_unwrap(node: child)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => node
+    Accepted { value: child, diagnostics: _ } => pick_ingested_deep_unwrap(node: child)
+    Rejected { diagnostics: _ } => node
   }
 }
 
@@ -133,8 +133,8 @@ fn pick_ingested_branch_arm_magnitude_optional(body: v2.std.node.Node, arm_index
           match pick_ingested_int_literal_node_optional(node: arm) {
             Present { value: literal } =>
               match dag_int_literal_magnitude_int_from_node(node: literal) {
-                v2.std.diagnostic.Accepted { value: magnitude, diagnostics: _ } => Present { value: magnitude }
-                v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+                Accepted { value: magnitude, diagnostics: _ } => Present { value: magnitude }
+                Rejected { diagnostics: _ } => Absent
               }
             Absent => Absent
           }
@@ -153,7 +153,7 @@ fn pick_ingested_normalized_branch_arms_magnitude_holds(
       match pick_ingested_find_arrow_in_module(root: normalized.root) {
         Present { value: arrow } =>
           match find_arrow_body_child(root: arrow) {
-            v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+            Accepted { value: body, diagnostics: _ } =>
               match pick_ingested_branch_arm_magnitude_optional(body: body, arm_index: 1) {
                 Present { value: then_found } =>
                   match pick_ingested_branch_arm_magnitude_optional(body: body, arm_index: 2) {
@@ -163,11 +163,11 @@ fn pick_ingested_normalized_branch_arms_magnitude_holds(
                   }
                 Absent => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
         Absent => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -316,58 +316,58 @@ fn pick_eval_run(
 
 fn pick_eval_run_passes(run: v2.std.diagnostic.Outcome<TestClaimRun<v2.std.node.Node, RuntimeValue>>) -> Bool {
   match run {
-    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
+    Accepted { value: r, diagnostics: _ } =>
       match test_claim_run_verdict(run: r) {
         Pass => true
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn pick_ingested_pick_true_executes_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick_ingested_source) {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
           callee: arrow,
           expected_lexeme: "1"
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn pick_ingested_pick_false_executes_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick_ingested_false_source) {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
           callee: arrow,
           expected_lexeme: "2"
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn pick_ingested_swapped_arms_red_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick_ingested_swapped_source) {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
           callee: arrow,
           expected_lexeme: "1"
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn pick_ingested_pipeline_resolves_holds() -> Bool {
   match pick_ingested_resolved_module_from_source(source: pick_ingested_source) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -377,47 +377,47 @@ test fn pick_ingested_normalized_arrow_has_branch_body_holds() -> Bool {
 
 test fn pick_ingested_parsed_module_from_source_holds() -> Bool {
   match pick_ingested_parsed_module_from_source(source: pick_ingested_source) {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn pick2_ingested_pick_true_executes_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick2_ingested_source) {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
           callee: arrow,
           expected_lexeme: "3"
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn pick2_ingested_pick_false_executes_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick2_ingested_false_source) {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
           callee: arrow,
           expected_lexeme: "4"
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn pick2_ingested_swapped_arms_red_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick2_ingested_swapped_source) {
-    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
+    Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
           callee: arrow,
           expected_lexeme: "3"
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

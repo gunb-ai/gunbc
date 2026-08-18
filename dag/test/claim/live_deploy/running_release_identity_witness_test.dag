@@ -53,15 +53,15 @@ fn ground_body_against_surface(
 
 fn grounding_refuses(g: std.realization_reconcile.Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence>) -> Bool {
   match g {
-    std.realization_reconcile.DoesNotGround { reason: _ } => true
-    std.realization_reconcile.Grounds { evidence: _ } => false
+    DoesNotGround { reason: _ } => true
+    Grounds { evidence: _ } => false
   }
 }
 
 fn grounding_refusal_mentions(g: std.realization_reconcile.Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence>, fragment: String) -> Bool {
   match g {
-    std.realization_reconcile.DoesNotGround { reason: why } => string_contains(s: why, pattern: fragment)
-    std.realization_reconcile.Grounds { evidence: _ } => false
+    DoesNotGround { reason: why } => string_contains(s: why, pattern: fragment)
+    Grounds { evidence: _ } => false
   }
 }
 
@@ -72,8 +72,8 @@ test fn witness_matching_release_and_surface_grounds() -> Bool {
     body: healthz_body_at_revision(revision: deploy_witness_release_revision),
     expected_revision: deploy_witness_release_revision,
   ) {
-    std.realization_reconcile.Grounds { evidence: _ } => true
-    std.realization_reconcile.DoesNotGround { reason: _ } => false
+    Grounds { evidence: _ } => true
+    DoesNotGround { reason: _ } => false
   }
 }
 

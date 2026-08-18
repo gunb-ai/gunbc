@@ -1183,7 +1183,7 @@ fn type_variable_node(id: String) -> v1.std.core.Node {
 
 fn is_type_variable(inferred: v1.std.core.InferredNode) -> Bool {
   match inferred {
-    v1.std.core.TypeVariable { id: _ } => true
+    TypeVariable { id: _ } => true
     _ => false
   }
 }
@@ -1270,9 +1270,9 @@ fn type_node_has_closure_unbound_generic_atom(n: v1.std.core.Node, generic_param
   }
   if n.inferred != none {
     match n.inferred.value {
-      v1.std.core.TypeVariable { id: tv } =>
+      TypeVariable { id: tv } =>
         if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
-      v1.std.core.Resolved { node: rt } =>
+      Resolved { node: rt } =>
         if type_node_has_closure_unbound_generic_atom(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
       _ => ()
     }
@@ -1290,9 +1290,9 @@ fn type_node_has_closure_unbound_generic_atom(n: v1.std.core.Node, generic_param
 fn type_node_has_unbound_type_variable(n: v1.std.core.Node, generic_param_names: List<String>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   if n.inferred != none {
     match n.inferred.value {
-      v1.std.core.TypeVariable { id: tv } =>
+      TypeVariable { id: tv } =>
         if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
-      v1.std.core.Resolved { node: rt } =>
+      Resolved { node: rt } =>
         if type_node_has_unbound_type_variable(n: rt, generic_param_names: generic_param_names, source_indices: source_indices) { return true }
       _ => ()
     }
@@ -1334,7 +1334,7 @@ fn rust_source_ext() -> String {
 fn rust_visibility_prefix() -> String {
 
   match v1.compiler.languages.visibility_for_target(target: v1.compiler.artifact.Rust) {
-    v1.compiler.languages.KeywordVisibility { prefix: p } => p
+    KeywordVisibility { prefix: p } => p
     _ => "__VISIBILITY_SPEC_MISMATCH__"
   }
 }
@@ -1457,7 +1457,7 @@ fn field_value_by_name(record: v1.std.core.Node, field_name: String, source_indi
 
 fn literal_string_value(n: v1.std.core.Node) -> String? {
   match n.expr_data {
-    v1.std.core.ExprLiteral { value: lv } => match lv {
+    ExprLiteral { value: lv } => match lv {
       LitStr { value: s } => Present { value: s }
       _ => none
     }
@@ -1631,7 +1631,7 @@ fn resolve_wire_serde_policy(wire_item: v1.std.core.Node, source_indices: Map<St
     Present { value: ve } => resolve_wire_serde_policy_from_encoding_node(ve: ve, source_indices: source_indices)
     Absent =>
       match wire_item.expr_data {
-        v1.std.core.ExprRecordLit { parent_enum: _ } =>
+        ExprRecordLit { parent_enum: _ } =>
           resolve_wire_serde_policy_from_encoding_node(ve: wire_item, source_indices: source_indices)
         _ => rust_serde_error_policy(message: "wire_contract: VariantEncoding could not be resolved (no initializer body and not a record literal)")
       }
@@ -1664,9 +1664,9 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: v1.std.core.
             rust_serde_error_policy(message: "wire_contract: data item has no initializer body")
           Present { value: init } =>
             match init.expr_data {
-              v1.std.core.ExprRecordLit { parent_enum: _ } =>
+              ExprRecordLit { parent_enum: _ } =>
                 resolve_wire_serde_policy(wire_item: init, source_indices: source_indices)
-              v1.std.core.ExprVar { binding_kind: _ } =>
+              ExprVar { binding_kind: _ } =>
                 let alias_name = v1.std.core.expr_var_name_at(texpr: init, source_indices: source_indices)
                 if map_get(seen_aliases, alias_name) != none {
                   rust_serde_error_policy(message: concat("wire_contract: cyclic VariantEncoding alias: ", alias_name))
@@ -1695,7 +1695,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: v1.std.core.
                         rust_serde_error_policy(message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)")
                       Present { value: inf } =>
                         match inf {
-                          v1.std.core.Resolved { node } =>
+                          Resolved { node } =>
                             if v1.compiler.emit_core_support.is_data_def_item(item: node) {
                               resolve_wire_serde_policy_for_coproduct_seen(
                                 wire_contract_item: Present { value: node },
@@ -1707,9 +1707,9 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: v1.std.core.
                             } else {
                               resolve_wire_serde_policy(wire_item: node, source_indices: source_indices)
                             }
-                          v1.std.core.CompilerError { message, span: _ } =>
+                          CompilerError { message, span: _ } =>
                             rust_serde_error_policy(message: concat("wire_contract: ", message))
-                          v1.std.core.TypeVariable { id: _ } =>
+                          TypeVariable { id: _ } =>
                             rust_serde_error_policy(message: "wire_contract: unresolved type variable in wire_contract initializer")
                         }
                     }
@@ -1721,7 +1721,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: v1.std.core.
                     rust_serde_error_policy(message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)")
                   Present { value: inf } =>
                     match inf {
-                      v1.std.core.Resolved { node } =>
+                      Resolved { node } =>
                         if v1.compiler.emit_core_support.is_data_def_item(item: node) {
                           resolve_wire_serde_policy_for_coproduct_seen(
                             wire_contract_item: Present { value: node },
@@ -1733,9 +1733,9 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: v1.std.core.
                         } else {
                           resolve_wire_serde_policy(wire_item: node, source_indices: source_indices)
                         }
-                      v1.std.core.CompilerError { message, span: _ } =>
+                      CompilerError { message, span: _ } =>
                         rust_serde_error_policy(message: concat("wire_contract: ", message))
-                      v1.std.core.TypeVariable { id: _ } =>
+                      TypeVariable { id: _ } =>
                         rust_serde_error_policy(message: "wire_contract: unresolved type variable in wire_contract initializer")
                     }
                 }
@@ -2182,7 +2182,7 @@ fn is_type_constant(summary: v1.compiler.infer_emit_info.TypeSummary, recursive_
   let is_recursive = set_contains(recursive_type_set, summary.name)
   let has_generics = (summary.generic_param_names |> count) > 0
   match summary.repr {
-    v1.compiler.infer_emit_info.EnumRepr { unit_only: unit_only } =>
+    EnumRepr { unit_only: unit_only } =>
       unit_only && !is_recursive && !has_generics && !summary.has_fn_fields
     v1.compiler.infer_emit_info.StructRepr =>
       if is_recursive || has_generics || summary.has_fn_fields { false }
@@ -2198,7 +2198,7 @@ fn is_type_constant(summary: v1.compiler.infer_emit_info.TypeSummary, recursive_
 fn maybe_mark_shared_type(acc: Set<String>, summary: v1.compiler.infer_emit_info.TypeSummary, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> Set<String> {
   let needs_sharing = target_needs_sharing && match summary.repr {
     v1.compiler.infer_emit_info.StructRepr => true
-    v1.compiler.infer_emit_info.EnumRepr { unit_only: unit_only } => unit_only == false
+    EnumRepr { unit_only: unit_only } => unit_only == false
   }
   if is_grounded_coproduct_native_alias(name: summary.name) {
     acc
@@ -2265,7 +2265,7 @@ fn build_ownership_results(modules: List<v1.compiler.infer_items.TypedModule>) -
 fn group_unlisted_type_names(diags: List<v1.std.core.ErrorNode>) -> Map<String, List<String>> {
   diags |> fold(init: empty_map(), f: (acc, en) =>
     match en.diagnostic {
-      v1.std.core.UnlistedImportUse { name: nm, span: _ } =>
+      UnlistedImportUse { name: nm, span: _ } =>
         let existing = match map_get(acc, en.module_name) { Present { value: v } => v  Absent => [] }
         map_insert(acc, en.module_name, concat(existing, [nm]))
       _ => acc
@@ -2672,7 +2672,7 @@ fn record_lit_resolved_ctor_import_names(type_name: String, n: v1.std.core.Node,
 
 fn record_lit_ref_names(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, type_summaries: Map<String, v1.compiler.infer_emit_info.TypeSummary>, variant_to_enum: Map<String, String>) -> List<String> {
   match n.expr_data {
-    v1.std.core.ExprRecordLit { parent_enum: pe } =>
+    ExprRecordLit { parent_enum: pe } =>
       let tn_list = match v1.std.core.record_lit_type_name_at(texpr: n, source_indices: source_indices) {
         Present { value: t } => if t != "" { [t] } else { [] }
         Absent =>
@@ -2730,17 +2730,17 @@ fn collect_items_field_import_surface_names(items: List<v1.std.core.Node>, emit_
 
 fn collect_value_ref_names(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, type_summaries: Map<String, v1.compiler.infer_emit_info.TypeSummary>, variant_to_enum: Map<String, String>) -> List<String> {
   let self_name = match n.expr_data {
-    v1.std.core.ExprVar { binding_kind: bk } =>
+    ExprVar { binding_kind: bk } =>
       match bk {
         Present { value: v1.std.core.FunctionValueBinding } =>
           let nm = v1.std.core.authored_name_at(source_indices: source_indices, node: n)
           if nm != "" { [nm] } else { [] }
         _ => []
       }
-    v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let nm = v1.std.core.authored_name_at(source_indices: source_indices, node: n)
       if nm != "" { [nm] } else { [] }
-    v1.std.core.ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _ } =>
       record_lit_ref_names(n: n, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
     _ => []
   }
@@ -2848,7 +2848,7 @@ fn collect_match_pattern_parent_enums(expr: v1.std.core.Node, source_indices: Ma
 
 fn variant_record_lit_summary_key(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, variant_to_enum: Map<String, String>) -> String {
   match n.expr_data {
-    v1.std.core.ExprRecordLit { parent_enum: pe } =>
+    ExprRecordLit { parent_enum: pe } =>
       let variant_name = match v1.std.core.record_lit_type_name_at(texpr: n, source_indices: source_indices) {
         Present { value: v } => v
         Absent => v1.std.core.authored_name_at(source_indices: source_indices, node: n)
@@ -2873,7 +2873,7 @@ fn collect_record_lit_field_struct_surfaces(parent: v1.std.core.Node, field_init
   if field_name == "" { [] } else {
     let field_value = v1.std.core.field_init_node_value(n: field_init)
     match field_value.expr_data {
-      v1.std.core.ExprRecordLit { parent_enum: _ } =>
+      ExprRecordLit { parent_enum: _ } =>
         let summary_key = variant_record_lit_summary_key(n: parent, source_indices: source_indices, variant_to_enum: variant_to_enum)
         if summary_key == "" { [] } else {
           match map_get(type_summaries, summary_key) {
@@ -2902,7 +2902,7 @@ fn collect_value_emit_type_surface_names(n: v1.std.core.Node, source_indices: Ma
   let variant_to_enum = emit_info.variant_to_enum
   let type_summaries = emit_info.type_summaries
   let self_names = match n.expr_data {
-    v1.std.core.ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _ } =>
       record_lit_ref_names(n: n, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
     v1.std.core.ExprMatch => collect_match_pattern_parent_enums(expr: n, source_indices: source_indices, emit_info: emit_info)
     _ =>
@@ -2916,7 +2916,7 @@ fn collect_value_emit_type_surface_names(n: v1.std.core.Node, source_indices: Ma
       v1.compiler.emit_core_support.unique_strings(items: concat(from_inferred_list, from_variant))
   }
   let child_names = match n.expr_data {
-    v1.std.core.ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _ } =>
       concat(
         n.children |> flat_map(c => collect_record_lit_field_struct_surfaces(parent: n, field_init: c, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)),
         n.children |> flat_map(c => collect_value_emit_type_surface_names(n: v1.std.core.field_init_node_value(n: c), source_indices: source_indices, emit_info: emit_info))
@@ -3039,7 +3039,7 @@ fn reference_derived_variant_induced_parent_spelled(module_source: String, enum_
   match map_get(type_summaries, enum_name) {
     Present { value: summary } =>
       match summary.repr {
-        v1.compiler.infer_emit_info.EnumRepr { unit_only: _ } =>
+        EnumRepr { unit_only: _ } =>
           sorted_map_keys(summary.variant_name_set) |> any(vn =>
             match map_get(variant_to_enum, vn) {
               Present { value: parent } => parent == enum_name && reference_derived_candidate_spelled_in_module(module_source: module_source, name: vn)
@@ -5246,7 +5246,7 @@ fn emit_struct_field_from_child(struct_name: String, child: v1.std.core.Node, ge
   let rename_attr = if !needs_serde { "" } else {
     match child.properties |> filter(p => v1.std.core.field_init_node_name_at(n: p, source_indices: env.source_indices) == "from_key") |> first {
       Present { value: prop } => match v1.std.core.field_init_node_value(n: prop).expr_data {
-        v1.std.core.ExprLiteral { value: lv } => match lv {
+        ExprLiteral { value: lv } => match lv {
           LitStr { value: key } => concat("    ", v1.compiler.emit_core_support.apply_type_template1(template: rust_serde_rename_template_text(), arg0: key), "\n")
           _ => ""
         }
@@ -5682,12 +5682,12 @@ fn inferred_expr_is_optional(texpr: v1.std.core.Node) -> Bool {
 
 fn emit_rust_unit_discarding_optional_typed(texpr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match texpr.expr_data {
-    v1.std.core.ExprLiteral { value: v } =>
+    ExprLiteral { value: v } =>
       match v {
         LitNull => "()"
         _ => v1.compiler.emit.emit_error_expr(message: "unit-discard: optional literal with unexpected value shape", target: v1.compiler.artifact.Rust)
       }
-    v1.std.core.ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _ } =>
       match texpr.children |> count {
         0 => "()"
         1 =>
@@ -5742,19 +5742,19 @@ fn emit_rust_unit_discarding_stmt(texpr: v1.std.core.Node, registry: Map<String,
         Absent =>
           concat("if ", cond_str, " {\n", v1.compiler.emit_core_support.make_indent(level: depth + 1), then_str, "\n}")
       }
-    v1.std.core.ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _ } =>
       if inferred_expr_is_optional(texpr: texpr) {
         emit_rust_unit_discarding_optional_typed(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else {
         concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";")
       }
-    v1.std.core.ExprLiteral { value: v } =>
+    ExprLiteral { value: v } =>
       if inferred_expr_is_optional(texpr: texpr) {
         emit_rust_unit_discarding_optional_typed(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else {
         match v { LitNull => "()"  _ => concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";") }
       }
-    v1.std.core.ExprVar { binding_kind: _ } =>
+    ExprVar { binding_kind: _ } =>
       concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";")
     _ =>
       concat(emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ";")
@@ -6780,7 +6780,7 @@ fn emit_var_ref(name: String, binding_kind: v1.std.core.VarBindingKind?, resolve
 fn emit_typed_expr_base(texpr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   match texpr.expr_data {
-    v1.std.core.ExprVar { binding_kind: binding_kind } =>
+    ExprVar { binding_kind: binding_kind } =>
       let n = v1.std.core.expr_var_name_at(texpr: texpr, source_indices: si)
       let leaf_name = value_ref_qualified_leaf(name: n)
       let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
@@ -6870,7 +6870,7 @@ fn emit_typed_field_access(base: v1.std.core.Node, field: String, summary: v1.st
           v1.std.core.EnumAccessor => concat(base_str, ".", v1.compiler.emit.emit_ident(name: field, target: v1.compiler.artifact.Rust), "()")
           v1.std.core.StoredField =>
             let base_is_owned = match base.expr_data {
-              v1.std.core.ExprVar { binding_kind: _ } =>
+              ExprVar { binding_kind: _ } =>
                 let base_name = v1.std.core.expr_var_name_at(texpr: base, source_indices: scope.type_env.source_indices)
                 set_contains(emit_info.owned_bindings, base_name)
               _ => false
@@ -7030,7 +7030,7 @@ fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, 
 
 fn emit_rust_expr_var(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>, module_name: String) -> String {
   match expr.expr_data {
-    v1.std.core.ExprVar { binding_kind: binding_kind } =>
+    ExprVar { binding_kind: binding_kind } =>
       let n = v1.std.core.expr_var_name_at(texpr: expr, source_indices: source_indices)
       emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: source_indices, module_name: module_name)
     _ => v1.compiler.emit.emit_error_expr(message: "emit_rust_expr_var expected ExprVar", target: v1.compiler.artifact.Rust)
@@ -7040,7 +7040,7 @@ fn emit_rust_expr_var(expr: v1.std.core.Node, registry: Map<String, v1.compiler.
 fn emit_rust_expr_field_access(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   match expr.expr_data {
-    v1.std.core.ExprFieldAccess { summary: summary } =>
+    ExprFieldAccess { summary: summary } =>
       let f = v1.std.core.field_access_field_at(texpr: expr, source_indices: si)
       let b = v1.std.core.field_access_base(texpr: expr)
       if v1.compiler.infer_service.is_typed_service_call_receiver(receiver: expr, source_indices: scope.type_env.source_indices) {
@@ -7057,7 +7057,7 @@ fn emit_rust_expr_field_access(expr: v1.std.core.Node, registry: Map<String, v1.
 
 fn emit_rust_expr_call(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = v1.std.core.expr_call_func_at(texpr: expr, source_indices: scope.type_env.source_indices)
       emit_typed_call_expr(func: f, args: expr.children, inferred: expr.inferred, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => v1.compiler.emit.emit_error_expr(message: "emit_rust_expr_call expected ExprCall", target: v1.compiler.artifact.Rust)
@@ -7066,7 +7066,7 @@ fn emit_rust_expr_call(expr: v1.std.core.Node, registry: Map<String, v1.compiler
 
 fn emit_rust_expr_method_call(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    v1.std.core.ExprMethodCall { method_semantics: method_semantics } =>
+    ExprMethodCall { method_semantics: method_semantics } =>
       let r = v1.std.core.method_receiver(texpr: expr)
       let a = v1.std.core.method_arg_nodes(texpr: expr)
       let m = v1.std.core.expr_method_name_at(texpr: expr, source_indices: scope.type_env.source_indices)
@@ -7111,7 +7111,7 @@ data concrete_peel_optional_ctor_note: String = "The concrete-type peel below re
 
 fn emit_rust_expr_record_lit(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    v1.std.core.ExprRecordLit { parent_enum: parent_enum } =>
+    ExprRecordLit { parent_enum: parent_enum } =>
       let tn = v1.std.core.record_lit_type_name_at(texpr: expr, source_indices: scope.type_env.source_indices)
       let fs = expr.children
 
@@ -7218,7 +7218,7 @@ fn emit_rust_expr_slice(expr: v1.std.core.Node, registry: Map<String, v1.compile
 
 fn emit_rust_expr_bin_op(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    v1.std.core.ExprBinOp { op: op, algebra_field: algebra } =>
+    ExprBinOp { op: op, algebra_field: algebra } =>
       emit_typed_bin_op(op: op, algebra_field: algebra, left: v1.std.core.binop_left(texpr: expr), right: v1.std.core.binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => v1.compiler.emit.emit_error_expr(message: "emit_rust_expr_bin_op expected ExprBinOp", target: v1.compiler.artifact.Rust)
   }
@@ -7406,7 +7406,7 @@ fn emit_typed_call(func: String, args: List<v1.std.core.Node>, registry: Map<Str
       "compile_error!(\"with call missing resolved record type\")"
     }
     let field_strs = match update_arg.expr_data {
-      v1.std.core.ExprRecordLit { parent_enum: _ } =>
+      ExprRecordLit { parent_enum: _ } =>
         update_arg.children |> map(f => concat(v1.compiler.emit.emit_ident(name: v1.std.core.field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), target: v1.compiler.artifact.Rust), ": ", emit_typed_expr(texpr: v1.std.core.field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)))
       _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)]
     }
@@ -7854,7 +7854,7 @@ fn emit_rust_fold_method_call(method_call_node: v1.std.core.Node, fold_accumulat
   let init_str = match args |> first {
     Present { value: init_arg } =>
       match v1.std.core.arg_value(n: init_arg).expr_data {
-        v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
+        ExprCall { call_semantics: _, descent_evidence: _ } =>
           let init_func = v1.std.core.expr_call_func_at(texpr: v1.std.core.arg_value(n: init_arg), source_indices: scope.type_env.source_indices)
           if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
             let kv_type_str = rust_empty_map_kv_type_str(map_type: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
@@ -8038,7 +8038,7 @@ fn emit_rust_with_method_call(receiver: v1.std.core.Node, args: List<v1.std.core
   if args |> count == 0 { return "compile_error!(\"with method missing update record\")" }
   let update_arg = v1.std.core.arg_value(n: (args |> first).value)
   let field_strs = match update_arg.expr_data {
-    v1.std.core.ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _ } =>
       update_arg.children |> map(f => concat(v1.compiler.emit.emit_ident(name: v1.std.core.field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), target: v1.compiler.artifact.Rust), ": ", emit_typed_expr(texpr: v1.std.core.field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)))
     _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)]
   }
@@ -8052,7 +8052,7 @@ fn emit_rust_with_method_call(receiver: v1.std.core.Node, args: List<v1.std.core
 
 fn emit_rust_first_method_call(receiver: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match receiver.expr_data {
-    v1.std.core.ExprMethodCall { method_semantics: _ } =>
+    ExprMethodCall { method_semantics: _ } =>
       if v1.std.core.expr_method_name_at(texpr: receiver, source_indices: scope.type_env.source_indices) == "skip" {
         let skip_recv = v1.std.core.method_receiver(texpr: receiver)
         let skip_args = v1.std.core.method_arg_nodes(texpr: receiver)
@@ -8093,7 +8093,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: v1.std.core.Node
 
 fn emit_typed_method_call(method_call_node: v1.std.core.Node, receiver: v1.std.core.Node, method: String, args: List<v1.std.core.Node>, result_type: v1.std.core.InferredNode?, method_semantics: v1.std.core.MethodSemantics?, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   if method_semantics != none { match method_semantics.value {
-    v1.std.core.ServiceMethodSemantics { service_name: svc_name, op_params: op_params } => {
+    ServiceMethodSemantics { service_name: svc_name, op_params: op_params } => {
       let var_name = v1.compiler.emit_core_support.service_var_name(service_name: svc_name)
       let si = scope.type_env.source_indices
       let filled_args = fill_op_default_args(ordered: args, op_params: op_params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -8123,7 +8123,7 @@ fn emit_typed_method_call(method_call_node: v1.std.core.Node, receiver: v1.std.c
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", v1.compiler.emit.emit_ident(name: method, target: v1.compiler.artifact.Rust), "(", args_str, ").await?")
     }
-    v1.std.core.AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _, cost_shape: _, algebra_template: _ } => {
+    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _, cost_shape: _, algebra_template: _ } => {
 
       let method_name_raw = v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: method_def)
       let method_name = if method_name_raw == "length" {
@@ -8396,7 +8396,7 @@ fn emit_typed_match_arm(arm: v1.std.core.Node, registry: Map<String, v1.compiler
     concat(" if ", arm_guard_str)
   } else { "" }
   let body_str = match arm_b.expr_data {
-    v1.std.core.ExprVar { binding_kind: body_binding_kind } =>
+    ExprVar { binding_kind: body_binding_kind } =>
       let body_name = v1.std.core.expr_var_name_at(texpr: arm_b, source_indices: si)
       if variant_parent_from_binding_kind(binding_kind: body_binding_kind) != none {
         emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: v1.std.core.Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si, module_name: scope.module_name)
@@ -8538,8 +8538,8 @@ fn is_already_optional(texpr: v1.std.core.Node, emit_info: v1.compiler.infer_emi
   let tn = v1.std.core.record_lit_type_name_at(texpr: texpr, source_indices: si)
   let f = v1.std.core.field_access_field_at(texpr: texpr, source_indices: si)
   match texpr.expr_data {
-    v1.std.core.ExprLiteral { value: v } => match v { LitNull => true, _ => false }
-    v1.std.core.ExprVar { binding_kind: binding_kind } =>
+    ExprLiteral { value: v } => match v { LitNull => true, _ => false }
+    ExprVar { binding_kind: binding_kind } =>
       if is_optional_variant_name(name: n) && match variant_parent_from_binding_kind(binding_kind: binding_kind) {
         Present { value: parent } => is_optional_like_parent_name(name: parent)
         Absent => false
@@ -8557,7 +8557,7 @@ fn is_already_optional(texpr: v1.std.core.Node, emit_info: v1.compiler.infer_emi
             }
         }
       }
-    v1.std.core.ExprRecordLit { parent_enum: parent } =>
+    ExprRecordLit { parent_enum: parent } =>
       match tn {
         Present { value: name } =>
           is_optional_variant_name(name: name) && match parent {
@@ -8566,7 +8566,7 @@ fn is_already_optional(texpr: v1.std.core.Node, emit_info: v1.compiler.infer_emi
           }
         Absent => false
       }
-    v1.std.core.ExprFieldAccess { summary: fa_summary } =>
+    ExprFieldAccess { summary: fa_summary } =>
       let b = v1.std.core.field_access_base(texpr: texpr)
       let summary_says_optional = match fa_summary {
         Present { value: fs } => match fs.value_shape { v1.std.core.OptionalValue => true, _ => false }
@@ -8639,7 +8639,7 @@ fn lookup_struct_field_type_name(struct_node: v1.std.core.Node, field_name: Stri
 
 fn emit_field_value_with_context(field_value: v1.std.core.Node, struct_node: v1.std.core.Node, outer_type_name: String?, field_name: String, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match field_value.expr_data {
-    v1.std.core.ExprRecordLit { parent_enum: pe } =>
+    ExprRecordLit { parent_enum: pe } =>
       let inner_fields = field_value.children
       let tn = v1.std.core.record_lit_type_name_at(texpr: field_value, source_indices: scope.type_env.source_indices)
       match tn {
@@ -9050,10 +9050,10 @@ fn emit_typed_string_interp(parts: List<v1.std.core.StringPart>, registry: Map<S
 
 fn typed_interp_format_part(part: v1.std.core.StringPart, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, has_interpolations: Bool) -> v1.compiler.emit.InterpPart {
   match part {
-    v1.std.core.Text { value: v } =>
+    Text { value: v } =>
       let escaped = if has_interpolations { v1.compiler.emit.escape_rust_interp_text(s: v) } else { v1.compiler.emit_core_support.escape_string_literal_body(s: v) }
       v1.compiler.emit.InterpPart { format_segment: escaped, arg_expr: "" }
-    v1.std.core.Interpolation { expr: e } =>
+    Interpolation { expr: e } =>
       v1.compiler.emit.InterpPart { format_segment: "{}", arg_expr: emit_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024) }
   }
 }
@@ -9104,7 +9104,7 @@ fn emit_typed_tco_body(texpr: v1.std.core.Node, fn_name: String, params: List<v1
 
 fn emit_rust_tco_non_self_call(frame: v1.compiler.emit.TcoFrame, registry: Map<String, v1.compiler.infer_items.ItemInfo>, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = v1.std.core.expr_call_func_at(texpr: frame.expr, source_indices: frame.scope.type_env.source_indices)
       let call_str = emit_typed_call(func: f, args: frame.expr.children, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       concat("break ", call_str, ";")
@@ -9309,7 +9309,7 @@ fn emit_typed_tco_match_arm(arm: v1.std.core.Node, fn_name: String, params: List
 
 fn expr_references_var(node: v1.std.core.Node, var_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match node.expr_data {
-    v1.std.core.ExprVar { binding_kind: _ } => v1.std.core.expr_var_name_at(texpr: node, source_indices: source_indices) == var_name
+    ExprVar { binding_kind: _ } => v1.std.core.expr_var_name_at(texpr: node, source_indices: source_indices) == var_name
     _ => node.children |> any(c => expr_references_var(node: c, var_name: var_name, source_indices: source_indices))
   }
 }
@@ -9665,13 +9665,13 @@ fn emit_rest_url_line(transport: v1.std.core.Node, op_name: String, source_indic
           _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
         })
         let fmt_segments = parts |> map(p => match p {
-          v1.std.core.Text { value: v } => v1.compiler.emit.escape_rust_interp_text(s: v)
-          v1.std.core.Interpolation { expr: _ } => "{}"
+          Text { value: v } => v1.compiler.emit.escape_rust_interp_text(s: v)
+          Interpolation { expr: _ } => "{}"
         })
         let fmt_str = fmt_segments |> join(separator: "")
         let args = parts |> flat_map(p => match p {
-          v1.std.core.Text { value: _ } => []
-          v1.std.core.Interpolation { expr: e } => {
+          Text { value: _ } => []
+          Interpolation { expr: e } => {
             let var_name = v1.compiler.emit.emit_ident(name: v1.std.core.expr_var_name_at(texpr: e, source_indices: source_indices), target: v1.compiler.artifact.Rust)
             let is_opt = is_optional_typed_expr(e: e)
             if is_opt {
@@ -9710,9 +9710,9 @@ fn emit_rest_auth_line(transport: v1.std.core.Node, service_item: v1.std.core.No
         }
       }
       match auth.expr_data {
-        v1.std.core.ExprVar { binding_kind: _ } =>
+        ExprVar { binding_kind: _ } =>
           concat("let request = client.", http_method, "(&url)\n    .header(\"Authorization\", format!(\"Bearer {}\", ", token_param, "));")
-        v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
+        ExprCall { call_semantics: _, descent_evidence: _ } =>
           let header_name = match auth.children |> first {
             Present { value: arg_node } => match v1.std.core.arg_value(n: arg_node).expr_data {
               v1.std.core.ExprLiteral { value: LitStr { value: s } } => s
@@ -10123,7 +10123,7 @@ fn emit_shell_call(op_name: String, transport: v1.std.core.Node, registry: Map<S
   if has_stdin {
     let stdin_expr = v1.std.core.transport_stdin(t: transport, source_indices: source_indices).value
     let stdin_var = match stdin_expr.expr_data {
-      v1.std.core.ExprVar { binding_kind: _ } => v1.compiler.emit.emit_ident(name: v1.std.core.expr_var_name_at(texpr: stdin_expr, source_indices: source_indices), target: v1.compiler.artifact.Rust)
+      ExprVar { binding_kind: _ } => v1.compiler.emit.emit_ident(name: v1.std.core.expr_var_name_at(texpr: stdin_expr, source_indices: source_indices), target: v1.compiler.artifact.Rust)
       _ => v1.compiler.emit.emit_simple_expr(expr: stdin_expr, target: v1.compiler.artifact.Rust, source_indices: source_indices)
     }
     let spawn_line = "    .stdin(std::process::Stdio::piped())\n    .stdout(std::process::Stdio::piped())\n    .stderr(std::process::Stdio::piped())"
@@ -10153,13 +10153,13 @@ fn emit_shell_argv_element(arg: v1.std.core.Node, optional_params: Map<String, B
         _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
       })
       let fmt_segments = parts |> map(p => match p {
-        v1.std.core.Text { value: v } => v1.compiler.emit.escape_rust_interp_text(s: v)
-        v1.std.core.Interpolation { expr: _ } => "{}"
+        Text { value: v } => v1.compiler.emit.escape_rust_interp_text(s: v)
+        Interpolation { expr: _ } => "{}"
       })
       let fmt_str = fmt_segments |> join(separator: "")
       let args = parts |> flat_map(p => match p {
-        v1.std.core.Text { value: _ } => []
-        v1.std.core.Interpolation { expr: e } => {
+        Text { value: _ } => []
+        Interpolation { expr: e } => {
           let name = v1.std.core.expr_var_name_at(texpr: e, source_indices: source_indices)
           let var_name = v1.compiler.emit.emit_ident(name: name, target: v1.compiler.artifact.Rust)
           let is_opt = is_optional_typed_expr(e: e) || match map_get(optional_params, name) {
@@ -10176,7 +10176,7 @@ fn emit_shell_argv_element(arg: v1.std.core.Node, optional_params: Map<String, B
       let args_str = args |> join(separator: ", ")
       concat("&format!(\"", fmt_str, "\", ", args_str, ")")
     }
-    v1.std.core.ExprVar { binding_kind: _ } => {
+    ExprVar { binding_kind: _ } => {
       let name = v1.std.core.expr_var_name_at(texpr: arg, source_indices: source_indices)
       let var_name = v1.compiler.emit.emit_ident(name: name, target: v1.compiler.artifact.Rust)
       let is_opt = is_optional_typed_expr(e: arg) || match map_get(optional_params, name) {
@@ -10303,9 +10303,9 @@ fn emit_capability_method(cap_node: v1.std.core.Node, shared_types: Set<String>,
 
 fn data_value_has_cross_refs(value: v1.std.core.Node) -> Bool {
   match value.expr_data {
-    v1.std.core.ExprVar { binding_kind: _ } => true
+    ExprVar { binding_kind: _ } => true
     v1.std.core.ExprListLit => value.children |> any(c => data_value_has_cross_refs(value: c))
-    v1.std.core.ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _ } =>
       value.children |> any(f => data_value_has_cross_refs(value: v1.std.core.field_init_node_value(n: f)))
     _ => false
   }
@@ -10381,7 +10381,7 @@ fn rust_nominal_identity_data_expr(type_node: v1.std.core.Node, value: v1.std.co
   let is_identity_type = rust_nominal_identity_carrier_type_eligible(type_name: type_name) && type_node.connective == v1.std.core.NoConnective && (type_node.children |> count) == 0 && (type_node.params |> count) == 0
   if is_identity_type {
     match value.expr_data {
-      v1.std.core.ExprVar { binding_kind: _ } =>
+      ExprVar { binding_kind: _ } =>
         let symbol_name = v1.std.core.expr_var_name_at(texpr: value, source_indices: source_indices)
         Present { value: concat(type_name, "(\"", v1.compiler.emit_core_support.escape_string_literal_body(s: symbol_name), "\".to_string())") }
       _ => none
@@ -10404,7 +10404,7 @@ fn emit_data_def_body(type_node: v1.std.core.Node, value: v1.std.core.Node, regi
   let type_name = v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
   if type_name == "BoundedLattice" {
     match value.expr_data {
-      v1.std.core.ExprRecordLit { parent_enum: _ } =>
+      ExprRecordLit { parent_enum: _ } =>
         let lattice_value = field_value_by_name(record: value, field_name: "lattice", source_indices: scope.type_env.source_indices)
         let meet_value = match field_value_by_name(record: value, field_name: "meet", source_indices: scope.type_env.source_indices) {
           Present { value: n } => Present { value: n }
@@ -10462,7 +10462,7 @@ fn emit_data_def_body(type_node: v1.std.core.Node, value: v1.std.core.Node, regi
     let is_map = v1.compiler.infer_types.node_is_keyed_collection(n: type_node, source_indices: scope.type_env.source_indices)
     if is_map {
       match value.expr_data {
-        v1.std.core.ExprRecordLit { parent_enum: _ } =>
+        ExprRecordLit { parent_enum: _ } =>
           let key_is_string = map_literal_key_is_string(map_type_node: type_node, source_indices: scope.type_env.source_indices)
           let inserts = value.children |> map(f =>
             let val_str = emit_typed_expr(texpr: v1.std.core.field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -10479,9 +10479,9 @@ fn emit_data_def_body(type_node: v1.std.core.Node, value: v1.std.core.Node, regi
     } else {
       let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       let is_already_wrapped = match value.expr_data {
-        v1.std.core.ExprRecordLit { parent_enum: _ } => true
+        ExprRecordLit { parent_enum: _ } => true
         v1.std.core.ExprListLit => true
-        v1.std.core.ExprVar { binding_kind: bk } =>
+        ExprVar { binding_kind: bk } =>
           let vname = v1.std.core.expr_var_name_at(texpr: value, source_indices: scope.type_env.source_indices)
           match effective_variant_parent(name: vname, binding_kind: bk, resolved_type: value.inferred, emit_info: emit_info, source_indices: scope.type_env.source_indices) {
             Present { value: enum_name } => variant_ref_self_wraps(name: vname, enum_name: enum_name, shared_types: shared_types)
@@ -10617,7 +10617,7 @@ type WorkflowFunc {
 
 fn extract_literal_string(expr: v1.std.core.Node) -> String? {
   match expr.expr_data {
-    v1.std.core.ExprLiteral { value: v } => match v {
+    ExprLiteral { value: v } => match v {
       LitStr { value: s } => Present { value: s }
       LitInt { value: i } => Present { value: v1.compiler.emit_core_support.to_string(value: i) }
       LitFloat { value: f } => Present { value: f }
@@ -10642,8 +10642,8 @@ fn build_data_body_index(modules: List<v1.compiler.infer_items.TypedModule>) -> 
 fn resolve_param_default(param: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, data_body_index: Map<String, v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match v1.std.core.param_node_default_value(n: param) {
     Present { value: dv } => match dv.expr_data {
-      v1.std.core.ExprLiteral { value: _ } => extract_literal_string(expr: dv)
-      v1.std.core.ExprVar { binding_kind: _ } =>
+      ExprLiteral { value: _ } => extract_literal_string(expr: dv)
+      ExprVar { binding_kind: _ } =>
         match v1.compiler.emit.lookup_item(registry: registry, name: v1.std.core.authored_name_at(source_indices: source_indices, node: dv)) {
           Present { value: info } => match info.kind {
             v1.compiler.infer_items.DataItem =>
@@ -10714,7 +10714,7 @@ fn collect_workflow_funcs(modules: List<v1.compiler.infer_items.TypedModule>, re
 
 fn cli_default_literal_value(expr: v1.std.core.Node) -> String? {
   match expr.expr_data {
-    v1.std.core.ExprLiteral { value: v } => match v {
+    ExprLiteral { value: v } => match v {
       LitStr { value: s } => Present { value: s }
       LitInt { value: i } => Present { value: v1.compiler.emit_core_support.to_string(value: i) }
       LitFloat { value: f } => Present { value: f }

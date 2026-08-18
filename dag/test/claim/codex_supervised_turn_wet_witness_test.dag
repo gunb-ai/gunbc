@@ -65,7 +65,7 @@ fn wet_supervised_turn() -> gunbc.roadmap_workflow_command.WorkerTurn {
 
 fn wet_committed_admitted_source_lock_admits() -> std.types.Bool {
   match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
-    gunbc.package_delivery.CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
+    CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
       count(nodes) > 0 && count(registry_artifacts) > 0
     _ => false
   }
@@ -78,9 +78,9 @@ fn wet_committed_admitted_source_construct_only() -> std.types.Bool {
 
 fn wet_select_codex_exact_target_closure_only() -> std.types.Bool {
   match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
-    gunbc.package_delivery.CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match gunbc.package_delivery.observe_codex_npm_runtime_target() {
-        gunbc.package_delivery.CodexNpmRuntimeTargetObserved { target } =>
+        CodexNpmRuntimeTargetObserved { target } =>
           match gunbc.package_delivery.select_codex_exact_target_closure(graph: graph, target: target) {
             gunbc.package_delivery.CodexExactTargetClosureSelected {
               native_executable_rel,
@@ -126,7 +126,7 @@ fn wet_acquire_wrapper_artifact_only() -> std.types.Bool {
               lock_node_key: wrapper_key,
               dest_dir: staging.path,
             ) {
-              gunbc.package_delivery.RegistryArtifactAdmitted { staged: _ } => true
+              RegistryArtifactAdmitted { staged: _ } => true
               _ => false
             }
           _ => false
@@ -164,7 +164,7 @@ fn wet_acquire_platform_artifact_only() -> std.types.Bool {
               lock_node_key: platform_key,
               dest_dir: staging.path,
             ) {
-              gunbc.package_delivery.RegistryArtifactAdmitted { staged: _ } => true
+              RegistryArtifactAdmitted { staged: _ } => true
               _ => false
             }
           _ => false
@@ -289,7 +289,7 @@ fn wet_materialize_codex_runtime_bundle_only() -> std.types.Bool {
     source: committed_admitted_codex_runtime_source(),
     release_parent: wet_materialize_bisect_release_parent,
   ) {
-    gunbc.package_delivery.CodexRuntimeMaterialized { bundle } =>
+    CodexRuntimeMaterialized { bundle } =>
       shell.Test.IsFile(path: gunbc.codex_runtime_bundle.codex_bundle_executable_path(bundle: bundle)).is_file
     _ => false
   }
@@ -311,7 +311,7 @@ fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> std.types.Bo
           source: committed_admitted_codex_runtime_source(),
           release_parent: release_tmp.path,
         ) {
-          gunbc.package_delivery.CodexRuntimeMaterialized { bundle } => {
+          CodexRuntimeMaterialized { bundle } => {
             let path = gunbc.codex_runtime_bundle.codex_bundle_executable_path(bundle: bundle)
             if shell.Test.IsFile(path: path).is_file == false {
               false
@@ -324,7 +324,7 @@ fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> std.types.Bo
                 codex_home: codex_home,
               )
               match credential {
-                gunbc.codex_app_server_press.CodexPressAccountReady { receipt } => {
+                CodexPressAccountReady { receipt } => {
                   match gunbc.codex_supervised_turn.prepare_codex_supervised_turn_binding(
                     turn: turn,
                     credential: receipt.subject.credential,
@@ -332,7 +332,7 @@ fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> std.types.Bo
                     observed: std.temporal_effect.LeaseAbsent,
                     standing_receipt: none,
                   ) {
-                    gunbc.codex_supervised_turn.CodexSupervisedTurnBindingPrepared { binding: binding } =>
+                    CodexSupervisedTurnBindingPrepared { binding: binding } =>
                       match gunbc.codex_supervised_turn_run.run_codex_supervised_turn(
                         bundle: bundle,
                         credential: receipt.subject.credential,
@@ -340,17 +340,17 @@ fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> std.types.Bo
                         cwd: cwd.path,
                         evidence_root: evidence.path,
                       ) {
-                        gunbc.codex_supervised_turn.CodexSupervisedTurnOk { receipt: terminal } =>
+                        CodexSupervisedTurnOk { receipt: terminal } =>
                           wet_supervised_turn_terminal_ok(turn: turn, terminal: terminal)
-                        gunbc.codex_supervised_turn.CodexSupervisedTurnRefused { reason: _ } => false
-                        gunbc.codex_supervised_turn.CodexSupervisedTurnUnavailable { reason: _, process: _ } => false
+                        CodexSupervisedTurnRefused { reason: _ } => false
+                        CodexSupervisedTurnUnavailable { reason: _, process: _ } => false
                       }
-                    gunbc.codex_supervised_turn.CodexSupervisedTurnBindingPrepareRefused { reason: _ } => false
+                    CodexSupervisedTurnBindingPrepareRefused { reason: _ } => false
                   }
                 }
-                gunbc.codex_app_server_press.CodexPressLoginRequired { reason: _, receipt: _ } => false
-                gunbc.codex_app_server_press.CodexPressRefused { reason: _, receipt: _ } => false
-                gunbc.codex_app_server_press.CodexPressUnavailable { reason: _, process: _ } => false
+                CodexPressLoginRequired { reason: _, receipt: _ } => false
+                CodexPressRefused { reason: _, receipt: _ } => false
+                CodexPressUnavailable { reason: _, process: _ } => false
               }
             }
           }

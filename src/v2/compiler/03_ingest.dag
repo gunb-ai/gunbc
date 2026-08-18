@@ -5,12 +5,12 @@ data ingest_module_note: String = "Gate-A flip wave lane: v2.compiler.ingest is 
 
 fn parse_atom_frontier_class(atom_identity: v2.std.node.Symbol, binding_to_class: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> v2.std.node.Symbol {
   match map_get(binding_to_class, atom_identity) {
-    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } =>
+    Accepted { value: opt, diagnostics: _ } =>
       match opt {
         Present { value: token_class } => token_class
         Absent => atom_identity
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => atom_identity
+    Rejected { diagnostics: _ } => atom_identity
   }
 }
 
@@ -32,8 +32,8 @@ fn binding_class_map_merge_tokens(
 
 fn binding_class_map_merge_row(acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>, row: v2.std.node.Node) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   match row_token_spine_tokens(row: row) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => acc
-    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => acc
+    Accepted { value: tokens, diagnostics: _ } =>
       binding_class_map_merge_tokens(acc: acc, tokens: tokens)
   }
 }
@@ -127,9 +127,9 @@ fn grammar_relation_row_forward_token_selection(
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let frontier = concrete_syntax_token_spine_classes(tokens: tokens)
   match grammar_relation_row_forward_selection(frontier: frontier, rules: rules) {
-    v2.std.diagnostic.Accepted { value: emitted, diagnostics: d } =>
+    Accepted { value: emitted, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: emitted, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       bind_outcome(
         o: grammar_relation_rules_formal_productions(rules: rules),
         f: fn(productions) {

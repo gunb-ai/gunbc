@@ -15,19 +15,19 @@ fn generated_cross_representation_equality_claim() -> v2.std.diagnostic.Outcome<
 fn witness_cross_representation_claim_is_equals() -> Bool {
   match generated_cross_representation_equality_claim() {
     v2.std.diagnostic.Accepted { value: EqualsClaim { label: _, anchor: GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } }, lhs: _, rhs: _, classification: _ }, diagnostics: _ } => true
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn witness_cross_representation_uses_generated_anchor() -> Bool {
   match generated_cross_representation_equality_claim() {
-    v2.std.diagnostic.Accepted { value: claim, diagnostics: _ } =>
+    Accepted { value: claim, diagnostics: _ } =>
       match test_claim_anchor(c: claim) {
         GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } } => true
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

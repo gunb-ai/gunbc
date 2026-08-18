@@ -158,7 +158,7 @@ type DecimalDigitsStep {
 fn decimal_digits_double(digits: std.algebra.FreeMonoid<DecimalDigit>) -> DecimalDigitsStep {
   match digits {
     std.algebra.Empty => DecimalDigitsStep { digits: std.algebra.Empty, carry: false }
-    std.algebra.Cons { head, tail } =>
+    Cons { head, tail } =>
       match decimal_digits_double(digits: tail) {
         DecimalDigitsStep { digits: doubled_tail, carry: tail_carry } =>
           match decimal_digit_double(d: head, carry_in: tail_carry) {
@@ -172,7 +172,7 @@ fn decimal_digits_double(digits: std.algebra.FreeMonoid<DecimalDigit>) -> Decima
 fn decimal_digits_sub_one(digits: std.algebra.FreeMonoid<DecimalDigit>) -> DecimalDigitsStep {
   match digits {
     std.algebra.Empty => DecimalDigitsStep { digits: std.algebra.Empty, carry: true }
-    std.algebra.Cons { head, tail } =>
+    Cons { head, tail } =>
       match decimal_digits_sub_one(digits: tail) {
         DecimalDigitsStep { digits: sub_tail, carry: tail_borrow } =>
           match decimal_digit_sub_borrow(d: head, borrow_in: tail_borrow) {
@@ -186,7 +186,7 @@ fn decimal_digits_sub_one(digits: std.algebra.FreeMonoid<DecimalDigit>) -> Decim
 fn decimal_digits_to_magnitude(digits: std.algebra.FreeMonoid<DecimalDigit>) -> DecimalMagnitude {
   match digits {
     std.algebra.Empty => DecimalZero
-    std.algebra.Cons { head, tail } =>
+    Cons { head, tail } =>
       if decimal_digit_value(d: head) == 0 {
         decimal_digits_to_magnitude(digits: tail)
       } else {
@@ -259,11 +259,11 @@ fn decimal_digit_list_compare(left: std.algebra.FreeMonoid<DecimalDigit>, right:
   match left {
     std.algebra.Empty => match right {
       std.algebra.Empty => Equal
-      std.algebra.Cons { head: _, tail: _ } => Less
+      Cons { head: _, tail: _ } => Less
     }
-    std.algebra.Cons { head: left_head, tail: left_tail } => match right {
+    Cons { head: left_head, tail: left_tail } => match right {
       std.algebra.Empty => Greater
-      std.algebra.Cons { head: right_head, tail: right_tail } =>
+      Cons { head: right_head, tail: right_tail } =>
         match decimal_digit_compare(left: left_head, right: right_head) {
           Equal => decimal_digit_list_compare(left: left_tail, right: right_tail)
           Less => Less
@@ -394,8 +394,8 @@ fn integer_standard_integer_type_from_node(node: v2.std.node.Node) -> v2.std.dia
     },
     cons: fn(acc, candidate) {
       match acc {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => acc
-        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+        Accepted { value: _, diagnostics: _ } => acc
+        Rejected { diagnostics: _ } =>
           if node == integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: candidate)) {
             v2.std.diagnostic.Accepted { value: candidate, diagnostics: v2.std.diagnostic.None }
           } else {
@@ -595,16 +595,16 @@ fn integer_interval_spec_contains_decoded_node(container: IntegerIntervalSpec, c
 
 fn integer_interval_spec_node_contains(container: v2.std.node.Node, contained: v2.std.node.Node) -> Bool {
   match integer_standard_integer_type_from_node(node: container) {
-    v2.std.diagnostic.Accepted { value: decoded_container, diagnostics: None } =>
+    Accepted { value: decoded_container, diagnostics: None } =>
       match integer_standard_integer_type_from_node(node: contained) {
-        v2.std.diagnostic.Accepted { value: decoded_contained, diagnostics: None } =>
+        Accepted { value: decoded_contained, diagnostics: None } =>
           integer_interval_spec_contains_decoded_node(
             container: integer_standard_integer_type_interval_spec(standard_integer_type: decoded_container),
             contained: decoded_contained
           )
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 fn integer_interval(
@@ -1012,7 +1012,7 @@ fn integer_decimal_digits_snoc(
 ) -> std.algebra.FreeMonoid<DecimalDigit> {
   match xs {
     std.algebra.Empty => std.algebra.Cons { head: digit, tail: std.algebra.Empty }
-    std.algebra.Cons { head, tail } =>
+    Cons { head, tail } =>
       std.algebra.Cons { head: head, tail: integer_decimal_digits_snoc(xs: tail, digit: digit) }
   }
 }
@@ -1206,21 +1206,21 @@ fn integer_fold_list_node_digits_optional(node: v2.std.node.Node) -> Optional<st
     optional_present(value: std.algebra.Empty)
   } else {
     match find_named_child(root: node, name: ^fold_list_node_head) {
-      v2.std.diagnostic.Accepted { value: head_node, diagnostics: _ } =>
+      Accepted { value: head_node, diagnostics: _ } =>
         match integer_decimal_digit_from_node_optional(node: head_node) {
           Present { value: digit } =>
             match find_named_child(root: node, name: ^fold_list_node_tail) {
-              v2.std.diagnostic.Accepted { value: tail_node, diagnostics: _ } =>
+              Accepted { value: tail_node, diagnostics: _ } =>
                 match integer_fold_list_node_digits_optional(node: tail_node) {
                   Present { value: tail_digits } =>
                     optional_present(value: std.algebra.Cons { head: digit, tail: tail_digits })
                   Absent => optional_absent()
                 }
-              v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+              Rejected { diagnostics: _ } => optional_absent()
             }
           Absent => optional_absent()
         }
-      v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+      Rejected { diagnostics: _ } => optional_absent()
     }
   }
 }

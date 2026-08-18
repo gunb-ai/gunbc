@@ -74,11 +74,11 @@ fn emit_fold_eval_closure_operator_is_sub(closure: v2.std.node.Node) -> Bool {
                 TypeNode { connective: Atom { identity: id } } => id == ^dag_token_minus
                 _ => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -142,13 +142,13 @@ fn emit_fold_eval_call_primitive(
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match emit_fold_eval_closure_arg(args: args, node: node) {
-    v2.std.diagnostic.Accepted { value: closure, diagnostics: _ } =>
+    Accepted { value: closure, diagnostics: _ } =>
       if emit_fold_eval_closure_operator_is_sub(closure: closure) {
         outcome_accepted(value: emit_fold_eval_octet_value(n: -1))
       } else {
         outcome_accepted(value: emit_fold_eval_octet_value(n: 7))
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 

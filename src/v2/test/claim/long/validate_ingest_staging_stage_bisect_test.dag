@@ -50,22 +50,22 @@ fn bisect_through_normalize() -> v2.std.diagnostic.Outcome<v2.compiler.normalize
 
 test fn bisect_tokenize_terminates() -> Bool {
   match bisect_through_tokenize() {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
 test fn bisect_parse_terminates() -> Bool {
   match bisect_through_parse() {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
 test fn bisect_normalize_terminates() -> Bool {
   match bisect_through_normalize() {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -81,8 +81,8 @@ fn bisect_through_grammar_validate() -> v2.std.diagnostic.Outcome<v2.std.grammar
 
 test fn bisect_grammar_validate_terminates() -> Bool {
   match bisect_through_grammar_validate() {
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -93,12 +93,12 @@ fn bisect_parse_module_add_parse_accepts() -> Bool {
     file: ^compile_ingest_staging_source_file,
     rules: lm.lex
   ) {
-    v2.std.diagnostic.Accepted { value: token_stream, diagnostics: _ } =>
+    Accepted { value: token_stream, diagnostics: _ } =>
       match parse(tokens: token_stream, grammar: lm.grammar) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -109,20 +109,20 @@ fn bisect_parse_module_add_resolve_accepts() -> Bool {
     file: ^compile_ingest_staging_source_file,
     rules: lm.lex
   ) {
-    v2.std.diagnostic.Accepted { value: token_stream, diagnostics: _ } =>
+    Accepted { value: token_stream, diagnostics: _ } =>
       match parse(tokens: token_stream, grammar: lm.grammar) {
-        v2.std.diagnostic.Accepted { value: parsed, diagnostics: _ } =>
+        Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
-            v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } =>
+            Accepted { value: normalized, diagnostics: _ } =>
               match v2.compiler.resolve.resolve(tree: normalized, lm: lm) {
-                v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -133,12 +133,12 @@ fn bisect_parse_module_truncated_rejects() -> Bool {
     file: ^compile_ingest_staging_source_file,
     rules: lm.lex
   ) {
-    v2.std.diagnostic.Accepted { value: token_stream, diagnostics: _ } =>
+    Accepted { value: token_stream, diagnostics: _ } =>
       match parse(tokens: token_stream, grammar: lm.grammar) {
-        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -149,16 +149,16 @@ fn bisect_parse_module_add_well_formed_after_normalize() -> Bool {
     file: ^compile_ingest_staging_source_file,
     rules: lm.lex
   ) {
-    v2.std.diagnostic.Accepted { value: token_stream, diagnostics: _ } =>
+    Accepted { value: token_stream, diagnostics: _ } =>
       match parse(tokens: token_stream, grammar: lm.grammar) {
-        v2.std.diagnostic.Accepted { value: parsed, diagnostics: _ } =>
+        Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
             Accepted { value: normalized, diagnostics: _ } => well_formed(n: normalized.root)
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -169,16 +169,16 @@ fn bisect_parse_module_add_normalize_accepts() -> Bool {
     file: ^compile_ingest_staging_source_file,
     rules: lm.lex
   ) {
-    v2.std.diagnostic.Accepted { value: token_stream, diagnostics: _ } =>
+    Accepted { value: token_stream, diagnostics: _ } =>
       match parse(tokens: token_stream, grammar: lm.grammar) {
-        v2.std.diagnostic.Accepted { value: parsed, diagnostics: _ } =>
+        Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
-            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -202,20 +202,20 @@ fn bisect_resolve_accepts_text(text: String) -> Bool {
     file: ^compile_ingest_staging_source_file,
     rules: lm.lex
   ) {
-    v2.std.diagnostic.Accepted { value: token_stream, diagnostics: _ } =>
+    Accepted { value: token_stream, diagnostics: _ } =>
       match parse(tokens: token_stream, grammar: lm.grammar) {
-        v2.std.diagnostic.Accepted { value: parsed, diagnostics: _ } =>
+        Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
-            v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } =>
+            Accepted { value: normalized, diagnostics: _ } =>
               match v2.compiler.resolve.resolve(tree: normalized, lm: lm) {
-                v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
