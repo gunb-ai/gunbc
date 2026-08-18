@@ -3774,422 +3774,12 @@ pub fn regen_floor_skip_label_for_ci() -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Affected-set SELECTION-CONTROL skip — the selection mechanism applied to itself.
-//
-// `floor_skip_discovery_witness` is the per-PR control suite for affected-set selection:
-// the skip / refuse / divergence arms, the declared-live-tree pin, and the node-frontier
-// precision cases. It ran UNCONDITIONALLY on every PR — 9m02s measured (run 30482171871,
-// job 90679506428, step "Affected-set selection control") against the 80s local basis
-// declared in `gunbc.ci_workflow` `gunbc_ci_selection_control_step_note` — because it is a
-// Rust bin rather than a `.dag` witness and therefore sat outside the very affected-set
-// corpus its own subject matter governs.
-//
-// The suite's verdict is a function of exactly one input set: every `src/v1/**` source (the
-// selection implementation in this file, the witness bin, and the committed stage0 outputs
-// the release binary is built from), the suite's declared `.dag` entries plus their
-// transitive `import` closure through `[src/v2, dag]`, and the Cargo/toolchain build
-// config. A PR touching none of those provably cannot change the suite's verdict.
-//
-// NOT circular. The skip decision is a coarse path / import-closure intersection — the same
-// authority SHAPE `regen_floor_skip_label_for_ci` uses — and never the node-frontier
-// selector the suite exists to verify. A broken selector therefore cannot suppress its own
-// control.
-//
-// Fail-closed on every arm, in TWO different ways — the distinction is load-bearing:
-//   - STRUCTURAL arms (empty diff, ANY departed path, ANY markdown path, any closure
-//     intersection) RUN the suite. The diff was observed, so the answer is computed.
-//   - REFUSAL arms (diff-observation failure, input-closure failure) REFUSE: typed, located,
-//     countable, non-zero exit, no label. They do NOT run the suite, because "I could not
-//     compute what is affected" is a different state from "everything is affected" and has a
-//     different remedy (DESIGN §5 absorbing fallback; the ruling recorded in
-//     `floor_diff_baseline_law`, operator 2026-07-05).
-// Corrected after review 44778 caught this comment still claiming the failure arms RUN — the
-// same Rust-side single-authority drift review 44768 fixed in the emitted policy note.
-//
-// RESIDUAL, stated rather than elided, and mirroring the regen precedent's accepted trade
-// exactly: the suite builds its resolve index over the WHOLE of `[src/v2, dag]`, so an
-// unrelated file that breaks index construction is outside this import closure. The
-// mitigation is regen's: the CI shell gates the skip to pull_request events, so push-to-main
-// runs the suite unconditionally and a wrong closure surfaces as a red main within one
-// merge (the one-merge acceptance window, the discovery-flip shape).
-// ---------------------------------------------------------------------------
-
-pub const SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL: &str = "selection_control_not_affected_skip";
-pub const RUN_SELECTION_CONTROL_LABEL: &str = "run_selection_control";
-
-// The suite's declared `.dag` surface, one named const per entry. These are the SINGLE
-// authority: `floor_skip_discovery_witness` builds its rosters from them, and the closure
-// below decides whether a diff can affect them. Declaring them here rather than in the bin
-// is what keeps the two from forking — a fixture added to the suite with its own private
-// path literal would be invisible to the skip decision, which is precisely the silent
-// under-run this whole mechanism exists to prevent.
-pub const SELECTION_CONTROL_REALIZATION_SCHEDULE_REL: &str = "dag/std/realization_schedule.dag";
-pub const SELECTION_CONTROL_DOC_REACHABILITY_REL: &str =
-    "dag/test/claim/doc_reachability_witness_test.dag";
-pub const SELECTION_CONTROL_BUDGET_ROSTER_REL: &str =
-    "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag";
-pub const SELECTION_CONTROL_FALSIFIER_CONTROL_REL: &str =
-    "src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag";
-pub const SELECTION_CONTROL_SHARED_HELPER_REL: &str =
-    "src/v2/test/fixture/floor_skip/floor_disc_shared_helper.dag";
-pub const SELECTION_CONTROL_LIVE_TREE_DECLARED_REL: &str =
-    "src/v2/test/fixture/floor_skip/live_tree_declared_test.dag";
-pub const SELECTION_CONTROL_NODE_PRECISE_REL: &str =
-    "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
-pub const SELECTION_CONTROL_FLOOR_RUNNER_REL: &str =
-    "src/v2/workflow/affected_set_floor_runner.dag";
-pub const SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL: &str =
-    "src/v2/workflow/affected_set_floor_runner_test.dag";
-pub const SELECTION_CONTROL_CI_FLOOR_PLAN_REL: &str = "src/v2/workflow/ci_floor_plan.dag";
-
-pub const SELECTION_CONTROL_DECLARED_ENTRIES: &[&str] = &[
-    SELECTION_CONTROL_REALIZATION_SCHEDULE_REL,
-    SELECTION_CONTROL_DOC_REACHABILITY_REL,
-    SELECTION_CONTROL_BUDGET_ROSTER_REL,
-    SELECTION_CONTROL_FALSIFIER_CONTROL_REL,
-    SELECTION_CONTROL_SHARED_HELPER_REL,
-    SELECTION_CONTROL_LIVE_TREE_DECLARED_REL,
-    SELECTION_CONTROL_NODE_PRECISE_REL,
-    SELECTION_CONTROL_FLOOR_RUNNER_REL,
-    SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL,
-    SELECTION_CONTROL_CI_FLOOR_PLAN_REL,
-];
-
-/// The two-entry incident subject for live-read selection controls and P3 A/B parity.
-///
-/// A = the node-precise discriminator fixture (the entry the diff touches).
-/// B = the affected-set floor runner test (the unrelated entry whose closure reaches a
-/// live-read carrier home). B is what the retired predicate made unskippable on any nonempty
-/// `.dag` diff, which is the `2 selected / 1 expected` incident.
-pub fn selection_control_incident_subject_roster() -> Vec<(String, String)> {
-    let ws = workspace_root();
-    vec![
-        (
-            ws.join(SELECTION_CONTROL_NODE_PRECISE_REL)
-                .to_string_lossy()
-                .into_owned(),
-            "floor_disc_witness_a_only_holds".to_string(),
-        ),
-        (
-            ws.join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
-                .to_string_lossy()
-                .into_owned(),
-            "floor_test_untouched_skips_assumed_green_holds".to_string(),
-        ),
-    ]
-}
-
-/// The suite's source roots — `[src/v2, dag]`, the roots its rosters resolve against.
-/// Single authority for the same reason as the entry consts above.
-pub fn selection_control_source_roots(workspace: &Path) -> Vec<PathBuf> {
-    vec![workspace.join("src/v2"), workspace.join("dag")]
-}
-
-/// Module-path -> every candidate file, over the suite's roots.
-///
-/// Deliberately unlike `regen_build_module_index`, which REFUSES on a duplicate module
-/// path: this keeps all candidates so the closure below is a superset. For a SKIP closure a
-/// superset is the fail-closed direction (more paths in the closure = more PRs run the
-/// suite), whereas regen's error arm is the correct one for regen, whose emit must be
-/// single-valued.
-fn selection_control_module_index(
-    roots: &[PathBuf],
-) -> Result<std::collections::HashMap<String, Vec<PathBuf>>, String> {
-    let mut index: std::collections::HashMap<String, Vec<PathBuf>> =
-        std::collections::HashMap::new();
-    for root in roots {
-        if !root.exists() {
-            return Err(format!("source root does not exist: {}", root.display()));
-        }
-        let mut dag_paths = Vec::new();
-        regen_collect_dag_files(root, &mut dag_paths)?;
-        for path in dag_paths {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
-            if let Some(module_path) = extract_module_path(&content) {
-                index.entry(module_path).or_default().push(path);
-            }
-        }
-    }
-    Ok(index)
-}
-
-/// Every workspace-relative `.dag` path whose content can change the selection-control
-/// suite's verdict: the declared entries plus their transitive `import` closure through
-/// `[src/v2, dag]`, sorted.
-///
-/// 🟡 dissolve-on (two triggers, near then terminal):
-///
-/// NEAR — the import walk here duplicates the shape of `regen_input_sources`'s
-/// walk. They are NOT unified yet because regen's closure is guarded by a byte-identical
-/// oracle (`regen_stage0 --verify`) that this change is not in a position to re-verify, and
-/// the two differ in duplicate policy (refuse vs. superset) and entry selection (whole-root
-/// walk vs. declared list). DISSOLVES WHEN the walk is lifted to one parameterized helper
-/// (duplicate policy + entry source as arguments) and regen's byte oracle re-greens on it.
-///
-/// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
-/// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side
-/// selection Rust in favour of the `.dag` authority. This fn and
-/// `selection_control_skip_label_for_ci` are new members of exactly that Rust-parallel set —
-/// a path/import-closure selection decision living in the seed rather than in
-/// `.dag` — so they inherit Step 5's terminal condition. They are ENUMERATED on that roster as
-/// an explicit deferral (the "Step 5 roster — CI skip-decision surfaces" row, added by this
-/// change), which is what makes this a declared, countable seed-retained surface rather than a
-/// silent escape hatch (DESIGN §7). Why deferred rather than modeled now: the decision must run
-/// BEFORE the floor resolves anything — that is its entire purpose — so a `.dag` consumer would
-/// pay the ~100s cold whole-pool resolve the skip exists to avoid; it therefore dissolves with
-/// the persistent content-keyed node store, not on its own schedule.
-///
-/// Receipt bar, per DESIGN §5: this is a scaffold because the decision is *checkable* by
-/// execution — 9 label arms below (7 structural + 2 refusal), discriminating in both
-/// directions, plus 3 bin unit tests.
-pub fn selection_control_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
-    let roots = selection_control_source_roots(workspace);
-    let index = selection_control_module_index(&roots)?;
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut queue: Vec<String> = Vec::new();
-    for rel in SELECTION_CONTROL_DECLARED_ENTRIES {
-        let path = workspace.join(rel);
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("read declared selection-control entry {rel}: {e}"))?;
-        seen.insert(normalize_repo_path(rel));
-        queue.push(content);
-    }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            let Some(candidates) = index.get(&module_path) else {
-                continue;
-            };
-            for path in candidates {
-                let rel = normalize_repo_path(&regen_workspace_relpath(path, workspace));
-                if !seen.insert(rel) {
-                    continue;
-                }
-                let file_content = std::fs::read_to_string(path)
-                    .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
-                queue.push(file_content);
-            }
-        }
-    }
-    let mut result: Vec<String> = seen.into_iter().collect();
-    result.sort();
-    Ok(result)
-}
-
-/// Does a diff-changed path belong to the selection-control input surface?
-fn selection_control_path_affects_suite(changed: &str, dag_closure: &HashSet<String>) -> bool {
-    let p = normalize_repo_path(changed);
-    // src/v1/** = the selection implementation (this file's discovery / affected-set /
-    // node-frontier paths), the witness bin itself, and every committed stage0 output the
-    // release binary is built from.
-    if p.starts_with("src/v1/") {
-        return true;
-    }
-    // Cargo/toolchain build config: the witness binary is built from these (whole-file
-    // matches, no substring), same fail-closed arm as regen's.
-    if p == "Cargo.lock"
-        || p == "Cargo.toml"
-        || p.ends_with("/Cargo.toml")
-        || p == "rust-toolchain.toml"
-        || p == "rust-toolchain"
-        || p == ".cargo/config.toml"
-        || p == ".cargo/config"
-    {
-        return true;
-    }
-    // Markdown: the doc-reachability declared entry (`SELECTION_CONTROL_DOC_REACHABILITY_REL`)
-    // declares `LiveTreeDisposition = ReadsLiveTree` and folds the whole markdown doc graph
-    // (`gunbc.doc_graph_roots.doc_graph_roots_all` — registered plan docs ∪ hand-authored
-    // binds) to decide `doc_graph_has_no_orphan_docs` / `doc_graph_has_no_dangling_links`.
-    // A `.md` add/edit/delete can therefore flip this suite's verdict, and that reach is NOT
-    // discoverable through the `.dag` import walk above — a live-tree read is not an import
-    // edge. So every markdown path runs the suite.
-    //
-    // This is a structural over-approximation computed AS the answer (DESIGN §5: "a
-    // dependency-closure superset is the model's precision frontier, not an absorption"),
-    // not a failure arm that widens — the entry really does read every markdown root, so no
-    // `.md` diff can be proven irrelevant by path.
-    //
-    // FOUND BY REVIEW (review 44682, this PR): the first draft bounded inputs by
-    // `src/v1/**` ∪ dag-import-closure ∪ Cargo config and skipped docs-only diffs, while its
-    // own green control asserted that skip on `docs/plans/example.md` — enshrining the
-    // suppression of exactly the docs-only orphan regression this suite carries per-PR.
-    if p.ends_with(".md") {
-        return true;
-    }
-    dag_closure.contains(&p)
-}
-
-/// Typed cause for a selection-control REFUSAL — the arms where the affected set could not be
-/// computed at all.
-///
-/// DESIGN §5: "can't compute the affected set → rerun the entire suite" is the named absorbing
-/// fallback — ⊤-as-ignorance conflated with ⊤-as-answer. It fails open twice: the deficit's
-/// frequency is zeroed by construction (so it never ranks for fixing), and the cost is
-/// denominated in the corpus rather than the change. The repo already ruled on exactly this
-/// arm: `floor_diff_baseline_law` (src/v2/workflow/floor_diff_observe.dag) records that a
-/// `BaselineRefused` → `NameStatusDiffFail` "HALTS the floor with a typed AFFECTED-SET REFUSAL
-/// (refuses every enrolled row, never widens to a full-corpus run; operator ruling
-/// 2026-07-05)". This enum is that ruling applied to the selection-control step's own skip
-/// decision — FOUND BY REVIEW (review 44745), whose first draft returned the RUN label from
-/// both failure arms and stayed green.
-///
-/// `token()` is the stable, greppable discriminator that makes each refusal COUNTABLE in the
-/// job log, so its frequency is observable and prioritizable rather than absorbed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SelectionControlRefusalCause {
-    /// The merge-base diff could not be observed (`floor_git_diff_name_status_range` failed).
-    DiffObservationFailed,
-    /// The suite's input closure could not be computed (entry unreadable, import walk failed).
-    InputClosureFailed,
-}
-
-impl SelectionControlRefusalCause {
-    pub fn token(&self) -> &'static str {
-        match self {
-            Self::DiffObservationFailed => "DiffObservationFailed",
-            Self::InputClosureFailed => "InputClosureFailed",
-        }
-    }
-}
-
-/// A typed, located, countable refusal. Carries the cause, the mechanism that could not answer
-/// (`located`), and the underlying detail — everything analysis needs before the line restarts.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SelectionControlSkipRefusal {
-    pub cause: SelectionControlRefusalCause,
-    pub located: &'static str,
-    pub detail: String,
-}
-
-impl SelectionControlSkipRefusal {
-    /// The single-line diagnostic. Stable prefix + `cause=` token so occurrences are countable.
-    pub fn diagnostic(&self) -> String {
-        format!(
-            "SELECTION_CONTROL_REFUSED cause={} at={} detail={} \
-             — the affected set could not be computed, so this step REFUSES rather than \
-             widening to a full run (DESIGN §5 absorbing fallback; operator ruling 2026-07-05, \
-             floor_diff_baseline_law). Analyse the cause before restarting the line.",
-            self.cause.token(),
-            self.located,
-            self.detail
-        )
-    }
-}
-
-/// CI label for the affected-set selection-control step's skip arm.
-///
-/// `Ok(selection_control_not_affected_skip)` iff the merge-base diff touches no input of the
-/// control suite; `Ok(run_selection_control)` on any intersection, empty diff, or ANY departed
-/// path — those are STRUCTURAL answers, computed from an observed diff.
-///
-/// `Err(SelectionControlSkipRefusal)` when the affected set could not be computed at all
-/// (diff observation or closure failure). Those arms REFUSE rather than widening to a run:
-/// see `SelectionControlRefusalCause` for the §5 reasoning and the 2026-07-05 ruling. The
-/// distinction is the whole point — "everything is affected" and "I could not compute what is
-/// affected" are different states with different remedies, and only the first may be answered
-/// with a label.
-///
-/// This computes the decision only; the CI shell gates the skip to pull_request events, so
-/// push-to-main runs the suite unconditionally as the cold control.
-pub fn selection_control_skip_label_for_ci() -> Result<String, SelectionControlSkipRefusal> {
-    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
-        Ok(v) => v,
-        Err(detail) => {
-            // REFUSE, never widen: "diff unavailable → run everything" is the §5 absorbing
-            // fallback. Returning the RUN label here would keep CI green and zero this
-            // deficit's observed frequency, which is exactly how it never gets fixed.
-            return Err(SelectionControlSkipRefusal {
-                cause: SelectionControlRefusalCause::DiffObservationFailed,
-                located: "cli_run::floor_git_diff_name_status_range \
-                          (src/v2/workflow/floor_diff_observe.dag \
-                          floor_observe_git_diff_name_status_for_ci)",
-                detail,
-            });
-        }
-    };
-    // Empty diff is a STRUCTURAL state, not a failure arm: the observation succeeded and
-    // reported zero changed paths. It is therefore answerable with a label, unlike the
-    // refusals above. It answers RUN (conservative) rather than SKIP because an empty
-    // merge-base diff on a pull_request is degenerate — a PR changes something by definition —
-    // so the honest reading is "this observation tells us nothing useful about THIS PR".
-    //
-    // Noted for the record, because it is adjacent to a ruling: DESIGN's floor-runner receipt
-    // has the empty diff "dissolved into the general disposition, never a special arm"
-    // (operator rulings 2026-07-05). Dissolving it here would make it SKIP (no changed path
-    // can intersect the closure). That is a live question about THIS step rather than the
-    // floor runner, and it moves in the less-checking direction, so it is deliberately not
-    // decided here — flagged for the operator instead of quietly picked.
-    if changed_paths.is_empty() {
-        eprintln!(
-            "selection-control skip: empty diff — run the control suite (degenerate observation \
-             for a pull_request; structural arm, not a refusal)"
-        );
-        return Ok(RUN_SELECTION_CONTROL_LABEL.to_string());
-    }
-    // Departed (deleted / renamed-from) paths: NO carve-out. Two independent causes, which
-    // together leave no departed path provably irrelevant:
-    //   - non-docs: the closure is computed from the CURRENT tree, so a deleted `.dag` file
-    //     that WAS in the suite's closure is invisible to the intersection below;
-    //   - markdown: a deleted doc changes the live doc graph the `ReadsLiveTree`
-    //     doc-reachability entry folds — removing a link target creates a dangling link,
-    //     removing a linker orphans its target. Either flips the suite red.
-    // The regen/compile-clean departed arms exempt `docs/` because markdown is genuinely
-    // outside THEIR closures; it is inside this one (see the `.md` arm in
-    // `selection_control_path_affects_suite`), so copying their carve-out here was the bug.
-    // `min()` rather than `iter().next()`: the set's iteration order is not stable, and this
-    // path is printed into the CI log as the reason. A nondeterministic diagnostic is the
-    // determinism class `v2.lens.determinism` gates on — the arm fires on ANY departed path,
-    // so which one it names must not vary run to run.
-    if let Some(gone) = departed_paths.iter().min() {
-        eprintln!(
-            "selection-control skip: departed path in diff ({}) — run the control suite (current-tree closure cannot see deletions; a departed doc changes the live doc graph)",
-            normalize_repo_path(gone)
-        );
-        return Ok(RUN_SELECTION_CONTROL_LABEL.to_string());
-    }
-    let workspace = workspace_root();
-    let dag_closure: HashSet<String> = match selection_control_input_sources(&workspace) {
-        Ok(sources) => sources.into_iter().collect(),
-        Err(detail) => {
-            // REFUSE, never widen — same §5 arm as the diff-observation failure above. An
-            // unreadable entry or a dead import walk means the input set is UNKNOWN, which is
-            // a different state from "everything is affected" and has a different remedy.
-            return Err(SelectionControlSkipRefusal {
-                cause: SelectionControlRefusalCause::InputClosureFailed,
-                located: "cli_run::selection_control_input_sources",
-                detail,
-            });
-        }
-    };
-    match changed_paths
-        .iter()
-        .find(|p| selection_control_path_affects_suite(p, &dag_closure))
-    {
-        Some(example) => {
-            eprintln!(
-                "selection-control skip: diff intersects the control suite's inputs (e.g. {}) — run the control suite",
-                normalize_repo_path(example)
-            );
-            Ok(RUN_SELECTION_CONTROL_LABEL.to_string())
-        }
-        None => {
-            eprintln!(
-                "selection-control skip: {} changed path(s), none intersect the control suite's input closure (src/v1/** ∪ declared-entry dag import-closure ∪ every .md ∪ Cargo/toolchain config) — the suite's verdict is provably unchanged (push-to-main runs it unconditionally as the cold control)",
-                changed_paths.len()
-            );
-            Ok(SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL.to_string())
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Class B import-closure gate affected-set skip (#7835).
 //
 // `run_class_b_import_closure_gate` costs ~2.3 min wall per cold run; skip when the
 // merge-base diff is provably disjoint from the gate's input closure (declared-import
 // pool ∪ witness layer ∪ perturbation fixtures ∪ gate transport modules). Same shape as
-// regen_floor_skip_label_for_ci / selection_control_skip_label_for_ci: skip only on a
+// regen_floor_skip_label_for_ci: skip only on a
 // non-empty diff proven disjoint; run on empty diff, departed non-docs paths, and any
 // observation/closure failure (fail-closed — regen shape: still RUN the gate, but the two
 // failure arms carry grep-countable labels distinct from structural run_class_b_gate).
@@ -4259,12 +3849,41 @@ fn class_b_pool_source_roots(workspace: &Path, pool_roots: &[String]) -> Vec<Pat
     pool_roots.iter().map(|rel| workspace.join(rel)).collect()
 }
 
+/// Module-path -> source-file index over a set of `.dag` source roots.
+///
+/// Named for what it computes rather than for its first caller: it was previously
+/// `selection_control_module_index`, homed with the affected-set selection-control suite that
+/// happened to reach it first, while the Class B import-closure gate below already depended on
+/// it across that seam. The suite is deleted; the index is not, because the question it answers
+/// -- which file declares this module -- is what any import walk needs.
+fn dag_module_index(
+    roots: &[PathBuf],
+) -> Result<std::collections::HashMap<String, Vec<PathBuf>>, String> {
+    let mut index: std::collections::HashMap<String, Vec<PathBuf>> =
+        std::collections::HashMap::new();
+    for root in roots {
+        if !root.exists() {
+            return Err(format!("source root does not exist: {}", root.display()));
+        }
+        let mut dag_paths = Vec::new();
+        regen_collect_dag_files(root, &mut dag_paths)?;
+        for path in dag_paths {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            if let Some(module_path) = extract_module_path(&content) {
+                index.entry(module_path).or_default().push(path);
+            }
+        }
+    }
+    Ok(index)
+}
+
 fn import_closure_dag_files(
     workspace: &Path,
     source_roots: &[PathBuf],
     seed_entries: &[&str],
 ) -> Result<HashSet<String>, String> {
-    let index = selection_control_module_index(source_roots)?;
+    let index = dag_module_index(source_roots)?;
     let mut seen: HashSet<String> = HashSet::new();
     let mut queue: Vec<String> = Vec::new();
     for rel in seed_entries {
@@ -4328,7 +3947,7 @@ fn collect_repo_files_under_prefix(
 ///
 /// 🟡 dissolve-on (two triggers, near then terminal):
 ///
-/// NEAR — the import walk here duplicates the shape of `selection_control_input_sources` and
+/// NEAR — the import walk here duplicates the shape the deleted selection-control suite used, and
 /// `regen_input_sources`. They are NOT unified yet because regen's closure is guarded by a
 /// byte-identical oracle (`regen_stage0 --verify`) that this change is not in a position to
 /// re-verify, and the three differ in duplicate policy (refuse vs. superset) and entry
@@ -6775,10 +6394,6 @@ fn entry_eligible_for_discovery_skip_before_resolve(
 struct DiscoveryEntryResolve {
     ctx: v1_interpreter::InterpContext,
     closure_subject: String,
-    frontier_nodes: Vec<v1_interpreter::Value>,
-    touches_frontier: bool,
-    entry_file_touched: bool,
-    entry_runtime_dependency_touched: bool,
     resolve_nanos: u128,
     stage_nanos: ResolveStageNanos,
 }
@@ -6788,10 +6403,6 @@ fn resolve_discovery_entry_for_corpus_row(
     entry_path: &str,
     execution_mode: v1_interpreter::ExecutionMode,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
-    skip_enabled: bool,
-    diff_edits: &FloorDiffEdits,
-    touched_entry_paths: &[String],
-    module_graph_declared_paths: &HashSet<String>,
     closure_modules: &mut HashSet<String>,
 ) -> Result<DiscoveryEntryResolve, String> {
     let sources = load_sources_for_entry_with_pool(index, entry_path)
@@ -6816,64 +6427,9 @@ fn resolve_discovery_entry_for_corpus_row(
         None,
         whole_tree_published_keys,
     );
-    let (frontier_nodes, touches_frontier, entry_file_touched, entry_runtime_dependency_touched) =
-        if skip_enabled {
-            let frontier_nodes =
-                rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
-            let touches_frontier = if frontier_nodes.is_empty() {
-                false
-            } else {
-                entry_touches_rerun_frontier(
-                    &entry_ctx,
-                    &list_value_from_vec(frontier_nodes.clone()),
-                )?
-            };
-            let entry_file_touched = if touched_entry_paths.is_empty() {
-                false
-            } else {
-                entry_file_touched_via_import_closure(
-                    entry_path,
-                    &index.module_graph_facts,
-                    module_graph_declared_paths,
-                    touched_entry_paths,
-                )?
-            };
-            let declared_axis = declared_source_refs_axis_for_entry(
-                entry_path,
-                &index.module_graph_facts,
-                &default_source_roots(),
-                touched_entry_paths,
-            );
-            let entry_runtime_dependency_touched =
-                runtime_data_dependency_touched_via_carrier_closure(
-                    entry_path,
-                    &index.module_graph_facts,
-                    touched_entry_paths,
-                ) || match declared_axis {
-                    DeclaredSourceRefAxis::Absent => effect_reach_touched_via_path_literals(
-                        entry_path,
-                        &index.module_graph_facts,
-                        touched_entry_paths,
-                    ),
-                    DeclaredSourceRefAxis::Touched | DeclaredSourceRefAxis::Unresolved => true,
-                    DeclaredSourceRefAxis::Untouched => false,
-                };
-            (
-                frontier_nodes,
-                touches_frontier,
-                entry_file_touched,
-                entry_runtime_dependency_touched,
-            )
-        } else {
-            (Vec::new(), true, true, true)
-        };
     Ok(DiscoveryEntryResolve {
         ctx: entry_ctx,
         closure_subject,
-        frontier_nodes,
-        touches_frontier,
-        entry_file_touched,
-        entry_runtime_dependency_touched,
         resolve_nanos,
         stage_nanos,
     })
@@ -11842,146 +11398,6 @@ fn emit_floor_drain_receipt(
     );
 }
 
-const SELECTION_DEGRADATION_RECEIPT_ENTRY: &str = "dag/gunbc/selection_degradation_receipt.dag";
-
-/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
-/// raw `[selection-degradation]` receipt line dissolves into the observation projection.
-#[allow(dead_code)]
-pub const SELECTION_DEGRADATION_CENSUS_MARKER: &str = "[selection-degradation]";
-
-fn node_frontier_selection_mode_tag(mode: NodeFrontierSelectionMode) -> &'static str {
-    match mode {
-        NodeFrontierSelectionMode::Off => "off",
-        NodeFrontierSelectionMode::Applied => "applied",
-        NodeFrontierSelectionMode::PredictOnly => "predict_only",
-    }
-}
-
-/// Measured selection-degradation facts finalized at discovery completion.
-#[derive(Debug, Clone)]
-pub struct SelectionDegradationSnapshot {
-    pub selection_mode_tag: String,
-    pub selected_entry_groups: usize,
-    pub total_entry_groups: usize,
-    pub categorization_unavailable: bool,
-    pub categorization_reason: String,
-}
-
-impl SelectionDegradationSnapshot {
-    pub fn from_summary(selection: NodeFrontierSelectionMode, summary: &DiscoverySummary) -> Self {
-        Self {
-            selection_mode_tag: node_frontier_selection_mode_tag(selection).to_string(),
-            selected_entry_groups: summary.selected_entry_groups,
-            total_entry_groups: summary.total_entry_groups,
-            categorization_unavailable: summary.selection_categorization_reason.is_some(),
-            categorization_reason: summary
-                .selection_categorization_reason
-                .clone()
-                .unwrap_or_default(),
-        }
-    }
-}
-
-fn selection_degradation_interp_ctx(
-    source_roots: &[String],
-) -> Result<(v1_interpreter::InterpContext, String), String> {
-    let entry = resolve_entry_file_under_roots(source_roots, SELECTION_DEGRADATION_RECEIPT_ENTRY)
-        .map_err(|_| {
-        format!(
-            "selection-degradation receipt REFUSED — {SELECTION_DEGRADATION_RECEIPT_ENTRY} \
-                 not found under source roots"
-        )
-    })?;
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry)
-        .map_err(|e| format!("selection-degradation receipt REFUSED — resolve {entry}: {e}"))?;
-    Ok((
-        make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic),
-        entry,
-    ))
-}
-
-fn selection_degradation_dag_args(
-    snapshot: &SelectionDegradationSnapshot,
-) -> Vec<(Option<String>, v1_interpreter::Value)> {
-    vec![
-        (
-            Some("selection_mode_tag".to_string()),
-            str_value(snapshot.selection_mode_tag.clone()),
-        ),
-        (
-            Some("selected".to_string()),
-            v1_interpreter::Value::Int(snapshot.selected_entry_groups as i64),
-        ),
-        (
-            Some("total".to_string()),
-            v1_interpreter::Value::Int(snapshot.total_entry_groups as i64),
-        ),
-        (
-            Some("categorization_unavailable".to_string()),
-            v1_interpreter::Value::Bool(snapshot.categorization_unavailable),
-        ),
-        (
-            Some("categorization_reason".to_string()),
-            str_value(snapshot.categorization_reason.clone()),
-        ),
-    ]
-}
-
-fn eval_selection_degradation_fn(
-    source_roots: &[String],
-    fn_name: &str,
-    snapshot: &SelectionDegradationSnapshot,
-) -> Result<String, String> {
-    let (ctx, entry) = selection_degradation_interp_ctx(source_roots)?;
-    match v1_interpreter::run_in_context_with_args(
-        &ctx,
-        fn_name,
-        &selection_degradation_dag_args(snapshot),
-        false,
-    ) {
-        Ok(Value::Str(line)) => Ok(line.to_string()),
-        Ok(other) => Err(format!(
-            "selection-degradation receipt REFUSED — {fn_name} returned `{}`, expected Str \
-             (entry {entry})",
-            ctx.format_value(&other)
-        )),
-        Err(e) => Err(format!(
-            "selection-degradation receipt REFUSED — {fn_name} eval: {e}"
-        )),
-    }
-}
-
-/// Bracket-tagged stderr line for discovery completion (also embedded in `[measurement]`).
-pub fn render_selection_degradation_receipt_line(
-    source_roots: &[String],
-    snapshot: &SelectionDegradationSnapshot,
-) -> Result<String, String> {
-    eval_selection_degradation_fn(source_roots, "selection_degradation_receipt_line", snapshot)
-}
-
-/// Key=value body written to `target/floor-selection-degradation-receipt.txt` and appended to
-/// `floor-resolve-receipt.txt`.
-pub fn render_selection_degradation_receipt_body(
-    source_roots: &[String],
-    snapshot: &SelectionDegradationSnapshot,
-) -> Result<String, String> {
-    eval_selection_degradation_fn(source_roots, "selection_degradation_receipt_body", snapshot)
-}
-
-/// P2 floor prep-tax receipt on stderr after every discovery completion.
-pub fn emit_selection_degradation_receipt(
-    source_roots: &[String],
-    selection: NodeFrontierSelectionMode,
-    summary: &DiscoverySummary,
-) {
-    let _ = SELECTION_DEGRADATION_CENSUS_MARKER;
-    let snapshot = SelectionDegradationSnapshot::from_summary(selection, summary);
-    match render_selection_degradation_receipt_line(source_roots, &snapshot) {
-        Ok(line) => eprintln!("{line}"),
-        Err(msg) => eprintln!("{msg}"),
-    }
-}
-
 /// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
 /// are counted and logged — a typed, located diagnostic, never a silent widen.
 /// Victim selection is arbitrary (first `HashMap` key), not LRU or load-aware:
@@ -14176,8 +13592,7 @@ fn finish_resolved_graph_assembly(
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     let emit_info_started = std::time::Instant::now();
-    let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
-    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
+    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
     resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
     let graph_started = std::time::Instant::now();
     let graph = Rc::new(ResolvedGraph {
@@ -15246,20 +14661,35 @@ fn render_batch_summary_line(
 }
 
 pub fn install_output_policy(source_roots: &[String]) {
-    use v1_interpreter::{OutputDecision, Value};
-    let (verbose, quiet) = match v1_interpreter::cli_verbosity() {
-        v1_interpreter::Verbosity::Verbose => (true, false),
-        v1_interpreter::Verbosity::Quiet => (false, true),
-        v1_interpreter::Verbosity::Normal => (false, false),
-    };
     let entry = "dag/gunbc/output_policy.dag";
     let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
         Ok(g) => g,
         Err(_) => return,
     };
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    install_output_policy_in(&ctx, source_roots);
+}
+
+/// INSTALL THE POLICY FROM AN ALREADY-PREPARED CONTEXT.
+///
+/// `install_output_policy` above resolves `dag/gunbc/output_policy.dag` on its own, which on
+/// the floor cost a separate whole-entry resolve to read five channel decisions out of a world
+/// the run was about to build anyway. The required floor calls this form with the one prepared
+/// repository instead: the policy module is already in the subject, so reading it is an
+/// evaluation and nothing more.
+///
+/// The two forms share every decision below deliberately — a second copy of the decode would be
+/// a second policy, and the divergence would show up as two runs disagreeing about what
+/// "Normal" prints.
+pub fn install_output_policy_in(ctx: &v1_interpreter::InterpContext, source_roots: &[String]) {
+    use v1_interpreter::{OutputDecision, Value};
+    let (verbose, quiet) = match v1_interpreter::cli_verbosity() {
+        v1_interpreter::Verbosity::Verbose => (true, false),
+        v1_interpreter::Verbosity::Quiet => (false, true),
+        v1_interpreter::Verbosity::Normal => (false, false),
+    };
     let policy = match v1_interpreter::run_in_context_with_args(
-        &ctx,
+        ctx,
         "resolve_channel_policy",
         &[
             (Some("verbose".to_string()), Value::Bool(verbose)),
@@ -15311,7 +14741,7 @@ pub fn install_output_policy(source_roots: &[String]) {
     // with 5,310 per-witness lines and every witness green, because a policy read that fails
     // closed to the OLD behaviour is indistinguishable from a policy that chose it.
     let folds = match v1_interpreter::run_in_context_with_args(
-        &ctx,
+        ctx,
         "routine_rollup_folds",
         &[
             (Some("verbose".to_string()), Value::Bool(verbose)),
@@ -15346,7 +14776,7 @@ pub fn install_output_policy(source_roots: &[String]) {
     // is not loaded here" have different remedies, and only the first is drift.
     let ask_fold = |passed: bool| -> Result<bool, String> {
         match v1_interpreter::run_in_context_with_args(
-            &ctx,
+            ctx,
             "concluded_outcome_folds",
             &[(Some("passed".to_string()), Value::Bool(passed))],
             false,
@@ -15371,7 +14801,7 @@ pub fn install_output_policy(source_roots: &[String]) {
         }
     }
 
-    install_effect_stream_policy(&ctx, verbose, quiet);
+    install_effect_stream_policy(ctx, verbose, quiet);
 }
 
 /// Evaluate `gunbc.output_policy.resolve_shell_trace_stream_policy` from the same
@@ -15579,7 +15009,14 @@ pub fn precompute_whole_tree_published_mock_keys(
     if dag_roots.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
+    let t2a = std::time::Instant::now();
     let index = build_module_index(&dag_roots);
+    eprintln!(
+        "[floor-phase] phase=module-index state=completed wall_ms={} modules={}",
+        t2a.elapsed().as_millis(),
+        index.len()
+    );
+    let t2b = std::time::Instant::now();
     // Only modules that DECLARE a `PublishedMockCase` corpus can contribute keys —
     // `resolve_published_mock_keys` reads them by exact type annotation. Strict-
     // resolving the whole 600+ module tree to find the ~13 declarers is §2
@@ -15627,16 +15064,39 @@ pub fn precompute_whole_tree_published_mock_keys(
             declarers.push(sf.clone());
         }
     }
+    eprintln!(
+        "[floor-phase] phase=declarer-discovery state=completed wall_ms={} declarers={}",
+        t2b.elapsed().as_millis(),
+        declarers.len()
+    );
     if declarers.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
+    let t2c = std::time::Instant::now();
     let facts = build_module_graph_facts_live(&dag_roots);
+    eprintln!(
+        "[floor-phase] phase=whole-tree-graph-facts state=completed wall_ms={}",
+        t2c.elapsed().as_millis()
+    );
+    let t2d = std::time::Instant::now();
     let all_sources = resolve_transitively(declarers, &index, &facts)?;
+    eprintln!(
+        "[floor-phase] phase=declarer-closure state=completed wall_ms={} sources={}",
+        t2d.elapsed().as_millis(),
+        all_sources.len()
+    );
     if all_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
+    let t2e = std::time::Instant::now();
+    let source_count = all_sources.len();
     let (graph, source_indices) =
         resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
+    eprintln!(
+        "[floor-phase] phase=closure-strict-resolve state=completed wall_ms={} sources={}",
+        t2e.elapsed().as_millis(),
+        source_count
+    );
     let ctx = v1_interpreter::InterpContext::with_runtime_options(
         &graph,
         source_indices,
@@ -15707,7 +15167,11 @@ pub fn whole_tree_strict_sources(
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WholeCorpusSemanticOracle {
     pub diagnostic_fingerprint: String,
-    pub rust_corpus_repr: String,
+    // `rust_corpus_repr` retired with the `RustCorpusRepr` mode it reported. Rust primitive
+    // realization is now keyed on each declaration's own declaring module, so there is no
+    // corpus-global representation to report; a field naming one would fabricate a fact that
+    // no longer has a referent. Per-declaration realization is observable in the emitted text
+    // and in `emit_graph_fingerprint`.
     /// Canonical JSON identity hash of the full `EmitGraphInfo` (resolved emit repr).
     pub emit_graph_fingerprint: String,
     /// Aggregate per-module diagnostics + emit-repr rows + graph-level emit metadata.
@@ -15782,8 +15246,6 @@ pub fn whole_corpus_semantic_oracle_snapshot(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<WholeCorpusSemanticOracle, String> {
-    use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
-
     let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
     let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources.into()));
     let graph = result.graph.as_ref().ok_or_else(|| {
@@ -15805,10 +15267,6 @@ pub fn whole_corpus_semantic_oracle_snapshot(
         .collect();
     diag_lines.sort();
     let diagnostic_fingerprint = v1_rt::bytes_identity_hash(diag_lines.join("\n").as_bytes());
-    let rust_corpus_repr = match graph.emit_graph_info.corpus_repr {
-        HostNative => "HostNative".to_string(),
-        FaithfulFreeMonoid => "FaithfulFreeMonoid".to_string(),
-    };
     let emit_graph_fingerprint = canonical_json_identity_hash(graph.emit_graph_info.as_ref())?;
 
     let mut modules: Vec<Rc<TypedModule>> = graph.modules.iter().cloned().collect();
@@ -15846,7 +15304,6 @@ pub fn whole_corpus_semantic_oracle_snapshot(
         format!(
             "diagnostic_fingerprint={diagnostic_fingerprint}\n\
              emit_graph_fingerprint={emit_graph_fingerprint}\n\
-             rust_corpus_repr={rust_corpus_repr}\n\
              per_module:\n{per_module_blob}"
         )
         .as_bytes(),
@@ -15854,7 +15311,6 @@ pub fn whole_corpus_semantic_oracle_snapshot(
 
     Ok(WholeCorpusSemanticOracle {
         diagnostic_fingerprint,
-        rust_corpus_repr,
         emit_graph_fingerprint,
         corpus_fingerprint,
         modules_resolved: picked.modules_resolved,
@@ -18037,13 +17493,6 @@ pub struct DiscoveryWitnessOutcome {
     pub execution_leg: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SelectionSkippedDiscoveryRow {
-    pub entry: String,
-    pub function: String,
-    pub provenance: String,
-}
-
 /// A witness row excluded from discovery enrollment (exclusion substring, long lane, …).
 /// Counted and logged at roster build — never a silent skip (§5 deferred-and-detected).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18093,13 +17542,6 @@ pub struct DiscoverySummary {
     pub skipped: usize,
     /// Witness rows excluded from discovery at scan time — counted, typed, observable.
     pub deferred_rows: Vec<DeferredDiscoveryRow>,
-    /// PredictOnly mode: rows the selection predicted unaffected (they still ran).
-    pub predicted_unaffected: Vec<(String, String)>,
-    /// Applied mode: enrolled rows retained with the provenance by which affected-set
-    /// selection declined execution. This is an honest nonfailure, never absence-as-pass.
-    pub selection_skipped_rows: Vec<SelectionSkippedDiscoveryRow>,
-    /// PredictOnly mode: predicted-unaffected rows whose cold run was red — each line is a
-    /// counted, typed attribution of a missing selection edge (never a rerun trigger).
     pub divergences: Vec<String>,
     pub failures: Vec<String>,
     pub witness_outcomes: Vec<DiscoveryWitnessOutcome>,
@@ -18119,18 +17561,13 @@ pub struct DiscoverySummary {
     /// cache MISSES on the current thread and is never reset in production, so it equals a closure
     /// size only from a cold start — a condition this measurement cannot assume. It is warm here on
     /// the `width == 1` path (the same thread already resolved the changed-file entries in
-    /// `floor_diff_edits_from_line_ranges` and both prefix entries), and warm across repeat calls in
-    /// `floor_skip_discovery_witness`, which runs discovery three times in one thread. The union of
-    /// module names is a property of the source closure: independent of cache warmth, resolve order,
-    /// and — critically for a calibration datum — of the diff under test.
+    /// module names is a property of the source closure: independent of cache warmth and resolve
+    /// order.
     pub roster_closure_nodes: usize,
     /// Entry-group grain of the discovery roster (`entry_row_groups`); set at completion.
     pub total_entry_groups: usize,
-    /// Distinct entries with at least one executed witness (not selection-skipped only).
+    /// Distinct entries with at least one executed witness.
     pub selected_entry_groups: usize,
-    /// When Applied mode could not run upfront import-closure categorization; per-shard
-    /// selection remains authoritative and the completion receipt still publishes counts.
-    pub selection_categorization_reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -18819,6 +18256,46 @@ fn proc_status_kb_field(prefix: &str) -> Option<u64> {
 /// Current resident set from `/proc/self/status` VmRSS, in bytes.
 pub fn current_rss_bytes() -> Option<u64> {
     proc_status_kb_field("VmRSS")
+}
+
+/// Return freed-but-retained heap to the OS, and report how much came back.
+///
+/// WHY THIS IS A MEASUREMENT AND NOT ONLY A FIX. The fold's resident set climbs from 9.7GB to
+/// 15.5GB across ten thousand claims while only TWO individual claims grow it by more than
+/// 256MB. So the growth is diffuse — roughly half a megabyte per claim that never comes back —
+/// and diffuse growth has two candidate causes with opposite remedies: memory still LIVE
+/// (something retains per-claim state across claims, which is a defect in the fold) or memory
+/// freed but not RETURNED (glibc keeps the arena, which is an allocator behaviour and not a
+/// leak at all).
+///
+/// Those two are indistinguishable from RSS alone, and guessing between them is how a real
+/// retention gets papered over by a trim that appears to work. `malloc_trim` distinguishes
+/// them by construction: it can only release memory the allocator already considers free, so
+/// what it gives back is exactly the freed-but-retained half, and what it does NOT give back
+/// is live. Reporting the reclaimed figure therefore answers the question in the same motion
+/// as it acts on it — a large number says the fold was fine and glibc was hoarding, a small
+/// one says something is genuinely held and the trim is not the fix.
+///
+/// Returns the kibibytes reclaimed, or None where the call does not exist. It is glibc-only;
+/// musl and macOS have no equivalent and get None rather than a fabricated zero, because zero
+/// is a real measurement here (nothing was retained) and must not also mean "not measured".
+fn trim_retained_heap() -> Option<u64> {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        let before = current_rss_bytes()? / 1024;
+        // SAFETY: malloc_trim takes a pad in bytes and touches only allocator bookkeeping. It
+        // does not invalidate any live pointer, which is precisely why it cannot release live
+        // memory and therefore why its result is readable as a measurement.
+        unsafe {
+            libc::malloc_trim(0);
+        }
+        let after = current_rss_bytes()? / 1024;
+        Some(before.saturating_sub(after))
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    {
+        None
+    }
 }
 
 /// Peak resident set (high water mark) in bytes, read the PORTABLE way.
@@ -19945,23 +19422,6 @@ fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
     }
 }
 
-/// §5 never-skip tooth: a `ReadsLiveTree` row must never take node-frontier selection skip.
-fn refuse_reads_live_tree_selection_skip(
-    row: &DiscoveryRow,
-    skip_kind: &str,
-) -> Result<(), String> {
-    if row.reads_live_tree {
-        return Err(format!(
-            "NEVER-SKIP REFUSAL cause=ReadsLiveTreeSelectionSkip rows=1 — \
-             `{skip_kind}` would skip {} ({}) but the entry declares (or fail-closed \
-             defaults to) ReadsLiveTree; a live-tree witness must run or refuse loudly, \
-             never be silently selected out (§5; masks memo-wedge class defects when skipped)",
-            row.function, row.entry
-        ));
-    }
-    Ok(())
-}
-
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
@@ -20846,19 +20306,7 @@ pub(crate) fn refuse_on_module_graph_read_refusals(
     ))
 }
 
-/// Host realization of std.realization_schedule.NodeFrontierSelection (signed design:
-/// docs/plans/affected-set-differential-falsifier.md). PredictOnly computes would-skip
-/// per row, RECORDS the prediction, and runs the row anyway — the falsifier cadence
-/// compares predictions against cold verdicts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum NodeFrontierSelectionMode {
-    Off,
-    Applied,
-    PredictOnly,
-}
-
 pub struct DiscoveryCorpusOptions {
-    pub node_frontier_selection: NodeFrontierSelectionMode,
     /// Module universe that owns executor decisions such as affected-set selection and witness
     /// execution-leg classification. Normally identical to `source_roots`; scoped batches
     /// inherit the enclosing walk roots so executor machinery does not widen the witness subject.
@@ -20902,7 +20350,6 @@ impl DiscoveryCorpusOptions {
 impl Default for DiscoveryCorpusOptions {
     fn default() -> Self {
         Self {
-            node_frontier_selection: NodeFrontierSelectionMode::Off,
             execution_authority_source_roots: vec![],
             explicit_roster_only: false,
             exclude_substrings: witness_exclusion_substrings(),
@@ -21525,7 +20972,7 @@ struct FloorDiffEdits {
     touched_entry_files: HashSet<String>,
 }
 
-const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
+const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 
 // `entry_file_touched_via_dependency_view` (the fn-arrow DependencyView wrapper) was
 // deleted here 2026-07-10 (operator fork (c)): its substrate-not-whole-tree arm returned
@@ -23037,7 +22484,6 @@ pub fn run_discovery_corpus_with_options(
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     let pump_started = std::time::Instant::now();
-    let selection = options.node_frontier_selection;
     let out = run_discovery_corpus_with_options_inner(
         source_roots,
         scan_dirs,
@@ -23050,9 +22496,6 @@ pub fn run_discovery_corpus_with_options(
         &discovery_phase_totals::PUMP_WALL_MS,
         pump_started.elapsed(),
     );
-    if let Ok(summary) = &out {
-        emit_selection_degradation_receipt(source_roots, selection, summary);
-    }
     out
 }
 
@@ -23152,7 +22595,6 @@ fn run_discovery_corpus_with_options_inner(
     }
     eprintln_deferred_discovery_rows(&deferred_rows);
     set_phase(FloorPhase::Discovery, "discovery-roster");
-    let selection_enabled = options.node_frontier_selection != NodeFrontierSelectionMode::Off;
     if options.execution_authority_source_roots.is_empty() {
         return Err(
             "discovery execution requires an explicit executor-authority source-root universe"
@@ -23160,57 +22602,6 @@ fn run_discovery_corpus_with_options_inner(
         );
     }
     let execution_authority_is_subject = options.execution_authority_source_roots == source_roots;
-    // No degradation arm: a non-Off node_frontier_selection is a DECLARED capability,
-    // so every input it needs (the git-diff observation, the frontier attribution, the
-    // affected-set runner) must be present — a failure is a loud typed error, never a
-    // silent run-everything fallback. To run without selection, declare the flag false.
-    let diff_observe_started = std::time::Instant::now();
-    let diff_text = if selection_enabled {
-        floor_git_diff_range().map_err(|msg| {
-            format!(
-                "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git diff \
-                 observation failed ({msg}); observation failure is the only ignorance \
-                 state (operator ruling 2026-07-05) and refuses every enrolled row rather \
-                 than widening to a full-corpus run (declare node_frontier_selection: \
-                 SelectionOff to run without selection)",
-                rows.len()
-            )
-        })?
-    } else {
-        String::new()
-    };
-    // Path grain (changed_paths, departed_paths) is observed via the typed
-    // `git diff --name-status -z` interface (extdeps.git), not scraped from the
-    // unified diff's `diff --git a/OLD b/NEW` header: name-status is git's own
-    // machine surface for path identity/rename, so it is the single authority —
-    // the unified diff below stays scoped to LINE grain (hunk ranges) only.
-    let (name_status_changed_paths, name_status_departed_paths) =
-        if options.node_frontier_selection != NodeFrontierSelectionMode::Off {
-            floor_git_diff_name_status_range().map_err(|msg| {
-                format!(
-                    "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git \
-                     diff --name-status observation failed ({msg}); observation failure \
-                     is the only ignorance state (operator ruling 2026-07-05) and \
-                     refuses every enrolled row rather than widening to a full-corpus \
-                     run (declare node_frontier_selection: SelectionOff to run without \
-                     selection)",
-                    rows.len()
-                )
-            })?
-        } else {
-            (Vec::new(), HashSet::new())
-        };
-    let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
-    for path in &name_status_changed_paths {
-        line_ranges_by_file.entry(path.clone()).or_default();
-    }
-    let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
-    let added_paths = parse_unified_diff_added_paths(&diff_text);
-    let changed_paths: Vec<String> = name_status_changed_paths;
-    discovery_phase_totals::add(
-        &discovery_phase_totals::DIFF_OBSERVE_MS,
-        diff_observe_started.elapsed(),
-    );
     // Union-resolve S1 (resolver-graph-major-design.md §7): ONE index for the whole
     // process step on the pump thread — prelude-warmed parse/typed caches instead of a
     // private cold build per consumer. S2a increment C (cross-worker-typecheck-share-
@@ -23241,12 +22632,7 @@ fn run_discovery_corpus_with_options_inner(
     // the post-resolve union so this pre-resolve count stays paired with calibration.
     let preresolve_calibration_started = std::time::Instant::now();
     let pre_resolve_closure_nodes = {
-        let prefix_entries: &[&str] = if selection_enabled && execution_authority_is_subject {
-            &[FLOOR_RUNNER_ENTRY]
-        } else {
-            &[]
-        };
-        let n = roster_import_closure_nodes_pre_resolve(&rows, prefix_entries, &index)?;
+        let n = roster_import_closure_nodes_pre_resolve(&rows, &[], &index)?;
         eprintln!(
             "[calibration] roster_import_closure_nodes={} rows={} (loader both-closure union, pre-resolve, no resolve/typecheck; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
             n,
@@ -23258,144 +22644,15 @@ fn run_discovery_corpus_with_options_inner(
         &discovery_phase_totals::PRERESOLVE_CALIBRATION_MS,
         preresolve_calibration_started.elapsed(),
     );
-    // Empty diff is not a state (operator ruling 2026-07-05): an empty touched-path
-    // set flows through the general selection machinery — empty frontier, zero edited
-    // fns — so every row takes the normal not-affected skip. Disabling selection here
-    // was the run-everything absorbing arm.
-    let frontier_attribution_started = std::time::Instant::now();
-    let (skip_enabled, diff_edits) = if selection_enabled {
-        match floor_diff_edits_from_line_ranges(
-            &index,
-            &line_ranges_by_file,
-            &changed_new_lines_by_file,
-            &name_status_departed_paths,
-            &added_paths,
-        ) {
-            Ok(edits) => (true, edits),
-            Err(msg) => {
-                return Err(format!(
-                    "node-frontier population failed ({msg}) — the diff-to-declaration \
-                     attribution is declared selection machinery; no silent full-corpus \
-                     fallback"
-                ));
-            }
-        }
-    } else {
-        (false, FloorDiffEdits::default())
-    };
-    discovery_phase_totals::add(
-        &discovery_phase_totals::FRONTIER_ATTRIBUTION_MS,
-        frontier_attribution_started.elapsed(),
-    );
-    let runner_resolve_started = std::time::Instant::now();
-    let floor_runner_ctx = if selection_enabled {
-        let resolved = if execution_authority_is_subject {
-            // Ordinary discovery consumes one source-root authority, so preserve the shared
-            // prefix resolve and its measured retention behavior.
-            resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
-        } else {
-            // Scoped discovery keeps its subject universe narrow. The selector is an enclosing
-            // walk authority and resolves against that walk's roots without entering the subject
-            // index, digest, or clamp population.
-            resolve_entry_graph(
-                &options.execution_authority_source_roots,
-                FLOOR_RUNNER_ENTRY,
-            )
-        };
-        match resolved {
-            Ok((graph, source_indices)) => {
-                Some(make_eval_context(&graph, source_indices, execution_mode))
-            }
-            Err(msg) => {
-                return Err(format!(
-                    "floor runner resolve failed ({msg}) — a non-Off node_frontier_selection \
-                     declares the affected-set machinery ({FLOOR_RUNNER_ENTRY}) and it \
-                     must resolve; no silent full-corpus fallback"
-                ));
-            }
-        }
-    } else {
-        None
-    };
-    discovery_phase_totals::add(
-        &discovery_phase_totals::RUNNER_RESOLVE_MS,
-        runner_resolve_started.elapsed(),
-    );
-    let skip_precompute = if skip_enabled {
-        let live_row_count = discovery_rows_live_tree_count(&rows);
-        match floor_runner_ctx.as_ref() {
-            Some(ctx) => {
-                let touched_runtime_dependency_entry_count =
-                    discovery_rows_runtime_dependency_touched_count(
-                        &rows,
-                        &index.module_graph_facts,
-                        &changed_paths,
-                    );
-                let precompute = call_floor_row_precompute_would_skip(
-                    ctx,
-                    live_row_count,
-                    &changed_paths,
-                    diff_edits.overlapping_data_items.len(),
-                    diff_edits.edited_test_fns.len(),
-                    diff_edits.touched_entry_files.len(),
-                    touched_runtime_dependency_entry_count,
-                );
-                match precompute {
-                    Ok(skip) => skip,
-                    Err(msg) => {
-                        return Err(format!(
-                            "floor precompute_would_skip failed ({msg}) — declared selection \
-                             machinery must evaluate; no silent fallback"
-                        ));
-                    }
-                }
-            }
-            None => false,
-        }
-    } else {
-        false
-    };
-    let whole_tree_published_keys = if skip_precompute {
-        eprintln!(
-            "run_discovery_corpus: skipping whole-tree published-mock precompute (scoped diff, empty node frontier, no edited test fns, no entry-file fn edits)"
-        );
-        None
-    } else {
-        match precompute_whole_tree_published_mock_keys(source_roots) {
-            Ok(keys) if keys.is_empty() => None,
-            Ok(keys) => Some(keys),
-            Err(e) => {
-                return Err(format!(
-                    "whole-tree published mock corpus precompute failed: {e}"
-                ));
-            }
+    let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) {
+        Ok(keys) if keys.is_empty() => None,
+        Ok(keys) => Some(keys),
+        Err(e) => {
+            return Err(format!(
+                "whole-tree published mock corpus precompute failed: {e}"
+            ));
         }
     };
-    eprintln_affected_set_categorization(
-        options.node_frontier_selection,
-        &rows,
-        &index,
-        &diff_edits,
-        &changed_paths,
-    );
-    let selection_categorization_reason =
-        if options.node_frontier_selection == NodeFrontierSelectionMode::Applied {
-            let declared_paths = index.module_graph_facts.declared_repo_paths();
-            let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-            match discovery_entry_fast_skip_without_resolve(
-                &rows,
-                &index.module_graph_facts,
-                &declared_paths,
-                &touched,
-                &changed_paths,
-                &diff_edits,
-            ) {
-                Ok(_) => None,
-                Err(e) => Some(e),
-            }
-        } else {
-            None
-        };
     // Derive every leg for the WHOLE roster here, above the width dispatch, while this
     // thread's shared index is warm. At width > 1 the pool hands each worker its own chunk
     // of rows, so priming inside `run_discovery_rows` would build one interpreter context
@@ -23428,11 +22685,6 @@ fn run_discovery_corpus_with_options_inner(
                 &rows,
                 &index,
                 execution_mode,
-                options.node_frontier_selection,
-                &changed_paths,
-                &diff_edits,
-                floor_runner_ctx.as_ref(),
-                execution_authority_is_subject,
                 whole_tree_published_keys.clone(),
                 options.witness_budget_policy(),
                 ShardStyle {
@@ -23465,13 +22717,7 @@ fn run_discovery_corpus_with_options_inner(
                 "[calibration] closure consistency: pre-resolve loader-closure union == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
-            Ok(finalize_discovery_summary(
-                summary,
-                &rows,
-                options.node_frontier_selection,
-                selection_categorization_reason.clone(),
-                deferred_rows,
-            ))
+            Ok(finalize_discovery_summary(summary, &rows, deferred_rows))
         }
         DiscoveryWidthPolicy::ControlledWidthTwo => {
             const CONTROLLED_WIDTH: usize = 2;
@@ -23505,18 +22751,12 @@ fn run_discovery_corpus_with_options_inner(
                 ));
             let abort = std::sync::Arc::new(AtomicBool::new(false));
             let source_roots_owned = source_roots.to_vec();
-            let execution_authority_roots_owned = options.execution_authority_source_roots.clone();
-            let execution_authority_is_subject_for_workers = execution_authority_is_subject;
-            let selection_for_workers = options.node_frontier_selection;
             let budget_policy_for_workers = options.witness_budget_policy();
             let mut handles = Vec::with_capacity(CONTROLLED_WIDTH);
             for worker_ordinal in 0..CONTROLLED_WIDTH {
                 let queue_for_worker = queue.clone();
                 let abort_for_worker = abort.clone();
                 let roots = source_roots_owned.clone();
-                let execution_authority_roots = execution_authority_roots_owned.clone();
-                let seeds = diff_edits.clone();
-                let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
                 let store = cross_worker_store.clone();
                 let arm_shared_for_worker = arm_shared_store;
@@ -23529,32 +22769,11 @@ fn run_discovery_corpus_with_options_inner(
                 handles.push(std::thread::spawn(
                     move || -> Result<Vec<DiscoverySummary>, String> {
                         let index = if arm_shared_for_worker {
-                            let store = store.expect(
-                                "shared typed store armed but cross_worker_store missing",
-                            );
+                            let store = store
+                                .expect("shared typed store armed but cross_worker_store missing");
                             build_multi_entry_index_with_shared_caches(&roots, store)
                         } else {
                             build_multi_entry_index(&roots)
-                        };
-                        let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
-                            let resolved = if execution_authority_is_subject_for_workers {
-                                resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
-                            } else {
-                                resolve_entry_graph(&execution_authority_roots, FLOOR_RUNNER_ENTRY)
-                            };
-                            match resolved {
-                                Ok((graph, source_indices)) => {
-                                    Some(make_eval_context(&graph, source_indices, execution_mode))
-                                }
-                                Err(msg) => {
-                                    abort_for_worker.store(true, Ordering::SeqCst);
-                                    return Err(format!(
-                                        "floor runner resolve failed in controlled-width worker ({msg})"
-                                    ));
-                                }
-                            }
-                        } else {
-                            None
                         };
                         let mut worker_summaries = Vec::new();
                         loop {
@@ -23569,11 +22788,6 @@ fn run_discovery_corpus_with_options_inner(
                                 &group_rows,
                                 &index,
                                 execution_mode,
-                                selection_for_workers,
-                                &paths,
-                                &seeds,
-                                runner.as_ref(),
-                                execution_authority_is_subject_for_workers,
                                 keys.clone(),
                                 budget_policy_for_workers,
                                 style,
@@ -23612,8 +22826,6 @@ fn run_discovery_corpus_with_options_inner(
             Ok(finalize_discovery_summary(
                 merge_discovery_summaries(summaries),
                 &rows,
-                options.node_frontier_selection,
-                selection_categorization_reason,
                 deferred_rows,
             ))
         }
@@ -23699,11 +22911,6 @@ fn run_discovery_corpus_with_options_inner(
                         &group_rows,
                         &index,
                         execution_mode,
-                        options.node_frontier_selection,
-                        &changed_paths,
-                        &diff_edits,
-                        floor_runner_ctx.as_ref(),
-                        execution_authority_is_subject,
                         whole_tree_published_keys.clone(),
                         options.witness_budget_policy(),
                         style,
@@ -23780,8 +22987,6 @@ fn run_discovery_corpus_with_options_inner(
                 return Ok(finalize_discovery_summary(
                     merge_discovery_summaries(summaries),
                     &rows,
-                    options.node_frontier_selection,
-                    selection_categorization_reason.clone(),
                     deferred_rows,
                 ));
             }
@@ -23807,18 +23012,12 @@ fn run_discovery_corpus_with_options_inner(
                 ));
             let abort = std::sync::Arc::new(AtomicBool::new(false));
             let source_roots_owned = source_roots.to_vec();
-            let execution_authority_roots_owned = options.execution_authority_source_roots.clone();
-            let execution_authority_is_subject_for_workers = execution_authority_is_subject;
-            let selection_for_workers = options.node_frontier_selection;
             let budget_policy_for_workers = options.witness_budget_policy();
             let mut handles = Vec::with_capacity(spawn_target_width);
             for worker_ordinal in 0..spawn_target_width {
                 let queue_for_worker = queue.clone();
                 let abort_for_worker = abort.clone();
                 let roots = source_roots_owned.clone();
-                let execution_authority_roots = execution_authority_roots_owned.clone();
-                let seeds = diff_edits.clone();
-                let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
                 let store = cross_worker_store.clone();
                 let arm_shared_for_worker = arm_shared_store;
@@ -23831,32 +23030,11 @@ fn run_discovery_corpus_with_options_inner(
                 handles.push(std::thread::spawn(
                     move || -> Result<Vec<DiscoverySummary>, String> {
                         let index = if arm_shared_for_worker {
-                            let store = store.expect(
-                                "shared typed store armed but cross_worker_store missing",
-                            );
+                            let store = store
+                                .expect("shared typed store armed but cross_worker_store missing");
                             build_multi_entry_index_with_shared_caches(&roots, store)
                         } else {
                             build_multi_entry_index(&roots)
-                        };
-                        let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
-                            let resolved = if execution_authority_is_subject_for_workers {
-                                resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
-                            } else {
-                                resolve_entry_graph(&execution_authority_roots, FLOOR_RUNNER_ENTRY)
-                            };
-                            match resolved {
-                                Ok((graph, source_indices)) => {
-                                    Some(make_eval_context(&graph, source_indices, execution_mode))
-                                }
-                                Err(msg) => {
-                                    abort_for_worker.store(true, Ordering::SeqCst);
-                                    return Err(format!(
-                                        "floor runner resolve failed in derived-schedule worker ({msg})"
-                                    ));
-                                }
-                            }
-                        } else {
-                            None
                         };
                         let mut worker_summaries = Vec::new();
                         loop {
@@ -23871,11 +23049,6 @@ fn run_discovery_corpus_with_options_inner(
                                 &group_rows,
                                 &index,
                                 execution_mode,
-                                selection_for_workers,
-                                &paths,
-                                &seeds,
-                                runner.as_ref(),
-                                execution_authority_is_subject_for_workers,
                                 keys.clone(),
                                 budget_policy_for_workers,
                                 style,
@@ -23918,8 +23091,6 @@ fn run_discovery_corpus_with_options_inner(
             Ok(finalize_discovery_summary(
                 merge_discovery_summaries(summaries),
                 &rows,
-                options.node_frontier_selection,
-                selection_categorization_reason,
                 deferred_rows,
             ))
         }
@@ -23929,8 +23100,6 @@ fn run_discovery_corpus_with_options_inner(
 fn finalize_discovery_summary(
     mut summary: DiscoverySummary,
     rows: &[DiscoveryRow],
-    _selection: NodeFrontierSelectionMode,
-    selection_categorization_reason: Option<String>,
     deferred_rows: Vec<DeferredDiscoveryRow>,
 ) -> DiscoverySummary {
     summary.deferred_rows = deferred_rows;
@@ -23941,7 +23110,6 @@ fn finalize_discovery_summary(
         .map(|o| o.entry.as_str())
         .collect::<std::collections::HashSet<_>>()
         .len();
-    summary.selection_categorization_reason = selection_categorization_reason;
     emit_batch_summary(&summary);
     summary
 }
@@ -23975,8 +23143,6 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         passed: 0,
         skipped: 0,
         deferred_rows: Vec::new(),
-        predicted_unaffected: Vec::new(),
-        selection_skipped_rows: Vec::new(),
         divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::new(),
@@ -23988,18 +23154,11 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         roster_closure_nodes: 0,
         total_entry_groups: 0,
         selected_entry_groups: 0,
-        selection_categorization_reason: None,
     };
     for summary in summaries {
         merged.total += summary.total;
         merged.passed += summary.passed;
         merged.skipped += summary.skipped;
-        merged
-            .predicted_unaffected
-            .extend(summary.predicted_unaffected);
-        merged
-            .selection_skipped_rows
-            .extend(summary.selection_skipped_rows);
         merged.divergences.extend(summary.divergences);
         merged.failures.extend(summary.failures);
         merged.witness_outcomes.extend(summary.witness_outcomes);
@@ -24116,65 +23275,6 @@ fn floor_ts() -> String {
     format!("{h:02}:{m:02}:{s:02}.{millis:03}")
 }
 
-/// One upfront line categorizing the corpus before any witness runs — the operator-facing
-/// "N skipped, M impacted, running X" read of the affected-set selection. The skip count here
-/// is the cheap import-closure disposition (entry-grain, no resolve); the finer per-node
-/// frontier decision runs the affected closure down further, so `[measurement]` at the end
-/// reports the exact ran/skipped tally. Print-only: the authoritative decision (and its
-/// fail-closed refusal on a provenance gap) still happens per-shard in `run_discovery_rows`.
-fn eprintln_affected_set_categorization(
-    selection: NodeFrontierSelectionMode,
-    rows: &[DiscoveryRow],
-    index: &MultiEntryIndex,
-    diff_edits: &FloorDiffEdits,
-    changed_paths: &[String],
-) {
-    let total = rows.len();
-    let entries = rows
-        .iter()
-        .map(|r| r.entry.as_str())
-        .collect::<HashSet<&str>>()
-        .len();
-    let ts = floor_ts();
-    match selection {
-        NodeFrontierSelectionMode::Off => {
-            eprintln!(
-                "{ts} [affected-set] selection off — running all {total} witness(es) across {entries} entr(y/ies)"
-            );
-        }
-        NodeFrontierSelectionMode::PredictOnly => {
-            eprintln!(
-                "{ts} [affected-set] predict-only — running all {total} witness(es) cold across {entries} entr(y/ies); node-frontier predictions recorded, divergences counted"
-            );
-        }
-        NodeFrontierSelectionMode::Applied => {
-            let declared_paths = index.module_graph_facts.declared_repo_paths();
-            let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-            let skipped = discovery_entry_fast_skip_without_resolve(
-                rows,
-                &index.module_graph_facts,
-                &declared_paths,
-                &touched,
-                changed_paths,
-                diff_edits,
-            )
-            .map(|fast| rows.iter().filter(|r| fast.contains(&r.entry)).count());
-            // The baseline is read back ONLY in the state that needs locating, so the
-            // ordinary path pays nothing for it.
-            let located = changed_paths
-                .is_empty()
-                .then(|| match floor_diff_baseline_readout() {
-                    Ok((base, event)) => format!("baseline='{base}' event='{event}'"),
-                    Err(e) => format!("baseline=UNREADABLE ({e})"),
-                });
-            eprintln!(
-                "{ts} {}",
-                affected_set_applied_report_line(total, entries, skipped, located.as_deref())
-            );
-        }
-    }
-}
-
 /// The Applied-mode report, rendered purely so both of its states are assertable.
 ///
 /// Its other state — `located` is `Some` — names the case in which the observation
@@ -24268,7 +23368,7 @@ fn floor_color_enabled() -> bool {
 }
 
 #[derive(Clone, Copy)]
-struct ShardStyle {
+pub struct ShardStyle {
     shard_id: usize,
     /// Number of concurrent shards in this run. When it is 1 there is no parallelism to
     /// distinguish, so the `s{id}` shard tag is dropped (it only reads as noise — the reason the
@@ -24279,6 +23379,20 @@ struct ShardStyle {
 }
 
 impl ShardStyle {
+    /// The style the required witness floor runs under. It is a single shard by construction —
+    /// there is no sharding to describe, so the `s{id}` tag is absent rather than set to a
+    /// constant — and colour/streaming come from the same environment the rest of the floor
+    /// reads. This exists because the fields are private to this module and the floor's CLI
+    /// entry lives in a binary; it is a constructor, not a policy.
+    pub fn single_shard() -> Self {
+        ShardStyle {
+            shard_id: 0,
+            shard_count: 1,
+            color: floor_color_enabled(),
+            stream: floor_stream_enabled(),
+        }
+    }
+
     /// Distinct hue per concurrent shard so the interleaved stream reads as parallelism. Green
     /// and red are reserved for the pass/fail glyph, so the label palette avoids them.
     fn shard_color_code(self) -> &'static str {
@@ -24352,11 +23466,6 @@ fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
     execution_mode: v1_interpreter::ExecutionMode,
-    selection: NodeFrontierSelectionMode,
-    changed_paths: &[String],
-    diff_edits: &FloorDiffEdits,
-    floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
-    execution_authority_is_subject: bool,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
     budgets: WitnessBudgetPolicy,
     style: ShardStyle,
@@ -24366,8 +23475,6 @@ fn run_discovery_rows(
         passed: 0,
         skipped: 0,
         deferred_rows: Vec::new(),
-        predicted_unaffected: Vec::new(),
-        selection_skipped_rows: Vec::new(),
         divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::with_capacity(rows.len()),
@@ -24379,27 +23486,12 @@ fn run_discovery_rows(
         roster_closure_nodes: 0,
         total_entry_groups: 0,
         selected_entry_groups: 0,
-        selection_categorization_reason: None,
     };
-    let skip_enabled = selection != NodeFrontierSelectionMode::Off;
-    // This shard's SUBJECT union closure, accumulated from the graphs it resolves. An ordinary
-    // batch's floor-runner prefix shares that subject universe and is included; a scoped batch's
-    // inherited selector authority is deliberately excluded from the subject digest/clamp grain.
-    // Row closures fold in below as each entry resolves.
+    // This shard's SUBJECT union closure, accumulated from the graphs it resolves as each
+    // entry is loaded. It once also folded in a floor-runner prefix context, resolved before the
+    // roster so the affected-set machinery was available to every row; that prefix is gone with
+    // selection, so the closure is exactly the rows' own graphs.
     let mut closure_modules: HashSet<String> = HashSet::new();
-    for prefix_ctx in [floor_runner_ctx]
-        .into_iter()
-        .flatten()
-        .filter(|_| execution_authority_is_subject)
-    {
-        collect_typed_module_names(
-            prefix_ctx.modules.iter().cloned(),
-            &prefix_ctx.source_indices,
-            &mut closure_modules,
-        );
-    }
-    // Existence set for the entry_file_touched refuse-vs-answer decision, built once per shard.
-    let module_graph_declared_paths = index.module_graph_facts.declared_repo_paths();
     // Schedule-derived retention is armed by the CALLER over the WHOLE batch schedule
     // (Serial: the single call; Adaptive width=1: once before the entry-group loop), so a
     // shared module's refcount spans every entry that reaches it and it stays resident until
@@ -24416,31 +23508,8 @@ fn run_discovery_rows(
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
-    let mut current_entry_touches = true;
-    let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
-    let mut current_entry_file_touched = true;
-    let mut current_entry_runtime_dependency_touched = true;
-    let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
-    let entry_fast_skip = if selection == NodeFrontierSelectionMode::Applied {
-        discovery_entry_fast_skip_without_resolve(
-            rows,
-            &index.module_graph_facts,
-            &module_graph_declared_paths,
-            &touched_entry_paths,
-            changed_paths,
-            diff_edits,
-        )?
-    } else {
-        HashSet::new()
-    };
-    if !entry_fast_skip.is_empty() && floor_verbose() {
-        eprintln!(
-            "run_discovery_corpus: skip-before-resolve fast path for {} entr(y/ies) (import-closure unaffected, no declaration edits, no data-item edits in closure, no host-scaffold)",
-            entry_fast_skip.len()
-        );
-    }
     for row in rows {
         // Schedule-derived eviction: when the entry advances, the previous entry's
         // rows are all behind us (rows are sorted by entry), so its per-module state
@@ -24456,78 +23525,13 @@ fn run_discovery_rows(
             }
             schedule_prev_entry = Some(row.entry.clone());
         }
-        // Applied only: PredictOnly must resolve + run cold and record via the post-resolve
-        // would_skip path (falsifier semantics — docs/plans/affected-set-differential-falsifier.md).
-        if selection == NodeFrontierSelectionMode::Applied && entry_fast_skip.contains(&row.entry) {
-            refuse_reads_live_tree_selection_skip(&row, "skip-before-resolve-fast-path")?;
-            if current_entry.as_deref() != Some(row.entry.as_str()) {
-                augment_closure_modules_from_import_facts(
-                    &index,
-                    &row.entry,
-                    &mut closure_modules,
-                )?;
-                current_entry = Some(row.entry.clone());
-                current_entry_touches = false;
-                current_entry_file_touched = false;
-                current_entry_runtime_dependency_touched = false;
-                current_entry_frontier_nodes.clear();
-                current_closure_subject = None;
-                ctx = None;
-            }
-            summary.skipped += 1;
-            summary
-                .selection_skipped_rows
-                .push(SelectionSkippedDiscoveryRow {
-                    entry: row.entry.clone(),
-                    function: row.function.clone(),
-                    provenance: "skip-before-resolve-fast-path".to_string(),
-                });
-            if floor_verbose() {
-                eprintln!(
-                    "SKIP [assumed-green node-frontier] {} ({})",
-                    row.function, row.entry
-                );
-            }
-            continue;
-        }
         if current_entry.as_deref() != Some(row.entry.as_str()) {
-            if entry_eligible_for_discovery_skip_before_resolve(
-                skip_enabled,
-                row.reads_live_tree,
-                &row.entry,
-                &index.module_graph_facts,
-                &module_graph_declared_paths,
-                changed_paths,
-                diff_edits,
-            )? {
-                if floor_verbose() {
-                    eprintln!(
-                        "SKIP-RESOLVE [unaffected import-closure] {} (cold entry resolve elided)",
-                        row.entry
-                    );
-                }
-                collect_import_closure_module_names_from_facts(
-                    &index,
-                    &row.entry,
-                    &mut closure_modules,
-                )?;
-                ctx = None;
-                current_closure_subject = None;
-                current_entry_frontier_nodes.clear();
-                current_entry_touches = false;
-                current_entry_file_touched = false;
-                current_entry_runtime_dependency_touched = false;
-                current_entry = Some(row.entry.clone());
-            } else {
+            {
                 let resolved = resolve_discovery_entry_for_corpus_row(
                     index,
                     &row.entry,
                     execution_mode,
                     whole_tree_published_keys.clone(),
-                    skip_enabled,
-                    diff_edits,
-                    &touched_entry_paths,
-                    &module_graph_declared_paths,
                     &mut closure_modules,
                 )?;
                 summary.total_resolve_nanos += resolved.resolve_nanos;
@@ -24539,11 +23543,6 @@ fn run_discovery_rows(
                     stage_nanos: resolved.stage_nanos,
                 });
                 current_closure_subject = Some(resolved.closure_subject);
-                current_entry_frontier_nodes = resolved.frontier_nodes;
-                current_entry_touches = resolved.touches_frontier;
-                current_entry_file_touched = resolved.entry_file_touched;
-                current_entry_runtime_dependency_touched =
-                    resolved.entry_runtime_dependency_touched;
                 ctx = Some(resolved.ctx);
                 if let Some(c) = ctx.as_ref() {
                     c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
@@ -24552,89 +23551,12 @@ fn run_discovery_rows(
                 current_entry = Some(row.entry.clone());
             }
         }
-        let function_edited = skip_enabled
-            && diff_edits.edited_test_fns.iter().any(|(file, func)| {
-                diff_file_matches_entry(file, &row.entry) && func == &row.function
-            });
-        let entry_file_touched = skip_enabled && current_entry_file_touched;
-        let runtime_data_dependency_touched =
-            skip_enabled && current_entry_runtime_dependency_touched;
-        let would_skip = if skip_enabled {
-            match floor_runner_ctx {
-                Some(runner_ctx) => {
-                    let skip = call_floor_row_would_skip(
-                        runner_ctx,
-                        row.reads_live_tree,
-                        changed_paths,
-                        &current_entry_frontier_nodes,
-                        current_entry_touches,
-                        function_edited,
-                        entry_file_touched,
-                        runtime_data_dependency_touched,
-                    );
-                    match skip {
-                        Ok(skip) => skip,
-                        Err(msg) => {
-                            return Err(format!(
-                                "floor would_skip failed for {} ({}): {msg} — declared \
-                                 selection machinery must evaluate; no silent \
-                                 run-everything fallback",
-                                row.function, row.entry
-                            ));
-                        }
-                    }
-                }
-                None => false,
-            }
-        } else {
-            false
-        };
-        if would_skip {
-            refuse_reads_live_tree_selection_skip(&row, "node-frontier-selection")?;
-            match selection {
-                NodeFrontierSelectionMode::Applied => {
-                    summary.skipped += 1;
-                    summary
-                        .selection_skipped_rows
-                        .push(SelectionSkippedDiscoveryRow {
-                            entry: row.entry.clone(),
-                            function: row.function.clone(),
-                            provenance: "node-frontier-selection".to_string(),
-                        });
-                    if floor_verbose() {
-                        eprintln!(
-                            "SKIP [assumed-green node-frontier] {} ({})",
-                            row.function, row.entry
-                        );
-                    }
-                    continue;
-                }
-                NodeFrontierSelectionMode::PredictOnly => {
-                    // Falsifier semantics: record the prediction and run the row cold anyway.
-                    summary
-                        .predicted_unaffected
-                        .push((row.entry.clone(), row.function.clone()));
-                    if floor_verbose() {
-                        eprintln!(
-                            "PREDICT [unaffected node-frontier] {} ({})",
-                            row.function, row.entry
-                        );
-                    }
-                }
-                // would_skip is only computed when selection is enabled.
-                NodeFrontierSelectionMode::Off => {}
-            }
-        }
         if ctx.is_none() {
             let resolved = resolve_discovery_entry_for_corpus_row(
                 index,
                 &row.entry,
                 execution_mode,
                 whole_tree_published_keys.clone(),
-                skip_enabled,
-                diff_edits,
-                &touched_entry_paths,
-                &module_graph_declared_paths,
                 &mut closure_modules,
             )?;
             summary.total_resolve_nanos += resolved.resolve_nanos;
@@ -24646,10 +23568,6 @@ fn run_discovery_rows(
                 stage_nanos: resolved.stage_nanos,
             });
             current_closure_subject = Some(resolved.closure_subject);
-            current_entry_frontier_nodes = resolved.frontier_nodes;
-            current_entry_touches = resolved.touches_frontier;
-            current_entry_file_touched = resolved.entry_file_touched;
-            current_entry_runtime_dependency_touched = resolved.entry_runtime_dependency_touched;
             ctx = Some(resolved.ctx);
             if let Some(c) = ctx.as_ref() {
                 c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
@@ -24697,20 +23615,6 @@ fn run_discovery_rows(
             wall_nanos,
             matches!(outcome, ClaimOutcome::Pass),
         );
-        if selection == NodeFrontierSelectionMode::PredictOnly
-            && would_skip
-            && !matches!(outcome, ClaimOutcome::Pass)
-        {
-            // The red itself already fails the batch through the failure channel below;
-            // this line is the ATTRIBUTION receipt — a missing selection edge, counted.
-            let line = format!(
-                "DIVERGENCE [affected-set-falsifier] {} ({}) predicted=unaffected \
-                 actual=red class=node-frontier",
-                row.function, row.entry
-            );
-            eprintln!("{line}");
-            summary.divergences.push(line);
-        }
         match outcome {
             ClaimOutcome::Pass => summary.passed += 1,
             ClaimOutcome::Fail => {
@@ -25005,67 +23909,6 @@ new file mode 100644
         let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n";
         let err = super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap_err();
         assert!(err.contains("more than once"), "got: {err}");
-    }
-
-    #[test]
-    fn live_tree_declared_row_not_skipped_on_unrelated_diff() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let roots = vec![
-            ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dag").to_string_lossy().into_owned(),
-        ];
-        let (runner_graph, runner_indices) =
-            super::resolve_entry_graph(&roots, super::FLOOR_RUNNER_ENTRY)
-                .expect("floor runner resolves");
-        let runner_ctx =
-            super::make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
-        let live_entry =
-            "src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag";
-        assert!(
-            super::read_entry_live_tree_disposition(live_entry)
-                .expect("long live-corpus witness readable"),
-            "the live-scan witness entry must declare (or default to) ReadsLiveTree"
-        );
-        let substrate_entry =
-            "src/v2/test/claim/realization_vocabulary_containment/clean_tree_test.dag";
-        assert!(
-            !super::read_entry_live_tree_disposition(substrate_entry)
-                .expect("clean_tree fast-lane note entry readable"),
-            "the fast-lane note entry must declare SubstrateInputsOnly after long-lane offloading"
-        );
-        let changed_paths = vec!["src/v2/lens/affected_set.dag".to_string()];
-        let skip = super::call_floor_row_would_skip(
-            &runner_ctx,
-            true,
-            &changed_paths,
-            &[],
-            false,
-            false,
-            false,
-            false,
-        )
-        .expect("live-tree row skip");
-        assert!(
-            !skip,
-            "a ReadsLiveTree row must not skip on unrelated node-frontier diff"
-        );
-        let kernel_skip = super::call_floor_row_would_skip(
-            &runner_ctx,
-            false,
-            &changed_paths,
-            &[],
-            false,
-            false,
-            false,
-            false,
-        )
-        .expect("substrate-only row skip");
-        assert!(
-            kernel_skip,
-            "the same unrelated diff must skip a declared SubstrateInputsOnly row \
-             (discriminating control: the disposition is what flips the decision)"
-        );
     }
 
     #[test]
@@ -26440,27 +25283,6 @@ mod node_frontier_plumbing_controls {
             .expect("qualify"),
             "a ReadsLiveTree entry must NOT qualify for skip-before-resolve even when the diff is outside its import closure (never predict-skip)"
         );
-    }
-
-    // §5 prove-the-refusal-fires: layer-3 backstop is by-design hard to reach in integration
-    // (the .dag model + entry_qualifies_for_skip_without_resolve gate first) — direct RED.
-    #[test]
-    fn refuse_reads_live_tree_selection_skip_fires_red_on_live_tree_row() {
-        let live = super::DiscoveryRow {
-            label: "live".to_string(),
-            entry: "e.dag".to_string(),
-            function: "live_holds".to_string(),
-            reads_live_tree: true,
-        };
-        let err = super::refuse_reads_live_tree_selection_skip(&live, "test")
-            .expect_err("ReadsLiveTree row must refuse selection skip");
-        assert!(err.contains("ReadsLiveTreeSelectionSkip"));
-        let substrate = super::DiscoveryRow {
-            reads_live_tree: false,
-            ..live
-        };
-        super::refuse_reads_live_tree_selection_skip(&substrate, "test")
-            .expect("SubstrateInputsOnly row may proceed to skip evaluation");
     }
 
     // §5 deferred-discovery receipt: long-lane witnesses (s1_closure class) are excluded
@@ -29363,12 +28185,10 @@ mod moduleless_entry_skip_tests {
 mod discovery_summary_merge_tests {
     use super::{
         compute_histogram_data, finalize_discovery_summary, merge_discovery_summaries,
-        project_witness_cost_receipt, render_selection_degradation_receipt_line,
-        repo_relative_dag_path, run_discovery_corpus_with_options, top_n_slowest_witnesses,
-        witness_execution_leg_cache_put, ClaimOutcome, DiscoveryCorpusOptions, DiscoveryRow,
-        DiscoverySummary, DiscoveryWidthPolicy, DiscoveryWitnessOutcome, EntryResolveReceipt,
-        NodeFrontierSelectionMode, ResolveStageNanos, SelectionDegradationSnapshot,
-        SelectionSkippedDiscoveryRow,
+        project_witness_cost_receipt, repo_relative_dag_path, run_discovery_corpus_with_options,
+        top_n_slowest_witnesses, witness_execution_leg_cache_put, ClaimOutcome,
+        DiscoveryCorpusOptions, DiscoveryRow, DiscoverySummary, DiscoveryWidthPolicy,
+        DiscoveryWitnessOutcome, EntryResolveReceipt, ResolveStageNanos,
     };
     use crate::v1_interpreter::{ExecutionMode, PerformanceReceipt};
 
@@ -29389,8 +28209,6 @@ mod discovery_summary_merge_tests {
             passed: 3,
             skipped: 0,
             deferred_rows: Vec::new(),
-            predicted_unaffected: Vec::new(),
-            selection_skipped_rows: Vec::new(),
             divergences: Vec::new(),
             failures: Vec::new(),
             witness_outcomes: vec![
@@ -29462,7 +28280,6 @@ mod discovery_summary_merge_tests {
             roster_closure_nodes: 42,
             total_entry_groups: 2,
             selected_entry_groups: 2,
-            selection_categorization_reason: None,
         }
     }
 
@@ -29478,93 +28295,6 @@ mod discovery_summary_merge_tests {
         b.roster_closure_nodes = 71;
         let merged = merge_discovery_summaries(vec![a, b]);
         assert_eq!(merged.roster_closure_nodes, 71);
-    }
-
-    /// RED control: skip-before-resolve records `selection_skipped_rows` but does NOT add
-    /// `witness_outcomes` for those entries. `selected_entry_groups` must count executed
-    /// entry groups only — otherwise narrowed Applied runs mislabel as Superset.
-    #[test]
-    fn finalize_discovery_summary_selected_entry_groups_exclude_skip_before_resolve() {
-        let rows = vec![
-            DiscoveryRow {
-                label: "w1".into(),
-                entry: "entry_a.dag".into(),
-                function: "f1".into(),
-                reads_live_tree: false,
-            },
-            DiscoveryRow {
-                label: "w2".into(),
-                entry: "entry_b.dag".into(),
-                function: "f2".into(),
-                reads_live_tree: false,
-            },
-            DiscoveryRow {
-                label: "w3".into(),
-                entry: "entry_c.dag".into(),
-                function: "f3".into(),
-                reads_live_tree: false,
-            },
-        ];
-        let summary = DiscoverySummary {
-            total: 2,
-            passed: 2,
-            skipped: 1,
-            deferred_rows: Vec::new(),
-            predicted_unaffected: Vec::new(),
-            selection_skipped_rows: vec![SelectionSkippedDiscoveryRow {
-                entry: "entry_c.dag".into(),
-                function: "f3".into(),
-                provenance: "skip-before-resolve-fast-path".into(),
-            }],
-            divergences: Vec::new(),
-            failures: Vec::new(),
-            witness_outcomes: vec![
-                DiscoveryWitnessOutcome {
-                    entry: "entry_a.dag".into(),
-                    module_path: "test.a".into(),
-                    function: "f1".into(),
-                    outcome: ClaimOutcome::Pass,
-                    execution_leg: "InterpretedLeg".into(),
-                },
-                DiscoveryWitnessOutcome {
-                    entry: "entry_b.dag".into(),
-                    module_path: "test.b".into(),
-                    function: "f2".into(),
-                    outcome: ClaimOutcome::Pass,
-                    execution_leg: "InterpretedLeg".into(),
-                },
-            ],
-            entry_resolve_receipts: Vec::new(),
-            total_resolve_nanos: 0,
-            total_stage_nanos: ResolveStageNanos::default(),
-            performance_receipts: Vec::new(),
-            total_measured_nanos: 0,
-            roster_closure_nodes: 0,
-            total_entry_groups: 0,
-            selected_entry_groups: 0,
-            selection_categorization_reason: None,
-        };
-        let finalized = finalize_discovery_summary(
-            summary,
-            &rows,
-            NodeFrontierSelectionMode::Applied,
-            None,
-            Vec::new(),
-        );
-        assert_eq!(finalized.total_entry_groups, 3);
-        assert_eq!(finalized.selected_entry_groups, 2);
-        let snapshot = SelectionDegradationSnapshot::from_summary(
-            NodeFrontierSelectionMode::Applied,
-            &finalized,
-        );
-        let line =
-            render_selection_degradation_receipt_line(&source_roots(), &snapshot).expect("receipt");
-        assert!(
-            line.contains("selection_state=SelectionApplied"),
-            "skip-before-resolve must not inflate selected to total (would read Superset): {line}"
-        );
-        assert!(line.contains("selected_entry_groups=2"));
-        assert!(line.contains("total_entry_groups=3"));
     }
 
     #[test]
@@ -29699,7 +28429,6 @@ mod discovery_summary_merge_tests {
             ExecutionMode::Hermetic,
             DiscoveryWidthPolicy::Serial,
             DiscoveryCorpusOptions {
-                node_frontier_selection: NodeFrontierSelectionMode::Off,
                 execution_authority_source_roots: roots.clone(),
                 explicit_roster_only: true,
                 exclude_substrings: Vec::new(),
@@ -33591,11 +32320,11 @@ mod reference_edge_producer_tests {
             panic!("expected ModuleDependencyEdge record, got {value}");
         };
         let path = match ctx.field(fields, "path") {
-            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
+            Some(crate::v1_interpreter::str_value(s)) => s.to_string(),
             other => panic!("path field: {other:?}"),
         };
         let target = match ctx.field(fields, "target_module") {
-            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
+            Some(crate::v1_interpreter::str_value(s)) => s.to_string(),
             other => panic!("target_module field: {other:?}"),
         };
         (path, target)
@@ -37600,225 +36329,6 @@ mod witness_layer_roots_compile_clean_tests {
                 );
             }
         });
-    }
-
-    /// Selection-control skip, the GREEN arm: a diff that touches nothing in the control
-    /// suite's closure skips. Paired with the RUN arms below — that pair is what makes
-    /// this a decision rather than a constant.
-    ///
-    /// The subject is ASSERTED outside the closure rather than assumed: if a new import edge
-    /// or declared entry ever pulls it in, this test panics instead of quietly passing for
-    /// the wrong reason. It is deliberately NOT a `.md` path — markdown is an input through
-    /// the `ReadsLiveTree` doc-reachability entry. The first draft of this test used
-    /// `docs/plans/example.md`, i.e. it asserted the very suppression review 44682 caught.
-    #[test]
-    fn selection_control_skip_skips_on_unrelated_path() {
-        const UNRELATED: &str = "src/v2/lens/machine_shape.dag";
-        let closure = selection_control_input_sources(&workspace_root())
-            .expect("selection-control closure must compute");
-        assert!(
-            !closure.iter().any(|p| p == UNRELATED),
-            "{UNRELATED} entered the suite's input closure — choose a new skip subject; \
-             do not weaken this arm to keep it green"
-        );
-        assert!(
-            !UNRELATED.ends_with(".md"),
-            "the skip subject must not be markdown (markdown always runs the suite)"
-        );
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    &format!("M\\000{UNRELATED}\\000"),
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL
-                );
-            });
-        });
-    }
-
-    /// RUN arm 1 — a declared entry of the suite is touched.
-    #[test]
-    fn selection_control_skip_runs_on_declared_entry() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000src/v2/workflow/affected_set_floor_runner.dag\\000",
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    RUN_SELECTION_CONTROL_LABEL
-                );
-            });
-        });
-    }
-
-    /// RUN arm 2 — a TRANSITIVELY imported module, not a declared entry. This is the arm
-    /// that proves the import walk is load-bearing: the path is chosen from the computed
-    /// closure at test time, so if the walk ever stopped at the declared entries this test
-    /// would fail to find a subject and panic rather than silently weaken.
-    #[test]
-    fn selection_control_skip_runs_on_transitively_imported_module() {
-        let closure = selection_control_input_sources(&workspace_root())
-            .expect("selection-control closure must compute");
-        let transitive = closure
-            .iter()
-            .find(|p| !SELECTION_CONTROL_DECLARED_ENTRIES.contains(&p.as_str()))
-            .expect("closure must reach past the declared entries (import walk is dead)")
-            .clone();
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    &format!("M\\000{transitive}\\000"),
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    RUN_SELECTION_CONTROL_LABEL,
-                    "a transitively imported closure member ({transitive}) must run the suite"
-                );
-            });
-        });
-    }
-
-    /// RUN arm 3 — the `src/v1/**` prefix: the selection implementation and the witness bin
-    /// live there, and neither is reachable through the `.dag` import walk.
-    #[test]
-    fn selection_control_skip_runs_on_src_v1_path() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000src/v1/stage0/src/cli_run.rs\\000",
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    RUN_SELECTION_CONTROL_LABEL
-                );
-            });
-        });
-    }
-
-    /// RUN arm 4 — departed path. The closure is computed from the CURRENT tree, so a
-    /// deletion is invisible to the intersection; the guard discriminates on D, not on
-    /// path. The subject is the SAME path the skip control above modifies, so the pair
-    /// isolates the D/M axis: modified → skip, departed → run.
-    #[test]
-    fn selection_control_skip_runs_on_departed_path() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "D\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    RUN_SELECTION_CONTROL_LABEL
-                );
-            });
-        });
-    }
-
-    /// RUN arm 5 — a docs-only diff. THE REGRESSION CONTROL for review 44682: the suite's
-    /// `dag/test/claim/doc_reachability_witness_test.dag` entry declares
-    /// `LiveTreeDisposition = ReadsLiveTree` and folds the live markdown doc graph, and the
-    /// suite's own `doc_reachability_runs_on_docs_only_diff` scenario asserts the orphan wall
-    /// is green against the real tree. So a docs-only PR that orphans a doc flips this suite
-    /// red — and the first draft skipped it. Markdown is an input; it runs.
-    #[test]
-    fn selection_control_skip_runs_on_docs_only_diff() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000docs/plans/example.md\\000",
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    RUN_SELECTION_CONTROL_LABEL,
-                    "a docs-only diff must RUN the control suite: its doc-reachability entry \
-                     reads the live doc graph, so markdown changes its verdict"
-                );
-            });
-        });
-    }
-
-    /// RUN arm 6 — a DEPARTED doc. Deletion is the direction the orphan/dangling wall is
-    /// most sensitive to (removing a link target creates a dangling link; removing a linker
-    /// orphans its target), and it is the arm the copied `!starts_with("docs/")` carve-out
-    /// from regen/compile-clean would have skipped.
-    #[test]
-    fn selection_control_skip_runs_on_departed_doc() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "D\\000docs/plans/example.md\\000",
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    RUN_SELECTION_CONTROL_LABEL,
-                    "a departed doc must RUN the control suite (it changes the live doc graph)"
-                );
-            });
-        });
-    }
-
-    /// REFUSAL arm — the discriminating control for review 44745. An unrecognized git
-    /// `--name-status` status letter makes the modeled observation answer `NameStatusDiffFail`,
-    /// i.e. the affected set is UNKNOWN. The step must REFUSE (typed, located, countable), not
-    /// widen to a run: "can't compute the affected set → rerun everything" is DESIGN §5's named
-    /// absorbing fallback, and `floor_diff_baseline_law` already records the 2026-07-05 ruling
-    /// that this arm HALTS rather than widening.
-    ///
-    /// This is the RED that would go green again if anyone reinstated the old widening arm:
-    /// with the fail-open version, this returned `Ok(run_selection_control)` and CI stayed green.
-    #[test]
-    fn selection_control_skip_refuses_when_diff_observation_fails() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                // 'Z' is not a status letter git emits; the modeled observation rejects it.
-                let _ns =
-                    EnvGuard::set("GUNBC_CI_DIFF_NAME_STATUS", "Z\\000src/v1/whatever.rs\\000");
-                let refusal = selection_control_skip_label_for_ci()
-                    .expect_err("an unobservable diff must REFUSE, never widen to a run");
-                assert_eq!(
-                    refusal.cause,
-                    SelectionControlRefusalCause::DiffObservationFailed
-                );
-                let d = refusal.diagnostic();
-                assert!(
-                    d.contains("SELECTION_CONTROL_REFUSED")
-                        && d.contains("cause=DiffObservationFailed"),
-                    "the refusal must be countable by a stable token: {d}"
-                );
-                assert!(
-                    !d.contains(RUN_SELECTION_CONTROL_LABEL)
-                        && !d.contains(SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL),
-                    "a refusal must not carry a label — ignorance is not an answer: {d}"
-                );
-            });
-        });
-    }
-
-    /// The two refusal causes must stay distinguishable, so each is separately countable in the
-    /// job log. A single fused cause would re-absorb the deficits into one unprioritizable bucket.
-    #[test]
-    fn selection_control_refusal_causes_are_distinct_and_countable() {
-        assert_ne!(
-            SelectionControlRefusalCause::DiffObservationFailed.token(),
-            SelectionControlRefusalCause::InputClosureFailed.token()
-        );
     }
 
     fn repair_receipt_touched_paths() -> Vec<String> {
@@ -42029,4 +40539,2155 @@ mod union_dedup_import_facts_law {
     fn empty_inputs_produce_an_empty_population() {
         assert!(union_dedup_import_facts_reference_first(vec![], vec![]).is_empty());
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// THE REQUIRED WITNESS FLOOR
+//
+// Ported 2026-08-15 from session/vivid-bear-458-floor2 b19a3e2942 as re-add #1 after the
+// CI wipe. Only the preparation/scope/fold stack came across: the quarry's plan, batch,
+// worker and coordinator surfaces are not re-added and are not migration subjects.
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+pub fn floor_prepared_subject_exclusions() -> Vec<String> {
+    vec![
+        "test/fixture/meta_exec_confinement_scan/".to_string(),
+        "test/manual/ownership_movable_test.dag".to_string(),
+    ]
+}
+
+/// ONE PREPARATION, N FRAMES — and the distinction is what deleted the memo.
+///
+/// The load-bearing observation is that `ExecutionMode` is NOT an input to resolution. It
+/// reaches only `InterpContext::with_runtime_options`, so a Hermetic claim and a Wet claim
+/// over the same tree are two CONTEXTS over one graph, not two subjects. That fact used to be
+/// spent on a thread-local cache: three plan-driven batches each *demanded* a prepared
+/// subject, and the memo made the second and third demands cheap. The demands were the
+/// defect. One required-floor process prepares once and hands the same `PreparedRepository`
+/// to every frame it builds, so there is no repeated demand to absorb, no key to get wrong,
+/// and no cache whose hit rate could silently become the thing being measured.
+///
+/// A cache that is never consulted twice is not an optimisation, it is a claim about the
+/// call graph written in the wrong place — and one that a reader can only check by counting
+/// callers. Direct value flow states it structurally: `prepare_repository_once` is called at
+/// one site, and every frame is derived from what it returned.
+///
+/// THE INVENTORY IS RETAINED, and that is the second half of the deletion. Preparation
+/// already walked and read every admitted file; a later consumer that walks again to ask what
+/// modules exist, which files declare witnesses, or what a module's path is, is re-acquiring
+/// the repository to learn something the preparation already knows. The naming-hygiene walk
+/// cost ~6 minutes of every floor run for exactly that reason. Consumers fold over this
+/// inventory instead.
+pub struct PreparedRepository {
+    pub graph: Rc<v1_compiler_compile::ResolvedGraph>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub subject_digest: String,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+    pub inventory: Vec<InventoryEntry>,
+}
+
+/// One admitted source file, as preparation read it: its module path, its repository path,
+/// and the bytes. The module path is carried here rather than re-derived because the index
+/// that produced it is the same one preparation resolved from — re-deriving it later is the
+/// second representation of the path/module binding, and it is the representation that rots.
+pub struct InventoryEntry {
+    pub module_path: String,
+    pub path: String,
+    pub content: String,
+}
+
+/// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
+/// typecheck gate, and returns everything a later consumer could want to know about the
+/// subject so that none of them reaches for the repository again.
+pub fn prepare_repository_once(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<PreparedRepository, String> {
+    let index = build_module_index(source_roots);
+    let total = index.len();
+    let mut inventory: Vec<InventoryEntry> = Vec::with_capacity(total);
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
+    for (module_path, sf) in index.iter() {
+        let p = sf.path.replace('\\', "/");
+        if exclude_substrings
+            .iter()
+            .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+        {
+            continue;
+        }
+        inventory.push(InventoryEntry {
+            module_path: module_path.clone(),
+            path: sf.path.clone(),
+            content: sf.content.clone(),
+        });
+        sources.push(sf.clone());
+    }
+    if sources.is_empty() {
+        return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
+    }
+    let modules_excluded = total - sources.len();
+    let subject_digest = subject_digest_for_closure(&sources);
+    // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
+    //
+    // The digest and the two counts are computed above, BEFORE the gate that can reject.
+    // Reporting them only in the `Ok` arm made a refusal unattributable by construction: the
+    // caller printed `refused: <diagnostics>` with no statement of which population, over which
+    // source roots, the compile had been run against — so two refusals over different subjects
+    // are indistinguishable in a log, and a subject that silently narrowed reads exactly like
+    // one that did not. A receipt identifying the subject must precede the gate that can reject
+    // it, so the error carries them rather than a second emit site racing the first.
+    let modules_resolved = total - modules_excluded;
+    let subject_statement = format!(
+        "subject={subject_digest} modules_resolved={modules_resolved} modules_excluded={modules_excluded}"
+    );
+    let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
+    let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
+    Ok(PreparedRepository {
+        graph,
+        source_indices,
+        subject_digest,
+        modules_resolved,
+        modules_excluded,
+        inventory,
+    })
+}
+
+/// THE EXACT SCOPE ONE CLAIM EVALUATES IN — a projection of the one preparation, never a
+/// second one.
+///
+/// `PreparedRepository` is deliberately NOT evaluable. A repository-wide `InterpContext` is
+/// the flat namespace that produced the mass red: `with_runtime_options` inserts every
+/// declaration under BOTH its bare and its qualified name, bare insertion overwrites, and
+/// `lookup_fn` is a plain map get that never consults `ambiguous_bare_function_names`. Over an
+/// entry closure that is safe; over 3,662 modules it is not. Measured on the corpus, 549
+/// function names and 812 top-level declaration names are declared in more than one file.
+/// Executed specimen: `altra_minimal_design_witness_test` `w_the_selected_minimum_is_admitted`
+/// passes entry-major and fails in 1ms under a repository-wide frame with `call contract
+/// mismatch calling 'admits': no parameter named 'd' (declared: [coverage])` — six files
+/// declare `fn admits`, and `check_coverage_admission_witness_test`'s won the map.
+///
+/// So the wrong state has no API rather than a warning beside it: there is no function that
+/// turns a `PreparedRepository` into an evaluable context, and the only route to evaluation is
+/// through a scope.
+///
+/// WHAT THE SCOPE REPRODUCES IS THE OLD ENTRY CLOSURE, deliberately — NOT strict module-local
+/// binding. The entry-major evaluator flattened the selected entry's whole closure into one
+/// context, so a witness legitimately calls helpers declared in modules it imports. A strict
+/// module-local view would be narrower than what the corpus was written against, and adopting
+/// it here would fuse the floor cutover with namespace hardening and undeclared-import
+/// enforcement — which would also destroy the exact old/new parity this cutover is judged by.
+/// Narrowing to a true module-bound environment belongs to the namespace lane, after declared
+/// imports are authoritative.
+///
+/// CONSTRUCTION IS PROJECTION ONLY: no source read, no parse, no resolve, no typecheck. The
+/// module population is selected from what preparation already resolved and the item registry
+/// is filtered by `ItemInfo.module_name` to the same population.
+pub struct PreparedClaimScope {
+    /// THE IMMUTABLE INTERPRETER INDEXES FOR THIS SCOPE, built ONCE here rather than once per
+    /// claim. `InterpContext::with_runtime_options` walks every module and every item to build
+    /// them, so calling it per claim would rebuild 1,155 scopes' worth of maps 9,573 times —
+    /// the entry-major cost shape reproduced one layer below the compiler, immediately after
+    /// the compiler's own copy of it was deleted.
+    indexes: Rc<v1_interpreter::PreparedScopeIndexes>,
+    /// Digest of the ORDERED module identities in this scope. Ordered because the defect being
+    /// fixed is last-writer-wins over an unordered flattening: two scopes holding the same
+    /// module set in different orders can bind a colliding bare name differently, so a
+    /// set-digest would call them identical when they are not.
+    pub scope_identity: String,
+    pub module_count: usize,
+    /// BARE NAMES IN THIS SCOPE CLAIMED BY MORE THAN ONE MODULE.
+    ///
+    /// `item_registry` is keyed by bare leaf name, so it cannot represent two declarations that
+    /// spell the same. Precedence decides which one a lookup gets, and for a name the entry
+    /// module owns or directly imports that decision is the language's — ordinary shadowing.
+    /// For a name claimed only by modules the scope reached transitively, it is not: nothing the
+    /// author wrote says which should win, and the registry has already discarded the other
+    /// before precedence is consulted.
+    ///
+    /// That is a silent pick, and the first obligation on one is to stop being silent. It is
+    /// counted here so the population is a measured quantity rather than an assumption, which is
+    /// what decides whether the honest arm — refusing the ambiguous lookup — is affordable or
+    /// whether the terminal per-module-environment correction has to land first.
+    pub ambiguous_bare_names: usize,
+}
+
+/// Project the exact scope for one entry file out of the prepared repository.
+///
+/// The closure is the transitive declared-import closure of the entry's module, which is the
+/// population the entry-major path placed in that claim's context. A module the closure names
+/// but the subject does not contain is a REFUSAL rather than a silent omission: evaluating
+/// against a scope that quietly lost a module reproduces, one level down, exactly the missing
+/// binding this scope exists to prevent.
+// THE REFERENCE CLOSURE, BECAUSE AN IMPORT CLOSURE CANNOT SEE A BARE CROSS-MODULE REFERENCE.
+//
+// Measured on the first complete floor run: 2,280 of 10,444 claims refused with "no such
+// function", and 95% of the modules they came from declare ZERO import lines against 13% of the
+// modules that passed. `base64_encode` lives in `std.encoding`; its witness declares no imports
+// and reaches it by bare name, so a scope derived from imports contained the witness alone and
+// every reference in it failed. Those claims were not failing on their merits -- they could not
+// see their own dependencies, which is the empty-observation class at roster scale.
+//
+// This is not a corpus defect to be fixed by adding import lines. DESIGN's namespace-only
+// resolution thread is operator-signed: the containment tree is the single naming authority and
+// the terminal step DELETES the import grammar, so a bare cross-module reference is the intended
+// authoring form and a projection that can only see imports is what is wrong.
+//
+// What this deliberately is NOT: widening the scope to the whole prepared subject. That is the
+// absorbing fallback -- and it is precisely the pool-membership coincidence (#6985 Class B) that
+// made these witnesses green by accident under the deleted floor, where a module resolved only
+// because some unrelated importer had already dragged its target into the pool. The answer has
+// to be the module's ACTUAL references, so that a witness reaching a module nothing else pulls
+// in still resolves, and a witness reaching nothing still gets a scope of one.
+//
+// The reference edges are read from the PREPARED graph's own `Node` trees, not re-parsed from
+// disk as `reference_resolution_facts` does. That producer answers a corpus-wide question before
+// preparation exists; here the resolved graph is already in hand, and re-reading the files would
+// be a second answer to a question the prepared artifacts have already answered -- the exact
+// duplication the import-scan this replaces was criticised for one comment down.
+//
+// Resolution reuses the existing bare/qualified rules rather than restating them: longest
+// declared module prefix for a qualified chain, and for a bare name the same proximity rule
+// (a name the module declares itself resolves locally; otherwise the declarer sharing the
+// longest module-path prefix wins). A tie is a genuine homonym, and it contributes BOTH
+// declarers rather than picking one -- an evaluation scope is a visibility question, and
+// narrowing it on a coin-flip is how a claim silently fails to see the module it meant.
+pub struct ReferenceClosureIndex {
+    pub module_count: usize,
+    pub decl_index: HashMap<String, std::collections::BTreeSet<String>>,
+    pub module_names: std::collections::HashSet<String>,
+    pub refs_by_module: HashMap<String, std::collections::BTreeSet<String>>,
+}
+
+thread_local! {
+    static REFERENCE_CLOSURE_INDEX: std::cell::RefCell<Option<Rc<ReferenceClosureIndex>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+fn reference_closure_index(
+    prepared: &PreparedRepository,
+) -> Result<Rc<ReferenceClosureIndex>, String> {
+    // ONE PREPARED SUBJECT PER PROCESS is the architecture of this fold, so the index is built
+    // once and reused across all 10,444 claims -- rebuilding it per claim would be a corpus walk
+    // per row. That assumption is CHECKED rather than assumed: a later call seeing a different
+    // module population refuses instead of silently answering from the first subject's index.
+    if let Some(existing) = REFERENCE_CLOSURE_INDEX.with(|c| c.borrow().clone()) {
+        if existing.module_count != prepared.graph.modules.len() {
+            return Err(format!(
+                "CLAIM-SCOPE REFUSAL cause=ReferenceIndexSubjectChanged \
+                 built_for_modules={} observed_modules={} — the reference closure index is built \
+                 once per prepared subject and this process prepared a second one",
+                existing.module_count,
+                prepared.graph.modules.len()
+            ));
+        }
+        return Ok(existing);
+    }
+    let started = std::time::Instant::now();
+    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut refs_by_module: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    for m in prepared.graph.modules.iter() {
+        let name = m.func_env.name.clone();
+        module_names.insert(name.clone());
+        for decl in collect_module_decl_names(&m.module) {
+            decl_index.entry(decl).or_default().insert(name.clone());
+        }
+        let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut chains: Vec<Vec<String>> = Vec::new();
+        for item in m.module.children.iter() {
+            collect_node_refs(item, &mut bare, &mut chains);
+        }
+        let mut flat: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for n in bare {
+            flat.insert(n);
+        }
+        for chain in chains {
+            flat.insert(format!("\u{1f}{}", chain.join(".")));
+        }
+        refs_by_module.insert(name, flat);
+    }
+    let index = Rc::new(ReferenceClosureIndex {
+        module_count: prepared.graph.modules.len(),
+        decl_index,
+        module_names,
+        refs_by_module,
+    });
+    eprintln!(
+        "[floor-phase] phase=reference-closure-index state=completed wall_ms={} modules={} names={}",
+        started.elapsed().as_millis(),
+        index.module_count,
+        index.decl_index.len()
+    );
+    REFERENCE_CLOSURE_INDEX.with(|c| *c.borrow_mut() = Some(index.clone()));
+    Ok(index)
+}
+
+// The modules one module reaches directly by reference. Chains carry a leading unit separator so
+// a qualified path can never collide with a bare identifier in one set.
+pub fn reference_targets_of(index: &ReferenceClosureIndex, module: &str) -> Vec<String> {
+    let Some(refs) = index.refs_by_module.get(module) else {
+        return Vec::new();
+    };
+    let mut out: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for r in refs.iter() {
+        if let Some(chain) = r.strip_prefix('\u{1f}') {
+            let segs: Vec<String> = chain.split('.').map(|s| s.to_string()).collect();
+            if let Some(m) = longest_declared_module_prefix(&segs, &index.module_names) {
+                if m != module {
+                    out.insert(m);
+                }
+            }
+            continue;
+        }
+        let Some(mods) = index.decl_index.get(r) else {
+            continue;
+        };
+        // A name the module declares itself resolves locally -- no cross-module edge.
+        if mods.contains(module) {
+            continue;
+        }
+        let mut best_len = 0usize;
+        let mut winners: Vec<&String> = Vec::new();
+        for m in mods.iter() {
+            let shared = module_prefix_shared_len(module, m);
+            if winners.is_empty() || shared > best_len {
+                best_len = shared;
+                winners.clear();
+                winners.push(m);
+            } else if shared == best_len {
+                winners.push(m);
+            }
+        }
+        for w in winners {
+            out.insert(w.clone());
+        }
+    }
+    out.into_iter().collect()
+}
+
+pub fn claim_scope_for(
+    prepared: &PreparedRepository,
+    entry_module_path: &str,
+) -> Result<PreparedClaimScope, String> {
+    // THE CLOSURE COMES FROM THE COMPILER, NOT FROM A SECOND IMPORT SCAN.
+    //
+    // `TypedModule.func_env` is the module's `ResolvedFuncEnv`, and its `parents` field is —
+    // per that carrier's own note — "the module's transitive import closure held FLAT,
+    // precedence-ordered (first = highest precedence: the last direct import's closure first,
+    // then earlier imports'; own local always wins before any parent), deduped by env name
+    // keeping the first occurrence", with the old deep-first walk's shadowing "preserved
+    // exactly".
+    //
+    // That is the population the entry-major path bound against, computed by the compiler that
+    // resolved it. An earlier revision re-derived it here by scanning `import` lines out of the
+    // retained inventory, which was a SECOND answer to a question the prepared artifacts had
+    // already answered — and one that could differ from the first, in the direction that
+    // silently narrows: the old closure also admitted modules reached by bare reference, which
+    // no scan of import lines can see.
+    let entry_module = prepared
+        .graph
+        .modules
+        .iter()
+        .find(|m| m.func_env.name == entry_module_path)
+        .ok_or_else(|| {
+            format!(
+                "CLAIM-SCOPE REFUSAL cause=EntryModuleOutsidePreparedSubject \
+                 module={entry_module_path} — the manifest named this module and the prepared \
+                 subject does not contain it"
+            )
+        })?;
+    // Own module first, then its closure in the compiler's own precedence order. Order is part
+    // of the scope's identity (see `scope_identity`), so it is taken from the ordered carrier
+    // rather than from a hash map's iteration.
+    let mut order: Vec<String> = vec![entry_module.func_env.name.clone()];
+    let mut seen: HashSet<String> = HashSet::new();
+    seen.insert(entry_module.func_env.name.clone());
+    for parent in entry_module.func_env.parents.iter() {
+        if seen.insert(parent.name.clone()) {
+            order.push(parent.name.clone());
+        }
+    }
+    // THE AUTHORED REGION ENDS HERE. Everything in `order` so far is the entry module itself
+    // plus the closure of what its author wrote `import` for, so a name collision inside this
+    // prefix is ordinary shadowing the language sanctions and precedence settles. Everything
+    // appended after it is reached transitively by reference, and a collision decided there is
+    // decided by nothing the author wrote — see `ambiguous_bare_names`.
+    let authored_region = order.len();
+    // Then the REFERENCE closure, transitively, appended after the import closure so that a
+    // module reached both ways keeps the compiler's precedence position and this only ever ADDS
+    // visibility. Breadth-first from the entry over a sorted frontier, so the resulting order is
+    // a function of the graph and not of a hash map's iteration -- order is part of the scope's
+    // identity (`scope_identity`), and a scope whose identity varied run to run would defeat
+    // every cache keyed on it.
+    let ref_index = reference_closure_index(prepared)?;
+    // A REFERENCED MODULE ARRIVES WITH ITS OWN IMPORT CLOSURE, not alone.
+    //
+    // The entry module's closure is taken from `func_env.parents` above precisely because a
+    // module's body needs everything that module imports in order to execute. That is no less
+    // true of a module reached by reference: when the entry bare-references M, M's body runs in
+    // this same flat scope, so whatever M imported has to be here too. The walk was following
+    // M's REFERENCES and dropping M's IMPORTS, which is half of what M needs and no principled
+    // half — a module that reaches its dependencies by bare reference was carried and one that
+    // reaches them by `import` was not.
+    //
+    // Measured specimen: `test.claim.host_phase_status` declares no imports at all, reaches its
+    // callees by bare reference, and failed with `undefined variable: operator_host_srv1` — a
+    // `data` declaration in `gunbc.fleet_intent_network` that a module in its closure IMPORTS.
+    // The definer was one edge away the whole time, across an edge this walk did not traverse.
+    let parents_of: HashMap<&str, &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>> = prepared
+        .graph
+        .modules
+        .iter()
+        .map(|m| (m.func_env.name.as_str(), &m.func_env))
+        .collect();
+    let mut frontier: Vec<String> = vec![entry_module.func_env.name.clone()];
+    while let Some(current) = frontier.pop() {
+        let mut reached: Vec<String> = reference_targets_of(&ref_index, &current);
+        if let Some(env) = parents_of.get(current.as_str()) {
+            reached.extend(env.parents.iter().map(|p| p.name.clone()));
+        }
+        for target in reached {
+            if seen.insert(target.clone()) {
+                order.push(target.clone());
+                frontier.push(target);
+            }
+        }
+    }
+    let in_scope: HashSet<&str> = order.iter().map(|s| s.as_str()).collect();
+    // Module selection keys on `func_env.name` too, so the population and the closure that
+    // produced it are read off ONE field. Deriving the population from the authored module node
+    // while deriving the closure from `func_env` would be two spellings of a module identity,
+    // and a scope whose members disagree with its own closure is the defect one level up.
+    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = prepared
+        .graph
+        .modules
+        .iter()
+        .filter(|m| in_scope.contains(m.func_env.name.as_str()))
+        .cloned()
+        .collect();
+    // The item registry is projected from the SAME module population, by UNIONING each scoped
+    // module's own registry rather than filtering the global one on `ItemInfo.module_name`.
+    //
+    // The filtering form was written first and the data-collision control caught it:
+    // `scope.alpha.reads_datum` answered `NoSuchVariable { name: "shared_datum" }` because
+    // `module_name` is not the module-path spelling the inventory carries, so the predicate
+    // matched nothing and every data declaration was dropped. Functions still worked — they
+    // come from `fn_nodes`, built off the module list — so a function-only control would have
+    // passed while `build_initial_env` bound nothing at all. Each module's own registry needs
+    // no name comparison to be correct, which is why it is the projection used.
+    // UNIONED IN PRECEDENCE ORDER, FIRST WRITE WINS — not in the graph's module order, last
+    // write wins.
+    //
+    // `item_registry` is keyed by BARE leaf name and the corpus does collide on leaves (the
+    // #7685 class the emitter carries its own wall for). So the union is not a merge of disjoint
+    // maps; it is a resolution, and something has to decide it. `order` is that decision: own
+    // module first, then the compiler's precedence-ordered import closure, then the reference
+    // closure. It is already the authority the line below folds `scope_identity` over, on the
+    // stated ground that "order is exactly what decides which declaration wins a colliding bare
+    // name."
+    //
+    // Iterating `modules` instead handed the decision to `prepared.graph.modules` — the order
+    // modules happen to sit in the prepared subject, which is a fact about the corpus and not
+    // about this scope. Two scopes with identical members and different precedence would then
+    // resolve a collision identically, which is the thing `scope_identity` exists to deny, and a
+    // module's own declaration could lose its own bare name to an unrelated module that merely
+    // sorted later.
+    let mut item_registry: HashMap<String, Rc<crate::v1_compiler_infer_items::ItemInfo>> =
+        HashMap::new();
+    // Which module won each bare name, and whether it won inside the authored region. A later
+    // module claiming a name already won OUTSIDE that region is the ambiguous case: two
+    // transitively-reached declarations spell the same and nothing the author wrote ranks them.
+    let mut winner_of: HashMap<String, (String, bool)> = HashMap::new();
+    let mut ambiguous: HashSet<String> = HashSet::new();
+    {
+        let module_by_name: HashMap<&str, &Rc<v1_compiler_compile::TypedModule>> = modules
+            .iter()
+            .map(|m| (m.func_env.name.as_str(), m))
+            .collect();
+        for (position, module_name) in order.iter().enumerate() {
+            let Some(module) = module_by_name.get(module_name.as_str()) else {
+                continue;
+            };
+            let authored = position < authored_region;
+            for (name, info) in module.item_registry.iter() {
+                match winner_of.get(name) {
+                    None => {
+                        item_registry.insert(name.clone(), info.clone());
+                        winner_of.insert(name.clone(), (module_name.clone(), authored));
+                    }
+                    // Already claimed by this same module — one module's own registry, not a
+                    // collision between two.
+                    Some((winner, _)) if winner == module_name => {}
+                    // Already won inside the authored region: the author's imports rank it and
+                    // precedence has settled it. Ordinary shadowing, not ambiguity.
+                    Some((_, true)) => {}
+                    // Won outside it, and now claimed again from outside it. Nothing the author
+                    // wrote decides between these two spellings.
+                    Some((_, false)) => {
+                        ambiguous.insert(name.clone());
+                    }
+                }
+            }
+        }
+    }
+    // Folded left over the ORDERED identities with `hash_combine`, which is not commutative —
+    // so two scopes holding the same modules in different orders get different identities. A
+    // set digest would call them equal, and order is exactly what decides which declaration
+    // wins a colliding bare name.
+    let scope_identity = order.iter().fold(
+        v1_rt::atom_identity_hash(entry_module_path.to_string()),
+        |acc, module| v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(module.clone())),
+    );
+    let module_count = modules.len();
+    let scoped_graph = v1_compiler_compile::ResolvedGraph {
+        modules: Rc::new(modules.into_iter().collect()),
+        item_registry: Rc::new(item_registry),
+        diagnostics: prepared.graph.diagnostics.clone(),
+        emit_graph_info: prepared.graph.emit_graph_info.clone(),
+    };
+    Ok(PreparedClaimScope {
+        indexes: v1_interpreter::InterpContext::build_scope_indexes(
+            &scoped_graph,
+            prepared.source_indices.clone(),
+        ),
+        module_count,
+        scope_identity,
+        ambiguous_bare_names: ambiguous.len(),
+    })
+}
+
+/// A fresh evaluation frame over one exact scope. The only route from a prepared repository to
+/// something that can run a claim.
+///
+/// FRESH PER CLAIM rather than shared per scope: the context owns mutable evaluation caches
+/// (call memo, data cache, param/var/callee name caches), and claims that share an immutable
+/// scope must not be able to contaminate one another through them.
+pub fn evaluation_frame(
+    scope: &PreparedClaimScope,
+    execution_mode: v1_interpreter::ExecutionMode,
+    fixture_store: Option<std::rc::Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+    published_mocks: Option<std::rc::Rc<std::collections::HashSet<String>>>,
+) -> v1_interpreter::InterpContext {
+    v1_interpreter::InterpContext::over_scope_indexes(
+        scope.indexes.clone(),
+        execution_mode,
+        fixture_store,
+        published_mocks,
+    )
+}
+
+pub struct RequiredFloorClaim {
+    pub module_path: String,
+    pub function: String,
+    pub qualified: String,
+    pub execution_mode: v1_interpreter::ExecutionMode,
+    pub budget_ms: u64,
+    pub warn_ms: u64,
+}
+
+/// What one required-floor attempt did. The three identity counts are separate fields rather
+/// than one `total` because the operator's acceptance census asks them to be EQUAL, and a
+/// single number cannot be compared with itself: a run that planned 9,267 claims, executed
+/// 8,184 and receipted 8,184 reports a healthy-looking pair unless the planned count is
+/// carried beside them.
+pub struct RequiredFloorOutcome {
+    pub subject_digest: String,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+    pub claims_planned: usize,
+    pub claims_executed: usize,
+    pub receipt_identities: usize,
+    pub passed: usize,
+    /// Enrolled expected-red identities that failed exactly as enrolled. Deliberately its own
+    /// field rather than folded into `passed`: agreement about a failure is not a passing
+    /// witness, and a headline number that rises as debt is added has no direction left to
+    /// report repayment in.
+    pub known_red_held: usize,
+    pub over_warn: usize,
+    pub failures: Vec<String>,
+}
+
+/// A witness site as the inventory reports it — the file's path, its module, and the `test fn`
+/// names it declares. Produced by folding over bytes preparation already read.
+pub struct InventoryWitnessFile {
+    pub path: String,
+    pub module_path: String,
+    pub functions: Vec<String>,
+    /// Whether the module declares `LiveTreeDisposition = ReadsLiveTree`.
+    ///
+    /// Read from the module's own source, at column zero, the same way `test fn` is — an
+    /// AUTHORED declaration, not a path or a directory. A witness that declares it reaches the
+    /// live tree, so it cannot execute in the hermetic frame this floor runs.
+    pub reads_live_tree: bool,
+}
+
+/// Fold the one inventory into witness sites. NO FILESYSTEM ACCESS: preparation read every
+/// admitted file, so asking which of them declare witnesses is a scan of bytes already in
+/// hand. The walk this replaces cost ~6 minutes of every floor run, acquired the repository a
+/// second time, and additionally built a whole-corpus module graph to answer a question about
+/// one file at a time.
+///
+/// A `test fn` is recognised at column zero only, which is the same rule the parser applies to
+/// a top-level declaration: an indented occurrence is inside a body and is not a declaration.
+pub fn inventory_witness_files(prepared: &PreparedRepository) -> Vec<InventoryWitnessFile> {
+    let mut out: Vec<InventoryWitnessFile> = Vec::new();
+    for entry in &prepared.inventory {
+        let mut functions: Vec<String> = Vec::new();
+        // Same scan, same column-zero rule as `test fn` below: a module-scope `data` whose
+        // value is `ReadsLiveTree`. Indented occurrences are inside bodies and are not
+        // declarations.
+        let reads_live_tree = entry.content.lines().any(|line| {
+            line.starts_with("data ")
+                && line.contains("LiveTreeDisposition")
+                && line.contains("ReadsLiveTree")
+        });
+        for line in entry.content.lines() {
+            let Some(rest) = line.strip_prefix("test fn ") else {
+                continue;
+            };
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                functions.push(name);
+            }
+        }
+        if !functions.is_empty() {
+            out.push(InventoryWitnessFile {
+                path: entry.path.replace('\\', "/"),
+                module_path: entry.module_path.clone(),
+                functions,
+                reads_live_tree,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
+fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
+    v1_interpreter::Value::List(Rc::new(
+        items
+            .into_iter()
+            .map(v1_interpreter::str_value)
+            .collect::<Vec<_>>()
+            .into(),
+    ))
+}
+
+fn record_value(
+    ctx: &v1_interpreter::InterpContext,
+    type_name: &str,
+    fields: Vec<(&str, v1_interpreter::Value)>,
+) -> v1_interpreter::Value {
+    v1_interpreter::Value::Record {
+        type_name: ctx.sym(type_name),
+        fields: Rc::new(
+            fields
+                .into_iter()
+                .map(|(n, v)| (ctx.sym(n), v))
+                .collect::<Vec<_>>(),
+        ),
+    }
+}
+
+/// The module whose `required_floor_attempt` folds the manifest. Named once: the manifest is
+/// evaluated in its OWN exact scope, exactly as every claim is, so the program that decides
+/// which claims exist is not itself privileged with a wider namespace than the claims it
+/// admits.
+const REQUIRED_FLOOR_MANIFEST_MODULE: &str = "v2.workflow.required_floor";
+
+/// THE REQUIRED FLOOR, AS ONE ATTEMPT.
+///
+/// Read the active sources once, strict-prepare one subject once, evaluate the manifest inside
+/// that subject, fold the manifest once, reduce one receipt. There is no plan resolve, no
+/// policy resolve, no compile-clean resolve, no discovery-producer resolve, no batch, no
+/// positional clamp, no worker, no coordinator, no child process and no prepared-subject
+/// cache — not because they are switched off on this path but because this function does not
+/// contain them and nothing it calls reaches them.
+///
+/// WHY IT IS ONE FUNCTION rather than a pipeline of stages with a shared context object: every
+/// stage boundary this path used to have was a place where a consumer re-asked for the
+/// repository. The prepared value is a local, so a second acquisition would have to be written
+/// as a second call to `prepare_repository_once` — visible in one screen rather than hidden
+/// behind a cache hit.
+// THE FLOOR'S CURRENT SEAM, read by the heartbeat below. A plain global because the heartbeat is
+// an observation channel and nothing branches on it; making it a threaded parameter would put a
+// diagnostic in the signature of every function it passes through.
+static FLOOR_SEAM: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+// WALL TIME ALONE CANNOT SEPARATE COMPUTE FROM BLOCKING, and those have opposite remedies. CPU
+// rising with wall is compute or livelock; wall rising with CPU flat is waiting on something; RSS
+// and major faults rising while progress is flat is reclaim churn. One /proc read per tick buys
+// that discrimination, and without it a heartbeat only proves the process is alive -- which the
+// runner's "Terminate orphan process" line already proved, after four hours.
+fn floor_resource_sample() -> String {
+    let stat = std::fs::read_to_string("/proc/self/stat").unwrap_or_default();
+    let f: Vec<&str> = stat
+        .rsplit(')')
+        .next()
+        .unwrap_or("")
+        .split_whitespace()
+        .collect();
+    // Fields are indexed from the field AFTER comm: utime/stime are 12/13 here, majflt is 10.
+    let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    let hz = 100u64;
+    let cpu_ms = (tick(11) + tick(12)) * 1000 / hz;
+    let majflt = tick(9);
+    let rss_kb = std::fs::read_to_string("/proc/self/statm")
+        .ok()
+        .and_then(|m| {
+            m.split_whitespace()
+                .nth(1)
+                .and_then(|v| v.parse::<u64>().ok())
+        })
+        .map(|pages| pages * 4)
+        .unwrap_or(0);
+    // THE CGROUP CHARGE AND THE THROTTLE EVENTS, on every beat, because the runs that most need
+    // them are the ones that never reach an exit line. `floor_cgroup_envelope` reports the full
+    // picture at entry; these three carry the parts that CHANGE, so a killed run still leaves
+    // behind what its envelope was doing when it died.
+    //
+    // rss_kb and cur_kb are DIFFERENT COUNTERS and are printed side by side so they are never
+    // silently substituted for one another: RSS is this process's resident anonymous + mapped
+    // pages, while memory.current is the cgroup's total charge including page cache and every
+    // other process in it. Comparing RSS against a cgroup limit is what produced the standing
+    // contradiction this instrument exists to settle — a CI run observed at 14.69 GiB RSS,
+    // above a declared 14.00 GiB max, that was not killed and ran 151 minutes more.
+    //
+    // ev_high/ev_max are the reclaim and kill counters for THIS level. Nonzero ev_high is
+    // throttling actually happening rather than inferred from a declared row; both zero beside
+    // a death means the ceiling that killed it was somewhere else.
+    //
+    // READ THE LEAF, NOT THE ROOT. These three fields first shipped reading
+    // `/sys/fs/cgroup/{name}` directly, and on CI they printed `na` on every single beat for a
+    // four-hour run: the runner's leaf is
+    // `/sys/fs/cgroup/system.slice/system-actions\x2drunner.slice/actions-runner@srv2-03.service`,
+    // the root holds no `memory.current` this process may read, and the fallback fired every
+    // time. The entry snapshot walked the path correctly while the sampler that runs
+    // continuously did not — two readers at two different levels in one commit, and the wrong
+    // one was the only one that would still be emitting when a run was cancelled.
+    //
+    // It passed locally because this container's `/proc/self/cgroup` is `0::/`, so leaf and root
+    // are the same directory and the hardcoded path was accidentally correct. A degenerate
+    // topology validated an instrument that had no chance of working anywhere else, which is why
+    // the path is now taken from the same place `floor_cgroup_envelope` takes it.
+    let cg = |name: &str, idx: usize| -> String {
+        std::fs::read_to_string(format!("{}/{name}", floor_cgroup_dir()))
+            .ok()
+            .and_then(|s| {
+                if idx == usize::MAX {
+                    s.trim().parse::<u64>().ok().map(|v| (v / 1024).to_string())
+                } else {
+                    s.lines()
+                        .nth(idx)
+                        .and_then(|l| l.split_whitespace().nth(1).map(|v| v.to_string()))
+                }
+            })
+            .unwrap_or_else(|| "na".to_string())
+    };
+    let cur_kb = cg("memory.current", usize::MAX);
+    let ev_high = cg("memory.events", 1);
+    let ev_max = cg("memory.events", 2);
+    // The LOCAL counter beside the hierarchical one, on every beat. `memory.events` at this
+    // level already includes everything its descendants generated, so `ev_high` rising says
+    // "something in this subtree was throttled" and cannot say it was us. `ev_local_high` is
+    // the same event restricted to this exact cgroup, and the pair is the only way to separate
+    // our own reclaim from a neighbour's. Carried per beat rather than only in the periodic
+    // envelope because a killed run keeps only what was already printed, and this is the field
+    // the neighbour-pressure hypothesis is decided on.
+    let ev_local_high = cg("memory.events.local", 1);
+    // HOST-WIDE SWAP-IN, because the fault storm has no local cause and this is what decides
+    // whether it has ANY cause belonging to this fold.
+    //
+    // Established: ~7,416 major faults/s sustained for 151 minutes while the leaf cgroup read
+    // high,0 max,0 oom_kill,0 — so the process was nowhere near its own limits and its own
+    // cgroup did no reclaiming. A major fault is a page read from disk, and there are two ways
+    // to take one without your own cgroup throttling you: the HOST reclaimed and swapped your
+    // anonymous pages, or you are faulting file-backed pages in and out of a mapping.
+    //
+    // `pswpin` counts pages swapped IN; `pgmajfault` counts major faults. Differenced across
+    // two beats they separate the cases exactly:
+    //
+    //   pswpin rises with pgmajfault   -> swap. The cause is host memory pressure, not the
+    //                                     fold, and no amount of retention work here fixes it.
+    //   pgmajfault rises, pswpin flat  -> file-backed mapping churn. That IS local to the fold
+    //                                     and is a defect this lane owns.
+    //
+    // Deliberately host-wide rather than cgroup-scoped: /proc/vmstat is not namespaced, and
+    // host-level swap is precisely the thing a cgroup-scoped counter cannot see. That is also
+    // why the leaf's PSI reading of 0.00% is not evidence of a quiet machine — it is this
+    // cgroup's stall time, not the host's.
+    let vm = |key: &str| -> String {
+        std::fs::read_to_string("/proc/vmstat")
+            .ok()
+            .and_then(|s| {
+                s.lines().find_map(|l| {
+                    l.strip_prefix(key)
+                        .and_then(|r| r.strip_prefix(' '))
+                        .map(|v| v.trim().to_string())
+                })
+            })
+            .unwrap_or_else(|| "na".to_string())
+    };
+    let pswpin = vm("pswpin");
+    let pgmajfault = vm("pgmajfault");
+    format!(
+        "cpu_ms={cpu_ms} rss_kb={rss_kb} majflt={majflt} cur_kb={cur_kb} \
+         ev_high={ev_high} ev_max={ev_max} ev_local_high={ev_local_high} \
+         pswpin={pswpin} pgmajfault={pgmajfault}"
+    )
+}
+
+/// THIS PROCESS'S OWN CGROUP DIRECTORY — the single answer both readers use.
+///
+/// Resolved once from `/proc/self/cgroup` and cached, because the alternative is what shipped
+/// first: the entry snapshot walking the real path while the per-beat sampler read the root,
+/// disagreeing silently for a whole run. Two readers of one fact is the duplication the repo's
+/// own rules forbid, and here it cost every cgroup reading a four-hour CI run would have given.
+///
+/// Falls back to the cgroup root only when `/proc/self/cgroup` is unreadable — the same place a
+/// container whose leaf IS the root legitimately lands.
+fn floor_cgroup_dir() -> String {
+    static DIR: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let rel = std::fs::read_to_string("/proc/self/cgroup")
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find_map(|l| l.rsplit("::").next().map(|p| p.to_string()))
+            })
+            .unwrap_or_default();
+        let mut dir = std::path::PathBuf::from("/sys/fs/cgroup");
+        for seg in rel.trim_matches('/').split('/').filter(|s| !s.is_empty()) {
+            dir.push(seg);
+        }
+        dir.to_string_lossy().to_string()
+    })
+    .clone()
+}
+
+pub fn floor_seam(name: &str) {
+    if let Ok(mut g) = FLOOR_SEAM.lock() {
+        g.clear();
+        g.push_str(name);
+    }
+}
+
+// THE CONSTRUCTOR A DECODE ACTUALLY OBSERVED, for refusals whose cause is a shape mismatch.
+//
+// A decode arm that reports only "not the expected shape" identifies its seam and nothing else:
+// an absent field, a variant, a record and a scalar all render the same, and they have different
+// remedies. This names the constructor and, where the constructor is a container, its arity --
+// enough to discriminate "the field is missing" from "the field holds an empty list" from "the
+// producer answered a variant" without dumping a value whose size is the reason the run is slow.
+//
+// It deliberately does NOT recurse or print contents. A shape reporter that renders values
+// becomes a second serializer, and on this path the values in question are the ones large enough
+// to have made the phase expensive in the first place.
+fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
+    match v {
+        None => "<field absent>".to_string(),
+        Some(v1_interpreter::Value::List(xs)) => format!("List(len={})", xs.len()),
+        Some(v1_interpreter::Value::Record { fields, .. }) => {
+            format!("Record(fields={})", fields.len())
+        }
+        Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+            format!("Variant({variant_name:?})")
+        }
+        Some(other) => floor_value_constructor(other).to_string(),
+    }
+}
+
+// ONE CARRIER, TWO REALIZATIONS -- decoded here rather than assumed to be one of them.
+//
+// `v2.std.collection` declares `List<T> = std.algebra.FreeMonoid<T>`, an `Empty | Cons` chain.
+// The interpreter ALSO represents some sequences natively as `Value::List`. Which one arrives at
+// a given seam depends on whether the value was produced by a `.dag` fold or handed over by the
+// host, and that is the model/realization fork DESIGN names as systemic and unfinished -- not a
+// choice this decode gets to make.
+//
+// So the decode reads the carrier in either realization and REFUSES anything else, naming what
+// it saw. What it must not do is assume one realization: the previous decode matched
+// `Value::List` alone and rendered a perfectly well-formed `Cons` chain as "the attempt carries
+// no claim list", which reports a representation mismatch as an absent population.
+//
+// The walk is ITERATIVE. A `Cons` chain of one element per claim is 10,444 deep on the measured
+// subject, and the recursive spelling already in this file for dependency edges would recurse
+// once per element -- fine for a handful of edges, a stack overflow here. Depth belongs on the
+// heap when the depth is the population size.
+fn floor_decode_list<'a>(
+    ctx: &v1_interpreter::InterpContext,
+    v: Option<&'a v1_interpreter::Value>,
+) -> Result<Vec<&'a v1_interpreter::Value>, String> {
+    let mut out = Vec::new();
+    let mut cursor = match v {
+        None => return Err("<field absent>".to_string()),
+        Some(v1_interpreter::Value::List(xs)) => {
+            return Ok(xs.iter().collect());
+        }
+        Some(other) => other,
+    };
+    loop {
+        let v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } = cursor
+        else {
+            return Err(format!(
+                "expected a FreeMonoid Empty/Cons chain, observed {}",
+                floor_value_shape(Some(cursor))
+            ));
+        };
+        if ctx.sym_eq(*variant_name, "Empty") {
+            return Ok(out);
+        }
+        if !ctx.sym_eq(*variant_name, "Cons") {
+            return Err(format!(
+                "expected a FreeMonoid Empty/Cons chain, observed Variant({variant_name:?})"
+            ));
+        }
+        let Some(head) = ctx.field(fields, "head") else {
+            return Err("Cons carries no head".to_string());
+        };
+        let Some(tail) = ctx.field(fields, "tail") else {
+            return Err("Cons carries no tail".to_string());
+        };
+        out.push(head);
+        cursor = tail;
+    }
+}
+
+fn floor_value_constructor(v: &v1_interpreter::Value) -> &'static str {
+    match v {
+        v1_interpreter::Value::Int(_) => "Int",
+        v1_interpreter::Value::Str(_) => "Str",
+        v1_interpreter::Value::Bool(_) => "Bool",
+        v1_interpreter::Value::Null => "Null",
+        _ => "<other constructor>",
+    }
+}
+
+// A HEARTBEAT, BECAUSE A BLANK INTERVAL AND A FOUR-HOUR INTERVAL LOOK IDENTICAL FROM OUTSIDE.
+//
+// GitHub does not serve a job's log until the job reaches a terminal state, so a run that does not
+// terminate is not merely slow to read -- it is unreadable for as long as it runs, and the one read
+// you get arrives at the end. That makes the question "what is the maximum a single terminal read
+// can carry", and a tick every sixty seconds costs nothing while converting a silent span into a
+// span with a name and a duration.
+//
+// It ticks on a WATCHDOG rather than inside any one phase deliberately. This lane predicted the
+// wall in T4 and measured it in T5; a heartbeat placed inside the phase under suspicion is silent
+// in exactly the phase nobody suspected. A thread reading a seam label is blind to which phase is
+// slow, which is the property that makes it useful.
+fn spawn_floor_heartbeat() {
+    let started = std::time::Instant::now();
+    // 60s is the CI cadence: dense enough to bound a phase, sparse enough not to bloat a
+    // job log. It is too coarse to LOCALISE anything — a 2.7 GB step between two samples
+    // names a minute, not a cause — so a local investigation can tighten it. Bounded below
+    // at 1s so a typo cannot turn the instrument into the load being measured, and left at
+    // 60s whenever the variable is absent or unparseable: an override that silently
+    // succeeded at a value nobody chose would make the sample rate a fact about the
+    // environment rather than about the run.
+    let period_s = std::env::var("GUNBC_FLOOR_HEARTBEAT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(|v| v.max(1))
+        .unwrap_or(60);
+    // The full multi-level envelope is re-emitted periodically, not only at entry and exit,
+    // because a cancelled or killed run never reaches an exit line — which is exactly what
+    // happened to the first CI run carrying this instrument, leaving one entry snapshot taken
+    // when nothing had happened yet and no reading at all from during the stall. Every ten
+    // beats keeps it cheap while guaranteeing the last terminal read carries a recent one.
+    //
+    // The ancestor walk is the part worth repeating rather than only the leaf: on the runner
+    // the leaf recorded zero high events while its parent slices recorded 141M, so the level
+    // that is throttling is not the level that owns the limit, and only the walk shows it.
+    let mut beat: u64 = 0;
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(period_s));
+        let seam = FLOOR_SEAM
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|_| "<seam unreadable>".to_string());
+        eprintln!(
+            "[floor-heartbeat] wall_s={} phase={} {}",
+            started.elapsed().as_secs(),
+            if seam.is_empty() { "<unset>" } else { &seam },
+            floor_resource_sample()
+        );
+        beat += 1;
+        if beat % 10 == 0 {
+            floor_cgroup_envelope(&format!("beat-{beat}"));
+        }
+    });
+}
+
+/// THE ENVELOPE THE PROCESS ACTUALLY HAS, read from the kernel, at every visible level.
+///
+/// Every envelope figure this lane has reasoned with — 13.00 GiB high, 14.00 GiB max — came
+/// from the DECLARED rows in `gunbc.runner_slot_allocation`: a nominal limit, read before the
+/// run, describing what was requested rather than what binds. Two measurements say that is not
+/// good enough.
+///
+/// The first is a live contradiction in the timed-out CI run: it entered admission-decode at
+/// rss_kb=15402396 (14.69 GiB), ABOVE both the declared high and the declared max, and was not
+/// killed — it ran 151 more minutes. Either those rows are not what binds in that slot, or
+/// process RSS overstates the cgroup charge enough to break the comparison, or both. Nobody
+/// has measured which.
+///
+/// The second is that reading the nominal limit is a mistake with a receipt. A local run was
+/// launched on the premise that this container's `memory.max` of 31.27 GiB and `memory.high`
+/// of `max` made it a headroom arm; it was OOM-killed at 12.77 GB RSS. The counters afterwards
+/// read `max 0`, `high 0`, `oom_kill 16` — its own limits were never reached, so the kill came
+/// from an ancestor. The nominal limit described nothing that mattered.
+///
+/// Hence: the PATH as well as the values, and every readable ancestor, because a cgroup that
+/// never hits its own maximum can still be killed from above and the honest reading requires
+/// knowing where the ceiling lives. `memory.events` is the load-bearing field — `max`/`high`
+/// nonzero means this level acted; all-zero beside a kill means some other level did.
+///
+/// Emitted at entry and again at exit so the peak and the event counters bound the whole run.
+/// This reads `/proc` and `/sys` and writes nothing; an unreadable file is reported as absent
+/// rather than defaulted, since a fabricated zero here would re-create the exact class of
+/// error the function exists to end.
+fn floor_cgroup_envelope(when: &str) {
+    // One resolver for both readers — see `floor_cgroup_dir`. This function computing the path
+    // itself while the sampler computed a different one is the defect that made every per-beat
+    // cgroup field `na` for a four-hour run.
+    let leaf = floor_cgroup_dir();
+    eprintln!("[floor-cgroup] when={when} path={leaf}");
+    let field = |dir: &str, name: &str| -> String {
+        std::fs::read_to_string(format!("{dir}/{name}"))
+            .map(|v| v.split_whitespace().collect::<Vec<_>>().join(","))
+            .unwrap_or_else(|_| "<absent>".to_string())
+    };
+    // Walk from the leaf up to the cgroup root, reporting each level that is readable. Under a
+    // container this is often just the root, and that itself is the finding: if no ancestor is
+    // visible from inside, the process cannot observe the limit that binds it and the ceiling
+    // has to be read from the host side.
+    //
+    // The walk is not decoration. On the runner the leaf recorded ZERO high events while its
+    // parent slices recorded 141M against unlimited maxima, so the level doing the throttling
+    // and the level holding the limit are different levels, and reading only our own would have
+    // reported a process comfortably inside its envelope while it took 16M major faults.
+    //
+    // BOTH `memory.events` AND `memory.events.local`, because the first is HIERARCHICAL — an
+    // ancestor's counters include every event generated anywhere beneath it — and only the
+    // second reports events at that exact cgroup. Reading the hierarchical file alone is how a
+    // parent slice's 141M-versus-476K was read as a difference in neighbour pressure when it is
+    // an aggregate over each subtree's whole history: both parents carry `high=max` and so
+    // cannot be throttled themselves, meaning every one of those events belongs to some
+    // descendant. Local and hierarchical are the split that makes the question decidable at
+    // all — a rising ancestor-hierarchical count beside a flat leaf-local count is the
+    // signature of OTHER descendants being throttled, and without the pair a process cannot
+    // tell its own reclaim from its neighbours'.
+    //
+    // `memory.pressure` (PSI) comes along because the events counters are cumulative totals
+    // rather than rates: two snapshots of a monotone counter give an interval delta, but stall
+    // time is what says whether that reclaim actually cost this process anything.
+    let mut dir = std::path::PathBuf::from(&leaf);
+    loop {
+        let d = dir.to_string_lossy().to_string();
+        if std::fs::metadata(format!("{d}/memory.current")).is_ok() {
+            eprintln!(
+                "[floor-cgroup] when={when} level={d} max={} high={} current={} peak={} \
+                 events=[{}] events_local=[{}] pressure=[{}]",
+                field(&d, "memory.max"),
+                field(&d, "memory.high"),
+                field(&d, "memory.current"),
+                field(&d, "memory.peak"),
+                field(&d, "memory.events"),
+                field(&d, "memory.events.local"),
+                field(&d, "memory.pressure"),
+            );
+        }
+        if d == "/sys/fs/cgroup" || !dir.pop() {
+            break;
+        }
+    }
+}
+
+pub fn run_required_floor(
+    source_roots: &[String],
+    commit: &str,
+    style: ShardStyle,
+) -> Result<RequiredFloorOutcome, String> {
+    floor_cgroup_envelope("floor-entry");
+    spawn_floor_heartbeat();
+    floor_seam("strict-preparation");
+    eprintln!("[floor-phase] phase=strict-preparation state=started");
+    // ── 1. read once, prepare once ────────────────────────────────────────────────────────
+    set_phase(FloorPhase::Resolve, "required-floor preparation");
+    let prepare_started = std::time::Instant::now();
+    let prepared = prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
+    let prepare_ms = prepare_started.elapsed().as_millis();
+    eprintln!(
+        "floor: active sources = {}",
+        prepared.modules_resolved + prepared.modules_excluded
+    );
+    eprintln!(
+        "[floor-phase] phase=strict-preparation state=completed wall_ms={} modules_resolved={} \
+         modules_excluded={} digest={}",
+        prepare_ms, prepared.modules_resolved, prepared.modules_excluded, prepared.subject_digest
+    );
+    // WHERE PREPARATION'S WALL AND POPULATION GO: `compile.reconcile`, measured 2026-08-16.
+    //
+    // No dump is emitted here, and that is the finding rather than an omission. A
+    // `[floor-prepare-split]` line reading `resolve_stage_slot_add`'s accumulators was added
+    // here and printed every stage as 0.0ms against a 569,079ms phase — because those
+    // accumulators are written only by `resolved_graph_from_sources_with_index`, and
+    // `prepare_repository_once` reaches `v1_compiler_compile::compile_to_resolved` through
+    // `resolved_graph_from_sources`, which takes no index and no memo share and touches none
+    // of them. The zeros meant "unwired path", not "free"; that reading was recorded before
+    // the run, because `typecheck=0.0ms` on a typecheck-dominated phase is otherwise exactly
+    // the shape that gets reported as a result.
+    //
+    // The attribution already existed, in `compile_to_resolved_with_options`'s `trace_mark`
+    // pairs, and had been printing in every floor log:
+    //
+    //     compile.frontend    39s
+    //     compile.normalize    2s
+    //     compile.reconcile    8min      <- 520s of a 569s phase
+    //     compile.analyses     1s
+    //
+    // READ THE FIRST SET, NOT THE FIRST MATCH. A floor run emits these marks TWICE: once for
+    // this preparation, and again for the published-mock projection below, where the same four
+    // names appear at 33ms/4ms/41ms/1ms. The small set is a second, tiny compile — not this one
+    // — and grepping `compile.reconcile` finds whichever the reader looks at first. That is not
+    // hypothetical: the 41ms reading is why these marks were dismissed as belonging to the mock
+    // projection for weeks while they were the whole preparation answer.
+    //
+    // Cross-read against a 5s heartbeat (`GUNBC_FLOOR_HEARTBEAT_SECS`), reconcile spans
+    // t=45s..565s and RSS 3.53 GB -> 9.28 GB, so it owns ~91% of the wall AND essentially all
+    // of preparation's ~5.85 GiB. Everything else in preparation totals 42 seconds.
+    //
+    // So preparation is not diffusely large and does not need new instrumentation; it needs
+    // `reconcile_with_census_extra` over 3,668 modules to get smaller. Anyone adding a probe
+    // here should read the existing trace marks first.
+    //
+    // RECONCILE'S INTERIOR, at 5s resolution — four regions, NONE of them attributed:
+    //
+    //      45- 95s     50s   flat at 3.42 GB
+    //      95-225s    130s   3.42 -> 6.13 GB   +2.71 GB
+    //     225-505s    280s   flat at 6.15 GB   +0.01 GB     54% of the wall
+    //     505-565s     60s   6.23 -> 9.28 GB   +3.05 GB     53% of the growth, 12% of the wall
+    //
+    // Wall cost and memory growth are largely SEPARATE: over half the wall allocates nothing,
+    // and the largest growth arrives in the final eighth. Which of reconcile's six operations
+    // owns which region is UNKNOWN — six operations against four regions, and a 20s grid cannot
+    // see a sub-20s operation at all. Marks would have to be authored in `src/v1/04_infer.dag`
+    // and regenerated, since the operations live in generated code.
+    //
+    // TWO ATTRIBUTIONS WERE PROPOSED FOR THESE REGIONS AND BOTH DIED. Recorded because the
+    // reasoning that killed them is reusable and the regions are still open, so the same two
+    // candidates will look attractive again:
+    //
+    //   - Function-parent double-flattening as the +5.75 GiB owner. Killed by a population
+    //     bound: at most 3,668 x 3,667 Rc slots, ~102.6 MiB raw, ~205 MiB for two generations.
+    //     Not gigabytes.
+    //   - `corpus_has_v1_seed_source_indices` as the 280s plateau owner. Its qualitative
+    //     signature fits perfectly — long plateau, allocation churn, flat RSS, and a result of
+    //     one `Bool` — and it is still wrong. Measured below.
+    //
+    // `corpus_has_v1_seed_source_indices`, PRICED, so it is neither cited as the root cause nor
+    // dismissed for not being it. On the floor's own source configuration it clones the same
+    // ~3,670-key source-index set once per module — `map_keys` materialises the whole key vector
+    // BEFORE the `any` can short-circuit — for 13.46M key clones. Of the 3,670 files under
+    // `--source-root dag --source-root src/v2`, exactly ZERO contain `/v1/` or `src/v1`, so no
+    // early break ever fires and the function deterministically returns false. A synthetic on
+    // the faithful carriers (`im::HashMap` -> `im::Vector`; `v1_rt.rs` aliases `Vec` to
+    // `im::Vector`, and a first attempt on std containers understated it by 1.5x) measures
+    // 4.095s, 0.304us per key. Explaining the 280s plateau would need 20.8us per key — 68x the
+    // measured cost. So: a real duplicate derivation worth deleting, priced at ~4s, and NOT the
+    // plateau. The terminal shape derives the fact once from the source-set authority rather
+    // than per typed module, which removes the module x source product instead of tuning it.
+    //
+    // THE METHOD RULE BOTH DEATHS PRODUCED, because each failed a different gate: a qualitative
+    // shape match does not constrain a constant, so price the mechanism independently before
+    // naming an owner — never solve the unit cost backward from the interval being explained.
+    // And a benchmark licenses nothing until its carriers, control flow, scale and short-circuit
+    // behaviour match the real thing; assuming fidelity is how the first synthetic above came to
+    // be 1.5x wrong while reading as decisive.
+
+    // ── 2. the evaluation frames ──────────────────────────────────────────────────────────
+    //
+    // The published-mock corpus is part of the ENVELOPE and therefore part of every frame.
+    // Preparing without it produced a world in which every claim reading a published mock
+    // resolved against nothing: 9,057 of 9,317 witnesses could not find their own code, at a
+    // digest that claimed to name the same subject.
+    // ── T2 ────────────────────────────────────────────────────────────────────────────────
+    // The WHOLE projection, not the compiler phase lines printed inside it. Those lines
+    // report the second compile's phases and exclude index construction, declarer discovery,
+    // closure selection and extraction — so quoting them as this helper's cost is a derived
+    // number wearing a raw one's label. It read as ~73ms and was never measured.
+    floor_seam("published-mock-projection");
+    let published_started = std::time::Instant::now();
+    let published = match precompute_whole_tree_published_mock_keys(source_roots) {
+        Ok(keys) if keys.is_empty() => None,
+        Ok(keys) => Some(Rc::new(keys)),
+        Err(e) => return Err(format!("published mock corpus precompute failed: {e}")),
+    };
+    eprintln!(
+        "[floor-phase] phase=published-mock-projection state=completed wall_ms={} keys={}",
+        published_started.elapsed().as_millis(),
+        published.as_ref().map(|k| k.len()).unwrap_or(0)
+    );
+    let manifest_scope = claim_scope_for(&prepared, REQUIRED_FLOOR_MANIFEST_MODULE)?;
+    let hermetic = evaluation_frame(
+        &manifest_scope,
+        v1_interpreter::ExecutionMode::Hermetic,
+        None,
+        published.clone(),
+    );
+    // The output policy is installed FROM the prepared subject. Resolving
+    // `dag/gunbc/output_policy.dag` on its own cost a separate whole-entry resolve to read
+    // five channel decisions out of a world this function had already built.
+    install_output_policy_in(&hermetic, source_roots);
+
+    // ── 3. the manifest, folded in .dag ───────────────────────────────────────────────────
+    //
+    // T3/T4/T5 SPLIT THIS REGION because it is the whole blank interval. Between the
+    // preparation line and the first `floor: claims = ...` line nothing is printed, so a run
+    // cancelled in here reports one undifferentiated gap containing site/binding projection,
+    // the .dag manifest evaluation and admission decoding. Four superlinear shapes are known
+    // to live in the manifest, which is a ranked hypothesis list and not an attribution: the
+    // seams below are what turn the gap into one located term.
+    floor_seam("site-projection");
+    let projection_started = std::time::Instant::now();
+    let files = inventory_witness_files(&prepared);
+    // THE SITE CARRIES ITS MODULE. `InventoryWitnessFile` already holds `module_path`, read from
+    // the same inventory entry in the same iteration, so the site is complete at construction.
+    //
+    // This replaced a second projection of the WHOLE inventory into an entry-to-module list --
+    // 3,680 records marshalled into the interpreter -- which the .dag manifest then JOINED back
+    // onto the sites by `entry`. Both lists came from one collection keyed by one file path, so
+    // the join re-derived inside the fold a fact this loop held two lines earlier, and its answer
+    // was always "exactly one". The refusal for the other cases had no reachable producer.
+    // EVERY DISCOVERED SITE IS OFFERED TO THE MANIFEST, and the manifest decides which are
+    // required-floor claims.
+    //
+    // This host previously partitioned the population itself, by testing whether a file's PATH
+    // contained the long home. That made a directory the admission authority — the 2026-08-04
+    // ruling's exact root cause — and it decided at file grain, so one expensive witness took
+    // every cheap sibling in its file out of the floor with it. It was also a SECOND authority:
+    // `WitnessDisposition` already modelled the answer in `.dag` and nothing consulted it.
+    //
+    // The disposition now lives where it is authored — `v2.workflow.required_floor`
+    // `disposition_for_module`, a grant over a namespace subtree joined by the prefix relation,
+    // with `RequiredFloor` as the fail-closed default. Discovery's job is to report what exists;
+    // deciding what that means is the manifest's.
+    //
+    // The exclusion is still counted, and counted from the claim list rather than from a
+    // predicate this host applies: sites offered minus claims returned is what the manifest
+    // declined, so the number cannot drift from the decision that produced it.
+    let mut sites: Vec<v1_interpreter::Value> = Vec::new();
+    // THE SAME POPULATION, KEPT IN HOST SHAPE, so the decline can be reported as a PARTITION
+    // rather than as a subtraction. `sites_offered - claims.len()` says how many rows vanished
+    // and nothing about why; two independent hacks decline rows here, and a single difference
+    // cannot distinguish them, cannot notice a row declined by neither, and cannot notice a row
+    // counted by both.
+    let mut site_facts: Vec<(String, String, bool)> = Vec::new();
+    for file in &files {
+        for function in &file.functions {
+            site_facts.push((
+                format!("{}.{}", file.module_path, function),
+                file.module_path.clone(),
+                file.reads_live_tree,
+            ));
+            sites.push(record_value(
+                &hermetic,
+                "WitnessSite",
+                vec![
+                    ("entry", v1_interpreter::str_value(file.path.clone())),
+                    ("function", v1_interpreter::str_value(function.clone())),
+                    (
+                        "module_path",
+                        v1_interpreter::str_value(file.module_path.clone()),
+                    ),
+                    (
+                        "reads_live_tree",
+                        v1_interpreter::Value::Bool(file.reads_live_tree),
+                    ),
+                ],
+            ));
+        }
+    }
+    let sites_offered = sites.len();
+    eprintln!(
+        "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={}",
+        projection_started.elapsed().as_millis(),
+        sites_offered,
+        files.len()
+    );
+    let subject = record_value(
+        &hermetic,
+        "ObservedSubjectIdentity",
+        vec![
+            ("commit", v1_interpreter::str_value(commit.to_string())),
+            (
+                "source_digest",
+                v1_interpreter::str_value(prepared.subject_digest.clone()),
+            ),
+            (
+                "modules_resolved",
+                v1_interpreter::Value::Int(prepared.modules_resolved as i64),
+            ),
+            (
+                "modules_excluded",
+                v1_interpreter::Value::Int(prepared.modules_excluded as i64),
+            ),
+        ],
+    );
+    let empty_sites =
+        v1_interpreter::Value::List(Rc::new(Vec::<v1_interpreter::Value>::new().into()));
+    floor_seam("manifest-evaluation");
+    let manifest_eval_started = std::time::Instant::now();
+    let admission = v1_interpreter::run_in_context_with_args(
+        &hermetic,
+        "required_floor_attempt",
+        &[
+            (Some("subject".to_string()), subject),
+            (
+                Some("hermetic_sites".to_string()),
+                v1_interpreter::Value::List(Rc::new(sites.into())),
+            ),
+            (Some("wet_sites".to_string()), empty_sites),
+        ],
+        false,
+    )
+    .map_err(|e| format!("required_floor_attempt: {e}"))?;
+    eprintln!(
+        "[floor-phase] phase=manifest-evaluation state=completed wall_ms={}",
+        manifest_eval_started.elapsed().as_millis()
+    );
+    floor_seam("admission-decode");
+    let admission_decode_started = std::time::Instant::now();
+    let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
+    eprintln!(
+        "[floor-phase] phase=admission-decode state=completed wall_ms={} claims={}",
+        admission_decode_started.elapsed().as_millis(),
+        claims.len()
+    );
+    // WHAT THE MANIFEST DECLINED, derived from the two populations rather than recomputed. A
+    // site offered and not returned as a claim carries a non-required disposition, and those
+    // rows are NOT covered by this floor — reported every run in those words, because the
+    // gunbc#7762 failure was not that rows were deferred but that the deferral was silent.
+    // THE DECLINE IS A PARTITION, AND IT IS PROVED HERE RATHER THAN ASSERTED.
+    //
+    // Two hacks decline rows: the long-home prefix test and the live-tree declaration. A single
+    // `offered - claims` difference cannot tell them apart, cannot see a row declined by
+    // NEITHER (which would be a silent disappearance — the exact gunbc#7762 failure), and
+    // cannot see a row that both would claim. So the three populations are computed by identity
+    // and required to reconstruct the whole:
+    //
+    //     offered = executed ⊎ long-home-declined ⊎ live-tree-declined
+    //
+    // The prefixes are DECODED from the `.dag` authority rather than restated here, because a
+    // host-side copy of that list is a second authority that would drift the moment either side
+    // moved — and the drift would show up as this partition disagreeing, which is a confusing
+    // way to learn about a copy-paste.
+    let long_home_prefixes: Vec<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.required_floor.long_home_prefixes",
+            false,
+        )
+        .map_err(|e| format!("long_home_prefixes: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("long_home_prefixes: {e}"))?;
+        let mut out = Vec::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => out.push(s.to_string()),
+                other => {
+                    return Err(format!(
+                        "long_home_prefixes: expected a module-path prefix, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        out
+    };
+    {
+        let executed: HashSet<&str> = claims.iter().map(|c| c.qualified.as_str()).collect();
+        let mut long_declined = 0usize;
+        let mut live_declined = 0usize;
+        let mut both = 0usize;
+        let mut unexplained: Vec<&str> = Vec::new();
+        for (qualified, module_path, reads_live_tree) in &site_facts {
+            if executed.contains(qualified.as_str()) {
+                continue;
+            }
+            let long_home = long_home_prefixes
+                .iter()
+                .any(|p| module_path.starts_with(p));
+            // ASSIGNED IN A FIXED ORDER SO THE ARMS STAY DISJOINT, with the overlap counted
+            // separately rather than hidden by whichever test ran first. A row that is both
+            // long-home and live-tree is a real thing and it is worth knowing how many there
+            // are, but it must be attributed once.
+            match (long_home, *reads_live_tree) {
+                (true, true) => {
+                    long_declined += 1;
+                    both += 1;
+                }
+                (true, false) => long_declined += 1,
+                (false, true) => live_declined += 1,
+                // DECLINED BY NEITHER HACK. This is the arm that must stay empty: the manifest
+                // dropped a row for a reason this host cannot name, which is precisely a silent
+                // narrowing of the roster.
+                (false, false) => unexplained.push(qualified.as_str()),
+            }
+        }
+        let declined = long_declined + live_declined + unexplained.len();
+        if declined > 0 {
+            eprintln!(
+                "[floor-disposition] {declined} of {sites_offered} discovered site(s) are NOT \
+                 required-floor and NOT RUN HERE: {long_declined} long-home-declined \
+                 ({both} of them also declare ReadsLiveTree), {live_declined} live-tree-declined \
+                 — each needs an executing consumer on another cadence, and none exists yet on \
+                 this branch"
+            );
+        }
+        if !unexplained.is_empty() {
+            unexplained.sort_unstable();
+            let shown: Vec<&str> = unexplained.iter().copied().take(20).collect();
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=SiteDeclinedWithoutDisposition count={} — a \
+                 discovered site was neither executed nor declined by a named disposition, so \
+                 the roster narrowed for a reason nothing can report; first {}: {}",
+                unexplained.len(),
+                shown.len(),
+                shown.join(", ")
+            ));
+        }
+        if claims.len() + declined != sites_offered {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={} executed={} \
+                 declined={} — the three populations must reconstruct the offered set exactly",
+                sites_offered,
+                claims.len(),
+                declined
+            ));
+        }
+    }
+
+    // THE EXPECTED-RED ROSTER, read from its .dag authority in the manifest's own frame — it
+    // must be decoded BEFORE that frame is dropped below, and it is a separate evaluation from
+    // the manifest because it answers a different question: the manifest says which claims
+    // exist, this says which of them are known to fail while someone fixes them.
+    let expected_red_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_expected_red.floor_expected_red_roster",
+            false,
+        )
+        .map_err(|e| format!("floor_expected_red_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_expected_red_roster: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    // A DUPLICATE REFUSES. The roster's length is read as the debt, and a
+                    // repeated identity makes that length lie in the direction that flatters:
+                    // 820 rows naming 819 identities reports one more fixed row than exists,
+                    // and the second copy survives every removal of the first. The set would
+                    // absorb it silently, so the refusal has to be here rather than in the set.
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_expected_red_roster: duplicate enrolled identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_expected_red_roster: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        out
+    };
+    eprintln!(
+        "[floor-known-red] roster carries {} enrolled identity(ies)",
+        expected_red_roster.len()
+    );
+
+    // THE MANIFEST'S WORLD DIES HERE, before the fold rather than at the end of the function.
+    //
+    // `hermetic` is the frame the manifest was folded in. It owns a scope AND the mutable
+    // evaluation caches that scope accumulated while folding 10,114 sites — call memo, data
+    // cache, name caches — and `admission` is the decoded Value it produced. Neither is read
+    // again: `claims` is the projection of both, and the fold consumes only `claims`.
+    //
+    // Left to ordinary scope they live until the function returns, which is to say through the
+    // entire fold, and every byte they hold is a byte the fold does not have. That matters more
+    // than it looks: the runner throttles at `memory.high` and the last run sat within ~1MB of
+    // the watermark, so retained-but-unread state is not slack — it is wall time, because under
+    // throttling the kernel reclaims continuously and every task in the cgroup stalls.
+    //
+    // Measured before this change, published-mock-projection stepped the resident set 6.58GB ->
+    // 9.15GB and it stayed there for the run. 90 mock keys do not cost 2.6GB; a retained frame
+    // over a folded manifest plausibly does. Whether that is what this recovers is exactly what
+    // the next run says, and if the step survives then the cost is elsewhere and this was still
+    // correct — an unread value held across the longest phase of the program has no defence.
+    drop(hermetic);
+    drop(admission);
+    drop(manifest_scope);
+
+    // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
+    eprintln!("floor: claims = {}", claims.len());
+    let claims_planned = claims.len();
+    let mut outcome = RequiredFloorOutcome {
+        subject_digest: prepared.subject_digest.clone(),
+        modules_resolved: prepared.modules_resolved,
+        modules_excluded: prepared.modules_excluded,
+        claims_planned,
+        claims_executed: 0,
+        receipt_identities: 0,
+        passed: 0,
+        known_red_held: 0,
+        over_warn: 0,
+        failures: Vec::new(),
+    };
+    let mut receipted: HashSet<String> = HashSet::new();
+
+    // SCOPES ARE DERIVED ONCE FROM THE EXACT MANIFEST, as an explicit table rather than a lazy
+    // cache filled during the fold. A lazy cache would make "how many scopes exist" a question
+    // about execution history instead of about the manifest, and the acceptance census asks for
+    // distinct scopes constructed to EQUAL the manifest's distinct scope identities — which is
+    // only checkable if the table is built before anything runs.
+    floor_seam("claim-scope-projection");
+    let scope_start = std::time::Instant::now();
+    let distinct_scopes: std::collections::BTreeSet<&str> =
+        claims.iter().map(|c| c.module_path.as_str()).collect();
+    // SCOPE SIZE IS REPORTED, because it is the quantity every per-claim cost is proportional to.
+    //
+    // A context's lazily-built indexes are derived from the scope's module population and rebuilt
+    // per claim, so a scope's module count multiplies by the number of claims that share it. When
+    // the scope was an import closure that product was small; the reference closure changed the
+    // multiplicand and the fold's cost moved with it. Reporting only the projection's own
+    // duration hides that entirely: the projection is where scopes are BUILT, and the fold is
+    // where their size is PAID.
+    // SCOPES ARE NO LONGER RETAINED, and the census that required retaining them never did.
+    //
+    // The table above held one `PreparedClaimScope` per distinct claim module — 1,383 of them
+    // over a 3,646-module corpus at a mean of 511.5 modules each, so every module's structures
+    // were materialized around 192 times. Measured, that table WAS the floor's memory: manifest
+    // evaluation sat flat at 9.94 GB and scope projection added 25 GB before a single witness
+    // ran. It was built eagerly on the stated ground that "how many scopes exist" must be a
+    // question about the manifest rather than about execution history.
+    //
+    // That ground is sound and the table was not what established it. The manifest's distinct
+    // scope identities are exactly the distinct module paths its claims name, which is a fact
+    // about `claims` — countable without constructing anything, and counted here BEFORE the
+    // fold, so the census keeps the property it was built for.
+    //
+    // What replaces the table is a stream: the fold holds at most one scope, rebuilding when the
+    // claim module changes. Claims arrive grouped by module, so the number of constructions
+    // tracks the number of distinct scopes rather than the number of claims — and because that
+    // is a property of the manifest's order rather than a guarantee, the fold COUNTS its
+    // constructions and reports them against this number. A grouping that degrades shows up as
+    // constructions far above distinct scopes, loudly, instead of as silent rebuilding.
+    eprintln!(
+        "floor: {} distinct claim scope(s) named by the manifest, counted in {}ms \
+         (0 reads, 0 parses, 0 resolves, 0 scopes retained) corpus={}",
+        distinct_scopes.len(),
+        scope_start.elapsed().as_millis(),
+        prepared.graph.modules.len()
+    );
+
+    floor_seam("claim-evaluation-fold");
+    let eval_started = std::time::Instant::now();
+    // AT MOST ONE SCOPE IS ALIVE. Rebuilt when the claim module changes, dropped when it is
+    // replaced. See the projection note above for why the table it replaces was the floor's
+    // memory and why its census survives without it.
+    let mut current_scope: Option<(String, PreparedClaimScope)> = None;
+    let mut scope_constructions: usize = 0;
+    let mut scope_module_total: usize = 0;
+    let mut scope_module_max: usize = 0;
+    let mut known_red_held: usize = 0;
+    let mut known_red_now_passing: usize = 0;
+    let mut expected_red_seen: HashSet<String> = HashSet::new();
+    let mut claim_rss_kb_max: u64 = 0;
+    let mut claim_rss_kb_max_row = String::new();
+    let mut trim_reclaimed_kb_total: u64 = 0;
+    let mut trim_reclaimed_kb_max: u64 = 0;
+    let mut trims_performed: u64 = 0;
+    let mut scope_kb_total: u64 = 0;
+    let mut scope_kb_max: u64 = 0;
+    let mut scope_kb_max_module = String::new();
+    let mut scope_kb_max_modules: usize = 0;
+    let mut scopes_with_ambiguity: usize = 0;
+    let mut ambiguous_total: usize = 0;
+    let mut ambiguous_max: usize = 0;
+    for (index, claim) in claims.iter().enumerate() {
+        if index % 1000 == 0 {
+            eprintln!("floor: evaluating {index} / {claims_planned}");
+        }
+        if current_scope.as_ref().map(|(module, _)| module.as_str())
+            != Some(claim.module_path.as_str())
+        {
+            // Dropped before the next is built, not after: holding both would put two scopes
+            // resident at the seam and defeat the point of streaming them.
+            drop(current_scope.take());
+            // SCOPE COST, MEASURED AT THE SCOPE. The fold's resident set swings from 9.26GB to
+            // 14.86GB and back down, which correlates with scope size but only correlates: the
+            // heartbeat samples on a timer, so it cannot say whether the swing IS the scope or
+            // something else moving alongside it. Read either side of the one construction and
+            // the question stops being inferential. Taken with the old scope already dropped, so
+            // the delta is this scope's cost and not the difference between two.
+            let rss_before = current_rss_bytes().unwrap_or(0) / 1024;
+            let built = claim_scope_for(&prepared, &claim.module_path)?;
+            let rss_after = current_rss_bytes().unwrap_or(0) / 1024;
+            let scope_kb = rss_after.saturating_sub(rss_before);
+            if scope_kb > scope_kb_max {
+                scope_kb_max = scope_kb;
+                scope_kb_max_module = claim.module_path.clone();
+                scope_kb_max_modules = built.indexes.modules.len();
+            }
+            scope_kb_total += scope_kb;
+            scope_constructions += 1;
+            scope_module_total += built.indexes.modules.len();
+            scope_module_max = scope_module_max.max(built.indexes.modules.len());
+            if built.ambiguous_bare_names > 0 {
+                scopes_with_ambiguity += 1;
+                ambiguous_total += built.ambiguous_bare_names;
+                ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names);
+            }
+            current_scope = Some((claim.module_path.clone(), built));
+        }
+        let scope = &current_scope
+            .as_ref()
+            .expect("a scope was just built for this claim's module")
+            .1;
+        // FRESH PER CLAIM. Claims sharing one immutable scope must not share the mutable
+        // evaluation caches a context owns, or one witness contaminates the next through a
+        // memo rather than through anything it declared.
+        let frame = evaluation_frame(scope, claim.execution_mode, None, published.clone());
+        // ARM THE WALL CEILING, which is what the operator's rule has always been about and
+        // what this path was not doing. `run_claim_measured` already arms the deadline and
+        // applies a completion-side backstop when a wall budget is set -- the mechanism was
+        // complete in the interpreter and simply never switched on here, so a CPU budget stood
+        // in for it while printing the wall rule's own error text.
+        //
+        // Both clocks are armed deliberately. CPU catches a spin; wall catches a witness that
+        // is slow because of what it reaches for, which CPU cannot see: the worst row measured
+        // burned 504 SECONDS of wall under a 5-second ceiling and returned an ordinary Bool,
+        // because its time was filesystem reads and its CPU never approached the limit.
+        frame.set_witness_eval_budget(Some(claim.budget_ms));
+        frame.set_witness_wall_budget(Some(claim.budget_ms));
+        set_phase(FloorPhase::Eval, &claim.qualified);
+        // WHAT ONE CLAIM COSTS IN MEMORY, for the same reason the scope is measured beside it:
+        // the fold's resident set swings ~5.6GB and the scope turned out to account for 0.02GB
+        // of it, so the remainder is unattributed and the only honest way to attribute it is to
+        // read it where it happens. A claim's frame owns mutable evaluation caches (call memo,
+        // data cache, name caches) that live exactly as long as the claim, so a row that walks
+        // a large population can cost far more than the scope it walks.
+        //
+        // This matters beyond memory now: the runner throttles at `memory.high`, and under
+        // throttling WALL time inflates while thread-CPU does not — so a row that drives the
+        // resident set into the watermark inflates the wall measurement of every row near it,
+        // including its own. Naming the rows that cost the most is therefore the first step in
+        // separating expensive witnesses from witnesses that merely ran next to one.
+        let claim_rss_before = current_rss_bytes().unwrap_or(0) / 1024;
+        let (result, receipt) =
+            run_claim_measured(&frame, &prepared.subject_digest, &claim.qualified);
+        let claim_rss_after = current_rss_bytes().unwrap_or(0) / 1024;
+        let claim_rss_kb = claim_rss_after.saturating_sub(claim_rss_before);
+        if claim_rss_kb > claim_rss_kb_max {
+            claim_rss_kb_max = claim_rss_kb;
+            claim_rss_kb_max_row = claim.qualified.clone();
+        }
+        // A quarter of a gigabyte in ONE row is loud, because a row that costs that much is
+        // both a memory subject in its own right and the reason its neighbours' wall times
+        // cannot be trusted. Threshold is a reporting choice, not a verdict: nothing refuses on
+        // it, it only makes the population visible so it can be ranked.
+        if claim_rss_kb > 262_144 {
+            eprintln!(
+                "[floor-claim-memory] {} grew rss by {:.2}GB (to {:.2}GB)",
+                claim.qualified,
+                claim_rss_kb as f64 / 1048576.0,
+                claim_rss_after as f64 / 1048576.0
+            );
+        }
+        // RETURN WHAT THE FRAME NO LONGER OWNS, on a cadence rather than every row.
+        //
+        // The frame is dropped at the end of this iteration, so by the next trim its caches are
+        // free as far as Rust is concerned; whether they are free as far as the KERNEL is
+        // concerned is the question above. Every 200 claims is a deliberate compromise: often
+        // enough that the resident set cannot drift far between samples, rare enough that the
+        // trim's own cost (it walks the arena) is not paid ten thousand times. Nothing refuses
+        // on the result and nothing is skipped because of it — this only gives memory back and
+        // says how much, so a run that reclaims nothing is strictly the run we already had.
+        if index % 200 == 199 {
+            if let Some(reclaimed_kb) = trim_retained_heap() {
+                trim_reclaimed_kb_total += reclaimed_kb;
+                trim_reclaimed_kb_max = trim_reclaimed_kb_max.max(reclaimed_kb);
+                trims_performed += 1;
+            }
+        }
+        outcome.claims_executed += 1;
+        receipted.insert(claim.qualified.clone());
+        style.stream_witness(
+            &claim.function,
+            &claim.module_path,
+            "PreparedSubject",
+            receipt.wall_nanos,
+            matches!(result, ClaimOutcome::Pass),
+        );
+        // THE WARNING TIER. A row an order of magnitude above where an ordinary witness lands,
+        // but under the ceiling, is reported and allowed to finish.
+        //
+        // It is a separate verdict from the hard cut because the remedies differ, and because
+        // this is the population worth acting on: a witness at the ceiling has already spent
+        // the run's full budget by the time anyone hears about it, while a witness at the
+        // warning is heading there and still cheap to fix. Reported per row and counted, so
+        // the population is observable rather than something a reader must reconstruct from
+        // timings.
+        let wall_ms = receipt.wall_nanos / 1_000_000;
+        if wall_ms > u128::from(claim.warn_ms) {
+            outcome.over_warn += 1;
+            eprintln!(
+                "[floor-witness-slow] {} {}ms > {}ms warn (ceiling {}ms)",
+                claim.qualified, wall_ms, claim.warn_ms, claim.budget_ms
+            );
+        }
+        // THE EXPECTED-RED JOIN. A quarantined identity is one this branch KNOWS fails; it is
+        // enrolled by exact qualified name in `v2.workflow.floor_expected_red`, and the
+        // difference from an exclusion is that it still RUNS and its outcome is still asserted.
+        //
+        // Three things follow, and they are the whole reason this is admissible where a skip
+        // list is not. A failure outside the roster still reds the build, so the roster covers
+        // named debt rather than a category. A quarantined row that PASSES also reds, so a fix
+        // is counted the moment it lands instead of being silently absorbed into a green run —
+        // which is what makes the roster monotonically shrinking rather than a place things go
+        // to be forgotten. And every row is an executing claim with a receipt, so nothing in
+        // here reads as covered when it is not.
+        let expected_red = expected_red_roster.contains(claim.qualified.as_str());
+        if expected_red {
+            expected_red_seen.insert(claim.qualified.clone());
+        }
+        let passed = matches!(result, ClaimOutcome::Pass);
+        if expected_red && passed {
+            known_red_now_passing += 1;
+            outcome.failures.push(format!(
+                "{} is enrolled as expected-red and PASSED — remove it from \
+                 v2.workflow.floor_expected_red",
+                claim.qualified
+            ));
+            continue;
+        }
+        if expected_red {
+            known_red_held += 1;
+            // NOT COUNTED AS A PASS. A held row did not pass — it failed exactly as enrolled,
+            // and agreement about a failure is not the same fact as a passing witness. Folding
+            // it into `passed` would make the headline number rise as debt is ADDED, which is
+            // the direction that flatters, and would leave no count that falls when the debt is
+            // repaid. The identity accounting (planned = executed = receipted) is unaffected
+            // because it counts receipts, not verdicts.
+            continue;
+        }
+        match result {
+            ClaimOutcome::Pass => outcome.passed += 1,
+            ClaimOutcome::Fail => outcome
+                .failures
+                .push(format!("{} returned Bool(false)", claim.qualified)),
+            // Every non-pass arm is reported with the fact that distinguishes it. A
+            // collapsed "failed" would make a budget refusal, a runtime error and a
+            // witness that answered false read alike, and those three have different
+            // remedies.
+            ClaimOutcome::NotBool { got } => outcome
+                .failures
+                .push(format!("{} answered {got}, not a Bool", claim.qualified)),
+            ClaimOutcome::RuntimeError { message } => outcome
+                .failures
+                .push(format!("{} errored: {message}", claim.qualified)),
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => outcome.failures.push(format!(
+                "{} exceeded its {kind:?} budget ({elapsed_ms}ms elapsed against {budget_ms}ms)",
+                claim.qualified
+            )),
+        }
+    }
+    outcome.receipt_identities = receipted.len();
+    eprintln!(
+        "floor: evaluating {claims_planned} / {claims_planned} ({}ms)",
+        eval_started.elapsed().as_millis()
+    );
+    // CONSTRUCTIONS AGAINST DISTINCT SCOPES. Equal means the manifest's claim order was grouped
+    // by module and each scope was built exactly once; higher means it was not, and the excess
+    // is rebuilding this reports rather than absorbs. `modules_per_scope` is carried here now
+    // because the sizes are observed as scopes are built, not read off a retained table.
+    eprintln!(
+        "floor: {} scope construction(s) for {} distinct scope(s) \
+         modules_per_scope mean={:.1} max={} corpus={}",
+        scope_constructions,
+        distinct_scopes.len(),
+        if scope_constructions == 0 {
+            0.0
+        } else {
+            scope_module_total as f64 / scope_constructions as f64
+        },
+        scope_module_max,
+        prepared.graph.modules.len()
+    );
+    // THE SILENT PICK, COUNTED. Each of these is a bare name two transitively-reached modules
+    // both spell, resolved by scope precedence because a registry keyed on bare names cannot
+    // hold both — a resolution nothing the author wrote authorizes. Reported, not refused: the
+    // honest arm is to refuse the ambiguous lookup, and whether that is affordable is a question
+    // about this population, which until now nobody had measured. Zero here would mean the
+    // reference closure never donates a colliding name and the flat registry is adequate in
+    // practice; anything else sizes the terminal per-module-environment correction.
+    eprintln!(
+        "[floor-bare-name-ambiguity] scopes_affected={} of {} names_total={} worst_scope={}",
+        scopes_with_ambiguity, scope_constructions, ambiguous_total, ambiguous_max
+    );
+    // WHAT ONE SCOPE COSTS. `mean` divides only by constructions that measured a rise, so it is
+    // the mean cost of a scope that cost anything; a scope whose modules were all resident from
+    // the previous one reads as free and would otherwise drag the mean toward zero. This is the
+    // quantity the terminal one-corpus-index correction removes entirely — a scope that is a
+    // view rather than a rebuild costs nothing to enter.
+    eprintln!(
+        "[floor-scope-cost] max={:.2}GB at={} ({} modules) total_built={:.2}GB over {} construction(s)",
+        scope_kb_max as f64 / 1048576.0,
+        if scope_kb_max_module.is_empty() {
+            "-"
+        } else {
+            scope_kb_max_module.as_str()
+        },
+        scope_kb_max_modules,
+        scope_kb_total as f64 / 1048576.0,
+        scope_constructions
+    );
+    // THE DEBT, REPORTED EVERY RUN. `held` is the enrolled population that behaved as enrolled
+    // — the number that must fall. `now_passing` is enrolled rows that PASSED, which is a build
+    // failure by design: a fix has landed and the roster is stale, and the run says so rather
+    // than quietly absorbing it.
+    eprintln!(
+        "[floor-known-red] {} enrolled identity(ies) held as expected-red; {} enrolled \
+         identity(ies) now PASS and must be removed from the roster",
+        known_red_held, known_red_now_passing
+    );
+    eprintln!(
+        "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
+        claim_rss_kb_max as f64 / 1048576.0,
+        if claim_rss_kb_max_row.is_empty() {
+            "-"
+        } else {
+            claim_rss_kb_max_row.as_str()
+        }
+    );
+    // WHAT THE ALLOCATOR WAS HOLDING. Read this beside the claim-memory line above: together
+    // they split the fold's resident growth into the part one expensive row caused and the part
+    // that was merely never returned. A large total here means the growth was glibc keeping
+    // arenas and the fold's own retention is small; a total near zero means the memory is LIVE
+    // and the next question is what holds it — the trim cannot release live memory, so it
+    // cannot flatter that answer.
+    if trims_performed > 0 {
+        eprintln!(
+            "[floor-heap-trim] {} trim(s) returned {:.2}GB total, {:.2}GB worst single trim",
+            trims_performed,
+            trim_reclaimed_kb_total as f64 / 1048576.0,
+            trim_reclaimed_kb_max as f64 / 1048576.0
+        );
+    }
+    outcome.known_red_held = known_red_held;
+    // THE ROSTER IS A TWO-WAY JOIN, NOT A ONE-WAY LOOKUP. Enrollment as written above only ever
+    // asks "is this executing claim enrolled". The reverse question — is every enrolled identity
+    // still executing — has no consumer unless it is asked here, and without it the roster rots
+    // in exactly the way that makes a skip list a skip list: an identity that is renamed,
+    // deleted, moved under a declined path, or dropped from discovery stays on the roster
+    // forever, is never observed, never passes, and therefore never asks to be removed. The
+    // debt count would keep counting rows that no longer exist.
+    //
+    // So a roster entry that did not execute REFUSES, and it refuses by name. That also closes
+    // the cheapest way to fake a green run: enrolling an identity that does not exist would
+    // otherwise cost nothing.
+    let expected_red_missing: Vec<&String> = {
+        let mut missing: Vec<&String> = expected_red_roster
+            .iter()
+            .filter(|q| !expected_red_seen.contains(*q))
+            .collect();
+        missing.sort();
+        missing
+    };
+    if !expected_red_missing.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ExpectedRedIdentityDidNotExecute count={} — every \
+             identity enrolled in v2.workflow.floor_expected_red must be observed among the \
+             executed claims; these were not, so they are stale and must be removed from the \
+             roster or restored to discovery: {}",
+            expected_red_missing.len(),
+            expected_red_missing
+                .iter()
+                .map(|q| q.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    // AND THE PARTITION MUST BE EXACT. With the reverse join above, every enrolled identity was
+    // observed exactly once, so it landed in precisely one of the two arms. Checking the sum is
+    // therefore checking that the two arms are the whole roster and do not overlap — cheap, and
+    // it fails loudly if a later edit adds a third arm that quietly swallows rows.
+    if known_red_held + known_red_now_passing != expected_red_roster.len() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
+             roster={} — every enrolled identity must be exactly one of held or now-passing",
+            known_red_held,
+            known_red_now_passing,
+            expected_red_roster.len()
+        ));
+    }
+    // THE THREE IDENTITY COUNTS MUST AGREE, and they are compared here rather than reported
+    // for a reader to compare. A run that planned more claims than it executed has silently
+    // narrowed, which is the failure this whole path exists to make unwritable; reporting the
+    // pair and letting a human notice is exactly how the deferred bucket survived.
+    if outcome.claims_planned != outcome.claims_executed
+        || outcome.claims_executed != outcome.receipt_identities
+    {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ClaimIdentityCountsDisagree planned={} executed={} \
+             receipted={} — every planned claim must execute and every execution must land one \
+             receipt identity; a gap here is a narrowed roster reported as a roster",
+            outcome.claims_planned, outcome.claims_executed, outcome.receipt_identities
+        ));
+    }
+    Ok(outcome)
+}
+
+/// Read the `.dag` admission. A refusal is reported with every offending row rather than the
+/// first, because a manifest with three conflicting declarations should take one round-trip to
+
+fn required_floor_claims_from_admission(
+    ctx: &v1_interpreter::InterpContext,
+    admission: &v1_interpreter::Value,
+) -> Result<Vec<RequiredFloorClaim>, String> {
+    // EVERY STEP MARKED, BECAUSE THE ONE UNMARKED REGION IS WHERE THE TIME WAS.
+    //
+    // Run 31942605651 completed manifest-evaluation at 11:14:12 and was cancelled at 13:48:13
+    // having printed neither arm's entry marker -- so 2h34m elapsed inside this function before
+    // reaching either. That region was left unmarked on my reasoning that it is a sym_eq and two
+    // binary searches and "cannot cost hours on its face". That was an assumption about cost
+    // stated as a bound, and it was wrong. Each step now emits, so no step can absorb time
+    // silently.
+    let entered = std::time::Instant::now();
+    eprintln!("[floor-phase] phase=admission-decode state=started");
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = admission
+    else {
+        return Err(
+            "required_floor_attempt did not answer a RequiredFloorAdmission variant".to_string(),
+        );
+    };
+    eprintln!(
+        "[floor-phase-progress] phase=admission-decode step=destructured wall_ms={} {}",
+        entered.elapsed().as_millis(),
+        floor_resource_sample()
+    );
+    let refused = ctx.sym_eq(*variant_name, "RequiredFloorRefused");
+    eprintln!(
+        "[floor-phase-progress] phase=admission-decode step=arm-resolved refused={} wall_ms={} {}",
+        refused,
+        entered.elapsed().as_millis(),
+        floor_resource_sample()
+    );
+    if refused {
+        // T5a — THE REFUSAL RENDER IS ITS OWN TERM because it is the arm that can cost more
+        // than the decode it reports on. `{r:?}` walks an interpreter `Value` structurally, and
+        // a refusal carries records that share substructure: Debug re-renders each occurrence
+        // rather than the shared node, so a cheap-looking format over a few thousand rows is not
+        // bounded by the row count. A run that refuses would otherwise spend that time inside a
+        // function whose seam says "decode", attributing a diagnostic's cost to the decode loop.
+        // THE SEAM MOVES WITH EXECUTION, or the heartbeat lies about where the run is.
+        // `floor_seam` was last set to "admission-decode" by the caller, and the heartbeat prints
+        // whatever it holds — so a run stalled inside THIS arm reported `phase=admission-decode`
+        // for its entire life, which is indistinguishable in the log from a run stalled BEFORE the
+        // arm was entered. A reader then cannot tell "never reached the render" from "spent three
+        // hours inside it", and the natural conclusion is that no progress instrument exists.
+        floor_seam("refusal-render");
+        let refusal_render_started = std::time::Instant::now();
+        let refusal_count = match ctx.field(fields, "refusals") {
+            Some(v1_interpreter::Value::List(items)) => items.len(),
+            _ => 0,
+        };
+        eprintln!("[floor-phase] phase=refusal-render state=started total={refusal_count}");
+        // The SAME progress obligation as the decode loop, and it was missing here first. A
+        // censored run keeps only what was already printed, so an arm with an entry marker and a
+        // completion timer and nothing between teaches nothing when it is the arm that stalls --
+        // and a rate plus a denominator is a completion estimate obtainable WITHOUT completing.
+        // Every 16 rather than every 256 because a refusal render is few rows of possibly enormous
+        // output, so the interesting variance is per-row, not across thousands.
+        let rendered = match ctx.field(fields, "refusals") {
+            Some(v1_interpreter::Value::List(items)) => items
+                .iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    if i % 16 == 0 {
+                        eprintln!(
+                            "[floor-phase-progress] phase=refusal-render rendered={i} total={} wall_ms={} {}",
+                            items.len(),
+                            refusal_render_started.elapsed().as_millis(),
+                            floor_resource_sample()
+                        );
+                    }
+                    format!("{r:?}")
+                })
+                .collect::<Vec<_>>()
+                .join("\n  "),
+            _ => "<refusal list unreadable>".to_string(),
+        };
+        eprintln!(
+            "[floor-phase] phase=refusal-render state=completed wall_ms={} total={} rendered_bytes={}",
+            refusal_render_started.elapsed().as_millis(),
+            refusal_count,
+            rendered.len()
+        );
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ManifestInadmissible — the claim manifest carries \
+             refusals, so the floor does not run its clean subset and report on the rest:\n  \
+             {rendered}"
+        ));
+    }
+    if !ctx.sym_eq(*variant_name, "RequiredFloorRunnable") {
+        return Err("required_floor_attempt answered an unknown admission arm".to_string());
+    }
+    let Some(v1_interpreter::Value::Record { fields: af, .. }) = ({
+        let r = ctx.field(fields, "attempt");
+        eprintln!(
+            "[floor-phase-progress] phase=admission-decode step=attempt-field wall_ms={} {}",
+            entered.elapsed().as_millis(),
+            floor_resource_sample()
+        );
+        r
+    }) else {
+        return Err("RequiredFloorRunnable carries no attempt record".to_string());
+    };
+    // THE REFUSAL NAMES THE SHAPE IT OBSERVED, not merely that the shape was wrong.
+    //
+    // "the attempt carries no claim list" is true of an absent field, of a record, of a variant
+    // and of a scalar alike, so it identifies the seam and nothing else. Reaching this arm costs
+    // a full preparation plus manifest evaluation — measured at 28 minutes on the first run that
+    // ever got here — and spending that to learn only that the field was not a list makes the
+    // next attempt cost the same again. What discriminates the causes is the constructor.
+    let claims_field = ctx.field(af, "claims");
+    let claims_shape = floor_value_shape(claims_field);
+    eprintln!(
+        "[floor-phase-progress] phase=admission-decode step=claims-field wall_ms={} observed={} {}",
+        entered.elapsed().as_millis(),
+        claims_shape,
+        floor_resource_sample()
+    );
+    let rows = floor_decode_list(ctx, claims_field).map_err(|why| {
+        format!("the attempt's `claims` field is not a list — {why} (field shape {claims_shape})")
+    })?;
+    // T5b — the ordinary decode loop, reported separately from the refusal arm above so that
+    // "the decode is slow" and "the refusal diagnostic is slow" are never one number.
+    // Same obligation as the refusal arm: carry the seam into the loop so the heartbeat names
+    // the loop rather than the phase that called it. Without this the decode's own ticks and the
+    // heartbeat disagree about the phase name, and a reader filtering the log on
+    // "admission-decode" — the name the heartbeat kept printing — silently excludes every
+    // `phase=claim-decode` progress line and concludes the loop has no counter at all.
+    floor_seam("claim-decode");
+    let decode_loop_started = std::time::Instant::now();
+    eprintln!(
+        "[floor-phase] phase=claim-decode state=started total={}",
+        rows.len()
+    );
+    let mut out = Vec::with_capacity(rows.len());
+    // PROGRESS, NOT JUST COMPLETION. A timer printed after a loop reports the loop's cost only if
+    // the loop terminates; a run killed inside it leaves "entered" and "finished" equally silent,
+    // so decoded-0 and decoded-9000 present identically. The tick is what separates them.
+    for (decoded, row) in rows.iter().enumerate() {
+        if decoded % 256 == 0 {
+            eprintln!(
+                "[floor-phase-progress] phase=claim-decode decoded={decoded} total={} wall_ms={} {}",
+                rows.len(),
+                decode_loop_started.elapsed().as_millis(),
+                floor_resource_sample()
+            );
+        }
+        let v1_interpreter::Value::Record { fields: cf, .. } = row else {
+            return Err("a manifest claim is not a record".to_string());
+        };
+        let Some(v1_interpreter::Value::Record { fields: df, .. }) = ctx.field(cf, "declaration")
+        else {
+            return Err("a manifest claim carries no declaration identity".to_string());
+        };
+        let module_path = match ctx.field(df, "module_path") {
+            Some(v1_interpreter::Value::Str(s)) => s.to_string(),
+            _ => return Err("a claim identity carries no module path".to_string()),
+        };
+        let function = match ctx.field(df, "function") {
+            Some(v1_interpreter::Value::Str(s)) => s.to_string(),
+            _ => return Err("a claim identity carries no function name".to_string()),
+        };
+        let budget_ms = match ctx.field(cf, "budget_ms") {
+            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
+            // A non-positive budget is refused rather than defaulted: a zero deadline that
+            // reads as "no limit" is the absorbing fallback, and one that reads as "refuse
+            // instantly" fails every claim for a reason unrelated to the claim.
+            other => {
+                return Err(format!(
+                    "claim {module_path}.{function} carries a non-positive budget ({other:?})"
+                ))
+            }
+        };
+        let warn_ms = match ctx.field(cf, "warn_ms") {
+            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
+            other => {
+                return Err(format!(
+                "claim {module_path}.{function} carries a non-positive warn threshold ({other:?})"
+            ))
+            }
+        };
+        let execution_mode = match ctx.field(cf, "execution_mode") {
+            Some(v1_interpreter::Value::Variant {
+                variant_name: m, ..
+            }) => {
+                if ctx.sym_eq(*m, "Hermetic") {
+                    v1_interpreter::ExecutionMode::Hermetic
+                } else if ctx.sym_eq(*m, "Wet") {
+                    v1_interpreter::ExecutionMode::Wet
+                } else if ctx.sym_eq(*m, "Record") {
+                    v1_interpreter::ExecutionMode::Record
+                } else {
+                    return Err(format!(
+                        "claim {module_path}.{function} names an unknown execution mode"
+                    ));
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "claim {module_path}.{function} carries no execution mode"
+                ))
+            }
+        };
+        out.push(RequiredFloorClaim {
+            qualified: format!("{module_path}.{function}"),
+            module_path,
+            function,
+            execution_mode,
+            budget_ms,
+            warn_ms,
+        });
+    }
+    eprintln!(
+        "[floor-phase] phase=claim-decode state=completed wall_ms={} claims={}",
+        decode_loop_started.elapsed().as_millis(),
+        out.len()
+    );
+    Ok(out)
 }

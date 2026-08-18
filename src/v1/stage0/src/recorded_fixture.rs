@@ -413,7 +413,7 @@ pub fn value_to_fixture_json(
         Value::Bool(b) => Ok(json!({ "__tag": "Bool", "value": b })),
         Value::Int(n) => Ok(json!({ "__tag": "Int", "value": n })),
         Value::Float(f) => Ok(json!({ "__tag": "Float", "value": f })),
-        Value::Str(s) => Ok(json!({ "__tag": "Str", "value": s.as_ref() })),
+        Value::Str(s) => Ok(json!({ "__tag": "Str", "value": s })),
         Value::List(items) => {
             let arr: Result<Vec<_>, _> = items
                 .iter()

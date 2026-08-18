@@ -151,13 +151,6 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
     }
   },
   WitnessEntryRoutingRow {
-    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
-    disposition: InterpretedRetained {
-      reason: BulkFlipPendingCensusIncomplete,
-      dissolution: unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
-    }
-  },
-  WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/manual/integer_census_stage_receipt.dag",
     disposition: InterpretedRetained {
       reason: BulkFlipPendingCensusIncomplete,

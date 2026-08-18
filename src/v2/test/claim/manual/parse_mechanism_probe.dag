@@ -56,7 +56,7 @@ fn pmp_memo_stats_report_path(path: String) -> List<Int> {
     head: stats.hits,
     tail: Cons {
       head: stats.misses,
-      tail: Cons { head: stats.lookup_calls, tail: Empty }
+      tail: Cons { head: stats.lookup_calls, tail: std.algebra.Empty }
     }
   }
 }

@@ -113,17 +113,17 @@ fn assess_information_theoretic(n: Node, realization: ComplexityBound) -> Synthe
 fn outcome_to_reports(outcome: SynthesisOutcome) -> List<Report> {
   match outcome {
     SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
-      Cons { head: r, tail: Empty }
-    SynthesisOptimal { realization_cost: _, lower_bound: _ } => Empty
-    SynthesisNoTechnique { diagnostic: _ } => Empty
+      Cons { head: r, tail: std.algebra.Empty }
+    SynthesisOptimal { realization_cost: _, lower_bound: _ } => std.algebra.Empty
+    SynthesisNoTechnique { diagnostic: _ } => std.algebra.Empty
   }
 }
 
 fn outcome_to_diagnostics(outcome: SynthesisOutcome) -> List<Diagnostic> {
   match outcome {
-    SynthesisGap { realization_cost: _, lower_bound: _, report: _ } => Empty
-    SynthesisOptimal { realization_cost: _, lower_bound: _ } => Empty
-    SynthesisNoTechnique { diagnostic: d } => Cons { head: d, tail: Empty }
+    SynthesisGap { realization_cost: _, lower_bound: _, report: _ } => std.algebra.Empty
+    SynthesisOptimal { realization_cost: _, lower_bound: _ } => std.algebra.Empty
+    SynthesisNoTechnique { diagnostic: d } => Cons { head: d, tail: std.algebra.Empty }
   }
 }
 
@@ -145,7 +145,7 @@ fn synthesis_lens_known_reports(n: Node, declared_technique: LowerBoundTechnique
 fn synthesis_lens(n: Node, declared_technique: LowerBoundTechnique) -> List<Report> {
   let realization = complexity_lens(n: n)
   match realization {
-    UnknownComplexity { diagnostic: _ } => Empty
+    UnknownComplexity { diagnostic: _ } => std.algebra.Empty
     ConstantComplexity =>
       synthesis_lens_known_reports(n: n, declared_technique: declared_technique, realization: realization)
     SizedComplexity { class: _, variables: _ } =>
@@ -187,7 +187,7 @@ fn synthesis_lens_known_diagnostics(n: Node, declared_technique: LowerBoundTechn
 fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) -> List<Diagnostic> {
   let realization = complexity_lens(n: n)
   match realization {
-    UnknownComplexity { diagnostic: d } => Cons { head: d, tail: Empty }
+    UnknownComplexity { diagnostic: d } => Cons { head: d, tail: std.algebra.Empty }
     ConstantComplexity =>
       synthesis_lens_known_diagnostics(n: n, declared_technique: declared_technique, realization: realization)
     SizedComplexity { class: _, variables: _ } =>

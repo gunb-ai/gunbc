@@ -22,14 +22,14 @@ fn synthesis_row_reports(row: SynthesisSubjectRow) -> List<Report> {
   match synthesis_arrow_body_for_row(row: row) {
     Accepted { value: body, diagnostics: _ } =>
       synthesis_lens(n: body, declared_technique: row.declared_technique)
-    Rejected { diagnostics: _ } => Empty
+    Rejected { diagnostics: _ } => std.algebra.Empty
   }
 }
 
 fn synthesis_corpus_reports() -> List<Report> {
   fold_list(
     xs: synthesis_subject_rows,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) {
       list_append(left: acc, right: synthesis_row_reports(row: row))
     }

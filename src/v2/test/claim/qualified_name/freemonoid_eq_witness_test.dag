@@ -6,19 +6,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type QnPath = FreeMonoid<Symbol>
 
 fn ab() -> QnPath {
-  Cons { head: ^a, tail: Cons { head: ^b, tail: Empty } }
+  Cons { head: ^a, tail: Cons { head: ^b, tail: std.algebra.Empty } }
 }
 
 fn ab2() -> QnPath {
-  Cons { head: ^a, tail: Cons { head: ^b, tail: Empty } }
+  Cons { head: ^a, tail: Cons { head: ^b, tail: std.algebra.Empty } }
 }
 
 fn ac() -> QnPath {
-  Cons { head: ^a, tail: Cons { head: ^c, tail: Empty } }
+  Cons { head: ^a, tail: Cons { head: ^c, tail: std.algebra.Empty } }
 }
 
 fn a_only() -> QnPath {
-  Cons { head: ^a, tail: Empty }
+  Cons { head: ^a, tail: std.algebra.Empty }
 }
 
 fn empty_path() -> QnPath {

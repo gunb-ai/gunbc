@@ -40,11 +40,6 @@ import std.measure {
   nanosecond_count,
 }
 import std.realization_schedule {
-  NodeFrontierSelection,
-  SelectionOff,
-  SelectionApplied,
-  SelectionPredictOnly,
-  node_frontier_selection_eq,
 }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -58,11 +53,10 @@ import extdeps.languages.json.emit {
   json_object,
   json_kv,
 }
-import gunbc.selection_degradation_receipt { selection_degradation_receipt_json }
 import gunbc.floor_component_receipt_document {
   receipt_member_schema, receipt_member_run_id, receipt_member_component_count,
-  receipt_member_affected_set_cold_control, receipt_member_unsuccessful_components,
-  receipt_member_components, receipt_member_selection_degradation,
+  receipt_member_unsuccessful_components,
+  receipt_member_components,
   receipt_member_run_terminal,
   receipt_member_workflow_name, receipt_member_head_sha
 ,
@@ -95,15 +89,9 @@ data floor_component_failure_mode_edge_note: String = "WHY THE MODE RIDES BESIDE
 
 type FloorComponentRow {
   event: ObservationEvent
-  selection: NodeFrontierSelection
   witnesses: Nat
   failure_mode: FloorComponentFailureMode
 }
-
-type FloorControlState
-  = ControlConcluded { row: FloorComponentRow }
-  | ControlAbsent { cause: NonEmptyStr }
-  | ControlAmbiguous { cause: NonEmptyStr, matched: Nat }
 
 fn floor_component_subject(run_id: NonEmptyStr, index: Nat, label: NonEmptyStr) -> ObservationSubject {
   ObservationSubject {
@@ -111,21 +99,6 @@ fn floor_component_subject(run_id: NonEmptyStr, index: Nat, label: NonEmptyStr) 
       RunSegment { id: run_id },
       BatchSegment { index: index, label: label }
     ]
-  }
-}
-
-fn floor_component_selection_of_tag(tag: NonEmptyStr) -> NodeFrontierSelection? {
-  if (tag as String) == "predict_only" { Present { value: SelectionPredictOnly } }
-  else if (tag as String) == "applied" { Present { value: SelectionApplied } }
-  else if (tag as String) == "off" { Present { value: SelectionOff } }
-  else { none }
-}
-
-fn floor_component_selection_tag(s: NodeFrontierSelection) -> String {
-  match s {
-    SelectionOff => "off"
-    SelectionApplied => "applied"
-    SelectionPredictOnly => "predict_only"
   }
 }
 
@@ -186,7 +159,6 @@ fn floor_component_row_of(
   run_id: NonEmptyStr,
   index: Nat,
   label: NonEmptyStr,
-  selection: NodeFrontierSelection,
   witnesses: Nat,
   outcome: ObservationOutcome,
   wall: Millisecond,
@@ -199,7 +171,6 @@ fn floor_component_row_of(
       durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: wall)),
       rss: MeasuredUnavailable { cause: "per-component RSS not sampled by the floor walk" as NonEmptyStr }
     },
-    selection: selection,
     witnesses: witnesses,
     failure_mode: failure_mode
   }
@@ -209,7 +180,6 @@ fn floor_component_row(
   run_id: NonEmptyStr,
   index: Nat,
   label: NonEmptyStr,
-  selection_tag: NonEmptyStr,
   witnesses: Nat,
   outcome_tag: NonEmptyStr,
   detail: NonEmptyStr,
@@ -219,31 +189,26 @@ fn floor_component_row(
   shown_failures: Nat,
   wall: Millisecond
 ) -> FloorComponentRow? {
-  match floor_component_selection_of_tag(tag: selection_tag) {
+  match floor_component_outcome_of_tag(
+    tag: outcome_tag,
+    detail: detail,
+    basis: basis,
+    budget: budget,
+    elapsed: elapsed,
+    shown_failures: shown_failures
+  ) {
     Absent => none
-    Present { value: sel } =>
-      match floor_component_outcome_of_tag(
-        tag: outcome_tag,
-        detail: detail,
-        basis: basis,
-        budget: budget,
-        elapsed: elapsed,
-        shown_failures: shown_failures
-      ) {
-        Absent => none
-        Present { value: outcome } => Present {
-          value: floor_component_row_of(
-            run_id: run_id,
-            index: index,
-            label: label,
-            selection: sel,
-            witnesses: witnesses,
-            outcome: outcome,
-            wall: wall,
-            failure_mode: ModeUnrecorded
-          )
-        }
-      }
+    Present { value: outcome } => Present {
+      value: floor_component_row_of(
+        run_id: run_id,
+        index: index,
+        label: label,
+        witnesses: witnesses,
+        outcome: outcome,
+        wall: wall,
+        failure_mode: ModeUnrecorded
+      )
+    }
   }
 }
 
@@ -251,33 +216,27 @@ fn floor_component_row_of_failure_mode(
   run_id: NonEmptyStr,
   index: Nat,
   label: NonEmptyStr,
-  selection_tag: NonEmptyStr,
   witnesses: Nat,
   failure_mode: NonEmptyStr,
   detail: NonEmptyStr,
   wall: Millisecond
 ) -> FloorComponentRow? {
-  match floor_component_selection_of_tag(tag: selection_tag) {
+  match floor_component_failure_mode_of(mode: failure_mode) {
     Absent => none
-    Present { value: sel } =>
-      match floor_component_failure_mode_of(mode: failure_mode) {
+    Present { value: mode } =>
+      match floor_component_outcome_of_mode(m: mode, detail: detail) {
         Absent => none
-        Present { value: mode } =>
-          match floor_component_outcome_of_mode(m: mode, detail: detail) {
-            Absent => none
-            Present { value: outcome } => Present {
-              value: floor_component_row_of(
-                run_id: run_id,
-                index: index,
-                label: label,
-                selection: sel,
-                witnesses: witnesses,
-                outcome: outcome,
-                wall: wall,
-                failure_mode: mode
-              )
-            }
-          }
+        Present { value: outcome } => Present {
+          value: floor_component_row_of(
+            run_id: run_id,
+            index: index,
+            label: label,
+            witnesses: witnesses,
+            outcome: outcome,
+            wall: wall,
+            failure_mode: mode
+          )
+        }
       }
   }
 }
@@ -286,33 +245,27 @@ fn floor_component_row_not_concluded(
   run_id: NonEmptyStr,
   index: Nat,
   label: NonEmptyStr,
-  selection_tag: NonEmptyStr,
   failure_mode: NonEmptyStr,
   detail: NonEmptyStr
 ) -> FloorComponentRow? {
-  match floor_component_selection_of_tag(tag: selection_tag) {
+  match floor_component_failure_mode_of(mode: failure_mode) {
     Absent => none
-    Present { value: sel } =>
-      match floor_component_failure_mode_of(mode: failure_mode) {
-        Absent => none
-        Present { value: mode } => Present {
-          value: FloorComponentRow {
-            event: ObservationEvent {
-              subject: floor_component_subject(run_id: run_id, index: index, label: label),
-              transition: Begin,
-              durations: observation_durations_wall(
-                elapsed: millisecond_to_nanosecond(m: millisecond(count: 0))
-              ),
-              rss: MeasuredUnavailable {
-                cause: "per-component RSS not sampled by the floor walk" as NonEmptyStr
-              }
-            },
-            selection: sel,
-            witnesses: 0,
-            failure_mode: mode
+    Present { value: mode } => Present {
+      value: FloorComponentRow {
+        event: ObservationEvent {
+          subject: floor_component_subject(run_id: run_id, index: index, label: label),
+          transition: Begin,
+          durations: observation_durations_wall(
+            elapsed: millisecond_to_nanosecond(m: millisecond(count: 0))
+          ),
+          rss: MeasuredUnavailable {
+            cause: "per-component RSS not sampled by the floor walk" as NonEmptyStr
           }
-        }
+        },
+        witnesses: 0,
+        failure_mode: mode
       }
+    }
   }
 }
 
@@ -374,7 +327,6 @@ fn floor_component_row_json(row: FloorComponentRow) -> JsonValue {
     Absent => json_object(members: [
       json_kv(key: "index", value: json_int(n: floor_component_row_index(row: row))),
       json_kv(key: "label", value: json_string(s: floor_component_row_label(row: row))),
-      json_kv(key: "selection", value: json_string(s: floor_component_selection_tag(s: row.selection))),
       json_kv(key: "outcome", value: json_string(s: floor_component_outcome_wire_tag(r: ComponentNotConcluded))),
       json_kv(key: "failure_mode", value: json_string(s: floor_component_failure_mode_tag(m: row.failure_mode)))
     ])
@@ -382,62 +334,15 @@ fn floor_component_row_json(row: FloorComponentRow) -> JsonValue {
       [
         json_kv(key: "index", value: json_int(n: floor_component_row_index(row: row))),
         json_kv(key: "label", value: json_string(s: floor_component_row_label(row: row))),
-        json_kv(key: "selection", value: json_string(s: floor_component_selection_tag(s: row.selection))),
-        json_kv(key: "witnesses", value: json_int(n: row.witnesses)),
+          json_kv(key: "witnesses", value: json_int(n: row.witnesses)),
         json_kv(key: "outcome", value: json_string(s: floor_component_outcome_wire_tag(r: ComponentConcluded { outcome: o }))),
-        json_kv(key: "failure_mode", value: json_string(s: floor_component_failure_mode_tag(m: row.failure_mode))),
-        json_kv(key: "is_affected_set_cold_control", value: json_bool(
-          b: node_frontier_selection_eq(left: row.selection, right: SelectionPredictOnly)
-        ))
+        json_kv(key: "failure_mode", value: json_string(s: floor_component_failure_mode_tag(m: row.failure_mode)))
       ],
       concat(
         floor_component_outcome_members(o: o),
         floor_component_wall_members(w: observation_wall(event: row.event))
       )
     ))
-  }
-}
-
-fn floor_affected_set_control_rows(rows: List<FloorComponentRow>) -> List<FloorComponentRow> {
-  rows |> filter(r => node_frontier_selection_eq(left: r.selection, right: SelectionPredictOnly))
-}
-
-fn floor_affected_set_control_state(rows: List<FloorComponentRow>) -> FloorControlState {
-  let matched = floor_affected_set_control_rows(rows: rows)
-  let n = count(matched)
-  if n > 1 {
-    ControlAmbiguous {
-      cause: "more than one SelectionPredictOnly component — the cold control is not uniquely identified" as NonEmptyStr,
-      matched: n
-    }
-  } else {
-    match matched.first() {
-      Absent => ControlAbsent {
-        cause: "no SelectionPredictOnly component in this receipt — the affected-set cold control did not run" as NonEmptyStr
-      }
-      Present { value: r } => ControlConcluded { row: r }
-    }
-  }
-}
-
-fn floor_affected_set_control_json(rows: List<FloorComponentRow>) -> JsonValue {
-  match floor_affected_set_control_state(rows: rows) {
-    ControlConcluded { row: r } => json_object(members: [
-      json_kv(key: "state", value: json_string(s: "present")),
-      json_kv(key: "verified", value: json_bool(b: floor_component_row_is_done(row: r))),
-      json_kv(key: "component", value: floor_component_row_json(row: r))
-    ])
-    ControlAbsent { cause: c } => json_object(members: [
-      json_kv(key: "state", value: json_string(s: "absent")),
-      json_kv(key: "verified", value: json_bool(b: false)),
-      json_kv(key: "cause", value: json_string(s: c as String))
-    ])
-    ControlAmbiguous { cause: c, matched: m } => json_object(members: [
-      json_kv(key: "state", value: json_string(s: "ambiguous")),
-      json_kv(key: "verified", value: json_bool(b: false)),
-      json_kv(key: "cause", value: json_string(s: c as String)),
-      json_kv(key: "matched", value: json_int(n: m))
-    ])
   }
 }
 
@@ -464,12 +369,6 @@ fn floor_component_receipt_json_value(
   run_id: NonEmptyStr,
   head_sha: CommitSha,
   rows: List<FloorComponentRow>,
-  selection_present: Bool,
-  selection_mode_tag: NonEmptyStr,
-  selected: Nat,
-  total: Nat,
-  categorization_unavailable: Bool,
-  categorization_reason: String,
   run_terminal_present: Bool,
   run_terminal_disposition: NonEmptyStr,
   run_terminal_cause: NonEmptyStr,
@@ -482,7 +381,6 @@ fn floor_component_receipt_json_value(
     json_kv(key: receipt_member_run_id, value: json_string(s: run_id as String)),
     json_kv(key: receipt_member_head_sha, value: json_string(s: head_sha as String)),
     json_kv(key: receipt_member_component_count, value: json_int(n: count(rows))),
-    json_kv(key: receipt_member_affected_set_cold_control, value: floor_affected_set_control_json(rows: rows)),
     json_kv(key: receipt_member_unsuccessful_components, value: json_array(
       elements: floor_unsuccessful_component_rows(rows: rows) |> map(r => floor_component_row_json(row: r))
     )),
@@ -490,8 +388,8 @@ fn floor_component_receipt_json_value(
       elements: rows |> map(r => floor_component_row_json(row: r))
     ))
   ]
-  let with_terminal = if run_terminal_present {
-    concat(base, [
+  if run_terminal_present {
+    json_object(members: concat(base, [
       json_kv(
         key: receipt_member_run_terminal,
         value: floor_run_terminal_json(
@@ -501,33 +399,15 @@ fn floor_component_receipt_json_value(
           pending_from_index: pending_from_index
         )
       )
-    ])
-  } else {
-    concat(base, [
-      json_kv(key: receipt_member_run_terminal, value: json_null())
-    ])
-  }
-  if selection_present {
-    json_object(members: concat(with_terminal, [
-      json_kv(
-        key: receipt_member_selection_degradation,
-        value: selection_degradation_receipt_json(
-          selection_mode_tag: selection_mode_tag,
-          selected: selected,
-          total: total,
-          categorization_unavailable: categorization_unavailable,
-          categorization_reason: categorization_reason
-        )
-      )
     ]))
   } else {
-    json_object(members: concat(with_terminal, [
-      json_kv(key: receipt_member_selection_degradation, value: json_null())
+    json_object(members: concat(base, [
+      json_kv(key: receipt_member_run_terminal, value: json_null())
     ]))
   }
 }
 
-data selection_degradation_always_emitted_note: String = "selection_degradation IS EMITTED ON EVERY PATH, INCLUDING THE ONE WITH NO SELECTION SNAPSHOT, where it is an explicit null. It previously appeared only when a snapshot existed, and the member was simply absent otherwise.\n\nThat was tolerable while nothing decoded the receipt. It stopped being tolerable the moment gunbc.floor_component_receipt_document made the member REQUIRED on the read side: the writer could still emit a document the reader would refuse, so encode-then-decode was broken for exactly the path claim_executor takes when no selection ran (review 49594 caught this, correctly, along with a note on the decoder side that overstated what this writer did).\n\nAn explicit null is the right repair rather than relaxing the decoder, because the two states differ and the receipt should say which one it is: `null` means this run had no selection degradation to report, and an ABSENT member means the writer did not tell you either way. Making absence impossible on the write side is what lets the read side treat absence as the defect it now is."
+data selection_degradation_member_deleted_note: String = "The receipt carried two members about affected-set selection — selection_degradation and affected_set_cold_control — and both are deleted with the mechanism they described (2026-08-15). Neither can be reconstructed from a run because the fact they reported no longer exists: nothing selects, so there is no degradation to report and no cold control to identify.\n\nWHAT THE DELETION MUST NOT BE READ AS. selection_degradation was made an explicit null on every path (review 49594) precisely so that ABSENT could mean the writer did not tell you either way. Removing the member returns it to absent — but for every reader, unconditionally, rather than for one path. That is only sound because the corresponding read-side requirement in gunbc.floor_component_receipt_document is removed in the same change: a writer that stops emitting a member a decoder still requires is exactly the broken encode-then-decode that ruling was about."
 
 fn floor_component_receipt_document(
   workflow_name: NonEmptyStr,
@@ -540,12 +420,6 @@ fn floor_component_receipt_document(
     run_id: run_id,
     head_sha: head_sha,
     rows: rows,
-    selection_present: false,
-    selection_mode_tag: "off" as NonEmptyStr,
-    selected: 0,
-    total: 0,
-    categorization_unavailable: false,
-    categorization_reason: "",
     run_terminal_present: false,
     run_terminal_disposition: "concluded" as NonEmptyStr,
     run_terminal_cause: "none" as NonEmptyStr,
@@ -568,12 +442,6 @@ fn floor_component_receipt_document_incomplete(
     run_id: run_id,
     head_sha: head_sha,
     rows: rows,
-    selection_present: false,
-    selection_mode_tag: "off" as NonEmptyStr,
-    selected: 0,
-    total: 0,
-    categorization_unavailable: false,
-    categorization_reason: "",
     run_terminal_present: true,
     run_terminal_disposition: "incomplete" as NonEmptyStr,
     run_terminal_cause: run_terminal_cause,
@@ -582,65 +450,3 @@ fn floor_component_receipt_document_incomplete(
   ))
 }
 
-fn floor_component_receipt_document_incomplete_with_selection(
-  workflow_name: NonEmptyStr,
-  run_id: NonEmptyStr,
-  head_sha: CommitSha,
-  rows: List<FloorComponentRow>,
-  run_terminal_cause: NonEmptyStr,
-  concluded_count: Nat,
-  pending_from_index: Nat,
-  selection_mode_tag: NonEmptyStr,
-  selected: Nat,
-  total: Nat,
-  categorization_unavailable: Bool,
-  categorization_reason: String
-) -> String {
-  serialize_json(v: floor_component_receipt_json_value(
-    workflow_name: workflow_name,
-    run_id: run_id,
-    head_sha: head_sha,
-    rows: rows,
-    selection_present: true,
-    selection_mode_tag: selection_mode_tag,
-    selected: selected,
-    total: total,
-    categorization_unavailable: categorization_unavailable,
-    categorization_reason: categorization_reason,
-    run_terminal_present: true,
-    run_terminal_disposition: "incomplete" as NonEmptyStr,
-    run_terminal_cause: run_terminal_cause,
-    concluded_count: concluded_count,
-    pending_from_index: pending_from_index
-  ))
-}
-
-fn floor_component_receipt_document_with_selection(
-  workflow_name: NonEmptyStr,
-  run_id: NonEmptyStr,
-  head_sha: CommitSha,
-  rows: List<FloorComponentRow>,
-  selection_mode_tag: NonEmptyStr,
-  selected: Nat,
-  total: Nat,
-  categorization_unavailable: Bool,
-  categorization_reason: String
-) -> String {
-  serialize_json(v: floor_component_receipt_json_value(
-    workflow_name: workflow_name,
-    run_id: run_id,
-    head_sha: head_sha,
-    rows: rows,
-    selection_present: true,
-    selection_mode_tag: selection_mode_tag,
-    selected: selected,
-    total: total,
-    categorization_unavailable: categorization_unavailable,
-    categorization_reason: categorization_reason,
-    run_terminal_present: false,
-    run_terminal_disposition: "concluded" as NonEmptyStr,
-    run_terminal_cause: "none" as NonEmptyStr,
-    concluded_count: count(rows),
-    pending_from_index: 0
-  ))
-}

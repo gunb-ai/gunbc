@@ -24,6 +24,8 @@ use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType}
 use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::*;
+pub use crate::v1_std_core::MatchPattern;
+use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
     kernel_span, merge_intern_tables, module_path_segments, param_node_name_at,

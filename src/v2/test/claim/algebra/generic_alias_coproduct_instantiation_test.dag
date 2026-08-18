@@ -6,7 +6,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type SymbolPath = FreeMonoid<Symbol>
 
 fn symbol_path_of_three() -> SymbolPath {
-  Cons { head: ^a, tail: Cons { head: ^b, tail: Cons { head: ^c, tail: Empty } } }
+  Cons { head: ^a, tail: Cons { head: ^b, tail: Cons { head: ^c, tail: std.algebra.Empty } } }
 }
 
 fn empty_symbol_path() -> SymbolPath {

@@ -77,19 +77,19 @@ fn synth_match_expr(scrutinee: Node, arms: Node) -> Node {
   synth_production(emitted: ^dag_surface_match_expr, captured: captured)
 }
 
-fn findings_for(scrutinee_name_sym: Symbol, mentions: List<Symbol>) -> List<Finding> {
+fn findings_for(scrutinee_name_sym: Symbol, mentions: List<Symbol>) -> List<v2.lens.identity_captured_navigation.Finding> {
   let scrutinee = synth_identity_navigation_call(name_sym: scrutinee_name_sym)
   let arms = synth_mentions(mentions: mentions)
   let root = synth_match_expr(scrutinee: scrutinee, arms: arms)
   identity_captured_navigation_findings(root: root, span_index: span_index_empty(), source_text: "")
 }
 
-fn finding_list_length(fs: List<Finding>) -> Int {
+fn finding_list_length(fs: List<v2.lens.identity_captured_navigation.Finding>) -> Int {
   fold(fs, init: 0, f: fn(acc, _) { acc + 1 })
 }
 
-fn any_suspect(fs: List<Finding>) -> Bool {
-  fold(fs, init: false, f: fn(acc, f) { acc || finding_is_suspect(f: f) })
+fn any_suspect(fs: List<v2.lens.identity_captured_navigation.Finding>) -> Bool {
+  fold(fs, init: false, f: fn(acc, f) { acc || v2.lens.identity_captured_navigation.analyze.finding_is_suspect(f: f) })
 }
 
 test fn red_control_bare_identity_mention_is_flagged_suspect() -> Bool {

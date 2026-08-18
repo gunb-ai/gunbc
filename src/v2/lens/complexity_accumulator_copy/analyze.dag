@@ -109,7 +109,7 @@ fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
 }
 
 fn collect_value_identifiers(n: Node) -> List<Symbol> {
-  collect_value_identifiers_into(n: n, acc: Empty)
+  collect_value_identifiers_into(n: n, acc: std.algebra.Empty)
 }
 
 fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
@@ -139,7 +139,7 @@ fn port_reading(arg_capture: Node) -> v2.lens.complexity_accumulator_copy.PortRe
 fn call_port_readings(call_capture: Node) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
   v2.std.algebra.list_map(
     xs: v2.std.algebra.list_reverse(
-      xs: collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: Empty)
+      xs: collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: std.algebra.Empty)
     ),
     f: fn(arg) { port_reading(arg_capture: arg) }
   )
@@ -373,7 +373,7 @@ fn projection_arg_port_readings(repeat_elem: Node) -> List<v2.lens.complexity_ac
       xs: collect_direct_captures(
         n: v2.compiler.body_lowering_fold.body_lower_postfix_projection_call_suffix_capture(repeat_elem: repeat_elem),
         emitted: ^dag_surface_arg,
-        acc: Empty
+        acc: std.algebra.Empty
       )
     ),
     f: fn(arg) { port_reading(arg_capture: arg) }
@@ -389,16 +389,16 @@ fn projection_receiver_port_reading(left: Node) -> v2.lens.complexity_accumulato
 
 fn projection_call_port_readings(cap: Node) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
   match projection_sequence_cap_optional(cap: cap) {
-    Absent => Empty
+    Absent => std.algebra.Empty
     Present { value: seq_cap } =>
       match sequence_left_node(cap: seq_cap) {
-        Absent => Empty
+        Absent => std.algebra.Empty
         Present { value: left } =>
           match sequence_right_node(cap: seq_cap) {
-            Absent => Empty
+            Absent => std.algebra.Empty
             Present { value: repeat_capture } =>
               match v2.compiler.body_lowering_fold.body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
-                Absent => Empty
+                Absent => std.algebra.Empty
                 Present { value: repeat_elem } =>
                   v2.std.algebra.list_append(
                     left: [projection_receiver_port_reading(left: left)],
@@ -439,7 +439,7 @@ fn analyze_postfix_projection_call(
               carriers: carriers,
               bindings: bindings,
               iterating: iterating,
-              here: Cons { head: f, tail: Empty }
+              here: Cons { head: f, tail: std.algebra.Empty }
             )
           Absent =>
             analyze_children(
@@ -447,14 +447,14 @@ fn analyze_postfix_projection_call(
               carriers: carriers,
               bindings: bindings,
               iterating: iterating,
-              here: Empty
+              here: std.algebra.Empty
             )
         }
       Absent =>
-        analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: Empty)
+        analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
     }
   } else {
-    analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: Empty)
+    analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
   }
 }
 
@@ -505,7 +505,7 @@ fn lowered_transform_port_readings(node: Node) -> List<v2.lens.complexity_accumu
     ComputationNode { behavior: Transform } =>
       fold(
         node.children,
-        init: LoweredTransformPortAcc { saw_operator: false, readings: Empty },
+        init: LoweredTransformPortAcc { saw_operator: false, readings: std.algebra.Empty },
         f: fn(acc, e) {
           if acc.saw_operator {
             LoweredTransformPortAcc {
@@ -520,7 +520,7 @@ fn lowered_transform_port_readings(node: Node) -> List<v2.lens.complexity_accumu
           }
         }
       ).readings
-    _ => Empty
+    _ => std.algebra.Empty
   }
 }
 
@@ -555,7 +555,7 @@ fn analyze_lowered_loop(
         carriers: Cons { head: carrier, tail: carriers },
         bindings: bindings,
         iterating: true,
-        here: Empty
+        here: std.algebra.Empty
       )
     Absent =>
       analyze_children(
@@ -565,7 +565,7 @@ fn analyze_lowered_loop(
         iterating: true,
         here: Cons {
           head: v2.lens.complexity_accumulator_copy.Unclassifiable { at: node, cause: ^fold_accumulator_unread },
-          tail: Empty
+          tail: std.algebra.Empty
         }
       )
   }
@@ -585,11 +585,11 @@ fn analyze_lowered_transform_call(
       ports: resolved_lowered_transform_port_readings(node: node, bindings: bindings),
       carriers: carriers
     ) {
-      Present { value: f } => Cons { head: f, tail: Empty }
-      Absent => Empty
+      Present { value: f } => Cons { head: f, tail: std.algebra.Empty }
+      Absent => std.algebra.Empty
     }
   } else {
-    Empty
+    std.algebra.Empty
   }
   analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: here)
 }
@@ -614,14 +614,14 @@ fn analyze_absent_primary_expr(
             iterating: iterating
           )
         Absent =>
-          analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: Empty)
+          analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
       }
     _ =>
       match let_spine_of(node: node) {
         Present { value: spine } =>
           analyze_let_spine(spine: spine, carriers: carriers, bindings: bindings, iterating: iterating)
         Absent =>
-          analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: Empty)
+          analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
       }
   }
 }
@@ -657,7 +657,7 @@ fn analyze(node: Node, carriers: List<Symbol>, bindings: List<v2.lens.complexity
                   carriers: Cons { head: carrier, tail: carriers },
                   bindings: bindings,
                   iterating: true,
-                  here: Empty
+                  here: std.algebra.Empty
                 )
               Absent =>
                 analyze_children(
@@ -667,7 +667,7 @@ fn analyze(node: Node, carriers: List<Symbol>, bindings: List<v2.lens.complexity
                   iterating: true,
                   here: Cons {
                     head: v2.lens.complexity_accumulator_copy.Unclassifiable { at: node, cause: ^fold_accumulator_unread },
-                    tail: Empty
+                    tail: std.algebra.Empty
                   }
                 )
             }
@@ -681,8 +681,8 @@ fn analyze(node: Node, carriers: List<Symbol>, bindings: List<v2.lens.complexity
                     ports: resolved_projection_call_port_readings(cap: cap, bindings: bindings),
                     carriers: carriers
                   ) {
-                    Present { value: f } => Cons { head: f, tail: Empty }
-                    Absent => Empty
+                    Present { value: f } => Cons { head: f, tail: std.algebra.Empty }
+                    Absent => std.algebra.Empty
                   }
                 Absent =>
                   match v2.lens.complexity_accumulator_copy.classify_call(
@@ -691,12 +691,12 @@ fn analyze(node: Node, carriers: List<Symbol>, bindings: List<v2.lens.complexity
                     ports: resolved_port_readings(call_capture: cap, bindings: bindings),
                     carriers: carriers
                   ) {
-                    Present { value: f } => Cons { head: f, tail: Empty }
-                    Absent => Empty
+                    Present { value: f } => Cons { head: f, tail: std.algebra.Empty }
+                    Absent => std.algebra.Empty
                   }
               }
             } else {
-              Empty
+              std.algebra.Empty
             }
             analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: here)
           }
@@ -708,13 +708,13 @@ fn analyze(node: Node, carriers: List<Symbol>, bindings: List<v2.lens.complexity
             ) {
               Cons {
                 head: v2.lens.complexity_accumulator_copy.Unclassifiable { at: node, cause: ^call_head_unreadable },
-                tail: Empty
+                tail: std.algebra.Empty
               }
             } else {
-              Empty
+              std.algebra.Empty
             }
           } else {
-            Empty
+            std.algebra.Empty
           }
           analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: here)
       }
@@ -767,7 +767,7 @@ fn count_fold_sites(n: Node, bound_only: Bool) -> Int {
 }
 
 fn accumulator_copy_findings(root: Node) -> List<v2.lens.complexity_accumulator_copy.Finding> {
-  analyze(node: root, carriers: Empty, bindings: Empty, iterating: false)
+  analyze(node: root, carriers: std.algebra.Empty, bindings: std.algebra.Empty, iterating: false)
 }
 
 fn tree_contains_lowered_loop(root: Node) -> Bool {

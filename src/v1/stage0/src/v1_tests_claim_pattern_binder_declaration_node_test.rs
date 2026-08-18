@@ -2,6 +2,7 @@
 // Source module: v1.tests.claim.pattern_binder_declaration_node_test
 
 use self::ParsedFixturePattern::*;
+pub use crate::std_occurrence_binding::ContainmentPath;
 pub use crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator;
 use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, LexicalValueOccurrence, TypeOccurrence,
