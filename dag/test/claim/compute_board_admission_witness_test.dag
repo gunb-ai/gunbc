@@ -54,23 +54,9 @@ import product.compute_board.admission {
   BoardArticleRefused,
   BoardArticleRefusalSet,
   BoardArticleRefusal,
-  DuplicateComponentIdentity,
-  DuplicateNetIdentity,
-  DuplicateSignalName,
-  NetMemberNamesNoTerminal,
-  NetMemberBelongsToAnotherDesign,
-  BondTerminalNamesNoTerminal,
-  BondNamesUndeclaredNet,
-  ReferenceNetNotDeclared,
-  DrivenSignalUndeclared,
-  DrivenSignalIsAnInput,
-  EquationReferencesUndeclaredSignal,
-  OutputWithNoDriver,
-  OutputWithMultipleDrivers,
-  PreconditionSignalUndeclared,
-  PreconditionSignalIsNotAnOutput,
   admit_board_article,
   article_refusals,
+  board_article_refusal_cause_name,
   refusal_set_count,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -196,23 +182,7 @@ test fn w_a_coherent_fixture_is_admitted() -> Bool {
 }
 
 fn refusal_is(r: BoardArticleRefusal, wanted: String) -> Bool {
-  match r {
-    DuplicateComponentIdentity { component: _ } => wanted == "DuplicateComponentIdentity"
-    DuplicateNetIdentity { net: _ } => wanted == "DuplicateNetIdentity"
-    NetMemberBelongsToAnotherDesign { net: _, net_design: _, member_design: _ } => wanted == "NetMemberBelongsToAnotherDesign"
-    DuplicateSignalName { signal: _ } => wanted == "DuplicateSignalName"
-    NetMemberNamesNoTerminal { net: _, component: _, terminal: _ } => wanted == "NetMemberNamesNoTerminal"
-    BondTerminalNamesNoTerminal { component: _, terminal: _ } => wanted == "BondTerminalNamesNoTerminal"
-    BondNamesUndeclaredNet { net: _ } => wanted == "BondNamesUndeclaredNet"
-    ReferenceNetNotDeclared { net: _ } => wanted == "ReferenceNetNotDeclared"
-    DrivenSignalUndeclared { signal: _ } => wanted == "DrivenSignalUndeclared"
-    DrivenSignalIsAnInput { signal: _ } => wanted == "DrivenSignalIsAnInput"
-    EquationReferencesUndeclaredSignal { driven: _ } => wanted == "EquationReferencesUndeclaredSignal"
-    OutputWithNoDriver { signal: _ } => wanted == "OutputWithNoDriver"
-    OutputWithMultipleDrivers { signal: _ } => wanted == "OutputWithMultipleDrivers"
-    PreconditionSignalUndeclared { signal: _ } => wanted == "PreconditionSignalUndeclared"
-    PreconditionSignalIsNotAnOutput { signal: _ } => wanted == "PreconditionSignalIsNotAnOutput"
-  }
+  board_article_refusal_cause_name(r: r) == wanted
 }
 
 // Exactly one cause, and it is the named one. "Contains the cause" would pass on an admission
