@@ -289,3 +289,9 @@ path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"
 [[bin]]
 name = "ci_control_plane"
 path = "src/bin/ci_control_plane.rs"
+
+# Expected-red roster identity join — join-only host transport. NOT floor-enrolled.
+# Dissolve-on: prune `floor_expected_red` from a post-rebase join run, not from failure-log rows.
+[[bin]]
+name = "expected_red_roster_join"
+path = "src/bin/expected_red_roster_join.rs"

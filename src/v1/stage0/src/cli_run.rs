@@ -41875,7 +41875,7 @@ pub fn run_required_floor(
     );
     floor_seam("admission-decode");
     let admission_decode_started = std::time::Instant::now();
-    let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
+    let mut claims = required_floor_claims_from_admission(&hermetic, &admission)?;
     eprintln!(
         "[floor-phase] phase=admission-decode state=completed wall_ms={} claims={}",
         admission_decode_started.elapsed().as_millis(),
@@ -42027,6 +42027,47 @@ pub fn run_required_floor(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
     );
+    let roster_join_path = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN").ok();
+    let roster_join_only = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY")
+        .ok()
+        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let roster_join_active = roster_join_path.is_some() || roster_join_only;
+    let mut roster_join_report = if roster_join_active {
+        let mut roster_identities: Vec<String> = expected_red_roster.iter().cloned().collect();
+        roster_identities.sort();
+        let run_head = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "unknown".to_string());
+        let run_note = if roster_join_only {
+            "join-only mode: evaluates enrolled identities present in the manifest; do not \
+             prune the roster from this output until the rebase wave (#8420) restores host-tool \
+             verdicts"
+                .to_string()
+        } else {
+            "full-floor join: every enrolled identity receives still_red | now_passes | \
+             not_evaluated"
+                .to_string()
+        };
+        Some(
+            crate::expected_red_roster_join::ExpectedRedRosterJoinReport::new(
+                run_head,
+                run_note,
+                &roster_identities,
+            ),
+        )
+    } else {
+        None
+    };
 
     // THE MANIFEST'S WORLD DIES HERE, before the fold rather than at the end of the function.
     //
@@ -42052,6 +42093,15 @@ pub fn run_required_floor(
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
+    if roster_join_only {
+        let before = claims.len();
+        claims.retain(|c| expected_red_roster.contains(c.qualified.as_str()));
+        eprintln!(
+            "floor: expected-red-roster-join-only retained {} of {} claim(s)",
+            claims.len(),
+            before
+        );
+    }
     let claims_planned = claims.len();
     let mut outcome = RequiredFloorOutcome {
         subject_digest: prepared.subject_digest.clone(),
@@ -42282,6 +42332,12 @@ pub fn run_required_floor(
         let expected_red = expected_red_roster.contains(claim.qualified.as_str());
         if expected_red {
             expected_red_seen.insert(claim.qualified.clone());
+            if let Some(ref mut join) = roster_join_report {
+                join.record_observed(
+                    &claim.qualified,
+                    &witness_eval_verdict_from_claim_outcome(&result),
+                );
+            }
         }
         let passed = matches!(result, ClaimOutcome::Pass);
         if expected_red && passed {
@@ -42430,7 +42486,7 @@ pub fn run_required_floor(
         missing.sort();
         missing
     };
-    if !expected_red_missing.is_empty() {
+    if !expected_red_missing.is_empty() && !roster_join_active {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedIdentityDidNotExecute count={} — every \
              identity enrolled in v2.workflow.floor_expected_red must be observed among the \
@@ -42448,7 +42504,10 @@ pub fn run_required_floor(
     // observed exactly once, so it landed in precisely one of the two arms. Checking the sum is
     // therefore checking that the two arms are the whole roster and do not overlap — cheap, and
     // it fails loudly if a later edit adds a third arm that quietly swallows rows.
-    if known_red_held + known_red_now_passing != expected_red_roster.len() {
+    //
+    // The three-outcome roster join relaxes this to still_red | now_passes | not_evaluated and
+    // is the authority for pruning — not the failure-log subset.
+    if !roster_join_active && known_red_held + known_red_now_passing != expected_red_roster.len() {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
              roster={} — every enrolled identity must be exactly one of held or now-passing",
@@ -42471,7 +42530,38 @@ pub fn run_required_floor(
             outcome.claims_planned, outcome.claims_executed, outcome.receipt_identities
         ));
     }
+    if let Some(mut join) = roster_join_report {
+        join.finalize_not_observed();
+        crate::expected_red_roster_join::emit_join_summary(&join);
+        if let Some(path) = roster_join_path {
+            crate::expected_red_roster_join::write_join_tsv(&path, &join)?;
+        }
+    }
     Ok(outcome)
+}
+
+fn witness_eval_verdict_from_claim_outcome(
+    outcome: &ClaimOutcome,
+) -> crate::expected_red_roster_join::WitnessEvalVerdict {
+    match outcome {
+        ClaimOutcome::Pass => crate::expected_red_roster_join::WitnessEvalVerdict::Passed,
+        ClaimOutcome::Fail => crate::expected_red_roster_join::WitnessEvalVerdict::BoolFalse,
+        ClaimOutcome::NotBool { got } => {
+            crate::expected_red_roster_join::WitnessEvalVerdict::NotBool(got.clone())
+        }
+        ClaimOutcome::RuntimeError { message } => {
+            crate::expected_red_roster_join::WitnessEvalVerdict::RuntimeError(message.clone())
+        }
+        ClaimOutcome::TimedOut {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => crate::expected_red_roster_join::WitnessEvalVerdict::BudgetExceeded {
+            elapsed_ms: *elapsed_ms,
+            budget_ms: *budget_ms,
+            kind: kind.label(),
+        },
+    }
 }
 
 /// Read the `.dag` admission. A refusal is reported with every offending row rather than the
