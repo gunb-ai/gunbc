@@ -87,8 +87,23 @@ unrelated failure classes (budget, host-tool, etc.).
 
 ## Disposition
 
-- **Call-contract / bare_name_binding (172):** migration list if qualification wins; test
-  population if binding-wall wins.
 - **Reach_gap (167):** later wave — not the same mechanism as call-contract binding.
 
-Operator decision with crisp-crab-430 (#8282). No corpus edits in this PR.
+### Operator decision (2026-08-18) — bare_name_binding (172)
+
+**Do not qualify.** The 172 `call_contract_mismatch` / `bare_name_binding` rows are not a
+migration list for this lane. Qualifying every bare name at the call site would be 172 edits
+in the vocabulary of the mechanism the namespace cut replaces (insertion-order binding) — work
+that tidies X internally and dies with X (DESIGN replacement-migration attractor). The
+alternative is to wait for the namespace cut to land a correct binding authority and let the
+class dissolve; that is the chosen path. Qualification is not a safe mechanical transform: a
+related lane qualified 39 references, typechecked, and produced 11 new failures — qualified
+names mis-bind when the scrutinee's type is never checked, the same failure mode as bare-name
+insertion-order binding with a more careful-looking diff. **These rows stay enrolled as
+expected-red** — known, named, counted debt; the roster is designed to red the moment they
+start passing. **Dissolution trigger:** namespace cut lands binding authority (not a calendar
+date). #8282 remains the governing integration branch; it is not ready to merge. This partition
+corrected a one-root-cause claim before a wave was dispatched at the wrong denominator; the
+decision it enabled is to not do 172 qualification edits.
+
+No corpus edits in this PR.
