@@ -2,25 +2,25 @@ module test.claim.codex_supervised_turn_wet_witness_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
-data witness_note: std.types.String = "WET BISECT REPRODUCTION (NOT ENROLLED WITNESSES). Bisect entrypoints are plain fn, not test fn — they cannot execute anywhere today (materialize leak on main) so enrolled-and-unrunnable would be false coverage (Phase 0(b) admission). Operator runs via gunbc run --function under MemoryMax caps on srv1 only. Hermetic coverage lives in codex_supervised_turn_witness_test.dag. Re-enroll through gunbc.explicit_witness_admission after materialize_codex_runtime_bundle is fixed."
+data witness_note: String = "WET BISECT REPRODUCTION (NOT ENROLLED WITNESSES). Bisect entrypoints are plain fn, not test fn — they cannot execute anywhere today (materialize leak on main) so enrolled-and-unrunnable would be false coverage (Phase 0(b) admission). Operator runs via gunbc run --function under MemoryMax caps on srv1 only. Hermetic coverage lives in codex_supervised_turn_witness_test.dag. Re-enroll through gunbc.explicit_witness_admission after materialize_codex_runtime_bundle is fixed."
 
-data wet_non_witness_enrollment_note: std.types.String = "Admission gate 2026-08-14: OfflineLocalRecipe exclusion + enrolled test fn produced UnclassifiedPathDeferral (five rows, zero executing consumers). Fix: bisect arms are fn not test fn; no witness enrollment until explicit admission with declared envelope after production fix."
+data wet_non_witness_enrollment_note: String = "Admission gate 2026-08-14: OfflineLocalRecipe exclusion + enrolled test fn produced UnclassifiedPathDeferral (five rows, zero executing consumers). Fix: bisect arms are fn not test fn; no witness enrollment until explicit admission with declared envelope after production fix."
 
-data wet_supervised_turn_memory_envelope_note: std.types.String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). LOCATED: finish_after_install PINS 8G; pair-acquire and npm-ci-offline PASS 2G. Finish observe rungs (install + one observe each, order matches finish): wet_finish_observe_set_identity_only — 2G; wet_finish_observe_manifest_digest_only — 2G; wet_finish_observe_lock_digest_only — 2G; wet_finish_observe_native_digest_only — 2G; wet_finish_observe_toolchain_only — 2G; wet_finish_observe_protocol_schema_only — 2G; wet_finish_observe_package_tree_only — 2G/8G; wet_finish_observe_receipt_identity_only — 8G; wet_finish_observe_package_tree_tiny_fixture — 2G (two-file tree, no install). INTERPRETER BISECT: wet_finish_parse_canonicalize_largest_protocol_schema_only — install + generate-json-schema + parse_json/canonicalize_json_value on codex_app_server_protocol.schemas.json only (507 KB); no fold/manifest/sha512. Control: wet_materialize_finish_after_install_only — 8G; wet_materialize_codex_runtime_bundle_only — 8G."
+data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). LOCATED: finish_after_install PINS 8G; pair-acquire and npm-ci-offline PASS 2G. Finish observe rungs (install + one observe each, order matches finish): wet_finish_observe_set_identity_only — 2G; wet_finish_observe_manifest_digest_only — 2G; wet_finish_observe_lock_digest_only — 2G; wet_finish_observe_native_digest_only — 2G; wet_finish_observe_toolchain_only — 2G; wet_finish_observe_protocol_schema_only — 2G; wet_finish_observe_package_tree_only — 2G/8G; wet_finish_observe_receipt_identity_only — 8G; wet_finish_observe_package_tree_tiny_fixture — 2G (two-file tree, no install). INTERPRETER BISECT: wet_finish_parse_canonicalize_largest_protocol_schema_only — install + generate-json-schema + parse_json/canonicalize_json_value on codex_app_server_protocol.schemas.json only (507 KB); no fold/manifest/sha512. Control: wet_materialize_finish_after_install_only — 8G; wet_materialize_codex_runtime_bundle_only — 8G."
 
-data wet_bisect_ladder_receipt_note: std.types.String = "srv1 ladder (eager-koi-458): construct/closure/prepare/wrapper-acquire/platform-acquire/through-prepare PASS; full materialize PINS 8G. Next: pair acquire together, npm ci offline install path, finish after install (tree walk / release)."
+data wet_bisect_ladder_receipt_note: String = "srv1 ladder (eager-koi-458): construct/closure/prepare/wrapper-acquire/platform-acquire/through-prepare PASS; full materialize PINS 8G. Next: pair acquire together, npm ci offline install path, finish after install (tree walk / release)."
 
-data wet_supervised_turn_oom_receipt_note: std.types.String = "srv1 bisect 2026-08-14: step2b closure PASS 2G; instrumented materialize ~2GB/min to 8G cap, zero children 4.5min, decl eval stuck — not tarball bytes. Production defect in interpreter eval of materialize_codex_runtime_bundle pre-shell region. Fix production path; do not enlarge witness envelope."
+data wet_supervised_turn_oom_receipt_note: String = "srv1 bisect 2026-08-14: step2b closure PASS 2G; instrumented materialize ~2GB/min to 8G cap, zero children 4.5min, decl eval stuck — not tarball bytes. Production defect in interpreter eval of materialize_codex_runtime_bundle pre-shell region. Fix production path; do not enlarge witness envelope."
 
 data wet_supervised_turn_probe_key: gunbc.codex_app_server_press.ProviderProbeKey = "wet-supervised-turn-1" as gunbc.codex_app_server_press.ProviderProbeKey
 
-fn committed_codex_lock_text() -> std.types.String {
-  filesystem_read(path: gunbc.package_delivery.codex_runtime_lock_path as std.types.String).content
+fn committed_codex_lock_text() -> String {
+  filesystem_read(path: gunbc.package_delivery.codex_runtime_lock_path as String).content
 }
 
 fn committed_admitted_codex_runtime_source() -> gunbc.package_delivery.AdmittedCodexRuntimeSource {
   gunbc.package_delivery.AdmittedCodexRuntimeSource {
-    manifest_bytes: filesystem_read(path: gunbc.package_delivery.codex_runtime_manifest_path as std.types.String).content,
+    manifest_bytes: filesystem_read(path: gunbc.package_delivery.codex_runtime_manifest_path as String).content,
     lock_bytes: committed_codex_lock_text(),
   }
 }
@@ -42,8 +42,8 @@ fn wet_supervised_turn_terminal_ok(
   turn: gunbc.roadmap_workflow_command.WorkerTurn,
   terminal: gunbc.codex_supervised_turn.CodexRunnerTurnTerminalReceipt,
 ) -> std.types.Bool {
-  (terminal.client_command_id as std.types.String) ==
-    (gunbc.codex_supervised_turn.codex_supervised_turn_client_command_id(turn: turn) as std.types.String)
+  (terminal.client_command_id as String) ==
+    (gunbc.codex_supervised_turn.codex_supervised_turn_client_command_id(turn: turn) as String)
     && match terminal.binding.lease.observed {
       std.temporal_effect.LeaseAbsent => true
       std.temporal_effect.LeaseRunningExpected => false
@@ -89,8 +89,8 @@ fn wet_select_codex_exact_target_closure_only() -> std.types.Bool {
               platform: _,
               target: _,
             } =>
-              (native_executable_rel as std.types.String) != ""
-                && (platform_lock_key as std.types.String) != ""
+              (native_executable_rel as String) != ""
+                && (platform_lock_key as String) != ""
             _ => false
           }
         _ => false
@@ -187,8 +187,8 @@ fn wet_codex_runtime_prepare_closure_only() -> std.types.Bool {
       platform: _,
       source: _,
     } =>
-      (native_executable_rel as std.types.String) != ""
-        && (platform_lock_key as std.types.String) != ""
+      (native_executable_rel as String) != ""
+        && (platform_lock_key as String) != ""
     _ => false
   }
 }

@@ -38,7 +38,7 @@ type Footprint {
   drawing_authority: std.decl_ref.DeclarationRef
 }
 
-fn footprint_pad_count(f: Footprint) -> std.types.Int {
+fn footprint_pad_count(f: Footprint) -> Int {
   count(f.pads)
 }
 
@@ -60,7 +60,7 @@ fn footprints_terminal_refs(fs: std.types.List<Footprint>) -> std.types.List<pro
 
 data no_terminal_refs: std.types.List<product.electrical.connectivity.ElectricalTerminalRef> = []
 
-fn terminal_ref_is_padded(refs: std.types.List<product.electrical.connectivity.ElectricalTerminalRef>, t: product.electrical.connectivity.ElectricalTerminalRef) -> std.logic.Bool {
+fn terminal_ref_is_padded(refs: std.types.List<product.electrical.connectivity.ElectricalTerminalRef>, t: product.electrical.connectivity.ElectricalTerminalRef) -> Bool {
   count(filter(refs, r => product.electrical.connectivity.terminal_ref_equal(a: r, b: t))) > 0
 }
 
@@ -71,7 +71,7 @@ fn terminal_ref_is_padded(refs: std.types.List<product.electrical.connectivity.E
 // modelled as a terminal whose pad is a shape, not as one terminal appearing twice; that is a
 // geometry question this increment does not carry, and admitting the fork now would make it
 // unrepresentable later.
-fn terminal_has_duplicate_pad(f: Footprint, t: product.electrical.connectivity.TerminalIdentity) -> std.logic.Bool {
+fn terminal_has_duplicate_pad(f: Footprint, t: product.electrical.connectivity.TerminalIdentity) -> Bool {
   count(filter(f.pads, p => (p.terminal as std.types.NonEmptyStr) == (t as std.types.NonEmptyStr))) > 1
 }
 
@@ -126,7 +126,7 @@ fn duplicate_pad_causes(f: Footprint) -> std.types.List<FootprintRefusalCause> {
 // A COMPONENT WITH TWO FOOTPRINTS IS TWO ANSWERS TO ONE QUESTION. Which pads a component has is a
 // fact with one authority; two rows for one component identity means two drawings were read and
 // neither was chosen, and every downstream join would silently take whichever came first.
-fn component_has_duplicate_footprint(fs: std.types.List<Footprint>, c: product.electrical.connectivity.ComponentInstanceIdentity) -> std.logic.Bool {
+fn component_has_duplicate_footprint(fs: std.types.List<Footprint>, c: product.electrical.connectivity.ComponentInstanceIdentity) -> Bool {
   count(filter(fs, f => product.electrical.connectivity.component_identity_eq(a: f.component, b: c))) > 1
 }
 

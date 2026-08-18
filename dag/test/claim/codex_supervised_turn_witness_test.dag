@@ -3,9 +3,9 @@ module test.claim.codex_supervised_turn_witness_test
 
 
 
-data witness_note: std.types.String = "Hermetic witnesses for the supervised-runner slice: std.temporal_effect HeldLease fences one WorkerTurn attempt; thread idle without a runner terminal receipt refuses turn/start (continuity receipt trap); busy thread refuses until the runner writes a receipt; parse_supervised_turn_stdout correlates thread/start and turn/start ids and turn/completed notifications into a terminal receipt with client_command_id."
+data witness_note: String = "Hermetic witnesses for the supervised-runner slice: std.temporal_effect HeldLease fences one WorkerTurn attempt; thread idle without a runner terminal receipt refuses turn/start (continuity receipt trap); busy thread refuses until the runner writes a receipt; parse_supervised_turn_stdout correlates thread/start and turn/start ids and turn/completed notifications into a terminal receipt with client_command_id."
 
-data supervised_turn_fixture_stdout: std.types.String = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"thread-uuid-1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"turn-uuid-1\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"turn/completed\",\"params\":{}}\n"
+data supervised_turn_fixture_stdout: String = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"thread-uuid-1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"turn-uuid-1\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"turn/completed\",\"params\":{}}\n"
 
 fn fixture_turn() -> gunbc.roadmap_workflow_command.WorkerTurn {
   gunbc.roadmap_workflow_command.WorkerTurn {
@@ -75,9 +75,9 @@ test fn witness_parse_supervised_stdout_extracts_thread_and_turn_ids() -> std.ty
   let parse = gunbc.codex_supervised_turn.parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
   match parse.thread_start {
     gunbc.codex_supervised_turn.SupervisedRpcOk { native_id: tid } =>
-      (tid as std.types.String) == "thread-uuid-1"
+      (tid as String) == "thread-uuid-1"
         && match parse.turn_start {
-          gunbc.codex_supervised_turn.SupervisedRpcOk { native_id: turn_id } => (turn_id as std.types.String) == "turn-uuid-1"
+          gunbc.codex_supervised_turn.SupervisedRpcOk { native_id: turn_id } => (turn_id as String) == "turn-uuid-1"
           _ => false
         }
     _ => false
@@ -107,7 +107,7 @@ test fn witness_terminal_receipt_carries_client_command_id() -> std.types.Bool {
     disposition: gunbc.provider_turn_adjudication.ProviderTurnCompleted,
     wire: none,
   )
-  (receipt.client_command_id as std.types.String) == "attempt-1/turn-1"
+  (receipt.client_command_id as String) == "attempt-1/turn-1"
     && gunbc.codex_supervised_turn.codex_supervised_turn_client_command_id(turn: fixture_turn()) == receipt.client_command_id
     && gunbc.provider_turn_adjudication.press_display_finished(disposition: receipt.disposition)
 }
@@ -135,7 +135,7 @@ test fn witness_supervised_thread_id_from_line_matches_rpc_parse() -> std.types.
   let line =
     "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"thread-uuid-1\"}}}"
   match gunbc.codex_supervised_turn.supervised_thread_id_from_line(line: line) {
-    Present { value: id } => (id as std.types.String) == "thread-uuid-1"
+    Present { value: id } => (id as String) == "thread-uuid-1"
     Absent => false
   }
 }

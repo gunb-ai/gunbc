@@ -31,11 +31,11 @@ fn host_effect_codex_supervised_session_preamble_content(
 
 type CodexSupervisedSessionApplyOutcome
   = CodexSupervisedSessionApplyConverged {
-      stdout: std.types.String,
-      stderr: std.types.String,
-      exit_code: std.types.Int,
+      stdout: String,
+      stderr: String,
+      exit_code: Int,
     }
-  | CodexSupervisedSessionApplyRefused { reason: std.types.String }
+  | CodexSupervisedSessionApplyRefused { reason: String }
 
 fn host_effect_codex_supervised_turn_apply_refused(
   transport: gunbc.host_effect.HostEffectTransport,

@@ -67,7 +67,7 @@ fn codex_supervised_stdio_session_intent(
   executable: std.types.FilePath,
   codex_home: std.types.FilePath,
   cwd: std.types.FilePath,
-  user_input: std.types.String,
+  user_input: String,
   evidence_root: std.types.FilePath,
 ) -> extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent {
   extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent {
@@ -94,9 +94,9 @@ fn codex_supervised_turn_codex_home(
   }
 }
 
-fn codex_supervised_turn_user_input(turn: gunbc.roadmap_workflow_command.WorkerTurn) -> std.types.String {
+fn codex_supervised_turn_user_input(turn: gunbc.roadmap_workflow_command.WorkerTurn) -> String {
   if turn.consumed_feedback == "" {
-    "continue" as std.types.String
+    "continue" as String
   } else {
     turn.consumed_feedback
   }

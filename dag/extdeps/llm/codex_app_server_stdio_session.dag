@@ -29,8 +29,8 @@ type CodexAppServerStdioSessionIntent {
   codex_home: std.types.FilePath
   cwd: std.types.FilePath
   preamble_lines: std.types.List<std.types.NonEmptyStr>
-  user_input: std.types.String
-  client_command_id_path: std.types.String
-  thread_start_rpc_id: std.types.Int
-  turn_start_wire_id: std.types.Int
+  user_input: String
+  client_command_id_path: String
+  thread_start_rpc_id: Int
+  turn_start_wire_id: Int
 }

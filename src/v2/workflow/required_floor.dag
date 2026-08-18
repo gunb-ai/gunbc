@@ -157,13 +157,13 @@ type WitnessDisposition
 //
 // These rows are NOT COVERED by anything. The host reports the count every run.
 fn long_home_prefixes() -> v2.std.collection.List<v2.std.text.String> {
-  v2.std.algebra.Cons {
+  Cons {
     head: "test.claim.long.",
-    tail: v2.std.algebra.Cons {
+    tail: Cons {
       head: "v2.test.long.",
-      tail: v2.std.algebra.Cons {
+      tail: Cons {
         head: "v2.test.claim.long.",
-        tail: v2.std.algebra.Empty {}
+        tail: Empty {}
       }
     }
   }
@@ -365,7 +365,7 @@ fn scan_site(
     true => acc
     false =>
       ClaimScanReversed {
-        claims_reversed: v2.std.algebra.Cons {
+        claims_reversed: Cons {
           head: RequiredFloorClaim {
             declaration: v2.workflow.floor2_prepared_subject.WitnessIdentity {
               module_path: site.module_path,
@@ -449,9 +449,9 @@ fn enrollment_refusal_prepend(
   match enrollment {
     FirstEnrollment { mode: _ } => acc
     RepeatedSameMode { mode: _ } =>
-      v2.std.algebra.Cons { head: DeclarationEnrolledTwice { qualified: qualified }, tail: acc }
+      Cons { head: DeclarationEnrolledTwice { qualified: qualified }, tail: acc }
     RepeatedConflictingModes =>
-      v2.std.algebra.Cons {
+      Cons {
         head: DeclarationEnrolledWithConflictingModes { qualified: qualified },
         tail: acc
       }
@@ -485,7 +485,7 @@ fn duplicate_refusals(claims: v2.std.collection.List<RequiredFloorClaim>) -> v2.
           key: qualified,
           value: FirstEnrollment { mode: c.execution_mode }
         ),
-        first_seen_reversed: v2.std.algebra.Cons { head: qualified, tail: acc.first_seen_reversed }
+        first_seen_reversed: Cons { head: qualified, tail: acc.first_seen_reversed }
       }
       Present { value: prior } => ManifestScan {
         enrollments: v2.std.collection.map_insert(

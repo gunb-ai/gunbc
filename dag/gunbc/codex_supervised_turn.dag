@@ -48,10 +48,10 @@ type CodexTurnStartAdmission
 
 type CodexSupervisedGenerationRead
   = GenerationAbsent
-  | GenerationRead { generation: std.types.Int }
+  | GenerationRead { generation: Int }
   | GenerationStoreUnreadable { reason: std.types.NonEmptyStr }
-  | GenerationStoreMalformed { content: std.types.String }
-  | GenerationStoreNegative { value: std.types.Int }
+  | GenerationStoreMalformed { content: String }
+  | GenerationStoreNegative { value: Int }
 
 type CodexSupervisedTurnOutcome
   = CodexSupervisedTurnOk { receipt: CodexRunnerTurnTerminalReceipt }
@@ -62,7 +62,7 @@ type SupervisedRpcObservation
   = SupervisedRpcAbsent
   | SupervisedRpcOk { native_id: std.types.NonEmptyStr }
   | SupervisedRpcError { reason: std.types.NonEmptyStr }
-  | SupervisedRpcDuplicate { count: std.types.Int }
+  | SupervisedRpcDuplicate { count: Int }
 
 type SupervisedTurnTerminalSignal
   = SupervisedTurnTerminalAbsent
