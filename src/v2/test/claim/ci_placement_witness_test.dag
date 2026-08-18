@@ -1,25 +1,25 @@
 module v2.test.claim.ci_placement_witness
 
 
-test fn ci_placement_gauntlet_always_admissible_holds() -> std.logic.Bool {
+test fn ci_placement_gauntlet_always_admissible_holds() -> Bool {
   v2.workflow.ci_placement.placement_is_admissible(p: v2.workflow.ci_placement.Gauntlet { reason: "awaiting D2 warm-cost measurement" })
 }
 
-test fn ci_placement_valid_pr_tier_admissible_holds() -> std.logic.Bool {
+test fn ci_placement_valid_pr_tier_admissible_holds() -> Bool {
   v2.workflow.ci_placement.placement_is_admissible(p: v2.workflow.ci_placement.PrTier {
     warm_cost: v2.workflow.ci_placement.WarmCostReceipt { measured_ms: 1600, run_ref: "synthetic-warm-receipt" },
     classification: v2.workflow.ci_placement.Hermetic
   })
 }
 
-test fn ci_placement_over_budget_pr_tier_refused_holds() -> std.logic.Bool {
+test fn ci_placement_over_budget_pr_tier_refused_holds() -> Bool {
   !v2.workflow.ci_placement.placement_is_admissible(p: v2.workflow.ci_placement.PrTier {
     warm_cost: v2.workflow.ci_placement.WarmCostReceipt { measured_ms: 6000, run_ref: "synthetic-over-budget" },
     classification: v2.workflow.ci_placement.Hermetic
   })
 }
 
-test fn ci_placement_unclassified_pr_tier_refused_holds() -> std.logic.Bool {
+test fn ci_placement_unclassified_pr_tier_refused_holds() -> Bool {
   !v2.workflow.ci_placement.placement_is_admissible(p: v2.workflow.ci_placement.PrTier {
     warm_cost: v2.workflow.ci_placement.WarmCostReceipt { measured_ms: 100, run_ref: "synthetic-unclassified" },
     classification: v2.workflow.ci_placement.Unclassified
@@ -106,7 +106,7 @@ fn placement_shadow_missing_identity() -> gunbc.commit_workflow.CommitCheckEnrol
   }
 }
 
-test fn ci_placement_shadow_report_matches_commit_gate_roster_identities_holds() -> std.logic.Bool {
+test fn ci_placement_shadow_report_matches_commit_gate_roster_identities_holds() -> Bool {
   v2.workflow.ci_placement.placement_shadow_report_matches_roster(
     roster: gunbc.commit_workflow.commit_gate_roster,
     report: v2.workflow.ci_placement.placement_shadow_report(
@@ -116,7 +116,7 @@ test fn ci_placement_shadow_report_matches_commit_gate_roster_identities_holds()
   )
 }
 
-test fn ci_placement_shadow_row_qualifies_multi_and_entrywide_rows_holds() -> std.logic.Bool {
+test fn ci_placement_shadow_row_qualifies_multi_and_entrywide_rows_holds() -> Bool {
   let shared_source = "src-sha-2026-07-27"
   let shared_binary = "bin-sha-2026-07-27"
   let shared_roster = "roster-sha-2026-07-27"
@@ -185,7 +185,7 @@ test fn ci_placement_shadow_row_qualifies_multi_and_entrywide_rows_holds() -> st
   }
 }
 
-test fn ci_placement_shadow_row_missing_incomplete_ambiguous_holds() -> std.logic.Bool {
+test fn ci_placement_shadow_row_missing_incomplete_ambiguous_holds() -> Bool {
   let shared_source = "src-sha-2026-07-27"
   let shared_binary = "bin-sha-2026-07-27"
   let shared_roster = "roster-sha-2026-07-27"
@@ -257,7 +257,7 @@ test fn ci_placement_shadow_row_missing_incomplete_ambiguous_holds() -> std.logi
   }
 }
 
-test fn ci_placement_shadow_unknown_cold_and_missing_cost_stay_incomplete_holds() -> std.logic.Bool {
+test fn ci_placement_shadow_unknown_cold_and_missing_cost_stay_incomplete_holds() -> Bool {
   let identity = placement_shadow_entry_wide_identity()
   let shared_source = "src-sha-2026-07-27"
   let shared_binary = "bin-sha-2026-07-27"
