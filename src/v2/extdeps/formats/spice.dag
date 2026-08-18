@@ -197,7 +197,7 @@ type SpiceNetlist {
   body: List<DeckStatement>
 }
 
-type SpiceParse = fn(String) -> Outcome<SpiceNetlist>
+type SpiceParse = fn(String) -> v2.std.diagnostic.Outcome<SpiceNetlist>
 
 type SpiceEmit = fn(SpiceNetlist) -> String
 

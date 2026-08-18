@@ -5,7 +5,7 @@ type RetiredFlattenedServeFlagsKeyRelation
 type TailscaleEnableArgvIdentityKeyRelation
 type GlobalCollapseDemonstrationRelation
 
-type TailscaleServeRouteMemberAt = std.key_relation.ScopedKey<TailscaleServeRouteKeyRelation, TailscaleServeScope, TailscaleServeRouteKey>
+type TailscaleServeRouteMemberAt = std.key_relation.ScopedKey<extdeps.tailscale.serve.TailscaleServeRouteKeyRelation, extdeps.tailscale.serve.TailscaleServeScope, extdeps.tailscale.serve.TailscaleServeRouteKey>
 
 type TailscaleEnableArgvMemberAt = std.key_relation.ScopedKey<TailscaleEnableArgvIdentityKeyRelation, std.key_relation.GlobalKeyScope, std.types.NonEmptyStr>
 

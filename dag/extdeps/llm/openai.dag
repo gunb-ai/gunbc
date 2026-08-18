@@ -74,7 +74,7 @@ type ToolCall {
   function: FunctionCall
 }
 
-type OpenAiChatMessageRole = System | Developer | User | Assistant | Tool | Function
+type OpenAiChatMessageRole = System | Developer | extdeps.access.zanzibar.User | Assistant | Tool | Function
 
 type OpenAiChatMessageContent
   = OpenAiChatMessageText { text: String }

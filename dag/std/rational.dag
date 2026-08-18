@@ -1,4 +1,4 @@
 module std.rational
 
 
-type Rational = std.algebra.Field<FieldOfFractions<Int>>
+type Rational = std.algebra.Field<std.algebra.FieldOfFractions<Int>>

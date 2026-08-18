@@ -1,5 +1,5 @@
 module v2.test.manual.cpp_abi_lp64_width_anchor
 
 
-type cpp_lp64_anchor_data_model = v2.extdeps.cpp_abi.CppTargetDataModel<CppDataModelFamilyLP64, CppLP64IntegerWidths, CppPlainCharSignedness, CppWcharTSignedness>
-type cpp_lp64_anchor_target_profile = v2.extdeps.cpp_abi.CppTargetProfile<CppAbiModelItaniumCxxAbi186, cpp_lp64_anchor_data_model>
+type cpp_lp64_anchor_data_model = v2.extdeps.cpp_abi.CppTargetDataModel<v2.extdeps.cpp_abi.CppDataModelFamilyLP64, v2.extdeps.cpp_abi.CppLP64IntegerWidths, v2.extdeps.cpp_abi.CppPlainCharSignedness, v2.extdeps.cpp_abi.CppWcharTSignedness>
+type cpp_lp64_anchor_target_profile = v2.extdeps.cpp_abi.CppTargetProfile<v2.extdeps.cpp_abi.CppAbiModelItaniumCxxAbi186, cpp_lp64_anchor_data_model>

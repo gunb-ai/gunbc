@@ -1,7 +1,7 @@
 module gunbc.provider_readiness_claim_evidence
 
 
-type ProviderReadinessClaim = std.claim_evidence.Claim<ProviderInstance, ProviderInstance, ProviderReadiness, ProviderKind, RunKey>
+type ProviderReadinessClaim = std.claim_evidence.Claim<extdeps.llm.cli_lifecycle.ProviderInstance, extdeps.llm.cli_lifecycle.ProviderInstance, extdeps.llm.cli_lifecycle.ProviderReadiness, extdeps.llm.cli_lifecycle.ProviderKind, std.types.RunKey>
 
 type ProviderReadinessOperationResult
   = ProviderLoginCredentialRecorded { response: std.types.NonEmptyStr }
@@ -17,9 +17,9 @@ type ProviderReadinessObservation {
   result: ProviderReadinessOperationResult
 }
 
-type ProviderReadinessEvidenceLink = std.claim_evidence.EvidenceLink<ProviderReadinessObservation, ProviderReadinessClaim, ExternalAuthority, ProviderReadiness, ReadBackProbe>
+type ProviderReadinessEvidenceLink = std.claim_evidence.EvidenceLink<ProviderReadinessObservation, ProviderReadinessClaim, extdeps.external_authority.ExternalAuthority, extdeps.llm.cli_lifecycle.ProviderReadiness, gunbc.readback_independence.ReadBackProbe>
 
-type ProviderReadinessEvidenceInference = std.claim_evidence.EvidenceInference<ProviderReadinessObservation, ProviderReadinessClaim, ExternalAuthority, ProviderReadiness, ReadBackProbe>
+type ProviderReadinessEvidenceInference = std.claim_evidence.EvidenceInference<ProviderReadinessObservation, ProviderReadinessClaim, extdeps.external_authority.ExternalAuthority, extdeps.llm.cli_lifecycle.ProviderReadiness, gunbc.readback_independence.ReadBackProbe>
 
 data provider_login_status_probe: gunbc.readback_independence.ReadBackProbe = gunbc.readback_independence.ReadBackProbe {
   label: "codex login status",

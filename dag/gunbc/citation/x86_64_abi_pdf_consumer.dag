@@ -25,11 +25,11 @@ type X86_64AbiPdfCitationSelectorConstruction = X86_64AbiPdfCitationSelectorCons
 
 type X86_64AbiPdfNavigableUriProjection = X86_64AbiPdfNavigableUriProjected { uri: extdeps.uri.Uri } | X86_64AbiPdfNavigableUriRefused { cause: gunbc.citation.pdf_safe_profile.NavigableUriSafeRefusalCause }
 
-type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(Pin<std.citation.CitedRepresentationIdentity>) | X86_64AbiPdfPinRefused { cause: X86_64AbiPdfPinRefusalCause }
+type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(extdeps.pin.Pin<std.citation.CitedRepresentationIdentity>) | X86_64AbiPdfPinRefused { cause: X86_64AbiPdfPinRefusalCause }
 
-type X86_64AbiCitationFactConstruction = X86_64AbiCitationFactConstructed(RecordedFact<CitationRecordedFact<std.citation.CitationSelector>>) | X86_64AbiCitationFactRefused { pin: X86_64AbiPdfPinConstruction, selector: X86_64AbiPdfCitationSelectorConstruction }
+type X86_64AbiCitationFactConstruction = X86_64AbiCitationFactConstructed(std.claim_evidence.RecordedFact<std.citation.CitationRecordedFact<std.citation.CitationSelector>>) | X86_64AbiCitationFactRefused { pin: X86_64AbiPdfPinConstruction, selector: X86_64AbiPdfCitationSelectorConstruction }
 
-type X86_64AbiEvidenceLinkConstruction = X86_64AbiEvidenceLinkConstructed(EvidenceLink<CitationRecordedFact<CitationSelector>, ClaimId, ExternalAuthority, NonEmptyStr, ReadBackProbe>) | X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactConstruction }
+type X86_64AbiEvidenceLinkConstruction = X86_64AbiEvidenceLinkConstructed(std.claim_evidence.EvidenceLink<std.citation.CitationRecordedFact<std.citation.CitationSelector>, std.claim_evidence.ClaimId, extdeps.external_authority.ExternalAuthority, std.types.NonEmptyStr, gunbc.readback_independence.ReadBackProbe>) | X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactConstruction }
 
 fn x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: String) -> X86_64AbiPdfValidatedDigestConstruction {
   match sha256_hex_digest(hex: hex) {

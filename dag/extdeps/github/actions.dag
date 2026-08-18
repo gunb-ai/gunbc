@@ -184,7 +184,7 @@ type Step
       timeout_minutes: Int?
     }
 
-type ShellType = Bash | Sh | Pwsh | Python | Cmd
+type ShellType = Bash | Sh | Pwsh | extdeps.languages.python.subject.Python | Cmd
 
 type ActionRef {
   owner: String

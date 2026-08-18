@@ -2,7 +2,7 @@ module v1.compiler.artifact
 
 
 
-type RenderTarget = extdeps.languages.rust.subject.Rust | Python | Go | Dag
+type RenderTarget = extdeps.languages.rust.subject.Rust | extdeps.languages.python.subject.Python | extdeps.languages.go.subject.Go | v2.lens.affected_set.Dag
 
 type ArtifactKind
   = ServiceBinary

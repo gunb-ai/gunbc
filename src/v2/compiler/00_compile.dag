@@ -15,7 +15,7 @@ type CompileOutput
 
 type CompileLensOutcome = v2.std.diagnostic.Outcome<Witness<Node>>
 
-type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
+type CompileLensGate = fn(v2.compiler.infer.InferredTree) -> CompileLensOutcome
 
 type CompileLens {
   gate: CompileLensGate
