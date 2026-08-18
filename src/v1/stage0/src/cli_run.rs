@@ -15959,10 +15959,10 @@ pub fn run_claims_in_process(
 /// was inflated by cold-I/O or governor time-slicing is not misclassified as over-budget.
 /// WHICH ARM OF THE EXPECTED-RED PARTITION AN ENROLLED ROW LANDS IN.
 ///
-/// Extracted as a total function over the outcome so the partition is a value the tests can
-/// enumerate, rather than three `continue`s whose exhaustiveness only holds by reading the
-/// loop. The three arms are mutually exclusive by construction here; the caller's sum check
-/// then verifies that the roster is covered exactly once.
+/// A total function over the outcome, so the partition is a value the caller matches on rather
+/// than three `continue`s whose exhaustiveness holds only by reading the loop. The three arms
+/// are mutually exclusive by construction here; the caller's sum check then verifies that the
+/// roster is covered exactly once.
 #[derive(Debug, PartialEq, Eq)]
 enum ExpectedRedArm {
     /// Enrolled and failed. Agreement.
@@ -41131,6 +41131,14 @@ pub struct RequiredFloorOutcome {
     /// witness, and a headline number that rises as debt is added has no direction left to
     /// report repayment in.
     pub known_red_held: usize,
+    /// UNEXPECTED GREEN IS NOT A WITNESS RED. An enrolled row that passed means someone fixed
+    /// the bug and the roster is stale; folding it into `failures` makes an un-quarantine
+    /// indistinguishable from a regression in the alert signature, which is the conflation
+    /// `std.witness_admission` already ruled on for exactly this case.
+    pub stale_quarantine: Vec<String>,
+    /// AND A BUDGET REFUSAL IS NEITHER. The row went undecided; the remedy is cost, not a
+    /// roster edit and not a bug fix. Three causes with three remedies get three counts.
+    pub budget_refused: Vec<String>,
     pub over_warn: usize,
     pub failures: Vec<String>,
 }
@@ -42080,6 +42088,8 @@ pub fn run_required_floor(
         receipt_identities: 0,
         passed: 0,
         known_red_held: 0,
+        stale_quarantine: Vec::new(),
+        budget_refused: Vec::new(),
         over_warn: 0,
         failures: Vec::new(),
     };
@@ -42303,14 +42313,20 @@ pub fn run_required_floor(
             expected_red_seen.insert(claim.qualified.clone());
         }
         let passed = matches!(result, ClaimOutcome::Pass);
-        if expected_red && passed {
-            known_red_now_passing += 1;
-            outcome.failures.push(format!(
-                "{} is enrolled as expected-red and PASSED — remove it from \
-                 v2.workflow.floor_expected_red",
-                claim.qualified
-            ));
-            continue;
+        if expected_red {
+            match expected_red_arm(&result) {
+                ExpectedRedArm::NowPassing => {
+                    known_red_now_passing += 1;
+                    outcome.stale_quarantine.push(format!(
+                        "{} is enrolled as expected-red and PASSED — remove it from \
+                         v2.workflow.floor_expected_red",
+                        claim.qualified
+                    ));
+                    continue;
+                }
+                ExpectedRedArm::BudgetRefused => {}
+                ExpectedRedArm::Held => {}
+            }
         }
         if expected_red {
             // A BUDGET REFUSAL IS NOT AN ENROLLED FAILURE, and conflating the two is what let
@@ -42326,7 +42342,7 @@ pub fn run_required_floor(
             } = &result
             {
                 known_red_budget_refused += 1;
-                outcome.failures.push(format!(
+                outcome.budget_refused.push(format!(
                     "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: {:?} \
                      {}ms against {}ms. Enrollment asserts an expected verdict and a budget \
                      refusal produces none, so the enrolled claim went undecided. Reduce the \

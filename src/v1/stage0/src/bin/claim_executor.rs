@@ -10375,18 +10375,35 @@ fn run() -> Result<ExitCode, ExitCode> {
                 );
                 eprintln!(
                     "required-floor: planned={} executed={} terminal={} passed={} \
-                     known_red_held={} failed={}",
+                     known_red_held={} failed={} stale_quarantine={} budget_refused={}",
                     outcome.claims_planned,
                     outcome.claims_executed,
                     outcome.receipt_identities,
                     outcome.passed,
                     outcome.known_red_held,
-                    outcome.failures.len()
+                    outcome.failures.len(),
+                    outcome.stale_quarantine.len(),
+                    outcome.budget_refused.len()
                 );
                 for failure in &outcome.failures {
                     eprintln!("required-floor: FAIL {failure}");
                 }
-                if outcome.failures.is_empty() {
+                // THREE CAUSES, THREE COUNTS, ONE STOPPED LINE. All three refuse the run, and
+                // they are reported apart because their remedies differ: a FAIL is a defect to
+                // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
+                // delete, a BUDGET-REFUSED is a cost to reduce. Summing them into `failed`
+                // would make an un-quarantine indistinguishable from a regression in the alert
+                // signature, which is the conflation `std.witness_admission` rules out.
+                for stale in &outcome.stale_quarantine {
+                    eprintln!("required-floor: STALE-QUARANTINE {stale}");
+                }
+                for refused in &outcome.budget_refused {
+                    eprintln!("required-floor: BUDGET-REFUSED {refused}");
+                }
+                if outcome.failures.is_empty()
+                    && outcome.stale_quarantine.is_empty()
+                    && outcome.budget_refused.is_empty()
+                {
                     Ok(ExitCode::SUCCESS)
                 } else {
                     Err(ExitCode::from(1))
