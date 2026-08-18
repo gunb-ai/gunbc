@@ -3,6 +3,7 @@ module product.fabric.budget
 import std.types { NonEmptyStr, Int, Timestamp }
 import std.measure { MoneyAmountMicro, Currency, Micro }
 import std.currency { CurrencyCode }
+import product.fabric.demand { BudgetAccountId }
 import extdeps.accounting.encumbrance {
   EncumbranceLedger, EncumbranceOutcome, EncumbranceRefusal,
   LedgerAdvanced, EncumbranceRefused,
@@ -26,10 +27,22 @@ import extdeps.accounting.encumbrance {
 // presented against it in another code. One account, one denomination, and a
 // cross-currency line has nowhere to land.
 
-type BudgetAccountRef = NonEmptyStr
-
+// The account identifier is product.fabric.demand's BudgetAccountId, imported
+// rather than re-minted. A second identifier for one fact would be the
+// nicknaming fork, and here it would also be actively load-bearing in the
+// wrong direction: a demand's buy terms name the account they draw on, so
+// joining terms to ledger is the whole point of the identifier, and two types
+// for it make that join impossible to state. The one I had minted was also
+// weaker -- a plain alias against a branded id -- so the fork was losing
+// information as well as duplicating it.
+//
+// The import direction is worth noting as unfinished: the identity of an
+// account arguably belongs with the account rather than with the demand that
+// references it. Moving it would mean demand importing from this module, which
+// cannot happen while this module is stacked above it. Left as the smaller of
+// two wrongs, and cheap to correct once both land.
 type MoneyAccount {
-  account: BudgetAccountRef
+  account: BudgetAccountId
   currency: CurrencyCode
   ledger: EncumbranceLedger<Currency, Micro>
 }
@@ -57,11 +70,11 @@ type MoneySettlementRequest {
 
 type MoneyRefusal =
   | CurrencyMismatch {
-      account: BudgetAccountRef,
+      account: BudgetAccountId,
       account_currency: CurrencyCode,
       presented_currency: CurrencyCode,
     }
-  | LedgerRefused { account: BudgetAccountRef, refusal: EncumbranceRefusal<Currency, Micro> }
+  | LedgerRefused { account: BudgetAccountId, refusal: EncumbranceRefusal<Currency, Micro> }
 
 type MoneyOutcome =
   | AccountAdvanced { account: MoneyAccount }
