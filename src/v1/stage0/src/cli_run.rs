@@ -39658,7 +39658,7 @@ pub fn run_required_floor(
     );
     floor_seam("admission-decode");
     let admission_decode_started = std::time::Instant::now();
-    let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
+    let mut claims = required_floor_claims_from_admission(&hermetic, &admission)?;
     eprintln!(
         "[floor-phase] phase=admission-decode state=completed wall_ms={} claims={}",
         admission_decode_started.elapsed().as_millis(),
@@ -39832,6 +39832,16 @@ pub fn run_required_floor(
     drop(hermetic);
     drop(admission);
     drop(manifest_scope);
+
+    if let Ok(only) = std::env::var("GUNBC_FLOOR_ONLY_CLAIM") {
+        claims.retain(|c| c.qualified == only);
+        if claims.is_empty() {
+            return Err(format!(
+                "GUNBC_FLOOR_ONLY_CLAIM `{only}` is not in the required-floor manifest"
+            ));
+        }
+        eprintln!("floor: GUNBC_FLOOR_ONLY_CLAIM filtered to 1 claim: {only}");
+    }
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
