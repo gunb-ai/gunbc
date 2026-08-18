@@ -260,11 +260,8 @@ fn coproduct_parent_spellings_match(
         return true;
     }
     if coproduct_arm_name_matches(value_parent.clone(), pattern_parent.to_string()) {
-        if resolve_coproduct_type_node(ctx, pattern_parent).is_some() {
-            return true;
-        }
-        // Scoped required-floor frames may not index every qualified coproduct spelling
-        // even though the scrutinee Variant already names that parent at the last segment.
+        // Last-segment agreement is the match key; scoped frames may not index every
+        // qualified coproduct spelling even though the scrutinee already names that parent.
         return true;
     }
     let coproduct = resolve_coproduct_type_node(ctx, pattern_parent);
@@ -348,15 +345,20 @@ fn record_pattern_type_name_matches(
         return false;
     }
     match parent_enum {
-        Some(parent) => {
-            record_nominal_is_declared_variant_of_coproduct(ctx, resolved.clone(), parent)
-                || record_nominal_is_bare_declared_variant_of_coproduct(
-                    ctx,
-                    resolved.clone(),
-                    parent,
-                )
-        }
         None => true,
+        Some(parent) => match resolve_coproduct_type_node(ctx, parent) {
+            // Scoped evaluation may not rebuild a corpus-wide type index entry; the
+            // arm-name gate above is then the precision frontier.
+            None => true,
+            Some(_) => {
+                record_nominal_is_declared_variant_of_coproduct(ctx, resolved.clone(), parent)
+                    || record_nominal_is_bare_declared_variant_of_coproduct(
+                        ctx,
+                        resolved.clone(),
+                        parent,
+                    )
+            }
+        },
     }
 }
 
