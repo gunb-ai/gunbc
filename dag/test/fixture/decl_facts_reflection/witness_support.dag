@@ -20,6 +20,29 @@ import v2.std.decl_index { DeclFact, decl_facts }
 // What it cost was the whole scan. std is 1,298,751 of the 1,311,432 bytes these roots reach (99.0%,
 // 138 of 152 files), and the required floor builds a fresh `InterpContext` per CLAIM, so the scan is
 // paid once per ROW rather than once per module — 28 rows, 28 whole-std parses.
+// A ROOT THAT NO LITERAL NAMES IS NOT AN UNREAD ROOT, and the counterexample is in this very
+// list. A static scan for qualified-name literals reports the duplicate_qn SHADOW root below as
+// unread: no row spells a name under it. It is read. The rows reach it through pool AMBIGUITY --
+// the shadow declares the same qualified name as the primary, and what the witnesses assert is
+// that the lookup returns BOTH candidates -- so the root is named by nothing and load-bearing
+// anyway. Executed rather than reasoned: deleting the shadow root reds
+// decl_fact_lookup_duplicate_qualified_identity_returns_ambiguous_both_candidates and
+// decl_facts_duplicate_qn_pool_declaration_lookup_per_candidate_is_unique.
+//
+// So a census over pool roots produces CANDIDATES, never a removal list. What decides is the
+// mutation battery, run under BOTH root sets with the red sets compared at IDENTITY grain: a
+// count match is not a match. Removing a root that is merely unnamed makes the rows over it pass
+// vacuously -- cheaper AND unfalsifiable, which is worse than the cost it saved.
+//
+// LIVE INERT ROOT, recorded rather than removed (census 2026-08-18, report-first): the
+// dag/extdeps/external_authority entry below contributes ZERO files. The module is the FILE
+// dag/extdeps/external_authority.dag, and corpus_dag_files_for_roots walks a root only
+// `if root_path.is_dir()`, so a root naming a file is skipped in silence -- no diagnostic, no
+// count, no refusal. The row it was meant to serve
+// (decl_facts_reflection_imported_external_authority_positive_control) passes regardless, because
+// the parent qualified name it asserts comes from RESOLUTION through the prepared scope, not from
+// this pool. It is left in place pending the counted refusal for zero-contributing roots; it is
+// the only such root among the 41 pool-walk root literals in the corpus.
 data decl_facts_reflection_fixture_pool_roots: List<String> = [
   "dag/test/fixture/decl_facts_reflection",
   "dag/test/fixture/decl_facts_reflection_duplicate_qn/primary",
