@@ -23,6 +23,8 @@ import product.fabric.execution {
   Receipt, ReceiptPayload, ExecutionReceipt, receipt_lease_generation,
 }
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // The acceptance test for the terminal contract: two synthetic SCM bindings must
